@@ -17,9 +17,10 @@ differential parity tests in `read_test.go` using the batch-1 harness helpers.
 Each operation is classified MIGRATE or CLI-BOUND by the hard-gate rubric
 ((a) typed result, (b) behavioural parity, (c) Windows-capable), with the
 verdict recorded as a test-level comment and later folded into `doc.go` (batch 4).
-It shares no files with the write-surface batch (batch 3), so the two run in
-parallel; both depend only on batch 1. All new `_test.go` files carry the
-`//go:build integration` tag and live in `package gitnativepoc`.
+This batch depends only on batch 1; batch 3 (write-surface) depends on this batch
+in turn, because Card 10 there reuses symbols defined in this batch's `read.go`
+(same package). All new `_test.go` files carry the `//go:build integration` tag
+and live in `package gitnativepoc`.
 
 ## Cards
 

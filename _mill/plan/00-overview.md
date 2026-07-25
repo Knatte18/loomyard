@@ -31,7 +31,7 @@ batches:
   - number: 3
     name: write-surface
     file: 03-write-surface.md
-    depends-on: [1]
+    depends-on: [1, 2]
     verify: go test -tags integration ./internal/gitnativepoc/ && go test ./cmd/lyx/ -run 'TestTierPurity_UntaggedTestsSpawnNothing|TestHermeticGitEnv_GitSpawningPackagesHaveTestMain'
   - number: 4
     name: writeup-and-doc-lifecycle

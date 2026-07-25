@@ -6,7 +6,7 @@ batch: write-surface
 number: 3
 cards: 3
 verify: go test -tags integration ./internal/gitnativepoc/ && go test ./cmd/lyx/ -run 'TestTierPurity_UntaggedTestsSpawnNothing|TestHermeticGitEnv_GitSpawningPackagesHaveTestMain'
-depends-on: [1]
+depends-on: [1, 2]
 ```
 
 ## Batch Scope
@@ -17,10 +17,15 @@ This batch probes `gitrepo`'s **write** surface over go-git in
 write path. The pivotal case is `Push`'s rebase-retry (go-git's reported weak
 spot), which the design mandates verifying. Each op is classified MIGRATE or
 CLI-BOUND; a CLI-BOUND verdict here is the expected, legitimate outcome and is
-asserted explicitly, not fixed. It shares no files with the read-surface batch
-(batch 2), so the two run in parallel; both depend only on batch 1. All new
-`_test.go` files carry the `//go:build integration` tag and live in
-`package gitnativepoc`.
+asserted explicitly, not fixed. This batch depends on batch 2: `write.go` and
+`read.go` are the same package, and Card 10's `SetSnapshotSHA` reuses
+`read.go`'s `isStrictDescendant` (card 7) and snapshot-key validators (card 6),
+so the package will not compile — and the batch verify will not pass — until
+batch 2's `read.go` exists. (Cards 8 and 9 are self-contained and need nothing
+from batch 2; only Card 10 creates the cross-card symbol dependency, but the
+whole batch is scheduled after batch 2 regardless since they co-inhabit one
+package.) It is therefore NOT parallel with batch 2. All new `_test.go` files
+carry the `//go:build integration` tag and live in `package gitnativepoc`.
 
 ## Cards
 
