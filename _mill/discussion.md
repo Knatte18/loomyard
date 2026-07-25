@@ -189,15 +189,24 @@ this task carries a version suffix**. The old format dies with builder, so the n
 
 ### per-card-commit-and-sha-capture
 
-- Decision: Commit **per card** even when a batch holds several cards. Master captures each card's
-  SHA by reading `git log` from the batch's start SHA to the fork-reported head SHA (via
-  `internal/gitrepo`: `CurrentSHA`/`ChangedFilesSince`). In v0 (batch ≡ card) the head SHA is that
-  card's SHA directly.
+- Decision: Commit **per card** even when a batch holds several cards. **In v0** (identity batcher,
+  batch ≡ card) SHA capture is trivial: after the fork returns `OK`, Master records the batch's
+  single card SHA via `gitrepo.CurrentSHA` (cross-checked against the fork-reported head SHA). The
+  **multi-card per-card-SHA enumeration path is dormant** — like the DAG seam, it is designed but
+  not exercised until a grouping batcher exists. Enumerating the ordered commit SHAs between a
+  batch's start SHA and its head SHA is *not* expressible with today's `gitrepo` surface
+  (`CurrentSHA` returns HEAD, `ChangedFilesSince` returns files — neither lists commits in a range);
+  the first grouping batcher that produces multi-card batches lands **together with a new
+  git-log-range primitive** (e.g. `gitrepo.CommitsSince(startSHA) []string`). v0 neither builds nor
+  needs it.
 - Rationale: `plan-format-v3.md` makes "commit-per-card is THE resume mechanism" — a fresh session
-  reads `git log` to see exactly which card the previous run reached. Per-card commits also keep
-  SHA-bisect at card granularity even when batched. On `FAILED`, how far `git` advanced tells
-  Master which card broke, so the minimal return stays sufficient.
-- Rejected: One commit per batch (collapses the per-card resume/bisect trail v3 is built around).
+  reads `git log` to see exactly which card the previous run reached. Per-card commits keep
+  SHA-bisect at card granularity; in v0 each batch is one card, so per-card and per-batch SHA
+  capture coincide. On `FAILED`, how far `git` advanced tells Master which card broke, so the
+  minimal return stays sufficient. Deferring the enumeration primitive to the grouping-batcher task
+  keeps v0 from adding an unused `gitrepo` method.
+- Rejected: One commit per batch (collapses the per-card resume/bisect trail v3 is built around);
+  adding the git-log-range primitive in v0 (unused until a multi-card batcher exists).
 
 ### gitrepo-verification-substrate
 
@@ -236,6 +245,13 @@ this task carries a version suffix**. The old format dies with builder, so the n
   a linear rescan.
 - Rejected: Per-card integration runs (expensive); deferring bisect and escalating the whole plan
   (loses automatic localization); running the suite in a separate worktree (out of scope in v0).
+- Bisect staging: the SHA-bisect runs **after all batches have landed** and the plan run is
+  otherwise complete, so there are no concurrent forks contending for the working tree. Bisect
+  re-runs the `## verify:` suite at a candidate per-card SHA by **checking that SHA out in-place in
+  the single worktree**, then restoring HEAD when done — no separate worktree is needed. This does
+  not conflict with the "no separate worktree in v0" rejection below, which concerns *parallel card
+  execution* (many forks committing at once), not a sequential post-run bisect. The exact
+  checkout/restore mechanism is a plan-phase determination.
 - Escalation mechanism: "escalate to a human" surfaces the same way webster already surfaces a
   terminal condition — a failed/stuck run terminus recorded in `_lyx/webster/state.json` (the run
   ends non-successfully rather than proceeding to loom's finishing step) plus the written summary
@@ -406,9 +422,11 @@ Discovered during discussion:
 - **`internal/websterengine`**: reuse the existing mux/engine/starter fakes. New/changed coverage:
   batches sourced from a fake batcher (identity); the new minimal card/batch **report parser**
   (`OK`/`FAILED` + head SHA + deviating-files list, including malformed/empty returns);
-  **per-card SHA capture** from git log across a batch; **SHA-bisect** localization over a scripted
-  set of per-card SHAs (fake git/report inputs, no live LLM); `state.json` round-trip with the
-  reworked batch/card schema; deletion of chain/oversized paths (ensure removed code has no
+  **per-card SHA capture** — in v0 this is head-SHA capture via `gitrepo.CurrentSHA` (batch ≡ card),
+  so test that; the multi-card git-log-range enumeration is dormant (no shipped grouping batcher)
+  and is tested with its primitive when that batcher lands, not now. **SHA-bisect** localization
+  over a scripted set of per-card SHAs (fake git/report inputs, no live LLM); `state.json` round-trip
+  with the reworked batch/card schema; deletion of chain/oversized paths (ensure removed code has no
   lingering test dependence). Fork-audit tests stay at the pure-fact level.
 - **`internal/webstercli`**: verb smoke/behavior tests via direct fake injection into `websterCLI`
   fields (existing pattern); help-tree test stays green with the unchanged verb set.
@@ -469,3 +487,7 @@ Discovered during discussion:
 - **Q:** [review-r1 gap] Are plan-level sections surfaced to the fork prompt? **A:** Yes —
   `RenderForkPrompt` injects `## Shared Decisions` always and `## Rename mechanic` when the batch has
   a `Moves:` card (decision *fork-prompt-plan-level-context*).
+- **Q:** [review-r2 gap] Can Master enumerate per-card SHAs across a multi-card batch with today's
+  `gitrepo`? **A:** No — v0 (batch ≡ card) captures the single head SHA via `CurrentSHA`; the
+  multi-card enumeration is dormant and lands with a new git-log-range primitive alongside the first
+  grouping batcher (decision *per-card-commit-and-sha-capture*).
