@@ -121,19 +121,24 @@ fabric's dedicated sandbox hub (`lyx-fabric-test-HUB`) being separate from the s
 `lyx-test`/`lyx-test-weft` hub — that separation is intentional per `SANDBOX-FABRIC-SUITE.md`.
 
 ## Round context seeded from prior-round verification
-**Safety pass — round 3.** Round 1 (tag `opus-r1`, Opus) and round 2 (tag `fable-r2`, Fable) between
-them found and fixed one BLOCKING bug plus fifteen lower-severity ones; the orchestrator has
-independently verified every fix (see CLOSED-AND-VERIFIED below) — including reproducing the
-not-false-green proof for the behavior-changing fixes by reverting each production file to its
-pre-fix state, confirming the round's own new/updated test FAILS at the right assertion, then
-restoring the fix and confirming an empty diff. There is **no known residual**. Do a genuinely
-independent clean-room pass to find anything rounds 1-2 missed — or, if you genuinely find nothing,
-honestly confirm merge-readiness. Do NOT re-open or re-litigate the CLOSED-AND-VERIFIED work below.
+**Safety pass — round 4.** Rounds 1-3 (tags `opus-r1`/Opus, `fable-r2`/Fable, `opus-r3`/Opus — we
+are alternating Opus/Fable for up to 5 rounds total, so this round is Fable) between them found and
+fixed one BLOCKING bug plus eighteen lower-severity ones; the orchestrator has independently verified
+every fix (see CLOSED-AND-VERIFIED below) — including reproducing the not-false-green proof for the
+behavior-changing fixes by reverting each production file to its pre-fix state, confirming the
+round's own new/updated test FAILS at the right assertion, then restoring the fix and confirming an
+empty diff. There is **no known residual**. Do a genuinely independent clean-room pass to find
+anything rounds 1-3 missed — or, if you genuinely find nothing, honestly confirm merge-readiness. Do
+NOT re-open or re-litigate the CLOSED-AND-VERIFIED work below.
 
 Round 2's fixer phase was interrupted mid-way by a session crash (R1-R3 fixed by the crashed
 session, recovered and committed by the orchestrator; R4-R11 finished by a continuation round agent).
 Both halves were independently verified by the orchestrator from a cold state on the committed tree,
 same bar as any other round — the crash is operational history, not a review caveat.
+
+Round 3's own review agent (originally spawned as `sonnet-r3`) was killed by the orchestrator before
+it wrote anything or touched code — model rotation was corrected to Opus per the Opus/Fable
+alternation and relaunched clean as `opus-r3`; no partial state from the killed attempt exists.
 
 **CLOSED-AND-VERIFIED (do not re-litigate):**
 
@@ -217,6 +222,38 @@ report at `.scratch/fabric-review-fable-r2-fixer-report.md`:
   (trailer round-trips through `parseWarpSHATrailer`, missing-trailer case surfaced as an error). If
   you can find a real, live-reproducible scenario where the pre-fix behavior actually diverged from
   the trailer, that would be new information — otherwise treat this as closed.
+
+Round 3 (`opus-r3`), full review at `.scratch/fabric-review-opus-r3.md`, fixer report at
+`.scratch/fabric-review-opus-r3-fixer-report.md`:
+- **F1 (MEDIUM, commit `2a41a63f`):** `Checkout` left a half-switched pair when junction wiring
+  (step 5) failed after the weft branch had already switched (step 4) — rollback reverted only the
+  host, stranding the weft on the new branch, violating Checkout's documented all-or-nothing
+  contract. Fixed by capturing the weft's original branch up front and rolling back BOTH sides on
+  any post-switch failure (`rollbackSwitch` replacing the host-only `rollbackHostSwitch`).
+  Orchestrator reproduced by reverting `checkout.go` and confirming
+  `TestCheckout_JunctionFailureRollsBackBothSides` fails at exactly the predicted assertion (weft
+  branch = the new target, not the original — half-switched); restoring passes.
+- **F2 (MEDIUM, data loss, commit `af50f2af`):** `add <slug>-weft` (a slug ending in the reserved
+  weft suffix) created a host worktree directory indistinguishable from a weft worktree, which a
+  later `prune --apply` misclassified as orphaned and `os.RemoveAll`'d — silent loss of the host
+  worktree and any uncommitted work. Fixed by rejecting the suffix collision in Add's step-0
+  validation. Orchestrator reproduced by reverting `add.go` and confirming
+  `TestAdd_RejectsWeftSuffixSlug` fails (wrong error, git-step failure instead of validation
+  rejection); restoring passes.
+- **F3 (NIT, commit `c6fa6dc4`):** an empty/whitespace slug produced a misleading "hub already
+  exists" error surfaced deep in a later step instead of an honest validation rejection. Fixed in
+  Add's step-0 validation alongside F2. Orchestrator reproduced by reverting `add.go` to the
+  post-F2/pre-F3 state and confirming `TestAdd_RejectsEmptySlug` fails (same wrong-error shape);
+  restoring passes.
+- Re-evaluated `opus-r1`'s deferred F6 again (now via R11's fix): remains closed, no new
+  live-reproducible divergence found.
+- One thing explicitly NOT fixed, by design: empty result lists still serialize as JSON `null`
+  rather than `[]` — a nil-slice convention shared across the whole lyx codebase and warp;
+  diverging fabric alone would break differential parity for zero functional gain. Do not re-flag
+  this as a fabric-specific defect.
+- Round 3's own review agent was originally spawned as Sonnet (`sonnet-r3`) but killed before it
+  wrote or touched anything, then relaunched clean as `opus-r3` to correct the model rotation — see
+  above; no findings or partial work from the killed attempt exist to re-litigate.
 
 Full suite confirmed green by the orchestrator from a cold state on the committed tree after every
 round (not just trusting either round's own report): `go build ./...`, `go vet` on the
