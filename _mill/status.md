@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -25,4 +25,31 @@ plan-review-r3  '2026-07-25T13:56:38Z'
 plan-fix-r3  '2026-07-25T13:56:38Z'
 plan-fix-r4  '2026-07-25T14:00:25Z'
 planned  '2026-07-25T14:00:41Z'
+implementing  '2026-07-25T14:02:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: planparser-core
+    state: pending
+  - name: gitrepo-bisect-primitive
+    state: pending
+  - name: planparser-checks
+    state: pending
+  - name: batcher
+    state: pending
+  - name: webster-mechanism-helpers
+    state: pending
+  - name: webster-report-digest
+    state: pending
+  - name: engine-retarget
+    state: pending
+  - name: integration-fork-bisect
+    state: pending
+  - name: webstercli-rewire
+    state: pending
+  - name: docs-constraints
+    state: pending
 ```
