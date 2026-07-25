@@ -23,6 +23,13 @@ is deliberately narrow, per the Recommendation below:
   call-sites. A positive result here is a *proposal* to migrate, evaluated as its own separate,
   later decision — not something this spike commits to by having been run.
 
+## Build order: after `board-use-gitrepo`, not just after `gitrepo`
+
+[board-use-gitrepo.md](board-use-gitrepo.md) adds a wildcard-stage method to `gitrepo`'s public
+API. Run this spike against `gitrepo`'s surface *after* that lands, not before — otherwise the
+spike targets a moving target and part of it has to be redone once the wildcard-stage method
+exists. `fabric` is not a dependency (it's a separate consumer, not a change to `gitrepo` itself).
+
 ## The problem this responds to
 
 `internal/gitexec.RunGit` is the sole choke point (~80 call-sites repo-wide) that shells out to
