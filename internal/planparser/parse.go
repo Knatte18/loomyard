@@ -309,5 +309,242 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	// defect, never a parse failure, per the lenient-card-parse decision.
 	card.Title = strings.TrimSpace(m[2])
 
+	if err := parseCardBody(&card, lines[1:]); err != nil {
+		return Card{}, fmt.Errorf("planparser: card file %s: %w", path, err)
+	}
+
 	return card, nil
+}
+
+// Bold-label prefixes for the fields plan-format-v3 recognizes inside a card, in
+// the field order plan-format-v3.md pins.
+const (
+	whatLabel       = "**What:**"
+	contextLabel    = "**Context:**"
+	editsLabel      = "**Edits:**"
+	createsLabel    = "**Creates:**"
+	deletesLabel    = "**Deletes:**"
+	movesLabel      = "**Moves:**"
+	dependsOnLabel  = "**Depends-on:**"
+	commitLabel     = "**Commit:**"
+	cardVerifyLabel = "**verify:**"
+)
+
+// cardLabels lists every bold-label prefix parseCardBody recognizes, used by
+// isCardLabelLine to detect where a "**What:**" prose block or a file-op field's
+// bullet list ends: at the next label line, or the end of the card file.
+var cardLabels = []string{
+	whatLabel, contextLabel, editsLabel, createsLabel, deletesLabel,
+	movesLabel, dependsOnLabel, commitLabel, cardVerifyLabel,
+}
+
+// noneSentinel is the literal case-insensitive value a field's label line carries
+// when the field is empty: an inline "none" (rather than any "- `path`" bullets, or
+// any Depends-on ids) yields the field's empty non-nil slice — present-but-empty,
+// distinct from the field being absent altogether (nil slice, HasX false).
+const noneSentinel = "none"
+
+// isCardLabelLine reports whether line (as found in a card's raw body, pre-trim)
+// begins one of the card's recognized bold-label fields.
+func isCardLabelLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	for _, label := range cardLabels {
+		if strings.HasPrefix(trimmed, label) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripBackticks removes a single pair of surrounding backticks from s, if
+// present, or returns s unchanged otherwise — a bullet whose payload is not
+// backtick-wrapped is retained as-is, well-formedness being validator territory
+// (lenient-card-parse decision).
+func stripBackticks(s string) string {
+	if len(s) >= 2 && strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+// dependsOnSplitRe splits a "**Depends-on:**" inline value into its individual
+// card-id tokens: a run of one or more commas and/or whitespace, so both
+// "1, 3" and "1 3" style lists parse identically.
+var dependsOnSplitRe = regexp.MustCompile(`[,\s]+`)
+
+// moveLineRe matches a "Moves:" sub-bullet's well-formed two-path grammar, after
+// its leading "- " bullet marker has already been stripped: "`old/path` ->
+// `new/path`" (backtick-wrapped paths, ASCII " -> " arrow). A bullet that does not
+// match is retained verbatim in Card.MovesRaw for Validate's move-format check to
+// flag, per the lenient-card-parse decision.
+var moveLineRe = regexp.MustCompile("^`([^`]+)` -> `([^`]+)`$")
+
+// parseCardBody parses lines — everything in a card file after its own title
+// heading — into card's remaining fields: What: presence, the five typed file-op
+// fields (raw, un-normalized paths; normalizeCard applies root:/// resolution in a
+// later pass), Depends-on, and the optional Commit and verify: fields. Card-level
+// defects (a missing field, a malformed Moves: bullet, a Depends-on id that isn't
+// an integer) are recorded leniently — via the HasX bits, MovesRaw, or simply left
+// for Validate to enumerate — never returned as an error; parseCardBody fails loud
+// only on document structure it cannot mechanically read at all: an inline value on
+// a field that admits only "none" or a bullet/id list.
+func parseCardBody(card *Card, lines []string) error {
+	i := 0
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		var fieldErr error
+		switch {
+		case trimmed == "":
+			i++
+		case strings.HasPrefix(trimmed, whatLabel):
+			card.HasWhat = true
+			i++
+			for i < len(lines) && !isCardLabelLine(lines[i]) {
+				i++
+			}
+		case strings.HasPrefix(trimmed, contextLabel):
+			card.HasContext = true
+			card.ContextFiles, i, fieldErr = parseFileOpField(trimmed, contextLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, editsLabel):
+			card.HasEdits = true
+			card.EditsFiles, i, fieldErr = parseFileOpField(trimmed, editsLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, createsLabel):
+			card.HasCreates = true
+			card.CreatesFiles, i, fieldErr = parseFileOpField(trimmed, createsLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, deletesLabel):
+			card.HasDeletes = true
+			card.DeletesFiles, i, fieldErr = parseFileOpField(trimmed, deletesLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, movesLabel):
+			card.HasMoves = true
+			card.Moves, card.MovesRaw, i, fieldErr = parseMovesField(trimmed, lines, i+1)
+		case strings.HasPrefix(trimmed, dependsOnLabel):
+			card.HasDependsOn = true
+			card.DependsOn, fieldErr = parseDependsOnField(trimmed)
+			i++
+		case strings.HasPrefix(trimmed, commitLabel):
+			card.Commit = stripBackticks(strings.TrimSpace(strings.TrimPrefix(trimmed, commitLabel)))
+			i++
+		case strings.HasPrefix(trimmed, cardVerifyLabel):
+			card.Verify = strings.TrimSpace(strings.TrimPrefix(trimmed, cardVerifyLabel))
+			i++
+		default:
+			// Any other line (stray prose outside a recognized field) is not
+			// structurally significant — card-level content beyond the pinned
+			// grammar is not this parser's concern.
+			i++
+		}
+		if fieldErr != nil {
+			return fieldErr
+		}
+	}
+	return nil
+}
+
+// parseFileOpField parses one of a card's four non-Moves file-op fields
+// (Context/Edits/Creates/Deletes): labelLine is the field's own "**Label:** ..."
+// line, label is its exact bold-label prefix, and lines starting at start are the
+// remaining card body lines to scan for the field's "- `path`" bullets. Returns the
+// field's raw path list (empty non-nil for an inline "none", nil if no bullets
+// followed a non-none label) and the index of the first line not consumed. A
+// non-empty label-line value other than the "none" sentinel (e.g. an inline path)
+// is a fail-loud error, not a card-level finding: silently reading it as an empty
+// field would be exactly the silent degradation the none-sentinel grammar exists to
+// prevent — the field would look present to every check while its paths vanished
+// from validation. This is document structure, so it fails at parse time rather
+// than waiting for Validate.
+func parseFileOpField(labelLine, label string, lines []string, start int) ([]string, int, error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
+	if strings.EqualFold(rest, noneSentinel) {
+		return []string{}, start, nil
+	}
+	if rest != "" {
+		return nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `path`\" sub-bullets on the following lines", label, rest)
+	}
+
+	var files []string
+	i := start
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			i++
+			continue
+		}
+		if isCardLabelLine(lines[i]) || !strings.HasPrefix(trimmed, "- ") {
+			break
+		}
+		payload := stripBackticks(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
+		files = append(files, payload)
+		i++
+	}
+	return files, i, nil
+}
+
+// parseMovesField parses a card's "**Moves:**" field the same way parseFileOpField
+// parses the other four, except each bullet is matched against moveLineRe: a
+// well-formed "`old` -> `new`" bullet becomes a raw MovePair (un-normalized;
+// normalizeCard resolves both sides in a later pass), and any other bullet is
+// retained verbatim in raw for Validate's move-format check.
+func parseMovesField(labelLine string, lines []string, start int) (pairs []MovePair, raw []string, next int, err error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, movesLabel))
+	if strings.EqualFold(rest, noneSentinel) {
+		return []MovePair{}, nil, start, nil
+	}
+	// Same inline-value rejection as parseFileOpField: an inline pair would
+	// silently vanish from move validation and the rename mechanics.
+	if rest != "" {
+		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `src` -> `dst`\" sub-bullets on the following lines", movesLabel, rest)
+	}
+
+	i := start
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			i++
+			continue
+		}
+		if isCardLabelLine(lines[i]) || !strings.HasPrefix(trimmed, "- ") {
+			break
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+		if m := moveLineRe.FindStringSubmatch(payload); m != nil {
+			pairs = append(pairs, MovePair{Old: m[1], New: m[2]})
+		} else {
+			raw = append(raw, payload)
+		}
+		i++
+	}
+	return pairs, raw, i, nil
+}
+
+// parseDependsOnField parses a card's inline "**Depends-on:**" value: the literal
+// "none" (case-insensitive) yields an empty non-nil slice, and otherwise the value
+// is split into comma-and/or-whitespace-separated tokens, each parsed as a plain
+// card number. A token that fails to parse as an integer is document structure —
+// the field's grammar admits nothing else — so it is a fail-loud error rather than
+// a card-level finding; whether a well-formed id actually names an existing,
+// earlier card is Validate's depends-on-order check, not this function's concern.
+func parseDependsOnField(labelLine string) ([]int, error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, dependsOnLabel))
+	if strings.EqualFold(rest, noneSentinel) {
+		return []int{}, nil
+	}
+	if rest == "" {
+		return nil, fmt.Errorf("card field %s carries no value; plan-format admits only the literal \"none\" or a list of card numbers", dependsOnLabel)
+	}
+
+	var ids []int
+	for _, tok := range dependsOnSplitRe.Split(rest, -1) {
+		if tok == "" {
+			continue
+		}
+		id, err := strconv.Atoi(tok)
+		if err != nil {
+			return nil, fmt.Errorf("card field %s: %q is not a plain card number: %w", dependsOnLabel, tok, err)
+		}
+		ids = append(ids, id)
+	}
+	if ids == nil {
+		ids = []int{}
+	}
+	return ids, nil
 }
