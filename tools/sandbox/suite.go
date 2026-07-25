@@ -174,10 +174,15 @@ const nonInteractiveWarning = "sandbox: warning: stdin/stdout is not an attached
 // launchAgent is a testability seam that runs an interactive claude session
 // inside hostRepoDir. It passes instruction as the sole positional argument and
 // --dangerously-skip-permissions so the agent needs no per-action confirmation.
-// The function inherits the calling process's stdin/stdout/stderr and environment,
-// waits for the child to exit, and returns its exit code. A non-zero exit code
-// from *exec.ExitError is returned as-is; any other error returns 1.
-var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
+// binDir is the derived .dev-bin directory when the resolved lyx is a dev
+// build, or "" when it is the PATH-resolved prod binary; when non-empty it is
+// prepended to the child's PATH so the agent's bare `lyx` invocations resolve
+// to the same dev binary the launcher fingerprinted (see the
+// agent-path-prepend-launchagent-only Shared Decision). The function inherits
+// the calling process's stdin/stdout/stderr, waits for the child to exit, and
+// returns its exit code. A non-zero exit code from *exec.ExitError is returned
+// as-is; any other error returns 1.
+var launchAgent = func(hostRepoDir, claudePath, instruction, binDir string) int {
 	// An interactive claude session is only reliable on an attached console;
 	// warn (not fail) so a knowingly-detached run can still proceed.
 	if !interactiveStdio() {
@@ -188,6 +193,11 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// Only override the inherited environment when a dev binary is in play;
+	// otherwise the child sees the operator's own environment unchanged, as before.
+	if binDir != "" {
+		cmd.Env = prependPath(binDir, os.Environ())
+	}
 	if err := cmd.Run(); err != nil {
 		// exec.ExitError is returned directly by cmd.Run, never wrapped, so a
 		// plain two-value type assertion is the idiomatic way to extract the code.
@@ -228,13 +238,19 @@ type binaryInfo struct {
 	// SHA256 holds the first 12 hex characters of the binary's SHA-256 digest,
 	// sufficient to distinguish builds without ballooning the fingerprint block.
 	SHA256 string
+	// Source records which binary resolveLyx picked (sourceDev or sourceProd,
+	// from resolve.go), so a maintainer reading the stamped header or the
+	// fetched report can tell a dev build's findings from a prod build's
+	// without cross-referencing the Path.
+	Source string
 }
 
 // binaryFingerprint stats and hashes the file at path to produce a binaryInfo
 // snapshot. ModTime is normalised to UTC. SHA256 is the first 12 hex characters
-// of the full digest. Any OS or IO error is wrapped with the provided path as
-// context so callers can report which binary failed.
-func binaryFingerprint(path string) (binaryInfo, error) {
+// of the full digest. source (sourceDev or sourceProd, from resolve.go) is
+// stamped into the returned binaryInfo verbatim. Any OS or IO error is wrapped
+// with the provided path as context so callers can report which binary failed.
+func binaryFingerprint(path, source string) (binaryInfo, error) {
 	// Stat first to capture size and modtime before opening the file, so the
 	// two calls reflect a consistent view of the inode.
 	fi, err := os.Stat(path)
@@ -261,6 +277,7 @@ func binaryFingerprint(path string) (binaryInfo, error) {
 		Size:    fi.Size(),
 		ModTime: fi.ModTime().UTC(),
 		SHA256:  digest[:12],
+		Source:  source,
 	}, nil
 }
 
@@ -273,11 +290,13 @@ func (b binaryInfo) header() string {
 		"- Path: `%s`\n"+
 		"- Size: %d bytes\n"+
 		"- ModTime: %s\n"+
-		"- SHA256 (first 12): `%s`\n",
+		"- SHA256 (first 12): `%s`\n"+
+		"- Source: %s\n",
 		b.Path,
 		b.Size,
 		b.ModTime.Format(time.RFC3339),
 		b.SHA256,
+		b.Source,
 	)
 }
 
@@ -361,14 +380,15 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
 
-	// Resolve lyx via PATH so the fingerprint captures the exact binary the
-	// operator has deployed; the binary must be on PATH before running the suite.
-	lyxPath, err := lookPath("lyx")
+	// Resolve lyx via resolveLyx (derived .dev-bin first, PATH fallback) so the
+	// fingerprint captures the exact binary the session will run, and so the
+	// dev/prod distinction can be stamped and threaded to the agent's PATH below.
+	lyxPath, source, err := resolveLyx()
 	if err != nil {
-		return fmt.Errorf("lyx not found on PATH -- deploy the binary before running the suite: %w", err)
+		return err
 	}
 
-	info, err := binaryFingerprint(lyxPath)
+	info, err := binaryFingerprint(lyxPath, source)
 	if err != nil {
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
@@ -416,11 +436,20 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		instruction = spec.instruction
 	}
 
+	// Only a resolved dev binary gets its directory prepended to the agent's
+	// PATH (see the agent-path-prepend-launchagent-only Shared Decision); a
+	// prod resolution leaves binDir empty so launchAgent inherits the
+	// environment unchanged, exactly as before.
+	binDir := ""
+	if source == sourceDev {
+		binDir = filepath.Dir(lyxPath)
+	}
+
 	// Launch the interactive agent session. An interactive claude session never
 	// self-terminates, so its manual exit is expected and its non-zero exit code
 	// is NORMAL -- it must not be treated as a failure. Fetching the report is a
 	// separate step, so print guidance and return nil regardless of the code.
-	code := launchAgent(hostRepoDir, claudePath, instruction)
+	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
 		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
 		code)
