@@ -12,8 +12,9 @@ import _ "embed"
 var configTemplate string
 
 // ConfigTemplate returns the default YAML template for loom's config
-// module: the discussion role model-spec and the discussion_timeout_min
-// knob the discussion producer consults.
+// module: the discussion and plan role model-specs and the
+// discussion_timeout_min / plan_timeout_min knobs the discussion and
+// plan producers consult.
 func ConfigTemplate() string {
 	return configTemplate
 }
