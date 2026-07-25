@@ -33,7 +33,9 @@ implementing  '2026-07-25T14:02:53Z'
 ```yaml
 batches:
   - name: planparser-core
-    state: pending
+    state: running
+    implementer_session: d900e741-9cf6-4e54-b424-0f514235fe8d
+    start_sha: 9e37d1788b3fc420cdf012e96a4b2113d4322564
   - name: gitrepo-bisect-primitive
     state: pending
   - name: planparser-checks
