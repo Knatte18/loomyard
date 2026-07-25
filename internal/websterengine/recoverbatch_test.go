@@ -434,8 +434,14 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	runDir := fx.Deps.State.Batches[1].ShuttleRunDir
 	strandGUID := fx.Deps.State.Batches[1].StrandGUID
 
-	// The re-fork's report has now landed.
-	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: deadbeef\n")
+	// The re-fork's report has now landed, self-reporting the worktree's real
+	// HEAD (the head_sha cross-check refuses a report whose SHA disagrees
+	// with the worktree it left behind — see the mismatch test below).
+	realHead, err := gitrepo.New(fx.Worktree).CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+realHead+"\n")
 
 	second, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
 	if err != nil {
@@ -470,8 +476,8 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	// A recovery-completed batch must land in the accumulated CardSHAs trail
 	// exactly like a fork batch, or the integration-suite bisect searches a
 	// gapped trail and blames the wrong card (crucible round fable-r1's F3).
-	if len(bs.CardSHAs) != 1 || bs.CardSHAs[0] != "deadbeef" {
-		t.Errorf("BatchState.CardSHAs = %v; want [deadbeef] persisted at recovery terminal", bs.CardSHAs)
+	if len(bs.CardSHAs) != 1 || bs.CardSHAs[0] != realHead {
+		t.Errorf("BatchState.CardSHAs = %v; want [%s] persisted at recovery terminal", bs.CardSHAs, realHead)
 	}
 	if fx.Deps.State.CurrentBatch != 0 {
 		t.Errorf("State.CurrentBatch = %d; want 0 (cleared)", fx.Deps.State.CurrentBatch)
@@ -489,6 +495,40 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	}
 	if _, statErr := os.Stat(runDir); !os.IsNotExist(statErr) {
 		t.Errorf("stat(%s) = %v; want the done run dir removed", runDir, statErr)
+	}
+}
+
+// TestRecoverBatch_ReportHeadSHAMismatchIsHardError proves the recovery
+// path applies RecordBatch's own head_sha cross-check: a recovery report
+// whose self-reported head_sha disagrees with the worktree's actual HEAD is
+// refused loud rather than persisted into the digest and the bisect trail
+// (crucible round fable-r1's F4 — before this check, only the fork path
+// verified the report against the repo it claimed to describe).
+func TestRecoverBatch_ReportHeadSHAMismatchIsHardError(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	first, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() first call error = %v; want nil", err)
+	}
+	if !first.Running {
+		t.Fatalf("first call = %+v; want Running=true", first)
+	}
+
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: deadbeef\n")
+
+	_, err = driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err == nil {
+		t.Fatal("RecoverBatch() with a mismatching head_sha = nil error; want the cross-check refusal")
+	}
+	if !strings.Contains(err.Error(), "does not match the worktree's actual HEAD") {
+		t.Errorf("error = %q; want the head_sha mismatch refusal", err.Error())
+	}
+	// Nothing was persisted terminal: the batch record stays non-terminal for
+	// a corrected report or an operator to resolve.
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Errorf("BatchState.Terminal = true; want false after a refused report")
 	}
 }
 

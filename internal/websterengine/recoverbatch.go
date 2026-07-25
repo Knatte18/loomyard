@@ -454,6 +454,22 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		return &RecoverResult{Running: true, ElapsedS: elapsedS}, nil
 	}
 
+	// A done/stuck classification is report-derived (dead never is), so its
+	// self-reported head_sha gets the same cross-check RecordBatch applies to
+	// a fork's report: a report disagreeing with the worktree it left behind
+	// is never trusted silently — the digest (and, for done, the bisect
+	// trail's CardSHAs entry) would otherwise carry a SHA that is not where
+	// the batch's work actually landed.
+	if digest.HeadSHA != "" {
+		actualHead, err := headSHA(deps.WorktreeRoot)
+		if err != nil {
+			return nil, err
+		}
+		if actualHead != digest.HeadSHA {
+			return nil, fmt.Errorf("webster: recovery report for batch %02d-%s: head_sha %q does not match the worktree's actual HEAD %q", number, slug, digest.HeadSHA, actualHead)
+		}
+	}
+
 	var warnings []string
 	removeStrand := func() {
 		if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
