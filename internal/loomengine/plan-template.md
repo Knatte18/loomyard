@@ -84,6 +84,11 @@ a path is normal sequencing.
 
 ### `## Rename mechanic` — reproduce verbatim when any card has a `Moves:`
 
+A `Moves:` endpoint must not also appear in any card's `Creates:`/`Deletes:` anywhere
+in the same plan — that is two contradictory instructions for one file. When a rename
+also splits new content out of the relocated file, the relocation stays exactly one
+`Moves:` pair and the split-out file is a separate plain `Creates:` entry.
+
 ```markdown
 ## Rename mechanic
 

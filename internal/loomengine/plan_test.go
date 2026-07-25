@@ -155,6 +155,23 @@ func TestPlanSpec_PromptStatesContextSemantics(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PromptStatesMoveRedundantRule verifies the rendered prompt
+// carries plan-format-v3.md's move-redundant rule (a Moves: endpoint never
+// also in Creates:/Deletes: of the same plan) and the rename-plus-extraction
+// shape (one Moves: pair plus a separate Creates: entry).
+func TestPlanSpec_PromptStatesMoveRedundantRule(t *testing.T) {
+	prompt := renderedPlanPrompt(t)
+
+	for _, want := range []string{
+		"must not also appear",
+		"split-out file is a separate plain `Creates:` entry",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("PlanSpec(...).Prompt does not contain %q; the move-redundant rule must reach the agent", want)
+		}
+	}
+}
+
 // renderedPlanPrompt returns the prompt PlanSpec renders for a hand-built
 // Layout and the default in-memory Config, for template-content assertions.
 func renderedPlanPrompt(t *testing.T) string {
