@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: git-native-library
 branch: git-native-library
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-writeup-and-doc-lifecycle  '2026-07-25T13:49:27Z'
 holistic-reviewing  '2026-07-25T13:49:44Z'
 holistic-fixing  '2026-07-25T13:55:11Z'
 holistic-reviewing  '2026-07-25T13:59:35Z'
+holistic-fixing  '2026-07-25T14:04:28Z'
 ```
 
 ## Batches
