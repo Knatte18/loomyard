@@ -25,6 +25,15 @@ Before starting a session:
    `lyx-fabric-test-HUB` already exists it is reused as-is, never reset or re-cloned.
    The very first run on a machine performs the real clone; every run after that starts
    from whatever state the previous session left the hub in.
+
+   **Board-URL fallback.** `lyx fabric clone`'s default board URL is the derived
+   `<weft-url>.wiki.git`, which only resolves once the weft repo's GitHub wiki has been
+   initialized (its first page created -- a one-time manual operator action; GitHub
+   offers no headless way to do it). Until that standing operator action is done, the
+   derived-URL clone fails at the board clone and correctly tears the hub down
+   (strict-abort). In that state, materialize the hub by passing an explicit
+   `[board-url]` naming any reachable repo as a board stand-in, and treat F1's
+   derived-URL check as blocked-by-precondition rather than a fabric defect.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
 4. **Weft `_lyx/` must be seeded before `lyx init`.** `lyx init` is still the
    warp/weft-based initializer (fabric is not wired into `init` until the cutover task):
@@ -139,8 +148,11 @@ useful?
 looks the way `lyx fabric clone` promises."
 
 **Watch:** The board passenger's origin URL is the **default derived** form --
-`<weft-url>.wiki.git` (the operator has already initialized that wiki; do not attempt
-to create it yourself). The weft prime's checked-out branch is **`main-weft`**, not
+`<weft-url>.wiki.git` -- *provided the operator has initialized that wiki* (see the
+board-URL fallback in Pre-conditions; do not attempt to create the wiki yourself). If
+the hub was materialized with an explicit `[board-url]` stand-in, record this check as
+blocked-by-precondition instead of failing it. The weft prime's checked-out branch is
+**`main-weft`**, not
 `main` -- fabric's uniform branch-suffix scheme applies from the very first pair, unlike
 `warp clone`'s mirrored (identical) branch names. Use `lyx fabric pairs` and plain git
 (`git -C <weft-prime> branch --show-current`, `git -C _board remote -v`) to confirm both;
