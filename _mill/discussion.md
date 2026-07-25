@@ -140,9 +140,12 @@ consumers and deletes warp/weft is a later, separate task (step 2).
     (trailers live in commit messages, survive rebase replay, and are the sole source of
     truth).
   - **Async push stays first-class:** `SkipPush` gating, the detached push path, and
-    gitrepo's `PushCoalesced` remain available so consumers are never forced to wait on a
-    synchronous push — explicitly required for board once board-weft-storage puts board
-    data on `weft:main` (operator constraint).
+    gitrepo's `PushCoalesced` remain available so consumers are never forced to wait on
+    a synchronous push. This is an operator constraint for board's sake — but note board
+    will use gitrepo's push primitives (`PushCoalesced`) **directly** on `weft:main`,
+    NOT fabric's `SyncWeft`/`RevertWithWeft` coordination API (board-weft-storage.md is
+    explicit on this); what must stay first-class is the gitrepo-level non-blocking
+    push, not a fabric entry point.
 - Rationale: cutover safety demands parity (the old modules are the reference fixture);
   the trailer is fabric's core new capability. A detached fire-and-forget push can never
   hand the final SHA back to the committer, so the detached path leans on the
@@ -251,7 +254,13 @@ consumers and deletes warp/weft is a later, separate task (step 2).
   state including board setup. Moving board's storage into `weft:main` is a separate,
   already-planned task (board-weft-storage) — until it ships, board remains a third
   cloned repo, and fabric must not preempt that design.
-- Rejected: dropping board from fabric clone (breaks parity and the differential test).
+- Test seam: fabric gets its own `RemoveAll`-equivalent teardown seam (mirroring warp's
+  exported `RemoveAll` var), self-contained like the rest of fabric's mechanics — the
+  differential clone test tears each side down via its own module's seam, never warp's
+  seam against fabric-cloned repos.
+- Rejected: dropping board from fabric clone (breaks parity and the differential test);
+  reusing warp's `RemoveAll` seam for fabric's teardown (couples fabric tests to the
+  module being deleted at cutover).
 
 ### Complete exported surface in the parallel build
 
@@ -264,6 +273,26 @@ consumers and deletes warp/weft is a later, separate task (step 2).
   needs the full exported surface enumerated, and cutover must be a pure rewire with no
   gap-filling implementation work.
 - Rejected: deferring loom-preflight helpers to the cutover task.
+
+### Coordination with board-use-gitrepo's concurrent gitrepo growth
+
+- Decision: `board-use-gitrepo` is mid-implementation and has already committed gitrepo
+  changes on its branch (`a84b35a8` adds `StageAllAndCommit`, a wildcard-stage method,
+  plus `doc.go` rewrites). fabric's plan must therefore be written against gitrepo's
+  **real surface at plan/implementation time**: before designing the gitrepo additions
+  (pull, lock-serialized commit, reset), inspect `board-use-gitrepo`'s actual diff to
+  `internal/gitrepo` (its branch, or `main` if it has merged) and design against that
+  state. A `doc.go` merge conflict with whichever task lands second is expected — it is
+  resolved through the standard merge-in step, not by pretending the other task doesn't
+  exist. **Design consequence:** the lock-serialized write generalizes at the gitrepo
+  layer and serializes **every** commit path — `StageAndCommit` AND `StageAllAndCommit`
+  alike — never only fabric's own calls.
+- Rationale: both tasks legitimately extend the same package (they are independent
+  consumers of gitrepo by design); ignoring the concurrency guarantees a stale plan and
+  an improvised conflict resolution. Landing order stays an operator decision — neither
+  task blocks the other.
+- Rejected: sequencing the two tasks serially (operator-level call, not this task's);
+  designing fabric's additions against gitrepo's pre-board snapshot.
 
 ### Config: one `fabric.yaml`
 
@@ -475,3 +504,13 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   weft-reset failure had no stated posture. **A:** Correspondence resolves before any
   reset (error path mutates nothing); weft-reset failure rolls warp back to the
   pre-revert SHA, Checkout-style; rollback failure is a typed both-states error.
+- **Q:** (adhoc orchestrator review) board-use-gitrepo concurrently grows gitrepo
+  (StageAllAndCommit already committed on its branch) — coordinate how? **A:** Plan
+  against gitrepo's real surface at plan time (inspect that branch's diff / merged
+  main); the write lock serializes every commit path incl. `StageAllAndCommit`; landing
+  order stays an operator decision; expect a `doc.go` merge-in conflict.
+- **Q:** (adhoc) Does board route through fabric's SyncWeft? **A:** No — board uses
+  gitrepo's `PushCoalesced` directly on `weft:main` per board-weft-storage.md; the
+  async-push constraint targets the gitrepo layer.
+- **Q:** (adhoc) Clone teardown seam? **A:** fabric gets its own `RemoveAll`-equivalent
+  test seam; differential test tears each side down via its own module's seam.
