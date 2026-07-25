@@ -54,21 +54,23 @@ func WireJunctions(l *hubgeometry.Layout, slug string) error {
 	return nil
 }
 
-// seedLyxJunction creates or verifies the host junctions pointing to weft directories.
+// seedLyxJunction creates, verifies, or re-points the host junctions pointing
+// to weft directories.
 //
 // It iterates over the junctions returned by l.HostJunctions(slug), applying the same
-// create-or-verify logic per junction using each record's Link and Target.
+// create-or-verify-or-re-point logic per junction using each record's Link and Target.
 //
-// For each junction, if it already exists:
-//   - Validates that it resolves to the correct target via fslink.PointsTo
-//   - Checks using fslink.IsLink to determine if it's a link
-//   - Returns nil (idempotent)
+// For each junction, if the path already exists:
+//   - A link resolving to the correct target is left alone (idempotent).
+//   - A link that dangles or resolves to the wrong target is re-pointed —
+//     removed and recreated toward the canonical weft target. A link is
+//     fabric-owned wiring metadata, never user content, so replacing it is
+//     always safe; this is what lets Reconcile repair a corrupted junction.
+//   - A real (non-link) directory is refused: it predates weft and may hold
+//     user content, which fabric never deletes.
 //
 // If os.Lstat fails with not-exist:
 //   - Creates the junction via fslink.CreateDirLink
-//
-// Otherwise:
-//   - Returns an error indicating the host repo contains a real directory that predates weft
 func seedLyxJunction(l *hubgeometry.Layout, slug string) error {
 	junctions := l.HostJunctions(slug)
 
@@ -95,9 +97,22 @@ func seedLyxJunction(l *hubgeometry.Layout, slug string) error {
 					// Idempotent: junction exists and resolves correctly
 					continue
 				}
+
+				// The path IS a link but dangles or points somewhere else —
+				// corrupted or externally-modified wiring, not user content.
+				// Re-point it at the canonical weft target so pairs whose
+				// junction drifted are repairable (Reconcile relies on this).
+				if removeErr := fslink.Remove(link); removeErr != nil {
+					return fmt.Errorf("re-point junction %s: %w", link, removeErr)
+				}
+				if createErr := fslink.CreateDirLink(link, target); createErr != nil {
+					return createErr
+				}
+				continue
 			}
 
-			// Not a link or points elsewhere; this is a real directory issue
+			// A real (non-link) directory predating weft; refuse to touch it —
+			// it may hold user content, which fabric never deletes.
 			return fmt.Errorf(
 				"host repo already contains a real %s at %s; it predates weft — migrate via the hub-creator",
 				filepath.Base(link),
