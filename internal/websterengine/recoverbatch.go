@@ -337,6 +337,16 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status
+	// Record the per-card SHA trail exactly as record-batch does for a fork
+	// batch: without it, a recovery-completed batch is a silent gap in the
+	// accumulated CardSHAs the integration-suite bisect searches, and the
+	// bisect blames the NEXT card in the gapped trail (found in crucible
+	// round fable-r1). A report-derived terminal digest always carries the
+	// head SHA; a dead classification carries none and contributes no trail
+	// entry, matching the batch's not-actually-built reality.
+	if digest.HeadSHA != "" {
+		bs.CardSHAs = []string{digest.HeadSHA}
+	}
 	st.CurrentBatch = 0
 	return nil
 }

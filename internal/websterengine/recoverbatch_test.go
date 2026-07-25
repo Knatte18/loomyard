@@ -467,6 +467,12 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	if bs.Digest == nil {
 		t.Error("BatchState.Digest = nil; want the persisted digest")
 	}
+	// A recovery-completed batch must land in the accumulated CardSHAs trail
+	// exactly like a fork batch, or the integration-suite bisect searches a
+	// gapped trail and blames the wrong card (crucible round fable-r1's F3).
+	if len(bs.CardSHAs) != 1 || bs.CardSHAs[0] != "deadbeef" {
+		t.Errorf("BatchState.CardSHAs = %v; want [deadbeef] persisted at recovery terminal", bs.CardSHAs)
+	}
 	if fx.Deps.State.CurrentBatch != 0 {
 		t.Errorf("State.CurrentBatch = %d; want 0 (cleared)", fx.Deps.State.CurrentBatch)
 	}
