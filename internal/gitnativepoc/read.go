@@ -20,6 +20,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/utils/merkletrie"
 )
 
@@ -239,4 +240,109 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 		return "", fmt.Errorf("gitnativepoc: resolve %s: %w", snapshotRefPrefix+key, err)
 	}
 	return ref.Hash().String(), nil
+}
+
+// hasUnpushed reports whether HEAD is ahead of its upstream tracking
+// branch, mirroring gitrepo.hasUnpushed's contract: no upstream configured
+// reports true (unpushed), not an error, so the first push — which
+// establishes the tracking branch — still happens rather than being skipped
+// as "nothing to do". go-git's revision parser recognizes "@{u}" syntax, but
+// Repository.ResolveRevision never implements the resulting AtUpstream case
+// (confirmed empirically during this spike; ResolveRevision(plumbing.Revision("@{u}"))
+// always fails, even against a real upstream-tracking clone) — CLI-BOUND for
+// that specific syntax. This method reaches the same *behavioural* result by
+// resolving the upstream ref manually from branch config and comparing
+// commit reachability directly, which is MIGRATE: `git rev-list --count
+// @{u}..HEAD`'s set-difference semantics are reproduced by seeding
+// object.NewCommitPreorderIter's ignore list with the upstream commit,
+// which excludes everything reachable only through it while walking from
+// HEAD — this holds for a diverged/rebased history too, not just a
+// fast-forward one, because reachability (not linear position) is what both
+// sides actually compute.
+func (r *Repo) hasUnpushed() (bool, error) {
+	symbolicHead, err := r.repo.Reference(plumbing.HEAD, false)
+	if err != nil || symbolicHead.Type() != plumbing.SymbolicReference {
+		// A detached HEAD or an unreadable ref has no branch to carry
+		// tracking configuration, so there is nothing to compare against —
+		// treat it the same as "no upstream configured".
+		return true, nil
+	}
+	branch := symbolicHead.Target().Short()
+
+	cfg, err := r.repo.Config()
+	if err != nil {
+		return true, nil
+	}
+	b, ok := cfg.Branches[branch]
+	if !ok || b.Remote == "" || b.Merge == "" {
+		return true, nil
+	}
+
+	upstreamRef, err := r.repo.Reference(plumbing.NewRemoteReferenceName(b.Remote, b.Merge.Short()), true)
+	if err != nil {
+		// Tracking is configured but the remote-tracking ref itself is
+		// missing locally (never fetched, for instance) — nothing to
+		// compare against yet, so fall back to the same "no upstream"
+		// treatment gitrepo's `@{u}..HEAD` failure path uses.
+		return true, nil
+	}
+
+	head, err := r.repo.Head()
+	if err != nil {
+		return false, err
+	}
+	headCommit, err := r.repo.CommitObject(head.Hash())
+	if err != nil {
+		return false, err
+	}
+
+	ahead := 0
+	iter := object.NewCommitPreorderIter(headCommit, nil, []plumbing.Hash{upstreamRef.Hash()})
+	if err := iter.ForEach(func(*object.Commit) error {
+		ahead++
+		return nil
+	}); err != nil {
+		return false, err
+	}
+	return ahead != 0, nil
+}
+
+// isStrictDescendant reports whether descendant is a commit strictly ahead
+// of ancestor along reachable history — ancestor is reachable from
+// descendant and the two are not the same commit — mirroring
+// gitrepo.isStrictDescendant via a go-git commit walk instead of
+// `git merge-base --is-ancestor`. Any resolution or walk failure reports
+// false, matching gitrepo's "not provably ahead — do not retry" posture.
+// MIGRATE.
+func (r *Repo) isStrictDescendant(ancestor, descendant string) bool {
+	if ancestor == descendant {
+		return false
+	}
+
+	descHash, err := r.repo.ResolveRevision(plumbing.Revision(descendant))
+	if err != nil {
+		return false
+	}
+	ancestorHash, err := r.repo.ResolveRevision(plumbing.Revision(ancestor))
+	if err != nil {
+		return false
+	}
+	descCommit, err := r.repo.CommitObject(*descHash)
+	if err != nil {
+		return false
+	}
+
+	found := false
+	iter := object.NewCommitPreorderIter(descCommit, nil, nil)
+	err = iter.ForEach(func(c *object.Commit) error {
+		if c.Hash == *ancestorHash {
+			found = true
+			return storer.ErrStop
+		}
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	return found
 }

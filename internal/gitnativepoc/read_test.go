@@ -371,3 +371,125 @@ func TestSnapshotSHA_InvalidKey(t *testing.T) {
 		t.Errorf("gitrepo SnapshotSHA(%q) error = %v, want gitrepo.ErrInvalidSnapshotKey", key, cliErr)
 	}
 }
+
+// TestHasUnpushed is MIGRATE, asserted directly against fixture-derived
+// expectations rather than gitrepo.Repo since hasUnpushed is unexported on
+// both sides and has no public gitrepo oracle: HEAD ahead of its upstream
+// reports true, an up-to-date checkout reports false, and no upstream
+// configured at all reports true (never an error) — matching
+// gitrepo.hasUnpushed's contract.
+func TestHasUnpushed(t *testing.T) {
+	t.Run("AheadOfUpstream", func(t *testing.T) {
+		fixture := newBareRemoteFixture(t)
+		writeFixtureFile(t, fixture.CloneA, "b.txt", "more")
+		lyxtest.MustRun(t, fixture.CloneA, "git", "add", ".")
+		lyxtest.MustRun(t, fixture.CloneA, "git", "commit", "-m", "second")
+
+		poc, err := OpenRepo(fixture.CloneA)
+		if err != nil {
+			t.Fatalf("OpenRepo(%q) error = %v", fixture.CloneA, err)
+		}
+		got, err := poc.hasUnpushed()
+		if err != nil {
+			t.Fatalf("hasUnpushed() error = %v", err)
+		}
+		if !got {
+			t.Errorf("hasUnpushed() = %v, want true (ahead of upstream)", got)
+		}
+	})
+
+	t.Run("UpToDate", func(t *testing.T) {
+		fixture := newBareRemoteFixture(t)
+
+		poc, err := OpenRepo(fixture.CloneA)
+		if err != nil {
+			t.Fatalf("OpenRepo(%q) error = %v", fixture.CloneA, err)
+		}
+		got, err := poc.hasUnpushed()
+		if err != nil {
+			t.Fatalf("hasUnpushed() error = %v", err)
+		}
+		if got {
+			t.Errorf("hasUnpushed() = %v, want false (up to date)", got)
+		}
+	})
+
+	t.Run("NoUpstreamConfigured", func(t *testing.T) {
+		dir := newRepoFixture(t)
+
+		poc, err := OpenRepo(dir)
+		if err != nil {
+			t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+		}
+		got, err := poc.hasUnpushed()
+		if err != nil {
+			t.Fatalf("hasUnpushed() error = %v", err)
+		}
+		if !got {
+			t.Errorf("hasUnpushed() = %v, want true (no upstream configured)", got)
+		}
+	})
+}
+
+// TestIsStrictDescendant is MIGRATE, asserted directly against fixture SHAs
+// rather than gitrepo.Repo since isStrictDescendant is unexported on both
+// sides and has no public gitrepo oracle: an ancestor commit reports true,
+// the same commit compared against itself reports false, and an unrelated
+// commit — an orphan-branch root sharing no history with descendant —
+// reports false.
+func TestIsStrictDescendant(t *testing.T) {
+	dir := newRepoFixture(t)
+	ancestorSHA := firstCommitSHA(t, dir)
+
+	writeFixtureFile(t, dir, "b.txt", "second")
+	lyxtest.MustRun(t, dir, "git", "add", ".")
+	lyxtest.MustRun(t, dir, "git", "commit", "-m", "second")
+	descendantSHA := headSHA(t, dir)
+
+	// An orphan branch shares no commit history with main at all, giving a
+	// genuinely unrelated commit rather than merely an object missing from
+	// the object store.
+	lyxtest.MustRun(t, dir, "git", "checkout", "--orphan", "unrelated-branch")
+	lyxtest.MustRun(t, dir, "git", "rm", "-rf", "--cached", ".")
+	writeFixtureFile(t, dir, "c.txt", "unrelated")
+	lyxtest.MustRun(t, dir, "git", "add", ".")
+	lyxtest.MustRun(t, dir, "git", "commit", "-m", "unrelated root")
+	unrelatedSHA := headSHA(t, dir)
+
+	poc, err := OpenRepo(dir)
+	if err != nil {
+		t.Fatalf("OpenRepo(%q) error = %v", dir, err)
+	}
+
+	tests := []struct {
+		name       string
+		ancestor   string
+		descendant string
+		want       bool
+	}{
+		{"Ancestor", ancestorSHA, descendantSHA, true},
+		{"Equal", descendantSHA, descendantSHA, false},
+		{"Unrelated", unrelatedSHA, descendantSHA, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := poc.isStrictDescendant(tt.ancestor, tt.descendant); got != tt.want {
+				t.Errorf("isStrictDescendant(%q, %q) = %v, want %v", tt.ancestor, tt.descendant, got, tt.want)
+			}
+		})
+	}
+}
+
+// headSHA returns the SHA dir's HEAD currently points at.
+func headSHA(t *testing.T, dir string) string {
+	t.Helper()
+
+	stdout, stderr, code, err := runGit(t, dir, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git rev-parse HEAD exited %d: %s", code, stderr)
+	}
+	return strings.TrimSpace(stdout)
+}
