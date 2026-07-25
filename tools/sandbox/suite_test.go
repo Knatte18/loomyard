@@ -28,13 +28,16 @@ func TestBinaryFingerprint_TempFile(t *testing.T) {
 		t.Fatalf("write fake binary: %v", err)
 	}
 
-	info, err := binaryFingerprint(binPath)
+	info, err := binaryFingerprint(binPath, sourceProd)
 	if err != nil {
 		t.Fatalf("binaryFingerprint(%s) error: %v", binPath, err)
 	}
 
 	if info.Path != binPath {
 		t.Errorf("Path = %q; want %q", info.Path, binPath)
+	}
+	if info.Source != sourceProd {
+		t.Errorf("Source = %q; want %q", info.Source, sourceProd)
 	}
 	if info.Size != int64(len(content)) {
 		t.Errorf("Size = %d; want %d", info.Size, len(content))
@@ -56,7 +59,7 @@ func TestBinaryFingerprint_TempFile(t *testing.T) {
 // error when the target file does not exist.
 func TestBinaryFingerprint_MissingPath(t *testing.T) {
 	missingPath := filepath.Join(t.TempDir(), "nonexistent.exe")
-	_, err := binaryFingerprint(missingPath)
+	_, err := binaryFingerprint(missingPath, sourceProd)
 	if err == nil {
 		t.Error("binaryFingerprint on missing path should return error; got nil")
 	}
@@ -70,6 +73,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 		Size:    1234,
 		ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		SHA256:  "abc123def456",
+		Source:  sourceProd,
 	}
 	got := renderScheme(info, sandboxSuiteMD)
 
@@ -81,12 +85,43 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 		{"path", "/fake/lyx.exe"},
 		{"size", "1234 bytes"},
 		{"sha256", "abc123def456"},
+		{"source", "Source: prod"},
 		{"scheme heading", "SANDBOX-CORE-SUITE"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(got, c.want) {
 			t.Errorf("renderScheme() missing %s: %q not found in output", c.label, c.want)
 		}
+	}
+}
+
+// TestBinaryInfoHeader_ContainsSourceLine verifies that header() renders a
+// "- Source: %s" line for both a sourceDev and a sourceProd binaryInfo,
+// pinning the Dev/Prod Binary Separation invariant's visible marker in the
+// suite file's stamped header.
+func TestBinaryInfoHeader_ContainsSourceLine(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{"dev", sourceDev},
+		{"prod", sourceProd},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := binaryInfo{
+				Path:    "/fake/lyx.exe",
+				Size:    1,
+				ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+				SHA256:  "abc123def456",
+				Source:  tt.source,
+			}
+			got := info.header()
+			want := "- Source: " + tt.source
+			if !strings.Contains(got, want) {
+				t.Errorf("header() = %q; want it to contain %q", got, want)
+			}
+		})
 	}
 }
 
@@ -181,16 +216,24 @@ func TestEnsureGitExclude(t *testing.T) {
 	})
 }
 
-// stubSuiteSeams replaces lookPath, launchAgent, and muxDown with test stubs
-// and returns a restore function. fakeLyx must be a real file path so
-// binaryFingerprint can stat and hash it. fakeClaude is returned as the
-// "claude" resolution. muxDown is stubbed to a no-op so no test ever spawns a
-// real subprocess; teardown-behaviour tests re-stub it after this call.
-func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir, claude, instruction string) int) func() {
+// stubSuiteSeams replaces devBinPath, lookPath, launchAgent, and muxDown with
+// test stubs and returns a restore function. fakeLyx must be a real file path
+// so binaryFingerprint can stat and hash it. fakeClaude is returned as the
+// "claude" resolution. devBinPath is stubbed to a non-existent path so
+// resolveLyx always falls through to the lookPath stub below and resolves
+// sourceProd, matching this helper's callers' pre-dev-binary intent; tests
+// that need a sourceDev resolution stub devBinPath themselves after calling
+// this helper. muxDown is stubbed to a no-op so no test ever spawns a real
+// subprocess; teardown-behaviour tests re-stub it after this call.
+func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir, claude, instruction, binDir string) int) func() {
 	t.Helper()
+	oldDevBinPath := devBinPath
 	oldLookPath := lookPath
 	oldLaunchAgent := launchAgent
 	oldMuxDown := muxDown
+	devBinPath = func() (string, error) {
+		return filepath.Join(t.TempDir(), "lyx"), nil
+	}
 	lookPath = func(name string) (string, error) {
 		switch name {
 		case "lyx":
@@ -204,6 +247,7 @@ func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir,
 	launchAgent = launchFn
 	muxDown = func(hostRepoDir, lyxPath string) error { return nil }
 	return func() {
+		devBinPath = oldDevBinPath
 		lookPath = oldLookPath
 		launchAgent = oldLaunchAgent
 		muxDown = oldMuxDown
@@ -270,7 +314,7 @@ func makeFakeLyx(t *testing.T, tmpDir string) string {
 func TestRunSuite_HubAbsent(t *testing.T) {
 	parentDir := t.TempDir()
 
-	restore := stubSuiteSeams(t, "", "", func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, "", "", func(dir, claude, instruction, binDir string) int {
 		t.Error("launchAgent should not be called when Hub is absent")
 		return 1
 	})
@@ -292,11 +336,12 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	var gotDir, gotClaude, gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	var gotDir, gotClaude, gotInstruction, gotBinDir string
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		gotDir = dir
 		gotClaude = claude
 		gotInstruction = instruction
+		gotBinDir = binDir
 		return 0
 	})
 	defer restore()
@@ -313,6 +358,59 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 	if gotInstruction != mainSuite.instruction {
 		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, mainSuite.instruction)
 	}
+	// stubSuiteSeams stubs devBinPath to a non-existent path, so this run
+	// resolves sourceProd; binDir must stay empty for a prod resolution.
+	if gotBinDir != "" {
+		t.Errorf("launchAgent binDir = %q; want empty for a prod resolution", gotBinDir)
+	}
+}
+
+// TestRunSuite_DevBinaryPrependsBinDir verifies that when resolveLyx resolves
+// a dev binary (devBinPath points at a file that exists), runSuite passes
+// that binary's directory as launchAgent's binDir argument -- the mechanism
+// by which the agent's bare `lyx` invocations reach the dev build under test.
+func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
+	parentDir, _ := makeHostRepo(t)
+	fakeClaude := filepath.Join(parentDir, "claude.exe")
+
+	devBinDir := filepath.Join(parentDir, ".dev-bin")
+	if err := os.MkdirAll(devBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir dev-bin dir: %v", err)
+	}
+	devLyx := filepath.Join(devBinDir, "lyx")
+	if err := os.WriteFile(devLyx, []byte("fake dev lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake dev lyx: %v", err)
+	}
+
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return devLyx, nil }
+
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		if name == "claude" {
+			return fakeClaude, nil
+		}
+		t.Errorf("unexpected lookPath call for %q; a resolvable dev binary should skip the PATH fallback", name)
+		return "", fmt.Errorf("not found on PATH: %s", name)
+	}
+
+	var gotBinDir string
+	stubMuxDownNoop(t)
+	oldLaunchAgent := launchAgent
+	defer func() { launchAgent = oldLaunchAgent }()
+	launchAgent = func(dir, claude, instruction, binDir string) int {
+		gotBinDir = binDir
+		return 0
+	}
+
+	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
+		t.Fatalf("runSuite error: %v", err)
+	}
+	if gotBinDir != devBinDir {
+		t.Errorf("launchAgent binDir = %q; want %q", gotBinDir, devBinDir)
+	}
 }
 
 // TestRunSuite_Overrides verifies that runSuite honours the -claude and -prompt
@@ -323,6 +421,12 @@ func TestRunSuite_Overrides(t *testing.T) {
 
 	customClaude := filepath.Join(parentDir, "custom-claude.exe")
 	customPrompt := "Do something entirely custom."
+
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
 
 	// lookPath should only be called for "lyx" when a claude override is supplied.
 	oldLookPath := lookPath
@@ -338,7 +442,7 @@ func TestRunSuite_Overrides(t *testing.T) {
 	var gotClaude, gotInstruction string
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		gotClaude = claude
 		gotInstruction = instruction
 		return 0
@@ -364,7 +468,7 @@ func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 2
 	})
 	defer restore()
@@ -386,6 +490,12 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
@@ -398,7 +508,7 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		t.Error("launchAgent should not be called when claude is not found")
 		return 1
 	}
@@ -427,7 +537,7 @@ func TestRunSuite_StaleReportRemoved(t *testing.T) {
 		t.Fatalf("write stale report: %v", err)
 	}
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		// Writes nothing: simulates an agent session that ends without rewriting
 		// the report. The stale copy must already be gone by launch time.
 		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
@@ -453,7 +563,7 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -482,7 +592,7 @@ func TestRunSuite_MuxSpec_WritesMuxFile(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -516,7 +626,7 @@ func TestRunSuite_MuxSpec_ExcludesFiles(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -550,7 +660,7 @@ func TestRunSuite_MuxSpec_DeletesStaleReport(t *testing.T) {
 		t.Fatalf("write stale report: %v", err)
 	}
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
 			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
 		}
@@ -574,7 +684,7 @@ func TestRunSuite_MuxSpec_DefaultInstruction(t *testing.T) {
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		gotInstruction = instruction
 		return 0
 	})
@@ -600,7 +710,7 @@ func TestRunSuite_MuxSpec_PromptOverride(t *testing.T) {
 	customPrompt := "Do the mux thing entirely differently."
 
 	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		gotInstruction = instruction
 		return 0
 	})
@@ -623,7 +733,7 @@ func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -661,7 +771,7 @@ func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -695,7 +805,7 @@ func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
 		t.Fatalf("write stale report: %v", err)
 	}
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
 			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
 		}
@@ -720,7 +830,7 @@ func TestRunSuite_ShuttleSpec_DefaultInstruction(t *testing.T) {
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		gotInstruction = instruction
 		return 0
 	})
@@ -747,7 +857,7 @@ func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
 	customPrompt := "Do the shuttle thing entirely differently."
 
 	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		gotInstruction = instruction
 		return 0
 	})
@@ -784,7 +894,7 @@ func TestRunSuite_BurlerSpec_MuxTeardownAfterAgent(t *testing.T) {
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 	agentDone := false
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		agentDone = true
 		return 0
 	})
@@ -823,7 +933,7 @@ func TestRunSuite_MainSpec_NoMuxTeardown(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -846,7 +956,7 @@ func TestRunSuite_MuxTeardownFailureTolerated(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -868,7 +978,7 @@ func TestRunSuite_MuxTeardownRunsOnNonZeroAgentExit(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 2
 	})
 	defer restore()
@@ -915,7 +1025,7 @@ func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
 	t.Run("warns_when_detached", func(t *testing.T) {
 		interactiveStdio = func() bool { return false }
 		got := captureStderr(t, func() {
-			if code := launchAgent(t.TempDir(), missingClaude, "instr"); code != 1 {
+			if code := launchAgent(t.TempDir(), missingClaude, "instr", ""); code != 1 {
 				t.Errorf("launchAgent = %d; want 1 for a missing binary", code)
 			}
 		})
@@ -927,7 +1037,7 @@ func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
 	t.Run("silent_when_attached", func(t *testing.T) {
 		interactiveStdio = func() bool { return true }
 		got := captureStderr(t, func() {
-			launchAgent(t.TempDir(), missingClaude, "instr")
+			launchAgent(t.TempDir(), missingClaude, "instr", "")
 		})
 		if strings.Contains(got, "not an attached console") {
 			t.Errorf("stderr should not carry the warning when stdio is attached; got %q", got)
@@ -944,7 +1054,7 @@ func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -982,7 +1092,7 @@ func TestRunSuite_PerchSpec_ExcludesFiles(t *testing.T) {
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		return 0
 	})
 	defer restore()
@@ -1016,7 +1126,7 @@ func TestRunSuite_PerchSpec_DeletesStaleReport(t *testing.T) {
 		t.Fatalf("write stale report: %v", err)
 	}
 
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
 			t.Errorf("stale report should be removed before launch; stat err = %v", statErr)
 		}
@@ -1041,7 +1151,7 @@ func TestRunSuite_PerchSpec_DefaultInstruction(t *testing.T) {
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		gotInstruction = instruction
 		return 0
 	})
@@ -1068,7 +1178,7 @@ func TestRunSuite_PerchSpec_PromptOverride(t *testing.T) {
 	customPrompt := "Do the perch thing entirely differently."
 
 	var gotInstruction string
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		gotInstruction = instruction
 		return 0
 	})
@@ -1091,7 +1201,7 @@ func TestRunSuite_PerchSpec_MuxTeardownAfterAgent(t *testing.T) {
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 	agentDone := false
-	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction string) int {
+	restore := stubSuiteSeams(t, fakeLyx, fakeClaude, func(dir, claude, instruction, binDir string) int {
 		agentDone = true
 		return 0
 	})
