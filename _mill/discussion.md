@@ -55,6 +55,12 @@ this task carries a version suffix**. The old format dies with builder, so the n
 - New minimal **fork return contract**: `OK`/`FAILED` + resulting head Git SHA + list of files the
   fork changed that fall outside the batch's declared file-ops (deviation list). Always
   informational, never blocking on its own.
+- **Per-card `verify:`** — `planparser` parses and stores each card's optional `**verify:**` field;
+  the fork runs a card's `verify:` immediately after committing that card, in addition to
+  `go build ./...` + unit tests.
+- **Fork-prompt plan-level context** — `RenderForkPrompt` injects the plan-level `## Shared
+  Decisions` into every fork prompt, and injects the CANONICAL `## Rename mechanic` whenever the
+  fork's batch contains a `Moves:` card.
 - **Per-card commit** inside a batch's fork; Master captures per-card SHAs for the resume trail and
   SHA-bisect.
 - **Integration suite** as one dedicated final fork running the plan-level `## verify:` once, with
@@ -114,8 +120,9 @@ this task carries a version suffix**. The old format dies with builder, so the n
 
 - Decision: `internal/batcher` is a **library** of batchifier implementations behind a `Batcher`
   interface (`[]Card → []Batch`), registered by name, with the **active batcher chosen via config**
-  (a key in `webster.yaml`). v0 registers and defaults to the **identity** batcher (one card → one
-  batch). Unknown batcher name in config is a load-time error.
+  — a `batcher:` key in `webster.yaml` (validated at config load via `config.go`), **defaulting to
+  `identity`** when the key is absent. v0 registers and ships the **identity** batcher (one card →
+  one batch). An unknown batcher name in config is a load-time error.
 - Rationale: Webster's execution unit is a *batch* = an ordered group of ≥1 cards, and "how to
   batch" is 100% webster's own execution-policy decision — never the plan's, never an LLM's
   (token-heavy). Making batching a config-selected strategy lets us add grouping batchifiers later
@@ -146,6 +153,39 @@ this task carries a version suffix**. The old format dies with builder, so the n
 - Rejected: Fork reports a rich success narrative (context bloat); deviation treated as failure
   (brittle); fork omits the SHA and Master captures it purely from git (loses the manifest's stated
   contract and the fork's own cross-check — see next decision).
+- On-disk report format: the fork writes its report to a per-batch report file under
+  `WebsterReportsDir` (resolved via `hubgeometry`), replacing the v2 batch-report YAML that
+  `builderengine.ParseReport` consumed. The minimal grammar is a small structured document carrying
+  `status: OK|FAILED`, `head_sha: <sha>`, and a `deviations:` list of worktree-relative paths (empty
+  when none). The exact serialization (YAML vs. a couple of labeled lines) and the precise filename
+  are a **plan-phase determination** — the parser and its writer are designed together there; this
+  discussion pins only the three carried fields and that it replaces `ParseReport`.
+
+### per-card-verify-executed
+
+- Decision: `planparser` parses and stores each card's optional `**verify:**` field. The fork runs
+  a card's `verify:` command immediately after committing that card (in addition to
+  `go build ./...` + unit tests). A card with no `verify:` runs only the implicit build+unit gate.
+  This is distinct from the plan-level `## verify:` integration suite (the single final fork).
+- Rationale: The per-card `verify:` is the card author's explicit "check this here" signal — cheap,
+  targeted, and part of the format. Parsing-but-not-running would silently ignore a present field;
+  ignoring it entirely leaves the format under-consumed.
+- Rejected: Parse+store but do not execute in v0 (silently drops an author's explicit check);
+  ignore the field entirely in `planparser` (incomplete format consumption).
+
+### fork-prompt-plan-level-context
+
+- Decision: `RenderForkPrompt` injects the plan-level `## Shared Decisions` into every fork prompt,
+  and injects the CANONICAL `## Rename mechanic` text whenever the fork's batch contains a `Moves:`
+  card. Both are read once by Master and flow to forks via prompt-cache.
+- Rationale: A fork implementing a `Moves:` card must follow the exact `git mv`-first mechanic (the
+  `## Rename mechanic` text is CANONICAL in the format); `## Shared Decisions` carry plan-wide
+  choices every fork must honor. Injecting per-batch-relevant sections gives each fork exactly the
+  context it needs without irrelevant tokens, and preserves the "Master reads shared context once,
+  flows via cache" economics.
+- Rejected: Inject `## Rename mechanic` always even for non-`Moves:` batches (irrelevant tokens per
+  fork); inject neither and let each fork read them from disk (loses the read-once/cache benefit and
+  risks a fork skipping the mechanic).
 
 ### per-card-commit-and-sha-capture
 
@@ -196,6 +236,12 @@ this task carries a version suffix**. The old format dies with builder, so the n
   a linear rescan.
 - Rejected: Per-card integration runs (expensive); deferring bisect and escalating the whole plan
   (loses automatic localization); running the suite in a separate worktree (out of scope in v0).
+- Escalation mechanism: "escalate to a human" surfaces the same way webster already surfaces a
+  terminal condition — a failed/stuck run terminus recorded in `_lyx/webster/state.json` (the run
+  ends non-successfully rather than proceeding to loom's finishing step) plus the written summary
+  document (which names the localized offending card on an integration-bisect failure). Reuse the
+  existing run-exit / terminal-status path rather than inventing a new operator signal; the precise
+  status value and any operator-facing surfacing are a plan-phase determination.
 
 ### decouple-from-builder-not-delete
 
@@ -271,7 +317,9 @@ Current state established during exploration (see `manifest/designs/webster-rewr
     `recovery`). **Add** the batcher-selection config key; **drop** `master_oversized`.
   - `render.go` — `RenderForkPrompt`/`RenderMasterPrompt`/`RenderBatchIndex` + embedded
     `fork-template.md`/`master-template.md`. **Rewrite templates** for card list + per-batch cards +
-    the new fork return contract; drop batch/scope language.
+    the new fork return contract; drop batch/scope language. `RenderForkPrompt` additionally injects
+    the plan-level `## Shared Decisions` into every fork prompt and the CANONICAL `## Rename
+    mechanic` when the batch has a `Moves:` card (see decision *fork-prompt-plan-level-context*).
   - `summary.go` — `summary.md` prose-artifact contract (reuse; retarget the one `builderengine`
     helper).
 - **`internal/webstercli`** — `Command()`/`RunCLI` seam (`cli.go:122`/`:267`). PersistentPreRunE
@@ -345,7 +393,11 @@ Discovered during discussion:
   `path-missing`, `commit-subject-mismatch`, `depends-on-order`), plus path normalization
   (`root:`/`//`/`root: "."`/malformed single-`/`/`..` escape), `none`-sentinel handling, and the
   `Moves:` grammar. Use the `plan-format-v3.md` worked example as a golden happy-path fixture.
-  Hermetic, no LLM. Fixtures under `.scratch/` or a `testdata/` dir, never `/tmp`.
+  Hermetic, no LLM. Fixtures under a `testdata/` dir (never `/tmp`). **Existence-dependent checks**
+  (`move-source-missing`, `move-target-collision`, `path-missing`) need a real filesystem root: the
+  parser takes an explicit worktree-root argument (supplied in production via `hubgeometry`), and the
+  tests point it at a temp dir populated with the fixture's real on-disk files — so the on-disk vs.
+  plan-declared distinction is exercised hermetically without touching the actual repo tree.
 - **`internal/batcher`** (TDD candidate): the `Batcher` interface contract; the **identity** batcher
   (N cards → N single-card batches, order preserved); the registry (register/lookup, unknown-name
   error); config selection (valid name resolves, unknown name errors at load). Grouping batchifiers
@@ -411,3 +463,9 @@ Discovered during discussion:
   — the fork/bracket-verb mechanism, state/resume, model-injection, fork-audit, recovery, CLI seam,
   and test fakes are plan-format-agnostic and reused as-is; discussion.md scopes tightly to the
   delta.
+- **Q:** [review-r1 gap] Does webster handle the format's optional per-card `verify:` field?
+  **A:** Yes — `planparser` parses+stores it and the fork runs a card's `verify:` after committing
+  that card, in addition to build+unit tests (decision *per-card-verify-executed*).
+- **Q:** [review-r1 gap] Are plan-level sections surfaced to the fork prompt? **A:** Yes —
+  `RenderForkPrompt` injects `## Shared Decisions` always and `## Rename mechanic` when the batch has
+  a `Moves:` card (decision *fork-prompt-plan-level-context*).
