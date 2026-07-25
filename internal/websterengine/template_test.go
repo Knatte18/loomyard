@@ -2,14 +2,18 @@
 // (master-template.md, fork-template.md) against the Go contracts they
 // key off of — the template-parser-co-versioning decision applied here:
 // the master template's digest-field bullet list is pinned against
-// builderengine.Digest's exact field set and order, the outcome-file bullet
-// list against the outcome schema, and the fork template's report-schema
-// section against builderengine.ParseReport's field set — all as literal-
-// statement and exact-field-list assertions in the same style as
-// builderengine/template_test.go, plus stencil.Fill round-trips proving
-// every required marker. Every test here is untagged and spawn-free: no
-// subprocess exec, no git, no fixture trees — only embedded bytes and
-// stencil.Fill, per the batch's own test-tiers-and-hermetic-git decision.
+// webster's own Digest field set and order, the outcome-file bullet list
+// against the outcome schema, and the fork template's report-schema
+// section against the minimal fork-return contract's field set (status,
+// head_sha, deviations) — all as literal-statement and exact-field-list
+// assertions in the same style as builderengine/template_test.go, plus
+// stencil.Fill round-trips proving every required marker and
+// RenderForkPrompt round-trips proving the plan-level context injection
+// (## Shared Decisions always, ## Rename mechanic only for a Moves-bearing
+// batch). Every test here is untagged and spawn-free: no subprocess exec,
+// no git, no fixture trees — only embedded bytes, stencil.Fill, and
+// RenderForkPrompt/RenderProgress, per the batch's own
+// test-tiers-and-hermetic-git decision.
 
 package websterengine_test
 
@@ -18,7 +22,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -31,6 +36,16 @@ func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
 		t.Errorf("output does not contain %q", needle)
+	}
+}
+
+// requireNotContains fails the test, naming the forbidden needle, if text
+// contains it — the negative half of requireContains, used to pin the
+// absence of every dropped v2 concept (oversized, chain, ## Scope).
+func requireNotContains(t *testing.T, text, needle string) {
+	t.Helper()
+	if strings.Contains(text, needle) {
+		t.Errorf("output unexpectedly contains %q; want it fully removed", needle)
 	}
 }
 
@@ -68,11 +83,38 @@ func extractBacktickBullets(text, heading string) []string {
 	return tokens
 }
 
+// extractSection returns the trimmed text strictly between heading (matched
+// by trimmed equality) and the next "## " heading or EOF — used to isolate
+// one rendered section's own body from the rest of the prompt for an
+// exact-content assertion.
+func extractSection(text, heading string) string {
+	lines := strings.Split(text, "\n")
+
+	start := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) == heading {
+			start = i + 1
+			break
+		}
+	}
+	if start == -1 {
+		return ""
+	}
+
+	end := len(lines)
+	for i := start; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
+			end = i
+			break
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
+}
+
 // digestSectionHeading and outcomeKeysHeadingSub name the two headings whose
 // bullet lists the digest-fields and outcome-schema tests below scope their
 // extraction to — never the whole template body, since prose elsewhere
-// legitimately backtick-quotes a subset of the same field names (e.g.
-// `stuck_reason` names both a digest field and an outcome-file key) without
+// legitimately backtick-quotes a subset of the same field names without
 // that being an "other" field leaking into either pinned set.
 const (
 	digestSectionHeading  = "## Read ONLY the digest fields — quoted here, exactly"
@@ -96,30 +138,29 @@ func masterTemplateMarkerValues() map[string]string {
 
 // forkTemplateMarkerValues returns a values map with every one of
 // ForkTemplate's six required top-level markers set to a non-empty
-// placeholder, mirroring masterTemplateMarkerValues.
+// placeholder, mirroring masterTemplateMarkerValues. rename_mechanic is
+// deliberately absent — it is the one branch-internal marker, only ever
+// reached inside the template's own {{if .rename_mechanic}} block.
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"batch_file":    "/plan/02-list-tests.md",
-		"batch_name":    "02-list-tests",
-		"report_path":   "/webster/reports/02-list-tests.yaml",
-		"self_fix_cap":  "2",
-		"worktree_root": "/worktree",
-		"prev_digest":   "01-json-flag: done tests=green files_changed=3",
+		"cards":            "### Card 2 — list-tests\n\n**What:** add tests\n**Context:** none\n**Edits:**\n- `list_test.go`\n**Creates:** none\n**Deletes:** none\n**Moves:** none",
+		"report_path":      "/webster/reports/02-list-tests.yaml",
+		"self_fix_cap":     "2",
+		"worktree_root":    "/worktree",
+		"prev_digest":      "01-json-flag: done head_sha=abc123",
+		"shared_decisions": "none",
 	}
 }
 
 // TestMasterTemplate_QuotesDigestFieldsAndNoOthers asserts the master
-// template's digest-field bullet list names exactly the ten pinned
-// builderengine.Digest field names, in the struct's own declared order — no
-// fewer, no extras — the mechanical half of "Master reads only distilled
-// digests".
+// template's digest-field bullet list names exactly webster's own six
+// Digest field names (json tags), in the struct's own declared order — no
+// fewer, no extras — the mechanical half of "Master reads only the minimal
+// fork-return digest".
 func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
-	want := []string{
-		"batch", "status", "tests", "stuck_reason", "out_of_scope",
-		"drift_unreported", "files_changed", "dirty", "dead_reason", "elapsed_s",
-	}
+	want := []string{"batch", "status", "head_sha", "deviations", "dead_reason", "elapsed_s"}
 	got := extractBacktickBullets(text, digestSectionHeading)
 
 	if len(got) != len(want) {
@@ -193,9 +234,10 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 // await-batch -> record-batch sequence, verbatim prompt forwarding, the
 // backgrounded-fork wait discipline (forks return immediately on current
 // Claude Code, so Master must block on await-batch instead of ever ending
-// its turn mid-batch — round fable-r1's F1), and the recovery ladder
-// (no_report re-fork-once with the same prompt file, stuck -> recover-batch,
-// running -> re-call until terminal, stuck chain -> restart-chain) in prose.
+// its turn mid-batch — round fable-r1's F1), and the flat-model recovery
+// ladder (no_report re-fork-once with the same prompt file, stuck ->
+// recover-batch, running -> re-call until terminal) in prose. There is no
+// deferred-verify chain rung any more (see TestTemplates_NoV2TokensRemain).
 func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -228,7 +270,6 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "Drive it STRICTLY in order")
 	requireContains(t, text, "re-fork the same batch once")
 	requireContains(t, text, "SAME prompt file and no new `begin-batch`")
-	requireContains(t, text, "--restart-chain")
 	requireContains(t, text, `"paused": true`)
 
 	// A terminal dead recovery result must have an explicit ladder rung —
@@ -285,18 +326,17 @@ func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 }
 
 // TestForkTemplate_PinsReportSchemaKeys asserts the embedded fork template's
-// bytes carry the batch-report schema's field names verbatim — the
-// ParseReport co-versioning half — plus the fresh-read rule statement and
-// the host-commit-per-card statement, so a silent edit to any of these
-// fails here rather than only a human review.
+// bytes carry the minimal fork-return contract's field names verbatim
+// (status, head_sha, deviations — never the v2 report's tests/stuck_reason/
+// out_of_scope grammar) plus the fresh-read rule statement and the
+// host-commit-per-card statement, so a silent edit to any of these fails
+// here rather than only a human review.
 func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	text := string(websterengine.ForkTemplate())
 
-	requireContains(t, text, "batch:")
 	requireContains(t, text, "status:")
-	requireContains(t, text, "tests:")
-	requireContains(t, text, "stuck_reason:")
-	requireContains(t, text, "out_of_scope:")
+	requireContains(t, text, "head_sha:")
+	requireContains(t, text, "deviations:")
 
 	requireContains(t, text, "## The FRESH-READ rule")
 	requireContains(t, text, "Commit the card to the HOST repo")
@@ -308,11 +348,18 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	// fable-r1's first clean await-batch drive).
 	requireContains(t, text, "NEVER run any `lyx webster` command")
 	requireContains(t, text, "YOU are the one who WRITES that report")
+
+	// The v2 report grammar (done/stuck/tests/out_of_scope) must be gone —
+	// the report is deliberately minimal under the flat card-list model.
+	requireNotContains(t, text, "out_of_scope:")
+	requireNotContains(t, text, "tests: green")
 }
 
 // TestForkTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
 // every one of ForkTemplate's six required markers is supplied, and fails —
-// naming the marker — when any single one is absent.
+// naming the marker — when any single one is absent. rename_mechanic is
+// deliberately excluded: it is a branch-internal marker, never required at
+// the top level (see TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch).
 func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.Fill(websterengine.ForkTemplate(), forkTemplateMarkerValues()); err != nil {
@@ -320,7 +367,7 @@ func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 		}
 	})
 
-	for _, marker := range []string{"batch_file", "batch_name", "report_path", "self_fix_cap", "worktree_root", "prev_digest"} {
+	for _, marker := range []string{"cards", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "shared_decisions"} {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := forkTemplateMarkerValues()
 			delete(values, marker)
@@ -335,18 +382,49 @@ func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
+// TestTemplates_NoV2TokensRemain asserts neither embedded template carries
+// any of the three dropped v2 concepts — oversized batches, deferred-verify
+// chains, and the per-batch "## Scope" section — anywhere in its bytes.
+func TestTemplates_NoV2TokensRemain(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		text string
+	}{
+		{"master", string(websterengine.MasterTemplate())},
+		{"fork", string(websterengine.ForkTemplate())},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireNotContains(t, strings.ToLower(tc.text), "oversized")
+			requireNotContains(t, strings.ToLower(tc.text), "chain")
+			requireNotContains(t, tc.text, "## Scope")
+		})
+	}
+}
+
+// testPlan returns a minimal *planparser.Plan carrying sharedDecisions and
+// renameMechanic as its plan-level sections, for RenderForkPrompt tests.
+func testPlan(sharedDecisions, renameMechanic string) *planparser.Plan {
+	return &planparser.Plan{
+		SharedDecisions: sharedDecisions,
+		RenameMechanic:  renameMechanic,
+	}
+}
+
 // TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty asserts
 // RenderForkPrompt renders the literal "none (first batch)" sentinel into
-// {{.prev_digest}} when prevDigest is empty (batch 1's own call site never
-// has a preceding digest to pass), and passes a non-empty prevDigest
-// through verbatim otherwise — the fork prompt's cross-batch digest context
-// is always Go-rendered from the caller's own persisted value, never
-// re-derived here.
+// {{.prev_digest}} when prevDigest is empty (the first executed batch's own
+// call site never has a preceding digest to pass), and passes a non-empty
+// prevDigest through verbatim otherwise — the fork prompt's cross-batch
+// digest context is always Go-rendered from the caller's own persisted
+// value, never re-derived here.
 func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
-	batch := builderengine.PlanBatch{Number: 1, Slug: "seam-extensions", File: "01-seam-extensions.md"}
+	plan := testPlan("", "")
+	batch := batcher.Batch{Cards: []planparser.Card{
+		{Number: 1, Slug: "seam-extensions", Title: "seam-extensions", Intent: "add the seam"},
+	}}
 
 	t.Run("empty prevDigest renders the first-batch sentinel", func(t *testing.T) {
-		got, err := websterengine.RenderForkPrompt(batch, "/plan", "", "/reports/01-seam-extensions.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-seam-extensions.yaml", "/worktree", 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -359,12 +437,77 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 		// presence in the rendered output is expected regardless of
 		// prevDigest; what this case actually proves is that the supplied
 		// digest line itself reaches the rendered prompt verbatim.
-		digest := "01-seam-extensions: done tests=green files_changed=4"
-		got, err := websterengine.RenderForkPrompt(batch, "/plan", digest, "/reports/02-webster-foundation.yaml", "/worktree", 2)
+		digest := "01-seam-extensions: done head_sha=abc123"
+		got, err := websterengine.RenderForkPrompt(plan, batch, digest, "/reports/02-webster-foundation.yaml", "/worktree", 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
 		requireContains(t, string(got), digest)
+	})
+}
+
+// TestRenderForkPrompt_InjectsSharedDecisionsAlways asserts every fork
+// prompt carries the plan's own "## Shared Decisions" body verbatim,
+// regardless of the batch's own cards — a plan-level, not batch-level,
+// injection — and renders the literal sentinel "none" when the plan carries
+// no such section, per the fork-prompt-plan-level-context Shared Decision.
+func TestRenderForkPrompt_InjectsSharedDecisionsAlways(t *testing.T) {
+	batch := batcher.Batch{Cards: []planparser.Card{
+		{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"},
+	}}
+
+	t.Run("non-empty SharedDecisions passes through verbatim", func(t *testing.T) {
+		plan := testPlan("### Decision: json-envelope-reuse\n\n- **Decision:** reuse output.Ok.", "")
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		requireContains(t, string(got), "json-envelope-reuse")
+	})
+
+	t.Run("empty SharedDecisions renders the none sentinel", func(t *testing.T) {
+		plan := testPlan("", "")
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		section := extractSection(string(got), "## Shared Decisions")
+		if !strings.HasPrefix(section, "none") {
+			t.Errorf("## Shared Decisions section = %q; want it to start with the none sentinel", section)
+		}
+	})
+}
+
+// TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch asserts
+// RenderForkPrompt injects the plan's canonical "## Rename mechanic" body
+// ONLY when the batch contains a card with a non-empty Moves field — a
+// non-Moves-bearing batch's rendered prompt must not carry that body text
+// at all, per the fork-prompt-plan-level-context Shared Decision.
+func TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch(t *testing.T) {
+	renameMechanic := "1. Run `git mv <old> <new>` FIRST, before any other change to the moved file."
+	plan := testPlan("", renameMechanic)
+
+	t.Run("Moves-bearing batch gets the rename mechanic", func(t *testing.T) {
+		batch := batcher.Batch{Cards: []planparser.Card{
+			{Number: 4, Slug: "helptree-rename", Title: "helptree-rename", Intent: "rename the row mapper",
+				Moves: []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}},
+		}}
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/04-helptree-rename.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		requireContains(t, string(got), renameMechanic)
+	})
+
+	t.Run("non-Moves batch never gets the rename mechanic", func(t *testing.T) {
+		batch := batcher.Batch{Cards: []planparser.Card{
+			{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"},
+		}}
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		requireNotContains(t, string(got), renameMechanic)
 	})
 }
 
@@ -374,8 +517,8 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 // no BatchState entry yet or one recorded but not yet terminal — never
 // re-parsing a report file, only ever reading the persisted record.
 func TestRenderProgress_ListsOnlyTerminalBatches(t *testing.T) {
-	plan := &builderengine.Plan{
-		Batches: []builderengine.PlanBatch{
+	plan := &planparser.Plan{
+		Cards: []planparser.Card{
 			{Number: 1, Slug: "seam-extensions"},
 			{Number: 2, Slug: "webster-foundation"},
 			{Number: 3, Slug: "webster-audit-policy"},
