@@ -10,13 +10,6 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **board: use `gitrepo` as its git operator** — rewires board's existing hand-rolled git
-   plumbing (`internal/boardengine/git.go`, `sync.go`'s detached sync) onto `gitrepo.Repo`
-   instead. Depends only on `gitrepo`, not `fabric` — can be built in parallel with it. Distinct
-   from the **board: move storage to `weft:main`** item below (that one changes *where* board
-   stores data; this one only changes *how* it talks to git). See
-   [designs/board-use-gitrepo.md](designs/board-use-gitrepo.md).
-
 1. **git-native-library: feasibility spike** — narrow, scoped exploration of swapping
    `internal/gitexec`'s shell-out plumbing for a native Go git library (e.g. `go-git`), limited to
    the read-only surface `gitrepo` uses (`rev-parse`, `diff --name-only`, ref reads). Output is a
@@ -147,6 +140,11 @@ between these items.
 ## Done
 
 1. **board** — task tracker (storage model superseded by the Planned `board` item once it ships).
+
+1. **board: use `gitrepo` as its git operator** — board's detached sync (`internal/boardengine`)
+   talks to git exclusively through a single `gitrepo.Repo` (`StageAllAndCommit` +
+   `PushCoalesced`) under board's own write and push locks, replacing its former hand-rolled
+   `gitexec` calls.
 
 1. **shared infra** — `internal/configengine`, `internal/gitexec`, `internal/lock`,
    `internal/state`.

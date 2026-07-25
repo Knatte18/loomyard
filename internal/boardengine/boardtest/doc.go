@@ -6,5 +6,5 @@
 // Everything here is black-box: it imports github.com/Knatte18/loomyard/internal/boardengine
 // and exercises only the exported API. Run the standard suites with
 // `go test ./...`; the git/integration suites are gated behind the `integration`
-// build tag (see git_test.go and sync_test.go).
+// build tag (see sync_test.go and bench_cli_test.go).
 package boardtest

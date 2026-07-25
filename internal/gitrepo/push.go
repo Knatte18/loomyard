@@ -1,8 +1,8 @@
 // push.go implements the push surface: Push (a single synchronous push with
 // rebase-retry resilience) and PushCoalesced (a single-pusher lock plus one
-// guarded push — the board sync.go push-loop replacement, coalescing across
-// processes via the lock queue rather than an internal retry loop). Both are
-// push-only; committing is always the caller's separate StageAndCommit.
+// guarded push, coalescing across processes via the lock queue rather than
+// an internal retry loop). Both are push-only; committing is always the
+// caller's separate StageAndCommit or StageAllAndCommit call.
 
 package gitrepo
 
@@ -24,9 +24,7 @@ const pushLockFile = ".gitrepo-push.lock"
 // rebaseRetryTriggers are the git-push stderr substrings that mean the
 // remote has commits this checkout lacks — a recoverable rejection, not a
 // genuine failure — so pushWithRebaseRetry attempts one pull --rebase before
-// retrying. This is the full trigger set board's sync.go:pushUnpushed
-// matches (not just git.go's smaller pair), required so PushCoalesced can
-// fully replace that loop.
+// retrying.
 var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"}
 
 // Push runs a single git push, transparently recovering from exactly one
@@ -120,14 +118,14 @@ func containsAny(s string, substrs []string) bool {
 // PushCoalesced pushes whatever is currently unpushed under a single-pusher
 // lock, giving cross-process coalescing: a burst of concurrent callers
 // serializes on the lock, and each one that finds nothing unpushed once it
-// acquires the lock returns immediately instead of pushing again. This is
-// the board sync.go push-loop replacement — the coalescing is a single
-// guarded push per lock acquisition, not an internal retry loop; git push
-// itself sends every commit ahead of upstream atomically, and the lock
-// queue is what turns a burst of writers into as few pushes as possible. An
-// unbounded loop on hasUnpushed would spin forever if a push ever succeeded
-// without configuring an upstream, since hasUnpushed would keep reporting
-// true. The guarded push shares Push's rebase-retry, including its SHA
+// acquires the lock returns immediately instead of pushing again. The
+// coalescing is a single guarded push per lock acquisition, not an internal
+// retry loop; git push itself sends every commit ahead of upstream
+// atomically, and the lock queue is what turns a burst of writers into as
+// few pushes as possible. An unbounded loop on hasUnpushed would spin
+// forever if a push ever succeeded without configuring an upstream, since
+// hasUnpushed would keep reporting true. The guarded push shares Push's
+// rebase-retry, including its SHA
 // invalidation caveat: re-read CurrentSHA after a successful call before
 // recording any pre-call SHA (see Push).
 func (r *Repo) PushCoalesced() error {

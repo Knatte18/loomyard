@@ -6,6 +6,10 @@
 // sync process (see sync.go) is launched to commit and push changes to the
 // remote. The write returns immediately without waiting for the sync. Read
 // methods (Get/List) bypass the lock and load directly from disk.
+//
+// The detached sync path talks to git through a single gitrepo.Repo
+// (StageAllAndCommit + PushCoalesced), never hand-rolled gitexec calls, under
+// board's own write and push locks.
 
 package boardengine
 
@@ -41,9 +45,18 @@ func New(cfg Config) *Board {
 // writeOp runs the locked, file-only write sequence: lock → load → mutate →
 // render → write files → save. The remote backup is not done here; on success it
 // launches a detached `lyx board sync` (unless `b.skipGit` is set) and returns
-// without waiting. The second argument is ignored — the commit message is fixed
-// in the pusher (batched "board sync" commits), not per-write.
-func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
+// without waiting. Commit messages are not per-write — the pusher batches
+// everything under a fixed "board sync" message.
+func (b *Board) writeOp(mutate func(*Store) (any, error)) (any, error) {
+	// Guard before any disk mutation: a Board built without output filenames
+	// (the --board-path shape, which carries only the data dir) can sync and
+	// read but must not write — otherwise the store would be saved and the
+	// render would then fail on an empty filename, leaving a half-applied,
+	// never-synced write behind.
+	if b.out.Home == "" || b.out.Sidebar == "" {
+		return nil, fmt.Errorf("board outputs not configured; write commands require board config (not --board-path)")
+	}
+
 	// (0) Ensure board directory exists before acquiring lock
 	// (the lock file lives inside the board dir)
 	if err := os.MkdirAll(b.boardPath, 0o755); err != nil {
@@ -91,21 +104,12 @@ func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error)
 	return result, nil
 }
 
+// UpsertTask creates or updates the task identified by fields["slug"] under the
+// write lock; field validation (allowlist, slug shape) is the store's job.
 func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
-	// Extract slug for message
-	slugVal, hasSlug := fields["slug"]
-	if !hasSlug {
-		return Task{}, fmt.Errorf("slug key is missing")
-	}
-	slugStr, ok := slugVal.(string)
-	if !ok {
-		slugStr = fmt.Sprintf("%v", slugVal)
-	}
-
 	result, err := b.writeOp(func(s *Store) (any, error) {
 		return s.UpsertTask(fields)
-	}, slugStr)
-
+	})
 	if err != nil {
 		return Task{}, err
 	}
@@ -115,18 +119,16 @@ func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
 // SetStatus sets or clears the status field of the task identified by idOrSlug.
 // It acquires the write lock, mutates the store, and triggers a render.
 func (b *Board) SetStatus(idOrSlug any, status *string) error {
-	slugForMsg := fmt.Sprintf("%v", idOrSlug)
 	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.SetStatus(idOrSlug, status)
-	}, slugForMsg)
+	})
 	return err
 }
 
 func (b *Board) RemoveTask(idOrSlug any) error {
-	slugForMsg := fmt.Sprintf("%v", idOrSlug)
 	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.RemoveTask(idOrSlug)
-	}, slugForMsg)
+	})
 	return err
 }
 
@@ -135,20 +137,9 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 // pass nil to skip the status step. A status update that targets a missing task
 // causes the entire merge to fail (writeOp discards the in-memory mutation).
 func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
-	// Extract slug for the commit message; the store validates the full field set.
-	slugVal, hasSlug := upsert["slug"]
-	if !hasSlug {
-		return Task{}, fmt.Errorf("slug key is missing")
-	}
-	slugStr, ok := slugVal.(string)
-	if !ok {
-		slugStr = fmt.Sprintf("%v", slugVal)
-	}
-
 	result, err := b.writeOp(func(s *Store) (any, error) {
 		return s.MergeTasks(removeSlugs, upsert, setStatus)
-	}, slugStr)
-
+	})
 	if err != nil {
 		return Task{}, err
 	}
@@ -158,21 +149,21 @@ func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 func (b *Board) SetDeps(slug string, dependsOn []string) error {
 	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.SetDeps(slug, dependsOn)
-	}, slug)
+	})
 	return err
 }
 
 func (b *Board) UpsertTasksBatch(tasks []map[string]any) error {
 	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, s.UpsertTasksBatch(tasks)
-	}, "batch")
+	})
 	return err
 }
 
 func (b *Board) Rerender() error {
 	_, err := b.writeOp(func(s *Store) (any, error) {
 		return nil, nil
-	}, "rerender")
+	})
 	return err
 }
 

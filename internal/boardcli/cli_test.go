@@ -470,6 +470,19 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 				}
 			},
 		},
+		// merge: a non-string upsert slug must produce an envelope error, not a
+		// store-level interface-conversion panic (which would crash the CLI).
+		{
+			name: "merge_numeric_upsert_slug_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+			},
+			verb:         "merge",
+			payload:      `{"upsert":{"slug":123,"title":"num"}}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "slug must be a non-empty string",
+		},
 		// merge: set_status targeting non-existent slug errors (atomic rollback via writeOp)
 		{
 			name: "merge_set_status_missing_target_errors",
@@ -596,6 +609,20 @@ func TestCLILookupContract(t *testing.T) {
 			wantExitCode: 1,
 			wantOK:       false,
 			wantError:    "only one of slug or id may be given",
+		},
+		{
+			name: "get_fractional_id_errors",
+			setup: func(t *testing.T) {
+				seedCwd(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A"}`)
+				runCLI(t, "upsert", `{"slug":"task-b","title":"B"}`)
+			},
+			verb: "get",
+			// 1.5 must error, not silently truncate to task id 1 (task-b).
+			payload:      `{"id":1.5}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "id must be an integer",
 		},
 		{
 			name: "get_unknown_key_errors",
