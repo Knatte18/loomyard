@@ -35,15 +35,17 @@ var postCheckoutScript string
 const hookSentinel = "FABRIC_SENTINEL: post-checkout drift warning"
 
 // chainedHookPreamble is prepended when chaining around an existing user hook.
-// It runs the prior hook first, captures its exit code, and runs the fabric
-// check regardless so the warning is always visible even if the user hook fails.
+// It runs the prior hook first, then runs the fabric check regardless of the
+// user hook's outcome, so the drift warning is always visible even when the
+// user hook fails. The user hook's exit code is deliberately not propagated:
+// the fabric body ends in exit 0 because a drift warning must never hard-block
+// a checkout.
 const chainedHookPreamble = `#!/bin/sh
 # post-checkout — user hook chain wrapper written by fabric.
 # The original hook was moved to post-checkout.user and is invoked first.
 
 SCRIPT_DIR="$(dirname "$0")"
 "$SCRIPT_DIR/post-checkout.user" "$@"
-_user_exit=$?
 
 `
 
