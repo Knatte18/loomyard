@@ -51,6 +51,14 @@ type CheckoutResult struct {
 //     never left half-switched. (A step-5 failure happens after the weft has already
 //     switched in step 4, so a host-only rollback would strand the weft on the new
 //     branch — the very half-switch this contract forbids.)
+//  7. Refresh the pair's correspondence index for the new branch (discard + rebuild
+//     from the now-current weft branch's Warp-SHA trailers). The index file is
+//     per-worktree and would otherwise keep serving entries recorded on the previous
+//     branch — entries that still pass SHAExists but that the current branch's
+//     trailer history would never produce. A step-7 failure does NOT roll the switch
+//     back (the switch itself completed and is consistent); it is reported as an
+//     error naming the completed switch, and re-running checkout (including the
+//     no-argument in-place form) retries the refresh.
 //
 // Returns CheckoutResult on success or an error if any step fails.
 func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResult, error) {
@@ -137,6 +145,14 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	if err := WireJunctions(l, slug); err != nil {
 		t.rollbackSwitch(l, originalBranch, originalWeftBranch)
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: %w", err)
+	}
+
+	// (7) Refresh the pair's correspondence index for the new branch. No rollback
+	// on failure — the switch itself is complete and consistent, and rolling back
+	// would need the very same refresh; the discard-first refresh leaves lookups
+	// missing honestly rather than answering from the previous branch's entries.
+	if err := refreshCorrIndexAfterSwitch(l.WorktreeRoot, weftWorktree); err != nil {
+		return CheckoutResult{}, fmt.Errorf("checkout to %q completed, but refreshing the correspondence index failed (re-run `lyx fabric checkout` to retry): %w", branch, err)
 	}
 
 	return CheckoutResult{

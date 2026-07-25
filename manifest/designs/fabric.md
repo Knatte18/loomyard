@@ -127,6 +127,14 @@ A sorted index makes "nearest older" cheap (binary search) instead of a sequenti
 The index can always be proven correct against the trailers (source of truth) via
 `RebuildIndex()` — same self-correcting principle as `SnapshotSHA`.
 
+The cache file is per-*worktree* while the trailer scan is per-*branch*, so a coordinated
+`checkout` refreshes the pair's index (discard + rebuild from the newly-current weft
+branch's trailers). Without that refresh, entries recorded on the previous branch keep
+passing the `SHAExists` staleness check — their commits still exist on the other branch's
+refs — and lookups could serve weft SHAs the current branch's trailer history would never
+produce. See `internal/fabricengine/checkout.go` (step 7) and `refreshCorrIndexAfterSwitch`
+in `internal/fabricengine/index.go`.
+
 ## History-rewrite safety
 
 `fabric` relies on `internal/gitrepo`'s `SHAExists` before

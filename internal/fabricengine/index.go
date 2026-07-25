@@ -12,6 +12,7 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -233,6 +234,32 @@ func (f *Fabric) scanWarpSHATrailers() ([]warpSHATrailerCommit, error) {
 		commits = append(commits, warpSHATrailerCommit{weftSHA: weftSHA, warpSHA: warpSHA})
 	}
 	return commits, nil
+}
+
+// refreshCorrIndexAfterSwitch discards and rebuilds the pair's correspondence
+// index after a coordinated branch switch. The index file is per-worktree, so
+// it survives Checkout moving the pair onto another branch — and entries
+// recorded on the previous branch keep passing SHAExists (the commits still
+// exist on the other branch's refs), which means the stale-hit self-correction
+// in WeftSHAForWarpSHA/resolveRevertTarget never fires and lookups can serve
+// weft SHAs the current branch's trailer history (the sole source of truth)
+// would never produce — a RevertWithWeft against such an answer would graft
+// the current branches onto the other branch's history. Deleting the file
+// first makes the refresh fail-safe: if the rebuild then errors, lookups miss
+// honestly (ErrNoCorrespondence) instead of answering cross-branch.
+func refreshCorrIndexAfterSwitch(worktreeRoot, weftWorktree string) error {
+	f, err := New(worktreeRoot, weftWorktree)
+	if err != nil {
+		return err
+	}
+	path, err := f.corrIndexPath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("fabricengine: discard correspondence index %s: %w", path, err)
+	}
+	return f.RebuildIndex()
 }
 
 // RebuildIndex reconstructs the correspondence index from scratch by
