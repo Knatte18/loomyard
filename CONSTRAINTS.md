@@ -315,6 +315,27 @@ prod.
   semantic half (agent-only PATH prepend, dev binary never installed to prod) is review
   discipline, not machine-checked.
 
+## Planparser Sole-Parser Invariant
+
+`internal/planparser` is the SOLE parser of the on-disk plan format (`_lyx/plan/`).
+
+- No other package parses `00-overview.md`/`NN-<card-slug>.md`; consumers (webster's
+  `RenderForkPrompt`, the integration fork) read plan-level sections only from the
+  `planparser.Plan` model a caller hands in, never by re-deriving the grammar
+  themselves.
+- Composes with the Hub Geometry Invariant above: `planparser` resolves `_lyx/plan/` via
+  `hubgeometry`, never string literals.
+- **Enforced by** review obligation today (candidate future import/grep guard).
+
+## Batcher Registry+Config Invariant
+
+webster's execution unit is the batchifier-derived batch, not the raw plan card.
+
+- Batching is selected by `internal/batcher`'s name-keyed registry plus the `batcher:`
+  webster.yaml config key (default `identity`) — no plan-supplied batching exists and no
+  batch grouping is expressed in the plan format itself.
+- **Enforced by** review obligation.
+
 ## Documentation Lifecycle
 
 Which docs are kept vs deleted (mechanical per-module docs vs durable design docs):
