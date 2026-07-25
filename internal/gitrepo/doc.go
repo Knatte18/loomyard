@@ -109,8 +109,7 @@
 // worktree root before checking whether anything is actually unpushed, so a
 // burst of concurrent callers collapses into as few pushes as possible — a
 // caller that finds nothing unpushed once it acquires the lock returns
-// immediately instead of pushing again. This is the coalescing engine behind
-// board's sync.go push-loop replacement.
+// immediately instead of pushing again.
 //
 // # Snapshot remote model
 //
