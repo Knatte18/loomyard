@@ -28,8 +28,21 @@ Before starting a session:
 1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as
    current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH
    (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no
-   PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot
-   -- re-deploy after any source change you want to test.
+   PATH setup needed for the DRIVING agent, and production `lyx` stays untouched. The
+   deployed binary is a snapshot -- re-deploy after any source change you want to test.
+   **Pane-resolution caveat (webster-specific, load-bearing):** the dev-PATH prepend covers
+   only the driving agent's own calls. Master's bracket verbs run inside the reed pane's
+   claude, whose Bash tool resolves `lyx` through the login-shell snapshot -- on a machine
+   whose shell profile prepends the production bin dir (e.g. `~/.local/bin` on Linux), that
+   is the PRODUCTION binary, and the run under test silently mixes dev (outer `run`,
+   prompt rendering) with prod (every `begin/await/record/recover-batch` Master calls).
+   Three crucible rounds hit this in a row; when prod is stale enough the run fails with a
+   confusing config error from the wrong binary, and when prod is merely different the
+   mismatch is silent and the fingerprint header attests a binary Master never ran. Before
+   trusting any W1/W2 verdict, make the pane-resolved `lyx` the same build as `.dev-bin`
+   (deploy the branch build to the production location for the session and restore it at
+   teardown, or verify `lyx webster status` from inside a pane names no config error a
+   dev-binary call does not).
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean); the session cwd is the Hub host repo root, the same operating model
    as the main suite.
