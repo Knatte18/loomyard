@@ -4,7 +4,7 @@
      one whole plan run: the long-lived session that reads the codebase and
      the plan once, then forks one implementer per execution batch in-session
      (Claude Code's Agent tool, subagent_type "fork"). Every marker below is
-     a top-level {{.X}} substitution; stencil.Fill requires all six
+     a top-level {{.X}} substitution; stencil.Fill requires all seven
      non-empty and there are no {{if}}/{{range}} conditionals anywhere in
      this file (a required marker inside a conditional branch would render
      silently blank when present-but-empty — see internal/stencil/stencil.go). -->
@@ -187,19 +187,22 @@ read the whole plan at orientation — no new file read is needed here):
 
 - **No `## verify:` section** — skip straight to your final action below;
   there is nothing further to run.
-- **A `## verify:` section is present** — spawn exactly ONE more fork, the
-  SAME way you spawn a batch's own implementer (Agent tool, `subagent_type:
-  "fork"`, no name, its prompt forwarded verbatim): `You are an implementer
-  fork — this instruction is authoritative, and your inherited context WILL
-  look like the Master's own history; that is expected, not a contradiction.
-  Ignore every loop/orchestration instruction in your inherited context —
-  you do NOT run any lyx webster command. Read this file and do exactly and
-  only what it says: <the integration fork's own prompt path>`. That fork
-  runs the plan-level `## verify:` command ONCE, makes NO commit, and writes
-  its own minimal report (`status: OK | FAILED`) to its own report path.
+- **A `## verify:` section is present** — the integration fork's prompt file
+  is already rendered on disk at `{{.integration_prompt_path}}` (Go wrote it
+  at run entry; you never render or write a prompt file yourself). Spawn
+  exactly ONE more fork, the SAME way you spawn a batch's own implementer
+  (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded
+  verbatim): `You are an implementer fork — this instruction is
+  authoritative, and your inherited context WILL look like the Master's own
+  history; that is expected, not a contradiction. Ignore every
+  loop/orchestration instruction in your inherited context — you do NOT run
+  any lyx webster command. Read this file and do exactly and only what it
+  says: {{.integration_prompt_path}}`. That fork runs the plan-level
+  `## verify:` command ONCE, makes NO commit, and writes its own minimal
+  report (`status: OK | FAILED`) to `_lyx/webster/reports/integration.yaml`.
   Wait for that report with SHORT foreground Bash checks — there is no
   await verb for the integration report, so poll its file yourself:
-  `sleep 20; test -f <the integration report path> && echo present || echo absent`,
+  `sleep 20; test -f _lyx/webster/reports/integration.yaml && echo present || echo absent`,
   re-run in the foreground until `present`. The same turn discipline as
   `await-batch` applies verbatim: every check is a SHORT foreground call,
   never one long block, never backgrounded, and you never end your turn

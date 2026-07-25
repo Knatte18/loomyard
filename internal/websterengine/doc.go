@@ -202,10 +202,20 @@
 //
 // A plan carrying a plan-level "## verify:" section (ShouldRunIntegration)
 // drives one additional, dedicated integration-suite fork after every
-// batch has landed done — never per-card, never per-batch, run once. Master
-// spawns it exactly like a batch fork; AwaitIntegration/RunIntegration
-// mirror await-batch/record-batch's own bounded long-poll idiom over the
-// single fixed IntegrationReportPath rather than a per-batch report path.
+// batch has landed done — never per-card, never per-batch, run once. Its
+// prompt file is Go-rendered and Go-written by run at entry
+// (RenderIntegrationPrompt into the prompts dir), exactly like a batch's
+// own fork prompt, and its path is injected into the master template —
+// Master may write nothing but its two contract files, so a
+// Master-synthesized prompt file would itself be a parent-write audit
+// violation (found live in round fable-r1: with no pre-rendered prompt the
+// stage was unreachable). Master spawns the fork exactly like a batch
+// fork; AwaitIntegration mirrors await-batch's own bounded long-poll idiom
+// over the single fixed IntegrationReportPath rather than a per-batch
+// report path, and a missing integration report at run exit is
+// outcome-aware: fail-loud under Master's outcome: done (a done claim
+// requires a passing suite), consistent-and-preserved under stuck (the
+// fork died or the stage never started; Master's own judgment stands).
 // On a FAILED integration report, bisect performs an in-process binary
 // search over the accumulated per-card SHA trail (every terminal batch's
 // own BatchState.CardSHAs) — checking out each candidate SHA detached and

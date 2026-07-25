@@ -36,8 +36,9 @@ var masterTemplate []byte
 
 // MasterTemplate returns the embedded Master-session prompt template's raw
 // bytes: the caller-required top-level markers are {{.batch_index}},
-// {{.progress}}, {{.outcome_path}}, {{.summary_path}}, {{.self_fix_cap}},
-// and {{.poll_wait_s}} (see master-template.md's leading banner comment).
+// {{.progress}}, {{.outcome_path}}, {{.summary_path}},
+// {{.integration_prompt_path}}, {{.self_fix_cap}}, and {{.poll_wait_s}}
+// (see master-template.md's leading banner comment).
 // RenderMasterPrompt fills it via stencil.Fill before run hands it to
 // shuttle as the Master session's Prompt.
 func MasterTemplate() []byte {
@@ -249,22 +250,42 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot str
 	return prompt, nil
 }
 
+// noIntegrationPromptPath is the literal sentinel RenderMasterPrompt renders
+// into {{.integration_prompt_path}} when integrationPromptPath is empty: the
+// plan carries no plan-level "## verify:" section, so no integration prompt
+// file was ever rendered. Never a blank field — an empty top-level marker
+// would violate stencil.Fill's required-marker guarantee, and the master
+// template's own integration section already tells Master to skip the stage
+// when the plan has no "## verify:".
+const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
+
 // RenderMasterPrompt fills master-template.md for one `lyx webster run`
 // invocation's Master spawn. plan is the parsed, validated plan; st is the
 // current run's in-memory State (nil-safe via RenderProgress's own guard,
 // though run always has a freshly loaded/initialized State by the time it
 // renders this). outcomePath and summaryPath are Master's two permitted
-// output files; selfFixCap and pollWaitS are the config knobs Master's
-// prompt states as tuning knobs for its forks and its recover-batch
-// re-polling, respectively.
-func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath string, selfFixCap, pollWaitS int) ([]byte, error) {
+// output files; integrationPromptPath is the pre-rendered integration fork
+// prompt file's path (written by run when ShouldRunIntegration reports
+// true; empty otherwise, rendering the noIntegrationPromptPath sentinel —
+// Master never renders or writes a prompt file itself, since any Master
+// write beyond its two contract files is a parent-write audit violation);
+// selfFixCap and pollWaitS are the config knobs Master's prompt states as
+// tuning knobs for its forks and its recover-batch re-polling,
+// respectively.
+func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int) ([]byte, error) {
+	integrationPrompt := strings.TrimSpace(integrationPromptPath)
+	if integrationPrompt == "" {
+		integrationPrompt = noIntegrationPromptPath
+	}
+
 	values := map[string]string{
-		"batch_index":  RenderBatchIndex(plan),
-		"progress":     RenderProgress(plan, st),
-		"outcome_path": outcomePath,
-		"summary_path": summaryPath,
-		"self_fix_cap": fmt.Sprintf("%d", selfFixCap),
-		"poll_wait_s":  fmt.Sprintf("%d", pollWaitS),
+		"batch_index":             RenderBatchIndex(plan),
+		"progress":                RenderProgress(plan, st),
+		"outcome_path":            outcomePath,
+		"summary_path":            summaryPath,
+		"integration_prompt_path": integrationPrompt,
+		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
+		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
 	}
 	prompt, err := stencil.Fill(MasterTemplate(), values)
 	if err != nil {

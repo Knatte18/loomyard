@@ -130,6 +130,12 @@ type RunDeps struct {
 	ReportsDir   string
 	PromptsDir   string
 	WorktreeRoot string
+
+	// Clock is the integration stage's bounded-wait clock seam: nil selects
+	// the production realClock, and a test injects a fake so the
+	// missing-integration-report wait replays instantly instead of blocking
+	// a real DefaultAwaitWaitS window.
+	Clock Clock
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices. Fresh
@@ -458,7 +464,36 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: resolve summary path: %w", err)
 	}
 
-	prompt, err := RenderMasterPrompt(plan, st, outcomePath, summaryPath, deps.Config.SelfFixCap, deps.Config.PollWaitS)
+	// The integration fork's prompt is Go-rendered and Go-written, up front,
+	// exactly like a batch's own fork prompt: Master may write nothing but its
+	// two contract files (a hand-synthesized prompt file would be a
+	// parent-write audit violation), so a plan with a "## verify:" section
+	// must find its integration prompt already on disk — found live in
+	// crucible round fable-r1, where a Master correctly refused to improvise
+	// one and the stage was unreachable.
+	integrationPromptPath := ""
+	if ShouldRunIntegration(plan) {
+		integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.ReportsDir))
+		if err != nil {
+			return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
+		}
+		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.WorktreeRoot)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if err := os.MkdirAll(deps.PromptsDir, 0o755); err != nil {
+			return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.PromptsDir, err)
+		}
+		integrationPromptPath, err = filepath.Abs(filepath.Join(deps.PromptsDir, integrationPromptFileName))
+		if err != nil {
+			return RunResult{}, fmt.Errorf("webster: resolve integration prompt path: %w", err)
+		}
+		if err := os.WriteFile(integrationPromptPath, integrationPrompt, 0o644); err != nil {
+			return RunResult{}, fmt.Errorf("webster: write integration prompt %s: %w", integrationPromptPath, err)
+		}
+	}
+
+	prompt, err := RenderMasterPrompt(plan, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -541,7 +576,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// whatever Master's own outcome.yaml/summary.md already said, so it
 		// runs the same way regardless of whether Master itself reported done
 		// or stuck for this plan.
-		if err := runIntegrationStage(deps, plan, batches); err != nil {
+		if err := runIntegrationStage(deps, plan, batches, runResult.Outcome); err != nil {
 			return RunResult{}, err
 		}
 		return runResult, nil
@@ -739,7 +774,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 // regardless of what Master's own outcome.yaml/summary.md already said,
 // since webster's own localized finding is strictly more precise than
 // Master's own best-effort report.
-func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch) error {
+func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch, masterOutcome string) error {
 	if !ShouldRunIntegration(plan) {
 		return nil
 	}
@@ -752,7 +787,27 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil
 	}
 
-	report, err := RunIntegration(deps.ReportsDir, time.Duration(DefaultAwaitWaitS)*time.Second, realClock{})
+	clk := deps.Clock
+	if clk == nil {
+		clk = realClock{}
+	}
+	await, err := AwaitIntegration(deps.ReportsDir, time.Duration(DefaultAwaitWaitS)*time.Second, clk)
+	if err != nil {
+		return err
+	}
+	if !await.ReportPresent {
+		// A done outcome CLAIMS a passing integration suite, so a missing
+		// report is a real inconsistency — fail loud. A non-done outcome with
+		// no report is instead consistent (the integration fork died, or
+		// Master stuck out before the stage) — Master's own graceful judgment
+		// is the run's result, and erroring here would overwrite it.
+		if masterOutcome == outcomeDone {
+			return fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported")
+		}
+		return nil
+	}
+
+	report, err := ParseReport(IntegrationReportPath(deps.ReportsDir))
 	if err != nil {
 		return err
 	}

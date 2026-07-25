@@ -43,6 +43,12 @@ func IntegrationReportPath(reportsDir string) string {
 	return filepath.Join(reportsDir, IntegrationReportFileName)
 }
 
+// integrationPromptFileName is the integration fork's own fixed prompt file
+// name inside a webster prompts dir — rendered and written by run at entry
+// (never by Master, whose only permitted writes are its two contract
+// files), mirroring IntegrationReportFileName's own one-per-run naming.
+const integrationPromptFileName = "integration.md"
+
 // ShouldRunIntegration reports whether plan carries a plan-level
 // "## verify:" section at all — the skip-check for the WHOLE integration
 // stage. A plan with no such section (plan.Verify == "") never drives the
@@ -93,23 +99,6 @@ func AwaitIntegration(reportsDir string, wait time.Duration, clk Clock) (*Integr
 		}
 		clk.Sleep(awaitTick)
 	}
-}
-
-// RunIntegration is the integration stage's own run-once trigger: it blocks
-// (via AwaitIntegration) until the integration fork's report lands or wait
-// elapses, then parses it via ParseReport. It never runs the bisect itself
-// — see this file's own bisect and BisectAndEscalate, which a caller
-// invokes separately once RunIntegration reports a FAILED status — this
-// function is the trigger/skip/await plumbing only.
-func RunIntegration(reportsDir string, wait time.Duration, clk Clock) (*Report, error) {
-	result, err := AwaitIntegration(reportsDir, wait, clk)
-	if err != nil {
-		return nil, err
-	}
-	if !result.ReportPresent {
-		return nil, fmt.Errorf("webster: integration report did not land within %s", wait)
-	}
-	return ParseReport(IntegrationReportPath(reportsDir))
 }
 
 // integrationBatchKey is the reserved State.Batches key the integration

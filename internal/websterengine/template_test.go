@@ -122,17 +122,18 @@ const (
 )
 
 // masterTemplateMarkerValues returns a values map with every one of
-// MasterTemplate's six required top-level markers set to a non-empty
+// MasterTemplate's seven required top-level markers set to a non-empty
 // placeholder, so a test can fill the template cleanly or delete one key at
 // a time to prove stencil.Fill's per-marker error.
 func masterTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"batch_index":  "01 — json-flag — add the --json flag",
-		"progress":     "none",
-		"outcome_path": "/lyx/webster/outcome.yaml",
-		"summary_path": "/lyx/webster/summary.md",
-		"self_fix_cap": "2",
-		"poll_wait_s":  "480",
+		"batch_index":             "01 — json-flag — add the --json flag",
+		"progress":                "none",
+		"outcome_path":            "/lyx/webster/outcome.yaml",
+		"summary_path":            "/lyx/webster/summary.md",
+		"integration_prompt_path": "/lyx/webster/prompts/integration.md",
+		"self_fix_cap":            "2",
+		"poll_wait_s":             "480",
 	}
 }
 
@@ -351,7 +352,7 @@ func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 		}
 	})
 
-	for _, marker := range []string{"batch_index", "progress", "outcome_path", "summary_path", "self_fix_cap", "poll_wait_s"} {
+	for _, marker := range []string{"batch_index", "progress", "outcome_path", "summary_path", "integration_prompt_path", "self_fix_cap", "poll_wait_s"} {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := masterTemplateMarkerValues()
 			delete(values, marker)

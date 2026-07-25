@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -176,6 +177,15 @@ func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 	if _, escalated := st.Batches[-1]; escalated {
 		t.Errorf("integration escalation record present after a passing integration report; want none")
 	}
+
+	// Run must have pre-rendered the integration fork's prompt file: Master
+	// may write nothing but its two contract files, so the prompt Master
+	// forwards to the integration fork exists only if Go wrote it (crucible
+	// round fable-r1's F18 — a live Master correctly refused to improvise
+	// one and the whole stage was unreachable).
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.PromptsDir, "integration.md")); statErr != nil {
+		t.Errorf("stat(integration prompt) = %v; want run to have pre-rendered it for a plan with a verify section", statErr)
+	}
 }
 
 // TestIntegrationStage_FailingForkTriggersBisectAndEscalates proves the
@@ -301,5 +311,101 @@ func TestBisectAndEscalate_EmptySHAsDegradesGracefully(t *testing.T) {
 	}
 	if !strings.Contains(string(summaryData), "unknown") {
 		t.Errorf("summary.md does not name the fallback \"unknown\" card; got:\n%s", summaryData)
+	}
+}
+
+// TestIntegrationStage_MissingReport_StuckOutcomePreserved proves the
+// outcome-aware missing-report rule: a plan with a "## verify:" section,
+// every batch terminal-done, Master reporting stuck, and NO integration
+// report on disk is a CONSISTENT state (the integration fork died, or
+// Master stuck out before the stage) — Run returns Master's own graceful
+// stuck judgment rather than overwriting it with a missing-report error
+// (crucible round fable-r1: the pre-fix backstop turned exactly this
+// graceful stuck into a run ERROR after a real 30s wait).
+func TestIntegrationStage_MissingReport_StuckOutcomePreserved(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	fx.Deps.Clock = &recoverFakeClock{now: time.Unix(0, 0)}
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{"deadbeef"}},
+		},
+	})
+
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-intmiss",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-intmiss",
+			RunDir:    "/run/dir/intmiss",
+			ForkAudit: &shuttleengine.ForkAudit{},
+		},
+		onWait: func() {
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: stuck\nstuck_reason: \"integration fork died\"\nbatches_done: 1\n"), 0o644); err != nil {
+				t.Fatalf("write outcome.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nIntegration fork died.\n"), 0o644); err != nil {
+				t.Fatalf("write summary.md: %v", err)
+			}
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-intmiss", "master-session-intmiss")
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want Master's own stuck outcome preserved", err)
+	}
+	if result.Outcome != "stuck" {
+		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "stuck")
+	}
+}
+
+// TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud proves the other
+// half of the outcome-aware rule: outcome: done CLAIMS a passing
+// integration suite, so a missing integration report under a done outcome
+// is a genuine inconsistency Run fails loud on.
+func TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	fx.Deps.Clock = &recoverFakeClock{now: time.Unix(0, 0)}
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{"deadbeef"}},
+		},
+	})
+
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-intmiss2",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-intmiss2",
+			RunDir:    "/run/dir/intmiss2",
+			ForkAudit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+				},
+			},
+		},
+		onWait: func() {
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+				t.Fatalf("write outcome.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll good.\n"), 0o644); err != nil {
+				t.Fatalf("write summary.md: %v", err)
+			}
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-intmiss2", "master-session-intmiss2")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() = nil error for outcome: done with no integration report; want the fail-loud inconsistency error")
+	}
+	if !strings.Contains(err.Error(), "integration report never landed") {
+		t.Errorf("Run() error = %q; want the missing-integration-report inconsistency named", err.Error())
 	}
 }
