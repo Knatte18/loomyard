@@ -58,11 +58,12 @@ existing `TestMain`.
   - `internal/websterengine/roles.go`
   - `internal/websterengine/template.yaml`
   - `internal/websterengine/template.go`
+  - `internal/websterengine/state.go`
 - **Creates:**
   - `internal/websterengine/roles_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `config.go` add a `Batcher string` field to `Config` (yaml key `batcher`), defaulting to empty (resolved to `batcher.DefaultName` = `identity` by `batcher.Select` at the cli wiring site in batch 9). Remove the v2 oversized config keys `MasterOversized` (the `master_oversized` role spec), `BatchContextCapTokens` (`batch_context_cap_tokens`), and `BatchCardCap` (`batch_card_cap`) — all meaningless under the flat format's no-oversized model. Update `template.yaml` (webster's config template accessed by `ConfigTemplate()`) to drop the removed keys and document the new `batcher:` key; reconcile `template.go`'s `ConfigTemplate` godoc in the same edit (it names the three role model-specs including `master_oversized`, which no longer exists). In `roles.go` remove `RoleMasterOversized` and its resolution in `ResolveRoles`, keeping `RoleMaster` and `RoleRecovery`. Update `config_test.go` and `roles_test.go` accordingly (assert the `batcher` key loads, the removed keys are gone, and `ResolveRoles` no longer maps the oversized role).
+- **Requirements:** In `config.go` add a `Batcher string` field to `Config` (yaml key `batcher`), defaulting to empty (resolved to `batcher.DefaultName` = `identity` by `batcher.Select` at the cli wiring site in batch 9). Remove the v2 oversized config keys `MasterOversized` (the `master_oversized` role spec), `BatchContextCapTokens` (`batch_context_cap_tokens`), and `BatchCardCap` (`batch_card_cap`) — all meaningless under the flat format's no-oversized model. Update `template.yaml` (webster's config template accessed by `ConfigTemplate()`) to drop the removed keys and document the new `batcher:` key; reconcile `template.go`'s `ConfigTemplate` godoc in the same edit (it names the three role model-specs including `master_oversized`, which no longer exists). In `roles.go` remove `RoleMasterOversized` and its resolution in `ResolveRoles`, keeping `RoleMaster` and `RoleRecovery`; reconcile `state.go`'s `BatchState.AssertedModel` godoc in the same edit (it names `RoleMasterOversized`, which no longer exists). Update `config_test.go` and `roles_test.go` accordingly (assert the `batcher` key loads, the removed keys are gone, and `ResolveRoles` no longer maps the oversized role).
 - **Commit:** `refactor(websterengine): add batcher config key, drop master_oversized and v2 caps`
 
 ### Card 27: render.go retarget + plan-level context injection
