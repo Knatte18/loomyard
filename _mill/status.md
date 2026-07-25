@@ -36,7 +36,9 @@ batches:
     start_sha: 349684500c602c0e929a2b351ee91a0c1b4cbd00
     commit_sha: 90587d33372a48c819aee47c00a5805acedbd1b2
   - name: read-surface
-    state: pending
+    state: running
+    implementer_session: f02676d5-7ee1-4db8-b60a-efd9a154cd7a
+    start_sha: 5433a70e125d956e31b65e2f2bed95bc27fd2bb7
   - name: write-surface
     state: pending
   - name: writeup-and-doc-lifecycle
