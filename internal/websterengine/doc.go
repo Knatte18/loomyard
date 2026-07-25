@@ -217,7 +217,7 @@
 // parser, report schema, or digest contract — planparser and this
 // package's own Report/Digest types are the only ones in play. What
 // webster DOES reuse is the provider-invariant orchestration substrate
-// every `lyx` module built on top of shuttle shares (internal/mux,
+// every `lyx` module built on top of shuttle shares (internal/reedengine,
 // internal/shuttleengine and its claudeengine, internal/gitrepo) plus a
 // small set of webster-LOCAL mechanism helpers with no cross-module
 // import: its own plan-fingerprint hash (fingerprint.go), pause-flag

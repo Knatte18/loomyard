@@ -38,7 +38,7 @@ type ClassifyInputs struct {
 	// TurnEnded reports whether the fork's turn has ended (a Stop event
 	// was observed) — see the package-level TurnEnded gatherer.
 	TurnEnded bool
-	// StrandLive reports whether the fork's mux strand is still live — see
+	// StrandLive reports whether the fork's reed strand is still live — see
 	// the package-level StrandLive gatherer.
 	StrandLive bool
 

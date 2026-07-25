@@ -131,34 +131,34 @@ func mustFingerprint(t *testing.T, planDir string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// beginFakeMux is a minimal shuttleengine.ReedOps double for BeginBatch's
+// beginFakeReed is a minimal shuttleengine.ReedOps double for BeginBatch's
 // strand-reclaim step: Status returns a scripted set of live strands, and
 // RemoveStrand records every guid it was asked to stop. Only Status and
 // RemoveStrand are reached by BeginBatch's own path.
-type beginFakeMux struct {
+type beginFakeReed struct {
 	live    []string
 	removed []string
 }
 
-func (m *beginFakeMux) Status() (reedengine.StatusResult, error) {
+func (m *beginFakeReed) Status() (reedengine.StatusResult, error) {
 	var strands []reedengine.StrandStatus
 	for _, g := range m.live {
 		strands = append(strands, reedengine.StrandStatus{GUID: g, Live: true})
 	}
 	return reedengine.StatusResult{Strands: strands}, nil
 }
-func (m *beginFakeMux) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
+func (m *beginFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.removed = append(m.removed, guid)
 	return reedengine.Removed{}, nil
 }
-func (m *beginFakeMux) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+func (m *beginFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
 	return reedengine.Strand{}, nil
 }
-func (m *beginFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *beginFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *beginFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *beginFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *beginFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *beginFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.ReedOps = (*beginFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*beginFakeReed)(nil)
 
 // beginCard returns a minimal single-card batcher.Batch identifying number
 // and slug — begin-batch's batchIdentity assumption (batch ≡ card under the
@@ -230,7 +230,7 @@ var _ shuttleengine.Engine = (*beginFakeEngine)(nil)
 type beginFixture struct {
 	Deps      websterengine.BeginDeps
 	Injector  *beginFakeInjector
-	Reed      *beginFakeMux
+	Reed      *beginFakeReed
 	Worktree  string
 	PlanDir   string
 	PromptDir string
@@ -258,7 +258,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 
 	injector := &beginFakeInjector{}
 	promptsDir := t.TempDir()
-	reed := &beginFakeMux{}
+	reed := &beginFakeReed{}
 
 	deps := websterengine.BeginDeps{
 		Plan:         plan,
