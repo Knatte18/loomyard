@@ -1,11 +1,11 @@
 # crucible — a serial review+fix loop, a reusable hardening method
 
 This directory holds **`crucible`** — the **manual, human-in-the-loop review method** we used to
-harden `mux` before merging it to `main`, plus the two prompts that drove it. Named separately
+harden `reed` before merging it to `main`, plus the two prompts that drove it. Named separately
 from the future, automated [`hardener`](../../manifest/designs/hardener.md) module this method is
 the hand-run prototype of (see below) — `crucible` is what you actually run today; `hardener` is
 what it becomes once Go takes over the orchestrator role. The method is **module-agnostic** — it
-is written down here so the modules built *on top of* mux (`shuttle` — see the
+is written down here so the modules built *on top of* reed (`shuttle` — see the
 `internal/shuttleengine` package documentation, `perch` (see the `internal/perchengine` package
 documentation) + `burler` (see the `internal/burlerengine` package documentation),
 [`hardener`](../../manifest/designs/hardener.md), [`loom`](../../manifest/designs/loom.md)) can
@@ -16,7 +16,7 @@ reuse it instead of re-inventing it each time.
   into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
 - [`review-prompt-template.md`](review-prompt-template.md) — module-agnostic skeleton for the
   **round agent** prompt (the reviewer-fixer a round spawns).
-- [`mux-review-prompt.md`](mux-review-prompt.md) — the fully-worked `mux` instance of that template.
+- [`reed-review-prompt.md`](reed-review-prompt.md) — the fully-worked `reed` instance of that template.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
 > **This is the hand-executed prototype of the `perch` (see the `internal/perchengine` package
@@ -31,12 +31,12 @@ reuse it instead of re-inventing it each time.
 >
 > **Text vs. behavior:** `perch`/`burler` automate the **text-based** form (read the artifact).
 > [`hardener`](../../manifest/designs/hardener.md) (DRAFT) is the **behavior-based** form — *run* a live-substrate
-> module in a sandbox — which is the harder campaign this directory actually documents for `mux`.
+> module in a sandbox — which is the harder campaign this directory actually documents for `reed`.
 
 ## When to use it
 
 Reach for this before merging a **live-substrate module** — one whose real defects hide in composed,
-stateful, timing-sensitive behavior that a green `go test` does **not** prove (mux driving real
+stateful, timing-sensitive behavior that a green `go test` does **not** prove (reed driving real
 tmux is the archetype; anything driving real processes, sockets, or an external tool qualifies).
 For pure/logic modules a normal PR review is enough. The tell that you need this loop: *"the unit
 tests pass but I don't trust it under load / crash / concurrency."*
@@ -86,7 +86,7 @@ tests pass but I don't trust it under load / crash / concurrency."*
    deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and
    `<module>-review-<tag>-fixer-report.md`.
 3. **Verify — the part that actually catches residuals.** See the protocol below. The round's own
-   verdict is **never** the gate: in the mux campaign rounds 3, 4, and 5 each self-reported
+   verdict is **never** the gate: in the reed campaign rounds 3, 4, and 5 each self-reported
    "merge-ready" and each left a residual the orchestrator's independent verification caught.
 4. **Re-seed + rotate.** The round's fixes are already committed one-by-one (per-fix commits, not
    a single wrap-up commit from the orchestrator — see below). Re-seed the prompt with whatever
@@ -134,7 +134,7 @@ go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/
 # 2. Live serial smoke (real substrate, behind the `smoke` build tag)
 go test -tags smoke ./internal/<module>cli/... -run Smoke -v -count=1
 #    -> scan output for FAIL and for substrate-specific corruption markers
-#       (mux: "being used by another process" / "TempDir RemoveAll" / "did not start")
+#       (reed: "being used by another process" / "TempDir RemoveAll" / "did not start")
 
 # 3. THE decisive gate — N× CONCURRENT full smoke suites.
 #    A quiet serial pass is NOT proof; concurrency + CPU saturation is the amplifier
@@ -145,7 +145,7 @@ for i in 1 2 3; do ( "$SCRATCH/smoke.test.exe" -test.run Smoke -test.count=1 -te
 grep -hiE 'being used by another process|TempDir RemoveAll|did not start|FAIL' "$SCRATCH"/smoke_*.txt \
     || echo "no markers"
 
-# 4. ZERO stray substrate state at teardown (mux: no leftover tmux servers)
+# 4. ZERO stray substrate state at teardown (reed: no leftover tmux servers)
 tasklist | grep -i tmux || echo "zero tmux"   # must be zero
 ```
 
@@ -153,7 +153,7 @@ tasklist | grep -i tmux || echo "zero tmux"   # must be zero
 single-instance flow* — that is the **merge bar**. The N× concurrent suite is a **diagnostic
 amplifier**, not the merge gate: it drove the real fixes, but a timeout under an artificial N-suite
 CPU peg is *not* a defect. Merge on: serial-clean + zero-stray-state + a couple of concurrent rounds
-with zero corruption markers. (This distinction was agreed with the operator during the mux
+with zero corruption markers. (This distinction was agreed with the operator during the reed
 campaign; keep it — don't let an artificial stress peg block a correct module.)
 
 ## Driving the real substrate — the round agent does it itself, directly
@@ -174,7 +174,7 @@ round (2026-07) made exactly this mistake — it read "launch the suite" as "inv
 judged that operator-assisted/cost-bearing, and as a result skipped ALL live driving for an entire
 round, silently substituting pure code-tracing. The fix: the round agent runs the real CLI
 commands itself (`lyx <module> <verb>`, foreground, waiting for each to return). This spawns real
-substrate underneath when the module rides mux/shuttle (real tmux panes, real interactive
+substrate underneath when the module rides reed/shuttle (real tmux panes, real interactive
 `claude` sessions) — that is expected and required, not something to avoid. None of it needs an
 attached TTY of its own: a tmux pane is a real pty regardless of whether anyone is watching it.
 
@@ -194,7 +194,7 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
 - **Cost/time is not a reason to skip live driving.** A real substrate session (a real
   implementer/agent doing real work) takes real wall-clock minutes, not seconds — that is a budget
   fact, not grounds to fall back to code-tracing. Reserve "cannot verify headlessly" strictly for a
-  genuine environment gap or an actual human-eyeball need (e.g. a visual `lyx mux attach`
+  genuine environment gap or an actual human-eyeball need (e.g. a visual `lyx reed attach`
   confirmation) — never a blanket cost/turn-budget excuse.
 - **The high-yield focus list is a floor, not a ceiling.** The round agent is expected to
   hand-roll many more adversarial scenarios (crash/rebirth, cross-worktree scope, dead-but-present
@@ -219,9 +219,9 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
    "Driving the real substrate" above) whether or not a dedicated suite file exists.
 3. Run the loop: seed → spawn (rotate model) → independently verify → re-seed → repeat until a
    safety pass finds nothing and your gates agree. Then do any operator-assisted step the harness
-   can't reach headlessly (for mux: the visual `attach` test in a real TTY), and merge.
+   can't reach headlessly (for reed: the visual `attach` test in a real TTY), and merge.
 
-## Worked example — the mux campaign (the evidence this works)
+## Worked example — the reed campaign (the evidence this works)
 
 Seven serial rounds, models rotated, one bug class chipped down each round; failure severity
 degraded monotonically until it hit zero:
@@ -242,7 +242,7 @@ across rotated models — is the bar this method is built to reach.
 
 ### Why fix every finding, including NITs — not just BLOCKING/MEDIUM
 
-The mux campaign above took seven rounds to converge. In retrospect, the operator's experience with
+The reed campaign above took seven rounds to converge. In retrospect, the operator's experience with
 an earlier review setup (millhouse's own) points at a likely contributor: when a round's prompt only
 required fixing higher-severity findings and let NIT/LOW findings sit as "reported but not fixed,"
 round count went up — unfixed NITs don't just stay static, they re-surface (or silently vanish)

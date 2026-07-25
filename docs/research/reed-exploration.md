@@ -1,16 +1,16 @@
-# mux — hands-on tmux exploration log (tmux on Windows)
+# reed — hands-on tmux exploration log (tmux on Windows)
 
-Empirical evidence for designing the `mux` module (now built as `internal/muxengine` +
-`internal/muxengine/render` + `internal/muxcli` — see the package documentation and
-[overview.md#modules](../overview.md#modules)). The brief: design the mux
+Empirical evidence for designing the `reed` module (now built as `internal/reedengine` +
+`internal/reedengine/render` + `internal/reedcli` — see the package documentation and
+[overview.md#modules](../overview.md#modules)). The brief: design the reed
 module, but **first** find out what tmux actually supports in practice with
 Claude Code — what works reliably, how Claude attaches/resumes inside
-panes, what the harness already owns vs. what mux must own, and what a minimal v1 is.
-This file is the running, committed log of that exploration; the `internal/muxengine`
+panes, what the harness already owns vs. what reed must own, and what a minimal v1 is.
+This file is the running, committed log of that exploration; the `internal/reedengine`
 package documentation is the as-built reference that draws from it.
 
 All probes use an isolated tmux server (`tmux -L lyxprobe …`) so the operator's real
-session is never touched. Scratch scripts live in `.scratch/mux-probe/` (gitignored).
+session is never touched. Scratch scripts live in `.scratch/reed-probe/` (gitignored).
 
 Environment (verified 2026-06-11):
 - tmux **3.3.4** (via tmux on Windows)
@@ -29,22 +29,22 @@ Environment (verified 2026-06-11):
 2. **A `Column` is a self-owned subtree object** (worktree + x-offset + width + ordered
    panes). v1: one pane per column. v2: the same column gets extra panes stacked
    downward (dispatched agents). No architectural change between v1/v2 — just more panes.
-3. **mux computes the layout itself (layout-string renderer), not presets.**
+3. **reed computes the layout itself (layout-string renderer), not presets.**
    `even-horizontal` flattens vertical sub-stacks, so once a column owns an internal stack
-   mux must render the `window_layout` string directly. The tmux layout checksum is
+   reed must render the `window_layout` string directly. The tmux layout checksum is
    verified and reproducible in Go.
 4. **Orchestrator/hub = its own tmux *window*, not a column** — keeps the worktree
    overview at fewer, wider columns.
 5. **Overflow / orchestrator-switch via tmux *windows* inside ONE attached client** — not
    WT tabs, not multiple tmux clients. `Ctrl+b` switches. This is the only "tab" mechanism
-   mux can drive without client-mirroring, smallest-wins, or WT-quoting fragility.
+   reed can drive without client-mirroring, smallest-wins, or WT-quoting fragility.
 6. **Loomyard never owns OS window management.** Popping ONE maximized window attached to a
-   session is fine and reliable (`lyx mux attach`). Precise multi-window docking and WT
-   multi-tab launching are brittle → best-effort, not core. mux is host-agnostic; tmux
+   session is fine and reliable (`lyx reed attach`). Precise multi-window docking and WT
+   multi-tab launching are brittle → best-effort, not core. reed is host-agnostic; tmux
    auto-resizes to the attached client.
-7. **Crash recovery via native `claude --resume` — works, given env hygiene.** mux assigns each
+7. **Crash recovery via native `claude --resume` — works, given env hygiene.** reed assigns each
    pane `--session-id <uuid>` at launch, records it (+ worktree + layout) in local-state, and after
-   a crash `lyx mux resume` rebuilds the layout and runs `claude --resume <session-id>` per pane.
+   a crash `lyx reed resume` rebuilds the layout and runs `claude --resume <session-id>` per pane.
    **Verified end-to-end twice** (this session + an independent thread): full transcript persisted
    (~14 KB, real `user`/`assistant` records), and after `kill-server` the resumed pane recalled the
    codeword. **The one requirement:** strip the inherited Claude-Code parent-session env before
@@ -56,7 +56,7 @@ Environment (verified 2026-06-11):
    inherits these vars. Loomyard (Go) is the chokepoint → spawn the tmux server with a sanitized
    `exec.Cmd.Env`; agent panes spawned later inherit the server's clean env even when the spawning
    `lyx` call came from a poisoned claude (provided the server was started clean). Per-launch clear
-   in the pane is the verified fallback. mux's `capture-pane` journal is then **optional**
+   in the pane is the verified fallback. reed's `capture-pane` journal is then **optional**
    belt-and-suspenders, not the primary resume mechanism.
 
 Open sub-decisions: window naming; whether the orchestrator is always isolated or only on
@@ -91,13 +91,13 @@ exact journal format + cadence + how much scrollback to re-inject on resume (ful
   `{65x50,0,0,2, 65x50,66,0,3, 68x50,132,0[68x24,132,0,4, 68x25,132,25,5]}`. `{…}` =
   left-right container (columns); `[…]` = top-bottom container (the stack inside a column).
 - **`even-horizontal` FLATTENS sub-stacks** — re-applying it pulls a stacked child out into
-  its own top-level column. So presets are v1-only; once a column owns a stack mux must
+  its own top-level column. So presets are v1-only; once a column owns a stack reed must
   compute layout itself.
 - **Hand-built layout strings work.** Format `<csum>,<body>`; tmux checksum = rotate-right-1
   accumulate over body bytes (16-bit). Verified against a real dump (`723c == 723c`).
   `select-layout "<csum>,<body>"` is accepted (rc=0), **preserves column+sub-stack
   structure**, and **honors sizing** (asked `120|39|39` → got `118|37|43`; tmux normalizes
-  a few cells for constraints). → mux owns a `render(columns) → layout-string` function,
+  a few cells for constraints). → reed owns a `render(columns) → layout-string` function,
   applied atomically via `select-layout`, recomputed on each mutation.
 
 ### Windowing & the width/height trade-off
@@ -165,7 +165,7 @@ claude 2.1.158/159). This session re-verified on claude **2.1.173**.
   renders fully in `capture-pane`; `send-keys -l "<text>"` + `send-keys Enter` submits a prompt;
   the response is read back via `capture-pane`. Round-trip confirmed repeatedly.
 - **Primary == alternate here.** `capture-pane -p` and `capture-pane -a -p` returned identical
-  55-line output → mux can use plain `capture-pane -p`. (millhouse's `-a` insistence was
+  55-line output → reed can use plain `capture-pane -p`. (millhouse's `-a` insistence was
   version-specific.)
 - **Marker grammar** (for a parser): `❯ ` = input line (echo of sent text, or empty = idle);
   `● ` = an assistant response; `✻ Verb for Ns` = completion marker; `✽`/`·` = spinner.
@@ -175,14 +175,14 @@ claude 2.1.158/159). This session re-verified on claude **2.1.173**.
   = `? for shortcuts`). millhouse's non-ASCII-space bug (2.1.158) did NOT reproduce. Still match
   the single token (`shortcuts`/`interrupt`) to stay version-agnostic.
 - **Multi-line prompts cannot be typed into a running pane** (paste-buffer drops content;
-  bracketed paste submits on each `\n` — see psmux-tui-behavior.md). → mux gives each claude its
+  bracketed paste submits on each `\n` — see psmux-tui-behavior.md). → reed gives each claude its
   task **at launch** (positional `[prompt]` arg / `Get-Content -Raw` script), not by typing into
   a live TUI. Reuse = single-line only, and must send **Esc** first to clear leaked auto-suggest.
 - **Teammate-mode does NOT auto-spawn panes here.** With `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
   + `--teammate-mode tmux` + interactive + attached, asking haiku to delegate produced an
-  **in-process** `Agent(...)` (no new pane; pane count stayed 1). → **mux owns pane creation**
+  **in-process** `Agent(...)` (no new pane; pane count stayed 1). → **reed owns pane creation**
   (`split-window` + launch); it must not rely on claude populating panes via its teammate
-  integration. (Confirms the "Column owns its subtree, mux renders layout" decision.)
+  integration. (Confirms the "Column owns its subtree, reed renders layout" decision.)
 
 ### Session persistence & `--resume` — RESOLVED: native resume works; root cause was inherited env
 **Final determination (after a long, flip-flopping investigation, confirmed twice):** native
@@ -207,7 +207,7 @@ poisoning env present — they are the symptom, not a limitation):
   recalled the codeword** ("Kodeordet du ga meg var appelsin001."). So native resume DOES work
   **when the transcript exists** — i.e. for a human-typed session. There is no tmux limitation
   on the *resume* step itself; the gap is purely whether the transcript got written.
-- **Programmatically-driven sessions do NOT persist — this is the case that matters for mux.**
+- **Programmatically-driven sessions do NOT persist — this is the case that matters for reed.**
   Every probe where input was injected (`send-keys` burst, `send-keys` char-by-char, or the task
   passed as the launch `[prompt]` arg) wrote **only an `ai-title` stub** (~100 B), never
   `user`/`assistant` records — so `--resume` finds nothing. Controls ruled out, one at a time,
@@ -245,10 +245,10 @@ poisoning env present — they are the symptom, not a limitation):
   while running** (verified on a live 2.1 MB / 997-record session with seconds-old `user`/
   `assistant` records) — that is why a human's reboot → `/resume` works. The tmux-pane programmatic
   case does NOT reach this state (init records never written), so this reference does not transfer
-  to mux's use.
-- **Design implication (Landed decision 7):** `lyx mux resume` **cannot** use native
-  `claude --resume` for the programmatically-driven panes mux runs. mux keeps its **own** durable
-  per-pane journal (poll `capture-pane`, append to local-state, keyed by the mux-assigned
+  to reed's use.
+- **Design implication (Landed decision 7):** `lyx reed resume` **cannot** use native
+  `claude --resume` for the programmatically-driven panes reed runs. reed keeps its **own** durable
+  per-pane journal (poll `capture-pane`, append to local-state, keyed by the reed-assigned
   `--session-id` stored from t0) and on resume rebuilds the layout, relaunches a real interactive
   claude per pane (full TUI, not `-p`), and **re-injects the journal as opening context.** Fidelity
   cost: rendered conversation text, not exact tool-call/internal state.
@@ -266,19 +266,19 @@ What actually works on this build:
   `pwsh -File logger.ps1` hook wrote to disk). **Requires `set-option -g remain-on-exit on`** —
   otherwise a pane whose process exits just vanishes (and if it's the last pane, the session and
   server exit) and the hook does not fire. **Fires with NO client attached** → usable by a
-  daemonless mux.
+  daemonless reed.
 - **Format variables do NOT expand in hook commands.** `#{pane_id}` / `#{hook_pane}` came through
   literally/empty (`info=paneid_#`). So a `pane-died` hook is a **bare trigger** — it cannot tell
-  mux *which* pane died. The handler must then scan `list-panes -F "#{pane_id} #{pane_dead}"` to
+  reed *which* pane died. The handler must then scan `list-panes -F "#{pane_id} #{pane_dead}"` to
   find the dead pane(s). (Format vars DO expand in normal `display-message`/`capture-pane -F`,
   just not inside hook-invoked `run-shell`.)
 - **Silence/activity monitoring is NON-functional here.** `set-window-option` is an *unknown
   command*; `set-option -w monitor-silence|monitor-activity|monitor-bell <n>` is **silently
   accepted but never stored** (`show-window-options` keeps showing only `monitor-activity off`),
   and the `alert-silence` hook never fired across an 8 s idle. → **no built-in "agent went idle"
-  signal.** mux must detect idle itself via the capture-pane poller (the `shortcuts` status-bar
+  signal.** reed must detect idle itself via the capture-pane poller (the `shortcuts` status-bar
   marker = idle, `interrupt` = busy).
-- **Implication for mux:** hooks are a *minor convenience*, not a monitoring foundation. mux needs
+- **Implication for reed:** hooks are a *minor convenience*, not a monitoring foundation. reed needs
   the `capture-pane` poller anyway (for the resume journal — decision 7 — and for idle detection,
   since `pipe-pane` and silence-hooks don't work). That poller already sees `pane_dead`, so it can
   detect death too; `pane-died` is at best a low-latency nudge to wake the poller / trigger a
@@ -313,8 +313,8 @@ What actually works on this build:
   Verified twice (14 KB transcript, recall after `kill-server`). The earlier "doesn't persist"
   results were all caused by that inherited env (probes ran inside a Claude Code session) — NOT by
   send-keys/visible-window/model. → native resume IS the mechanism (decision 7); env hygiene is the
-  one requirement; mux's journal is optional.
-- [x] Teammate-mode does NOT auto-spawn panes (in-process Agent) → mux owns panes.
+  one requirement; reed's journal is optional.
+- [x] Teammate-mode does NOT auto-spawn panes (in-process Agent) → reed owns panes.
 - [x] Hooks: `pane-died` fires via `run-shell -b` (needs `remain-on-exit on`; no format-var
   expansion → bare trigger; fires detached). `monitor-silence`/`alert-silence` NON-functional
   (silently accepted, never fires). → hooks are a convenience nudge; poller is the foundation.
