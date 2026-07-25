@@ -193,6 +193,16 @@ func (t *Topology) reconcileMissingWeft(
 	// This handles the case where the weft worktree was accidentally removed or is
 	// in a git-worktree-prune-eligible state, but the branch (and its history) are intact.
 	if weftBranchExists(hostLayout, weftBranch) {
+		// A weft worktree deleted by hand (rm, not `git worktree remove`)
+		// leaves a stale registration that still claims the branch, so a plain
+		// `git worktree add` refuses with "missing but already registered
+		// worktree" — permanently, on every reconcile run. Prune stale
+		// registrations first; git's prune only clears registrations whose
+		// directories are gone, so a live weft worktree is never touched.
+		// Best-effort: if the prune itself fails, the adopt below surfaces the
+		// real error.
+		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, hostLayout.WeftRepoRoot())
+
 		if err := adoptWeftWorktree(hostLayout, weftPath, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("recreate weft worktree: %v", err)
 			return ReconcileActionWeftRecreated
