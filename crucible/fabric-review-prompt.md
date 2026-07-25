@@ -121,16 +121,23 @@ fabric's dedicated sandbox hub (`lyx-fabric-test-HUB`) being separate from the s
 `lyx-test`/`lyx-test-weft` hub — that separation is intentional per `SANDBOX-FABRIC-SUITE.md`.
 
 ## Round context seeded from prior-round verification
-**Safety pass — round 2.** Round 1 (tag `opus-r1`) found and fixed one BLOCKING bug and several
-lower-severity ones; the orchestrator has independently verified every fix (see CLOSED-AND-VERIFIED
-below) — including reproducing the not-false-green proof for the two behavior-changing fixes (F1,
-F2+F3) by reverting each production file to its pre-fix state, confirming the round's own new/updated
-test FAILS at the right assertion, then restoring the fix and confirming an empty diff. There is
-**no known residual**. Do a genuinely independent clean-room pass to find anything round 1 missed —
-or, if you genuinely find nothing, honestly confirm merge-readiness. Do NOT re-open or re-litigate
-the CLOSED-AND-VERIFIED work below.
+**Safety pass — round 3.** Round 1 (tag `opus-r1`, Opus) and round 2 (tag `fable-r2`, Fable) between
+them found and fixed one BLOCKING bug plus fifteen lower-severity ones; the orchestrator has
+independently verified every fix (see CLOSED-AND-VERIFIED below) — including reproducing the
+not-false-green proof for the behavior-changing fixes by reverting each production file to its
+pre-fix state, confirming the round's own new/updated test FAILS at the right assertion, then
+restoring the fix and confirming an empty diff. There is **no known residual**. Do a genuinely
+independent clean-room pass to find anything rounds 1-2 missed — or, if you genuinely find nothing,
+honestly confirm merge-readiness. Do NOT re-open or re-litigate the CLOSED-AND-VERIFIED work below.
+
+Round 2's fixer phase was interrupted mid-way by a session crash (R1-R3 fixed by the crashed
+session, recovered and committed by the orchestrator; R4-R11 finished by a continuation round agent).
+Both halves were independently verified by the orchestrator from a cold state on the committed tree,
+same bar as any other round — the crash is operational history, not a review caveat.
 
 **CLOSED-AND-VERIFIED (do not re-litigate):**
+
+Round 1 (`opus-r1`):
 - **F1 (BLOCKING, commit `dea44b3e`):** `fabric cleanup --apply --force` deleted the primary weft
   branch `main-weft` because liveness was judged against host worktree *directory* names instead of
   branch names. Fixed by comparing live host *branches* instead. Orchestrator reproduced the bug by
@@ -150,9 +157,71 @@ the CLOSED-AND-VERIFIED work below.
 - **F5 (LOW/operability, commit `9fffe6d7`):** doc-only addition to `SANDBOX-FABRIC-SUITE.md`'s
   Pre-conditions, no behavior change — verified by inspection; sandbox coverage guard confirmed
   still green.
-- Full suite confirmed green by the orchestrator from a cold state on the committed tree (not just
-  trusting round 1's own report): `go build ./...`, `go vet` on the fabric+gitrepo packages,
-  `go test -count=5` (hermetic, all packages), `go test -tags integration -count=1` (all packages).
+
+Round 2 (`fable-r2`), findings R1-R11, full review at `.scratch/fabric-review-fable-r2.md`, fixer
+report at `.scratch/fabric-review-fable-r2-fixer-report.md`:
+- **R1 (MEDIUM, commit `dc8dd1d7`):** Add's rollback deleted a pre-existing (merely adopted) weft
+  branch — including unpushed commits — on a post-adopt failure (e.g. host push). Fixed by threading
+  a `weftBranchAlreadyExists` flag through rollback so an adopted branch's worktree is torn down but
+  the branch itself survives. Verified by inspection (integration test
+  `add_rollback_adopt_test.go::TestAddRollback_AdoptedWeftBranchSurvives`, added same commit).
+- **R2 (MEDIUM, commit `412f93f1`):** Reconcile could never repair a hand-deleted weft worktree — the
+  stale git registration made `git worktree add` fail identically on every run. Fixed by running
+  `git worktree prune` in the weft repo before adopting. Verified by inspection (integration test
+  `reconcile_stale_registration_test.go::TestReconcile_RecreatesHandDeletedWeftWorktree`).
+- **R3 (MEDIUM, commit `51a9759e`):** `seedLyxJunction` refused to repair a wrong-target or dangling
+  `_lyx` junction with a factually wrong "predates weft" error, breaking Reconcile's documented
+  junction-repair contract. Fixed by re-pointing a corrupted link (remove + recreate) and reserving
+  the refusal for a real non-link directory. Orchestrator reproduced by reverting `junction.go` to
+  pre-fix and confirming the new `junction_repoint_test.go` (both wrong-target and dangling cases)
+  fails; restoring passes with an empty diff.
+- **R4 (MEDIUM, commit `a499f079`):** `Add` accepted a slash-containing slug the rest of the module
+  (pairs/reconcile/prune) cannot represent, causing immediate self-contradiction. Fixed by rejecting
+  `/`/`\` in the slug before any git operation. Orchestrator reproduced by reverting `add.go` and
+  confirming `TestAdd_RejectsSeparatorSlug` fails at exactly the right assertion (wrong error
+  surfaces instead of the validation error); restoring passes.
+- **R5 (LOW, commit `81b6973f`):** Cleanup misclassified a live pair as orphaned when the host
+  worktree was on a detached HEAD (branch-name liveness check missed it), attempting a doomed
+  `git branch -D` on a checked-out branch. Fixed by treating any weft branch checked out at a
+  worktree as Protected. Orchestrator reproduced by reverting `cleanup.go` and confirming
+  `TestCleanup_DifferentialEquivalence/DetachedHostHeadProtectsCheckedOutWeftBranch` fails at all
+  three assertions (Protected=false, Deleted attempted, doomed-delete Error present); restoring
+  passes.
+- **R6 (LOW, commit `dff8c947`):** `prune --apply` removed a dead pair's weft worktree but left its
+  portal junction and launcher dir behind permanently, with no verb to clean them. Fixed by
+  `removeStalePair` calling `removePortal`/`removeLaunchers`, mirroring Remove. Orchestrator
+  reproduced by reverting `prune.go` and confirming
+  `TestPrune_DifferentialEquivalence/ApplyRemovesPortalAndLaunchers` fails (portal + launcher dir
+  both still present); restoring passes.
+- **R7 (LOW/docs, commit `4524a0b8`):** doc-only board-URL fallback added to
+  `SANDBOX-FABRIC-SUITE.md`'s Pre-conditions, no behavior change — verified by inspection; sandbox
+  coverage guard confirmed still green.
+- **R8 (NIT, commit `efbd98b1`):** vestigial `l *hubgeometry.Layout` parameter and a garbled header
+  comment in `reconcile.go`, no behavior change — verified by inspection.
+- **R9 (NIT, commit `0918eba6`):** dead `_user_exit=$?` capture dropped from the hook chain wrapper,
+  no behavior change — verified by inspection.
+- **R10 (LOW, commit `ad4444b9`):** `PairInSync` reported a real (non-link) `_lyx` directory as
+  "junction missing" instead of distinguishing it from the genuinely-missing case. Fixed with an
+  explicit `os.Lstat` before the `IsLink` check. Orchestrator reproduced by reverting `drift.go` and
+  confirming `TestPairInSyncAndHostClean_DifferentialEquivalence/PairInSync_RealDirNotAJunction`
+  fails (wrong reason string); restoring passes.
+- **R11 (LOW, commit `4e72124c`):** re-evaluation of `opus-r1`'s deferred F6 — `SyncWeft`'s index
+  record could disagree with the trailer it just wrote (re-read of warp HEAD instead of parsing the
+  trailer back out of the pushed commit). Fixed without a signature change by parsing the `Warp-SHA`
+  trailer out of the commit SyncWeft itself just produced. **Note for this round:** the review itself
+  judged the pre-fix discrepancy benign in the single-instance synchronous flow (nothing can advance
+  warp HEAD between the two reads inside one orchestrated call) — consistent with that, the
+  orchestrator's revert-and-confirm-fail check on the new `TestSyncWeft_WarpSHAMatchesTrailer` did
+  **not** fail pre-fix (it passed against both old and new code, since the test's synchronous
+  scenario cannot manufacture the divergence). The fix was instead verified sound by code inspection
+  (trailer round-trips through `parseWarpSHATrailer`, missing-trailer case surfaced as an error). If
+  you can find a real, live-reproducible scenario where the pre-fix behavior actually diverged from
+  the trailer, that would be new information — otherwise treat this as closed.
+
+Full suite confirmed green by the orchestrator from a cold state on the committed tree after every
+round (not just trusting either round's own report): `go build ./...`, `go vet` on the
+fabricengine+fabriccli+gitrepo+cmd/lyx packages, `go test -count=5` (hermetic, all packages),
+`go test -tags integration -count=1` (all packages).
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
 gate; an N×-concurrent suite (if you choose to run one — fabric is not inherently a
