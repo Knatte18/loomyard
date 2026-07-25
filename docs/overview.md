@@ -101,8 +101,8 @@ Two doc classes, opposite lifecycles:
   rationale then live in its Go package header comment, next to the code it documents.
 - **Durable contract/reference docs** (`docs/reference/`) pin cross-module file
   contracts a real consumer honors — they are **kept**, not deleted on landing:
-  `status-schema.md`, `discussion-format.md`, `plan-format.md`, `builder-contract.md`,
-  `model-spec.md`.
+  `status-schema.md`, `discussion-format.md`, `plan-format.md`, `plan-format-v3.md`,
+  `builder-contract.md`, `model-spec.md`.
 
 The other durable documentation is this `overview.md` (principles, naming, the module and
 shared-lib map, the weft contract, and this lifecycle convention). Planned-but-not-built work
@@ -312,6 +312,8 @@ User-facing modules each get one `lyx <module>` namespace:
   outcome schema) so both can be A/B tested on the same plan (`internal/websterengine` +
   `internal/webstercli`). ✅ Implemented. See
   [builder-contract.md](reference/builder-contract.md#webster-the-fork-based-sibling).
+  The Planned `webster: rewrite for flat card list` item will move `webster` off this v2
+  plan input onto the emerging [plan-format-v3.md](reference/plan-format-v3.md).
 - **loom** — phased orchestrator: drives Preflight → Discussion → Plan → Builder → Raddle →
   Finalize, each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not
   built; the `lyx loom` command and phase machine are unbuilt. loom's config module
