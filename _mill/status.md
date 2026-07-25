@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-neighbour-doc-crosslinks
+phase: holistic-reviewing
 slug: plan-format-v3
 branch: plan-format-v3
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-07-25T06:20:06Z'
 implementing  '2026-07-25T06:24:10Z'
 approved-promote-v3-reference  '2026-07-25T06:32:30Z'
 approved-neighbour-doc-crosslinks  '2026-07-25T06:36:07Z'
+holistic-reviewing  '2026-07-25T06:36:23Z'
 ```
 
 ## Batches
