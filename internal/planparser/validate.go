@@ -79,11 +79,15 @@ func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 
 	findings = append(findings, checkFormatAndApproval(plan)...)
 	findings = append(findings, checkIndexFileConsistency(plan)...)
+	findings = append(findings, checkCardPathMalformed(plan)...)
+	findings = append(findings, checkMoveFormat(plan)...)
+	findings = append(findings, checkMoveRedundant(plan)...)
+	findings = append(findings, checkMoveMechanicMissing(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
 
-	_ = worktreeRoot // consulted by the existence-dependent checks added in later cards
+	_ = worktreeRoot // consulted by the existence-dependent checks added in a later card
 
 	return findings
 }
@@ -163,6 +167,166 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 				),
 			})
 		}
+	}
+
+	return findings
+}
+
+// cardPathMalformedReason reports why p is not a well-formed plan-format-v3
+// card path, or "" when p is well-formed. p is already normalized (root:///
+// resolution applied by normalizeCard at parse time), so a still-absolute
+// path or a surviving ".." segment here is a genuine escape past the worktree
+// root, not an artifact of an unresolved root:. p is treated as a POSIX-style
+// path (plan files are authored with forward slashes) so the check behaves
+// the same on every platform Validate runs on.
+func cardPathMalformedReason(p string) string {
+	if p == "" {
+		return "empty entry"
+	}
+
+	posix := filepath.ToSlash(p)
+	if strings.HasPrefix(posix, "/") {
+		return "absolute path"
+	}
+	for _, seg := range strings.Split(posix, "/") {
+		if seg == ".." {
+			return `contains a ".." escape`
+		}
+	}
+	// Reuse normalize.go's own cleanPosixPath rather than re-implementing
+	// path.Clean's segment-collapsing rules a second time in this package.
+	if cleaned := cleanPosixPath(posix); cleaned != posix {
+		return fmt.Sprintf("not a clean path (cleans to %q)", cleaned)
+	}
+
+	return ""
+}
+
+// checkCardPathMalformed implements card-path-malformed (v2's scope-malformed,
+// renamed because Scope is gone in v3): every card path — all four non-Moves
+// typed fields and both sides of every Moves: pair — must be non-empty,
+// relative, clean, and free of ".." escapes, once normalized.
+func checkCardPathMalformed(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		for _, fields := range [][]string{c.ContextFiles, c.EditsFiles, c.CreatesFiles, c.DeletesFiles} {
+			for _, p := range fields {
+				if reason := cardPathMalformedReason(p); reason != "" {
+					findings = append(findings, ValidationError{
+						Check:  "card-path-malformed",
+						Card:   cardID(c),
+						Detail: fmt.Sprintf("card %d path %q is malformed: %s", c.Number, p, reason),
+					})
+				}
+			}
+		}
+		for _, mv := range c.Moves {
+			for _, p := range []string{mv.Old, mv.New} {
+				if reason := cardPathMalformedReason(p); reason != "" {
+					findings = append(findings, ValidationError{
+						Check:  "card-path-malformed",
+						Card:   cardID(c),
+						Detail: fmt.Sprintf("card %d Moves: endpoint %q is malformed: %s", c.Number, p, reason),
+					})
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkMoveFormat implements move-format: every card's non-well-formed
+// "Moves:" sub-bullet (retained verbatim in Card.MovesRaw by the
+// lenient-card-parse parser) yields one finding, quoting the raw bullet and
+// naming the offending card so a Planner can find and fix it.
+func checkMoveFormat(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		for _, raw := range c.MovesRaw {
+			findings = append(findings, ValidationError{
+				Check: "move-format",
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"card %d Moves: entry %q does not match the required `src` -> `dst` grammar",
+					c.Number, raw,
+				),
+			})
+		}
+	}
+
+	return findings
+}
+
+// checkMoveRedundant implements move-redundant: a plan-wide check (v3 has no
+// batch to scope it to) — a path that is both a Moves: endpoint (either side
+// of any card's pair) and named in the whole plan's Creates:/Deletes: (across
+// any card) is a conflicting instruction: the Planner must pick one
+// mechanism, not both. Findings are sorted by path for determinism.
+func checkMoveRedundant(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	endpoints := make(map[string]bool)
+	createsDeletes := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, mv := range c.Moves {
+			endpoints[mv.Old] = true
+			endpoints[mv.New] = true
+		}
+		for _, p := range c.CreatesFiles {
+			createsDeletes[p] = true
+		}
+		for _, p := range c.DeletesFiles {
+			createsDeletes[p] = true
+		}
+	}
+
+	var conflicts []string
+	for p := range endpoints {
+		if createsDeletes[p] {
+			conflicts = append(conflicts, p)
+		}
+	}
+	sort.Strings(conflicts)
+
+	for _, p := range conflicts {
+		findings = append(findings, ValidationError{
+			Check: "move-redundant",
+			Detail: fmt.Sprintf(
+				"%q is both a Moves: endpoint and in Creates:/Deletes: somewhere in the plan; use Moves: or Creates:/Deletes:, not both",
+				p,
+			),
+		})
+	}
+
+	return findings
+}
+
+// checkMoveMechanicMissing implements move-mechanic-missing: now a plan-level
+// check (v2's was per-batch) — a plan with at least one parsed Moves: pair
+// (across any card) but an empty Plan.RenameMechanic (the overview's "##
+// Rename mechanic" section batch 1's sections.go already extracts) is missing
+// the mechanical instruction that pins how the rename must be carried out. A
+// plan whose every Moves: field is "none" (zero pairs) is skipped — a
+// MovesRaw-only defect is move-format's finding, and requiring the section
+// too would double-report the same underlying mistake.
+func checkMoveMechanicMissing(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	hasPair := false
+	for _, c := range plan.Cards {
+		if len(c.Moves) > 0 {
+			hasPair = true
+			break
+		}
+	}
+	if hasPair && plan.RenameMechanic == "" {
+		findings = append(findings, ValidationError{
+			Check:  "move-mechanic-missing",
+			Detail: `plan declares at least one Moves: pair but has no "## Rename mechanic" section`,
+		})
 	}
 
 	return findings
