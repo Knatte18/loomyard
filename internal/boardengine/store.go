@@ -97,11 +97,19 @@ func (s *Store) slugIndex() map[string]*Task {
 }
 
 func (s *Store) nextID() int {
-	if len(s.tasks) == 0 {
+	return nextIDIn(s.tasks)
+}
+
+// nextIDIn returns the ID a task appended to tasks would get: one past the
+// highest existing ID, or 0 for an empty list. It exists so projection-based
+// operations (UpsertTasksBatch, MergeTasks) assign the same IDs against their
+// projected snapshot as sequential upserts would against the live store.
+func nextIDIn(tasks []Task) int {
+	if len(tasks) == 0 {
 		return 0
 	}
-	maxID := s.tasks[0].ID
-	for _, t := range s.tasks {
+	maxID := tasks[0].ID
+	for _, t := range tasks {
 		if t.ID > maxID {
 			maxID = t.ID
 		}
@@ -473,8 +481,13 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		}
 	}
 
-	// Project the full post-operation snapshot
-	snapshot := s.tasks
+	// Project the full post-operation snapshot on a copy: the projection must
+	// never write through to s.tasks, so a failure below leaves the store
+	// untouched in memory too (all-or-none for direct Store users, not just
+	// for writeOp's discard-on-error).
+	snapshot := make([]Task, len(s.tasks))
+	copy(snapshot, s.tasks)
+	projectedSlugs := make([]string, 0, len(tasks))
 	for _, fields := range tasks {
 		slugVal, hasSlug := fields["slug"]
 		if !hasSlug {
@@ -484,11 +497,10 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		if !ok || slugStr == "" {
 			return fmt.Errorf("slug must be a non-empty string in batch")
 		}
+		projectedSlugs = append(projectedSlugs, slugStr)
 
-		var incoming Task
-		var err error
-
-		// Find if this task exists in current snapshot
+		// Patch an existing entry in place or append a new one, exactly as a
+		// sequential upsert of the whole batch would.
 		foundIdx := -1
 		for i, t := range snapshot {
 			if t.Slug == slugStr {
@@ -496,29 +508,14 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 				break
 			}
 		}
-
 		if foundIdx >= 0 {
-			incoming, err = ApplyPatch(snapshot[foundIdx], fields)
+			incoming, err := ApplyPatch(snapshot[foundIdx], fields)
 			if err != nil {
 				return err
 			}
 			snapshot[foundIdx] = incoming
 		} else {
-			// Generate next ID based on current snapshot, mirroring store.nextID()
-			var nextID int
-			if len(snapshot) == 0 {
-				nextID = 0
-			} else {
-				maxID := snapshot[0].ID
-				for _, t := range snapshot {
-					if t.ID > maxID {
-						maxID = t.ID
-					}
-				}
-				nextID = maxID + 1
-			}
-
-			incoming, err = NewTask(fields, nextID)
+			incoming, err := NewTask(fields, nextIDIn(snapshot))
 			if err != nil {
 				return err
 			}
@@ -526,9 +523,10 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		}
 	}
 
-	// Validate all incoming tasks against projected snapshot
-	for _, fields := range tasks {
-		slugStr := fields["slug"].(string)
+	// Validate every projected task against the full projected snapshot, so
+	// batch elements may reference each other regardless of their order in the
+	// batch (a task may depend on one introduced later in the same batch).
+	for _, slugStr := range projectedSlugs {
 		var incoming Task
 		for _, t := range snapshot {
 			if t.Slug == slugStr {
@@ -536,20 +534,15 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 				break
 			}
 		}
-
 		if err := s.validateWrite(snapshot, incoming); err != nil {
 			return err
 		}
 	}
 
-	// Execute all upserts
-	for _, fields := range tasks {
-		_, err := s.UpsertTask(fields)
-		if err != nil {
-			return err
-		}
-	}
-
+	// Install the projected snapshot wholesale. Re-applying elements one by
+	// one would re-validate each against a not-yet-complete store and reject
+	// exactly the forward-referencing batches validated above.
+	s.tasks = snapshot
 	return nil
 }
 
@@ -605,19 +598,7 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	if foundIdx >= 0 {
 		incoming, err = ApplyPatch(projected[foundIdx], upsert)
 	} else {
-		var nextID int
-		if len(projected) == 0 {
-			nextID = 0
-		} else {
-			maxID := projected[0].ID
-			for _, t := range projected {
-				if t.ID > maxID {
-					maxID = t.ID
-				}
-			}
-			nextID = maxID + 1
-		}
-		incoming, err = NewTask(upsert, nextID)
+		incoming, err = NewTask(upsert, nextIDIn(projected))
 	}
 
 	if err != nil {
