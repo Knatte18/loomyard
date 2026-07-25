@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-webster-mechanism-helpers
+phase: approved-webster-report-digest
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-gitrepo-bisect-primitive  '2026-07-25T14:22:44Z'
 approved-planparser-checks  '2026-07-25T14:34:24Z'
 approved-batcher  '2026-07-25T14:37:57Z'
 approved-webster-mechanism-helpers  '2026-07-25T14:49:00Z'
+approved-webster-report-digest  '2026-07-25T14:54:04Z'
 ```
 
 ## Batches
@@ -63,9 +64,10 @@ batches:
     start_sha: f4eaa0a420fd0dbefbb48131a1d403ed0af655a3
     commit_sha: 374512170811818df1e89a2f71841860af57833e
   - name: webster-report-digest
-    state: running
+    state: approved
     implementer_session: c2fe5970-53b1-439b-acd9-646f2b395ef5
     start_sha: 88c0ec25ced5bde341675fd6fe4c7a26e1289495
+    commit_sha: 529242e670a017e671f04c144594b6d03aaa7b91
   - name: engine-retarget
     state: pending
   - name: integration-fork-bisect
