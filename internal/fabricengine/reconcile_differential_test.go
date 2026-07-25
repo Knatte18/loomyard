@@ -458,6 +458,59 @@ func TestPrune_DifferentialEquivalence(t *testing.T) {
 			t.Errorf("fabric live weft %s deleted by Prune: %v", fabricWeftPath, err)
 		}
 	})
+
+	// ApplyRemovesPortalAndLaunchers is fabric-only (the R6 fix): when the host
+	// worktree is deleted by hand, apply Prune removes the orphaned weft — but
+	// before the fix it left the dead slug's portal junction dangling and its
+	// launcher directory behind forever, since no other verb ever revisits a
+	// pruned slug (Remove would have, but the pair is already gone).
+	t.Run("ApplyRemovesPortalAndLaunchers", func(t *testing.T) {
+		t.Parallel()
+
+		const testSlug = "diff-prune-portal"
+		dp := buildDiffPair(t, "")
+		wireDiffPairJunctions(t, dp)
+
+		if _, err := dp.Fabric.Add(dp.FabricFixture.Layout, testSlug, fabricengine.AddOptions{SkipGit: true}); err != nil {
+			t.Fatalf("setup fabricengine Add: %v", err)
+		}
+
+		hostPath := dp.FabricFixture.Layout.WorktreePath(testSlug)
+		portalLink := dp.FabricFixture.Layout.PortalLink(testSlug)
+		launcherDir := dp.FabricFixture.Layout.LauncherDir(testSlug)
+
+		// Sanity: Add wired both; Lstat for the portal since it dangles once
+		// the host directory is gone.
+		if _, err := os.Lstat(portalLink); err != nil {
+			t.Fatalf("setup: portal link missing after Add: %v", err)
+		}
+		if _, err := os.Stat(launcherDir); err != nil {
+			t.Fatalf("setup: launcher dir missing after Add: %v", err)
+		}
+
+		// Delete the host by hand (bare removal, not `git worktree remove`) —
+		// the live-reproduced R6 scenario, leaving a stale registration.
+		if err := os.RemoveAll(hostPath); err != nil {
+			t.Fatalf("remove host dir: %v", err)
+		}
+
+		res, err := dp.Fabric.Prune(dp.FabricFixture.Layout, true)
+		if err != nil {
+			t.Fatalf("fabricengine Prune(apply=true): %v", err)
+		}
+
+		weftPath := dp.FabricFixture.Layout.WeftWorktreePath(testSlug)
+		entry := findFabricPruneEntryByWeftPath(t, res.Entries, weftPath)
+		if !entry.Removed {
+			t.Errorf("Removed = false after apply; want true (error=%q)", entry.Error)
+		}
+		if _, err := os.Lstat(portalLink); !os.IsNotExist(err) {
+			t.Errorf("portal link %s still present after apply Prune; want removed", portalLink)
+		}
+		if _, err := os.Stat(launcherDir); !os.IsNotExist(err) {
+			t.Errorf("launcher dir %s still present after apply Prune; want removed", launcherDir)
+		}
+	})
 }
 
 // findPruneEntryByWeftPath returns the warpengine.PruneEntry matching weftPath,

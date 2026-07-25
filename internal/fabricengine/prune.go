@@ -51,7 +51,10 @@ type PruneResult struct {
 // When apply is false, Prune reports the pairs that would be pruned without making
 // any changes. When apply is true, Prune removes each stale weft worktree directory
 // via git worktree remove --force and then runs git worktree prune on the weft repo
-// to clean up stale administrative refs.
+// to clean up stale administrative refs. It also removes the dead slug's portal
+// junction and launcher directory (mirroring Remove's early teardown) — no other
+// verb ever revisits a pruned slug, so leaving them would strand a dangling portal
+// and a stale launcher dir permanently.
 //
 // Live pairs (both host and weft directories exist and are registered) are never
 // touched. The board repo is excluded entirely — Prune only considers host worktrees
@@ -107,7 +110,7 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 			}
 
 			if apply {
-				pe.Removed = removeStalePair(l, weftPath, &pe)
+				pe.Removed = removeStalePair(l, slug, weftPath, &pe)
 			}
 
 			// Record this slug so Pass 2 does not re-report the same orphaned weft.
@@ -164,7 +167,7 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 		}
 
 		if apply {
-			pe.Removed = removeStalePair(l, weftPath, &pe)
+			pe.Removed = removeStalePair(l, hostSlug, weftPath, &pe)
 		}
 
 		result.Entries = append(result.Entries, pe)
@@ -173,15 +176,23 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 	return result, nil
 }
 
-// removeStalePair removes the stale weft worktree at weftPath (when it exists) and
-// prunes administrative state on both repos.
+// removeStalePair removes the stale weft worktree at weftPath (when it exists),
+// tears down the dead slug's portal junction and launcher directory, and prunes
+// administrative state on both repos.
 //
 // It writes any removal error into pe.Error and returns true only when a weft
 // worktree actually existed and was removed without error. When no weft worktree
 // exists at weftPath there is nothing to delete, so it returns false (Removed stays
 // honest) — the stale host worktree registration is still pruned below. The caller has
 // already set pe fields other than Removed and Error.
-func removeStalePair(l *hubgeometry.Layout, weftPath string, pe *PruneEntry) bool {
+func removeStalePair(l *hubgeometry.Layout, slug, weftPath string, pe *PruneEntry) bool {
+	// Tear down the slug's portal junction and launcher dir first, mirroring
+	// Remove's early teardown (best-effort, errors masked): the host is
+	// already gone, so this is the last verb that will ever see this slug —
+	// anything left behind here is stranded permanently.
+	_ = removePortal(l, slug)
+	_ = removeLaunchers(l, slug)
+
 	removed := false
 
 	// Only attempt a removal when the weft worktree directory actually exists.
