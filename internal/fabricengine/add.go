@@ -144,7 +144,14 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
 	if exitCode == 0 {
-		return AddResult{}, fmt.Errorf("branch %q already exists", hostBranch)
+		// Name the way forward: Remove deliberately leaves the host branch
+		// behind (it may carry unmerged work), so remove-then-re-add of the
+		// same slug lands here — a bare "already exists" gives the operator no
+		// path out of that everyday cycle.
+		return AddResult{}, fmt.Errorf(
+			"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair",
+			hostBranch, hostBranch, hostBranch,
+		)
 	}
 
 	// (4) Target path check
