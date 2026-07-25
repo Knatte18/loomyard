@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-poc-foundation
 slug: git-native-library
 branch: git-native-library
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-07-25T13:05:12Z'
 plan-fix-r2  '2026-07-25T13:08:17Z'
 planned  '2026-07-25T13:08:28Z'
 implementing  '2026-07-25T13:10:45Z'
+approved-poc-foundation  '2026-07-25T13:16:06Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-07-25T13:10:45Z'
 ```yaml
 batches:
   - name: poc-foundation
-    state: running
+    state: approved
     implementer_session: 54967404-8962-4b00-8100-e78e8f401a14
     start_sha: 349684500c602c0e929a2b351ee91a0c1b4cbd00
+    commit_sha: 90587d33372a48c819aee47c00a5805acedbd1b2
   - name: read-surface
     state: pending
   - name: write-surface
