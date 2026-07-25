@@ -6,6 +6,7 @@ slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: dev/test lyx.exe separated from production deploy
 task_description: |
   dev/test lyx.exe separated from production deploy
@@ -34,7 +35,9 @@ implementing  '2026-07-25T08:19:34Z'
 ```yaml
 batches:
   - name: devbin-and-deploy
-    state: pending
+    state: running
+    implementer_session: 4775aea4-5b47-494c-a9f8-e4ab5e7a7d54
+    start_sha: dcc1c9a47952d7b10fd715c457144485e0c5aaea
   - name: sandbox-resolve-core
     state: pending
   - name: sandbox-wire-and-guard
