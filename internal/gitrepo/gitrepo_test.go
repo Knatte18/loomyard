@@ -1,9 +1,10 @@
 //go:build integration
 
 // gitrepo_test.go covers the read/commit primitives (CurrentSHA,
-// StageAndCommit, ChangedFilesSince, SHAExists) against real git repositories
-// built fresh under t.TempDir() for each test. Every test spawns real git, so
-// this file requires the hermetic TestMain in testmain_test.go.
+// StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists) against
+// real git repositories built fresh under t.TempDir() for each test. Every
+// test spawns real git, so this file requires the hermetic TestMain in
+// testmain_test.go.
 
 package gitrepo_test
 
@@ -317,6 +318,146 @@ func TestStageAndCommit_MidMerge_RefusesPartialCommit(t *testing.T) {
 	// finalized it under the automated message.
 	if _, _, code, _ := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); code != 0 {
 		t.Errorf("MERGE_HEAD absent after refused StageAndCommit (exit %d); the merge must not have been completed", code)
+	}
+}
+
+// TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles asserts the
+// wildcard-stage contract: dirtying the working tree with both a brand-new
+// untracked file and a modification to an already-tracked file, neither
+// named explicitly, must all land in one commit and leave the tree clean —
+// the behavior StageAndCommit's explicit-file-list contract deliberately
+// does not offer.
+func TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	// Dirty the tree two ways at once: modify a tracked file and add a new,
+	// untracked one. Neither is named explicitly to StageAllAndCommit.
+	writeFile(t, dir, "a.txt", "changed")
+	writeFile(t, dir, "b.txt", "untracked")
+
+	sha, committed, err := repo.StageAllAndCommit("stage everything")
+	if err != nil {
+		t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
+	}
+	if !committed {
+		t.Fatal("StageAllAndCommit() committed = false; want true")
+	}
+	if sha == "" {
+		t.Fatal("StageAllAndCommit() sha = \"\"; want non-empty")
+	}
+
+	got, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if got != sha {
+		t.Errorf("CurrentSHA() = %q; want %q (StageAllAndCommit's returned sha)", got, sha)
+	}
+
+	// Both changes must be captured in the commit, leaving nothing dirty.
+	stdout, stderr, code, err := runGitStatus(t, dir)
+	if err != nil {
+		t.Fatalf("git status error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git status exited %d: %s", code, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("git status --porcelain = %q; want empty (working tree clean)", stdout)
+	}
+
+	shown, stderr, code, err := runGit(t, dir, "show", "--name-only", "--format=", "HEAD")
+	if err != nil {
+		t.Fatalf("git show error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git show exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(shown, "a.txt") || !strings.Contains(shown, "b.txt") {
+		t.Errorf("git show --name-only HEAD = %q; want both a.txt and b.txt", shown)
+	}
+}
+
+// TestStageAllAndCommit_NothingToCommit_WhenTreeClean asserts the documented
+// no-op signal: a clean working tree returns ("", false, nil) and creates no
+// new commit, mirroring StageAndCommit's nothing-to-commit contract.
+func TestStageAllAndCommit_NothingToCommit_WhenTreeClean(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	headBefore, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	sha, committed, err := repo.StageAllAndCommit("must not happen")
+	if err != nil {
+		t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
+	}
+	if committed || sha != "" {
+		t.Errorf("StageAllAndCommit() = (%q, %v); want (\"\", false)", sha, committed)
+	}
+
+	headAfter, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if headAfter != headBefore {
+		t.Errorf("HEAD after clean-tree StageAllAndCommit = %q; want unchanged %q", headAfter, headBefore)
+	}
+}
+
+// TestStageAllAndCommit_CapturesFileExplicitListWouldMiss asserts the
+// reason StageAllAndCommit exists: a new file not named in any explicit
+// list — the kind of file an explicit-list StageAndCommit call would
+// silently leave uncommitted — is still captured by the wildcard `add -A`
+// path.
+func TestStageAllAndCommit_CapturesFileExplicitListWouldMiss(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	// unlisted.txt is never passed to any StageAndCommit call in this test;
+	// only StageAllAndCommit's wildcard add sees it.
+	writeFile(t, dir, "unlisted.txt", "not named anywhere")
+
+	if _, _, err := repo.StageAndCommit("commit a only", []string{"a.txt"}); err != nil {
+		t.Fatalf("StageAndCommit() error = %v", err)
+	}
+
+	// unlisted.txt must still be untracked at this point — StageAndCommit's
+	// explicit list never touched it.
+	stdout, stderr, code, err := runGitStatus(t, dir)
+	if err != nil {
+		t.Fatalf("git status error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git status exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "unlisted.txt") {
+		t.Fatalf("git status --porcelain = %q; want unlisted.txt still dirty before StageAllAndCommit", stdout)
+	}
+
+	sha, committed, err := repo.StageAllAndCommit("sweep up the rest")
+	if err != nil {
+		t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
+	}
+	if !committed || sha == "" {
+		t.Fatalf("StageAllAndCommit() = (%q, %v); want a real commit", sha, committed)
+	}
+
+	shown, stderr, code, err := runGit(t, dir, "show", "--name-only", "--format=", "HEAD")
+	if err != nil {
+		t.Fatalf("git show error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git show exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(shown, "unlisted.txt") {
+		t.Errorf("git show --name-only HEAD = %q; want unlisted.txt captured by StageAllAndCommit", shown)
 	}
 }
 

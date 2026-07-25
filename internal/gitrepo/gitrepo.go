@@ -1,6 +1,6 @@
 // gitrepo.go defines the Repo type and its read/commit primitives: New, the
 // shared run helper over gitexec.RunGit, CurrentSHA, StageAndCommit,
-// ChangedFilesSince, and SHAExists.
+// StageAllAndCommit, ChangedFilesSince, and SHAExists.
 
 package gitrepo
 
@@ -149,6 +149,58 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	// leaves any other staged entry staged and uncommitted.
 	commitArgs := append([]string{"commit", "-m", msg, "--"}, files...)
 	_, stderr, code, err = r.run(commitArgs...)
+	if err != nil {
+		return "", false, err
+	}
+	if code != 0 {
+		return "", false, fmt.Errorf("gitrepo: git commit: %s", stderr)
+	}
+
+	sha, err = r.CurrentSHA()
+	if err != nil {
+		return "", false, err
+	}
+	return sha, true, nil
+}
+
+// StageAllAndCommit stages every working-tree change via `git add -A` and
+// commits whatever lands in the index with msg — the wildcard sibling of
+// StageAndCommit, which never wildcard-stages. It exists as board's
+// Sync/commitDirty opt-in exception, not a relaxation of the explicit-list
+// default: every other consumer (fabric, raddle, codeintel) must keep using
+// StageAndCommit's explicit file list. Return semantics mirror
+// StageAndCommit exactly: when nothing is staged after the add (a clean
+// working tree), it returns ("", false, nil) rather than an error, since
+// "nothing to commit" is an expected, inspectable outcome; on a real commit
+// it returns the new HEAD SHA with committed=true.
+func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err error) {
+	_, stderr, code, err := r.run("add", "-A")
+	if err != nil {
+		return "", false, err
+	}
+	if code != 0 {
+		return "", false, fmt.Errorf("gitrepo: git add -A: %s", stderr)
+	}
+
+	// `diff --cached --quiet` (unscoped) reports via exit code alone: 0 means
+	// the staged tree matches HEAD (nothing to commit), 1 means it differs
+	// (proceed to commit). Unlike StageAndCommit, there is no pathspec to
+	// scope to — the wildcard add above staged everything, so the diff check
+	// is correspondingly unscoped.
+	_, stderr, code, err = r.run("diff", "--cached", "--quiet")
+	if err != nil {
+		return "", false, err
+	}
+	switch code {
+	case 0:
+		return "", false, nil
+	case 1:
+		// Staged changes exist; fall through to commit.
+	default:
+		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
+	}
+
+	_, stderr, code, err = r.run("commit", "-m", msg)
 	if err != nil {
 		return "", false, err
 	}
