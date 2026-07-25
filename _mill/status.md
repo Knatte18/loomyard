@@ -59,7 +59,9 @@ batches:
     start_sha: 7f40a2c25fb2c41d499921ea30a2b49e21f54a2d
     commit_sha: 15870158f6be60c1853e50e8d27af766950a72ee
   - name: crucible-sweep
-    state: pending
+    state: running
+    implementer_session: 9ba54980-5a56-41a2-8d05-78032baf623d
+    start_sha: 11fd1599583522418ae254278a21f0596f2ac123
   - name: suite-docs-sweep
     state: pending
 ```
