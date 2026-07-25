@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-pair-lifecycle
+phase: approved-fabric-cli-registration
 slug: fabric
 branch: fabric
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-fabric-core  '2026-07-25T07:17:35Z'
 approved-fabric-topology-mechanics  '2026-07-25T07:30:11Z'
 approved-fabric-weft-git  '2026-07-25T07:58:30Z'
 approved-fabric-pair-lifecycle  '2026-07-25T08:18:16Z'
+approved-fabric-cli-registration  '2026-07-25T08:35:02Z'
 ```
 
 ## Batches
@@ -58,7 +59,7 @@ batches:
     implementer_session: 36b6edc9-3b2e-4df0-8a61-5ef8f3db2884
     start_sha: 4263247c8b7b0e5674d0f9061ffbe88c6109dfc2
   - name: fabric-cli-registration
-    state: running
+    state: approved
     implementer_session: 3d80ddde-b1fb-4dee-a21b-2abd3ba26f93
     start_sha: 2996eed3de696a185264406dab50f3335d165238
 ```
