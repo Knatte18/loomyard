@@ -46,6 +46,27 @@ func TestUpsertTask(t *testing.T) {
 	}
 }
 
+// TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting locks in writeOp's
+// fail-fast guard: a Board built without output filenames (the --board-path
+// shape) must reject a write before touching disk, never save tasks.json and
+// then fail the render on an empty filename.
+func TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting(t *testing.T) {
+	boardPath := t.TempDir()
+	cfg := boardengine.Config{Path: boardPath, SkipGit: true}
+	w := boardengine.New(cfg)
+
+	_, err := w.UpsertTask(map[string]any{"slug": "test-task", "title": "Test Task"})
+	if err == nil {
+		t.Fatalf("UpsertTask without configured outputs should error")
+	}
+
+	// The half-applied failure mode this guards against saved tasks.json first;
+	// the guard must fire before any disk mutation.
+	if _, statErr := os.Stat(filepath.Join(boardPath, "tasks.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("tasks.json must not be created on a rejected write; stat err = %v", statErr)
+	}
+}
+
 func TestRerender(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}

@@ -478,6 +478,20 @@ func TestMergeTasks(t *testing.T) {
 		}
 	})
 
+	t.Run("TestMergeTasksNonStringSlugErrors", func(t *testing.T) {
+		s := boardengine.NewStore("")
+
+		// A JSON payload can carry any type as slug; a number must produce an
+		// envelope-able error, not an interface-conversion panic.
+		_, err := s.MergeTasks(nil, map[string]any{"slug": float64(123), "title": "num"}, nil)
+		if err == nil {
+			t.Fatalf("MergeTasks with numeric slug should error")
+		}
+		if got, want := err.Error(), "slug must be a non-empty string"; got != want {
+			t.Errorf("MergeTasks numeric slug error = %q; want %q", got, want)
+		}
+	})
+
 	t.Run("TestMergeTasksValidationRollback", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
@@ -726,6 +740,52 @@ func TestUpsertTasksBatch(t *testing.T) {
 
 		if tasks[0].Slug != "task1" || tasks[1].Slug != "task2" {
 			t.Errorf("expected slugs task1 and task2, got %s and %s", tasks[0].Slug, tasks[1].Slug)
+		}
+	})
+
+	t.Run("TestUpsertTasksBatchForwardReference", func(t *testing.T) {
+		s := boardengine.NewStore("")
+
+		// A batch is validated against its full projected snapshot, so an
+		// element may depend on one introduced later in the same batch.
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "task-a", "title": "A", "depends_on": []string{"task-b"}},
+			{"slug": "task-b", "title": "B"},
+		})
+		if err != nil {
+			t.Fatalf("forward-referencing batch should succeed: %v", err)
+		}
+
+		taskA, found := s.GetTask("task-a")
+		if !found || len(taskA.DependsOn) != 1 || taskA.DependsOn[0] != "task-b" {
+			t.Errorf("task-a after batch = %+v; want depends_on [task-b]", taskA)
+		}
+		if _, found := s.GetTask("task-b"); !found {
+			t.Errorf("task-b missing after batch")
+		}
+	})
+
+	t.Run("TestUpsertTasksBatchFailureLeavesStoreUntouched", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		if _, err := s.UpsertTask(map[string]any{"slug": "existing", "title": "Old title"}); err != nil {
+			t.Fatalf("seed upsert: %v", err)
+		}
+
+		// The first element patches an existing task; the second fails
+		// validation. The projection must not have written through to the live
+		// store, so the patched title must be rolled back too — not just the
+		// task count.
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "existing", "title": "Patched title"},
+			{"slug": "broken", "depends_on": []string{"nonexistent"}},
+		})
+		if err == nil {
+			t.Fatalf("expected error for invalid batch")
+		}
+
+		existing, _ := s.GetTask("existing")
+		if existing.Title != "Old title" {
+			t.Errorf("existing.Title after failed batch = %q; want %q (in-memory rollback)", existing.Title, "Old title")
 		}
 	})
 
