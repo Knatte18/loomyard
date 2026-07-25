@@ -266,3 +266,40 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 		t.Errorf("HEAD branch after bisect = %q; want restored to %q", branch, originalBranch)
 	}
 }
+
+// TestBisectAndEscalate_EmptySHAsDegradesGracefully proves bisect's other
+// edge shape — a genuinely empty shas slice, distinct from the
+// already-covered single-SHA "sole/HEAD card" degrade above — also
+// degrades gracefully rather than erroring: BisectAndEscalate still records
+// a terminal escalation and extends summary.md, falling back to "unknown"
+// for both the offending card and SHA instead of indexing into the empty
+// slice. bisect returns before ever touching repo when shas is empty, so
+// this needs no real git repo — a nil *gitrepo.Repo is never dereferenced.
+func TestBisectAndEscalate_EmptySHAsDegradesGracefully(t *testing.T) {
+	websterDir := t.TempDir()
+	summaryPath := websterengine.SummaryPath(websterDir)
+	if err := os.WriteFile(summaryPath, []byte("# Batches shipped\n"), 0o644); err != nil {
+		t.Fatalf("seed summary.md: %v", err)
+	}
+
+	st := &websterengine.State{}
+	if err := websterengine.BisectAndEscalate(nil, nil, nil, "true", "/unused", websterDir, st); err != nil {
+		t.Fatalf("BisectAndEscalate() with empty shas error = %v; want nil (graceful degrade, not a hard error)", err)
+	}
+
+	escalated, ok := st.Batches[-1]
+	if !ok || escalated == nil {
+		t.Fatalf("state carries no integration escalation record; want one at the reserved key")
+	}
+	if escalated.Slug != "unknown" {
+		t.Errorf("escalated record Slug = %q; want %q (no card to localize with empty shas)", escalated.Slug, "unknown")
+	}
+
+	summaryData, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summaryData), "unknown") {
+		t.Errorf("summary.md does not name the fallback \"unknown\" card; got:\n%s", summaryData)
+	}
+}

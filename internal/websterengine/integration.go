@@ -134,14 +134,16 @@ const integrationBatchKey = -1
 // detached. shas is assumed ordered oldest-to-newest with verifyCmd passing
 // on early entries and failing from the offending entry onward (the
 // monotonic property a binary search requires); offendingIndex is the
-// first index at which verifyCmd fails. An empty shas is a hard error —
-// there is nothing to search over and nothing safe to report. A
-// single-element shas degrades gracefully without spawning a checkout or a
-// verify run at all: by construction it is the only candidate, so
-// offendingIndex is 0 unconditionally (the sole/HEAD card).
+// first index at which verifyCmd fails. Both edge shapes degrade
+// gracefully without spawning a checkout or a verify run: an empty shas
+// has nothing to search over, so offendingIndex is the sentinel -1 (the
+// caller, BisectAndEscalate, reports an "unknown" card/SHA rather than
+// indexing into the empty slice); a single-element shas is by construction
+// the only candidate, so offendingIndex is 0 unconditionally (the
+// sole/HEAD card).
 func bisect(repo *gitrepo.Repo, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
 	if len(shas) == 0 {
-		return 0, fmt.Errorf("webster: bisect: no card SHAs recorded to search")
+		return -1, nil
 	}
 	if len(shas) == 1 {
 		return 0, nil
@@ -242,18 +244,24 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 // accumulation of every terminal batch's "NN-slug" identity alongside its
 // own BatchState.CardSHAs), records the terminal escalation into st
 // (RecordIntegrationFailure), and extends websterDir's summary.md
-// (AppendIntegrationFailure, summary.go) naming the localized card. The
-// caller persists st via SaveState under the state-mutation lease.
+// (AppendIntegrationFailure, summary.go) naming the localized card. When
+// shas is empty, bisect returns its -1 sentinel (nothing to localize) and
+// both offendingSHA/offendingCard fall back to "unknown" rather than
+// indexing into the empty slice. The caller persists st via SaveState under
+// the state-mutation lease.
 func BisectAndEscalate(repo *gitrepo.Repo, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
 	idx, err := bisect(repo, shas, verifyCmd, worktree)
 	if err != nil {
 		return err
 	}
 
-	offendingSHA := shas[idx]
+	offendingSHA := "unknown"
 	offendingCard := "unknown"
-	if idx < len(labels) {
-		offendingCard = labels[idx]
+	if idx >= 0 {
+		offendingSHA = shas[idx]
+		if idx < len(labels) {
+			offendingCard = labels[idx]
+		}
 	}
 
 	RecordIntegrationFailure(st, offendingCard, offendingSHA)
