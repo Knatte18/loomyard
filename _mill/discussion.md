@@ -164,8 +164,11 @@ invariant and deletes the design doc in the same commit.
 ### fingerprint-source-marker
 
 - **Decision:** Add a `Source` field to `binaryInfo` and a `Source:` line to the fingerprint
-  header (e.g. `Source: .dev-bin (dev)` vs `Source: PATH (prod)`), so it appears both in the
-  stamped suite file and in `sandbox-report.json`'s `meta.fingerprint`.
+  header (e.g. `Source: .dev-bin (dev)` vs `Source: PATH (prod)`) for the stamped suite file.
+  **Also** add a `Source` field to the distinct `reportFingerprint` JSON struct
+  (`report.go:45`) and stamp it from the resolved `source` in `fetchReport` (`report.go:~150`),
+  so the marker reaches `sandbox-report.json`'s `meta.fingerprint` too — the suite header and
+  the report JSON are serialized through **separate** structs, so both must be touched.
 - **Rationale:** Q8 — the `Path` line already shows the directory, but an explicit dev/prod
   label makes it unmistakable for anyone skimming a report which binary produced a finding.
   Cheap, directly serves the legibility concern behind the whole task.
@@ -204,7 +207,10 @@ Relevant files and current behaviour (all under the repo root
   `lyxPath`). `binaryInfo`/`header()` gain the `Source` field/line.
 - **`tools/sandbox/report.go`** — `runFetch` (line ~81) does the same `lookPath("lyx")` for
   the fetch-time fingerprint; switch to `resolveLyx()` (no agent launch here, so no PATH
-  prepend — fingerprint + `Source` only).
+  prepend — fingerprint + `Source` only). The report JSON is serialized through a **separate**
+  `reportFingerprint` struct (line ~45), stamped in `fetchReport` (line ~150) — add a `Source`
+  field there and stamp it from the resolved `source`, or `meta.fingerprint` in the JSON keeps
+  no marker even though the suite header has one.
 - **`tools/sandbox/main.go`** — `cloneRun` (line ~34) is a package-var seam currently shaped
   `func(parentDir string) error` that hardcodes `exec.Command("lyx", "warp", "clone", …)` and
   a `"lyx not found on PATH"` startup message (~33–45). Change: the caller resolves the binary
@@ -255,11 +261,14 @@ From `CONSTRAINTS.md` (hub root) and this discussion:
   commit(s): add the new invariant to `CONSTRAINTS.md` and **delete**
   `manifest/designs/dev-test-binary.md` (the design doc self-declares this).
 - **New invariant to add — "Dev/Prod Binary Separation":** the sandbox tooling resolves the
-  dev binary from the derived `.dev-bin` (falling back to PATH), never a bare `lookPath("lyx")`
-  that could silently resolve prod; the dev binary is never installed to the prod location;
-  `.dev-bin/` is gitignored; the dev directory is prepended only to child-process PATH, never
-  the operator's. Enforcement is partly a guard test (below) and partly review discipline —
-  record it in the same commit per CLAUDE.md.
+  dev binary from the derived `.dev-bin` (falling back to PATH) through `resolveLyx`, never a
+  bare-PATH `lyx` lookup that could silently resolve prod — this covers **both**
+  `lookPath("lyx")` **and** the separator-free `exec.Command("lyx", …)` /
+  `exec.CommandContext("lyx", …)` form (Go's `exec.Command` LookPath's a name with no path
+  separator, so it is the same footgun); the dev binary is never installed to the prod
+  location; `.dev-bin/` is gitignored; the dev directory is prepended only to the agent
+  child-process PATH, never the operator's. Enforcement is partly a guard test (below) and
+  partly review discipline — record it in the same commit per CLAUDE.md.
 
 ## Testing
 
@@ -282,9 +291,12 @@ All tests **Tier 1 / untagged / no real spawns**, via the existing seams:
   absolute `lyxPath`, unchanged from today.)
 - **`cloneRun`** — with the new `cloneRun(parentDir, lyxPath)` seam, replace it to assert the
   caller passes the resolved dev path when a dev binary is present (else the PATH fallback).
-- **Guard test for the new invariant** — a cheap string/AST scan asserting `lookPath("lyx")`
-  appears only inside `resolveLyx` across `tools/sandbox/*.go`, so no future site regresses to
-  bare PATH resolution.
+- **Guard test for the new invariant** — a cheap string/AST scan across `tools/sandbox/*.go`
+  asserting **both** bare-PATH forms — `lookPath("lyx")` **and** the separator-free
+  `exec.Command("lyx"` / `exec.CommandContext("lyx"` — appear only inside `resolveLyx`, so no
+  future site regresses to bare PATH resolution (note `main.go`'s current
+  `exec.Command("lyx", "warp", "clone", …)` is exactly this form and must be gone after the
+  `cloneRun(parentDir, lyxPath)` change).
 - **Existing suite/report/main tests** — keep green; update any that asserted the old bare
   `lookPath("lyx")` resolution.
 - **No new integration/smoke tests required** — the change is resolution/env plumbing,
@@ -321,3 +333,8 @@ All tests **Tier 1 / untagged / no real spawns**, via the existing seams:
   re-invokes via `os.Executable()` (`muxengine/lifecycle.go:524`), so the prepend is redundant.
   Only `launchAgent` (agent types bare `lyx`) gets it. Resolved without user input: pure
   technical correctness, one right answer.
+- **Q:** Does the invariant guard catch every bare-PATH `lyx` form? (discussion-review r2 gap)
+  **A:** No — extended it: the guard + invariant now forbid `exec.Command("lyx"` /
+  `exec.CommandContext("lyx"` (separator-free → LookPath's internally) in addition to
+  `lookPath("lyx")`, since `main.go`'s current `warp clone` call is exactly that form.
+  Resolved without user input: technical correctness.
