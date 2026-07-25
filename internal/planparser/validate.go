@@ -82,12 +82,15 @@ func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	findings = append(findings, checkCardPathMalformed(plan)...)
 	findings = append(findings, checkMoveFormat(plan)...)
 	findings = append(findings, checkMoveRedundant(plan)...)
+	findings = append(findings, checkMoveSourceMissing(plan, worktreeRoot)...)
+	findings = append(findings, checkMoveTargetCollision(plan, worktreeRoot)...)
 	findings = append(findings, checkMoveMechanicMissing(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
-
-	_ = worktreeRoot // consulted by the existence-dependent checks added in a later card
+	findings = append(findings, checkPathMissing(plan, worktreeRoot)...)
+	findings = append(findings, checkCommitSubjectMismatch(plan)...)
+	findings = append(findings, checkDependsOnOrder(plan)...)
 
 	return findings
 }
@@ -304,6 +307,141 @@ func checkMoveRedundant(plan *Plan) []ValidationError {
 	return findings
 }
 
+// createsUnion returns the union, across every card in plan, of every
+// CreatesFiles entry: plan-wide suppression semantics — order-independent, so
+// a Moves: source or target satisfied by ANY card's Creates: (earlier or
+// later in the Card Index) is not flagged. Consulted by checkMoveSourceMissing
+// and checkPathMissing.
+func createsUnion(plan *Plan) map[string]bool {
+	union := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, p := range c.CreatesFiles {
+			union[p] = true
+		}
+	}
+	return union
+}
+
+// movesTargetsUnion returns the union, across every card in plan, of every
+// MovePair.New: the second plan-wide suppression set, letting a chained
+// rename (card A: X -> Y, card B: Y -> Z) pass move-source-missing regardless
+// of Card Index order.
+func movesTargetsUnion(plan *Plan) map[string]bool {
+	union := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, mv := range c.Moves {
+			union[mv.New] = true
+		}
+	}
+	return union
+}
+
+// pathExistsOnDisk reports whether worktreeRoot-joined p exists on disk —
+// shared by every existence-dependent check (move-source-missing,
+// move-target-collision, path-missing). These three checks are the sole
+// place Validate's worktreeRoot parameter is consulted, matching the frozen
+// v2 validator's design.
+func pathExistsOnDisk(worktreeRoot, p string) bool {
+	_, err := os.Stat(filepath.Join(worktreeRoot, p))
+	return err == nil
+}
+
+// checkMoveSourceMissing implements move-source-missing: a Moves: source that
+// neither exists on disk nor is created or relocated by another card
+// (plan-wide createsUnion/movesTargetsUnion suppression) is a dangling
+// rename instruction.
+func checkMoveSourceMissing(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+
+	creates := createsUnion(plan)
+	movesTargets := movesTargetsUnion(plan)
+
+	for _, c := range plan.Cards {
+		for _, mv := range c.Moves {
+			if pathExistsOnDisk(worktreeRoot, mv.Old) {
+				continue
+			}
+			if creates[mv.Old] || movesTargets[mv.Old] {
+				continue
+			}
+			findings = append(findings, ValidationError{
+				Check: "move-source-missing",
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"Moves: source %q does not exist on disk and is not a Creates: target or Moves: destination of any card",
+					mv.Old,
+				),
+			})
+		}
+	}
+
+	return findings
+}
+
+// checkMoveTargetCollision implements move-target-collision: three OR'd
+// conditions per Moves: target, first match wins per occurrence: the target
+// already exists on disk; more than one card names it as a Moves: target; or
+// it collides with a DIFFERENT card's Creates: entry (same-card overlap is
+// card-field-overlap's job, so it is deliberately skipped here).
+func checkMoveTargetCollision(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+
+	// targetCards counts, per target path, the distinct cards that name it
+	// as a Moves: target — a size over 1 is condition (2).
+	targetCards := make(map[string]map[string]bool)
+	// targetCreatesCards records, per target path, the distinct cards whose
+	// Creates: field names it — used by condition (3) to detect a DIFFERENT
+	// card's Creates: collision.
+	targetCreatesCards := make(map[string]map[string]bool)
+	for _, c := range plan.Cards {
+		id := cardID(c)
+		for _, mv := range c.Moves {
+			if targetCards[mv.New] == nil {
+				targetCards[mv.New] = make(map[string]bool)
+			}
+			targetCards[mv.New][id] = true
+		}
+		for _, p := range c.CreatesFiles {
+			if targetCreatesCards[p] == nil {
+				targetCreatesCards[p] = make(map[string]bool)
+			}
+			targetCreatesCards[p][id] = true
+		}
+	}
+
+	for _, c := range plan.Cards {
+		id := cardID(c)
+		for _, mv := range c.Moves {
+			target := mv.New
+
+			var detail string
+			switch {
+			case pathExistsOnDisk(worktreeRoot, target):
+				detail = fmt.Sprintf("Moves: target %q already exists on disk", target)
+			case len(targetCards[target]) > 1:
+				detail = fmt.Sprintf("Moves: target %q is targeted by more than one card", target)
+			default:
+				for owner := range targetCreatesCards[target] {
+					if owner != id {
+						detail = fmt.Sprintf("Moves: target %q collides with another card's Creates: entry", target)
+						break
+					}
+				}
+			}
+
+			if detail != "" {
+				findings = append(findings, ValidationError{
+					Check:  "move-target-collision",
+					Card:   id,
+					Detail: detail,
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
 // checkMoveMechanicMissing implements move-mechanic-missing: now a plan-level
 // check (v2's was per-batch) — a plan with at least one parsed Moves: pair
 // (across any card) but an empty Plan.RenameMechanic (the overview's "##
@@ -495,4 +633,115 @@ func cardHeadingNumber(planDir string, c Card) (int, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// checkPathMissing implements path-missing: every card path in ContextFiles,
+// EditsFiles, and DeletesFiles must exist on disk under worktreeRoot, unless
+// it is satisfied by some card's Creates: or some Moves: pair's target (the
+// same plan-wide createsUnion/movesTargetsUnion suppression sets
+// move-source-missing consults). CreatesFiles is deliberately excluded —
+// those paths are new by definition — and a card's own Moves: sources are
+// move-source-missing's job, not this check's.
+func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+
+	creates := createsUnion(plan)
+	movesTargets := movesTargetsUnion(plan)
+
+	for _, c := range plan.Cards {
+		for _, fields := range [][]string{c.ContextFiles, c.EditsFiles, c.DeletesFiles} {
+			for _, p := range fields {
+				if pathExistsOnDisk(worktreeRoot, p) {
+					continue
+				}
+				if creates[p] || movesTargets[p] {
+					continue
+				}
+				findings = append(findings, ValidationError{
+					Check: "path-missing",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d path %q does not exist on disk and is not a Creates: target or Moves: destination of any card",
+						c.Number, p,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkCommitSubjectMismatch implements commit-subject-mismatch: a card's
+// non-empty Commit value must start with the exact "N: " prefix its own flat
+// card number pins — v3's numbering-and-commit-subject discipline, the
+// resume-trail invariant a pinned message that breaks the "N:" shape would
+// corrupt.
+func checkCommitSubjectMismatch(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	for _, c := range plan.Cards {
+		if c.Commit == "" {
+			continue
+		}
+		prefix := fmt.Sprintf("%d: ", c.Number)
+		if !strings.HasPrefix(c.Commit, prefix) {
+			findings = append(findings, ValidationError{
+				Check: "commit-subject-mismatch",
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"card %d Commit: %q does not start with the expected prefix %q",
+					c.Number, c.Commit, prefix,
+				),
+			})
+		}
+	}
+
+	return findings
+}
+
+// checkDependsOnOrder implements depends-on-order: a card's Depends-on: must
+// name only cards strictly earlier in the Card Index — an id naming the
+// card's own position, a later card, or a number that references no existing
+// card at all is flagged before any LLM-based review runs, at zero LLM cost
+// (plan-format-v3.md's "Depends-on" rationale).
+func checkDependsOnOrder(plan *Plan) []ValidationError {
+	var findings []ValidationError
+
+	// positionOf maps each card's own Number to its index in plan.Cards, so
+	// "at or after its own position" can be checked by comparing index
+	// positions rather than raw card numbers (which need not be contiguous
+	// once index-file-mismatch already has its own finding for that).
+	positionOf := make(map[int]int, len(plan.Cards))
+	for i, c := range plan.Cards {
+		positionOf[c.Number] = i
+	}
+
+	for i, c := range plan.Cards {
+		for _, dep := range c.DependsOn {
+			pos, ok := positionOf[dep]
+			switch {
+			case !ok:
+				findings = append(findings, ValidationError{
+					Check: "depends-on-order",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d Depends-on: %d references a card number that does not exist",
+						c.Number, dep,
+					),
+				})
+			case pos >= i:
+				findings = append(findings, ValidationError{
+					Check: "depends-on-order",
+					Card:  cardID(c),
+					Detail: fmt.Sprintf(
+						"card %d Depends-on: %d names a card at or after its own position",
+						c.Number, dep,
+					),
+				})
+			}
+		}
+	}
+
+	return findings
 }
