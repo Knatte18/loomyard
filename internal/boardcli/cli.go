@@ -40,7 +40,7 @@ func Command() *cobra.Command {
 
 The config file (_lyx/config/board.yaml) controls non-geometry settings: home,
 sidebar, and proposal_prefix filenames. The board data dir (<hub>/_board) is
-derived from the worktree layout via the paths package and is not config- or
+derived from the worktree layout via hubgeometry and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lyx board" with no subcommand lists
 available subcommands without requiring a git repo.`,
