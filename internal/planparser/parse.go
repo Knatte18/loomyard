@@ -123,6 +123,7 @@ func ParsePlan(planDir string) (*Plan, error) {
 	if fm.Approved != nil {
 		plan.Approved = *fm.Approved
 	}
+	extractPlanSections(plan, body)
 
 	return plan, nil
 }
