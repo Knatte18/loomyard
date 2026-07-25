@@ -255,6 +255,61 @@ func TestValidateCmd_MissingPlan(t *testing.T) {
 	}
 }
 
+// seedMissingFieldPlanDir writes a plan-format v3 plan whose sole card omits
+// the **Deletes:** label entirely -- ParsePlan succeeds (the parser only
+// records HasDeletes = false; a missing field is a Validate-time finding,
+// never a parse-time error), so this plan reaches planparser.Validate and
+// trips exactly one card-missing-field finding.
+func seedMissingFieldPlanDir(t *testing.T, dir string) {
+	t.Helper()
+	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — only — placeholder card\n"
+	card := "# Card 1 — only\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n" +
+		"**Creates:**\n- `internal/only/new.go`\n**Moves:** none\n**Depends-on:** none\n"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+}
+
+// TestValidateCmd_FindingsUseCardKey proves findingsEnvelope's per-finding
+// JSON entries carry the "card" key (f.Card) rather than the pre-rewrite
+// "batch" key: it drives a syntactically-parseable plan through validateCmd
+// that trips one planparser.Validate check (card-missing-field, via a card
+// missing its **Deletes:** label) and asserts the emitted findings array
+// shape end-to-end, since TestValidateCmd_ValidPlan only exercises the
+// zero-findings ok-envelope and TestValidateCmd_MissingPlan never reaches
+// Validate at all.
+func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
+	c, _ := newTestCLI(t)
+	seedMissingFieldPlanDir(t, c.planDir)
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+	if exitCode != 1 {
+		t.Fatalf("validate on a plan missing a required field = %d; want 1, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"ok":false`) {
+		t.Errorf("output missing ok:false; got %q", got)
+	}
+	if !strings.Contains(got, `"check":"card-missing-field"`) {
+		t.Errorf("output missing check:card-missing-field; got %q", got)
+	}
+	if !strings.Contains(got, `"card":"1-only"`) {
+		t.Errorf("output missing card:1-only (findingsEnvelope must key each finding by f.Card, not f.Batch); got %q", got)
+	}
+	if strings.Contains(got, `"batch":`) {
+		t.Errorf("output carries a stale batch key; findingsEnvelope must emit only check/card/detail; got %q", got)
+	}
+}
+
 // TestStatusCmd_NotInitialized proves a run that never started prints
 // {"initialized": false}.
 func TestStatusCmd_NotInitialized(t *testing.T) {
