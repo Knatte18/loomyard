@@ -3,9 +3,9 @@
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which
 // uses internal/configengine.Load with ConfigTemplate() to strictly
 // validate and resolve loom's config file, then validates the discussion
-// role model-spec's grammar via modelspec.Parse so a typo'd spec fails
-// loud at load time rather than hours into a run when the discussion
-// producer first spawns.
+// and plan role model-specs' grammar via modelspec.Parse so a typo'd spec
+// fails loud at load time rather than hours into a run when the
+// discussion or plan producer first spawns.
 
 package loomengine
 
@@ -19,8 +19,9 @@ import (
 )
 
 // Config represents the resolved loom.yaml configuration: the discussion
-// role model-spec (see docs/reference/model-spec.md's "Roles that use this
-// notation" section) and the timeout knob the discussion producer consults.
+// and plan role model-specs (see docs/reference/model-spec.md's "Roles
+// that use this notation" section) and the timeout knobs the discussion
+// and plan producers consult.
 type Config struct {
 	// Discussion is the model-spec for the discussion-phase interview
 	// agent.
@@ -29,6 +30,11 @@ type Config struct {
 	// agent's shuttle run is allowed to run (interactive interviews run
 	// long).
 	DiscussionTimeoutMin int `yaml:"discussion_timeout_min"`
+	// Plan is the model-spec for the plan-phase producer agent.
+	Plan string `yaml:"plan"`
+	// PlanTimeoutMin is the number of minutes the plan agent's shuttle
+	// run is allowed to run (autonomous, shorter than the interview).
+	PlanTimeoutMin int `yaml:"plan_timeout_min"`
 }
 
 // LoadConfig loads and unmarshals configuration for the loom module.
@@ -39,12 +45,12 @@ type Config struct {
 // a Config struct. The module name is threaded through by the caller
 // (never hardcoded to "loom" here), mirroring builderengine.LoadConfig.
 //
-// After unmarshal, the discussion role string is checked against
-// modelspec.Parse for grammar only (registry resolution is a separate
-// factory-time step — see the discussion producer's spawn-site mapping); a
-// grammar error is wrapped naming the offending config key, so a
-// hand-edited loom.yaml with a malformed spec fails here rather than at
-// spawn time.
+// After unmarshal, the discussion and plan role strings are each checked
+// against modelspec.Parse for grammar only (registry resolution is a
+// separate factory-time step — see the discussion and plan producers'
+// spawn-site mappings); a grammar error is wrapped naming the offending
+// config key, so a hand-edited loom.yaml with a malformed spec fails here
+// rather than at spawn time.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
 // "not initialized here; run \"lyx init\"".
@@ -70,6 +76,13 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	// than silently carried into the discussion producer's spawn site.
 	if _, err := modelspec.Parse(cfg.Discussion); err != nil {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "discussion", err)
+	}
+
+	// Validate the plan role's model-spec grammar now, naming the
+	// offending key, so a malformed spec is caught at load time rather
+	// than silently carried into the plan producer's spawn site.
+	if _, err := modelspec.Parse(cfg.Plan); err != nil {
+		return Config{}, fmt.Errorf("loom config key %q: %w", "plan", err)
 	}
 
 	return cfg, nil

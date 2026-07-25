@@ -317,11 +317,14 @@ User-facing modules each get one `lyx <module>` namespace:
 - **loom** — phased orchestrator: drives Preflight → Discussion → Plan → Builder → Raddle →
   Finalize, each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not
   built; the `lyx loom` command and phase machine are unbuilt. loom's config module
-  (`loom.yaml`, holding the `discussion` role model-spec and `discussion_timeout_min`)
-  exists and reconciles via `lyx init` / `lyx config reconcile`. The Discussion producer
-  itself is ✅ **built**, ahead of the phase machine: a prompt/profile fed to `shuttle.Run`
-  (`internal/loomengine`'s `discussion-template.md` + `prompt.go` + `discussion.go`), distinct
-  from the still-unbuilt `lyx loom run` phase machine that will drive it. See
+  (`loom.yaml`, holding the `discussion`/`plan` role model-specs and
+  `discussion_timeout_min`/`plan_timeout_min`) exists and reconciles via `lyx init` /
+  `lyx config reconcile`. The Discussion producer itself is ✅ **built**, ahead of the phase
+  machine: a prompt/profile fed to `shuttle.Run` (`internal/loomengine`'s
+  `discussion-template.md` + `prompt.go` + `discussion.go`). The Planner producer is now
+  ✅ **built** too: also a prompt/profile fed to `shuttle.Run`
+  (`internal/loomengine`'s `plan-template.md` + `plantemplate.go` + `plan.go`). Both are
+  distinct from the still-unbuilt `lyx loom run` phase machine that will drive them. See
   [manifest/designs/loom.md](../manifest/designs/loom.md).
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
   `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an

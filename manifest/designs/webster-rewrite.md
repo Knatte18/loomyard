@@ -243,8 +243,8 @@ working.
 ## Adjacent pieces (not webster's own job, but webster hands off to them)
 
 - **The planner instruction** (feeds webster its input) — converts a discussion-protocol thread
-  into a flat card list per [plan-format-v3.md](../../docs/reference/plan-format-v3.md). Own doc:
-  [loom-planner.md](loom-planner.md).
+  into a flat card list per [plan-format-v3.md](../../docs/reference/plan-format-v3.md). Built as
+  the `PlanSpec` producer in `internal/loomengine`; see [loom.md](loom.md).
 - **Loom's Finalize phase** — merge-in from parent, conflict resolution, optional PR creation.
   Own doc: [loom-finalize.md](loom-finalize.md). **Before writing it from scratch: check
   Millhouse's existing auto-merge machinery for direct reuse/porting** — it's already
