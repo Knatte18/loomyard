@@ -55,8 +55,8 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 
 	// (1) Early teardown: remove portal and launchers BEFORE exists check
 	// These are best-effort (errors masked)
-	removePortal(l, slug)
-	removeLaunchers(l, slug)
+	_ = removePortal(l, slug)
+	_ = removeLaunchers(l, slug)
 
 	// (2) Locate the target and check if it exists
 	target := l.WorktreePath(slug)
@@ -91,7 +91,7 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 	}
 
 	// (5) Explicitly remove host _lyx junction (catches nested junctions that fslink.RemoveLinksIn misses)
-	removeHostJunction(l, slug)
+	_ = removeHostJunction(l, slug)
 
 	// (6) Link cleanup (root-level safety net)
 	linksRemoved, err := fslink.RemoveLinksIn(target)
@@ -118,11 +118,11 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 		}
 
 		// Best-effort prune
-		gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
+		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
 	}
 
 	// (9) Remove weft worktree and branch
-	removeWeftWorktree(l, slug, weftBranch, force)
+	_ = removeWeftWorktree(l, slug, weftBranch, force)
 
 	return RemoveResult{
 		Slug:         slug,

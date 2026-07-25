@@ -81,7 +81,7 @@ func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
 	}
 
 	var ahead int
-	fmt.Sscanf(strings.TrimSpace(aheadOut), "%d", &ahead)
+	_, _ = fmt.Sscanf(strings.TrimSpace(aheadOut), "%d", &ahead)
 	result["ahead"] = ahead
 
 	behindOut, stderr, code, err := gitexec.RunGit([]string{"rev-list", "--count", "HEAD..@{u}"}, f.weftPath)
@@ -92,7 +92,7 @@ func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
 		return nil, fmt.Errorf("fabricengine: rev-list behind in %s: %s", f.weftPath, stderr)
 	}
 	var behind int
-	fmt.Sscanf(strings.TrimSpace(behindOut), "%d", &behind)
+	_, _ = fmt.Sscanf(strings.TrimSpace(behindOut), "%d", &behind)
 	result["behind"] = behind
 
 	return result, nil
@@ -125,7 +125,7 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
-	defer l.Release()
+	defer func() { _ = l.Release() }()
 
 	warpSHA, err := f.Warp.CurrentSHA()
 	if err != nil {

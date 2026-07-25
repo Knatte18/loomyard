@@ -170,47 +170,47 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 			l.WeftRepoRoot(),
 		)
 		if err != nil {
-			t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 			return AddResult{}, fmt.Errorf("failed to adopt weft worktree: %w", err)
 		}
 		if exitCode != 0 {
-			t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed (git exit %d)", weftBranch, exitCode)
 		}
 	} else {
 		// Create: git worktree add -b <weftBranch> <path> <parentWeftBranch> (fork from parent's weft branch)
 		if err := createWeftWorktree(l, slug, weftBranch, parentWeftBranch); err != nil {
-			t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 			return AddResult{}, err
 		}
 	}
 
 	// (9) Create portal junction
 	if err := createPortal(l, slug); err != nil {
-		t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 		return AddResult{}, err
 	}
 
 	// (10) Write launchers
 	if err := writeLaunchers(l, slug); err != nil {
-		t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 		return AddResult{}, err
 	}
 
 	// (11) Push host branch (LAST step for host)
 	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", hostBranch}, l.WorktreeRoot)
 	if err != nil {
-		t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 		return AddResult{}, fmt.Errorf("push: %w", err)
 	}
 	if exitCode != 0 {
-		t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d)", hostBranch, exitCode)
 	}
 
 	// (12) Push weft branch
 	if err := pushWeftBranch(l, slug, weftBranch, opts); err != nil {
-		t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target)
 		return AddResult{}, err
 	}
 
@@ -298,12 +298,4 @@ func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBran
 	}
 
 	return firstErr
-}
-
-// addOptionsFromEnv populates AddOptions from environment variables.
-// This is called at the CLI edge in production; tests pass AddOptions directly.
-func addOptionsFromEnv() AddOptions {
-	opts := AddOptions{}
-	// Check environment for skip flags (implementation deferred to CLI integration)
-	return opts
 }
