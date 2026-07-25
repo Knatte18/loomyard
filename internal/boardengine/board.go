@@ -48,6 +48,15 @@ func New(cfg Config) *Board {
 // without waiting. The second argument is ignored — the commit message is fixed
 // in the pusher (batched "board sync" commits), not per-write.
 func (b *Board) writeOp(mutate func(*Store) (any, error), _ string) (any, error) {
+	// Guard before any disk mutation: a Board built without output filenames
+	// (the --board-path shape, which carries only the data dir) can sync and
+	// read but must not write — otherwise the store would be saved and the
+	// render would then fail on an empty filename, leaving a half-applied,
+	// never-synced write behind.
+	if b.out.Home == "" || b.out.Sidebar == "" {
+		return nil, fmt.Errorf("board outputs not configured; write commands require board config (not --board-path)")
+	}
+
 	// (0) Ensure board directory exists before acquiring lock
 	// (the lock file lives inside the board dir)
 	if err := os.MkdirAll(b.boardPath, 0o755); err != nil {
