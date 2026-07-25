@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-launchers-and-lifecycle
+phase: approved-crucible-sweep
 slug: dev-test-binary
 branch: dev-test-binary
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-devbin-and-deploy  '2026-07-25T08:23:13Z'
 approved-sandbox-resolve-core  '2026-07-25T08:26:14Z'
 approved-sandbox-wire-and-guard  '2026-07-25T08:38:06Z'
 approved-launchers-and-lifecycle  '2026-07-25T08:41:28Z'
+approved-crucible-sweep  '2026-07-25T08:44:52Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     start_sha: 7f40a2c25fb2c41d499921ea30a2b49e21f54a2d
     commit_sha: 15870158f6be60c1853e50e8d27af766950a72ee
   - name: crucible-sweep
-    state: running
+    state: approved
     implementer_session: 9ba54980-5a56-41a2-8d05-78032baf623d
     start_sha: 11fd1599583522418ae254278a21f0596f2ac123
+    commit_sha: 77a5a26e931188aeb9348a6d64b7066506919ba0
   - name: suite-docs-sweep
     state: pending
 ```
