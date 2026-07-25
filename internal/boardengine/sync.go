@@ -2,13 +2,14 @@
 //
 // Writes only touch the filesystem; Sync is what gets those changes to GitHub.
 // Each loop iteration commits any dirty working-tree state via
-// gitrepo.StageAllAndCommit and, unless skipPush is set, pushes via
-// gitrepo.Push (which owns the rebase-retry) unconditionally — looping until a
-// commit iteration finds nothing dirty, so a burst of writes coalesces into as
-// few pushes as possible. A single top-level push lock still serializes
-// pushers across processes; concurrent sync processes block, then exit
-// quickly once there is nothing to do. The write path launches
-// `lyx board sync` detached (see spawn_*.go) so it never waits.
+// gitrepo.StageAllAndCommit and, unless skipPush is set, pushes anything
+// unpushed via gitrepo.PushCoalesced (which owns the hasUnpushed guard and
+// the rebase-retry, so a fully-pushed board never touches the network) —
+// looping until a commit iteration finds nothing dirty, so a burst of writes
+// coalesces into as few pushes as possible. A single top-level push lock
+// still serializes pushers across processes; concurrent sync processes
+// block, then exit quickly once there is nothing to do. The write path
+// launches `lyx board sync` detached (see spawn_*.go) so it never waits.
 package boardengine
 
 import (
@@ -56,7 +57,11 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 			return err
 		}
 		if !skipPush {
-			if err := repo.Push(); err != nil {
+			// PushCoalesced no-ops when nothing is ahead of upstream, so a sync
+			// with nothing to do never touches the network (and never fails just
+			// because the remote is unreachable) — matching the pre-gitrepo
+			// pushUnpushed behavior.
+			if err := repo.PushCoalesced(); err != nil {
 				return fmt.Errorf("sync push: %w", err)
 			}
 		}

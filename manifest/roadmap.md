@@ -142,8 +142,9 @@ between these items.
 1. **board** — task tracker (storage model superseded by the Planned `board` item once it ships).
 
 1. **board: use `gitrepo` as its git operator** — board's detached sync (`internal/boardengine`)
-   talks to git exclusively through a single `gitrepo.Repo` (`StageAllAndCommit` + `Push`) under
-   board's own write and push locks, replacing its former hand-rolled `gitexec` calls.
+   talks to git exclusively through a single `gitrepo.Repo` (`StageAllAndCommit` +
+   `PushCoalesced`) under board's own write and push locks, replacing its former hand-rolled
+   `gitexec` calls.
 
 1. **shared infra** — `internal/configengine`, `internal/gitexec`, `internal/lock`,
    `internal/state`.

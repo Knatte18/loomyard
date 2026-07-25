@@ -131,6 +131,42 @@ func TestSyncCleanTreeIsNoOp(t *testing.T) {
 	}
 }
 
+// TestSyncNothingPendingSkipsPushEntirely locks in the conditional-push
+// contract the pre-gitrepo pushUnpushed provided: a Sync that finds a clean
+// tree and nothing ahead of upstream must not contact the remote at all. The
+// unreachable-remote setup makes any push attempt fail loudly, so an
+// unconditional per-iteration push (the regression this guards against) turns
+// into a test failure instead of a silent wasted round-trip.
+func TestSyncNothingPendingSkipsPushEntirely(t *testing.T) {
+	t.Parallel()
+	work, _, _ := newSyncRepo(t)
+	cfg := boardengine.Config{Path: work, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+	w := boardengine.New(cfg)
+
+	// First sync commits and pushes the .gitignore so the board is fully synced.
+	if err := w.Sync(); err != nil {
+		t.Fatalf("initial Sync: %v", err)
+	}
+
+	// Point origin at a path that does not exist: from here on, any git push
+	// fails. A fully-synced Sync must still succeed because it has nothing to
+	// push and therefore never runs one.
+	bogus := filepath.Join(t.TempDir(), "gone.git")
+	if out, err := exec.Command("git", "-C", work, "remote", "set-url", "origin", bogus).CombinedOutput(); err != nil {
+		t.Fatalf("remote set-url: %v: %s", err, out)
+	}
+	if err := w.Sync(); err != nil {
+		t.Fatalf("Sync with nothing pending must not touch the unreachable remote: %v", err)
+	}
+
+	// Control: once there IS something to push, the unreachable remote must
+	// surface as a genuine error — the no-op above is a guard, not a swallow.
+	dirty(t, work, `[{"id":0,"slug":"a","title":"offline"}]`)
+	if err := w.Sync(); err == nil {
+		t.Fatal("Sync with a pending commit and unreachable remote should fail")
+	}
+}
+
 func TestSyncIgnoresLockfiles(t *testing.T) {
 	t.Parallel()
 	work, _, _ := newSyncRepo(t)
