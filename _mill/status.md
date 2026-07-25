@@ -38,7 +38,9 @@ batches:
     implementer_session: ef34c301-260b-4ffa-810f-f651f6e6bf42
     start_sha: 98066fa83ead4bbd6e3280cde94ef72b18c9eabe
   - name: fabric-core
-    state: pending
+    state: running
+    implementer_session: 4291fd05-52ba-438f-9d78-28cf7d95a1c6
+    start_sha: b0eec86825e4b2d4a5048b8b3ee7430a5bb69cab
   - name: fabric-topology-mechanics
     state: pending
   - name: fabric-weft-git
