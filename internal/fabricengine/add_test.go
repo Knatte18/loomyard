@@ -47,6 +47,36 @@ func TestAdd_RejectsSeparatorSlug(t *testing.T) {
 	}
 }
 
+// TestAdd_RejectsEmptySlug asserts that Add refuses an empty or whitespace-only
+// slug before touching git or the filesystem. An empty slug has no name for the
+// pair and would otherwise fail deep in step 4 with a misleading "worktree
+// directory <HUB> already exists" (l.WorktreePath("") is the hub root).
+// Validation runs before any git op, so this stays untagged Tier-1.
+func TestAdd_RejectsEmptySlug(t *testing.T) {
+	tests := []struct {
+		name string
+		slug string
+	}{
+		{"Empty", ""},
+		{"Whitespace", "   "},
+		{"Tab", "\t"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			topology := fabricengine.NewTopology(fabricengine.Config{})
+			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+
+			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
+			if err == nil {
+				t.Fatalf("Add(%q) error = nil; want invalid-slug error", tt.slug)
+			}
+			if !strings.Contains(err.Error(), "invalid slug") {
+				t.Errorf("Add(%q) error = %v; want error containing %q", tt.slug, err, "invalid slug")
+			}
+		})
+	}
+}
+
 // TestAdd_RejectsWeftSuffixSlug asserts that Add refuses a slug ending in the
 // weft suffix before touching git or the filesystem. Such a slug names a host
 // worktree directory (l.WorktreePath(slug)) that is indistinguishable from a

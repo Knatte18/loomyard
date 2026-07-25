@@ -47,8 +47,8 @@ type AddResult struct {
 // from environment variables at the CLI edge (a later batch).
 //
 // Steps:
-//  0. Slug validation: slug must be a single path component (no '/' or '\') and
-//     must not end in the weft suffix (which is reserved for weft worktrees).
+//  0. Slug validation: slug must be non-empty, a single path component (no '/'
+//     or '\'), and must not end in the weft suffix (reserved for weft worktrees).
 //  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
 //  2. Branch name: hostBranch := t.cfg.BranchPrefix + slug; weftBranch := WeftBranchName(hostBranch)
 //  3. Branch-exists check: hostBranch must not already exist in host.
@@ -85,6 +85,14 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	// the hub's top level, so a separator-containing slug would create a pair
 	// the rest of the module cannot re-identify. Reject both separators on
 	// every platform — a slash-free contract must not depend on GOOS.
+	if strings.TrimSpace(slug) == "" {
+		// An empty (or whitespace-only) slug has no name for the pair and would
+		// otherwise fall through to step 4, where l.WorktreePath("") resolves to
+		// the hub root and Add fails with a misleading "worktree directory
+		// <HUB> already exists". Reject it here with an honest message.
+		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not be empty", slug)
+	}
+
 	if strings.ContainsAny(slug, `/\`) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
 	}
