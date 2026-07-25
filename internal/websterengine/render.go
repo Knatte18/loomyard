@@ -184,6 +184,14 @@ func renderCard(c planparser.Card) string {
 	b.WriteString(renderFileOpField("Creates", c.CreatesFiles))
 	b.WriteString(renderFileOpField("Deletes", c.DeletesFiles))
 	b.WriteString(renderMovesField(c.Moves))
+	// A pinned Commit: subject is validated by planparser's
+	// commit-subject-mismatch check and must be honored by the implementer —
+	// which only ever sees this rendered block, so the pin must be rendered
+	// (found in crucible round fable-r3: a validated pin was silently
+	// unreachable by the fork that had to use it).
+	if strings.TrimSpace(c.Commit) != "" {
+		fmt.Fprintf(&b, "**Commit:** %s\n", c.Commit)
+	}
 	if strings.TrimSpace(c.Verify) != "" {
 		fmt.Fprintf(&b, "**verify:** %s\n", c.Verify)
 	}

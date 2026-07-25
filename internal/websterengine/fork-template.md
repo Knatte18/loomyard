@@ -83,7 +83,11 @@ For EACH card above, in the order listed:
    A failure here is the card's own build+unit gate — fix it before moving on; this
    gate is implicit in every card, never optional.
 3. Commit the card to the HOST repo — normal dev git, run from `{{.worktree_root}}` —
-   never the weft, never any `_lyx` path. One commit per card is the norm. You never
+   never the weft, never any `_lyx` path. One commit per card is the norm. The commit
+   subject is `N: <name>` — the card's own number and heading name (e.g. `1: alpha`) —
+   unless the card block above carries a `**Commit:**` line, which pins the exact
+   subject to use verbatim. This subject shape is the plan's resume trail: a fresh
+   session reads from `git log` exactly which card was reached. You never
    call the Agent tool yourself (no nested forks — this is banned), and you are never
    passed a name of your own when spawned.
 4. If the card declares its own `verify:` line, run it immediately after committing

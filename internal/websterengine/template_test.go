@@ -541,6 +541,53 @@ func TestRenderForkPrompt_RendersWhatProseOverIntent(t *testing.T) {
 	})
 }
 
+// TestRenderForkPrompt_RendersPinnedCommitSubject asserts a card's pinned
+// Commit: subject reaches the rendered card block — the implementer only
+// ever sees this block, so an unrendered pin would be validated by
+// planparser's commit-subject-mismatch check yet silently unusable (found in
+// crucible round fable-r3) — and that a card without a pin renders no
+// Commit: line at all (the fork template's own step 3 states the N: <name>
+// default).
+func TestRenderForkPrompt_RendersPinnedCommitSubject(t *testing.T) {
+	plan := testPlan("", "")
+
+	t.Run("pinned Commit renders verbatim", func(t *testing.T) {
+		batch := batcher.Batch{Cards: []planparser.Card{{
+			Number: 1, Slug: "alpha", Title: "alpha", Intent: "add the flag",
+			Commit: "1: json-flag",
+		}}}
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		requireContains(t, string(got), "**Commit:** 1: json-flag")
+	})
+
+	t.Run("fork template states the default subject convention", func(t *testing.T) {
+		// The N: <name> default is the plan's resume-trail invariant
+		// (plan-format-v3.md "Numbering and commit subject"); the implementer
+		// only ever sees the fork template, so the convention must be stated
+		// there, not merely in the format doc.
+		requireContains(t, string(websterengine.ForkTemplate()), "The commit\n   subject is `N: <name>`")
+	})
+
+	t.Run("no pin renders no Commit line", func(t *testing.T) {
+		batch := batcher.Batch{Cards: []planparser.Card{{
+			Number: 1, Slug: "alpha", Title: "alpha", Intent: "add the flag",
+		}}}
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		// "**Commit:** " with a trailing space is the rendered field line's
+		// shape; the template's own step-3 prose mentions `**Commit:**` only
+		// backtick-wrapped, so it never matches this needle.
+		if strings.Contains(string(got), "**Commit:** ") {
+			t.Errorf("rendered prompt carries a **Commit:** field line for a card with no pinned subject")
+		}
+	})
+}
+
 // TestRenderForkPrompt_InjectsSharedDecisionsAlways asserts every fork
 // prompt carries the plan's own "## Shared Decisions" body verbatim,
 // regardless of the batch's own cards — a plan-level, not batch-level,
