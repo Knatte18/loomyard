@@ -524,8 +524,14 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 	})
 }
 
-// addOptionsFromEnv populates AddOptions from environment variables at the CLI edge.
-// Tests pass AddOptions directly to avoid relying on environment state.
+// addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`.
+//
+// It intentionally returns the zero value: `lyx fabric add` always pushes both the host
+// and weft branches, matching warpcli's identical addOptionsFromEnv — a paired worktree
+// only exists once both remotes carry its branch, so add does not honor the
+// WEFT_SKIP_GIT / WEFT_SKIP_PUSH bypass gates (those gate the weft-git verbs —
+// commit/push/sync — via fabricengine.EnvSyncOptions, not topology creation). Tests pass
+// AddOptions directly rather than through the environment, keeping t.Parallel() safe.
 func addOptionsFromEnv() fabricengine.AddOptions {
 	return fabricengine.AddOptions{}
 }
