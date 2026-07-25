@@ -181,6 +181,7 @@ hold them together. It `depends-on: [1]` because card 4's `PlanSpec` calls
 
 - **Context:**
   - `_mill/discussion.md`
+  - `manifest/designs/loom-planner.md`
 - **Edits:**
   - `manifest/designs/loom.md`
   - `manifest/roadmap.md`
