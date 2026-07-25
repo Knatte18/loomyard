@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: board-use-gitrepo
 branch: board-use-gitrepo
 plan: _mill/plan
@@ -20,4 +20,15 @@ discussed  '2026-07-25T05:27:23Z'
 planning  '2026-07-25T05:34:37Z'
 plan-fix-r1  '2026-07-25T05:39:39Z'
 planned  '2026-07-25T05:40:11Z'
+implementing  '2026-07-25T05:43:14Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: gitrepo-stage-all
+    state: pending
+  - name: boardengine-migration
+    state: pending
 ```
