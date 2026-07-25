@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -40,6 +40,7 @@ holistic-reviewing  '2026-07-25T16:22:15Z'
 holistic-fixing  '2026-07-25T16:26:58Z'
 nits-fixed-holistic  '2026-07-25T16:32:24Z'
 holistic-approved  '2026-07-25T16:32:30Z'
+done  '2026-07-25T16:32:58Z'
 ```
 
 ## Batches
