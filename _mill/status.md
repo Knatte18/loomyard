@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric
 branch: fabric
 plan: _mill/plan
@@ -25,4 +25,23 @@ plan-review-r2  '2026-07-25T06:49:04Z'
 plan-fix-r2  '2026-07-25T06:49:04Z'
 plan-review-r3  '2026-07-25T06:58:18Z'
 planned  '2026-07-25T06:58:30Z'
+implementing  '2026-07-25T07:02:27Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: gitrepo-growth
+    state: pending
+  - name: fabric-core
+    state: pending
+  - name: fabric-topology-mechanics
+    state: pending
+  - name: fabric-weft-git
+    state: pending
+  - name: fabric-pair-lifecycle
+    state: pending
+  - name: fabric-cli-registration
+    state: pending
 ```
