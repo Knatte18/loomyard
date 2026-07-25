@@ -44,7 +44,8 @@ that parses/executes v3 (and eventually retires the v2 parser) is the separate w
   `root:`/`//`; plan-level Rename mechanic; flat `N` numbering; dropped Scope; deferred symbol
   fields; validation-check spec; a rewritten worked example). Include a short **coexistence note** in
   its Status header (coexists with v2; v2 retires when webster-rewrite lands and builder is deleted;
-  v3 is the format webster-rewrite consumes).
+  v3 is the format webster-rewrite consumes). **Fix the promoted doc's own outbound `## Related`
+  links** as it moves — see `promoted-doc-outbound-links`.
 - **Delete `manifest/designs/plan-format-v3.md`** — folds into the new reference doc per the
   [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) (design doc → durable
   reference doc; the target is the new `plan-format-v3.md`, not v2's file).
@@ -55,8 +56,9 @@ that parses/executes v3 (and eventually retires the v2 parser) is the separate w
 - **Repoint the deleted design doc's inbound links to the new reference doc.** Deleting
   `manifest/designs/plan-format-v3.md` dangles every `[...](plan-format-v3.md)` /
   `[...](designs/plan-format-v3.md)` link. Repoint all of them to `docs/reference/plan-format-v3.md`:
-  - `manifest/roadmap.md:39` (the **plan-format v3** Planned item) — handled by the Planned→Done
-    move, see `roadmap-planned-to-done`.
+  - `manifest/roadmap.md` — the **plan-format v3: flat card list** Planned item (find it by that
+    bold name, not a line number — the roadmap shifts; it is ~line 35 as of writing but has already
+    drifted once) — handled by the Planned→Done move, see `roadmap-planned-to-done`.
   - `manifest/designs/*.md` that link to it: `loom.md`, `loom-planner.md`, `codeintel-redesign.md`,
     `webster-parallel-execution.md` (grep `plan-format-v3.md` to get the exact set at edit time) —
     plain path repoints to `docs/reference/plan-format-v3.md`.
@@ -130,6 +132,31 @@ that parses/executes v3 (and eventually retires the v2 parser) is the separate w
 - Rationale: non-breaking — every existing `plan-format.md` link stays valid; no churn on v2's
   inbound references.
 - Rejected: renaming v2 to `plan-format-v2.md` (breaks existing links for no present benefit).
+
+### promoted-doc-outbound-links
+
+- Decision: the promoted design doc (`manifest/designs/plan-format-v3.md`) carries its own `## Related`
+  section with three **same-directory** relative links — `webster-rewrite.md`, `fabric.md`,
+  `codeintel-redesign.md`. When the content moves to `docs/reference/plan-format-v3.md`, those bare
+  filenames would resolve to nonexistent `docs/reference/webster-rewrite.md` etc. **Carry the Related
+  section over and repoint each to `../../manifest/designs/<name>.md`** (the up-and-over path from
+  `docs/reference/` to `manifest/designs/`). Do **not** drop the section — the "who consumes this /
+  what it depends on" context is worth keeping.
+- Rationale: the round-2 relocation gap and inbound-link hygiene were only ever about links *pointing
+  at* the promoted doc; the promoted doc's *own outbound* links are an independent break the earlier
+  drafts never addressed (surfaced by the orchestrator's ad-hoc review). Fixing the relative paths is
+  the minimal correct move.
+- Accepted follow-on staleness: `webster-rewrite.md`, `fabric.md`, and `codeintel-redesign.md` are
+  themselves transient design docs that will be **deleted** when their own work lands (Documentation
+  Lifecycle). At that point these outbound links go stale — but that is not this task's bug to
+  pre-solve: the *same* inbound-link-repoint discipline this task applies is what each of those tasks
+  must apply when it deletes its own design doc, so the durable `plan-format-v3.md` reference is
+  caught and repointed then. This is the normal cross-doc reference lifecycle, not a defect introduced
+  here.
+- Rejected: dropping the Related section (loses genuine consumer/dependency context); leaving the
+  bare same-directory paths (immediately dangling in `docs/reference/`); linking to some hypothetical
+  durable target that does not exist yet (the modules are unbuilt — their only doc today *is* the
+  design doc).
 
 ### v2-doc-softening-note
 
@@ -365,12 +392,16 @@ Files to change:
   `manifest/designs/plan-format-v3.md` in full (authoritative design) and adapt v2's card-level prose
   from `docs/reference/plan-format.md` (sections "Card", "Card path resolution", "Moves and the
   Rename mechanic", the `none`-sentinel rules, the worked example) — v3 is v2-minus-batch, so most
-  card-level prose is reusable with batch framing removed and numbering `NN.C` → `N`.
+  card-level prose is reusable with batch framing removed and numbering `NN.C` → `N`. **Carry over
+  the promoted doc's `## Related` section but repoint its three same-directory links**
+  (`webster-rewrite.md`, `fabric.md`, `codeintel-redesign.md`) to `../../manifest/designs/<name>.md`
+  — otherwise they dangle from the new `docs/reference/` location (`promoted-doc-outbound-links`).
 - **Delete** `manifest/designs/plan-format-v3.md` (git rm).
 - **Edit** `docs/reference/plan-format.md` — the single softening note only (`v2-doc-softening-note`).
-- **Edit** `manifest/roadmap.md` — Planned→Done move of the plan-format v3 item, linking to
-  `docs/reference/plan-format-v3.md` (`roadmap-planned-to-done`). This is the roadmap:39 link
-  repoint.
+- **Edit** `manifest/roadmap.md` — Planned→Done move of the **plan-format v3: flat card list** item
+  (find it by that bold name — line numbers drift; ~line 35 at time of writing), linking to
+  `docs/reference/plan-format-v3.md` (`roadmap-planned-to-done`). This move repoints the item's
+  formerly-dangling `designs/plan-format-v3.md` link.
 - **Edit** the `manifest/designs/*.md` files that link to `plan-format-v3.md` — repoint each to
   `docs/reference/plan-format-v3.md`. Known set (verify by grep at edit time): `loom.md`,
   `loom-planner.md`, `codeintel-redesign.md`, `webster-parallel-execution.md`. Note these currently
@@ -422,7 +453,9 @@ Documentation-only task — no runtime behaviour to exercise, no new code to uni
   `plan-format-v3.md#…` link into a section that was trimmed (e.g. `webster-rewrite.md:32`'s
   `#continuous-dag-update-…`) must be retargeted to a section that still exists — a filename-only
   grep passes while the anchor is dead. Also grep `plan-format` broadly to confirm nothing else
-  dangles.
+  dangles. **Check outbound links too, not only inbound:** the new `docs/reference/plan-format-v3.md`
+  must not itself contain a dangling link — verify its carried-over `## Related` links resolve from
+  the new location (`../../manifest/designs/<name>.md`), per `promoted-doc-outbound-links`.
 - **v2 stays valid**: `plan-format.md` (v2) still describes v2 truthfully after its one softening
   note; no neighbour doc contradicts it. `builder-contract.md`/`overview.md` remain v2-accurate with
   only additive v3 cross-links.
@@ -443,7 +476,8 @@ No TDD candidates (no code). No CLI surface changes, so no help-tree pins to upd
 - **Q:** Naming/layout for the two docs? **A:** Keep `plan-format.md` = v2 (untouched but one
   softening note), add `plan-format-v3.md` = v3. Non-breaking; consolidation deferred to
   webster-rewrite.
-- **Q:** How is `manifest/roadmap.md:39`'s link to the deleted design doc resolved? **A:** By moving
+- **Q:** How is the `manifest/roadmap.md` **plan-format v3** item's link to the deleted design doc
+  resolved? **A:** By moving
   the plan-format v3 item Planned→Done with a link to the new `docs/reference/plan-format-v3.md`
   (records completion + repoints the link).
 - **Q:** Does v3 collapse the per-card footprint to a single `changes-files` list? **A:** No — keep
@@ -476,3 +510,10 @@ No TDD candidates (no code). No CLI surface changes, so no help-tree pins to upd
 - **Q:** Which string seeds the default commit subject (heading `<name>` vs a `<short what>`)?
   **A:** The card `<name>` — default subject is `N: <name>`; there is no separate `<short what>`. An
   explicit `Commit:` overrides but must start with `N: `.
+- **Q:** (Orchestrator ad-hoc review) The promoted doc's *own* `## Related` outbound links break when
+  it moves to `docs/reference/` — inbound links were handled but not these. **A:** Carry the section
+  over and repoint its three links to `../../manifest/designs/<name>.md`; Testing now checks outbound
+  links from the new file too (`promoted-doc-outbound-links`).
+- **Q:** (Orchestrator ad-hoc review) `manifest/roadmap.md:39` has drifted (item now ~line 35).
+  **A:** Reference the item by its bold name **plan-format v3: flat card list**, not a line number, in
+  every citation (roadmap's own Maintenance rule); re-grep at edit time.
