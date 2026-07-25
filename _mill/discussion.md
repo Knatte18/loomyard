@@ -38,7 +38,10 @@ land well before the loom phase-machine, `perch`, or `webster` exist.
     prompt composer (`composePlanPrompt`).
   - Test files mirroring `discussion_test.go` / `prompt_test.go`.
 - `loom.yaml` config: add `plan` (model-spec) and `plan_timeout_min` keys to `template.yaml`,
-  the `Config` struct, and `LoadConfig`'s grammar validation.
+  the `Config` struct, and `LoadConfig`'s grammar validation. **Same edit must refresh the
+  prose**: `config.go`'s `Config` type godoc and `LoadConfig`'s grammar-validation comment
+  currently name only the "discussion role model-spec"; add the `plan` key to both (same-commit
+  docs rule) so the doc doesn't lie about which keys the config carries.
 - `internal/hubgeometry`: add `Layout.PlanDir()` (WorktreeRoot-anchored) and
   `Layout.PlanOverview()` helpers so the `00-overview.md` filename stays owned by hubgeometry
   (mirroring `DiscussionDir()` / `DiscussionDecisionRecord()`); fix the stale "plan-format v1"
@@ -221,6 +224,20 @@ land well before the loom phase-machine, `perch`, or `webster` exist.
   absent** (the Discussion producer's Step 5 does the analogous thing for `_lyx/discussion/`).
 - `Spec.Effort`/`Version` are provider vocabulary — `validate` does not inspect them; the engine
   validates. Field mapping comes straight from the resolved model-spec.
+- **Pre-flight / cleanup is NOT this task's job — do not add it to `PlanSpec`.** `PlanSpec` is a
+  pure composer: like `DiscussionSpec` it does **not** stat its input (`decision-record.md`) and
+  does **not** stat/clean its output dir. Two sequencing concerns are therefore the future loom
+  **phase machine**'s responsibility, out of scope here — but named so the plan writer doesn't
+  bolt them onto the producer:
+  - **Missing/empty input:** a missing or empty `decision-record.md` would surface only as an
+    agent-runtime failure, not a loud pre-flight error. Verifying the input exists before
+    spawning the Planner is the phase machine's job (`DiscussionSpec` leaves the analogous board
+    read to runtime the same way).
+  - **Re-run collision on `_lyx/plan/`:** `_lyx/plan/` is the same directory builder's plan
+    artifacts use, and shuttle `validate` rejects a **pre-existing** `00-overview.md`. A re-run
+    or a leftover file makes the run fail at `validate`. Cleaning/rotating a stale plan dir is
+    the phase machine's job (again mirroring the Discussion producer, which leaves
+    `_lyx/discussion/` freshness to its driver); `PlanSpec` neither stats nor removes anything.
 
 **plan-format-v3 essentials the compact prompt must convey** (distilled from
 `docs/reference/plan-format-v3.md` — the dev reference; do NOT reproduce it whole):
