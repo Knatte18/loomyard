@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: webster-rewrite
 branch: webster-rewrite
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-integration-fork-bisect  '2026-07-25T15:53:33Z'
 approved-webstercli-rewire  '2026-07-25T16:14:06Z'
 approved-docs-constraints  '2026-07-25T16:21:52Z'
 holistic-reviewing  '2026-07-25T16:22:15Z'
+holistic-fixing  '2026-07-25T16:26:58Z'
 ```
 
 ## Batches
