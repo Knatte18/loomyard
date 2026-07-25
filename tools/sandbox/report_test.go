@@ -22,6 +22,7 @@ func fakeBinaryInfo() binaryInfo {
 		Size:    1234,
 		ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		SHA256:  "abc123def456",
+		Source:  sourceProd,
 	}
 }
 
@@ -84,9 +85,13 @@ func TestFetchReport_HappyPath(t *testing.T) {
 		SHA256:  info.SHA256,
 		Size:    info.Size,
 		ModTime: info.ModTime.Format(time.RFC3339),
+		Source:  info.Source,
 	}
 	if got.Meta.Fingerprint != wantFingerprint {
 		t.Errorf("Meta.Fingerprint = %+v; want %+v", got.Meta.Fingerprint, wantFingerprint)
+	}
+	if got.Meta.Fingerprint.Source != "prod" {
+		t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, "prod")
 	}
 
 	if got.Items == nil || len(*got.Items) != 1 {
@@ -246,17 +251,24 @@ func makeFetchHostRepo(t *testing.T) (parentDir, hostRepoDir string) {
 }
 
 // stubLyxLookPath points lookPath at fakeLyx for "lyx" so runFetch can
-// fingerprint a real temp file, and returns a restore function.
+// fingerprint a real temp file, stubs devBinPath to a non-existent path so
+// resolveLyx falls through to that lookPath stub and resolves sourceProd,
+// and returns a restore function for both seams.
 func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
 	t.Helper()
-	old := lookPath
+	oldDevBinPath := devBinPath
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+	oldLookPath := lookPath
 	lookPath = func(name string) (string, error) {
 		if name == "lyx" {
 			return fakeLyx, nil
 		}
 		return "", fmt.Errorf("not found on PATH: %s", name)
 	}
-	return func() { lookPath = old }
+	return func() {
+		devBinPath = oldDevBinPath
+		lookPath = oldLookPath
+	}
 }
 
 // TestRunFetch_HappyPath verifies that runFetch fingerprints the on-PATH lyx and
@@ -280,13 +292,72 @@ func TestRunFetch_HappyPath(t *testing.T) {
 	}
 
 	// The destination name embeds the SHA256 of the on-PATH binary runFetch hashed.
-	info, err := binaryFingerprint(fakeLyx)
+	info, err := binaryFingerprint(fakeLyx, sourceProd)
 	if err != nil {
 		t.Fatalf("binaryFingerprint: %v", err)
 	}
 	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
-	if _, err := os.Stat(destPath); err != nil {
-		t.Errorf("fetched report not found at %s: %v", destPath, err)
+	raw, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("fetched report not found at %s: %v", destPath, err)
+	}
+	var got sandboxReport
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decode fetched report: %v", err)
+	}
+	if got.Meta.Fingerprint.Source != "prod" {
+		t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, "prod")
+	}
+}
+
+// TestRunFetch_DevBinary verifies that runFetch resolves a dev binary when
+// devBinPath points at a file that exists, and stamps "dev" into the fetched
+// report's meta.fingerprint.source.
+func TestRunFetch_DevBinary(t *testing.T) {
+	parentDir, hostRepoDir := makeFetchHostRepo(t)
+	loomyardRoot := t.TempDir()
+
+	devBinDir := filepath.Join(parentDir, ".dev-bin")
+	if err := os.MkdirAll(devBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir dev-bin dir: %v", err)
+	}
+	devLyx := filepath.Join(devBinDir, "lyx")
+	if err := os.WriteFile(devLyx, []byte("fake dev lyx binary"), 0o755); err != nil {
+		t.Fatalf("write fake dev lyx: %v", err)
+	}
+
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return devLyx, nil }
+
+	oldLookPath := lookPath
+	defer func() { lookPath = oldLookPath }()
+	lookPath = func(name string) (string, error) {
+		t.Errorf("unexpected lookPath call for %q; a resolvable dev binary should skip the PATH fallback", name)
+		return "", fmt.Errorf("not found on PATH: %s", name)
+	}
+
+	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
+
+	if err := runFetch(parentDir, loomyardRoot); err != nil {
+		t.Fatalf("runFetch() error: %v", err)
+	}
+
+	info, err := binaryFingerprint(devLyx, sourceDev)
+	if err != nil {
+		t.Fatalf("binaryFingerprint: %v", err)
+	}
+	destPath := filepath.Join(loomyardRoot, ".scratch", "sandbox-report-"+info.SHA256+".json")
+	raw, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("fetched report not found at %s: %v", destPath, err)
+	}
+	var got sandboxReport
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decode fetched report: %v", err)
+	}
+	if got.Meta.Fingerprint.Source != "dev" {
+		t.Errorf("Meta.Fingerprint.Source = %q; want %q", got.Meta.Fingerprint.Source, "dev")
 	}
 }
 

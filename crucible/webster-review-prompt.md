@@ -329,10 +329,14 @@ Live smoke (real substrate, behind the `smoke` build tag):
   (follow the existing ones' pattern, incl. the substrate-absent skip).
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
-- **Deploy on Linux:** `go run ./tools/deploy -dest /home/knatte/.local/bin` (this is the Linux
-  equivalent of the Windows `deploy.cmd`; it builds the current source and installs `lyx` onto the
-  PATH). **FOOTGUN:** live driving runs the DEPLOYED snapshot, not your working tree — re-run this
-  deploy after EVERY source change or you validate a stale binary. Deploy first, always.
+- **Deploy on Linux:** `go run ./tools/deploy -dev` (this is the Linux equivalent of the Windows
+  `deploy-dev.cmd`; it builds the current source and installs `lyx` into the derived `.dev-bin/`
+  directory — no `-dest`, no `/home/knatte/.local/bin` target). The dev binary lands deliberately
+  NOT on your default `PATH`, so for this hands-on driving session prepend it: `export
+  PATH="$PWD/.dev-bin:$PATH"` (run from the repo root) so bare `lyx` resolves to the dev build —
+  this keeps the production `lyx` untouched. **FOOTGUN:** live driving runs the DEPLOYED snapshot,
+  not your working tree — re-run `go run ./tools/deploy -dev` after EVERY source change or you
+  validate a stale binary. Deploy first, always.
 - **Materialize a throwaway test hub yourself** (there is no `sandbox-build.cmd` on this host): make
   a temp dir OUTSIDE this worktree (e.g. under `/tmp` or the session scratchpad — never inside the
   repo, never a second git worktree of loomyard), `git init` it, `lyx init` it (webster needs
@@ -416,9 +420,8 @@ silently drop it.
 - If your review surfaces a live/visual behavior `SANDBOX-WEBSTER-SUITE.md` doesn't cover, EXTEND it
   (match the W1/W2 scenario shape; keep `sandbox_coverage_test.go`'s `**Covers:** webster` guard
   green in the SAME change). Creating a brand-new suite file/launcher is NOT required.
-- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY
-  (`go run ./tools/deploy -dest /home/knatte/.local/bin`) and re-run every live scenario yourself —
-  re-deploying FIRST is mandatory.
+- Keep `go build`/`vet`/`test` green after every change. Then re-run `go run ./tools/deploy -dev`
+  and re-run every live scenario yourself — re-deploying FIRST is mandatory.
 - Update `internal/websterengine/doc.go` and/or `docs/reference/builder-contract.md` (and
   `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change
   as the fix. Do NOT add bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones

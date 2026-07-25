@@ -291,6 +291,30 @@ depends on the operator's `~/.gitconfig` or the system gitconfig.
 - **Enforced by** `cmd/lyx/hermeticenv_test.go`
   (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) on every `go test`.
 
+## Dev/Prod Binary Separation
+
+The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling back to
+PATH) through `resolveLyx`, never a bare-PATH `lyx` lookup that could silently resolve
+prod.
+
+- **Statement.** `resolveLyx` (`tools/sandbox/resolve.go`) is the single allowlisted
+  resolution site: it checks the derived `.dev-bin/lyx` first and falls back to
+  `lookPath("lyx")`, returning `(path, source)` with `source ∈ {dev, prod}`. This covers
+  **both** `lookPath("lyx")` **and** the separator-free `exec.Command("lyx", …)` /
+  `exec.CommandContext("lyx", …)` form — Go's `exec.Command` LookPath's a name with no
+  path separator, so it is the same footgun as a direct `lookPath` call.
+- **Never installed to prod.** The dev binary (`tools/deploy -dev`) is built into
+  `<repoRoot>/.dev-bin`, never the production install location `deploy.cmd`/`deploy`
+  target; `.dev-bin/` is gitignored.
+- **Agent-only PATH prepend.** `.dev-bin` is prepended only to the agent child-process
+  PATH (`launchAgent`), never the operator's own PATH — a bare `lyx` in an operator shell
+  always resolves prod.
+- **Enforced by** `tools/sandbox/pathresolve_guard_test.go`
+  (`TestPathResolveGuard_NoBarePathLyxOutsideResolve`) for the mechanical half — no
+  non-test file outside `resolve.go` may contain a banned bare-PATH `lyx` literal. The
+  semantic half (agent-only PATH prepend, dev binary never installed to prod) is review
+  discipline, not machine-checked.
+
 ## Documentation Lifecycle
 
 Which docs are kept vs deleted (mechanical per-module docs vs durable design docs):

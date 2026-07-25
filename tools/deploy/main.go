@@ -1,11 +1,13 @@
 // Command deploy builds lyx and installs it into a directory on PATH.
 //
 // It is a dev/build tool, not part of the lyx product surface. It is general: the
-// install directory comes from -dest, falling back to the Go bin dir. Machine-
+// install directory comes from -dest, falling back to the Go bin dir, or -dev to
+// target the derived .dev-bin directory (see tools/internal/devbin). Machine-
 // specific paths belong in the caller (e.g. deploy.cmd), not here.
 //
 //	go run ./tools/deploy                 # install into `go env GOBIN` (or GOPATH/bin)
 //	go run ./tools/deploy -dest D:\bin     # install into a chosen directory
+//	go run ./tools/deploy -dev             # install into <repoRoot>/.dev-bin
 //
 // Run it from anywhere — it locates the module root itself.
 package main
@@ -18,29 +20,30 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/Knatte18/loomyard/tools/internal/devbin"
 )
 
 func main() {
 	dest := flag.String("dest", "", "destination directory for the lyx binary (default: `go env GOBIN`, else GOPATH/bin)")
+	dev := flag.Bool("dev", false, "install into the derived .dev-bin directory instead of -dest / GOBIN (mutually exclusive with -dest)")
 	flag.Parse()
 
-	if err := run(*dest); err != nil {
+	if err := run(*dev, *dest); err != nil {
 		fmt.Fprintln(os.Stderr, "deploy:", err)
 		os.Exit(1)
 	}
 }
 
-func run(destDir string) error {
-	root, err := repoRoot()
+func run(dev bool, destArg string) error {
+	root, err := devbin.RepoRoot()
 	if err != nil {
 		return err
 	}
 
-	if destDir == "" {
-		destDir, err = goBinDir()
-		if err != nil {
-			return err
-		}
+	destDir, err := resolveDest(dev, destArg)
+	if err != nil {
+		return err
 	}
 
 	name := "lyx"
@@ -73,14 +76,23 @@ func run(destDir string) error {
 	return nil
 }
 
-// repoRoot returns the module root, derived from this source file's location
-// (tools/deploy/main.go), so deploy works regardless of the caller's cwd.
-func repoRoot() (string, error) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("cannot locate deploy source file")
+// resolveDest picks the install directory for the built binary. -dev and a
+// non-empty dest are mutually exclusive: passing both is almost certainly a
+// mistake (the caller asked for two different destinations at once), so it
+// is rejected rather than silently preferring one. When dev is set, the
+// derived .dev-bin directory (see devbin.Dir) is used; otherwise dest is
+// used verbatim if non-empty, falling back to the Go bin dir.
+func resolveDest(dev bool, dest string) (string, error) {
+	if dev && dest != "" {
+		return "", fmt.Errorf("-dev and -dest are mutually exclusive")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..")), nil
+	if dev {
+		return devbin.Dir()
+	}
+	if dest != "" {
+		return dest, nil
+	}
+	return goBinDir()
 }
 
 // goBinDir returns the default install directory: `go env GOBIN`, or GOPATH/bin.

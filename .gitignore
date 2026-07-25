@@ -4,6 +4,9 @@
 /lyx
 lyx.exe
 
+# Derived dev-only deploy target (tools/internal/devbin) — never the prod install dir.
+.dev-bin/
+
 # Machine-local mux session state (per-cwd), never committed.
 .lyx/
 

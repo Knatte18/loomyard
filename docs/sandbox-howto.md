@@ -5,12 +5,13 @@ This is the **ordered procedure**; for the topology, repo layout, and design
 rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
-stated otherwise. The launchers (`deploy.cmd`, `sandbox-build.cmd`,
+stated otherwise. The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox-build.cmd`,
 `sandbox-core-suite.cmd`, `sandbox-mux-suite.cmd`, `sandbox-shuttle-suite.cmd`,
 `sandbox-burler-suite.cmd`, `sandbox-perch-suite.cmd`, `sandbox-builder-suite.cmd`,
-`sandbox-fetch.cmd`) hardcode the machine-specific paths for this machine: deploy
-target `C:\Code\tools\bin`, Hub parent `C:\Code`. Each sandbox launcher does
-exactly one thing (build / one suite / fetch).
+`sandbox-fetch.cmd`) hardcode the machine-specific paths for this machine: `deploy.cmd`'s
+deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception —
+it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path. Each
+sandbox launcher does exactly one thing (build / one suite / fetch).
 
 **Run every suite launcher in a real, attached interactive terminal** — never
 backgrounded, detached, or with stdout/stderr redirected. The agent session is
@@ -21,16 +22,22 @@ non-console stdio.
 
 ## What the suite does
 
-`sandbox-core-suite.cmd` fingerprints the `lyx.exe` on PATH, drops a fresh
-`SANDBOX-CORE-SUITE.md` into the Hub host repo, and launches an interactive black-box
-agent that drives `lyx` from PATH only (never the source tree). The agent writes
-WARN/FAIL findings to `sandbox-report.json` in the host repo. The suite only
-launches the agent; collecting the report is a separate step — after the session
-ends you run `sandbox-fetch.cmd` to fetch a normalized copy into this repo's
+`sandbox-core-suite.cmd` resolves the `lyx` binary to test — the derived
+`.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback —
+fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint
+and a `Source: dev` / `Source: prod` marker) into the Hub host repo, and launches an
+interactive black-box agent there. When the resolved binary is the dev build, the
+suite prepends `.dev-bin` to the agent's own child-process PATH, so the agent's bare
+`lyx` invocations resolve to it — the agent still drives `lyx` from PATH only (never
+the source tree); it is just PATH scoped to the agent's session, not your own shell.
+The agent writes WARN/FAIL findings to `sandbox-report.json` in the host repo. The
+suite only launches the agent; collecting the report is a separate step — after the
+session ends you run `sandbox-fetch.cmd` to fetch a normalized copy into this repo's
 `.scratch/sandbox-report-<fingerprint>.json`.
 
-Because the agent tests **the binary on PATH**, a stale binary means you are
-testing old code. Always deploy before a run (step 2).
+Because the agent tests the resolved binary (dev-first, prod fallback), a stale
+`.dev-bin` binary means you are testing old code. Always deploy before a run (step 2)
+— `deploy-dev.cmd` is the fast path since it never touches the production binary.
 
 ## Prerequisites (one-time)
 
@@ -38,7 +45,9 @@ testing old code. Always deploy before a run (step 2).
    `lyx-test-weft` must have Wikis enabled and at least one page, or
    `warp clone` fails and the Hub is torn down. See
    [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
-2. **`C:\Code\tools\bin` is on PATH** — that is where `deploy.cmd` installs `lyx`.
+2. **`C:\Code\tools\bin` is on PATH (production only)** — that is where `deploy.cmd`
+   installs the production `lyx`. The dev binary in `.dev-bin` does NOT need to be on
+   PATH; the suite resolves it directly and threads it to the agent itself.
 
 ## Each run
 
@@ -51,24 +60,30 @@ go build ./...
 go test ./...
 ```
 
-### 2. Deploy a fresh `lyx.exe`
+### 2. Deploy a fresh dev `lyx.exe`
 
-Rebuilds `lyx` from the current checkout and installs it to `C:\Code\tools\bin`
-(on PATH), overwriting the old binary.
+Rebuilds `lyx` from the current checkout and installs it into the derived
+`.dev-bin` directory at the repo root, overwriting the old dev binary. This never
+touches the production `lyx` in `C:\Code\tools\bin` — `deploy-dev.cmd` and
+`deploy.cmd` are independent targets, so the production binary stays untouched.
 
 ```cmd
-deploy.cmd
+deploy-dev.cmd
 ```
 
 Verify the deployed binary is the new one — e.g. confirm an expected surface
-change is present:
+change is present. The dev binary is deliberately not on PATH, so call it by its
+`.dev-bin` path directly:
 
 ```cmd
-lyx config --help
+.dev-bin\lyx.exe config --help
 ```
 
 (After the cobra-cli-engine sweep, `lyx update` is gone and `lyx config reconcile`
-exists. If you still see `update` in `lyx --help`, the deploy did not take.)
+exists. If you still see `update` in the output, the deploy did not take.) Once the
+suite session starts, the fingerprint header's `Source: dev` line is the ongoing
+confirmation that the agent is exercising this build — no further manual check
+needed.
 
 ### 3. Build the Hub (first time, or when you want a clean slate)
 
@@ -198,7 +213,7 @@ nothing is written until you approve. Then groom/spawn as usual.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `lyx` not found / old behaviour | binary on PATH is stale or `C:\Code\tools\bin` not on PATH | rerun `deploy.cmd`; check PATH |
+| `lyx` not found / old behaviour | dev binary in `.dev-bin` is stale, or (prod fallback) `C:\Code\tools\bin` not on PATH | rerun `deploy-dev.cmd`; check the fingerprint header's `Source:` line — `dev` confirms the `.dev-bin` build ran, `prod` means the dev binary was missing and the suite fell back to PATH |
 | `warp clone` fails during build | sandbox wiki not initialized | enable Wikis + add a page on `lyx-test-weft`, then `sandbox-build.cmd -reset` |
 | Hub looks corrupt / half-cloned | interrupted earlier run | `sandbox-build.cmd -reset` |
 | `sandbox-build.cmd -reset` fails: "being used by another process" | orphaned `tmux.exe` from an earlier suite session still holds Hub handles | the launcher now runs `lyx mux down` after mux-backed suites; if hit anyway, find the Hub-scoped `tmux.exe` PIDs by `StartTime` (`Get-Process -Name tmux \| Select Id,StartTime`) and kill only those — never blanket-kill by image name |

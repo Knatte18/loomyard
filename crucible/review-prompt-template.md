@@ -120,9 +120,9 @@ Live smoke (real substrate, behind the `smoke` build tag):
 - `<substrate binary/tool locations + any absolute-path footgun>`.
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
-- Deploy the current source as the binary under test: `deploy.cmd`. **FOOTGUN:** live driving runs
-  the DEPLOYED snapshot, not your working tree — re-run `deploy.cmd` after EVERY source change or
-  you validate a stale binary. Deploy first, always.
+- Deploy the current source as the dev binary under test: `deploy-dev.cmd` (`deploy-dev` on
+  POSIX). **FOOTGUN:** live driving runs the DEPLOYED snapshot, not your working tree — re-run
+  `deploy-dev.cmd` after EVERY source change or you validate a stale binary. Deploy first, always.
 - **Do NOT invoke `sandbox-<module>-suite.cmd`** (if one exists for this module). That launcher
   spawns a SEPARATE, context-free interactive `claude` session — a naive black-box tester with no
   source knowledge, meant for a human operator's own dogfooding, not for you to spawn on top of
@@ -203,9 +203,9 @@ round. Empty on the first round.>`
   surfaces a live/visual behavior it doesn't cover (match the existing scenario shape; keep the
   coverage guard green in the SAME change). If none exists, note the new scenario in your fixer
   report instead — creating a brand-new suite file/launcher is not required by this method.
-- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
-  every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the
-  deployed binary).
+- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy-dev.cmd`) and
+  re-run every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving
+  tests the deployed dev binary).
 - Update `<manifest/designs/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`
   (roadmap is planned milestones only, per CLAUDE.md).
