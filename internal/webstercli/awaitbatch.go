@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -55,11 +55,12 @@ Example:
 				return nil
 			}
 
-			plan, err := builderengine.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.planDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+			batches := c.batcher.Batch(plan.Cards)
 
 			// Default to a SHORT block (not poll_wait_s): await-batch runs as
 			// Master's foreground call, and Claude Code auto-backgrounds a
@@ -71,7 +72,7 @@ Example:
 				waitBudget = time.Duration(websterengine.DefaultAwaitWaitS) * time.Second
 			}
 
-			result, err := websterengine.AwaitBatch(plan, c.reportsDir, batchNumber, waitBudget, recoverRealClock{})
+			result, err := websterengine.AwaitBatch(batches, c.reportsDir, batchNumber, waitBudget, recoverRealClock{})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
