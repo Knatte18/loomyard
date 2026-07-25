@@ -1,13 +1,13 @@
-// suite.go implements the "sandbox suite", "sandbox mux-suite", "sandbox
+// suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox
 // shuttle-suite", "sandbox burler-suite", "sandbox perch-suite", "sandbox
 // builder-suite", and "sandbox webster-suite" subcommands: copies one of the
-// embedded suite templates (main, mux, shuttle, burler, perch, builder, or
+// embedded suite templates (main, reed, shuttle, burler, perch, builder, or
 // webster) into the Hub host repo, stamps a lyx binary fingerprint, registers
 // the file as a git exclude entry, and launches an interactive Claude session
 // to execute it. The seven suites share every mechanic (fingerprinting,
-// git-exclude, stale-report cleanup, agent launch, post-session mux teardown)
+// git-exclude, stale-report cleanup, agent launch, post-session reed teardown)
 // via the suiteSpec parameterization of runSuite; only the file name,
-// embedded doc body, default instruction, and mux-teardown flag differ.
+// embedded doc body, default instruction, and reed-teardown flag differ.
 
 package main
 
@@ -34,8 +34,8 @@ const (
 //go:embed SANDBOX-CORE-SUITE.md
 var sandboxSuiteMD string
 
-//go:embed SANDBOX-MUX-SUITE.md
-var muxSandboxSuiteMD string
+//go:embed SANDBOX-REED-SUITE.md
+var reedSandboxSuiteMD string
 
 //go:embed SANDBOX-SHUTTLE-SUITE.md
 var shuttleSandboxSuiteMD string
@@ -53,10 +53,10 @@ var builderSandboxSuiteMD string
 var websterSandboxSuiteMD string
 
 // suiteSpec parameterizes runSuite over the seven supported suites (main,
-// mux, shuttle, burler, perch, builder, and webster): the file written into
+// reed, shuttle, burler, perch, builder, and webster): the file written into
 // the Hub host repo, the embedded doc body rendered into it, the default
 // prompt handed to claude when the operator supplies no -prompt override, and
-// whether the suite boots a live mux substrate that must be torn down after
+// whether the suite boots a live reed substrate that must be torn down after
 // the session. Every other mechanic (fingerprinting, git-exclude,
 // stale-report cleanup, agent launch) is shared across specs.
 type suiteSpec struct {
@@ -70,12 +70,12 @@ type suiteSpec struct {
 	// instruction is the literal prompt string handed to the claude binary as
 	// its sole argument when no -prompt override is supplied.
 	instruction string
-	// muxTeardown marks suites whose scenarios boot a live tmux substrate
-	// (lyx mux up). For those, runSuite runs `lyx mux down` in the host repo
+	// reedTeardown marks suites whose scenarios boot a live tmux substrate
+	// (lyx reed up). For those, runSuite runs `lyx reed down` in the host repo
 	// after the agent session ends, whatever the agent did: an orphaned tmux
 	// server holds open handles inside the Hub and blocks the next
 	// sandbox-build.cmd -reset.
-	muxTeardown bool
+	reedTeardown bool
 }
 
 // mainSuite is the original SANDBOX-CORE-SUITE spec: the general black-box scheme
@@ -86,59 +86,59 @@ var mainSuite = suiteSpec{
 	instruction: "Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly.",
 }
 
-// muxSuite is the SANDBOX-MUX-SUITE spec: the dedicated scheme exercising the
-// mux/tmux lifecycle scenarios split out of the main suite.
-var muxSuite = suiteSpec{
-	fileName:    "SANDBOX-MUX-SUITE.md",
-	doc:         muxSandboxSuiteMD,
-	instruction: "Read ./SANDBOX-MUX-SUITE.md and follow the instructions in it exactly.",
-	muxTeardown: true,
+// reedSuite is the SANDBOX-REED-SUITE spec: the dedicated scheme exercising the
+// reed/tmux lifecycle scenarios split out of the main suite.
+var reedSuite = suiteSpec{
+	fileName:     "SANDBOX-REED-SUITE.md",
+	doc:          reedSandboxSuiteMD,
+	instruction:  "Read ./SANDBOX-REED-SUITE.md and follow the instructions in it exactly.",
+	reedTeardown: true,
 }
 
 // shuttleSuite is the SANDBOX-SHUTTLE-SUITE spec: the dedicated scheme
 // exercising the lyx shuttle black-box agent scenarios.
 var shuttleSuite = suiteSpec{
-	fileName:    "SANDBOX-SHUTTLE-SUITE.md",
-	doc:         shuttleSandboxSuiteMD,
-	instruction: "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly.",
-	muxTeardown: true,
+	fileName:     "SANDBOX-SHUTTLE-SUITE.md",
+	doc:          shuttleSandboxSuiteMD,
+	instruction:  "Read ./SANDBOX-SHUTTLE-SUITE.md and follow the instructions in it exactly.",
+	reedTeardown: true,
 }
 
 // burlerSuite is the SANDBOX-BURLER-SUITE spec: the dedicated scheme
 // exercising the lyx burler round-worker black-box agent scenarios.
 var burlerSuite = suiteSpec{
-	fileName:    "SANDBOX-BURLER-SUITE.md",
-	doc:         burlerSandboxSuiteMD,
-	instruction: "Read ./SANDBOX-BURLER-SUITE.md and follow the instructions in it exactly.",
-	muxTeardown: true,
+	fileName:     "SANDBOX-BURLER-SUITE.md",
+	doc:          burlerSandboxSuiteMD,
+	instruction:  "Read ./SANDBOX-BURLER-SUITE.md and follow the instructions in it exactly.",
+	reedTeardown: true,
 }
 
 // perchSuite is the SANDBOX-PERCH-SUITE spec: the dedicated scheme
 // exercising the lyx perch gate-loop black-box agent scenarios.
 var perchSuite = suiteSpec{
-	fileName:    "SANDBOX-PERCH-SUITE.md",
-	doc:         perchSandboxSuiteMD,
-	instruction: "Read ./SANDBOX-PERCH-SUITE.md and follow the instructions in it exactly.",
-	muxTeardown: true,
+	fileName:     "SANDBOX-PERCH-SUITE.md",
+	doc:          perchSandboxSuiteMD,
+	instruction:  "Read ./SANDBOX-PERCH-SUITE.md and follow the instructions in it exactly.",
+	reedTeardown: true,
 }
 
 // builderSuite is the SANDBOX-BUILDER-SUITE spec: the dedicated scheme
 // exercising the lyx builder batch-loop black-box agent scenarios.
 var builderSuite = suiteSpec{
-	fileName:    "SANDBOX-BUILDER-SUITE.md",
-	doc:         builderSandboxSuiteMD,
-	instruction: "Read ./SANDBOX-BUILDER-SUITE.md and follow the instructions in it exactly.",
-	muxTeardown: true,
+	fileName:     "SANDBOX-BUILDER-SUITE.md",
+	doc:          builderSandboxSuiteMD,
+	instruction:  "Read ./SANDBOX-BUILDER-SUITE.md and follow the instructions in it exactly.",
+	reedTeardown: true,
 }
 
 // websterSuite is the SANDBOX-WEBSTER-SUITE spec: the dedicated scheme
 // exercising the lyx webster fork-loop and model-escalation black-box agent
 // scenarios.
 var websterSuite = suiteSpec{
-	fileName:    "SANDBOX-WEBSTER-SUITE.md",
-	doc:         websterSandboxSuiteMD,
-	instruction: "Read ./SANDBOX-WEBSTER-SUITE.md and follow the instructions in it exactly.",
-	muxTeardown: true,
+	fileName:     "SANDBOX-WEBSTER-SUITE.md",
+	doc:          websterSandboxSuiteMD,
+	instruction:  "Read ./SANDBOX-WEBSTER-SUITE.md and follow the instructions in it exactly.",
+	reedTeardown: true,
 }
 
 // lookPath is a testability seam over exec.LookPath so tests can inject fake
@@ -174,10 +174,15 @@ const nonInteractiveWarning = "sandbox: warning: stdin/stdout is not an attached
 // launchAgent is a testability seam that runs an interactive claude session
 // inside hostRepoDir. It passes instruction as the sole positional argument and
 // --dangerously-skip-permissions so the agent needs no per-action confirmation.
-// The function inherits the calling process's stdin/stdout/stderr and environment,
-// waits for the child to exit, and returns its exit code. A non-zero exit code
-// from *exec.ExitError is returned as-is; any other error returns 1.
-var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
+// binDir is the derived .dev-bin directory when the resolved lyx is a dev
+// build, or "" when it is the PATH-resolved prod binary; when non-empty it is
+// prepended to the child's PATH so the agent's bare `lyx` invocations resolve
+// to the same dev binary the launcher fingerprinted (see the
+// agent-path-prepend-launchagent-only Shared Decision). The function inherits
+// the calling process's stdin/stdout/stderr, waits for the child to exit, and
+// returns its exit code. A non-zero exit code from *exec.ExitError is returned
+// as-is; any other error returns 1.
+var launchAgent = func(hostRepoDir, claudePath, instruction, binDir string) int {
 	// An interactive claude session is only reliable on an attached console;
 	// warn (not fail) so a knowingly-detached run can still proceed.
 	if !interactiveStdio() {
@@ -188,6 +193,11 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// Only override the inherited environment when a dev binary is in play;
+	// otherwise the child sees the operator's own environment unchanged, as before.
+	if binDir != "" {
+		cmd.Env = prependPath(binDir, os.Environ())
+	}
 	if err := cmd.Run(); err != nil {
 		// exec.ExitError is returned directly by cmd.Run, never wrapped, so a
 		// plain two-value type assertion is the idiomatic way to extract the code.
@@ -201,15 +211,15 @@ var launchAgent = func(hostRepoDir, claudePath, instruction string) int {
 	return 0
 }
 
-// muxDown is a testability seam that tears down the Hub-scoped mux substrate
-// after an agent session: it runs `lyx mux down` inside hostRepoDir using the
-// already-fingerprinted lyx binary. `mux down` is idempotent (success with no
+// reedDown is a testability seam that tears down the Hub-scoped reed substrate
+// after an agent session: it runs `lyx reed down` inside hostRepoDir using the
+// already-fingerprinted lyx binary. `reed down` is idempotent (success with no
 // session up), so the call is safe regardless of what the agent left behind.
-var muxDown = func(hostRepoDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "mux", "down")
+var reedDown = func(hostRepoDir, lyxPath string) error {
+	cmd := exec.Command(lyxPath, "reed", "down")
 	cmd.Dir = hostRepoDir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("lyx mux down: %w (output: %s)", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("lyx reed down: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
@@ -228,13 +238,19 @@ type binaryInfo struct {
 	// SHA256 holds the first 12 hex characters of the binary's SHA-256 digest,
 	// sufficient to distinguish builds without ballooning the fingerprint block.
 	SHA256 string
+	// Source records which binary resolveLyx picked (sourceDev or sourceProd,
+	// from resolve.go), so a maintainer reading the stamped header or the
+	// fetched report can tell a dev build's findings from a prod build's
+	// without cross-referencing the Path.
+	Source string
 }
 
 // binaryFingerprint stats and hashes the file at path to produce a binaryInfo
 // snapshot. ModTime is normalised to UTC. SHA256 is the first 12 hex characters
-// of the full digest. Any OS or IO error is wrapped with the provided path as
-// context so callers can report which binary failed.
-func binaryFingerprint(path string) (binaryInfo, error) {
+// of the full digest. source (sourceDev or sourceProd, from resolve.go) is
+// stamped into the returned binaryInfo verbatim. Any OS or IO error is wrapped
+// with the provided path as context so callers can report which binary failed.
+func binaryFingerprint(path, source string) (binaryInfo, error) {
 	// Stat first to capture size and modtime before opening the file, so the
 	// two calls reflect a consistent view of the inode.
 	fi, err := os.Stat(path)
@@ -261,6 +277,7 @@ func binaryFingerprint(path string) (binaryInfo, error) {
 		Size:    fi.Size(),
 		ModTime: fi.ModTime().UTC(),
 		SHA256:  digest[:12],
+		Source:  source,
 	}, nil
 }
 
@@ -273,11 +290,13 @@ func (b binaryInfo) header() string {
 		"- Path: `%s`\n"+
 		"- Size: %d bytes\n"+
 		"- ModTime: %s\n"+
-		"- SHA256 (first 12): `%s`\n",
+		"- SHA256 (first 12): `%s`\n"+
+		"- Source: %s\n",
 		b.Path,
 		b.Size,
 		b.ModTime.Format(time.RFC3339),
 		b.SHA256,
+		b.Source,
 	)
 }
 
@@ -333,19 +352,19 @@ func ensureGitExclude(repoDir, entry string) error {
 	return nil
 }
 
-// runSuite executes the "sandbox suite" / "sandbox mux-suite" / "sandbox
+// runSuite executes the "sandbox suite" / "sandbox reed-suite" / "sandbox
 // shuttle-suite" / "sandbox burler-suite" / "sandbox perch-suite"
 // subcommands. It locates the Hub host repo under parentDir, fingerprints
 // the deployed lyx binary, writes a fresh spec.fileName into the host repo
 // (overwriting any prior copy), registers it in .git/info/exclude, clears
 // any stale sandbox-report.json from a prior run, and starts an interactive
 // Claude session with the given instruction string. After the session ends,
-// specs flagged muxTeardown get a best-effort `lyx mux down` in the host repo
+// specs flagged reedTeardown get a best-effort `lyx reed down` in the host repo
 // so no tmux server outlives the run. It does not fetch the agent's report
 // -- that is the separate fetch subcommand (runFetch), run by the operator
 // after the session. claudeOverride and promptOverride are optional: when
 // empty the function resolves "claude" from PATH and uses spec.instruction.
-// spec selects which suite (mainSuite, muxSuite, shuttleSuite, burlerSuite,
+// spec selects which suite (mainSuite, reedSuite, shuttleSuite, burlerSuite,
 // perchSuite, builderSuite, or websterSuite) is run.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
 	// Derive the host repo path from the shared hubName const (main.go) and the
@@ -361,14 +380,15 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
 
-	// Resolve lyx via PATH so the fingerprint captures the exact binary the
-	// operator has deployed; the binary must be on PATH before running the suite.
-	lyxPath, err := lookPath("lyx")
+	// Resolve lyx via resolveLyx (derived .dev-bin first, PATH fallback) so the
+	// fingerprint captures the exact binary the session will run, and so the
+	// dev/prod distinction can be stamped and threaded to the agent's PATH below.
+	lyxPath, source, err := resolveLyx()
 	if err != nil {
-		return fmt.Errorf("lyx not found on PATH -- deploy the binary before running the suite: %w", err)
+		return err
 	}
 
-	info, err := binaryFingerprint(lyxPath)
+	info, err := binaryFingerprint(lyxPath, source)
 	if err != nil {
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
@@ -416,25 +436,34 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		instruction = spec.instruction
 	}
 
+	// Only a resolved dev binary gets its directory prepended to the agent's
+	// PATH (see the agent-path-prepend-launchagent-only Shared Decision); a
+	// prod resolution leaves binDir empty so launchAgent inherits the
+	// environment unchanged, exactly as before.
+	binDir := ""
+	if source == sourceDev {
+		binDir = filepath.Dir(lyxPath)
+	}
+
 	// Launch the interactive agent session. An interactive claude session never
 	// self-terminates, so its manual exit is expected and its non-zero exit code
 	// is NORMAL -- it must not be treated as a failure. Fetching the report is a
 	// separate step, so print guidance and return nil regardless of the code.
-	code := launchAgent(hostRepoDir, claudePath, instruction)
+	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
 		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
 		code)
 
-	// For suites whose scenarios boot a live mux substrate, tear it down now,
+	// For suites whose scenarios boot a live reed substrate, tear it down now,
 	// regardless of how the agent session ended: an orphaned tmux server holds
 	// open handles inside the Hub host repo and blocks the next
 	// sandbox-build.cmd -reset. Best-effort -- a teardown failure must not turn
 	// a completed session into a launcher error.
-	if spec.muxTeardown {
-		if err := muxDown(hostRepoDir, lyxPath); err != nil {
-			fmt.Fprintf(os.Stderr, "sandbox: mux teardown: %v\n", err)
+	if spec.reedTeardown {
+		if err := reedDown(hostRepoDir, lyxPath); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: reed teardown: %v\n", err)
 		} else {
-			fmt.Fprintln(os.Stderr, "sandbox: mux substrate torn down (lyx mux down).")
+			fmt.Fprintln(os.Stderr, "sandbox: reed substrate torn down (lyx reed down).")
 		}
 	}
 	return nil

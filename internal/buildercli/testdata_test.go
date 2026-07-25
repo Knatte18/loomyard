@@ -1,7 +1,7 @@
 // testdata_test.go holds the pure file-I/O plan-fixture helpers and
 // git-free test doubles shared by both tiers: builderengineTestdataDir and
-// seedPlanFixture spawn no git, and pollFakeMux is a plain
-// shuttleengine.MuxOps double, so all three stay untagged and available to
+// seedPlanFixture spawn no git, and pollFakeReed is a plain
+// shuttleengine.ReedOps double, so all three stay untagged and available to
 // Tier 1 (e.g. run_test.go) as well as the integration-tagged fixtures that
 // also use them (validate_test.go, poll_test.go, spawnbatch_test.go,
 // smoke_test.go). Kept in one place so there is exactly one definition
@@ -16,33 +16,33 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/muxengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// pollFakeMux is a minimal shuttleengine.MuxOps double for
+// pollFakeReed is a minimal shuttleengine.ReedOps double for
 // builderengine.StrandLive and poll's terminal cleanup: Status is scripted,
 // and RemoveStrand records every call so a test can assert whether the
 // terminal branch released the strand. Also used by run_test.go's
-// newRunFixture as an inert mux double.
-type pollFakeMux struct {
-	status         muxengine.StatusResult
+// newRunFixture as an inert reed double.
+type pollFakeReed struct {
+	status         reedengine.StatusResult
 	removedStrands []string
 }
 
-func (m *pollFakeMux) AddStrand(spec muxengine.AddSpec) (muxengine.Strand, error) {
-	return muxengine.Strand{}, nil
+func (m *pollFakeReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{}, nil
 }
-func (m *pollFakeMux) RemoveStrand(guid string, recursive bool) (muxengine.Removed, error) {
+func (m *pollFakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed, error) {
 	m.removedStrands = append(m.removedStrands, guid)
-	return muxengine.Removed{}, nil
+	return reedengine.Removed{}, nil
 }
-func (m *pollFakeMux) Status() (muxengine.StatusResult, error)       { return m.status, nil }
-func (m *pollFakeMux) SendText(guid, text string, submit bool) error { return nil }
-func (m *pollFakeMux) SendKey(guid, key string) error                { return nil }
-func (m *pollFakeMux) CapturePane(guid string) (string, error)       { return "", nil }
+func (m *pollFakeReed) Status() (reedengine.StatusResult, error)      { return m.status, nil }
+func (m *pollFakeReed) SendText(guid, text string, submit bool) error { return nil }
+func (m *pollFakeReed) SendKey(guid, key string) error                { return nil }
+func (m *pollFakeReed) CapturePane(guid string) (string, error)       { return "", nil }
 
-var _ shuttleengine.MuxOps = (*pollFakeMux)(nil)
+var _ shuttleengine.ReedOps = (*pollFakeReed)(nil)
 
 // builderengineTestdataDir returns the absolute path to
 // internal/builderengine/testdata/<name>, resolved from this source file's

@@ -2,7 +2,7 @@
 // template embeds.
 //
 // Provides the default YAML template for perch configuration, embedded
-// directly from template.yaml at build time, mirroring muxengine's and
+// directly from template.yaml at build time, mirroring reedengine's and
 // shuttleengine's embed-and-accessor pattern. It also embeds the three
 // ephemeral-LLM-utility prompt templates (judge-circling, judge-milestone,
 // triage), mirroring internal/burlerengine/template.go's

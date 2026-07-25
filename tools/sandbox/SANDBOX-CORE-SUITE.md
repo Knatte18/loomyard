@@ -14,8 +14,11 @@ agent can operate it in a real repo, then use that experience to harden lyx.
 
 Before starting a session:
 
-1. **Deploy a fresh binary.** Run `deploy.cmd` so `lyx.exe` on PATH is current source.
-   The deployed binary is a snapshot -- re-deploy after any source change you want to test.
+1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as
+   current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH
+   (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no
+   PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot
+   -- re-deploy after any source change you want to test.
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean) to clone the host and weft into a fresh `lyx-test-HUB`.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
@@ -367,8 +370,8 @@ array carries a `plan-unapproved` finding, not a bare error string.
 
 ---
 
-mux has its own dedicated suite, `SANDBOX-MUX-SUITE.md` in this same directory,
-launched via `sandbox-mux-suite.cmd` -- mux needs a live tmux server and visual
+reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory,
+launched via `sandbox-reed-suite.cmd` -- reed needs a live tmux server and visual
 verification, a different test mode from this suite.
 
 ## Session log format
@@ -401,7 +404,7 @@ findings section above -- with `items: []` when every scenario was `OK`.
 - Scenario set is deliberately small and host/weft-centric -- that is the spine that
   matters now. Add scenarios as modules grow (shuttle, review, loom). A module whose
   testing model is fundamentally different gets its own sibling suite file
-  (`*SUITE.md`), with mux (`SANDBOX-MUX-SUITE.md`) as the precedent; the
+  (`*SUITE.md`), with reed (`SANDBOX-REED-SUITE.md`) as the precedent; the
   coverage guard scans all of them.
 - The tmux interactive launcher will replace the direct `claude` launch in a future
   iteration; the file contract (this `SANDBOX-CORE-SUITE.md` driving the agent) is unchanged.

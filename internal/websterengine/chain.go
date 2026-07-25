@@ -34,7 +34,7 @@ import (
 // batch-report file from reportsDir (builderengine.BatchReportFileName),
 // clears each member's st.Batches entry (its persisted digest included), and
 // resets st.CurrentBatch to 0. Before the hard reset it stops every chain
-// member's recorded strand the mux still reports live (builder's own restart
+// member's recorded strand the reed still reports live (builder's own restart
 // step 1) — a kept-alive recovery strand for a chain member, left running,
 // would commit on top of the rolled-back tree and be unreclaimable once its
 // BatchState record is deleted below. It returns the chain's LOWEST member
@@ -43,7 +43,7 @@ import (
 // restarts from its lowest member regardless of which member the caller
 // named. The caller is responsible for persisting st via SaveState
 // afterward.
-func RestartChain(mux shuttleengine.MuxOps, worktree string, st *State, plan *builderengine.Plan, member int, reportsDir string) (int, error) {
+func RestartChain(reed shuttleengine.ReedOps, worktree string, st *State, plan *builderengine.Plan, member int, reportsDir string) (int, error) {
 	chainEnd := builderengine.ChainEndFor(plan, member)
 	if chainEnd == 0 {
 		return 0, fmt.Errorf("webster: batch %d names no deferred-verify chain", member)
@@ -59,7 +59,7 @@ func RestartChain(mux shuttleengine.MuxOps, worktree string, st *State, plan *bu
 		return 0, fmt.Errorf("webster: no chain-start SHA recorded for chain-end batch %d", chainEnd)
 	}
 
-	// Stop every member's recorded strand the mux still reports live BEFORE
+	// Stop every member's recorded strand the reed still reports live BEFORE
 	// the destructive reset: only a recovery batch carries a StrandGUID (a
 	// plain fork batch's is empty and RemoveStrandIfLive no-ops on it), but a
 	// chain member that went to recovery and classified dead keeps its strand
@@ -68,7 +68,7 @@ func RestartChain(mux shuttleengine.MuxOps, worktree string, st *State, plan *bu
 	// tree this reset is about to roll back.
 	for _, n := range members {
 		if bs, ok := st.Batches[n]; ok && bs != nil && bs.StrandGUID != "" {
-			if err := builderengine.RemoveStrandIfLive(mux, bs.StrandGUID); err != nil {
+			if err := builderengine.RemoveStrandIfLive(reed, bs.StrandGUID); err != nil {
 				return 0, err
 			}
 		}

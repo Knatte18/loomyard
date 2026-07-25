@@ -23,8 +23,11 @@ has its own scenarios in `SANDBOX-PERCH-SUITE.md` -- not tested here.
 
 Before starting a session:
 
-1. **Deploy a fresh binary.** Run `deploy.cmd` so `lyx.exe` on PATH is current source.
-   The deployed binary is a snapshot -- re-deploy after any source change you want to test.
+1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as
+   current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH
+   (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no
+   PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot
+   -- re-deploy after any source change you want to test.
 2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset`
    to start clean); the session cwd is the Hub host repo root, the same operating model
    as the main suite.
@@ -34,8 +37,8 @@ Before starting a session:
    S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless
    of runtime availability.
 4. **`lyx init` first.** `lyx burler run` requires an initialized worktree
-   (`_lyx/config/shuttle.yaml` and `mux.yaml`) exactly like `lyx shuttle` and
-   `lyx mux` do -- burler wires the real shuttle substrate (mux + claude) on
+   (`_lyx/config/shuttle.yaml` and `reed.yaml`) exactly like `lyx shuttle` and
+   `lyx reed` do -- burler wires the real shuttle substrate (reed + claude) on
    every invocation and has no config file of its own; the profile YAML is the
    only burler-specific input.
 5. **Attached interactive terminal.** Launch `sandbox-burler-suite.cmd` from a
@@ -225,17 +228,17 @@ findings section above -- with `items: []` when every scenario was `OK`.
 ## Teardown
 
 After the session summary is recorded and `./sandbox-report.json` is written, run
-`lyx mux down` to tear down the tmux session/server the scenarios booted with
-`lyx mux up`. An orphaned tmux server holds open handles inside the Hub host
+`lyx reed down` to tear down the tmux session/server the scenarios booted with
+`lyx reed up`. An orphaned tmux server holds open handles inside the Hub host
 repo and blocks the next `sandbox-build.cmd -reset`. The launcher also runs
-`lyx mux down` itself after the session ends (deterministic backstop), but run
+`lyx reed down` itself after the session ends (deterministic backstop), but run
 it here anyway -- defense-in-depth, and it keeps the Hub clean while the session
 is still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, mux/tmux scenarios stay in
-  `SANDBOX-MUX-SUITE.md`, shuttle black-box agent scenarios stay in
+- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in
+  `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in
   `SANDBOX-SHUTTLE-SUITE.md`, perch gate-loop scenarios stay in
   `SANDBOX-PERCH-SUITE.md`; this suite holds only burler's own review+fix round
   scenarios -- add `S` scenarios here, not in any other suite.

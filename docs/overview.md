@@ -5,7 +5,7 @@ runs one command, writes JSON to stdout, and exits — there is no daemon and no
 shared memory. State lives on disk per module and is coordinated with file locks,
 so concurrent `lyx` processes on a machine cooperate through the filesystem. The
 first module, **board** (a task tracker), is implemented; **warp** (the host↔weft
-topology owner) is implemented; and **mux**, the clean tmux overlay built on what its
+topology owner) is implemented; and **reed**, the clean tmux overlay built on what its
 now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [manifest/roadmap.md](../manifest/roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
@@ -36,14 +36,14 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
 
 ## Principles
 
-1. **Toolkit-first.** Build small, composable primitives (board, warp, mux)
+1. **Toolkit-first.** Build small, composable primitives (board, warp, reed)
    before any orchestrator that ties them together. mill's Agent Dispatch
    orchestrates for now.
 2. **Self-contained modules, deep internal tests.** All of a module's domain logic
    and its test suite live in its own package. What modules share is a thin layer of
    infrastructure plumbing — see [shared-libs/README.md](shared-libs/README.md).
 3. **One-shot, daemonless, file-coordinated.** A command does its work, writes JSON,
-   exits. Processes cooperate through files + locks, not a server. (The future mux
+   exits. Processes cooperate through files + locks, not a server. (The future reed
    daemon is the one deliberate exception, for crash recovery tmux can't self-detect.)
 4. **cwd-authoritative; cwd ≠ git-repo-path.** Config and state resolve from the
    current working directory, which need *not* equal the git-repo root. Designed in
@@ -148,7 +148,7 @@ Two state roots with opposite lifecycles:
   resume works across machines *because* its status is weft-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.** Untracked (listed in
   `.git/info/exclude`, never `.gitignore`), changing constantly while a run is live. The live
-  tmux runtime state — `mux`'s (see the `internal/muxengine` package documentation) `.lyx/mux.json`
+  tmux runtime state — `reed`'s (see the `internal/reedengine` package documentation) `.lyx/reed.json`
   (the socket/session names + the strand table: each managed process, its session, parent,
   ephemeral pane id, and display spec) — goes here, because a pane ID or the tmux socket is
   meaningless on another machine. It is rebuilt by reconciling against live tmux on startup, never
@@ -197,9 +197,9 @@ github.com/Knatte18/loomyard/
 ├── internal/fabricengine/        the fabric domain kernel (parallel build, see fabric doc above)
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
-├── internal/muxcli/              the mux CLI command
-├── internal/muxengine/           the mux domain kernel (overlay + strand bookkeeping)
-├── internal/muxengine/render/    pure display-vocabulary leaf (layout = Rules(strands))
+├── internal/reedcli/             the reed CLI command
+├── internal/reedengine/          the reed domain kernel (overlay + strand bookkeeping)
+├── internal/reedengine/render/   pure display-vocabulary leaf (layout = Rules(strands))
 ├── internal/ghissuescli/         the ghissues CLI command
 ├── internal/ghissuesengine/      the ghissues domain kernel
 ├── internal/selfreportcli/       the selfreport CLI command
@@ -273,18 +273,18 @@ User-facing modules each get one `lyx <module>` namespace:
   envelope. ✅ Implemented (v1 scope: references-only, no call hierarchy, no in-process
   Go arm). Design doc deleted on landing per the documentation lifecycle; durable rationale
   lives in the `internal/codeintelengine` package documentation.
-- **mux** — **the window to the world**: tmux overlay + **strand** bookkeeping + render
-  (`internal/muxcli` + `internal/muxengine` + `internal/muxengine/render`). Hosts every managed
-  process as a strand, arranges them, persists to `.lyx/mux.json` (`lyx mux
+- **reed** — **the window to the world**: tmux overlay + **strand** bookkeeping + render
+  (`internal/reedcli` + `internal/reedengine` + `internal/reedengine/render`). Hosts every managed
+  process as a strand, arranges them, persists to `.lyx/reed.json` (`lyx reed
   up|add|remove|status|attach|resume|header|down`). Built on what its proof-of-concept, `muxpoc`,
   proved first (layout checksum, bottom-dominant layout, env hygiene, native `--resume`); `muxpoc`
-  has since been deleted, its job done. `mux attach` and `mux header --blocking` are this module's
+  has since been deleted, its job done. `reed attach` and `reed header --blocking` are this module's
   two registered interactive-handoff exceptions (CONSTRAINTS.md CLI/Cobra Invariant): `attach`
   hands the operator's stdio to a `tmux attach-session` child in place, and `header --blocking`
   prints the rendered header-pane text (`Engine.HeaderText`, over `internal/tokenvocab`) then
   blocks forever as the header pane's own keepalive — in both cases every fallible step runs
   pre-flight, on the envelope, and only the terminal-handover/keepalive tail itself is exempt from
-  emitting JSON. ✅ Implemented. See the `internal/muxengine` package documentation.
+  emitting JSON. ✅ Implemented. See the `internal/reedengine` package documentation.
 - **shuttle** — run **one** LLM agent as an interactive tmux strand over the file contract
   (`internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`;
   `lyx shuttle run|interrupt|send`). `Stop`-hook completion is read off an events file and
@@ -312,7 +312,7 @@ User-facing modules each get one `lyx <module>` namespace:
   [builder-contract.md](reference/builder-contract.md).
 - **webster** — fork-based sibling of builder: one long-lived Master session reads the
   codebase and the whole plan once, then forks one implementer per batch in-session
-  (Claude Code's Agent tool) instead of spawning a fresh mux/tmux strand per batch;
+  (Claude Code's Agent tool) instead of spawning a fresh reed/tmux strand per batch;
   bracket verbs (`begin-batch`/`await-batch`/`record-batch`) replace `spawn-batch`/`poll`
   (forks are backgrounded agents on current Claude Code, so Master long-polls
   `await-batch` for each batch's report instead of relying on a synchronous fork return),
@@ -327,11 +327,14 @@ User-facing modules each get one `lyx <module>` namespace:
 - **loom** — phased orchestrator: drives Preflight → Discussion → Plan → Builder → Raddle →
   Finalize, each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — not
   built; the `lyx loom` command and phase machine are unbuilt. loom's config module
-  (`loom.yaml`, holding the `discussion` role model-spec and `discussion_timeout_min`)
-  exists and reconciles via `lyx init` / `lyx config reconcile`. The Discussion producer
-  itself is ✅ **built**, ahead of the phase machine: a prompt/profile fed to `shuttle.Run`
-  (`internal/loomengine`'s `discussion-template.md` + `prompt.go` + `discussion.go`), distinct
-  from the still-unbuilt `lyx loom run` phase machine that will drive it. See
+  (`loom.yaml`, holding the `discussion`/`plan` role model-specs and
+  `discussion_timeout_min`/`plan_timeout_min`) exists and reconciles via `lyx init` /
+  `lyx config reconcile`. The Discussion producer itself is ✅ **built**, ahead of the phase
+  machine: a prompt/profile fed to `shuttle.Run` (`internal/loomengine`'s
+  `discussion-template.md` + `prompt.go` + `discussion.go`). The Planner producer is now
+  ✅ **built** too: also a prompt/profile fed to `shuttle.Run`
+  (`internal/loomengine`'s `plan-template.md` + `plantemplate.go` + `plan.go`). Both are
+  distinct from the still-unbuilt `lyx loom run` phase machine that will drive them. See
   [manifest/designs/loom.md](../manifest/designs/loom.md).
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
   `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an
@@ -349,8 +352,8 @@ User-facing modules each get one `lyx <module>` namespace:
 
 The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) layer — the base of
 the stack; see the [Execution stack](#execution-stack-orchestration-layers) section below for how
-proc / mux / shuttle fit together. (Earlier drafts split mux into separate `shed`/`glance`
-modules; both folded back into mux — see the `internal/muxengine` package documentation.)
+proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance`
+modules; both folded back into reed — see the `internal/reedengine` package documentation.)
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that
 scaffolds the shared `_lyx/` config dir for every module.
@@ -370,10 +373,10 @@ detect completion."
 
 ```
 internal/proc     spawn any OS process (windowless / detached), cross-OS      [OS primitive]
-internal/mux      the window to the world — overlay + strand bookkeeping +     [builds on proc]  ✅
+internal/reed     the window to the world — overlay + strand bookkeeping +     [builds on proc]  ✅
                   render; hosts every managed process as a strand, arranges
-                  them, persists to .lyx/mux.json
-internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on mux]    ✅
+                  them, persists to .lyx/reed.json
+internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on reed]    ✅
                   the file contract; Stop-hook completion
 burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle] ✅
 perch             run burler rounds on one artifact → APPROVED|STUCK          [builds on burler]  ✅
@@ -383,14 +386,14 @@ loom              phase machine: drive each phase through a perch gate         [
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session
 requirement), agents run, output files are read, nobody need watch.
 
-- **mux is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a
+- **reed is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a
   strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and
-  a *generic* display spec), and a **render** sub-package (`internal/muxengine/render`,
-  `layout = Rules(strands, box)`). Callers hand mux `{cmd, name, display}` where `display` is
+  a *generic* display spec), and a **render** sub-package (`internal/reedengine/render`,
+  `layout = Rules(strands, box)`). Callers hand reed `{cmd, name, display}` where `display` is
   generic (anchor / focus / shrinkWhenWaitingOnChild; height is derived, not caller-set) — never a
-  domain `type`, so mux never learns what a "phase" or "cluster" is. Earlier drafts split the model
+  domain `type`, so reed never learns what a "phase" or "cluster" is. Earlier drafts split the model
   and view into separate `shed`/`glance` modules; with one terminal per worktree they fold cleanly
-  into `internal/muxengine` + `internal/muxengine/render`. See the `internal/muxengine` package
+  into `internal/reedengine` + `internal/reedengine/render`. See the `internal/reedengine` package
   documentation.
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**; the verdict/output
   contract is provider-invariant, so a different model can be swapped in without touching the
@@ -398,7 +401,7 @@ requirement), agents run, output files are read, nobody need watch.
 - **`tokenvocab` is a shared leaf, not a stack layer** — `internal/tokenvocab` (the `repo`/`hub`
   token registry + the `Render` compose over `internal/stencil`) sits beside `stencil` and
   `modelspec` as a general-purpose leaf the stack's modules consume, not a stage of the
-  proc→mux→shuttle→burler→perch→loom chain itself. mux's header text pipeline consumes it
+  proc→reed→shuttle→burler→perch→loom chain itself. reed's header text pipeline consumes it
   today; loom's prompt templates are expected to reuse the same `Render` compose later. See
   the `internal/tokenvocab` package documentation.
 - **perch is independent of loom** — it is a standalone gate loop (`lyx perch`) over `burler` rounds;
@@ -406,9 +409,9 @@ requirement), agents run, output files are read, nobody need watch.
   not on `loom`.
 - **the bootstrap** — `lyx loom run` (alias `lyx run`) brings up the worktree's tmux session, adds
   the `lyx loom status` strand (a 1-line top pane), spawns the loom driver **detached** (via `proc`,
-  no TTY), and attaches the terminal to the session. loom runs in the background; the mux view takes
+  no TTY), and attaches the terminal to the session. loom runs in the background; the reed view takes
   the foreground. A `.lyx/lyxrun.cmd` launcher makes it one click.
-- `mux`, `shuttle`, `perch`, and `loom` each get a user-facing `lyx <module>` CLI
+- `reed`, `shuttle`, `perch`, and `loom` each get a user-facing `lyx <module>` CLI
   (`lyx shuttle run|interrupt|send` lets an operator or another process drive one agent
   standalone, before loom/perch exist); `burler` is composed by `perch` (`lyx burler run` is a
   debug-only wrapper, not a product verb), and
@@ -421,17 +424,17 @@ loom wants a plan-reviewer for worktree `feature-x`:
 1. `loom` → `perch.Run(profile, "feature-x")` — "review this plan against the discussion until clean."
 2. `perch` → `burler.Run(profile, priorFiles)` — "run one review+fix round."
 3. `burler` → `shuttle.Run(prompt, engine)` — "run one handler agent."
-4. `shuttle` → `mux.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
-5. `mux` records the strand in `.lyx/mux.json`, runs the command via `proc` in a pane, re-renders
+4. `shuttle` → `reed.AddStrand{ cmd:"claude …", worktree:"feature-x", display:{anchor:below-parent, focus:true} }`.
+5. `reed` records the strand in `.lyx/reed.json`, runs the command via `proc` in a pane, re-renders
    the layout (`layout = rules(strands)`), and applies it.
-6. The `Stop` hook fires → mux notes the edge → shuttle reads the output file → returns to burler →
+6. The `Stop` hook fires → reed notes the edge → shuttle reads the output file → returns to burler →
    burler writes review/fixer-report + verdict → perch reads it, decides loop or exit → on a clean
    round returns `APPROVED | stuck` → loom advances.
 
 ### The disambiguating test
 
 - About **the OS**? → `proc`.
-- About **a tmux mechanic, a strand, or how it's laid out**? → `mux`.
+- About **a tmux mechanic, a strand, or how it's laid out**? → `reed`.
 - About **running an LLM and getting its answer**? → `shuttle`.
 - About **one review+fix round**? → `burler`.
 - About **whether an artifact passes (loop rounds until clean/stuck)**? → `perch`.
@@ -446,25 +449,25 @@ git-backed integration — live in the black-box `internal/boardengine/boardtest
 
 ## Sandbox Hub
 
-The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the real deployed `lyx` binary: the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox-build.cmd` once `lyx` is deployed and the GitHub weft wiki is initialized (`sandbox-core-suite.cmd` then runs the agent, `sandbox-mux-suite.cmd` runs the mux-specific suite (`SANDBOX-MUX-SUITE.md`, needs live tmux), and `sandbox-fetch.cmd` collects the report from either — the same fetch command for both). See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — its purpose is dogfooding lyx against itself. It lives on disk at `C:\Code\lyx-test-HUB` and exercises the resolved `lyx` binary under test: the dev binary deployed via `deploy-dev` into the derived `.dev-bin` directory when present, else the production binary on PATH deployed via `deploy.cmd` — the command surface, JSON output, and topology wiring users encounter. Build it via `sandbox-build.cmd` once `lyx` is deployed (`deploy-dev`, the fast path) and the GitHub weft wiki is initialized (`sandbox-core-suite.cmd` then runs the agent, `sandbox-reed-suite.cmd` runs the reed-specific suite (`SANDBOX-REED-SUITE.md`, needs live tmux), and `sandbox-fetch.cmd` collects the report from either — the same fetch command for both). See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook (deploy → clone Hub → run suite) and [sandbox-hub.md](sandbox-hub.md) for topology and design details.
 
 ## Other docs
 
 - [manifest/designs/loom.md](../manifest/designs/loom.md) — the phased orchestrator (`lyx loom` + `lyx perch`); design.
 - `internal/codeintelengine` package documentation — multi-language reference lookup over LSP (`lyx codeintel refs`) (as-built; module doc deleted per the documentation lifecycle).
 - `internal/tokenvocab` package documentation — the shared token vocabulary (`repo`/`hub` +
-  `Render` over `internal/stencil`), consumed by mux's header pipeline and, later, loom's
+  `Render` over `internal/stencil`), consumed by reed's header pipeline and, later, loom's
   prompt templates; a leaf, not a phased module (as-built; module doc deleted per the
   documentation lifecycle).
 - [builder-contract.md](reference/builder-contract.md) — the batch-implementation loop (`lyx builder`): verb surface, digest contract, poll classification, chain rollback, pause, outcome contract (as-built; kept as a durable contract doc, not deleted on landing).
-- `internal/muxengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
+- `internal/reedengine` package documentation — the window to the world: tmux overlay + strand bookkeeping + render (as-built; module doc deleted per the documentation lifecycle).
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).
 - `internal/perchengine` package documentation — the gate loop: run `burler` rounds → `APPROVED`/`STUCK`/`PAUSED` (as-built; module doc deleted per the documentation lifecycle).
 - [manifest/designs/hardener.md](../manifest/designs/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
-- [research/](research/) — design exploration (mux research logs).
+- [research/](research/) — design exploration (reed research logs).
 - [reference/tmux_scripting.md](reference/tmux_scripting.md) — tmux command reference (vendored).
 - [manifest/roadmap.md](../manifest/roadmap.md) — planned, someday, and shipped modules — the
   single home for unscheduled ideas too (no separate long-term-ideas file).

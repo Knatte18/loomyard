@@ -4,7 +4,7 @@
 // SetVerbosity to raise the threshold and Debug/Info/Warn to emit.
 
 // Package logger is a minimal log/slog wrapper shared across lyx's internal
-// packages. It keeps stdout free of log noise (mux and other commands write
+// packages. It keeps stdout free of log noise (reed and other commands write
 // their JSON envelope to stdout via internal/output) by routing all log
 // output to a dedicated sink, which defaults to os.Stderr and is silent
 // unless the caller opts in via SetVerbosity.

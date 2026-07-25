@@ -131,7 +131,7 @@ its own.
   sequentially, in one process. Build a small harness that launches several real
   `exec.Command`-spawned `lyx board sync` (or `go run`) child processes against the same board dir
   concurrently and confirm: exactly the expected commits land on the remote, no corruption, and the
-  push lock still coalesces the way `sync.go`'s doc comment claims — same spirit as the mux
+  push lock still coalesces the way `sync.go`'s doc comment claims — same spirit as the reed
   campaign's "compile once, run N copies" concurrent gate and `gitrepo`'s own
   `TestPushCoalesced_LockBlocking_Serializes` pattern (read that test for the shape, but this is a
   NEW real-process test for `board`, not a port of it).
@@ -195,7 +195,7 @@ State the **merge bar** so you calibrate: correctness in the NORMAL single-insta
 single-or-few-concurrent-caller flow (the realistic shape: a handful of `lyx board <verb>` calls
 each spawning their own detached `sync`, occasionally overlapping) is the gate; an artificial
 many-way concurrency stress far beyond that realistic shape is a diagnostic amplifier, not a merge
-blocker, per the same principle the mux campaign used (see README.md's "Reading the result").
+blocker, per the same principle the reed campaign used (see README.md's "Reading the result").
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
@@ -214,12 +214,14 @@ Hermetic Git Test Environment Invariant's `TestMain`):
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
 - `board` HAS a `lyx` CLI surface (`lyx board <verb>`), unlike `gitrepo`. Deploy the current source
-  as the binary under test before any live driving: `go run ./tools/deploy -dest
-  $(dirname "$(which lyx)")` (this machine is Linux; `deploy.cmd` is Windows-only — use the
-  underlying `go run ./tools/deploy` tool directly with `-dest` pointed at wherever `lyx` currently
-  resolves on `PATH`, confirmed via `which lyx` first). **FOOTGUN:** live driving runs the DEPLOYED
-  binary, not your working tree — re-run the deploy command after EVERY source change or you
-  validate a stale binary and draw a false PASS/FAIL.
+  as the DEV binary under test before any live driving: `go run ./tools/deploy -dev` (this machine
+  is Linux; `deploy.cmd`/`deploy-dev.cmd` are Windows-only — use the underlying `go run
+  ./tools/deploy -dev` tool directly, no `-dest`, no `$(dirname "$(which lyx)")` target). The dev
+  binary lands in `.dev-bin/`, deliberately NOT on your default `PATH`, so for this hands-on
+  driving session prepend it: `export PATH="$PWD/.dev-bin:$PATH"` (run from the repo root) so bare
+  `lyx` resolves to the dev build — this keeps the production `lyx` untouched. **FOOTGUN:** live
+  driving runs the DEPLOYED binary, not your working tree — re-run `go run ./tools/deploy -dev`
+  after EVERY source change or you validate a stale binary and draw a false PASS/FAIL.
 - **Do NOT invoke any `sandbox-*-suite.cmd` launcher.** Run the real CLI commands yourself, directly,
   foreground, waiting for each to return: `lyx board upsert '...'`, `lyx board list`, `lyx board
   sync`, etc., against a real board dir pointed at a real (local bare, or scratch GitHub) remote.
@@ -280,8 +282,9 @@ None — round 1, nothing deferred yet.
   sole synchronization. Prove determinism by running the new test many times (`-count=5` or more)
   under load, not once.
 - Keep `go build`/`vet`/`test` (both hermetic and `-tags integration`) green after every change.
-  Then RE-DEPLOY and re-run every live scenario yourself, directly — re-deploying FIRST is
-  mandatory (live driving tests the deployed binary, not your working tree).
+  Then re-run `go run ./tools/deploy -dev` and re-run every live scenario yourself, directly —
+  re-deploying FIRST is mandatory (live driving tests the deployed dev binary, not your working
+  tree).
 - Update `internal/boardengine/board.go`'s package doc (and `docs/overview.md` / `CONSTRAINTS.md` if
   invariants or the module table move) IN THE SAME change as any behavior fix. Do NOT add
   bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones only, per

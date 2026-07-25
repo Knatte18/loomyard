@@ -37,12 +37,6 @@ Committed to, in this order, next.
    Depends on fabric's branch-naming enforcement (`<slug>-weft` uniformly). See
    [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
-1. **mux → reed** — rename, no behavior change. See [designs/mux-to-reed.md](designs/mux-to-reed.md).
-
-1. **loom: Planner producer** — converts `discussion.md` into a plan-format-v3 card list; no
-   inputs beyond `discussion.md`, no review logic of its own. See
-   [designs/loom-planner.md](designs/loom-planner.md).
-
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
    producers are wired in, plus the `lyx loom run` entry point. See
@@ -50,10 +44,6 @@ Committed to, in this order, next.
 
 1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
    merge conflict; optional PR creation. See [designs/loom-finalize.md](designs/loom-finalize.md).
-
-1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target so
-   review/sandbox tooling never overwrites the stable production binary with an in-progress test
-   build. See [designs/dev-test-binary.md](designs/dev-test-binary.md).
 
 ## Someday
 
@@ -90,7 +80,7 @@ between these items.
    mid-flight-visibility hazards. See
    [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
-1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `mux` driving
+1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving
    real tmux) in a sandbox repo, on-demand and post-loom, off the `shuttle → burler → perch → loom`
    spine. Concept still being figured out. See [designs/hardener.md](designs/hardener.md) (a DRAFT
    doc, do not implement from it yet).
@@ -127,13 +117,13 @@ between these items.
    "deferred idea" `codeintel-redesign.md` already refers to. Genuinely speculative, not yet
    designed in depth. See [designs/semantic-index.md](designs/semantic-index.md).
 
-1. **reduce prompt friction** — trivial, destructive-looking commands (`rm` and similar against
-   test/fixture directories) shouldn't stall autonomous work with a permission prompt.
-   `fabric`'s testing surfaced this; the likely fix is making `tools/sandbox`'s test-repo cleanup
-   fully self-contained inside the Go tool (so no external `rm` is ever needed), not just tidying
-   the handful of places still using manual `os.MkdirTemp`/`os.RemoveAll` instead of
-   `t.TempDir()`. Genuinely speculative, not yet scoped. See
-   [designs/reduce-prompt-friction.md](designs/reduce-prompt-friction.md).
+1. **self-report: two-tier friction capture** — loom's per-phase file-contract design means no
+   single LLM session has full-run context the way Millhouse's self-report assumes. Splits into
+   Go-detected structural anomalies (crash-resumes, stuck escalations, repeated review rounds — off
+   loom's own status/history, no LLM needed) plus a narrow per-phase friction note any spawned agent
+   may write about its own scoped task, aggregated by Go and fed to one dedicated reflection agent
+   at natural end points (Finalize/stuck) — mirroring the `Raddle` pattern. See
+   [designs/self-report.md](designs/self-report.md).
 
 1. **`PATTERN.md`** — a loomyard-owned equivalent of Millhouse's `CONSTRAINTS.md`, written from
    scratch (not a port) once loomyard starts dogfooding its own development onto `loom`. Format:
@@ -171,8 +161,7 @@ between these items.
 
 1. **proc** — cross-OS process spawn.
 
-1. **mux** — tmux overlay + strand bookkeeping + render (renamed by the Planned `mux → reed` item
-   once it ships).
+1. **reed** — tmux overlay + strand bookkeeping + render (renamed from `mux`, no behavior change).
 
 1. **shuttle** — run one LLM agent as an interactive tmux strand over a swappable engine.
 
@@ -199,6 +188,16 @@ between these items.
 
 1. **loom: contracts, Preflight, Discussion producer** — the three loom pieces shipped so far (loom
    as a whole is not done — see the Planned `loom` item).
+
+1. **loom: Planner producer** — reads the discussion decision-record and writes a
+   plan-format-v3 flat-card plan; a prompt/profile fed to `shuttle.Run` (not a module), the
+   `PlanSpec(...)` factory + `plan-template.md` in `internal/loomengine`. No review logic of
+   its own.
+
+1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target
+   (`deploy-dev`/`deploy-dev.cmd`) so review/sandbox tooling never overwrites the stable
+   production binary with an in-progress test build. See CONSTRAINTS.md's Dev/Prod Binary
+   Separation invariant.
 
 ## Maintenance
 

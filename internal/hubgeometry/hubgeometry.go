@@ -26,7 +26,7 @@ const (
 	// dotLyxDirName is the directory name for the ephemeral, machine-bound lyx state
 	// directory within a worktree. It is deliberately distinct from LyxDirName ("_lyx"):
 	// "_lyx" (underscore) is durable and weft-synced, while ".lyx" (dot) is ephemeral and
-	// local to the machine (e.g. mux's runtime state and lock files never travel with weft).
+	// local to the machine (e.g. reed's runtime state and lock files never travel with weft).
 	dotLyxDirName = ".lyx"
 
 	// configDirName is the subdirectory name within LyxDirName that holds configuration files.
@@ -218,16 +218,50 @@ func PerchRunsDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "perch")
 }
 
-// PlanDir returns the path to the base directory for builder's plan-format
-// v1 artifacts within a baseDir: the directory holding 00-overview.md and
-// every NN-<batch-slug>.md batch file (see docs/reference/plan-format.md). It
-// lives under _lyx so the plan is weft-synced via the host _lyx junction,
-// like every other durable lyx state. Per the Hub Geometry Invariant, no
-// other package may construct this path.
+// PlanDir returns the path to the base directory for the plan's artifacts
+// within a baseDir: the directory holding 00-overview.md and one
+// NN-<slug>.md file per plan unit — a batch under plan-format v1/v2
+// (builder's consumer, see docs/reference/plan-format.md), a card under
+// plan-format v3 (loom's Planner producer, see
+// docs/reference/plan-format-v3.md). Both format generations share this
+// one physical `_lyx/plan` directory deliberately: a worktree holds one
+// plan at a time, and v2 retires when webster's flat-card rewrite lands.
+// It lives under _lyx so the plan is weft-synced via the host _lyx
+// junction, like every other durable lyx state. Per the Hub Geometry
+// Invariant, no other package may construct this path.
 //
 // Returns filepath.Join(baseDir, LyxDirName, "plan").
 func PlanDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "plan")
+}
+
+// PlanDir returns the path to the Plan phase's output directory for this
+// worktree: the directory holding 00-overview.md and every
+// NN-<card-slug>.md card file (see PlanOverview). It delegates to the
+// free PlanDir function so the `_lyx/plan` path has exactly one definition.
+// It is deliberately WorktreeRoot-anchored, NOT Cwd-anchored, matching
+// DiscussionDir's rationale: the plan is the one true per-worktree
+// artifact, so a caller invoked from a subdirectory (Cwd != WorktreeRoot)
+// must still resolve the single `_lyx/plan/` at the worktree root. Per the
+// Hub Geometry Invariant, no other package may construct this path.
+//
+// Returns PlanDir(l.WorktreeRoot).
+func (l *Layout) PlanDir() string {
+	return PlanDir(l.WorktreeRoot)
+}
+
+// PlanOverview returns the path to the plan's overview file: the Plan
+// phase's done-sentinel and the Planner producer's sole Spec.OutputFiles
+// entry — written last, after every NN-<card-slug>.md card file the
+// producer also writes (see docs/reference/plan-format-v3.md). It shares
+// PlanDir's WorktreeRoot anchoring for the same reason: the overview must
+// resolve to the one true copy at the worktree root, not a per-subdirectory
+// copy. Per the Hub Geometry Invariant, no other package may construct this
+// path.
+//
+// Returns filepath.Join(l.PlanDir(), "00-overview.md").
+func (l *Layout) PlanOverview() string {
+	return filepath.Join(l.PlanDir(), "00-overview.md")
 }
 
 // BuilderDir returns the path to the base directory for builder's own
@@ -372,8 +406,8 @@ func (l *Layout) LyxDir() string {
 }
 
 // DotLyxDir returns the path to the ephemeral .lyx directory in the current working
-// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. mux's
-// mux.json and mux.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
+// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. reed's
+// reed.json and reed.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
 //
 // Returns filepath.Join(Cwd, dotLyxDirName).
 func (l *Layout) DotLyxDir() string {
@@ -443,8 +477,8 @@ func (l *Layout) DiscussionSupportLog() string {
 }
 
 // HubLogsDir returns the path to the hub-level (not worktree-level) directory
-// where the shared per-hub mux server writes its runtime log. It is hub-anchored
-// because consumers like mux run exactly one shared server per hub and need one
+// where the shared per-hub reed server writes its runtime log. It is hub-anchored
+// because consumers like reed run exactly one shared server per hub and need one
 // deterministic machine-local place for its runtime logs — never one per
 // worktree. It lives under the ephemeral, machine-bound ".lyx" (dot) directory,
 // the same lifecycle rationale DotLyxDir documents: server logs are runtime

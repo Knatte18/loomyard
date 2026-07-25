@@ -22,9 +22,10 @@ import (
 // a banned spawn token in an untagged test file, each with a one-line reason —
 // mirroring sandbox_coverage_test.go's excludedModules style.
 var allowedSpawners = map[string]string{
-	"internal/proc":               "process control is the package's subject — its tests must spawn",
-	"cmd/lyx/tierpurity_test.go":  "contains the banned token strings as its own test data",
-	"cmd/lyx/hermeticenv_test.go": "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
+	"internal/proc":                           "process control is the package's subject — its tests must spawn",
+	"cmd/lyx/tierpurity_test.go":              "contains the banned token strings as its own test data",
+	"cmd/lyx/hermeticenv_test.go":             "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
+	"tools/sandbox/pathresolve_guard_test.go": "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
 }
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.

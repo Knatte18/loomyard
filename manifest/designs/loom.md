@@ -148,7 +148,7 @@ only at the human gates.
 unchanged; the only difference is that at a would-be human gate the agent is instructed to **make
 its own best guess and proceed** instead of asking (and the `AskUserQuestion` guardrail — see the
 `internal/shuttleengine/claudeengine` package documentation — already forbids it from blocking on a dialog). Auto mode
-does **not** turn off the view: mux still shows every strand (incl. the `lyx loom status` line),
+does **not** turn off the view: reed still shows every strand (incl. the `lyx loom status` line),
 because you still want to watch. The difference is in loom's *yielding*, not in whether anyone is
 looking.
 
@@ -163,9 +163,9 @@ looking.
 - **It also carries a human-readable *current-activity* narration** — not just the machine enum,
   but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3
   findings / *wait:* —". This is what the `lyx loom status --watch` strand prints (a 1-line pane at
-  the top, per the `internal/muxengine` package documentation on the strand contract) so the operator sees what
+  the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what
   the Go driver is *doing*, not only what the agents are saying. The driver writes the file; the
-  status strand reads and prints it — mux never parses it, it just hosts the pane.
+  status strand reads and prints it — reed never parses it, it just hosts the pane.
 - **Round-level resume.** Handler/fixer artifacts are already on disk, so resuming inside
   a review block continues at the current round rather than restarting the phase.
 - **Separation of state.** `lyx perch` owns its block's round state in the block's files;
@@ -181,17 +181,17 @@ this tractable: **loom resumes on output FILES, not on live processes.** The fil
 
 1. **Is there a complete output file?** → the step finished; read it and advance. (The agent's
    process may be long dead — its result survived. This is the common case.)
-2. **Else, is the agent's session still alive?** (via `mux`'s — see
-   [overview.md#modules](../../docs/overview.md#modules) — `.lyx/mux.json` → session
+2. **Else, is the agent's session still alive?** (via `reed`'s — see
+   [overview.md#modules](../../docs/overview.md#modules) — `.lyx/reed.json` → session
    id → `claude agents --json`) → *working*: re-attach, just wait on its `Stop` hook (do **not**
    respawn — that would duplicate). *blocked*: it is a human gate / stuck — surface it.
 3. **Else (dead, no output):** respawn a **fresh** agent for the step, hydrated from the prior
    round's on-disk artifacts. The round is idempotent, so a fresh handler is deterministic.
 
 loom therefore **never depends on `claude --resume` for correctness** — an unfinished step is
-respawned, not resumed (mux's `--resume` is finicky for programmatically-driven sessions, and a
-never-conversed session has nothing to resume). mux's pane-`--resume` is a *separate, non-critical*
-layer that restores the **visible** sessions for the operator (see the `internal/muxengine` package
+respawned, not resumed (reed's `--resume` is finicky for programmatically-driven sessions, and a
+never-conversed session has nothing to resume). reed's pane-`--resume` is a *separate, non-critical*
+layer that restores the **visible** sessions for the operator (see the `internal/reedengine` package
 documentation on resume); loom's correctness rests on
 files. A dead claude with a finished output file is, to loom, a **done step** — not a problem.
 
@@ -214,7 +214,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
   the crash.
 - **In-agent interrupt is optional.** To pause *faster* than the current unit finishes,
   `shuttle` (see the `internal/shuttleengine` package documentation) can ESC-and-hold the live
-  agent (session kept warm in the mux server — see [overview.md#modules](../../docs/overview.md#modules),
+  agent (session kept warm in the reed server — see [overview.md#modules](../../docs/overview.md#modules),
   not killed; resume continues it in place). With Builder
   decomposed into batches/cards the boundary wait is short, so this is a latency nicety, not a
   correctness requirement.
@@ -231,19 +231,19 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
 | builder | LLM orchestrator + Go verbs (`internal/builderengine`) | a black box from loom's view — see [webster-rewrite.md](webster-rewrite.md) and [builder-contract.md](../../docs/reference/builder-contract.md) |
-| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer (not built) has its own doc: [loom-planner.md](loom-planner.md). |
-| `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/muxengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
-| execution stack | existing/new infra | `proc` → mux → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
+| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `plan-template.md` prompt (carrying a compact plan-format-v3 spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`plan-template.md`, `plantemplate.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
+| `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
+| execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, host worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/hubgeometry`, `internal/warpengine`, `internal/state` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
 The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the
 **builder module** (`internal/builderengine` — the fat verbs + distillation the Builder
 orchestrator drives) and the `lyx loom status` subcommand; beneath them is the shared
-[execution stack](../../docs/overview.md#execution-stack-orchestration-layers) (`proc`, `mux`,
+[execution stack](../../docs/overview.md#execution-stack-orchestration-layers) (`proc`, `reed`,
 `shuttle`); and
 everything else is prompt files, profiles, and the existing lyx modules. The display is **not** a
-module — it is `lyx loom status` running in a strand that `mux` (see
+module — it is `lyx loom status` running in a strand that `reed` (see
 [overview.md#modules](../../docs/overview.md#modules)) hosts and arranges.
 
 ## Entry point — the session bootstrap
@@ -254,8 +254,8 @@ more than the driver alone. Run in a worktree's pane, it:
 
 ```
 lyx loom run:
-  1. ensure the worktree's tmux session is up           (mux)
-  2. add the status strand                                (mux.AddStrand "lyx loom status --watch",
+  1. ensure the worktree's tmux session is up           (reed)
+  2. add the status strand                                (reed.AddStrand "lyx loom status --watch",
                                                            display: below-parent, shrinkWhenWaitingOnChild:true —
                                                            full height while it has no live child, collapsing to
                                                            collapsed_strip_rows once a forked child exists. A
@@ -263,12 +263,12 @@ lyx loom run:
                                                            intended, not a bug to re-file (discussion Decision
                                                            childless-full-height-is-acceptable).)
   3. spawn the loom driver DETACHED                       (internal/proc — it needs no TTY;
-                                                           it reads/writes files, drives strands via mux)
-  4. attach the current terminal to the tmux session     (mux takes the foreground)
+                                                           it reads/writes files, drives strands via reed)
+  4. attach the current terminal to the tmux session     (reed takes the foreground)
 ```
 
 So **loom goes to the background and the tmux session takes the window.** loom needs no terminal —
-it coordinates through files and drives strands via mux — so the screen is free for the mux view
+it coordinates through files and drives strands via reed — so the screen is free for the reed view
 (the status line on top, agents below as they spawn). loom and the view are independent: loom writes
 the `_lyx/` status file; the status strand reads and prints it; neither blocks the other.
 
@@ -280,8 +280,8 @@ from cwd, so you cannot run it from the wrong place. It reuses the
 [launcher geometry](../../docs/overview.md#hub-geometry-invariants) already in `internal/hubgeometry`.
 
 **One terminal per worktree.** Scope for now is exactly that — each worktree its own terminal /
-tmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred mux
-feature (see the `internal/muxengine` package documentation) — cheap
+tmux session. The cross-worktree multi-column view (all worktrees in one window) is a deferred reed
+feature (see the `internal/reedengine` package documentation) — cheap
 when it comes (a `worktree` strand field + a grouping rule), but not now.
 
 ## Agent execution
@@ -295,10 +295,10 @@ file-contract design above is unchanged; only the *spawn + completion-detection*
 differs from a headless model.
 
 The consequence for loom: it sits on top of the
-[`proc → mux → shuttle`](../../docs/overview.md#execution-stack-orchestration-layers) stack, so
+[`proc → reed → shuttle`](../../docs/overview.md#execution-stack-orchestration-layers) stack, so
 that stack is on loom's critical path. loom (via `perch` — see the `internal/perchengine` package
 documentation — → `burler`, see the `internal/burlerengine` package documentation) calls
-`shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `mux` (see
+`shuttle.Run` per spawn and stays ignorant of strands, layout, and engines — those belong to `reed` (see
 [overview.md#modules](../../docs/overview.md#modules); the strand
 bookkeeping + render: which pane is which, layout, focus, the cluster window where N reviewers go)
 and `shuttle` (see the `internal/shuttleengine` package documentation; the swappable provider engine). What loom owns is everything in this

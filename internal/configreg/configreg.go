@@ -12,8 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/muxengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -45,7 +45,7 @@ func Modules() []Module {
 		{Name: "fabric", Template: fabricengine.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
-		{Name: "mux", Template: muxengine.ConfigTemplate},
+		{Name: "reed", Template: reedengine.ConfigTemplate},
 		{Name: "perch", Template: perchengine.ConfigTemplate},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate},
 		{Name: "warp", Template: warpengine.ConfigTemplate},

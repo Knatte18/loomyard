@@ -102,7 +102,7 @@ substrate — a green `go test` proves nothing here on its own.
   worktree). Build a small `go run` harness (or a helper `TestMain`-spawned subprocess) that
   launches several real child processes, each calling `PushCoalesced` against the *same* clone
   concurrently, and confirm the bare remote ends up with every commit and no corruption — same
-  spirit as the mux campaign's "compile once, run N copies" concurrent smoke gate.
+  spirit as the reed campaign's "compile once, run N copies" concurrent smoke gate.
 - **Crash/rebirth under the lock.** Kill (SIGKILL, not a graceful stop) a process while it holds
   `.gitrepo-push.lock` mid-push (e.g. after acquiring the lock but before/during the `git push`
   subprocess). Confirm a subsequent `PushCoalesced` call from a fresh process is not wedged
@@ -227,7 +227,7 @@ currently deferred.
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance,
 single-or-few-concurrent-caller flow is the gate; an artificial many-way concurrency stress beyond
 what a real `board sync`-style caller would ever produce is a diagnostic amplifier, not a merge
-blocker, per the same principle the mux campaign used (see README.md's "Reading the result").
+blocker, per the same principle the reed campaign used (see README.md's "Reading the result").
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.

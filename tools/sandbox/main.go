@@ -1,7 +1,7 @@
 // main.go implements the sandbox tool entry point, flag parsing, and subcommand
 // dispatch. It supports ten subcommands: "build" (default, clones the Hub),
-// "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "mux-suite" (runs the
-// embedded SANDBOX-MUX-SUITE agent), "shuttle-suite" (runs the embedded
+// "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "reed-suite" (runs the
+// embedded SANDBOX-REED-SUITE agent), "shuttle-suite" (runs the embedded
 // SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded
 // SANDBOX-BURLER-SUITE agent), "perch-suite" (runs the embedded
 // SANDBOX-PERCH-SUITE agent), "builder-suite" (runs the embedded
@@ -10,7 +10,7 @@
 // hub if absent, then runs the embedded SANDBOX-FABRIC-SUITE agent), and
 // "fetch" (collects the agent-written report into .scratch). Only -parent and
 // -loomyard live at the top level; -reset is a build-subcommand flag, parsed
-// after the "build" token like suite/mux-suite/shuttle-suite/burler-suite/
+// after the "build" token like suite/reed-suite/shuttle-suite/burler-suite/
 // perch-suite/builder-suite/webster-suite/fabric-suite parse their
 // -claude/-prompt flags.
 
@@ -44,10 +44,12 @@ const (
 //go:embed SANDBOX-FABRIC-SUITE.md
 var fabricSandboxSuiteMD string
 
-// cloneRun is a testability seam for executing the clone command.
-// In tests, this can be replaced to avoid network calls.
-var cloneRun = func(parentDir string) error {
-	cmd := exec.Command("lyx", "warp", "clone", hostURL, weftURL)
+// cloneRun is a testability seam for executing the clone command. lyxPath is
+// the already-resolved lyx binary (see decideClone) so cloneRun itself
+// performs no PATH lookup; in tests, this seam can be replaced to avoid
+// network calls.
+var cloneRun = func(parentDir, lyxPath string) error {
+	cmd := exec.Command(lyxPath, "warp", "clone", hostURL, weftURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -56,8 +58,9 @@ var cloneRun = func(parentDir string) error {
 			// Subprocess printed its own error; just propagate the exit code
 			return err
 		}
-		// Startup error (lyx not found, etc.); add context
-		return fmt.Errorf("lyx not found on PATH: %w", err)
+		// Startup error (resolved binary vanished, permission denied, etc.); add
+		// context pointing at deploy-dev as an alternative to the resolved path.
+		return fmt.Errorf("failed to start resolved lyx binary %s (deploy it, or run deploy-dev): %w", lyxPath, err)
 	}
 	return nil
 }
@@ -109,9 +112,18 @@ func decideClone(hubPath string, reset bool) error {
 	}
 	// Hub does not exist; proceed to clone
 
+	// Resolve the binary lazily, here at the clone step, rather than in run()'s
+	// build case or as a decideClone parameter: this keeps the no-op path above
+	// (Hub exists, no -reset) succeeding even when neither a dev binary nor a
+	// PATH lyx is resolvable, matching today's behaviour for that path.
+	lyxPath, _, err := resolveLyx()
+	if err != nil {
+		return err
+	}
+
 	// Run the clone command
 	parentDir := filepath.Dir(hubPath)
-	return cloneRun(parentDir)
+	return cloneRun(parentDir, lyxPath)
 }
 
 // decideFabricClone materializes the dedicated fabric sandbox hub at hubPath if
@@ -299,31 +311,31 @@ func run(argv []string) int {
 			return 1
 		}
 
-	case "mux-suite":
-		// The mux-suite subcommand mirrors "suite" exactly, but runs the
-		// dedicated SANDBOX-MUX-SUITE scheme via the muxSuite spec; fetching the
+	case "reed-suite":
+		// The reed-suite subcommand mirrors "suite" exactly, but runs the
+		// dedicated SANDBOX-REED-SUITE scheme via the reedSuite spec; fetching the
 		// report is the same shared fetch subcommand, so -loomyard is not
 		// required here either.
 
-		// Parse mux-suite-specific flags from the remaining positionals after
-		// "mux-suite".
-		mf := flag.NewFlagSet("sandbox mux-suite", flag.ContinueOnError)
-		mf.SetOutput(os.Stderr)
-		claudeFlag := mf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
-		promptFlag := mf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
+		// Parse reed-suite-specific flags from the remaining positionals after
+		// "reed-suite".
+		rf := flag.NewFlagSet("sandbox reed-suite", flag.ContinueOnError)
+		rf.SetOutput(os.Stderr)
+		claudeFlag := rf.String("claude", "", "path to the claude binary (default: resolve from PATH)")
+		promptFlag := rf.String("prompt", "", "instruction string passed to the agent (default: built-in)")
 
 		remaining := fs.Args()[1:]
-		if err := mf.Parse(remaining); err != nil {
+		if err := rf.Parse(remaining); err != nil {
 			return 1
 		}
 
-		if err := runSuite(absParent, *claudeFlag, *promptFlag, muxSuite); err != nil {
+		if err := runSuite(absParent, *claudeFlag, *promptFlag, reedSuite); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
 			return 1
 		}
 
 	case "shuttle-suite":
-		// The shuttle-suite subcommand mirrors "suite"/"mux-suite" exactly, but
+		// The shuttle-suite subcommand mirrors "suite"/"reed-suite" exactly, but
 		// runs the dedicated SANDBOX-SHUTTLE-SUITE scheme via the shuttleSuite
 		// spec; fetching the report is the same shared fetch subcommand, so
 		// -loomyard is not required here either.
@@ -346,7 +358,7 @@ func run(argv []string) int {
 		}
 
 	case "burler-suite":
-		// The burler-suite subcommand mirrors "suite"/"mux-suite"/
+		// The burler-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite" exactly, but runs the dedicated
 		// SANDBOX-BURLER-SUITE scheme via the burlerSuite spec; fetching the
 		// report is the same shared fetch subcommand, so -loomyard is not
@@ -370,7 +382,7 @@ func run(argv []string) int {
 		}
 
 	case "perch-suite":
-		// The perch-suite subcommand mirrors "suite"/"mux-suite"/
+		// The perch-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite"/"burler-suite" exactly, but runs the dedicated
 		// SANDBOX-PERCH-SUITE scheme via the perchSuite spec; fetching the
 		// report is the same shared fetch subcommand, so -loomyard is not
@@ -394,7 +406,7 @@ func run(argv []string) int {
 		}
 
 	case "builder-suite":
-		// The builder-suite subcommand mirrors "suite"/"mux-suite"/
+		// The builder-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite"/"burler-suite"/"perch-suite" exactly, but runs the
 		// dedicated SANDBOX-BUILDER-SUITE scheme via the builderSuite spec;
 		// fetching the report is the same shared fetch subcommand, so
@@ -418,7 +430,7 @@ func run(argv []string) int {
 		}
 
 	case "webster-suite":
-		// The webster-suite subcommand mirrors "suite"/"mux-suite"/
+		// The webster-suite subcommand mirrors "suite"/"reed-suite"/
 		// "shuttle-suite"/"burler-suite"/"perch-suite"/"builder-suite"
 		// exactly, but runs the dedicated SANDBOX-WEBSTER-SUITE scheme via
 		// the websterSuite spec; fetching the report is the same shared

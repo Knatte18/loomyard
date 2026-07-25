@@ -143,13 +143,13 @@ green `go test` proves nothing here:
   re-reading reports against a moved HEAD.
 - **`recover-batch` — bounded, re-entrant long-poll; spawn-or-attach, never double-spawn.** The one
   place webster spawns a genuinely separate process: when a fork reports stuck or writes no report,
-  `recover-batch` spawns a fresh implementer as its OWN shuttle/mux strand at the `recovery` role
+  `recover-batch` spawns a fresh implementer as its OWN shuttle/reed strand at the `recovery` role
   (reusing `builderengine.SpawnBatch` by import). EVERY call (including the first) blocks for at most
   `poll_wait_s` and returns either a terminal digest or a running snapshot; a re-entrant call must
   find the strand already recorded in state and skip STRAIGHT to the bounded wait — it must NOT
   spawn a second recovery strand. Verify live: first `recover-batch` spawns one strand; a second
   `recover-batch` for the same batch attaches to the SAME strand (confirm exactly one recovery
-  strand in `lyx mux status`), waits bounded, returns. Confirm each call's Bash-tool duration is
+  strand in `lyx reed status`), waits bounded, returns. Confirm each call's Bash-tool duration is
   bounded by `poll_wait_s`, never open for the whole recovery timeout.
 - **Crash/resume: fresh Master re-drives the first unreported batch.** Forks die WITH Master (same
   process) — so, unlike builder, there is never an orphaned in-flight NORMAL-batch implementer; only
@@ -329,14 +329,18 @@ Live smoke (real substrate, behind the `smoke` build tag):
   (follow the existing ones' pattern, incl. the substrate-absent skip).
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
-- **Deploy on Linux:** `go run ./tools/deploy -dest /home/knatte/.local/bin` (this is the Linux
-  equivalent of the Windows `deploy.cmd`; it builds the current source and installs `lyx` onto the
-  PATH). **FOOTGUN:** live driving runs the DEPLOYED snapshot, not your working tree — re-run this
-  deploy after EVERY source change or you validate a stale binary. Deploy first, always.
+- **Deploy on Linux:** `go run ./tools/deploy -dev` (this is the Linux equivalent of the Windows
+  `deploy-dev.cmd`; it builds the current source and installs `lyx` into the derived `.dev-bin/`
+  directory — no `-dest`, no `/home/knatte/.local/bin` target). The dev binary lands deliberately
+  NOT on your default `PATH`, so for this hands-on driving session prepend it: `export
+  PATH="$PWD/.dev-bin:$PATH"` (run from the repo root) so bare `lyx` resolves to the dev build —
+  this keeps the production `lyx` untouched. **FOOTGUN:** live driving runs the DEPLOYED snapshot,
+  not your working tree — re-run `go run ./tools/deploy -dev` after EVERY source change or you
+  validate a stale binary. Deploy first, always.
 - **Materialize a throwaway test hub yourself** (there is no `sandbox-build.cmd` on this host): make
   a temp dir OUTSIDE this worktree (e.g. under `/tmp` or the session scratchpad — never inside the
   repo, never a second git worktree of loomyard), `git init` it, `lyx init` it (webster needs
-  `_lyx/config/webster.yaml` + `shuttle.yaml`/`mux.yaml`), `lyx mux up`, then write a tiny plan
+  `_lyx/config/webster.yaml` + `shuttle.yaml`/`reed.yaml`), `lyx reed up`, then write a tiny plan
   under `_lyx/plan/`. Keep plan cards TRIVIAL — e.g. "create `resultN.md` containing the single line
   `OK`" — so a real fork finishes each batch in one card, one commit, fast.
 - **Do NOT invoke any `sandbox-webster-suite.cmd` launcher.** It spawns a SEPARATE, context-free
@@ -368,7 +372,7 @@ Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs 
   hit on (b) is a real defect.
 
 TEARDOWN DISCIPLINE (critical): if you start any substrate (Master's strand, a recovery strand,
-`lyx mux up`), tear it down (`lyx mux down`). At the end confirm ZERO stray substrate: `lyx mux
+`lyx reed up`), tear it down (`lyx reed down`). At the end confirm ZERO stray substrate: `lyx reed
 status` lists nothing, and `pgrep -a tmux` shows no leftover server for your test hub. Leave no
 stray state. Be honest about what you could NOT verify and why.
 
@@ -416,9 +420,8 @@ silently drop it.
 - If your review surfaces a live/visual behavior `SANDBOX-WEBSTER-SUITE.md` doesn't cover, EXTEND it
   (match the W1/W2 scenario shape; keep `sandbox_coverage_test.go`'s `**Covers:** webster` guard
   green in the SAME change). Creating a brand-new suite file/launcher is NOT required.
-- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY
-  (`go run ./tools/deploy -dest /home/knatte/.local/bin`) and re-run every live scenario yourself —
-  re-deploying FIRST is mandatory.
+- Keep `go build`/`vet`/`test` green after every change. Then re-run `go run ./tools/deploy -dev`
+  and re-run every live scenario yourself — re-deploying FIRST is mandatory.
 - Update `internal/websterengine/doc.go` and/or `docs/reference/builder-contract.md` (and
   `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change
   as the fix. Do NOT add bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones

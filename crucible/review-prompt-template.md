@@ -4,7 +4,7 @@
 > `<PLACEHOLDER>`. It is the round agent's *entire* instruction set — the orchestrator spawns a
 > fresh clean-room agent told only "read this file and do exactly what it says". See
 > [README.md](README.md) for the loop this prompt runs inside, and
-> [`mux-review-prompt.md`](mux-review-prompt.md) for a fully-worked instance to crib from.
+> [`reed-review-prompt.md`](reed-review-prompt.md) for a fully-worked instance to crib from.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `<MODULE>`
 module in the loomyard repo, followed by FIXING what you find. Work in the worktree at
@@ -88,7 +88,7 @@ real substrate — a green `go test` proves nothing here. Fill in this list for 
 - `<INVARIANT 3 — a concurrency / cross-instance / shared-resource scope boundary>`
 - `<INVARIANT 4 — a mid-operation-failure orphan / reporting-honesty / env-hygiene invariant>`
 (For a fully-worked example of this list, see the "High-yield focus" section of
-[`mux-review-prompt.md`](mux-review-prompt.md).)
+[`reed-review-prompt.md`](reed-review-prompt.md).)
 
 ## Explicitly OUT of scope for `<MODULE>` v1
 `<List anything whose ABSENCE is correct so the reviewer doesn't flag it — e.g. concerns that belong
@@ -120,16 +120,16 @@ Live smoke (real substrate, behind the `smoke` build tag):
 - `<substrate binary/tool locations + any absolute-path footgun>`.
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
-- Deploy the current source as the binary under test: `deploy.cmd`. **FOOTGUN:** live driving runs
-  the DEPLOYED snapshot, not your working tree — re-run `deploy.cmd` after EVERY source change or
-  you validate a stale binary. Deploy first, always.
+- Deploy the current source as the dev binary under test: `deploy-dev.cmd` (`deploy-dev` on
+  POSIX). **FOOTGUN:** live driving runs the DEPLOYED snapshot, not your working tree — re-run
+  `deploy-dev.cmd` after EVERY source change or you validate a stale binary. Deploy first, always.
 - **Do NOT invoke `sandbox-<module>-suite.cmd`** (if one exists for this module). That launcher
   spawns a SEPARATE, context-free interactive `claude` session — a naive black-box tester with no
   source knowledge, meant for a human operator's own dogfooding, not for you to spawn on top of
   yourself. Instead, run the real CLI commands yourself, directly, foreground, waiting for each to
   return: walk the "High-yield focus" list above (and `<SANDBOX-<MODULE>-SUITE.md>`'s scenarios, if
   one exists, for extra ideas) and record OK/WARN/FAIL for each. This spawns real substrate
-  underneath when the module rides mux/shuttle (real tmux panes, real `claude` sessions) — that is
+  underneath when the module rides reed/shuttle (real tmux panes, real `claude` sessions) — that is
   expected and required. None of it needs an attached TTY of its own.
 - The suite/list is a FLOOR — devise and run MANY more adversarial scenarios of your own beyond it
   (combine verbs in orders nothing has tried; chase anything the code makes you suspicious of).
@@ -203,9 +203,9 @@ round. Empty on the first round.>`
   surfaces a live/visual behavior it doesn't cover (match the existing scenario shape; keep the
   coverage guard green in the SAME change). If none exists, note the new scenario in your fixer
   report instead — creating a brand-new suite file/launcher is not required by this method.
-- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy.cmd`) and re-run
-  every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the
-  deployed binary).
+- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY (`deploy-dev.cmd`) and
+  re-run every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving
+  tests the deployed dev binary).
 - Update `<manifest/designs/<module>.md>` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the
   module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`
   (roadmap is planned milestones only, per CLAUDE.md).

@@ -25,7 +25,7 @@ func TestHelpTree_RootNamesAllModules(t *testing.T) {
 	got := out.String()
 	// Every module must appear by name in the root help output.
 	requiredModules := []string{
-		"init", "board", "config", "ide", "mux", "weft", "warp", "fabric", "selfreport", "shuttle", "burler", "perch", "builder", "codeintel", "webster",
+		"init", "board", "config", "ide", "reed", "weft", "warp", "fabric", "selfreport", "shuttle", "burler", "perch", "builder", "codeintel", "webster",
 	}
 	for _, module := range requiredModules {
 		if !strings.Contains(got, module) {
@@ -90,8 +90,8 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 			wantSubs: []string{"spawn", "menu"},
 		},
 		{
-			name:     "mux",
-			module:   "mux",
+			name:     "reed",
+			module:   "reed",
 			wantSubs: []string{"up", "add", "remove", "status", "attach", "resume", "down", "header"},
 		},
 		{

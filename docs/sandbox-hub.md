@@ -5,7 +5,7 @@
 > **Just want to run it?** See the operator runbook: [sandbox-howto.md](sandbox-howto.md)
 > (deploy → clone Hub → run suite). This document is the reference for topology and design.
 
-The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the actual deployed `lyx` binary, testing the real command surface, JSON output, and topology wiring that users encounter. Its purpose is **dogfooding** — running lyx against itself to catch regressions early.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the resolved `lyx` binary under test — the dev binary deployed via `deploy-dev` into the derived `.dev-bin` directory when present, else the production binary on PATH deployed via `deploy.cmd` — testing the real command surface, JSON output, and topology wiring that users encounter. Its purpose is **dogfooding** — running lyx against itself to catch regressions early.
 
 The Hub consists of two dedicated GitHub repositories and a local working directory on disk:
 
@@ -39,11 +39,11 @@ The board repo is the weft repo's GitHub wiki. **This wiki must already exist an
 
 If the wiki does not exist or is not initialized, `lyx warp clone` will fail when trying to clone the board, and the Hub will be torn down.
 
-### Current lyx Binary on PATH
+### Current lyx Binary
 
-The sandbox tool invokes `lyx warp clone` as a subprocess and requires `lyx` to be on your system PATH. The `lyx` binary must be deployed separately (via `deploy.cmd`) before the Hub can be built.
+The sandbox tool invokes `lyx warp clone` as a subprocess and resolves which `lyx` to run: the derived `.dev-bin/lyx` binary when it exists (deployed via `deploy-dev`), else the `lyx` on your system PATH as a fallback (deployed via `deploy.cmd`). Deploy one of the two before the Hub can be built.
 
-If `lyx` is not on PATH, the sandbox tool will fail with a clear error message.
+If neither is resolvable, the sandbox tool will fail with a clear error message.
 
 ## Building and Rebuilding the Hub
 
@@ -78,12 +78,13 @@ The `-reset` flag:
 ## Running the Suite Agent
 
 Once the Hub is built, the `suite` subcommand runs an automated black-box test session
-against the deployed `lyx.exe`.
+against the resolved `lyx.exe` under test.
 
 ### Prerequisites
 
 - Hub already built (`sandbox-build.cmd`).
-- `lyx` on PATH (deployed via `deploy.cmd`).
+- `lyx` resolvable: dev binary in `.dev-bin` (deployed via `deploy-dev`), or, as a
+  fallback, on PATH (deployed via `deploy.cmd`).
 
 ### Usage
 
@@ -94,7 +95,9 @@ sandbox-core-suite.cmd
 This command, run from the lyx repo directory:
 
 1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
-2. Fingerprints the deployed `lyx.exe` (absolute path, size, modtime, SHA256 prefix).
+2. Resolves the `lyx` binary under test (derived `.dev-bin/lyx` first, else PATH as a
+   fallback) and fingerprints it (absolute path, size, modtime, SHA256 prefix, and a
+   `Source: dev`/`Source: prod` marker recording which one was picked).
 3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub host repo, prepending the fingerprint
    block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`). Any previous copy
    is overwritten so every session starts from a clean slate.
@@ -156,33 +159,34 @@ root); it is required only by this subcommand.
 ### Future: tmux launch
 
 The direct `claude` launch used today will be replaced by a tmux interactive session
-once the `mux` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the
+once the `reed` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the
 agent) is unchanged; only the launch mechanism will differ.
 
-## Running the mux suite
+## Running the reed suite
 
-Alongside the main suite, `sandbox-mux-suite.cmd` runs a dedicated black-box suite
-against `lyx mux`. It mirrors the main-suite flow: it copies a fingerprinted
-`SANDBOX-MUX-SUITE.md` into the Hub host repo, git-excludes the copy the same way
+Alongside the main suite, `sandbox-reed-suite.cmd` runs a dedicated black-box suite
+against `lyx reed`. It mirrors the main-suite flow: it copies a fingerprinted
+`SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes the copy the same way
 `SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches
 the interactive agent there. Because it exercises live tmux panes (crash simulation,
 layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a
 precondition beyond what the main suite requires. Findings land in the same
-`sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a mux-suite
+`sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a reed-suite
 report exactly as it collects a main-suite report — the two suites share one report
 pipeline, one run at a time.
 
 ## Launchers and subcommands
 
 The single Go tool (`tools/sandbox`) still dispatches four subcommands
-internally — `build` (default), `suite`, `mux-suite`, and `fetch` — but each is
-fronted by its own single-purpose launcher, mirroring how `deploy.cmd` does one thing:
+internally — `build` (default), `suite`, `reed-suite`, and `fetch` — but each is
+fronted by its own single-purpose launcher, mirroring how `deploy.cmd`/`deploy-dev.cmd`
+each do one thing:
 
 ```cmd
 sandbox-build.cmd            # go run ./tools/sandbox -parent C:\Code build
 sandbox-build.cmd -reset     # ... build -reset  (tear down and re-clone)
 sandbox-core-suite.cmd            # ... suite  (run the interactive agent)
-sandbox-mux-suite.cmd        # ... mux-suite  (run the mux-specific interactive agent)
+sandbox-reed-suite.cmd       # ... reed-suite  (run the reed-specific interactive agent)
 sandbox-fetch.cmd            # ... -loomyard "%~dp0." fetch  (collect the report)
 ```
 

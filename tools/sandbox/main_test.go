@@ -58,19 +58,48 @@ func TestDecideClone_HubPathComputation(t *testing.T) {
 	}
 }
 
-// TestDecideClone_HubAbsent tests that cloneRun is invoked when the Hub does not exist.
+// stubResolveLyxProd stubs devBinPath to a non-existent path and lookPath to
+// return fakeLyxPath for "lyx", so resolveLyx deterministically resolves the
+// PATH-based sourceProd branch when decideClone resolves the binary at its
+// clone step. It returns a restore function for both seams.
+func stubResolveLyxProd(t *testing.T, fakeLyxPath string) func() {
+	t.Helper()
+	oldDevBinPath := devBinPath
+	oldLookPath := lookPath
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+	lookPath = func(name string) (string, error) {
+		if name == "lyx" {
+			return fakeLyxPath, nil
+		}
+		return "", fmt.Errorf("not found on PATH: %s", name)
+	}
+	return func() {
+		devBinPath = oldDevBinPath
+		lookPath = oldLookPath
+	}
+}
+
+// TestDecideClone_HubAbsent tests that cloneRun is invoked -- with the binary
+// resolveLyx resolved -- when the Hub does not exist.
 func TestDecideClone_HubAbsent(t *testing.T) {
 	tmpDir := t.TempDir()
 	hubPath := filepath.Join(tmpDir, hubName)
+	const fakeLyxPath = "/fake/prod/lyx"
+
+	restoreResolve := stubResolveLyxProd(t, fakeLyxPath)
+	defer restoreResolve()
 
 	cloneRunCalled := false
 	oldCloneRun := cloneRun
 	defer func() { cloneRun = oldCloneRun }()
 
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		cloneRunCalled = true
 		if parentDir != tmpDir {
 			t.Errorf("cloneRun called with wrong parentDir: got %s, want %s", parentDir, tmpDir)
+		}
+		if lyxPath != fakeLyxPath {
+			t.Errorf("cloneRun called with wrong lyxPath: got %s, want %s", lyxPath, fakeLyxPath)
 		}
 		return nil
 	}
@@ -84,7 +113,11 @@ func TestDecideClone_HubAbsent(t *testing.T) {
 	}
 }
 
-// TestDecideClone_HubPresent_NoReset tests that cloneRun is not called when Hub exists and reset is false.
+// TestDecideClone_HubPresent_NoReset tests that cloneRun is not called when Hub
+// exists and reset is false. Deliberately no devBinPath/lookPath stub is set
+// up here: this proves the no-op path never resolves lyx at all, matching the
+// documented behaviour that it succeeds even with no dev binary and no PATH
+// lyx resolvable.
 func TestDecideClone_HubPresent_NoReset(t *testing.T) {
 	tmpDir := t.TempDir()
 	hubPath := filepath.Join(tmpDir, hubName)
@@ -98,7 +131,7 @@ func TestDecideClone_HubPresent_NoReset(t *testing.T) {
 	oldCloneRun := cloneRun
 	defer func() { cloneRun = oldCloneRun }()
 
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		cloneRunCalled = true
 		return nil
 	}
@@ -127,6 +160,10 @@ func TestDecideClone_HubPresent_Reset(t *testing.T) {
 		t.Fatalf("Hub directory does not exist: %v", err)
 	}
 
+	const fakeLyxPath = "/fake/prod/lyx"
+	restoreResolve := stubResolveLyxProd(t, fakeLyxPath)
+	defer restoreResolve()
+
 	removeAllCalled := false
 	cloneRunCalled := false
 
@@ -146,10 +183,13 @@ func TestDecideClone_HubPresent_Reset(t *testing.T) {
 		return os.RemoveAll(path)
 	}
 
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		cloneRunCalled = true
 		if parentDir != tmpDir {
 			t.Errorf("cloneRun called with wrong parentDir: got %s, want %s", parentDir, tmpDir)
+		}
+		if lyxPath != fakeLyxPath {
+			t.Errorf("cloneRun called with wrong lyxPath: got %s, want %s", lyxPath, fakeLyxPath)
 		}
 		return nil
 	}
@@ -177,10 +217,13 @@ func TestDecideClone_CloneRunError(t *testing.T) {
 	tmpDir := t.TempDir()
 	hubPath := filepath.Join(tmpDir, hubName)
 
+	restoreResolve := stubResolveLyxProd(t, "/fake/prod/lyx")
+	defer restoreResolve()
+
 	oldCloneRun := cloneRun
 	defer func() { cloneRun = oldCloneRun }()
 
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		return &exec.ExitError{}
 	}
 
@@ -213,10 +256,13 @@ func TestRun_MissingParent(t *testing.T) {
 func TestRun_DefaultBuildRoutesToClone(t *testing.T) {
 	tmpDir := t.TempDir()
 
+	restoreResolve := stubResolveLyxProd(t, "/fake/prod/lyx")
+	defer restoreResolve()
+
 	cloneRunCalled := false
 	oldCloneRun := cloneRun
 	defer func() { cloneRun = oldCloneRun }()
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		cloneRunCalled = true
 		return nil
 	}
@@ -236,10 +282,13 @@ func TestRun_DefaultBuildRoutesToClone(t *testing.T) {
 func TestRun_BuildSubcommandRoutesToClone(t *testing.T) {
 	tmpDir := t.TempDir()
 
+	restoreResolve := stubResolveLyxProd(t, "/fake/prod/lyx")
+	defer restoreResolve()
+
 	cloneRunCalled := false
 	oldCloneRun := cloneRun
 	defer func() { cloneRun = oldCloneRun }()
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		cloneRunCalled = true
 		return nil
 	}
@@ -264,6 +313,9 @@ func TestRun_BuildResetRoutesToBuildWithReset(t *testing.T) {
 		t.Fatalf("create hub: %v", err)
 	}
 
+	restoreResolve := stubResolveLyxProd(t, "/fake/prod/lyx")
+	defer restoreResolve()
+
 	removeAllCalled := false
 	cloneRunCalled := false
 
@@ -278,7 +330,7 @@ func TestRun_BuildResetRoutesToBuildWithReset(t *testing.T) {
 		removeAllCalled = true
 		return os.RemoveAll(path)
 	}
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		cloneRunCalled = true
 		return nil
 	}
@@ -298,7 +350,9 @@ func TestRun_BuildResetRoutesToBuildWithReset(t *testing.T) {
 }
 
 // TestRun_BuildNoResetDoesNotRemove tests that a bare build (no -reset) over an
-// existing Hub does not remove it -- reset must be explicit.
+// existing Hub does not remove it -- reset must be explicit. Deliberately no
+// devBinPath/lookPath stub is set up here: the no-op path must never resolve
+// lyx at all.
 func TestRun_BuildNoResetDoesNotRemove(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -322,7 +376,7 @@ func TestRun_BuildNoResetDoesNotRemove(t *testing.T) {
 		removeAllCalled = true
 		return os.RemoveAll(path)
 	}
-	cloneRun = func(parentDir string) error {
+	cloneRun = func(parentDir, lyxPath string) error {
 		cloneRunCalled = true
 		return nil
 	}
@@ -359,6 +413,12 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 	fakeClaude := filepath.Join(tmpDir, "claude.exe")
 
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
@@ -373,10 +433,10 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 
 	launchAgentCalled := false
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		if dir != hostRepoDir {
 			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
@@ -393,11 +453,11 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_MuxSuiteRoutesToLaunch tests that the "mux-suite" positional routes
-// to the mux-suite path and ultimately invokes launchAgent with the correct
-// host repo directory and the mux default instruction, mirroring
+// TestRun_ReedSuiteRoutesToLaunch tests that the "reed-suite" positional routes
+// to the reed-suite path and ultimately invokes launchAgent with the correct
+// host repo directory and the reed default instruction, mirroring
 // TestRun_SuiteRoutesSuiteToLaunch for the "suite" dispatch.
-func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
+func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create the Hub host repo directory that runSuite requires.
@@ -412,6 +472,12 @@ func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
 		t.Fatalf("write fake lyx: %v", err)
 	}
 	fakeClaude := filepath.Join(tmpDir, "claude.exe")
+
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
 
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
@@ -428,10 +494,10 @@ func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
 		if dir != hostRepoDir {
@@ -440,22 +506,22 @@ func TestRun_MuxSuiteRoutesToLaunch(t *testing.T) {
 		return 0
 	}
 
-	code := run([]string{"-parent", tmpDir, "mux-suite"})
+	code := run([]string{"-parent", tmpDir, "reed-suite"})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
 	if !launchAgentCalled {
-		t.Error("launchAgent was not called for mux-suite subcommand")
+		t.Error("launchAgent was not called for reed-suite subcommand")
 	}
-	if gotInstruction != muxSuite.instruction {
-		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, muxSuite.instruction)
+	if gotInstruction != reedSuite.instruction {
+		t.Errorf("launchAgent instruction = %q; want %q", gotInstruction, reedSuite.instruction)
 	}
 }
 
-// TestRun_MuxSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
-// following the "mux-suite" positional are parsed and forwarded to
+// TestRun_ReedSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
+// following the "reed-suite" positional are parsed and forwarded to
 // launchAgent, mirroring the "suite" subcommand's flag handling.
-func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
+func TestRun_ReedSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
@@ -468,7 +534,13 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 		t.Fatalf("write fake lyx: %v", err)
 	}
 	customClaude := filepath.Join(tmpDir, "custom-claude.exe")
-	customPrompt := "Do the mux thing my way."
+	customPrompt := "Do the reed thing my way."
+
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
 
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
@@ -481,16 +553,16 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 
 	var gotClaude, gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		gotClaude = claude
 		gotInstruction = instruction
 		return 0
 	}
 
-	code := run([]string{"-parent", tmpDir, "mux-suite", "-claude", customClaude, "-prompt", customPrompt})
+	code := run([]string{"-parent", tmpDir, "reed-suite", "-claude", customClaude, "-prompt", customPrompt})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
 	}
@@ -502,23 +574,23 @@ func TestRun_MuxSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 }
 
-// TestRun_MuxSuiteErrorPropagation tests that a runSuite error under the
-// mux-suite dispatch (Hub absent) is propagated as a non-zero exit code,
+// TestRun_ReedSuiteErrorPropagation tests that a runSuite error under the
+// reed-suite dispatch (Hub absent) is propagated as a non-zero exit code,
 // mirroring the error-propagation coverage the "suite" dispatch relies on via
 // TestRunSuite_HubAbsent at the runSuite level.
-func TestRun_MuxSuiteErrorPropagation(t *testing.T) {
+func TestRun_ReedSuiteErrorPropagation(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	code := run([]string{"-parent", tmpDir, "mux-suite"})
+	code := run([]string{"-parent", tmpDir, "reed-suite"})
 	if code == 0 {
-		t.Error("run() = 0; want non-zero when Hub host repo is absent for mux-suite subcommand")
+		t.Error("run() = 0; want non-zero when Hub host repo is absent for reed-suite subcommand")
 	}
 }
 
 // TestRun_ShuttleSuiteRoutesToLaunch tests that the "shuttle-suite" positional
 // routes to the shuttle-suite path and ultimately invokes launchAgent with the
 // correct host repo directory and the shuttle default instruction, mirroring
-// TestRun_MuxSuiteRoutesToLaunch for the "shuttle-suite" dispatch.
+// TestRun_ReedSuiteRoutesToLaunch for the "shuttle-suite" dispatch.
 func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -535,6 +607,12 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	}
 	fakeClaude := filepath.Join(tmpDir, "claude.exe")
 
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
@@ -550,10 +628,10 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
 		if dir != hostRepoDir {
@@ -576,7 +654,7 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 
 // TestRun_ShuttleSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
 // following the "shuttle-suite" positional are parsed and forwarded to
-// launchAgent, mirroring the "mux-suite" subcommand's flag handling.
+// launchAgent, mirroring the "reed-suite" subcommand's flag handling.
 func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -592,6 +670,12 @@ func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	customClaude := filepath.Join(tmpDir, "custom-claude.exe")
 	customPrompt := "Do the shuttle thing my way."
 
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
@@ -603,10 +687,10 @@ func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 
 	var gotClaude, gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		gotClaude = claude
 		gotInstruction = instruction
 		return 0
@@ -626,7 +710,7 @@ func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 
 // TestRun_ShuttleSuiteErrorPropagation tests that a runSuite error under the
 // shuttle-suite dispatch (Hub absent) is propagated as a non-zero exit code,
-// mirroring TestRun_MuxSuiteErrorPropagation for the "shuttle-suite" dispatch.
+// mirroring TestRun_ReedSuiteErrorPropagation for the "shuttle-suite" dispatch.
 func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -639,7 +723,7 @@ func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 // TestRun_BurlerSuiteRoutesToLaunch tests that the "burler-suite" positional
 // routes to the burler-suite path and ultimately invokes launchAgent with the
 // correct host repo directory and the burler default instruction, mirroring
-// TestRun_MuxSuiteRoutesToLaunch for the "burler-suite" dispatch.
+// TestRun_ReedSuiteRoutesToLaunch for the "burler-suite" dispatch.
 func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -656,6 +740,12 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	}
 	fakeClaude := filepath.Join(tmpDir, "claude.exe")
 
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
@@ -671,10 +761,10 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
 		if dir != hostRepoDir {
@@ -698,7 +788,7 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 // TestRun_PerchSuiteRoutesToLaunch tests that the "perch-suite" positional
 // routes to the perch-suite path and ultimately invokes launchAgent with the
 // correct host repo directory and the perch default instruction, mirroring
-// TestRun_MuxSuiteRoutesToLaunch for the "perch-suite" dispatch.
+// TestRun_ReedSuiteRoutesToLaunch for the "perch-suite" dispatch.
 func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -715,6 +805,12 @@ func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	}
 	fakeClaude := filepath.Join(tmpDir, "claude.exe")
 
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {
@@ -730,10 +826,10 @@ func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 
 	launchAgentCalled := false
 	var gotInstruction string
-	stubMuxDownNoop(t)
+	stubReedDownNoop(t)
 	oldLaunchAgent := launchAgent
 	defer func() { launchAgent = oldLaunchAgent }()
-	launchAgent = func(dir, claude, instruction string) int {
+	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
 		if dir != hostRepoDir {
@@ -851,6 +947,12 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
 		t.Fatalf("write fake lyx: %v", err)
 	}
+	// No dev binary in play: resolveLyx must fall through to the lookPath
+	// stub below and resolve sourceProd.
+	oldDevBinPath := devBinPath
+	defer func() { devBinPath = oldDevBinPath }()
+	devBinPath = func() (string, error) { return filepath.Join(t.TempDir(), "lyx"), nil }
+
 	oldLookPath := lookPath
 	defer func() { lookPath = oldLookPath }()
 	lookPath = func(name string) (string, error) {

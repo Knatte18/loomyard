@@ -50,10 +50,10 @@ import it without cycles.
 ## Tokenvocab Leaf Invariant
 
 `internal/tokenvocab` production code imports only stdlib, `internal/hubgeometry`, and
-`internal/stencil` — so every future consumer (mux's header pipeline, loom's prompt
+`internal/stencil` — so every future consumer (reed's header pipeline, loom's prompt
 templates) can import it without cycles.
 
-- The reverse import (`tokenvocab` → `mux`, `tokenvocab` → `loom`, or any other feature
+- The reverse import (`tokenvocab` → `reed`, `tokenvocab` → `loom`, or any other feature
   package) is never allowed.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go`
   (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
@@ -97,22 +97,22 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   `RunE = clihelp.GroupRunE` to reject unknown subcommands.
 - **Interactive-handoff exception (narrow, per-command).** A subcommand whose whole job is
   to hand the operator's stdio to another interactive program and block (`ide menu`'s stdin
-  picker; `mux attach`'s `tmux attach`), or to self-display and then keep a pane alive
-  forever (`mux header --blocking`, the header pane's own print-then-block keepalive tail),
+  picker; `reed attach`'s `tmux attach`), or to self-display and then keep a pane alive
+  forever (`reed header --blocking`, the header pane's own print-then-block keepalive tail),
   cannot emit the JSON envelope on that terminal-handover/keepalive tail. The exception is
   scoped tightly: everything that can fail runs **pre-flight and stays on the envelope**
   (`output.Err`, non-zero exit); only the post-handoff/keepalive tail is exempt, and on
-  success it emits no JSON. `mux attach` follows the pre-existing `ide menu` precedent;
-  `mux header --blocking` is a narrower sub-case still — the command's own default mode
+  success it emits no JSON. `reed attach` follows the pre-existing `ide menu` precedent;
+  `reed header --blocking` is a narrower sub-case still — the command's own default mode
   (no `--blocking`) stays fully on the envelope, and only the flag-gated tail is exempt. See
-  the `internal/muxcli` attach/header commands' godoc/`Long` and
+  the `internal/reedcli` attach/header commands' godoc/`Long` and
   [docs/overview.md#modules](docs/overview.md#modules) for the full rationale.
 - **Package naming.** A Cobra-registered package is `<module>cli`; its extracted domain
   kernel is `<module>engine`. cli imports engine; engine never imports cli or cobra.
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine. Skip the
   engine only for trivial wrappers (`configcli`) or a throwaway proof-of-concept meant
   to be deleted once it proves its point (e.g. `muxpoccli`, which followed exactly that
-  path — deleted once `mux` shipped); "no consumer today" is not a skip reason.
+  path — deleted once `reed` shipped); "no consumer today" is not a skip reason.
   `initcli`/`initengine` follows the standard
   split (no longer exempt — `lyx init --undo` grew enough core logic that mixing it into
   the cli package was rot, not simplicity).
@@ -127,8 +127,8 @@ Provider specifics live ONLY under `internal/shuttleengine/claudeengine`.
 
 - CLI flags, the `settings.json` hook schema, TUI startup/trust markers, and pane key
   choreography are all Claude-specific and stay inside `internal/shuttleengine/claudeengine`.
-  `internal/shuttleengine` and `internal/muxengine` stay provider-invariant: they define the
-  `Engine` interface (and, for mux, the opaque `cmd`/`resumeCmd`/strand contract) and never import
+  `internal/shuttleengine` and `internal/reedengine` stay provider-invariant: they define the
+  `Engine` interface (and, for reed, the opaque `cmd`/`resumeCmd`/strand contract) and never import
   or reference Claude specifics.
 - `internal/shuttleengine` never imports `internal/shuttleengine/claudeengine` — the reverse
   import only. Wiring a concrete engine into the run loop happens in `internal/shuttlecli`, which
@@ -207,7 +207,7 @@ explicitly excluded with a reason.
 - **Tagging.** A scenario in **any** suite file matching
   `tools/sandbox/*SUITE.md` (today: `SANDBOX-BUILDER-SUITE.md`,
   `SANDBOX-BURLER-SUITE.md`, `SANDBOX-CORE-SUITE.md`, `SANDBOX-FABRIC-SUITE.md`,
-  `SANDBOX-MUX-SUITE.md`, `SANDBOX-PERCH-SUITE.md`, `SANDBOX-SHUTTLE-SUITE.md`,
+  `SANDBOX-PERCH-SUITE.md`, `SANDBOX-REED-SUITE.md`, `SANDBOX-SHUTTLE-SUITE.md`,
   `SANDBOX-WEBSTER-SUITE.md`) that drives a specific module declares it with a
   `**Covers:** <module>[, <module>...]` line, in the same bold-label style as the
   scenario's `**Goal:**`/`**Watch:**`/`**Verdict:**` lines. The guard unions tags
@@ -295,6 +295,30 @@ depends on the operator's `~/.gitconfig` or the system gitconfig.
   its own real `TestMain`.
 - **Enforced by** `cmd/lyx/hermeticenv_test.go`
   (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) on every `go test`.
+
+## Dev/Prod Binary Separation
+
+The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling back to
+PATH) through `resolveLyx`, never a bare-PATH `lyx` lookup that could silently resolve
+prod.
+
+- **Statement.** `resolveLyx` (`tools/sandbox/resolve.go`) is the single allowlisted
+  resolution site: it checks the derived `.dev-bin/lyx` first and falls back to
+  `lookPath("lyx")`, returning `(path, source)` with `source ∈ {dev, prod}`. This covers
+  **both** `lookPath("lyx")` **and** the separator-free `exec.Command("lyx", …)` /
+  `exec.CommandContext("lyx", …)` form — Go's `exec.Command` LookPath's a name with no
+  path separator, so it is the same footgun as a direct `lookPath` call.
+- **Never installed to prod.** The dev binary (`tools/deploy -dev`) is built into
+  `<repoRoot>/.dev-bin`, never the production install location `deploy.cmd`/`deploy`
+  target; `.dev-bin/` is gitignored.
+- **Agent-only PATH prepend.** `.dev-bin` is prepended only to the agent child-process
+  PATH (`launchAgent`), never the operator's own PATH — a bare `lyx` in an operator shell
+  always resolves prod.
+- **Enforced by** `tools/sandbox/pathresolve_guard_test.go`
+  (`TestPathResolveGuard_NoBarePathLyxOutsideResolve`) for the mechanical half — no
+  non-test file outside `resolve.go` may contain a banned bare-PATH `lyx` literal. The
+  semantic half (agent-only PATH prepend, dev binary never installed to prod) is review
+  discipline, not machine-checked.
 
 ## Documentation Lifecycle
 

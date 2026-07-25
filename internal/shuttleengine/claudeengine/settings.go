@@ -23,7 +23,7 @@ import (
 // steerAgentDeny is the PreToolUse(Agent) deny reason: it always redirects
 // the model back into this pane, since shuttle's whole design point is that
 // every agent is a separate, visible tmux pane — never Claude Code's
-// in-process Agent tool (mux-hooks-exploration.md §B).
+// in-process Agent tool (reed-hooks-exploration.md §B).
 const steerAgentDeny = "do the work in this session; nested agents are not available here — all work must stay visible in this pane"
 
 // steerAgentNonForkDeny is the PreToolUse(Agent) deny reason used in
