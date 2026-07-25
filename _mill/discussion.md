@@ -513,9 +513,10 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   reset (error path mutates nothing); weft-reset failure rolls warp back to the
   pre-revert SHA, Checkout-style; rollback failure is a typed both-states error.
 - **Q:** (adhoc orchestrator review) board-use-gitrepo concurrently grows gitrepo
-  (StageAllAndCommit already committed on its branch) — coordinate how? **A:** Plan
-  against gitrepo's real surface at plan time (inspect that branch's diff / merged
-  main); the write lock serializes every commit path incl. `StageAllAndCommit`; landing
+  (StageAllAndCommit already committed on its branch) — coordinate how? **A:**
+  *(SUPERSEDED by the post-handoff merge entry below — the write-lock clause here was
+  retracted: there is no gitrepo-level lock, and fabric never calls
+  `StageAllAndCommit`.)* Plan against gitrepo's real surface at plan time; landing
   order stays an operator decision; expect a `doc.go` merge-in conflict.
 - **Q:** (adhoc) Does board route through fabric's SyncWeft? **A:** No — board uses
   gitrepo's `PushCoalesced` directly on `weft:main` per board-weft-storage.md; the
