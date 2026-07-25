@@ -2,21 +2,20 @@
 // _lyx/webster/state.json: the run identity, the plan-fingerprint anchor
 // crash/resume compares against, the current-batch cursor, Master's own
 // strand/session identity and last-asserted model, every batch's own
-// persisted record (including its carried-forward digest), each
-// deferred-verify chain's rollback anchor SHA, and the set of fork
-// transcripts already attributed across every batch. LoadState/SaveState
-// are state.json's only readers/writers; every other websterengine file
-// mutates the in-memory *State the caller loaded and calls SaveState to
-// persist it back. Callers resolve websterDir via hubgeometry.WebsterDir —
-// this file never constructs a _lyx path itself (Hub Geometry Invariant).
+// persisted record (including its carried-forward digest and per-card SHA
+// trail), and the set of fork transcripts already attributed across every
+// batch. LoadState/SaveState are state.json's only readers/writers; every
+// other websterengine file mutates the in-memory *State the caller loaded
+// and calls SaveState to persist it back. Callers resolve websterDir via
+// hubgeometry.WebsterDir — this file never constructs a _lyx path itself
+// (Hub Geometry Invariant).
 //
 // webster's State is its own schema, independent of builderengine.State: the
 // two modules' state files never share a Go type or a sentinel error, so
 // errors.Is can never conflate a builder run with a webster run (see the
-// discussion's "webster-owns-its-own-domain-types" decision). The one
-// import from builderengine is Digest itself — webster carries forward the
-// exact same distilled-digest contract, just persisted where builder never
-// needed to persist it.
+// discussion's "webster-owns-its-own-domain-types" decision). BatchState.Digest
+// is the webster-local *Digest (digest.go) — webster's own fork-return-derived
+// batch-outcome snapshot, not builderengine's.
 
 package websterengine
 
@@ -25,7 +24,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -93,10 +91,6 @@ type State struct {
 	// Batches holds every batch's own persisted record, keyed by batch
 	// number.
 	Batches map[int]*BatchState `json:"batches"`
-	// ChainStartSHAs records each deferred-verify chain's rollback anchor —
-	// the host HEAD immediately before the chain's lowest-numbered member's
-	// first fork — keyed by the chain-end batch number.
-	ChainStartSHAs map[int]string `json:"chainStartShas"`
 	// SeenForkTranscripts is every subagent transcript path already
 	// attributed to a batch, across all batches in this run. record-batch's
 	// incremental audit consults this set to parse only what is new since
@@ -137,9 +131,15 @@ type BatchState struct {
 	// classification — the carry-forward home that lets begin-batch(N+1)
 	// render this batch's digest into the next fork's prompt, and lets a
 	// crash-resumed Master reconstruct its progress context, without ever
-	// re-Distilling a report against a HEAD that has since moved. Builder
+	// re-distilling a report against a HEAD that has since moved. Builder
 	// never persisted its Digest; webster must.
-	Digest *builderengine.Digest `json:"digest,omitempty"`
+	Digest *Digest `json:"digest,omitempty"`
+	// CardSHAs is the ordered per-card commit SHA trail for this batch — the
+	// resume trail and SHA-bisect anchor set. In v0 (identity batcher, batch
+	// ≡ card) this holds exactly one element, the batch's single card SHA;
+	// the multi-card enumeration path is dormant until a grouping batchifier
+	// ships.
+	CardSHAs []string `json:"cardShas,omitempty"`
 	// ForkTranscripts is the set of subagent transcript filenames already
 	// attributed to this specific batch (a subset of State.SeenForkTranscripts).
 	ForkTranscripts []string `json:"forkTranscripts,omitempty"`
