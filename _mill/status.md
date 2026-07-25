@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: fabric
 branch: fabric
 plan: _mill/plan
@@ -37,6 +37,7 @@ holistic-fixing  '2026-07-25T08:39:49Z'
 nits-fixed-holistic  '2026-07-25T08:41:27Z'
 holistic-approved  '2026-07-25T08:41:35Z'
 done  '2026-07-25T08:42:05Z'
+pr-pending  '2026-07-25T08:43:51Z'
 ```
 
 ## Batches
