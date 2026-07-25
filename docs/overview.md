@@ -206,6 +206,7 @@ github.com/Knatte18/loomyard/
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
 ├── internal/gitrepo/             typed Repo over one local git checkout, built on gitexec
+├── internal/gitnativepoc/        go-git feasibility spike (experimental, kept, not wired into production)
 ├── internal/lock/                shared file locking
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf

@@ -10,14 +10,6 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **git-native-library: feasibility spike** — narrow, scoped exploration of swapping
-   `internal/gitexec`'s shell-out plumbing for a native Go git library (e.g. `go-git`), limited to
-   the read-only surface `gitrepo` uses (`rev-parse`, `diff --name-only`, ref reads). Output is a
-   go/no-go decision, not a migration — prompted by real parse-git's-stderr-as-an-API bugs
-   `gitrepo`'s crucible hardening surfaced. Depends on `board-use-gitrepo` landing first (not just
-   `gitrepo`), since that item changes `gitrepo`'s public surface; non-blocking for `fabric`. See
-   [designs/git-native-library.md](designs/git-native-library.md).
-
 1. **fabric** — replaces `warp` and `weft` in full: all topology (clone, dual-worktree add/remove,
    coordinated checkout, reconcile, prune, cleanup, branch naming — including enforcing
    `<slug>-weft` uniformly, no exceptions) and all git mechanics into the paired weft repo, unified
@@ -124,6 +116,14 @@ between these items.
    develops loomyard.
 
 ## Done
+
+1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library
+   (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface
+   `gitrepo` uses (reads and writes, including the `Push` rebase-retry path). Recommendation:
+   ADOPT-PARTIAL — the read surface, both commit methods, and `SetSnapshotSHA` migrate cleanly;
+   the rebase-retry recovery on a rejected push stays CLI-BOUND because go-git ships no rebase
+   implementation. The kept prototype and its findings write-up live in
+   `internal/gitnativepoc/doc.go`; no consumer was migrated.
 
 1. **board** — task tracker (storage model superseded by the Planned `board` item once it ships).
 
