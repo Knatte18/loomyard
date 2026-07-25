@@ -224,6 +224,31 @@ consumers and deletes warp/weft is a later, separate task (step 2).
 - Rejected: extracting a shared package both modules import; exporting warpengine
   internals for fabric to import.
 
+### Clone: full parity, board repo included
+
+- Decision: fabric's `clone` replicates warp's `CloneHub` behavior exactly — clones host,
+  weft, AND the board repo into `<name>-HUB`, with the board URL optional and the same
+  `resolvedBoardURL` return and strict-abort teardown. It lives as a package-level
+  function in fabricengine (clone runs before any `Fabric` instance exists); the
+  `Fabric` struct still holds only `Warp`/`Weft` — the board is cloned, not coordinated.
+- Rationale: no-remainder parity, and the differential clone test asserts equivalent end
+  state including board setup. Moving board's storage into `weft:main` is a separate,
+  already-planned task (board-weft-storage) — until it ships, board remains a third
+  cloned repo, and fabric must not preempt that design.
+- Rejected: dropping board from fabric clone (breaks parity and the differential test).
+
+### Complete exported surface in the parallel build
+
+- Decision: fabric implements equivalents of warp's consumer-facing helpers now —
+  `PairInSync` and `HostClean` (loom's preflight checks) included — even though no
+  consumer calls them until cutover. The parallel build delivers the complete
+  replacement surface; dead-until-cutover exported functions are expected and validated
+  by the differential tests.
+- Rationale: "everything either module does today moves into fabric"; a plan writer
+  needs the full exported surface enumerated, and cutover must be a pure rewire with no
+  gap-filling implementation work.
+- Rejected: deferring loom-preflight helpers to the cutover task.
+
 ### Config: one `fabric.yaml`
 
 - Decision: one `fabric.yaml` (via `hubgeometry.ConfigFile`) carrying both settings —
@@ -289,10 +314,11 @@ consumers and deletes warp/weft is a later, separate task (step 2).
   `WEFT_SKIP_PUSH`), `ScopedPathspec`, `DefaultCommitMessage = "weft sync"`.
   `weftcli sync` = commit + detached push spawn (`spawn.go` launches
   `lyx weft --weft-path <abs> push` detached).
-- **Branch naming today:** exactly one construction site — `warpengine/add.go:89`
-  `branch := w.cfg.BranchPrefix + slug`; host and weft branches are mirrored identical
-  names everywhere (add, checkout, reconcile). `hubgeometry.WeftSuffix = "-weft"` is
-  directory naming only. The `<slug>-weft` branch scheme is NEW with fabric.
+- **Branch naming today:** one derivation formula — `branch := w.cfg.BranchPrefix +
+  slug` — applied at several sites (`warpengine/add.go:89`, `warpengine/remove.go:49`,
+  and the branch handling in checkout/reconcile); host and weft branches are mirrored
+  identical names. `hubgeometry.WeftSuffix = "-weft"` is directory naming only. The
+  `<slug>-weft` branch scheme is NEW with fabric.
 - **Cutover blast radius (context for the FUTURE task — untouched now):** `cmd/lyx`
   (registration + pinned help-tree/registration/longlist test sets), `configreg` (both
   templates), `initengine` (`WireJunctions`, `UnwireJunctions`, weft sync quartet),
@@ -414,3 +440,7 @@ From `CONSTRAINTS.md` (authoritative; read it before writing code):
   git (`rev-parse --git-dir`) — Tier Purity conflict. **A:** Split layering: the index
   component takes an explicit file path and never touches git (Tier-1 untagged tests);
   the fabric layer owns gitdir resolution (integration-tagged tests).
+- **Q:** (review r3 gap) Does fabric `clone` replicate warp's board-repo cloning?
+  **A:** Yes — full parity (optional board-url, `resolvedBoardURL`, board cloned into
+  the hub), as a package-level function; `Fabric` holds only Warp/Weft. Board's move
+  into `weft:main` is the separate, already-planned board-weft-storage task.
