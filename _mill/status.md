@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-gitrepo-growth
 slug: fabric
 branch: fabric
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r2  '2026-07-25T06:49:04Z'
 plan-review-r3  '2026-07-25T06:58:18Z'
 planned  '2026-07-25T06:58:30Z'
 implementing  '2026-07-25T07:02:27Z'
+approved-gitrepo-growth  '2026-07-25T07:08:56Z'
 ```
 
 ## Batches
@@ -33,7 +34,7 @@ implementing  '2026-07-25T07:02:27Z'
 ```yaml
 batches:
   - name: gitrepo-growth
-    state: running
+    state: approved
     implementer_session: ef34c301-260b-4ffa-810f-f651f6e6bf42
     start_sha: 98066fa83ead4bbd6e3280cde94ef72b18c9eabe
   - name: fabric-core
