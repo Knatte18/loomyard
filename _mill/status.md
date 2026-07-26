@@ -43,7 +43,9 @@ batches:
     start_sha: ef4186d46b86a00ff2cfe04627df38af55957e69
     commit_sha: aa67bcdf79673b804565a18ab7a22a0e03f4be6d
   - name: C -- CLI de-registration + sandbox tags
-    state: pending
+    state: running
+    implementer_session: ff5af2e0-8796-4f98-a7e4-e159eab96204
+    start_sha: 9416063d96b39e76104a5bb11247351a2c8db5a8
   - name: D1 -- delete modules + enforcement
     state: pending
   - name: D2 -- doc repoint
