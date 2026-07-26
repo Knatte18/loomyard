@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-C -- CLI de-registration + sandbox tags
+phase: approved-D1 -- delete modules + enforcement
 slug: fabric-cutover
 branch: fabric-cutover
 plan: _mill/plan
@@ -27,6 +27,7 @@ implementing  '2026-07-26T14:49:21Z'
 approved-A -- consumers  '2026-07-26T15:02:47Z'
 approved-B -- config collapse  '2026-07-26T15:14:16Z'
 approved-C -- CLI de-registration + sandbox tags  '2026-07-26T15:21:02Z'
+approved-D1 -- delete modules + enforcement  '2026-07-26T16:13:44Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     start_sha: 9416063d96b39e76104a5bb11247351a2c8db5a8
     commit_sha: 98ffd3c396ed2af2c84d1ed52e12f56986a5e474
   - name: D1 -- delete modules + enforcement
-    state: running
+    state: approved
     implementer_session: 5a32ca4d-1964-43f8-9d40-25342e769209
     start_sha: 8b3b7efcb7e100a116e8f681d6dded059700e1bc
+    commit_sha: 91332f90c16f6d1f5f5cee139c8ee4e84c307a4b
   - name: D2 -- doc repoint
     state: pending
   - name: D3 -- de-parallel-build prose + final gate
