@@ -1,15 +1,22 @@
 //go:build integration
 
-// clone_adopt_test.go proves CloneHub's weft-primary adopt path: when the weft
-// remote already carries the suffixed primary branch (a re-clone of a hub with
-// synced weft history), the fresh clone checks out a tracking local branch of
-// origin/<branch>-weft — inheriting the accumulated weft content and a working
-// upstream — instead of forking a new, untracked branch at the default branch's
-// HEAD that silently disowns that history.
+// clone_adopt_test.go proves CloneHub's weft-primary-branch handling: the
+// adopt path (an existing remote main-weft branch is checked out as a
+// tracking local branch, inheriting the accumulated weft content and a
+// working upstream, instead of forking a new, untracked branch that silently
+// disowns that history), the fresh path (no existing remote main-weft branch,
+// so the suffixed branch is created new at the cloned HEAD — a genuinely new
+// hub, formerly covered by clone_differential_test.go's "fresh" subtest
+// before its deletion), and the strict-abort teardown path (a failing weft
+// clone leaves no residual Hub directory, torn down through fabricengine's
+// own RemoveAll teardown seam in clone.go's teardownHub — formerly covered by
+// clone_differential_test.go's TestCloneHub_DifferentialStrictAbort).
 //
-// Package fabricengine_test to reuse clone_differential_test.go's
-// makeBareRemote and currentBranch helpers; shares the TestMain in
-// testmain_test.go.
+// Package fabricengine_test to isolate real end-to-end git fixtures from the
+// package's internal unit tests; shares the TestMain in testmain_test.go.
+// makeBareRemote and currentBranch (below) are this file's own bare-remote
+// fixture helpers, relocated here from clone_differential_test.go before its
+// deletion (this file was already their only other consumer).
 
 package fabricengine_test
 
@@ -24,6 +31,65 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
+
+// makeBareRemote creates a bare git repository with a single commit on the main
+// branch, mirroring warpengine's clone_integration_test.go helper of the same
+// name (duplicated here, not imported, since that helper is unexported in a
+// different package).
+//
+// It initializes a bare repo at <dir>/<name>.git, then seeds it by initializing
+// a working repository, creating and committing a README, and pushing back to
+// the bare repo. Returns the path to the bare repository.
+func makeBareRemote(t *testing.T, dir, name string) string {
+	t.Helper()
+
+	bare := filepath.Join(dir, name+".git")
+	if err := os.Mkdir(bare, 0o755); err != nil {
+		t.Fatalf("mkdir bare: %v", err)
+	}
+
+	lyxtest.MustRun(t, bare, "git", "init", "--bare")
+
+	tempWork := filepath.Join(dir, "temp-work-"+name)
+	if err := os.Mkdir(tempWork, 0o755); err != nil {
+		t.Fatalf("mkdir temp work: %v", err)
+	}
+
+	lyxtest.MustRun(t, tempWork, "git", "init", "-b", "main")
+	lyxtest.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+
+	bareURL := filepath.ToSlash(bare)
+	lyxtest.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
+
+	readmePath := filepath.Join(tempWork, "README.md")
+	if err := os.WriteFile(readmePath, []byte("# "+name), 0o644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+
+	lyxtest.MustRun(t, tempWork, "git", "add", "README.md")
+	lyxtest.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	lyxtest.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
+
+	if err := os.RemoveAll(tempWork); err != nil {
+		t.Fatalf("remove temp work: %v", err)
+	}
+
+	return bare
+}
+
+// currentBranch returns the branch checked out at repoPath via `git branch
+// --show-current`, failing the test on any git error.
+func currentBranch(t *testing.T, repoPath string) string {
+	t.Helper()
+	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git branch --show-current in %s: %v", repoPath, err)
+	}
+	return strings.TrimSpace(string(out))
+}
 
 // gitOutput runs a git command in dir and returns its trimmed stdout, failing
 // the test on any error — the capture-variant sibling of lyxtest.MustRun,
@@ -105,5 +171,78 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	upstream := gitOutput(t, weftPrime, "rev-parse", "--abbrev-ref", "main-weft@{u}")
 	if upstream != "origin/main-weft" {
 		t.Errorf("weft prime upstream = %q; want %q", upstream, "origin/main-weft")
+	}
+}
+
+// TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that when the weft
+// remote carries no existing WeftBranchName-suffixed branch (a genuinely new
+// hub — the non-adopt path), CloneHub creates the weft primary's suffixed
+// branch fresh at the cloned HEAD rather than requiring a pre-existing
+// remote ref to adopt. Formerly covered, alongside a warpengine comparison,
+// by clone_differential_test.go's TestCloneHub_DifferentialEquivalence
+// subtests before that file's deletion.
+func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
+	fixtures := t.TempDir()
+
+	hostBare := makeBareRemote(t, fixtures, "fresh-host")
+	weftBare := makeBareRemote(t, fixtures, "fresh-weft")
+	boardBare := makeBareRemote(t, fixtures, "fresh-board")
+
+	cloneParent := t.TempDir()
+	hubPath, _, err := fabricengine.CloneHub(
+		cloneParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		filepath.ToSlash(boardBare),
+	)
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
+
+	if _, err := os.Stat(filepath.Join(hubPath, "fresh-host", ".git")); err != nil {
+		t.Fatalf("host clone missing .git: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(hubgeometry.BoardDir(hubPath), ".git")); err != nil {
+		t.Fatalf("board clone missing .git: %v", err)
+	}
+
+	weftPrime := hubgeometry.WeftSiblingPath(hubPath, "fresh-host")
+	want := fabricengine.WeftBranchName("main")
+	if got := currentBranch(t, weftPrime); got != want {
+		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
+	}
+
+	// The freshly-created branch carries no upstream — that is deliberately
+	// left to the first push, distinguishing it from the adopt path's
+	// origin-tracking branch (TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch).
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", want+"@{u}")
+	cmd.Dir = weftPrime
+	if err := cmd.Run(); err == nil {
+		t.Errorf("weft prime branch %q has an upstream; want none (fresh-created, not adopted)", want)
+	}
+}
+
+// TestCloneHub_StrictAbortRemovesHubOnFailure covers teardownHub's
+// cleanup-on-failure behaviour: a failing weft clone leaves no residual Hub
+// directory behind, torn down through fabricengine's own RemoveAll teardown
+// seam (clone.go's teardownHub). Formerly covered, alongside a warpengine
+// comparison, by clone_differential_test.go's
+// TestCloneHub_DifferentialStrictAbort before that file's deletion.
+func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
+	fixtures := t.TempDir()
+
+	hostBare := makeBareRemote(t, fixtures, "abort-host")
+	nonExistentWeft := filepath.Join(fixtures, "nonexistent-weft.git")
+
+	cloneParent := t.TempDir()
+	expectedHubPath := hubgeometry.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+
+	_, _, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(hostBare), filepath.ToSlash(nonExistentWeft), "")
+	if err == nil {
+		t.Fatalf("CloneHub should have failed with a non-existent weft remote")
+	}
+	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
+		t.Errorf("hub directory %s should have been removed by teardownHub after clone failure", expectedHubPath)
 	}
 }
