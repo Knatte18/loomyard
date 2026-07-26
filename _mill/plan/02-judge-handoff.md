@@ -77,10 +77,18 @@ behavior. Burler-round hydration is deliberately untouched
   - `internal/treadleengine/judge.go`
   - `internal/treadleengine/state.go`
   - `internal/treadleengine/roundfiles.go`
+  - `internal/treadleengine/judge_test.go`
+  - `internal/treadleengine/roundfiles_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
+  `judge_test.go`/`roundfiles_test.go`: mechanical fallout of the two
+  production edits above — `TestRunCircling`/`TestRunMilestone`'s
+  `spec.OutputFiles` assertions pin `[verdict_path, handoff_path]` (two
+  entries) instead of one, and `TestArtifactPaths`' `roundArtifactPaths`
+  fixtures gain the expected `Handoff` path; assertion intent is
+  unchanged, only the literal shapes these two production types now carry.
   `roundfiles.go`: `roundArtifactPaths` gains a `Handoff` field;
   `artifactPaths` names it `round-<token>-handoff.md`.
   `state.go`: `roundRecord` gains `HandoffPath string
