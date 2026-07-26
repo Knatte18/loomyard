@@ -48,11 +48,6 @@ Committed to, in this order, next.
    the shared-engine name and scope only. Independent of the `Treadle` item above — a different
    engine, not blocked on it. See [designs/shed.md](designs/shed.md).
 
-1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
-   (sequencing, resume, crash-recovery, pause), testable against fake phases before real
-   producers are wired in, plus the `lyx loom run` entry point. Builds on `Shed` above. See
-   [designs/loom.md](designs/loom.md).
-
 1. **native clients: migrate `gitrepo` to `go-git` (ADOPT-PARTIAL) + `selfreportengine`'s internal
    `gh`-CLI transport to `go-github`** — executes the `git-native-library` spike's finding (read
    surface, both commit methods, and `SetSnapshotSHA` migrate cleanly; `Push`'s rebase-retry stays
@@ -60,8 +55,17 @@ Committed to, in this order, next.
    what's underneath `selfreportengine`'s public `CreateIssue` entry point — its `gh`-CLI shell-out
    — for `google/go-github`, for the same "stop parsing CLI output as an API" reason, on a much
    smaller, already-stable surface (no spike needed). `CreateIssue`'s signature/behavior and all its
-   callers are unaffected. One task, since both are the same underlying cleanup. See
+   callers are unaffected. One task, since both are the same underlying cleanup. Sequenced ahead of
+   `loom` even though `gitrepo`'s public surface is unchanged by the migration (callers, incl.
+   `fabric`, are unaffected either way): building `loom`'s Finalize logic against the final,
+   go-git-based `gitrepo` from the start avoids re-validating that logic later if the swap surfaces
+   any subtle CLI-vs-library behavioral difference. See
    [designs/native-clients-migration.md](designs/native-clients-migration.md).
+
+1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
+   (sequencing, resume, crash-recovery, pause), testable against fake phases before real
+   producers are wired in, plus the `lyx loom run` entry point. Builds on `Shed` above. See
+   [designs/loom.md](designs/loom.md).
 
 ## Someday
 
