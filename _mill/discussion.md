@@ -103,11 +103,16 @@ that work.
   - **D -- Delete + docs:** delete `internal/{warpengine,warpcli,weftengine,weftcli}` +
     the four `fabricengine/*_differential_test.go`; update
     `internal/lyxtest/leaf_enforcement_test.go`; `CONSTRAINTS.md`; `doc.go` cut; delete
-    `manifest/designs/fabric.md` + roadmap Done + repoint 7 links; `docs/overview.md`;
-    de-parallel-build FABRIC-SUITE + `tools/sandbox/main.go`; **sweep stale
-    deleted-module comment refs** (`lyxtest/doc.go`, `hubgeometry.go:700`,
-    `codeintelcli/cli.go:34`, + bare-name review of perchengine/websterengine/reedengine/
-    lyxtest -- see Testing's grep-gate section for the exact list and Tier-1/Tier-2 rules).
+    `manifest/designs/fabric.md` + roadmap Done + repoint 9 links; `docs/overview.md`;
+    de-parallel-build FABRIC-SUITE + `tools/sandbox/main.go`; **de-parallel-build fabric's
+    own module** -- rewrite `internal/fabriccli/fabric.go` `Short`/`Long` to "sole
+    git-coordination module" and drop its `manifest/designs/fabric.md` ref (`:12,:40,:53,:54,:218`),
+    and sweep the genuine "parallel-build period" comments in `internal/fabricengine`
+    (`clone.go:23`, `cleanup.go:14/63/158`, `fabric.go:96`, `hook.go:9`, `weftgit.go:8/27`)
+    + `internal/fabriccli/fabric.go`; **sweep stale deleted-module comment refs**
+    (`lyxtest/doc.go`, `hubgeometry.go:700`, `codeintelcli/cli.go:34`, `cmd/lyx/main.go:92`,
+    + bare-name review of perchengine/websterengine/reedengine/lyxtest -- see Testing's
+    grep-gate section for the exact list and Tier-1/Tier-2 rules).
 - Rationale: C removes only CLI *registration* (warpcli/weftcli still compile), so it is
   independent of A/B. The C changes must be atomic because the moment warp/weft leave
   `newRoot()`, `helptree_test.go`'s `requiredModules`, `longlist_test.go`, and
@@ -335,6 +340,14 @@ wrong. Instead:
   fabric (see the comment-sweep in Batch D); bare "warp"/"weft" words that describe fabric's
   weft repo/role are allowed to remain. Tier 2 is a review obligation, not a hard zero-match,
   precisely because a hard match on `internal/weftcli` would flag legitimate comment prose.
+- **Tier 2b (parallel-build prose, scoped to fabric's own module):**
+  `grep -rn -iE 'parallel[- ]build' internal/fabricengine/ internal/fabriccli/` -- every
+  "parallel-build period" comment/help string describing fabric as *coexisting with the live
+  warp/weft modules* is rewritten (fabric is now the sole owner). **Exclude the
+  test-concurrency false positives** that also match "parallel": `t.Parallel()` and "parallel
+  to Add's logic" at `internal/fabricengine/{add.go:25,46, reconcile.go:269}` and
+  `internal/fabriccli/fabric.go:542` -- those describe Go test concurrency, not the
+  parallel build, and stay untouched. Reviewed, not hard zero-match.
 
 **Stale full-path comment refs to repoint in Batch D (verified, not scheduled elsewhere):**
 `internal/lyxtest/doc.go:2-3` (lists all four deleted packages),
@@ -347,6 +360,15 @@ review sweep of `internal/perchengine/{doc.go,engine.go}`, `internal/websterengi
 name the deleted *modules*, leave where they describe the weft repo concept. These are
 comments (build-safe), but the Documentation-Lifecycle "no rot" rule and the Tier-1 gate
 both require the module-naming ones to be fixed.
+
+**Fabric's own module de-parallel-build (Tier 2b, Batch D).** `internal/fabriccli/fabric.go`
+carries the last live `manifest/designs/fabric.md` reference (`:54`, in a `.go` Long string --
+missed by a docs-only grep) plus parallel-build framing in its `Short` (`:40`) and `Long`
+(`:12,:53,:218`): rewrite these to present fabric as the sole git-coordination module and drop
+the `fabric.md` ref (this is also a CLI/Cobra help-accuracy obligation, not just a comment).
+Sweep the genuine parallel-build-period comments in `internal/fabricengine`
+(`clone.go:23`, `cleanup.go:14/63/158`, `fabric.go:96`, `hook.go:9`, `weftgit.go:8/27`).
+Do **not** touch the `t.Parallel()`/"parallel to Add's logic" mentions (see Tier 2b exclusions).
 
 **Tests to rewrite onto fabric (not delete):**
 
@@ -419,4 +441,10 @@ above onto fabric and (b) any standalone assertion ported off a differential tes
   `crucible/fabric-review-prompt.md` and `crucible/gitrepo-review-prompt.md` also link to it
   -- repoint or scope out? **A:** Repoint both; `crucible/` is durable review-prompt
   scaffolding, so the count is nine repointed links, zero dangling.
+- **Q:** (review r3 gaps) Fabric's own module still describes the parallel-build world --
+  `fabriccli/fabric.go` `Short`/`Long` + a live `fabric.md` ref (`.go` string, missed by the
+  md-grep), and "parallel-build period" comments across `fabricengine`/`fabriccli`. In scope?
+  **A:** Yes -- de-parallel-build fabric's own module in Batch D (Tier 2b), rewriting the CLI
+  help + dropping the `fabric.md` ref + sweeping the genuine parallel-build comments, while
+  explicitly excluding `t.Parallel()`/"parallel to Add" test-concurrency false positives.
 ```
