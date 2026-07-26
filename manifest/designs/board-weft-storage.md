@@ -33,9 +33,10 @@ repo or relying on GitHub wiki.
 
 This is the *only* rule — applied identically to every task, including the primary/long-lived
 worktree ("prime" — not yet a settled name in the weaving vocabulary). No branch-naming
-exceptions anywhere in the system. **This enforcement lives in [fabric.md](fabric.md)** (the
-module that owns branch creation, since it absorbs today's `warp` topology responsibilities in
-full) — board's design here simply depends on it being followed without exception.
+exceptions anywhere in the system. **This enforcement lives in
+[`internal/fabricengine`](../../internal/fabricengine/doc.go)** (the module that owns branch
+creation, since it absorbs today's `warp` topology responsibilities in full) — board's design
+here simply depends on it being followed without exception.
 
 **Consequence:** no task's weft branch can ever be named exactly `main` (every paired weft
 branch carries the `-weft` suffix). That makes `weft:main` permanently unclaimed by the pairing
@@ -92,7 +93,8 @@ already used for raddle — a subdir-mirrored view into another worktree's files
 
 ## `fabric` consequence
 
-`fabric`'s design (see [fabric.md](fabric.md)) assumes one warp↔weft pair per task, with a
+`fabric`'s design (see [`internal/fabricengine`](../../internal/fabricengine/doc.go)) assumes one
+warp↔weft pair per task, with a
 `Warp-SHA` commit trailer in weft recording which warp SHA a weft commit corresponds to. **This
 still applies unchanged to every ordinary `<slug>`/`<slug>-weft` pair.** Prime's `weft:main`
 checkout is explicitly **outside** this mechanism — it has no corresponding warp branch, so the
@@ -149,7 +151,8 @@ loose note-taking piles up in the other file.
   Atomically removes (or marks superseded — history worth keeping, not silently dropped) the
   source manifest entry and creates the corresponding task entry in one operation, mirroring the
   "advance only on confirmed success" transactional principle already used for `SnapshotSHA`
-  elsewhere in the design (see [fabric.md](fabric.md)). Kept human-triggered for now rather than
+  elsewhere in the design (see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
+  Kept human-triggered for now rather than
   autonomous, consistent with this project's general pattern of starting cautious and only
   removing human-in-the-loop steps once behavior is observed and trusted.
 - Once a task exists in board, everything downstream is already-designed, unchanged `loom`
@@ -177,4 +180,5 @@ cutover isn't re-litigated as a fresh design question later.
 
 ## Related
 
-- [fabric.md](fabric.md) — owns the branch-naming enforcement this design depends on.
+- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — owns the branch-naming
+  enforcement this design depends on.

@@ -55,8 +55,8 @@ previously-fixed behaviors have not regressed and (b) re-evaluate the deferred i
   `SnapshotSHA`/`SetSnapshotSHA`), `internal/fslink/**` (cross-OS dir-link primitive fabric's
   junction/symlink wiring rides on), and the `cmd/lyx` integration wiring the `fabric` command tree
   into the root.
-- Docs: `manifest/designs/fabric.md`, `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md`,
-  `README.md`.
+- Docs: `internal/fabricengine/doc.go`, `docs/overview.md`, `manifest/roadmap.md`,
+  `CONSTRAINTS.md`, `README.md`.
 - Scenario ideas (not a review): `tools/sandbox/SANDBOX-FABRIC-SUITE.md`. You run every scenario
   yourself, directly, with your own tool calls; you do NOT invoke its `sandbox-fabric-suite.cmd`
   launcher (that spawns a SEPARATE, context-free interactive `claude` session for a human
@@ -285,7 +285,7 @@ Round 4 (`fable-r4`), full review at `.scratch/fabric-review-fable-r4.md`, fixer
   passing validation, so lookups (and `RevertWithWeft`) could serve a weft SHA the current branch's
   own trailer history would never produce. Fixed: Checkout discards and rebuilds the index
   (`refreshCorrIndexAfterSwitch`) from the newly-current branch's trailers after a successful
-  switch; `manifest/designs/fabric.md`'s correspondence-index section documents the
+  switch; `internal/fabricengine/doc.go`'s correspondence-index rationale documents the
   per-worktree-cache-vs-per-branch-source mismatch. Orchestrator reproduced by reverting
   `checkout.go`+`index.go` and confirming `TestCheckout_RefreshesCorrespondenceIndex` fails
   (`WeftSHAForWarpSHA` returns a stale cross-branch answer with nil error instead of
@@ -414,8 +414,8 @@ never bucket something as "deferred, low priority" just because it felt small.
   warrant a new scenario, note it in your fixer report instead.
 - Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY and re-run every live
   scenario yourself, directly.
-- Update `manifest/designs/fabric.md` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or
-  the module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to
+- Update `internal/fabricengine/doc.go` (and `docs/overview.md` / `CONSTRAINTS.md` if invariants
+  or the module table move) IN THE SAME change. Do NOT add bugfix/hardening notes to
   `manifest/roadmap.md`.
 - Tear down all substrate state; confirm zero stray processes/worktrees/links. COMMIT each fix as
   you finish it (see "Commit per fix" above) — do NOT push unless the user explicitly asks. Report

@@ -14,7 +14,8 @@ stuck batch to a fresh higher-capability model** (see
 `internal/websterengine`'s package documentation) — not a `/model` switch inside a polluted session.
 
 Mostly wiring on top of the already-built `warp` mechanics (absorbed into `fabric` once that
-lands — see [fabric.md](fabric.md)); worktree/branch/junction/portal teardown is explicitly
+lands — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)); worktree/branch/
+junction/portal teardown is explicitly
 **out of scope** — that's `warp cleanup`'s (future: `fabric`'s) already-existing, separate job,
 which cannot run from inside the worktree being removed, the same reason `mill-cleanup` runs
 from the hub, never a task worktree.
@@ -40,4 +41,5 @@ gate.
 - [builder-contract.md](../../docs/reference/builder-contract.md#webster-the-fork-based-sibling) —
   the summary artifact Finalize consumes verbatim for PR bodies; `internal/websterengine`'s
   package documentation covers the escalation pattern Finalize mirrors.
-- [fabric.md](fabric.md) — the mechanics Finalize wires on top of.
+- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the mechanics Finalize wires on
+  top of.
