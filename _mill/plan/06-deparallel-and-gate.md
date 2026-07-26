@@ -44,49 +44,80 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   the file is deleted; keep the `docs/overview.md` link), and the `Long` line "During the
   parallel-build period the weft repo also holds warp-created weft branches ..." (reword to
   drop the parallel-build/warp-created framing while keeping any still-true weft-branch
-  behaviour note). Every command keeps a non-empty `Short`. Do NOT touch the
+  behaviour note). Also sweep every OTHER comment in this file that names a deleted module
+  (`warpengine`/`weftengine`/`warpcli`/`weftcli`, full-path or bare) -- repoint to the fabric
+  equivalent -- so the file carries no deleted-module reference (per the tree-wide
+  comment-sweep Shared Decision). Every command keeps a non-empty `Short`. Do NOT touch the
   `t.Parallel()`-style test-concurrency mention elsewhere in the file -- that is not a
-  parallel-build reference.
+  parallel-build reference; and keep fabric's own `Warp`/`Weft`/`Warp-SHA` API terms.
 - **Commit:** `docs(fabriccli): reframe help as sole git-coordination module`
 
-### Card 23: sweep fabricengine own-module parallel-build + provenance comments
+### Card 23: sweep every fabricengine + fabriccli deleted-module comment
 
 - **Context:**
   - `internal/fabricengine/fabric_test.go`
 - **Edits:**
-  - `internal/fabricengine/doc.go`
-  - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/add.go`
+  - `internal/fabricengine/ancestors.go`
+  - `internal/fabricengine/checkout.go`
   - `internal/fabricengine/cleanup.go`
+  - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/config.go`
+  - `internal/fabricengine/doc.go`
+  - `internal/fabricengine/drift.go`
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/hook.go`
+  - `internal/fabricengine/hostclean.go`
+  - `internal/fabricengine/junction.go`
+  - `internal/fabricengine/launcher_content.go`
+  - `internal/fabricengine/launchers.go`
+  - `internal/fabricengine/list.go`
+  - `internal/fabricengine/portals.go`
+  - `internal/fabricengine/prune.go`
+  - `internal/fabricengine/reconcile.go`
+  - `internal/fabricengine/remove.go`
+  - `internal/fabricengine/status.go`
+  - `internal/fabricengine/topology.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/weftwiring.go`
+  - `internal/fabriccli/clone.go`
+  - `internal/fabriccli/spawn.go`
+  - `internal/fabriccli/weft_verbs.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Rewrite the comments that describe fabric as coexisting with the live
-  warp/weft modules, keeping fabric's own `Warp`/`Weft`/`Warp-SHA` API terms intact:
-  - `doc.go`: delete the "fabric is built parallel to the existing, shipped
-    `warpengine`/`weftengine` modules -- not replacing them yet ... a later, separate cutover
-    task rewires consumers onto fabric and deletes the old modules." paragraph (this cutover
-    IS that task); reword the opening line "unifies the `warp` ... and `weft` ... modules" and
-    the "today's warp/weft, which mirror identical branch names" contrast to past/neutral
-    tense that does not present warp/weft as live modules. Keep the `Warp-SHA` trailer and
-    `Warp *gitrepo.Repo`/`Weft *gitrepo.Repo` descriptions unchanged (fabric's own API).
-  - `clone.go`: reword the "Adapted from warpengine's clone.go" provenance comment and the
-    "distinct from warpengine's: each module's clone orchestration and its differential test
-    tear down through its own module's RemoveAll" comment (the differential tests are deleted
-    and warpengine is gone) so neither names a deleted module.
-  - `cleanup.go`: reword the three "parallel-build period" comments that reference
-    warp-created weft branches / the two modules sharing a weft branch, keeping any still-true
-    branch-cleanup behaviour.
-  - `fabric.go`: reword the "serialize against the same test/CI bypass during the
-    parallel-build period" comment.
-  - `hook.go`: reword the "parallel build" comment.
-  - `weftgit.go`: reword the two "parallel-build period" comments about locking/racing between
-    the two modules.
-  Do NOT touch `t.Parallel()` or "parallel to Add's logic" mentions -- those describe Go test
-  concurrency, not the parallel build.
-- **Commit:** `docs(fabricengine): drop parallel-build/deleted-module comment references`
+- **Requirements:** Sweep EVERY `//` comment in these files that names a deleted module
+  (`warpengine`/`weftengine`/`warpcli`/`weftcli`, full import-path or bare word) so that after
+  this card `grep -rnw -E 'warpengine|weftengine|warpcli|weftcli' --include='*.go'
+  internal/fabricengine/ internal/fabriccli/` (excluding `_test.go`) returns nothing. This
+  covers two comment kinds, both of which name a now-deleted module:
+  - **Provenance/mirror comments** -- "Adapted from warpengine's X.go", "distinct from
+    warpengine's", "mirroring warpengine.Y", "matching warpengine's shape", and similar in
+    `add.go`, `ancestors.go`, `checkout.go`, `clone.go`, `config.go`, `drift.go`,
+    `hostclean.go`, `junction.go`, `launcher_content.go`, `launchers.go`, `list.go`,
+    `portals.go`, `prune.go`, `reconcile.go`, `remove.go`, `status.go`, `topology.go`,
+    `weftwiring.go`, and `fabriccli/{clone.go,spawn.go,weft_verbs.go}`. Reword to drop the
+    deleted-module name: state the behaviour directly, or refer to fabric's own file, without
+    citing `warpengine`/`weftengine` as a live module. Do not invent provenance; if a comment
+    only exists to say "adapted from warpengine", delete the provenance clause.
+  - **Parallel-build-period comments** -- `doc.go` (delete the "fabric is built parallel to
+    the existing, shipped warpengine/weftengine modules -- not replacing them yet ... a later,
+    separate cutover task ..." paragraph; reword the opening "unifies the warp ... and weft ...
+    modules" line and the "today's warp/weft, which mirror identical branch names" contrast to
+    past/neutral tense), `cleanup.go` (three "parallel-build period" comments about
+    warp-created weft branches / two modules sharing a branch), `fabric.go` ("serialize
+    against the same test/CI bypass during the parallel-build period"), `hook.go` ("parallel
+    build"), `weftgit.go` (two "parallel-build period" locking/racing comments).
+  Keep fabric's own API terms untouched everywhere: `Warp`/`Weft` struct fields,
+  `Warp-SHA`/`WarpSHATrailerKey`, `WeftBranchName`, `CommitWeft`/`PushWeft`/`PullWeft`/
+  `StatusWeft`, `WeftSuffix`, and `-weft` geometry. Do NOT touch `t.Parallel()` or "parallel
+  to Add's logic" mentions -- those describe Go test concurrency, not the parallel build (they
+  do not match the `warpengine|weftengine` word grep either). This is a mechanical sweep and a
+  script may drive the uniform replacements, but confirm each reworded comment still reads
+  correctly (a blind `warpengine`->`fabricengine` substitution would produce nonsense like
+  "Adapted from fabricengine's clone.go", so provenance clauses need a genuine reword or
+  deletion, not a token swap).
+- **Commit:** `docs(fabric): drop deleted-module comment references across the module`
 
 ### Card 24: de-parallel-build sandbox prose
 
@@ -179,17 +210,24 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
     (`grep -rn -E 'loomyard/internal/(warp|weft)(cli|engine)"' --include='*.go' .` returns
     nothing); no `warpcli.Command()`/`weftcli.Command()` registration remains; no `warp`/
     `weft` config-module identifiers remain in `internal/configreg`.
-  - **Tier 2 (reviewed soft sweep):** `grep -rn -E 'internal/(warp|weft)(cli|engine)' .` and
-    `grep -rnw -E 'warpengine|weftengine|warpcli|weftcli' --include='*.go' .` over comments/
-    docs -- every remaining hit must be a legitimate weft-repo/role description, not a named
-    deleted module (the sweeps in cards 22-26 should have cleared all module-naming hits).
+  - **Tier 2 (deleted-module names, now zero after the tree-wide sweep):** the sweep Shared
+    Decision + cards 22-26 + the in-file sweeps folded into every batch-A/B/C editing card
+    remove every comment that names a deleted module, so both
+    `grep -rnw -E 'warpengine|weftengine|warpcli|weftcli' --include='*.go' .` (excluding the
+    deleted packages, which are gone) and `grep -rn -E 'internal/(warp|weft)(cli|engine)' .`
+    over `.go` comments should now return nothing. Any surviving `.go` hit is an unswept
+    deleted-module reference -- treat it as a gate failure and sweep it (it belongs to whatever
+    card owns that file). In non-`.go` docs, a remaining hit is only acceptable if it is a
+    legitimate weft-repo/role description, not a deleted-module name.
   - **Tier 2b (fabric's own module):** `grep -rn -iE 'parallel[- ]build'
-    internal/fabricengine/ internal/fabriccli/` returns nothing except the intended
-    exclusions -- there should be none left after card 22/23; the `t.Parallel()`/"parallel to
-    Add's logic" mentions do not match `parallel[- ]build` and are irrelevant here.
+    internal/fabricengine/ internal/fabriccli/` returns nothing -- cards 22/23 cleared it; the
+    `t.Parallel()`/"parallel to Add's logic" mentions do not match `parallel[- ]build`.
   If any Tier-1 match appears, it is an acceptance failure -- fix the offending file (which
-  belongs to an earlier batch's scope) before the batch can pass. If a Tier-2/2b hit that
-  names a deleted module survives, sweep it. The full-suite `verify` runs alongside this gate.
+  belongs to an earlier batch's scope) before the batch can pass. Tiers 2 and 2b should be
+  clean because the sweeping happened in cards 22-26 and the batch-A/B/C in-file sweeps; this
+  card only CONFIRMS (hence zero diff / `Commit: none`). If a stray deleted-module name
+  survives, that is a defect in the owning card -- surface it rather than silently editing here
+  (this card carries no commit). The full-suite `verify` runs alongside this gate.
 - **Commit:** none
 
 ## Batch Tests

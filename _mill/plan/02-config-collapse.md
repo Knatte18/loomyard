@@ -11,7 +11,7 @@ depends-on: []
 
 ## Batch Scope
 
-Collapse the config-module registry from thirteen modules to eleven by removing the separate
+Collapse the config-module registry from twelve modules to ten by removing the separate
 `warp` and `weft` config modules (the already-registered `fabric` module covers both), and
 switch `configcli`'s weft-sync dispatch from `weftcli.RunCLI` to `fabriccli.RunCLI`. Also
 rewrite the two tests that pin the module list / build warp-based fixtures. Independent of A
@@ -30,12 +30,15 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete the two registry rows that register module `"warp"`
-  (`warpengine.ConfigTemplate`) and module `"weft"` (`weftengine.ConfigTemplate`), and delete
-  the `warpengine` and `weftengine` imports. Keep the already-present `"fabric"` row backed by
-  `fabricengine.ConfigTemplate()` (it embeds the merged `branch_prefix` from warp + `pathspec`
-  from weft, so no config field is lost). `configreg.Names()` now returns the list without
-  `warp`/`weft`; consumers that surface the list (`configcli`) update automatically.
+- **Requirements:** In `Modules()`, delete the two registry rows that register module
+  `"warp"` (`warpengine.ConfigTemplate`) and module `"weft"` (`weftengine.ConfigTemplate`) --
+  taking the row count from 12 to 10 -- and delete the `warpengine` and `weftengine` imports.
+  Keep the already-present `"fabric"` row backed by `fabricengine.ConfigTemplate()` (it embeds
+  the merged `branch_prefix` from warp + `pathspec` from weft, so no config field is lost).
+  Also sweep the package-comment reference (`// ... a neutral registry of available config
+  modules (board, warp, weft)`) so it no longer names the removed modules. `configreg.Names()`
+  now returns the list without `warp`/`weft`; consumers that surface the list (`configcli`)
+  update automatically.
 - **Commit:** `refactor(configreg): drop warp/weft modules, keep fabric`
 
 ### Card 10: switch configcli weft-sync to fabriccli
@@ -74,6 +77,8 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
 
 - **Context:**
   - `internal/fabricengine/fabric.go`
+  - `internal/fabricengine/topology.go`
+  - `internal/fabricengine/add.go`
   - `internal/fabriccli/fabric.go`
 - **Edits:**
   - `internal/configcli/configcli_integration_test.go`

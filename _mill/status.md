@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: fabric-cutover
 branch: fabric-cutover
 plan: _mill/plan
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-07-26T09:53:20Z'
 discussed  '2026-07-26T10:38:03Z'
 planning  '2026-07-26T10:54:19Z'
+plan-review-r1  '2026-07-26T11:09:34Z'
+plan-fix-r1  '2026-07-26T11:09:34Z'
 ```

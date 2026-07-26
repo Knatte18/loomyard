@@ -108,6 +108,22 @@ _Cross-cutting decisions every batch inherits._
   points a blanket rename would break.
 - **Applies to:** A -- consumers, B -- config collapse
 
+### Decision: sweep deleted-module comments in every file you already edit
+
+- **Decision:** Any card that edits a file for its code MUST also, in the same commit, sweep
+  that file's `//` comments that name a deleted module (`warpengine`/`warpcli`/`weftengine`/
+  `weftcli`, whether full import-path or bare word) -- repoint to `fabricengine`/`fabriccli`
+  or reword so no comment names a deleted module. The implementer already has the file open,
+  so this costs no extra file reads. Fabric's own API terms (`Warp`/`Weft` fields,
+  `Warp-SHA`, `WeftBranchName`, `CommitWeft`, `WeftSuffix`, and any `-weft` geometry) are NOT
+  deleted-module names and stay. Comments in files no other card touches are swept in batch
+  D3 (cards 22-26).
+- **Rationale:** The user directive is "update ALL references to old warp/weft to fabric,"
+  and batch D3's final grep gate (card 27) can only be a clean zero-match if every
+  deleted-module comment across the tree is already swept -- including fabric's own module's
+  `warpengine` provenance comments ("Adapted from warpengine's X.go"), which are numerous.
+- **Applies to:** all batches
+
 ### Decision: never discard `fabricengine.New`'s error
 
 - **Decision:** Every `CommitWeft` rewrite site uses `f, err := fabricengine.New(hostPath,
@@ -139,13 +155,33 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` target path across every c
 - `internal/configcli/configcli_integration_test.go`
 - `internal/configreg/configreg.go`
 - `internal/configreg/configreg_test.go`
+- `internal/fabriccli/clone.go`
 - `internal/fabriccli/fabric.go`
+- `internal/fabriccli/spawn.go`
+- `internal/fabriccli/weft_verbs.go`
+- `internal/fabricengine/add.go`
+- `internal/fabricengine/ancestors.go`
+- `internal/fabricengine/checkout.go`
 - `internal/fabricengine/cleanup.go`
 - `internal/fabricengine/clone.go`
+- `internal/fabricengine/config.go`
 - `internal/fabricengine/doc.go`
+- `internal/fabricengine/drift.go`
 - `internal/fabricengine/fabric.go`
 - `internal/fabricengine/hook.go`
+- `internal/fabricengine/hostclean.go`
+- `internal/fabricengine/junction.go`
+- `internal/fabricengine/launcher_content.go`
+- `internal/fabricengine/launchers.go`
+- `internal/fabricengine/list.go`
+- `internal/fabricengine/portals.go`
+- `internal/fabricengine/prune.go`
+- `internal/fabricengine/reconcile.go`
+- `internal/fabricengine/remove.go`
+- `internal/fabricengine/status.go`
+- `internal/fabricengine/topology.go`
 - `internal/fabricengine/weftgit.go`
+- `internal/fabricengine/weftwiring.go`
 - `internal/hubgeometry/hubgeometry.go`
 - `internal/initengine/init.go`
 - `internal/initengine/init_test.go`

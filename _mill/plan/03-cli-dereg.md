@@ -47,7 +47,8 @@ dependency, hence a separate green commit).
     `root.AddCommand(weftcli.Command())` and `root.AddCommand(warpcli.Command())`
     registrations from `newRoot()`; remove the `weft` and `warp` names from the `root.Long`
     module list (keep `fabric`); in the group-ordering comment that currently reads
-    "board, ide, reed, weft ..." drop the stale `weft` word.
+    "board, ide, reed, weft ..." drop the stale `weft` word; sweep any other comment in
+    `main.go` that names a deleted module (per the tree-wide comment-sweep Shared Decision).
   - `cmd/lyx/helptree_test.go`: remove `"weft"` and `"warp"` from the `requiredModules` set;
     delete the warp and weft subcommand-table cases (the `fabric` case already covers the
     union of their subcommands).

@@ -32,10 +32,14 @@ overview.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Replace the `warpengine.WireJunctions(l, slug)` call with
-  `fabricengine.WireJunctions(l, slug)` (identity signature). Swap the
+  `fabricengine.WireJunctions(l, slug)` (identity signature per the Shared Decisions
+  "signature gotchas" mapping). Swap the
   `github.com/Knatte18/loomyard/internal/warpengine` import for
   `github.com/Knatte18/loomyard/internal/fabricengine`. Remove the `warpengine` import only
-  if no other reference to it remains in this file. Do not change any other call.
+  if no other reference to it remains in this file. In the same commit, sweep this file's
+  comment that names the deleted module -- the step comment "Wiring the host _lyx junction
+  via warpengine.WireJunctions" -> `fabricengine.WireJunctions` (per the tree-wide
+  comment-sweep Shared Decision). Do not change any other call.
 - **Commit:** `refactor(initengine): rewire init.go WireJunctions onto fabricengine`
 
 ### Card 2: rewire initengine/undo.go (Unwire + CommitWeft/PushWeftAt)
@@ -59,7 +63,12 @@ overview.
   `fabricengine.PushWeftAt(weftWorktree, opts)`. Confirm the host worktree root is in scope
   at the `New` call (it is the primary worktree root; use the same value `initengine`
   already resolves for its geometry). Swap the `warpengine`/`weftengine` imports for
-  `fabricengine`. Mirror the proven pattern in `internal/fabriccli/weft_verbs.go`.
+  `fabricengine`. Mirror the proven pattern in `internal/fabriccli/weft_verbs.go` (mappings
+  per the Shared Decisions "signature gotchas"). In the same commit, sweep this file's
+  comments that name the deleted modules -- "(see warpengine.UnwireJunctions)", "via
+  warpengine.UnwireJunctions. Any error ...", "commit and push that deletion through
+  weftengine.", and "weftengine.Commit must never be called ..." -> the fabricengine
+  equivalents (per the tree-wide comment-sweep Shared Decision).
 - **Commit:** `refactor(initengine): rewire undo.go onto fabricengine CommitWeft/PushWeftAt`
 
 ### Card 3: rewrite initengine/init_test.go onto fabric
@@ -91,14 +100,18 @@ overview.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Replace `warpengine.HostClean(l)` -> `fabricengine.HostClean(l)` and
-  `warpengine.PairInSync(l)` -> `fabricengine.PairInSync(l)` (both identity signatures). Swap
-  the `warpengine` import for `fabricengine`. No other change.
+  `warpengine.PairInSync(l)` -> `fabricengine.PairInSync(l)` (both identity signatures per the
+  Shared Decisions "signature gotchas"). Swap the `warpengine` import for `fabricengine`. In
+  the same commit, sweep any comment in this file that names the deleted module (repoint to
+  `fabricengine` per the tree-wide comment-sweep Shared Decision). No other call change.
 - **Commit:** `refactor(loomengine): rewire preflight.go onto fabricengine`
 
 ### Card 5: rewrite loomengine/preflight_integration_test.go fixture
 
 - **Context:**
   - `internal/fabricengine/fabric.go`
+  - `internal/fabricengine/topology.go`
+  - `internal/fabricengine/add.go`
 - **Edits:**
   - `internal/loomengine/preflight_integration_test.go`
 - **Creates:** none
@@ -107,8 +120,10 @@ overview.
 - **Requirements:** The test builds its fixture via `warpengine.WireJunctions`. Replace with
   `fabricengine.WireJunctions` (identity) and swap the `warpengine` import for
   `fabricengine`. If the fixture also constructs topology via `warpengine.New(cfg)`, replace
-  with `fabricengine.NewTopology(cfg)` (`*Topology`) and adjust the receiver-method calls
-  (`Add`/etc.) accordingly. Preserve every assertion.
+  with `fabricengine.NewTopology(cfg)` (`*Topology`, defined in `topology.go`) and adjust the
+  receiver-method calls (`Add`/etc., see `add.go`) accordingly. In the same commit, sweep any
+  comment in this file that names the deleted module (per the tree-wide comment-sweep Shared
+  Decision). Preserve every assertion.
 - **Commit:** `test(loomengine): rewrite preflight fixture onto fabricengine`
 
 ### Card 6: rewire buildercli/weft.go
@@ -126,7 +141,9 @@ overview.
   fabricengine.New(hostPath, weftWorktree)` (check `err`) then `f.CommitWeft(...)` (discard
   the extra `sha` return if unused); `weftengine.Push(...)` ->
   `fabricengine.PushWeftAt(...)`. Confirm the host worktree root is in scope for `New`. Swap
-  `weftengine` import for `fabricengine`. Follow the `weft_verbs.go` pattern.
+  `weftengine` import for `fabricengine`. Follow the `weft_verbs.go` pattern (mappings per the
+  Shared Decisions "signature gotchas"). In the same commit, sweep any comment in this file
+  that names the deleted module (per the tree-wide comment-sweep Shared Decision).
 - **Commit:** `refactor(buildercli): rewire weft.go onto fabricengine CommitWeft/PushWeftAt`
 
 ### Card 7: rewire webstercli/weft.go
@@ -142,7 +159,9 @@ overview.
 - **Requirements:** Same shape as card 6: identity swaps for `ScopedPathspec`/
   `EnvSyncOptions`; `weftengine.Commit(...)` -> `fabricengine.New(host,weft)` (check `err`)
   then `CommitWeft(...)`; `weftengine.Push(...)` -> `fabricengine.PushWeftAt(...)`. Swap the
-  `weftengine` import for `fabricengine`. Confirm host worktree root in scope for `New`.
+  `weftengine` import for `fabricengine`. Confirm host worktree root in scope for `New`. In
+  the same commit, sweep any comment in this file that names the deleted module (per the
+  tree-wide comment-sweep Shared Decision).
 - **Commit:** `refactor(webstercli): rewire weft.go onto fabricengine CommitWeft/PushWeftAt`
 
 ### Card 8: rewire perchcli/run.go
@@ -160,8 +179,10 @@ overview.
   `fabricengine.New(host,weft)` (check `err`) then `CommitWeft(...)`; `weftengine.Push(...)`
   -> `fabricengine.PushWeftAt(...)`. Swap the `weftengine` import for `fabricengine`. Confirm
   the host worktree root is in scope for `New` (perchcli's standalone run owns the loop
-  boundary; use the worktree root it already resolves). Leave the `t.Parallel()`/
-  test-concurrency wording untouched -- that is not a module reference.
+  boundary; use the worktree root it already resolves). In the same commit, sweep any comment
+  in this file that names the deleted module (per the tree-wide comment-sweep Shared
+  Decision). Leave the `t.Parallel()`/test-concurrency wording untouched -- that is not a
+  module reference.
 - **Commit:** `refactor(perchcli): rewire run.go onto fabricengine CommitWeft/PushWeftAt`
 
 ## Batch Tests
