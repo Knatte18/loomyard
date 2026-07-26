@@ -1,0 +1,2 @@
+- SANDBOX-CORE-SUITE.md's scenario-id range and session log are stale after S7/S8 deletion: `tools/sandbox/SANDBOX-CORE-SUITE.md:113,344-345`
+- SANDBOX-FABRIC-SUITE.md cross-references a now-deleted CORE-SUITE scenario: `tools/sandbox/SANDBOX-FABRIC-SUITE.md:204`
