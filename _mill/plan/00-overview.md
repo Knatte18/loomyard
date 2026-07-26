@@ -111,9 +111,11 @@ batches are safe to run in parallel.
 
 - **Decision:** `internal/treadleengine` production code never imports
   `internal/burlerengine` (nor any `*cli` package). Its import allowlist:
-  stdlib, `internal/hubgeometry`, `internal/lock`, `internal/logger`,
-  `internal/state`, `internal/stencil`, `internal/shuttleengine`,
-  `gopkg.in/yaml.v3`. `shuttleengine` is deliberately allowed: the judge/
+  stdlib, `internal/lock`, `internal/logger`, `internal/state`,
+  `internal/stencil`, `internal/shuttleengine`, `gopkg.in/yaml.v3` — and
+  deliberately NOT `internal/hubgeometry`: the engine is geometry-blind
+  (caller-supplied absolute `runDir`/`GateDir`) and no extracted file
+  needs it. `shuttleengine` is deliberately allowed: the judge/
   triage calls ride the Shuttle seam and `AttemptResult` reuses
   `shuttleengine.Outcome` (the discussion's "shuttle-style outcome").
   Enforced by `internal/treadleengine/seam_enforcement_test.go` (card 4)

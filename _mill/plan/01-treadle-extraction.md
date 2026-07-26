@@ -137,6 +137,8 @@ smaller sequence of fully-green commits that preserves `git mv` history.
   - `internal/treadleengine/runner.go`
   - `internal/treadleengine/profile.go`
   - `internal/treadleengine/result.go`
+  - `internal/perchengine/profile.go`
+  - `internal/perchengine/result.go`
   - `_mill/discussion.md`
 - **Edits:**
   - `internal/treadleengine/engine.go`
@@ -359,9 +361,11 @@ smaller sequence of fully-green commits that preserves `git mv` history.
   guard in the style of `internal/modelspec/leaf_enforcement_test.go`
   (`TestRunnerSeamInvariant_AllowlistOnly` or equivalent): every production
   (non-test) file in `internal/treadleengine` may import only stdlib,
-  `internal/hubgeometry`, `internal/lock`, `internal/logger`,
-  `internal/state`, `internal/stencil`, `internal/shuttleengine`, and
-  `gopkg.in/yaml.v3` — importing `internal/burlerengine` or any
+  `internal/lock`, `internal/logger`, `internal/state`,
+  `internal/stencil`, `internal/shuttleengine`, and `gopkg.in/yaml.v3` —
+  no `internal/hubgeometry` (the engine is geometry-blind and no moved
+  file imports it; extending the allowlist is a deliberate future edit,
+  not a pre-grant) — and importing `internal/burlerengine` or any
   `internal/*cli` package fails the test with a message naming the
   offending file and import. `CONSTRAINTS.md`: add a `## Treadle
   Runner-Seam Invariant` section in the file's established shape

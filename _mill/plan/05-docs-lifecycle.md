@@ -26,6 +26,11 @@ the docs describe the code as actually shipped across batches 1–4.
   - `internal/treadleengine/profile.go`
   - `internal/treadleengine/handoff.go`
   - `internal/treadleengine/targeting.go`
+  - `internal/treadleengine/judge.go`
+  - `internal/treadleengine/gate.go`
+  - `internal/treadleengine/roundfiles.go`
+  - `internal/treadleengine/state.go`
+  - `internal/treadleengine/engine.go`
   - `internal/perchengine/adapter.go`
   - `internal/perchengine/config.go`
   - `manifest/designs/treadle.md`
