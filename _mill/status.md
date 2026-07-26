@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: treadle
 branch: treadle
 plan: _mill/plan
@@ -30,4 +30,21 @@ plan-review-r5  '2026-07-26T15:57:23Z'
 plan-fix-r5  '2026-07-26T15:57:23Z'
 plan-fix-r6  '2026-07-26T16:23:20Z'
 planned  '2026-07-26T16:23:30Z'
+implementing  '2026-07-26T16:25:21Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: treadle-extraction
+    state: pending
+  - name: judge-handoff
+    state: pending
+  - name: preround-targeting
+    state: pending
+  - name: modelspec-migration
+    state: pending
+  - name: docs-lifecycle
+    state: pending
 ```
