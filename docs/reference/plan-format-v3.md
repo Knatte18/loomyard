@@ -145,7 +145,7 @@ include it now:
 1. Human-readable context at escalation time (if card 5 fails, is card 6 known to depend on it?).
 2. Forward-compatible input for a future DAG mechanism (a cross-check layer once
    codeintel-derived edges exist, analogous to how `SHAExists` cross-checks a stored git
-   reference — see [fabric.md](../../manifest/designs/fabric.md)).
+   reference — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
 3. **A cheap, mechanical, pre-review order-validation gate:** it powers the `depends-on-order`
    check — a card whose `Depends-on:` names a *later* card in the declared order, names itself,
    or names an id referencing no existing card is flagged before any LLM-based review runs, at
@@ -434,7 +434,7 @@ escaping it for the files each card needs outside the shared prefix.
 
 - [builder-contract.md](builder-contract.md#webster-the-fork-based-sibling) and
   `internal/websterengine`'s package documentation — the module that consumes this format.
-- [fabric.md](../../manifest/designs/fabric.md) — `ChangedFilesSince`/`SHAExists` used for
-  contract verification.
+- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists`
+  used for contract verification.
 - [codeintel-redesign.md](../../manifest/designs/codeintel-redesign.md) — the module the symbol
   fields depend on.

@@ -9,8 +9,8 @@
 // and RevertWithWeft against such an answer would graft the current branches
 // onto the other branch's history.
 //
-// Package fabricengine_test to reuse buildDiffPair/currentBranchOf from
-// lifecycle_differential_test.go; shares the TestMain in testmain_test.go.
+// Package fabricengine_test to reuse newFabricFixture/currentBranchOf from
+// reconcile_stale_registration_test.go; shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -32,9 +32,9 @@ import (
 func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	t.Parallel()
 
-	dp := buildDiffPair(t, "")
-	l := dp.FabricFixture.Layout
-	top := dp.Fabric
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	top := fabricengine.NewTopology(fabricengine.Config{})
 
 	// Healthy junction so Checkout's wiring step succeeds.
 	slug := filepath.Base(l.WorktreeRoot)

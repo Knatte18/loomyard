@@ -16,11 +16,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/warpengine"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 func TestInit_FirstRun(t *testing.T) {
@@ -38,8 +37,8 @@ func TestInit_FirstRun(t *testing.T) {
 		t.Fatalf("_lyx/config not created: %v", err)
 	}
 
-	// Verify all three config files exist
-	for _, module := range []string{"board", "warp", "weft"} {
+	// Verify both config files exist
+	for _, module := range []string{"board", "fabric"} {
 		cfgPath := hubgeometry.ConfigFile(f.Layout.WorktreeRoot, module)
 		if _, err := os.Stat(cfgPath); err != nil {
 			t.Errorf("%s.yaml not created: %v", module, err)
@@ -76,15 +75,9 @@ func TestInit_FirstRun(t *testing.T) {
 			t.Errorf("board.LoadConfig failed: %v", err)
 		}
 
-		_, err = warpengine.LoadConfig(f.Layout.WorktreeRoot, "warp")
+		_, err = fabricengine.LoadConfig(f.Layout.WorktreeRoot)
 		if err != nil {
-			t.Errorf("warp.LoadConfig failed: %v", err)
-		}
-
-		// Weft loads from the same directory in this test
-		_, err = weftengine.LoadConfig(f.Layout.WorktreeRoot)
-		if err != nil {
-			t.Errorf("weft.LoadConfig failed: %v", err)
+			t.Errorf("fabric.LoadConfig failed: %v", err)
 		}
 	})
 }

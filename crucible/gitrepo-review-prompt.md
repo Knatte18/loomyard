@@ -69,8 +69,9 @@ bottom.
   Also read `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md` (in particular: Test Tier
   Purity Invariant, Hermetic Git Test Environment Invariant, Documentation Lifecycle — `gitrepo`
   has no CLI surface so the CLI/Cobra Invariant and Sandbox Suite Coverage do not apply to it), and
-  `manifest/designs/fabric.md` + `manifest/designs/board-use-gitrepo.md` (the two documented future
-  consumers — useful for understanding what API shape they expect `gitrepo` to already support).
+  `internal/fabricengine/doc.go` + `manifest/designs/board-use-gitrepo.md` (the two documented
+  future consumers — useful for understanding what API shape they expect `gitrepo` to already
+  support).
 - No `tools/sandbox/SANDBOX-*-SUITE.md` scenario covers `gitrepo` (it is a pure library with no
   `lyx` verb) — skip this source, there is nothing to read there.
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`. A
@@ -149,7 +150,8 @@ substrate — a green `go test` proves nothing here on its own.
 Per `doc.go`'s own "Scope boundaries" section: rebase (beyond the one automatic retry
 `pushWithRebaseRetry` performs internally), interactive staging, cherry-pick, and general conflict
 resolution are deliberately NOT supported — do not flag their absence as a gap. Repo creation,
-cloning, and worktree topology (`fabric`'s job, per `manifest/designs/fabric.md`) are out of scope.
+cloning, and worktree topology (`fabric`'s job, per `internal/fabricengine/doc.go`) are out of
+scope.
 `gitrepo` is also explicitly not goroutine-safe for concurrent writes to the SAME checkout from
 CALLER-side (non-`PushCoalesced`) methods — flag it only if a realistic single-caller-discipline
 scenario silently corrupts data rather than failing visibly; do not flag the documented

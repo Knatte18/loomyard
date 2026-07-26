@@ -1,13 +1,13 @@
 // Package lyxtest holds the shared git-fixture support machinery for Loomyard's
-// test suites across internal/warpengine, internal/warpcli, internal/weftengine,
-// internal/weftcli, and internal/hubgeometry.
+// test suites across internal/fabricengine, internal/fabriccli, and
+// internal/hubgeometry.
 // It owns the fixture builders and per-test isolation helpers, following the
 // template-built-once + per-test filesystem copy pattern to minimize setup overhead
 // and maximize parallelism. See MustRun, CopyHostHub, CopyPaired, and CopyWeft.
 //
 // Leaf Invariant: internal/lyxtest must remain a leaf package importing only the
 // standard library and internal/hubgeometry. It must not import internal/configreg or any
-// feature package (boardengine/boardcli, warpengine/warpcli, weftengine/weftcli,
+// feature package (boardengine/boardcli, fabricengine/fabriccli,
 // ideengine/idecli, selfreportengine/selfreportcli). Feature packages'
 // internal tests import lyxtest; a configreg or feature import would close a
 // test-build cycle. Tests that need real configuration seed it via SeedConfig, which

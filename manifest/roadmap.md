@@ -10,20 +10,11 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **fabric: cutover** — rewires every consumer currently calling into `warp`/`weft`
-   (`initengine`, `loomengine`, `buildercli`, `webstercli`, `perchcli`, `configcli`) onto the
-   already-built `fabric` (`internal/fabricengine` + `internal/fabriccli`, validated by
-   differential tests against `warp`/`weft` as the reference fixture), then deletes the old
-   `warp`/`weft` modules in one coordinated pass — not incremental, since the two old modules are
-   tightly coupled to how git state is read across the codebase today. Connecting `fabric` into
-   the actual system is what this item is — the parallel build itself already landed. See
-   [designs/fabric.md](designs/fabric.md).
-
 1. **board: move storage to `weft:main`** — replaces board's own separate remote repo with a
    reserved `weft:main` branch (README.md rendering, JSON-backed Proposals/Manifest/Tasks/Done).
-   Depends on the Planned `fabric: cutover` item's branch-naming enforcement (`<slug>-weft`
-   uniformly) actually taking effect, not just `fabric`'s code existing alongside the old
-   modules. See [designs/board-weft-storage.md](designs/board-weft-storage.md).
+   Depends on `fabric`'s branch-naming enforcement (`<slug>-weft` uniformly), which is now live
+   (`fabric` shipped Done below, old warp/weft modules deleted). See
+   [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
 1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalizes `perch`'s
    existing judge/gate/round-spawn/cap/pause/lock loop into a shared engine with a pluggable
@@ -176,6 +167,9 @@ between these items.
 
 ## Done
 
+1. **fabric** — unified host↔weft git-coordination module replacing warp/weft; cut over and old
+   modules deleted.
+
 1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library
    (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface
    `gitrepo` uses (reads and writes, including the `Push` rebase-retry path). Recommendation:
@@ -196,19 +190,19 @@ between these items.
 
 1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`,
    `PushCoalesced`, `CurrentSHA`, `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/
-   `SetSnapshotSHA`) built on `internal/gitexec` (`internal/gitrepo`; consumed by the Planned
-   `fabric` item once it ships).
+   `SetSnapshotSHA`) built on `internal/gitexec` (`internal/gitrepo`; consumed by the `fabric`
+   module).
 
 1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by
    `warp`).
 
-1. **weft** — companion weft repo, paired host+weft spawn/teardown (superseded by the Planned
-   `fabric` item once it ships).
+1. **weft** — companion weft repo, paired host+weft spawn/teardown (superseded by the `fabric`
+   module).
 
 1. **config TUI** — `lyx config` interactive menu + `reconcile`.
 
 1. **warp** — host↔weft-coordinated git topology (clone, add/remove, checkout, reconcile, cleanup)
-   (superseded by the Planned `fabric` item once it ships).
+   (superseded by the `fabric` module).
 
 1. **proc** — cross-OS process spawn.
 
@@ -263,7 +257,7 @@ between these items.
   … with **zero number edits ever needed** — inserting, removing, or reordering items anywhere just
   works.
 - **Numbers are not stable cross-reference IDs** (the same number exists in all three sections).
-  Cross-reference by **bold item name** instead (e.g. "the Planned `fabric` item," "Someday's
+  Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's
   `codeintel` item") — every reference elsewhere in this file and in `designs/*.md` already does
   this.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when

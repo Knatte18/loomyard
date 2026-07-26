@@ -31,7 +31,7 @@ import (
 //
 // The parent carries RunE: clihelp.GroupRunE so a bare "lyx codeintel" lists
 // subcommands and an unknown subcommand emits a JSON error, matching every other
-// module group in this repo (see internal/weftcli.Command).
+// module group in this repo (see internal/fabriccli.Command).
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "codeintel",

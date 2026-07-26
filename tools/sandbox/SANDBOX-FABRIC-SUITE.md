@@ -5,9 +5,8 @@
 A structured test-loop for exercising `lyx fabric` against **dedicated** GitHub test
 repos (`Knatte18/lyx-fabric-test` as host, `Knatte18/lyx-fabric-test-weft` as weft) --
 never the shared `lyx-test`/`lyx-test-weft` repos the main and per-module suites use.
-fabric is a parallel-build module (see `docs/overview.md`): it exists alongside warp
-and weft, and this suite proves it holds up on its own dedicated hub rather than
-interfering with (or being interfered with by) the warp/weft sandbox state.
+This suite proves fabric's stricter `main-weft`-suffixed branch-naming scheme holds up
+on its own dedicated hub, whose fixtures the shared hub does not exercise.
 
 Like the other suites, the value is a Claude session driving `lyx fabric` by hand in a
 real hub, treating every break, surprise, or rough edge as a LoomYard finding to
@@ -43,9 +42,8 @@ Before starting a session:
    `[board-url]` naming any reachable repo as a board stand-in, and treat F1's
    derived-URL check as blocked-by-precondition rather than a fabric defect.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
-4. **Weft `_lyx/` must be seeded before `lyx init`.** `lyx init` is still the
-   warp/weft-based initializer (fabric is not wired into `init` until the cutover task):
-   it wires the host `_lyx` junction to the weft worktree's `_lyx/` directory. On a truly
+4. **Weft `_lyx/` must be seeded before `lyx init`.** `lyx init` wires the host
+   `_lyx` junction to the weft worktree's `_lyx/` directory via fabricengine. On a truly
    empty weft repo that directory does not exist yet, so `init` creates a dangling
    junction and then fails (`mkdir _lyx: file exists`). The dedicated `lyx-fabric-test-weft`
    repo must therefore have an `_lyx/` directory committed on its primary branch (the
@@ -162,7 +160,7 @@ the hub was materialized with an explicit `[board-url]` stand-in, record this ch
 blocked-by-precondition instead of failing it. The weft prime's checked-out branch is
 **`main-weft`**, not
 `main` -- fabric's uniform branch-suffix scheme applies from the very first pair, unlike
-`warp clone`'s mirrored (identical) branch names. Use `lyx fabric pairs` and plain git
+the pre-fabric mirrored (identical) branch-naming convention. Use `lyx fabric pairs` and plain git
 (`git -C <weft-prime> branch --show-current`, `git -C _board remote -v`) to confirm both;
 neither should require guessing or `ls`-ing around.
 
@@ -203,7 +201,7 @@ HEAD -- inspect the commit body (e.g. `git -C <weft-worktree> log -1`) and confi
 trailer is present and names a real, resolvable warp commit. `fabric sync` pushes via
 a detached child process, so `status` immediately after `sync` may lag behind the
 actual push -- a confusing-but-expected rough edge to note as a `WARN`, not to
-pre-judge here (mirroring `SANDBOX-CORE-SUITE.md`'s S7 guidance for `weft sync`).
+pre-judge here.
 Staging is scoped to the directories listed in the fabric config (default `_lyx`), so
 the test change should land inside that scope to be picked up at all.
 
@@ -256,7 +254,8 @@ findings section above -- with `items: []` when every scenario was `OK`.
 
 - This suite is deliberately scoped to fabric alone and runs against its own
   dedicated hub -- it does not touch, and is not touched by, `SANDBOX-CORE-SUITE.md`'s
-  warp/weft scenarios against `lyx-test`/`lyx-test-weft`.
-- fabric is a parallel-build module (see `docs/overview.md` and
-  `manifest/designs/fabric.md`): it is not yet the default, and warp/weft remain the
-  owners of the shared sandbox hub until cutover.
+  host/weft scenarios against `lyx-test`/`lyx-test-weft`.
+- fabric is lyx's sole host↔weft git-coordination module (see
+  `internal/fabricengine/doc.go`); its stricter `main-weft`-suffixed branch-naming
+  scheme is exactly why this suite runs against its own dedicated hub rather than
+  the shared sandbox hub.

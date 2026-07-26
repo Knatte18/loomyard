@@ -34,7 +34,7 @@ func mustReadFile(t *testing.T, path string) string {
 }
 
 // readExcludeContent resolves and reads the host worktree's .git/info/exclude
-// file, mirroring the resolution logic in warpengine's seedGitExclude /
+// file, mirroring the resolution logic in fabricengine's seedGitExclude /
 // unseedGitExclude so tests observe the same path the production code writes to.
 func readExcludeContent(t *testing.T, l *hubgeometry.Layout, slug string) string {
 	t.Helper()
@@ -138,7 +138,7 @@ func TestUndo_HappyPath(t *testing.T) {
 	}
 
 	// The deletion was committed: the _lyx pathspec is clean (scoped like
-	// weftengine.Status's own dirty check, so the untracked .weft lock
+	// fabricengine's StatusWeft dirty check, so the untracked .weft lock
 	// directory Commit itself creates does not count as dirty).
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--", hubgeometry.LyxDirName}, f.Layout.WeftWorktree())
 	if err != nil || exitCode != 0 {
@@ -173,7 +173,7 @@ func TestUndo_NeverInitialized(t *testing.T) {
 
 	// lyxtest.CopyPairedLocal's weft-prime template always pre-seeds
 	// _lyx/config/placeholder purely as fixture scaffolding; production
-	// warpengine spawn code never creates this file, so it does not reflect
+	// fabricengine spawn code never creates this file, so it does not reflect
 	// a real never-initialized directory. Remove it (and the now-empty
 	// _lyx/config and _lyx directories) so the fixture genuinely represents
 	// "no weft-side content, no host init ever ran."
@@ -202,8 +202,8 @@ func TestUndo_NeverInitialized(t *testing.T) {
 }
 
 // TestUndo_NoWeftPairing covers the truly-unpaired host case (no weft
-// sibling worktree at all — not merely "never init'd" but "never warp add'd
-// either"). Undo must not create a stray weft sibling as a side effect.
+// sibling worktree at all — not merely "never init'd" but "never fabric
+// add'd either"). Undo must not create a stray weft sibling as a side effect.
 func TestUndo_NoWeftPairing(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -442,7 +442,7 @@ func TestUndo_PartialRecovery(t *testing.T) {
 
 		// lyxtest.CopyPaired's weft-prime template (unlike CopyWeft's) has no
 		// upstream tracking established; a real weft worktree gets that from
-		// warpengine.Add's own push -u during spawn (weftwiring.go), so
+		// Topology.Add's own push -u during spawn (weftwiring.go), so
 		// establish the same baseline here before simulating the partial run.
 		lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "push", "-u", "origin", "main")
 

@@ -1,11 +1,7 @@
-// weftgit.go — the weft-git parity verbs on Fabric: StatusWeft, CommitWeft,
-// PushWeft, PullWeft, plus the package-level PushWeftAt for the detached-push
-// child. These reproduce weftengine's observable behavior with one
-// deliberate delta: CommitWeft's commit carries a Warp-SHA trailer and
-// records the correspondence immediately, per the weft-git parity decision
-// (fabric reuses weftengine's exact operational constants — env gates,
-// default commit message, and write-lock path — so both modules serialize
-// against each other during the parallel-build period).
+// weftgit.go — the weft-git content-sync verbs on Fabric: StatusWeft,
+// CommitWeft, PushWeft, PullWeft, plus the package-level PushWeftAt for the
+// detached-push child. CommitWeft's commit carries a Warp-SHA trailer and
+// records the correspondence immediately.
 
 package fabricengine
 
@@ -21,10 +17,9 @@ import (
 )
 
 const (
-	// weftLockDirName and weftWriteLockFile name the same lock location
-	// weftengine uses (its lockDirName/writeLockFile), so CommitWeft's write
-	// lock and weftengine's write lock contend on the identical file during
-	// the parallel-build period rather than silently racing past each other.
+	// weftLockDirName and weftWriteLockFile name fabric's own write-lock
+	// location, so every concurrent CommitWeft caller contends on the
+	// identical file rather than racing past each other.
 	weftLockDirName   = ".weft"
 	weftWriteLockFile = "weft.write.lock"
 )
@@ -112,11 +107,10 @@ func seedWeftArtifactExcludes(weftPath string) error {
 	return nil
 }
 
-// StatusWeft returns a content-sync status report for the weft worktree,
-// matching weftengine.Status's keys exactly: weft_worktree, branch, dirty,
-// ahead, behind — ahead/behind are nil rather than a zero count when no
-// upstream is configured, so a caller can distinguish "not tracked" from
-// "fully in sync".
+// StatusWeft returns a content-sync status report for the weft worktree:
+// weft_worktree, branch, dirty, ahead, behind — ahead/behind are nil rather
+// than a zero count when no upstream is configured, so a caller can
+// distinguish "not tracked" from "fully in sync".
 func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
 	result := make(map[string]any)
 	result["weft_worktree"] = f.weftPath
@@ -181,10 +175,9 @@ func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
 // self-corrects at lookup time if a later rebase-recovered push rewrites the
 // SHA out from under it. Returns ("", false, nil) when opts.SkipGit is true,
 // nothing was staged, or pathspec has already been fully removed from both
-// the working tree and the index by a prior commit — matching
-// weftengine.Commit's identical tolerance of git's "did not match any
-// files" pathspec failure, which the shared gitrepo.StageAndCommit
-// primitive does not special-case on its own.
+// the working tree and the index by a prior commit — CommitWeft tolerates
+// git's "did not match any files" pathspec failure, which the shared
+// gitrepo.StageAndCommit primitive does not special-case on its own.
 func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
@@ -208,9 +201,8 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 	sha, committed, err = f.Weft.StageAndCommit(appendWarpSHATrailer(message, warpSHA), pathspec)
 	if err != nil {
 		// gitrepo.StageAndCommit's `git add --` does not tolerate a pathspec
-		// that no longer matches anything at all, on disk or in the index —
-		// unlike weftengine.Commit's explicit tolerance of this exact
-		// message. Treat it the same way here: nothing of ours to stage, not
+		// that no longer matches anything at all, on disk or in the index.
+		// Tolerate that case explicitly here: nothing of ours to stage, not
 		// a hard failure. Any other add/commit failure still propagates.
 		if strings.Contains(err.Error(), "did not match any files") {
 			return "", false, nil
@@ -233,10 +225,9 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 	return sha, true, nil
 }
 
-// PushWeft pushes unpushed weft commits, matching weftengine.Push's
-// SkipGit/SkipPush gating. Serialization reuses gitrepo's PushCoalesced —
-// its .gitrepo-push.lock is the push serialization; fabric ports no separate
-// weft push lock, per the weft-git parity decision.
+// PushWeft pushes unpushed weft commits, honoring SkipGit/SkipPush gating.
+// Serialization reuses gitrepo's PushCoalesced — its .gitrepo-push.lock is
+// the push serialization; fabric ports no separate weft push lock.
 func (f *Fabric) PushWeft(opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
@@ -244,8 +235,8 @@ func (f *Fabric) PushWeft(opts SyncOptions) error {
 	return f.Weft.PushCoalesced()
 }
 
-// PullWeft fast-forwards the weft worktree from its upstream, matching
-// weftengine.Pull's SkipGit gating.
+// PullWeft fast-forwards the weft worktree from its upstream, honoring
+// SkipGit gating.
 func (f *Fabric) PullWeft(opts SyncOptions) error {
 	if opts.SkipGit {
 		return nil
@@ -254,9 +245,8 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 }
 
 // PushWeftAt pushes unpushed commits at weftPath directly, with no Fabric
-// instance and no warp path involved — the detached-push child's entry
-// point, mirroring weftcli's bypass push (spawnPush). Gating matches
-// PushWeft exactly.
+// instance and no warp path involved — the detached-push child's bypass-push
+// entry point (spawnPush). Gating matches PushWeft exactly.
 func PushWeftAt(weftPath string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil

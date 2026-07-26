@@ -1,10 +1,8 @@
 // add.go implements the transactional Add: it creates the host worktree,
 // portal, and launchers, then pushes last, performing a best-effort full
 // rollback on any post-creation failure so a partial worktree pair is never
-// left behind. Adapted from warpengine's add.go — same transactional sequence
-// and rollback discipline, package fabricengine. The branch delta: the weft
-// side always uses the suffixed branch produced by WeftBranchName rather than
-// a mirrored (identical) branch name.
+// left behind. The weft side always uses the suffixed branch produced by
+// WeftBranchName.
 
 package fabricengine
 

@@ -87,7 +87,7 @@ type HeaderConfig struct {
 // the config file against the template, resolve environment variables, and
 // return resolved bytes. Unmarshals the resolved bytes into a Config
 // struct. The module name is threaded through by the caller (never
-// hardcoded to "reed" here), mirroring warpengine.LoadConfig.
+// hardcoded to "reed" here), mirroring fabricengine.LoadConfig.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
 // "not initialized here; run \"lyx init\"".
@@ -95,7 +95,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic "not initialized" error with the reed-specific hint,
-		// matching warpengine's shape so every module surfaces the same
+		// matching fabricengine's shape so every module surfaces the same
 		// recovery instruction.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")

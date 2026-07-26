@@ -126,7 +126,7 @@ path immediately rather than attempting the call and getting an undefined result
   adapter first; let Python/C# adapters wait until there's a concrete second consumer, as long as
   the registry format already has room for them.
 - **Per-language snapshot keys, not one shared `codeintel` key** (see
-  [fabric.md](fabric.md#consumer-boundaries-avoid-re-coupling-codeintel-and-raddle)) — use
+  [`internal/fabricengine`](../../internal/fabricengine/doc.go)) — use
   `codeintel-go`/`codeintel-py`/`codeintel-cs` so one language's daemon downtime can't block or
   falsely-advance tracking for the others.
 - **Tag decisions as "ported from Millhouse" vs. "new for this rewrite"** when consolidating —
@@ -168,6 +168,7 @@ path immediately rather than attempting the call and getting an undefined result
 
 - [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — the symbol fields this module
   makes trustworthy.
-- [fabric.md](fabric.md) — per-language snapshot-key notification.
+- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — per-language snapshot-key
+  notification.
 - `internal/codeintelengine` package doc — the current, simpler, shipped implementation this
   design eventually redesigns (not superseded yet — no work has started on this redesign).

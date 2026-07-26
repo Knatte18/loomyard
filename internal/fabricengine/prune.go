@@ -1,11 +1,9 @@
 // prune.go implements the Prune verb: it identifies and optionally removes
 // orphaned or stale host↔weft pairs. A pair is stale when the host worktree
 // directory no longer exists; a pair is orphaned when a weft worktree has no
-// corresponding host worktree sibling. Adapted from warpengine's prune.go —
-// unchanged behavior, package fabricengine. Prune operates purely on
-// directory names (<slug>-weft, a hubgeometry-level invariant shared
-// identically by warp and fabric); the branch-naming delta between the two
-// modules does not affect this file.
+// corresponding host worktree sibling. Prune operates purely on directory
+// names (<slug>-weft, a hubgeometry-level invariant); fabric's branch-naming
+// scheme does not affect this file.
 
 package fabricengine
 

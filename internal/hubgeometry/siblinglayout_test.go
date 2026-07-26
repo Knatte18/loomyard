@@ -19,7 +19,7 @@ import (
 
 // TestSiblingLayout_EquivalentToResolve verifies that SiblingLayout(root)
 // produces a Layout deep-equal to Resolve(root) for every worktree that is a
-// direct child of the hub — the fast path warpengine's hostLayoutFor takes
+// direct child of the hub — the fast path fabricengine's hostLayoutFor takes
 // for the normal (hub-sibling) case.
 func TestSiblingLayout_EquivalentToResolve(t *testing.T) {
 	t.Parallel()

@@ -163,7 +163,7 @@ func deriveRepo(prime, worktreeRoot string) string {
 // SiblingLayout derives the Layout for a hub-sibling worktree from the receiver's
 // already-resolved Hub and Prime, without spawning git. It exists so callers that
 // already hold a resolved Layout and are iterating over hub-sibling worktrees (e.g.
-// warpengine's Status/Reconcile scans) can avoid a per-iteration git rev-parse spawn.
+// fabricengine's Status/Reconcile scans) can avoid a per-iteration git rev-parse spawn.
 //
 // Precondition: worktreeRoot must be an actual worktree root as returned by
 // hubgeometry.List (not an arbitrary subpath) and must be a direct child of l.Hub.
@@ -367,7 +367,7 @@ func HubPath(parent, name string) string {
 //
 // It reports whether name ends with WeftSuffix AND the stripped prefix is non-empty.
 // The non-empty guard rejects a bare "-weft" entry (which would yield an empty slug),
-// matching the skip condition in warpengine/prune.go's hub scan. When ok is true,
+// matching the skip condition in fabricengine/prune.go's hub scan. When ok is true,
 // slug is the result of strings.TrimSuffix(name, WeftSuffix) and may be passed
 // directly to any of the geometry constructors as the host slug.
 func WeftHostSlug(name string) (slug string, ok bool) {
@@ -558,8 +558,8 @@ func (l *Layout) MenuLauncherPath() string {
 
 // menuLauncherName returns the OS-appropriate filename for the menu launcher
 // script: "ide-menu.cmd" on Windows, "ide-menu.sh" everywhere else. It is the
-// only geometry token that varies by GOOS; the "ide" and "warp-checkout"
-// launcher filenames are built (and extension-selected) inside warpengine.
+// only geometry token that varies by GOOS; the "ide" and "fabric-checkout"
+// launcher filenames are built (and extension-selected) inside fabricengine.
 func menuLauncherName() string {
 	if runtime.GOOS == "windows" {
 		return "ide-menu.cmd"
@@ -697,7 +697,7 @@ type HostJunction struct {
 //
 // Currently, this returns a single-element slice containing the _lyx junction.
 // The junction record carries Name, Link, and Target fields for use by the
-// seeders in internal/warpengine.
+// seeders in internal/fabricengine.
 //
 // Returns a slice with exactly one entry: {Name: LyxDirName, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}.
 func (l *Layout) HostJunctions(slug string) []HostJunction {

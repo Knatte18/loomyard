@@ -1,6 +1,5 @@
 // ancestors.go implements the empty-directory sweeper that prunes empty ancestors
-// of removed worktrees and portals. Adapted from warpengine's ancestors.go —
-// byte-equivalent behavior, package fabricengine.
+// of removed worktrees and portals.
 
 package fabricengine
 

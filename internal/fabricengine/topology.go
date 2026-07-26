@@ -1,9 +1,8 @@
 // topology.go — the Topology holder: the entry point for fabric's hub-scoped
 // worktree-topology verbs (add/remove/checkout/reconcile/status/prune/cleanup/
-// list, this batch and the next). It mirrors warpengine.Worktree's shape
-// exactly (a config-carrying holder, methods take a *hubgeometry.Layout) so
-// the differential mapping between warp's operations and fabric's is
-// one-to-one and the parity tests stay mechanical.
+// list, this batch and the next). It is a config-carrying holder whose methods
+// take a *hubgeometry.Layout, keeping the topology surface mechanical and
+// uniform across every verb.
 //
 // Topology is deliberately distinct from Fabric (fabric.go): Fabric is the
 // per-pair cross-repo handle over two already-existing checkouts (Warp/Weft
@@ -17,8 +16,7 @@ package fabricengine
 
 // Topology is the high-level facade over hub-scoped worktree-topology
 // operations (add/remove/checkout/reconcile/status/prune/cleanup/list). It
-// holds the configuration needed by all topology methods, mirroring
-// warpengine.Worktree.
+// holds the configuration needed by all topology methods.
 type Topology struct {
 	cfg Config
 }

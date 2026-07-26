@@ -174,8 +174,10 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 
 	// allowlist holds packages that expose func Command() *cobra.Command but are
 	// intentionally not registered in newRoot() (for documented future exceptions).
-	// Empty today — muxpoccli, the only prior entry, was deleted once the reed
-	// module it was a proof-of-concept for was built and shipped.
+	// Empty for now; muxpoccli, a prior entry, was deleted once the reed module it
+	// was a proof-of-concept for was built and shipped, and the temporary
+	// git-coordination CLI bridge entries here were removed once those packages
+	// were deleted outright (fabric is now the sole git-coordination CLI).
 	allowlist := map[string]bool{}
 
 	for pkg := range discovered {

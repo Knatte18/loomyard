@@ -1,7 +1,6 @@
 // clone.go implements the fabriccli handler half for the fabric clone subcommand.
 // runCloneWithReset delegates into fabricengine.CloneHub after optionally tearing
-// down an existing hub when --reset is given. Adapted from warpcli's clone.go —
-// identical control flow, fabricengine.RemoveAll/CloneHub in place of warpengine's.
+// down an existing hub when --reset is given.
 
 package fabriccli
 
@@ -18,9 +17,7 @@ import (
 //
 // When reset is true it tears down any existing hub at the derived path before
 // cloning, making the operation idempotent. The teardown uses fabricengine.RemoveAll
-// so tests can inject errors by swapping that exported var. This is fabric's own
-// teardown seam, distinct from warpcli's — the two modules never share a clone
-// teardown path during the parallel-build period.
+// so tests can inject errors by swapping that exported var.
 func runCloneWithReset(out io.Writer, args []string, reset bool) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {

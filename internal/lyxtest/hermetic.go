@@ -20,7 +20,7 @@ var hermeticGitEnvOnce sync.Once
 // in the operator's ~/.gitconfig cause every fixture-built or freshly `git
 // init`/`git clone`d repo to spawn an fsmonitor--daemon (and auto-maintenance)
 // background process, which is what produced hundreds of daemon spawns per
-// warpengine test run. HermeticGitEnv covers both direct git spawns and
+// fabricengine test run. HermeticGitEnv covers both direct git spawns and
 // indirect ones: os.Setenv mutates the test process's own environment, which
 // exec.Command children (and any binaries those children launch, such as
 // cmd/lyx's e2e tests invoking the lyx binary, which itself spawns git)

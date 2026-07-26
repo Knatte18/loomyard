@@ -4,7 +4,7 @@
 // weft-side _lyx content, the managed .gitignore block, and the
 // .git/info/exclude entry. Each step independently no-ops if its own target
 // is already absent, and a junction inconsistency aborts the whole run before
-// any weft-content or .gitignore step runs (see warpengine.UnwireJunctions).
+// any weft-content or .gitignore step runs (see fabricengine.UnwireJunctions).
 
 package initengine
 
@@ -12,10 +12,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/warpengine"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 // UndoResult summarizes what Undo changed.
@@ -32,10 +31,10 @@ type UndoResult struct {
 //     independently no-ops when its own target is absent).
 //  2. Derive slug from the worktree root (identical to Init).
 //  3. Unwire the host junction and its .git/info/exclude entry via
-//     warpengine.UnwireJunctions. Any error here aborts immediately: no
+//     fabricengine.UnwireJunctions. Any error here aborts immediately: no
 //     weft-content clearing or .gitignore revert runs.
 //  4. Clear weft-side _lyx content, if any weft worktree exists at all, then
-//     unconditionally commit and push that deletion through weftengine.
+//     unconditionally commit and push that deletion through fabricengine.
 //  5. Revert the managed .gitignore block's ".lyx/" entry.
 func Undo(cwd string) (UndoResult, error) {
 	// Resolve layout from cwd (needed for weft sibling derivation and slug).
@@ -51,7 +50,7 @@ func Undo(cwd string) (UndoResult, error) {
 	// Step 3: unwire the host junction and its exclude entry. Per the "any
 	// junction inconsistency is a hard error" Shared Decision, any error here
 	// aborts the whole run: no weft-content or .gitignore step runs.
-	junctionResult, err := warpengine.UnwireJunctions(l, slug)
+	junctionResult, err := fabricengine.UnwireJunctions(l, slug)
 	if err != nil {
 		return UndoResult{}, err
 	}
@@ -61,9 +60,9 @@ func Undo(cwd string) (UndoResult, error) {
 	// Step 4: weft-side content. First check whether a weft worktree exists
 	// at all; if it doesn't, this is a truly-unpaired host (the same
 	// condition Init hard-gates on) and every remaining part of this step
-	// is skipped — in particular, weftengine.Commit must never be called
-	// against a nonexistent weft worktree, since its ensureLockDir would
-	// unconditionally create a stray <slug>-weft/.weft/ directory tree.
+	// is skipped — in particular, fabricengine's CommitWeft must never be
+	// called against a nonexistent weft worktree, since its ensureLockDir
+	// would unconditionally create a stray <slug>-weft/.weft/ directory tree.
 	weftWorktree := l.WeftWorktree()
 	if _, statErr := os.Stat(weftWorktree); statErr != nil && !os.IsNotExist(statErr) {
 		return UndoResult{}, statErr
@@ -86,14 +85,19 @@ func Undo(cwd string) (UndoResult, error) {
 		// and push once we already know the weft worktree itself exists —
 		// this recovers a prior partial run where the deletion committed
 		// locally but the push failed.
-		opts := weftengine.EnvSyncOptions()
-		if _, err := weftengine.Commit(weftWorktree, weftengine.ScopedPathspec(l.RelPath, []string{hubgeometry.LyxDirName}), "lyx init --undo: clear _lyx", opts); err != nil {
+		opts := fabricengine.EnvSyncOptions()
+		f, err := fabricengine.New(l.WorktreeRoot, weftWorktree)
+		if err != nil {
 			return UndoResult{}, err
 		}
-		// Push runs unconditionally, never gated on whether Commit made a new
-		// commit this invocation — see the "Push runs unconditionally" Shared
-		// Decision.
-		if err := weftengine.Push(weftWorktree, opts); err != nil {
+		pathspec := fabricengine.ScopedPathspec(l.RelPath, []string{hubgeometry.LyxDirName})
+		if _, _, err := f.CommitWeft(pathspec, "lyx init --undo: clear _lyx", opts); err != nil {
+			return UndoResult{}, err
+		}
+		// Push runs unconditionally, never gated on whether CommitWeft made a
+		// new commit this invocation — see the "Push runs unconditionally"
+		// Shared Decision.
+		if err := fabricengine.PushWeftAt(weftWorktree, opts); err != nil {
 			return UndoResult{}, err
 		}
 	}

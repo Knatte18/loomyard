@@ -4,13 +4,10 @@
 // WeftBranchName(branch) in an all-or-nothing operation. Preconditions are
 // checked first; on any weft-side or junction-wiring failure both switches are
 // rolled back to their original branches so the pair is never left
-// half-switched. Adapted from
-// warpengine's checkout.go — same precondition/rollback discipline, package
-// fabricengine. The branch delta: the weft target is always the suffixed
-// sibling of the host target, and switchOrForkWeft's fork-from-parent start
-// point is the weft branch the worktree was actually on before the switch
-// (which, for an in-sync pair, is the suffixed sibling of the previous host
-// branch — the same one-hop-over relationship warp's mirrored fork point has).
+// half-switched. The weft target is always the suffixed sibling of the host
+// target, and switchOrForkWeft's fork-from-parent start point is the weft
+// branch the worktree was actually on before the switch — for an in-sync
+// pair, the suffixed sibling of the previous host branch.
 
 package fabricengine
 

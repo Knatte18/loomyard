@@ -5,12 +5,12 @@ package configreg
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/weftengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 func TestNames(t *testing.T) {
 	got := Names()
-	want := []string{"board", "builder", "burler", "fabric", "loom", "models", "reed", "perch", "shuttle", "warp", "webster", "weft"}
+	want := []string{"board", "builder", "burler", "fabric", "loom", "models", "reed", "perch", "shuttle", "webster"}
 	if len(got) != len(want) {
 		t.Errorf("Names() = %v; want %v", got, want)
 		return
@@ -36,19 +36,19 @@ func TestModules_SeedOnly(t *testing.T) {
 }
 
 func TestTemplate_Found(t *testing.T) {
-	got, ok := Template("weft")
+	got, ok := Template("fabric")
 	if !ok {
-		t.Error("Template(\"weft\") = _, false; want _, true")
+		t.Error("Template(\"fabric\") = _, false; want _, true")
 		return
 	}
 	if got == nil {
-		t.Error("Template(\"weft\") returned nil function; want non-nil")
+		t.Error("Template(\"fabric\") returned nil function; want non-nil")
 		return
 	}
 	// Verify the template function returns the expected content.
-	want := weftengine.ConfigTemplate()
+	want := fabricengine.ConfigTemplate()
 	if got() != want {
-		t.Errorf("Template(\"weft\")() = %q; want %q", got(), want)
+		t.Errorf("Template(\"fabric\")() = %q; want %q", got(), want)
 	}
 }
 

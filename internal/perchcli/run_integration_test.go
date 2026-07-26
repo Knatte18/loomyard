@@ -56,7 +56,7 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	// weft-prime worktree at the path the host's "_lyx" junction would
 	// otherwise transparently resolve to (this fixture predates "lyx init",
 	// so no junction exists yet — writing straight into WeftPrime is the
-	// established pattern other cli test suites use, e.g. weftcli's
+	// established pattern other cli test suites use, e.g. fabriccli's
 	// TestRunCLI_EnvMapToOption).
 	placeholderDir := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "perch", "weft-on-error")
 	if err := os.MkdirAll(placeholderDir, 0o755); err != nil {

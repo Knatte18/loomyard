@@ -33,9 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
-	"github.com/Knatte18/loomyard/internal/warpcli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
-	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
 func main() {
@@ -86,10 +84,10 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: init, board, config, ide, reed, weft, warp, fabric, selfreport, shuttle, burler, perch, builder, codeintel, webster.`,
+Available modules: init, board, config, ide, reed, fabric, selfreport, shuttle, burler, perch, builder, codeintel, webster.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Several module groups (board, ide, reed, weft) install their own
+		// Several module groups (board, ide, reed) install their own
 		// PersistentPreRunE for config/layout resolution. EnableTraverseRunHooks
 		// (set below) makes cobra run root's hook first, then each ancestor's
 		// down to the target command, instead of only the nearest one — so this
@@ -121,8 +119,6 @@ Available modules: init, board, config, ide, reed, weft, warp, fabric, selfrepor
 		configcli.Command(),
 		idecli.Command(),
 		reedcli.Command(),
-		weftcli.Command(),
-		warpcli.Command(),
 		fabriccli.Command(),
 		selfreportcli.Command(),
 		shuttlecli.Command(),

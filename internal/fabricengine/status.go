@@ -4,10 +4,8 @@
 // Status enumerates all host worktrees via hubgeometry.List, pairs each with its weft
 // sibling, reports branch, in-sync verdict, junction health, and scans the host index
 // for any _lyx or _raddle paths that have been accidentally git-tracked (host pollution).
-// Adapted from warpengine's status.go — same field set and pollution-scan behavior,
-// package fabricengine. The branch delta: a pair is InSync when
-// weftBranch == WeftBranchName(hostBranch) (warp requires equal names), and
-// DriftReason states the expected suffixed branch rather than a bare mismatch.
+// A pair is InSync when weftBranch == WeftBranchName(hostBranch), and DriftReason
+// states the expected suffixed branch rather than a bare mismatch.
 //
 // Status computes its in-sync verdict inline (branch correspondence via WeftBranchName,
 // then junction health via checkJunctionHealth, both already defined in reconcile.go)

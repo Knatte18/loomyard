@@ -6,7 +6,7 @@
 // for the two ephemeral judge/triage utility calls — burler reaches shuttle
 // itself for its own round; perch never routes a round through its own
 // Shuttle. Engine is weft-blind and geometry-blind: it never imports
-// weftengine/warpengine and never constructs a _lyx path itself; it operates
+// fabricengine and never constructs a _lyx path itself; it operates
 // on a caller-supplied absolute runDir (the *hubgeometry.Layout it holds is
 // used only to resolve the gate command's working directory,
 // layout.WorktreeRoot).

@@ -1,6 +1,5 @@
 // list.go exposes the worktree List operation as a thin wrapper over the
-// shared porcelain parser in internal/hubgeometry. Adapted from warpengine's
-// list.go — identical delegation, package fabricengine.
+// shared porcelain parser in internal/hubgeometry.
 
 package fabricengine
 

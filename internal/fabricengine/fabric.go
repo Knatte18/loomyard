@@ -18,9 +18,7 @@ import (
 )
 
 // DefaultCommitMessage is the message used by every weft-commit caller that
-// does not need a custom one, matching weftengine.DefaultCommitMessage —
-// fabric's SyncWeft (a later batch) reuses today's weft sync default exactly,
-// per the weft-git parity decision.
+// does not need a custom one.
 const DefaultCommitMessage = "weft sync"
 
 // ErrMissingPath is a typed error returned by New when either the warp or the
@@ -82,18 +80,15 @@ func requireDir(path string) error {
 	return nil
 }
 
-// SyncOptions controls git sync behavior for weft-touching operations,
-// matching weftengine.SyncOptions's shape exactly (the weft-git parity
-// decision).
+// SyncOptions controls git sync behavior for weft-touching operations.
 type SyncOptions struct {
 	SkipGit  bool // Skip all git operations if true.
 	SkipPush bool // Skip push operations if true; affects push only.
 }
 
 // EnvSyncOptions reads the WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment
-// variables and returns the SyncOptions they describe. It reuses weftengine's
-// exact env-var names (not new fabric-specific ones), so both modules
-// serialize against the same test/CI bypass during the parallel-build period.
+// variables and returns the SyncOptions they describe — the uniform test/CI
+// bypass gate for every weft-touching operation.
 func EnvSyncOptions() SyncOptions {
 	return SyncOptions{
 		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
@@ -103,8 +98,7 @@ func EnvSyncOptions() SyncOptions {
 
 // ScopedPathspec returns a slice of pathspec entries, each being the join of
 // relPath with each directory in dirs. At relPath == ".", this returns dirs
-// unchanged; at relPath == "sub", ["_lyx"] becomes ["sub/_lyx"]. Mirrors
-// weftengine.ScopedPathspec exactly.
+// unchanged; at relPath == "sub", ["_lyx"] becomes ["sub/_lyx"].
 func ScopedPathspec(relPath string, dirs []string) []string {
 	result := make([]string, len(dirs))
 	for i, dir := range dirs {
