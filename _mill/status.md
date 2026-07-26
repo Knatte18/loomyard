@@ -55,7 +55,9 @@ batches:
     start_sha: 8b3b7efcb7e100a116e8f681d6dded059700e1bc
     commit_sha: 91332f90c16f6d1f5f5cee139c8ee4e84c307a4b
   - name: D2 -- doc repoint
-    state: pending
+    state: running
+    implementer_session: a3cd5c05-c087-4f72-883c-3c077a480546
+    start_sha: 80bb4e51ba3fe3b9daa029775bbc0f939abce84f
   - name: D3 -- de-parallel-build prose + final gate
     state: pending
 ```
