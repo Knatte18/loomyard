@@ -40,24 +40,56 @@ they are different reviewers along two axes:
 perch's `command` gate lets a code profile *touch* behavior lightly; hardener is the heavy tier —
 driving real substrate and hand-rolling crash/rebirth/concurrency scenarios is its whole job.
 
-## The orchestrator — persistent thread, or per-round respawn + handoff?
+## The orchestrator — resolved: Go drives per-round respawn, no persistent thread
 
-In the hand-run version, **one persistent orchestrator thread** stayed alive across the campaign: it
-spawned a fresh round agent per round, **independently verified** the round's work (re-ran the gates
-from cold state on the committed tree — never trusting the round's own "merge-ready" verdict),
-**accumulated** an understanding of where the module's bugs live, **targeted** each next round agent
-("focus on X"), maintained a **handoff** that survived compaction, and asked the operator what to do
-next. The targeting + accumulation is what made 6 rounds succeed where stateless text-review rounds
-did not — the round agent kept re-discovering the terrain cold otherwise.
+**The engine underneath this is now designed jointly with `perch`, not hardener-specific — see
+[gorch.md](gorch.md).** That doc covers the round-runner interface, the judge-maintained handoff
+(a `perch` improvement too, not just hardener's), and the process for getting there (a dedicated
+discussion round precedes rewriting `perch` or building `hardener` — this is not folded into
+hardener's own task). What follows here is hardener's own instance of that shared design.
 
-**Key insight (still being validated):** if the orchestrator **compacts to its handoff after each
-round**, that is functionally the same as **respawning a fresh orchestrator per round that reads
-{instructions + handoff}**. The handoff *is* the accumulated state, externalized. So the "persistent
-thread" may be an artifact of how it was hand-run, not an essential requirement — hardener's
-orchestrator could be a per-round respawn, which is cheaper (no unbounded context growth),
-crash-safe (handoff on disk), and aligned with lyx's Go-drives-fresh-agents model. This is the same
-shape as perch/burler's "fresh agent per round, hydrated from prior files" — the difference is the
-heavier round and the accumulating (not just summarizing) handoff.
+In the hand-run version (see [crucible/README.md](../../crucible/README.md)), **one persistent
+orchestrator thread** stayed alive across the campaign: it spawned a fresh round agent per round,
+**independently verified** the round's work (re-ran the gates from cold state on the committed
+tree — never trusting the round's own "merge-ready" verdict), **accumulated** an understanding of
+where the module's bugs live, **targeted** each next round agent ("focus on X"), maintained a
+**handoff** that survived compaction, and asked the operator what to do next. The targeting +
+accumulation is what made the reed campaign's rounds succeed where stateless text-review rounds did
+not — the round agent kept re-discovering the terrain cold otherwise.
+
+**Resolved: no persistent thread.** Go itself is the orchestrator (`Gorch`); each round is three
+fresh, one-shot spawns, not a living session accumulating state in a context window:
+
+1. **`progress-judge`, pre-round.** Gorch spawns a fresh one-shot agent that reads the handoff file,
+   decides what to target next, and writes the round's seed prompt (the file the reviewer will
+   read). It then terminates — no lingering session.
+2. **Reviewer.** Gorch spawns the round agent proper, pointed at the prompt the judge just wrote —
+   the same A-review → B-fix, commit-per-fix, no-self-grading round crucible already runs by hand.
+   This is the `burler`-shaped worker; the *campaign* loop wrapping it is new, the round itself is
+   not.
+3. **`progress-judge`, post-round.** Gorch spawns a fresh one-shot agent that reads the handoff plus
+   the round's review/fixer-report artifacts, **independently validates the findings** (crucible's
+   non-negotiable rule — three of the reed campaign's seven rounds self-reported "merge-ready" and
+   were wrong each time), rewrites the handoff in place, and decides whether another round is needed
+   or the campaign has converged.
+
+**Naming, fixed:** the pre/post role above is **`progress-judge`**, reusing the term perch's own
+module description already uses ("run `burler` rounds → `APPROVED`/`stuck` + `progress-judge` +
+cap") — not "handler." "Handler" already names a different thing in loom's existing vocabulary (the
+A-review→B-fix round worker itself, i.e. the "Reviewer" above) — reusing it for the
+targeting/validating role would collide with that.
+
+The handoff file is the sole accumulation vehicle; there is no live memory anywhere in the loop. The
+one cost this pays versus perch today: a `progress-judge` spawn on **both** sides of the reviewer,
+not just post-round — the pre-round targeting step (read handoff, decide focus, write the next
+round's seed prompt) is not something perch's `progress-judge` does for Discussion/Plan/Builder
+today; those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
+
+### Open question: does pre-round targeting belong in `perch` itself?
+
+Superseded by [gorch.md](gorch.md) — pre-round targeting is designed there as a general capability
+`gorch`'s judge can support, exercised by hardener's profile and simply unused by perch's. See that
+doc's "Pre-round targeting" section instead of resolving this here.
 
 ### The handoff — two-tier memory, and the one crux
 
@@ -133,7 +165,11 @@ Whether the round agent literally imports the `burler` package or only follows t
 
 ## Status / open questions
 
-- Persistent thread vs. per-round respawn — leaning respawn, pending the recurrence-ledger audit.
+- ~~Persistent thread vs. per-round respawn~~ — resolved: per-round respawn via `Gorch`'s
+  three-step loop (pre-round `progress-judge` → reviewer → post-round `progress-judge`); see above.
+- The shared engine design (round-runner interface, handoff/ledger format, pre-round-targeting
+  mechanics) moved to [gorch.md](gorch.md) — not decided here anymore, and gated on gorch.md's own
+  dedicated discussion round before either perch or hardener builds on it.
 - Exactly what the handoff must carry losslessly (key-ledger confirmed; what else?).
 - The Go-scaffolding / LLM-brain boundary above.
 - Whether it reuses the `burler` package or just the prompt template.

@@ -78,10 +78,18 @@ between these items.
    mid-flight-visibility hazards. See
    [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
+1. **gorch: shared orchestrator engine for `perch` + `hardener`** — generalizes perch's existing
+   judge/gate/round-spawn/cap/pause/lock loop into a shared engine with a pluggable round-runner
+   (`burlerengine` for perch, a live-substrate agent for hardener) and a judge-maintained handoff
+   (bounds perch's own O(N) review-history growth too, not just a hardener need). A dedicated
+   discussion round must pin the design before either perch gets rewritten onto it or hardener gets
+   built on it — not folded into hardener's own task. See [designs/gorch.md](designs/gorch.md).
+
 1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving
    real tmux) in a sandbox repo, on-demand and post-loom, off the `shuttle → burler → perch → loom`
-   spine. Concept still being figured out. See [designs/hardener.md](designs/hardener.md) (a DRAFT
-   doc, do not implement from it yet).
+   spine. Concept still being figured out; its orchestrator design is now shared with `perch` via
+   the Someday `gorch` item above. See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do
+   not implement from it yet).
 
 1. **host-visibility: CLAUDE.local.md / CONSTRAINTS.md invisible in host's git history** — a
    `CONSTRAINTS.md`-equivalent directory via junction, and `CLAUDE.local.md` via symlink (with a
