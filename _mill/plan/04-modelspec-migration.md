@@ -44,6 +44,8 @@ resolved values change hashes differently and the existing
   - `internal/modelspec/load.go`
   - `internal/modelspec/template.yaml`
   - `internal/configreg/configreg.go`
+  - `internal/configengine/config.go`
+  - `internal/yamlengine/reconcile.go`
   - `internal/perchengine/profile.go`
   - `docs/reference/model-spec.md`
   - `_mill/discussion.md`
@@ -60,12 +62,21 @@ resolved values change hashes differently and the existing
   comment to document the model-spec notation (alias with optional
   `[effort=...]` bracket, escape form, bare alias inheriting the
   `models.yaml` default effort, pointer to `docs/reference/model-spec.md`);
-  keep the default value `haiku` and the `round_caps` line unchanged. The
-  strict template is what makes old `perch.yaml` files carrying
-  `judge_effort` fail `configengine.Load` loud — that is the intended
-  migration behavior; `configreg`'s registration picks the template up via
+  keep the default value `haiku` and the `round_caps` line unchanged.
+  `configreg`'s registration picks the template up via
   `perchengine.ConfigTemplate` with no configreg source change (the
   `verify:` scope includes `internal/configreg` to prove it).
+  Fail-loud mechanism — IMPORTANT, the template deletion alone does NOT
+  reject old files: `configengine.Load` validates only via
+  `yamlengine.MissingKeys` (template keys absent from the file — it never
+  inspects extra keys the file carries), so an old `perch.yaml` with a
+  leftover `judge_effort:` line would load with the value silently
+  dropped. The rejection therefore lives in `LoadConfig`'s unmarshal:
+  switch it from plain `yaml.Unmarshal` to a strict
+  `yaml.Decoder.KnownFields(true)` decode of the resolved bytes (mirroring
+  `perchcli.decodeProfile`'s existing strictness), so the unknown
+  `judge_effort` key fails loud with yaml's unknown-field error. That
+  strict decode is what makes required test case (e) pass.
   `config.go`: `Config` struct keeps both exported fields (`JudgeModel`,
   `JudgeEffort` — byte-identical Go API); `JudgeEffort`'s yaml binding is
   removed (tag `yaml:"-"`) since the key no longer exists in the file.

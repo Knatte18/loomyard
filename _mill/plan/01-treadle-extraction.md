@@ -281,6 +281,8 @@ smaller sequence of fully-green commits that preserves `git mv` history.
   - `internal/perchengine/run_test.go`
 - **Creates:**
   - `internal/treadleengine/testmain_test.go`
+  - `internal/perchengine/identity_test.go`
+  - `internal/perchengine/adapter_test.go`
 - **Deletes:** none
 - **Moves:**
   - `internal/perchengine/judge_test.go` -> `internal/treadleengine/judge_test.go`
@@ -294,10 +296,25 @@ smaller sequence of fully-green commits that preserves `git mv` history.
 - **Requirements:** Move the eight test files exercising moved unexported
   machinery into `package treadleengine` via `git mv` with surgical edits
   only: package declaration, and identifier retargeting where the moved
-  production code changed (e.g. `converged`'s verdict parameter type;
-  `roundfiles_test` unchanged otherwise). `judgeverdict_test.go`
-  additionally updates ONLY the error-prefix expectations from `perch: ` to
-  `treadle: ` per card 2's pinned parser-prefix resolution. Preserve every
+  production code changed (e.g. `converged`'s verdict parameter type).
+  `judgeverdict_test.go` additionally updates ONLY the error-prefix
+  expectations from `perch: ` to `treadle: ` per card 2's pinned
+  parser-prefix resolution.
+  Two of the moved files contain sub-tests for functions that card 2 kept
+  in perchengine — those tests move BACK out (rename-plus-extraction on the
+  test side, so the bulk of each file keeps its `git mv` history):
+  `state_test.go`'s `TestProfileHash`, `TestDeriveRunID`, and
+  `TestValidRunID` (their subjects live in `perchengine/identity.go`) are
+  extracted into the new `internal/perchengine/identity_test.go`, and
+  `roundfiles_test.go`'s `TestBuildRoundProfile_FieldMapping` (its subject
+  lives in `perchengine/adapter.go`, and it builds a perch-shaped
+  `Profile`) is extracted into the new
+  `internal/perchengine/adapter_test.go` — each extracted test body
+  verbatim, in `package perchengine`. What remains in the moved
+  `state_test.go` (`TestLoadOrInitState`, `TestSaveState_ReadJSONRoundTrip`,
+  `TestTerminalOutcome`, `TestMoveStaleArtifacts`, `TestPauseFlag`) and
+  `roundfiles_test.go` (`TestRoundToken`, `TestArtifactPaths`) compiles in
+  `package treadleengine` against the moved machinery. Preserve every
   build tag (`//go:build integration` on gate_lingering, `//go:build smoke`
   on smoke_judge) as the file's first line. `judge_test.go`'s Warn-label
   and fail-safe assertions must keep passing with the name-parameterized

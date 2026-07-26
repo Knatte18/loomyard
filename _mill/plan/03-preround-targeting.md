@@ -76,9 +76,11 @@ runs without a seed (Warn), exactly like a judge miss.
   (label `targeting judge`, name-prefixed, round, cause) and returns
   not-ok — never an error. No verdict parse: the seed is free prose.
   `run.go`: when `p.PreRoundTargeting` is true, run targeting once per
-  round BEFORE attempt 1, only when the newest-valid-handoff walk yields a
-  handoff (no handoff — e.g. round 1 — skips targeting silently, no Warn:
-  nothing to target from). On success, thread the seed path into every
+  round BEFORE attempt 1, only when card 7's `latestValidHandoff(rounds)`
+  helper yields a handoff — that helper is the designated shared walk (it
+  takes only the completed round records, so it composes pre-round where
+  no current-round review exists yet); no handoff — e.g. round 1 — skips
+  targeting silently, no Warn: nothing to target from. On success, thread the seed path into every
   attempt's `AttemptInput.SeedPath` for that round (retries reuse it) and
   set `record.SeedPath`; on failure, the round runs with an empty
   `SeedPath`. Targeting never affects convergence, the ladder, or judge

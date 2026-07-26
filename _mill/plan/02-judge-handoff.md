@@ -87,18 +87,22 @@ behavior. Burler-round hydration is deliberately untouched
   `json:"handoffPath,omitempty"`` (additive — see shared decision
   state-json-compatibility); `moveStaleArtifacts` includes the handoff
   path in its move-aside list.
-  `handoff.go` or `run.go` (implementer's choice of file, named function
-  required): `judgeReadSet(rounds []roundRecord, currentReviewPath string)
+  `handoff.go` or `run.go` (implementer's choice of file, named functions
+  required): the newest-valid-handoff walk is its own helper —
+  `latestValidHandoff(rounds []roundRecord) (path string, h Handoff, ok
+  bool)` — walking completed rounds newest-to-oldest for a record with a
+  non-empty `HandoffPath` whose file reads and `ParseHandoff`s cleanly; an
+  unreadable/unparseable recorded handoff logs a `logger.Warn` (fail-safe
+  posture, naming round and cause) and the walk continues to the next
+  older one; no hit → ok false. (Batch 3's pre-round targeting reuses this
+  helper — it must not depend on a current-round review existing.) On top
+  of it, `judgeReadSet(rounds []roundRecord, currentReviewPath string)
   (readSet []string, prevHandoffPath string)` replaces
-  `collectJudgeReviews` at both judge call sites: walk completed rounds
-  newest-to-oldest for a record with a non-empty `HandoffPath` whose file
-  reads and `ParseHandoff`s cleanly; on a hit, `readSet` = reviews of every
-  completed round whose number is NOT in that handoff's `covers_rounds`
-  (in round order) plus `currentReviewPath`, and `prevHandoffPath` = that
-  handoff's path; an unreadable/unparseable recorded handoff logs a
-  `logger.Warn` (fail-safe posture, naming round and cause) and the walk
-  continues to the next older one; with no valid handoff anywhere, exactly
-  today's behavior: all completed rounds' reviews + current, empty
+  `collectJudgeReviews` at both judge call sites: with a valid handoff,
+  `readSet` = reviews of every completed round whose number is NOT in its
+  `covers_rounds` (in round order) plus `currentReviewPath`, and
+  `prevHandoffPath` = that handoff's path; with none, exactly today's
+  behavior: all completed rounds' reviews + current, empty
   `prevHandoffPath`. This walk is what closes the judge-gap hole: rounds
   where no judge ran have no `HandoffPath` and are absent from every
   `covers_rounds`, so their reviews are always fed to the next judge call.
@@ -143,11 +147,17 @@ behavior. Burler-round hydration is deliberately untouched
   `covers_rounds` plus the round number of every review file read this
   call (including the current round's); (c) distill the prose, but keep the
   key ledger lossless; (d) write EXACTLY TWO files — the verdict file and
-  the handoff file. Keep every existing pinned statement (fail-safe
-  direction, verdict vocabulary, frontmatter strictness) intact.
-  `template_test.go`: extend the fill tests to supply the new markers
+  the handoff file. Keep every OTHER existing pinned statement (fail-safe
+  direction, verdict vocabulary, frontmatter strictness) intact — with the
+  one deliberate exception that (d) supersedes: the circling and milestone
+  templates' current "EXACTLY ONE" output-file wording is replaced by the
+  two-file rule.
+  `template_test.go`: replace the stale `EXACTLY ONE` `requireContains`
+  pins in the circling and milestone sub-tests with the new two-file pin
+  (the triage sub-test's `EXACTLY ONE` pin is untouched — triage still
+  writes one file); extend the fill tests to supply the new markers
   (stencil.Fill requires all markers; no conditionals allowed in
-  templates), and add pinned-statement assertions for (a), (b), and (d) on
+  templates); add pinned-statement assertions for (a), (b), and (d) on
   both templates, in the file's existing pinned-substring style.
 - **Commit:** `treadle: extend judge templates with handoff maintenance instructions`
 

@@ -169,11 +169,13 @@ batches are safe to run in parallel.
 - `internal/perchcli/run.go`
 - `internal/perchcli/run_test.go`
 - `internal/perchengine/adapter.go`
+- `internal/perchengine/adapter_test.go`
 - `internal/perchengine/config.go`
 - `internal/perchengine/config_test.go`
 - `internal/perchengine/doc.go`
 - `internal/perchengine/engine.go`
 - `internal/perchengine/identity.go`
+- `internal/perchengine/identity_test.go`
 - `internal/perchengine/run_test.go`
 - `internal/perchengine/template.go`
 - `internal/perchengine/template.yaml`
