@@ -151,8 +151,10 @@ that work.
 ### fabric.md deletion -- code is the source of truth
 
 - Decision: Delete `manifest/designs/fabric.md`. Add a short **Done** entry to
-  `manifest/roadmap.md` (plain text, no link to the deleted file). Repoint the seven other
-  docs that link to `fabric.md` to `internal/fabricengine/doc.go`.
+  `manifest/roadmap.md` (plain text, no link to the deleted file). Repoint the nine other
+  docs that link to `fabric.md` (incl. the two `crucible/` review prompts) to
+  `internal/fabricengine/doc.go`; separately, `internal/fabriccli/fabric.go`'s `.go`-string
+  `fabric.md` ref is dropped as part of the Tier-2b help rewrite.
 - Rationale: fabric.md's own status banner prescribes deletion at cutover once `doc.go`
   is the sole rationale source (it already carries the rationale). Once the module is
   built, the code is the truth; a separate design doc rots.
