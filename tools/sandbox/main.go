@@ -49,7 +49,7 @@ var fabricSandboxSuiteMD string
 // performs no PATH lookup; in tests, this seam can be replaced to avoid
 // network calls.
 var cloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "warp", "clone", hostURL, weftURL)
+	cmd := exec.Command(lyxPath, "fabric", "clone", hostURL, weftURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
