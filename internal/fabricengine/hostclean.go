@@ -1,9 +1,7 @@
-// hostclean.go implements a standalone host-worktree cleanliness check, mirroring
-// warpengine's package-level HostClean used by loomengine.Preflight to determine
-// whether the host worktree has any dirty (uncommitted or untracked) paths before a
-// loom phase transition proceeds. Byte-equivalent behavior to warpengine's
-// hostclean.go — no branch-naming delta applies since this check never derives a
-// weft branch name.
+// hostclean.go implements a standalone host-worktree cleanliness check, a
+// package-level HostClean used by loomengine.Preflight to determine whether the
+// host worktree has any dirty (uncommitted or untracked) paths before a loom
+// phase transition proceeds. This check never derives a weft branch name.
 
 package fabricengine
 

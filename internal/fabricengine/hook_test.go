@@ -4,12 +4,11 @@
 // chain of an existing user hook, and correct weft-sibling branch resolution for
 // prime and child worktrees under fabric's suffixed branch-naming scheme.
 //
-// Adapted from warpengine's hook_test.go. The weft-resolution cases differ from
-// warp's: fabric's weft branch is always the host branch plus WeftBranchName's
-// "-weft" suffix, never a literal host/weft branch-name match, so each case
-// additionally asserts the in-sync (correctly suffixed) state produces no
-// warning before diverging it. The child-pair setup uses raw `git worktree add`
-// rather than fabricengine's own Add verb, which lands in a later batch.
+// fabric's weft branch is always the host branch plus WeftBranchName's "-weft"
+// suffix, never a literal host/weft branch-name match, so each case additionally
+// asserts the in-sync (correctly suffixed) state produces no warning before
+// diverging it. The child-pair setup uses raw `git worktree add` rather than
+// fabricengine's own Add verb, for test-fixture simplicity.
 
 package fabricengine
 

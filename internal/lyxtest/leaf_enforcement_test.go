@@ -1,8 +1,8 @@
 // leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: internal/lyxtest
 // must not import internal/configreg or any feature package (boardengine/boardcli,
-// warpengine/warpcli, weftengine/weftcli, ideengine/idecli, selfreportengine/selfreportcli,
-// fabricengine/fabriccli). Tests that need real config seed it via SeedConfig with a
-// configreg-free map[string]string (never configreg types).
+// ideengine/idecli, selfreportengine/selfreportcli, fabricengine/fabriccli). Tests
+// that need real config seed it via SeedConfig with a configreg-free
+// map[string]string (never configreg types).
 
 package lyxtest
 
@@ -17,10 +17,10 @@ import (
 )
 
 // TestLeafInvariant verifies that lyxtest imports only stdlib and internal/hubgeometry,
-// never internal/configreg or any feature package (boardengine/boardcli, warpengine/warpcli,
-// weftengine/weftcli, ideengine/idecli, selfreportengine/selfreportcli, or
-// fabricengine/fabriccli). It uses go/parser to read actual import paths, avoiding
-// false positives from string literals in doc comments.
+// never internal/configreg or any feature package (boardengine/boardcli,
+// ideengine/idecli, selfreportengine/selfreportcli, or fabricengine/fabriccli). It
+// uses go/parser to read actual import paths, avoiding false positives from string
+// literals in doc comments.
 func TestLeafInvariant(t *testing.T) {
 	// Resolve the lyxtest source directory via runtime.Caller.
 	_, file, _, ok := runtime.Caller(0)
@@ -37,10 +37,6 @@ func TestLeafInvariant(t *testing.T) {
 		"github.com/Knatte18/loomyard/internal/configreg",
 		"github.com/Knatte18/loomyard/internal/boardengine",
 		"github.com/Knatte18/loomyard/internal/boardcli",
-		"github.com/Knatte18/loomyard/internal/warpengine",
-		"github.com/Knatte18/loomyard/internal/warpcli",
-		"github.com/Knatte18/loomyard/internal/weftengine",
-		"github.com/Knatte18/loomyard/internal/weftcli",
 		"github.com/Knatte18/loomyard/internal/ideengine",
 		"github.com/Knatte18/loomyard/internal/idecli",
 		"github.com/Knatte18/loomyard/internal/selfreportengine",

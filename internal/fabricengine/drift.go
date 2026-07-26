@@ -2,15 +2,12 @@
 //
 // PairInSync derives the weft sibling deterministically and checks that the weft
 // worktree is on WeftBranchName(hostBranch), and that the host _lyx junction is
-// valid and points to the weft _lyx directory. Adapted from warpengine's drift.go
-// — same stateless, no-registry-consulted design, package fabricengine. The
-// branch delta: fabric's correspondence check compares the weft branch against
-// WeftBranchName(hostBranch) rather than requiring the two names to be equal.
+// valid and points to the weft _lyx directory. It is stateless, consulting no
+// registry: fabric's correspondence check compares the weft branch against
+// WeftBranchName(hostBranch).
 //
-// PairInSync and HostClean (hostclean.go) are dead-until-cutover exports by
-// design — the differential lifecycle tests (a later card in this batch) are
-// their consumers for now; a future cutover task wires them into the loom
-// preflight the way warpengine's versions are wired today.
+// PairInSync and HostClean (hostclean.go) are wired into the loom preflight
+// via internal/loomengine.
 
 package fabricengine
 

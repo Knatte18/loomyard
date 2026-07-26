@@ -115,8 +115,8 @@ func TestEnvSyncOptions(t *testing.T) {
 	}
 }
 
-// TestScopedPathspec mirrors weftengine's ScopedPathspec cases: root relPath
-// (no-op join) and a nested relPath (prefixed join).
+// TestScopedPathspec covers ScopedPathspec's cases: root relPath (no-op join)
+// and a nested relPath (prefixed join).
 func TestScopedPathspec(t *testing.T) {
 	tests := []struct {
 		name    string

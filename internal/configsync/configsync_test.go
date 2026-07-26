@@ -97,24 +97,24 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 		t.Error("board.Applied is false; want true (changes should be applied)")
 	}
 
-	// Weft result should show creation
-	var weftResult *Result
+	// Fabric result should show creation
+	var fabricResult *Result
 	for i := range results {
-		if results[i].Module == "weft" {
-			weftResult = &results[i]
+		if results[i].Module == "fabric" {
+			fabricResult = &results[i]
 			break
 		}
 	}
-	if weftResult == nil {
-		t.Error("weft result not found")
-	} else if !weftResult.Applied {
-		t.Error("weft.Applied is false; want true (absent file should be created)")
+	if fabricResult == nil {
+		t.Error("fabric result not found")
+	} else if !fabricResult.Applied {
+		t.Error("fabric.Applied is false; want true (absent file should be created)")
 	}
 
-	// Verify weft.yaml was created
-	weftPath := hubgeometry.ConfigFile(tmpDir, "weft")
-	if _, err := os.Stat(weftPath); err != nil {
-		t.Errorf("weft.yaml was not created: %v", err)
+	// Verify fabric.yaml was created
+	fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+	if _, err := os.Stat(fabricPath); err != nil {
+		t.Errorf("fabric.yaml was not created: %v", err)
 	}
 
 	// Verify board.yaml was rewritten: stale_key removed and path: also removed

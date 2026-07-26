@@ -8,14 +8,13 @@
 //   - apply == true && force == true → also delete gate-protected task branches.
 //   - force == true && !apply       → report only; force does not imply apply.
 //
-// Adapted from warpengine's cleanup.go — same flag matrix and raddle-fold-back gate,
-// package fabricengine. The branch delta: a weft branch's host sibling is recovered
-// via hubgeometry.WeftHostSlug(branch) — inverting WeftBranchName's suffix. During the
-// parallel-build period the weft repo also holds warp-created (non-suffixed) weft
-// branches; WeftHostSlug rejects those (ok == false), and by definition a
-// non-suffixed weft branch is not fabric-managed — it is reported but never deleted,
-// matching warp's unmanaged posture (reconcile's report-but-don't-touch rule) rather
-// than the raddle-fold-back gate.
+// A weft branch's host sibling is recovered via hubgeometry.WeftHostSlug(branch) —
+// inverting WeftBranchName's suffix. The weft repo may also hold non-suffixed weft
+// branches inherited from history predating fabric's uniform naming scheme;
+// WeftHostSlug rejects those (ok == false), and by definition a non-suffixed weft
+// branch is not fabric-managed — it is reported but never deleted, matching the
+// report-but-don't-touch rule Reconcile applies to unmanaged branches, rather than
+// the raddle-fold-back gate.
 //
 // Liveness is judged in BRANCH space, not against worktree directory names: a weft
 // branch <hostBranch>-weft is a live pair iff some host worktree is currently checked
@@ -59,9 +58,9 @@ type CleanupBranchEntry struct {
 	Deleted bool `json:"deleted"`
 	// Protected reports whether the branch was skipped rather than deleted —
 	// because raddleFoldedBack returned false and force was not set, because the
-	// branch is not fabric-managed (no "-weft" suffix; a warp-created weft branch
-	// during the parallel-build period), or because the branch is currently
-	// checked out at a worktree (git branch -D could never delete it).
+	// branch is not fabric-managed (no "-weft" suffix, e.g. inherited from history
+	// predating fabric's uniform naming scheme), or because the branch is
+	// currently checked out at a worktree (git branch -D could never delete it).
 	Protected bool `json:"protected,omitempty"`
 	// Error is non-empty when apply is true and branch deletion failed.
 	Error string `json:"error,omitempty"`
@@ -154,9 +153,9 @@ func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 		branch := weftBranch.Branch
 
 		// Recover the host branch by inverting WeftBranchName's suffix. A branch with
-		// no "-weft" suffix cannot be fabric-managed (it is by definition a warp-created
-		// weft branch during the parallel-build period, since the two modules share the
-		// weft repo) — report it, but never delete it, matching warp's unmanaged posture.
+		// no "-weft" suffix cannot be fabric-managed by definition — report it, but
+		// never delete it, matching Reconcile's report-but-don't-touch rule for
+		// unmanaged branches.
 		hostBranch, ok := hubgeometry.WeftHostSlug(branch)
 		if !ok {
 			result.Entries = append(result.Entries, CleanupBranchEntry{

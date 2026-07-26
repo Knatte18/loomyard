@@ -159,9 +159,9 @@ func TestReconcile_Apply(t *testing.T) {
 		t.Error("applied is false; want true")
 	}
 
-	// Verify weft.yaml was created on disk.
-	weftPath := hubgeometry.ConfigFile(tmpDir, "weft")
-	if _, err := os.Stat(weftPath); err != nil {
-		t.Errorf("weft.yaml not created: %v", err)
+	// Verify fabric.yaml was created on disk.
+	fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+	if _, err := os.Stat(fabricPath); err != nil {
+		t.Errorf("fabric.yaml not created: %v", err)
 	}
 }

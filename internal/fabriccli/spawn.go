@@ -2,8 +2,7 @@
 //
 // spawnPush launches `lyx fabric --weft-path <abs> push` as a detached, windowless
 // process. It has its own process group (so the parent's Ctrl-C does not reach it)
-// and survives the parent's exit. Copied from weftcli's spawn.go — identical
-// behavior, "fabric" in place of "weft" in the spawned argv.
+// and survives the parent's exit.
 
 package fabriccli
 

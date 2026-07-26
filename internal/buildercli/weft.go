@@ -14,8 +14,8 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 // builderWeftPathspec returns the scoped _lyx pathspec every builder weft
@@ -32,7 +32,7 @@ import (
 // matches whether or not layout.RelPath prefixes the _lyx path.
 func builderWeftPathspec(layout *hubgeometry.Layout) []string {
 	return append(
-		weftengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
+		fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
 		":(exclude)*.lock",
 		":(exclude)*/builder/"+builderengine.PauseFlagName,
 	)
@@ -47,14 +47,25 @@ func builderWeftPathspec(layout *hubgeometry.Layout) []string {
 // exactly.
 func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	weftWorktree := layout.WeftWorktree()
-	opts := weftengine.EnvSyncOptions()
+	opts := fabricengine.EnvSyncOptions()
 	pathspec := builderWeftPathspec(layout)
 
-	committed, err := weftengine.Commit(weftWorktree, pathspec, fmt.Sprintf("builder: %s", label), opts)
-	if err != nil {
-		return false, err
+	// SkipGit is checked here, before fabricengine.New's stat-based path
+	// validation, mirroring CommitWeft's own top-level short-circuit: the
+	// CI/test bypass must never require a real weft worktree to exist on
+	// disk, but New (unlike CommitWeft itself) validates both paths
+	// unconditionally.
+	var committed bool
+	if !opts.SkipGit {
+		f, err := fabricengine.New(layout.WorktreeRoot, weftWorktree)
+		if err != nil {
+			return false, err
+		}
+		if _, committed, err = f.CommitWeft(pathspec, fmt.Sprintf("builder: %s", label), opts); err != nil {
+			return false, err
+		}
 	}
-	if err := weftengine.Push(weftWorktree, opts); err != nil {
+	if err := fabricengine.PushWeftAt(weftWorktree, opts); err != nil {
 		return committed, err
 	}
 	return committed, nil

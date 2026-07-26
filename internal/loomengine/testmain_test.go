@@ -2,7 +2,7 @@
 // environment: lyxtest.HermeticGitEnv() runs once before any test, so
 // loomengine's fixture-driven integration tests never inherit the operator's
 // global gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment
-// Invariant), mirroring internal/warpengine/testmain_test.go.
+// Invariant), mirroring internal/fabricengine/testmain_test.go.
 
 package loomengine
 

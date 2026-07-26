@@ -1,7 +1,5 @@
 // portals.go creates and removes the per-worktree portal junction
 // (<container>/_portals/<slug> -> the worktree's _lyx/), with idempotent removal.
-// Adapted from warpengine's portals.go — byte-equivalent behavior, package
-// fabricengine.
 
 package fabricengine
 

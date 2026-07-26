@@ -1,8 +1,7 @@
 // template_test.go — tests for the fabric ConfigTemplate generator.
 //
 // Covers: ConfigTemplate returns valid YAML with both expected keys and resolves
-// to the correct defaults when the environment is empty. Mirrors warpengine's
-// template_test.go.
+// to the correct defaults when the environment is empty.
 
 package fabricengine
 

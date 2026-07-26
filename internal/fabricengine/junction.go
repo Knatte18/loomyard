@@ -4,9 +4,6 @@
 // entries atomically, keyed by the current worktree's slug. It is idempotent,
 // guarding against re-entry and enforcing the host-pristine invariant by refusing
 // to wire when the host contains a pre-existing real directory predating weft.
-//
-// Adapted from warpengine's junction.go — byte-equivalent behavior, package
-// fabricengine.
 
 package fabricengine
 

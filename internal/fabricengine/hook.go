@@ -2,11 +2,9 @@
 // common hooks directory. The install is idempotent (sentinel-guarded) and
 // non-clobbering: an existing user hook is chained rather than overwritten.
 //
-// Adapted from warpengine's hook.go. Delta: the sentinel is fabric's own
-// ("FABRIC_SENTINEL: post-checkout drift warning"), distinct from warp's, so
-// fabric-installed hooks never collide with warp's sentinel detection and vice
-// versa — both modules can coexist chained on the same repo during the
-// parallel build.
+// The install sentinel is fabric's own ("FABRIC_SENTINEL: post-checkout drift
+// warning"), so a fabric-installed hook can chain cleanly alongside any other
+// hook already installed on the same repo.
 
 package fabricengine
 
