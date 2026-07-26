@@ -35,8 +35,12 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
   taking the row count from 12 to 10 -- and delete the `warpengine` and `weftengine` imports.
   Keep the already-present `"fabric"` row backed by `fabricengine.ConfigTemplate()` (it embeds
   the merged `branch_prefix` from warp + `pathspec` from weft, so no config field is lost).
-  Also sweep the package-comment reference (`// ... a neutral registry of available config
-  modules (board, warp, weft)`) so it no longer names the removed modules. `configreg.Names()`
+  Also sweep BOTH bare-word comment references so neither names a removed module: the
+  package-comment `// ... a neutral registry of available config modules (board, warp, weft)`
+  and the `Module.Name` field doc-comment `// Name is the module identifier (e.g., "board",
+  "warp", "weft").` -- reword each example to a still-valid pair (e.g. `"board", "fabric"`).
+  (Card 27's grep gate targets `warpengine|weftengine` words and import paths, so these bare
+  `"warp"`/`"weft"` string examples would otherwise survive.) `configreg.Names()`
   now returns the list without `warp`/`weft`; consumers that surface the list (`configcli`)
   update automatically.
 - **Commit:** `refactor(configreg): drop warp/weft modules, keep fabric`

@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: cutover -- rewire consumers onto fabric, delete warp/weft'
 slug: fabric-cutover
-approved: false
+approved: true
 started: 20260726-104646
 parent: main
 root: ""
