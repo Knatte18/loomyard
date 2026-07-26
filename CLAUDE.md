@@ -88,6 +88,31 @@ programmatically-driven session *interactive*.
 - Cluster-reviews (N parallel reviewers) scale via tmux **windows** (spawned clusters
   land in their own windows, not a pane explosion) — long-term reed work, not now.
 
+## Scope of Claude-specificity — only one role is genuinely Claude-native
+
+Almost everything lyx spawns (Discussion, Planner, Webster, Burler rounds, the
+progress-judge) is **markdown-instruction + file-contract** driven — no skills, no
+slash-commands, no plugin/hook dependency baked into the task content itself, unlike
+Millhouse's Claude-Code-specific skill layer. That is precisely what makes the engine
+abstraction above real rather than aspirational: the prompt content is provider-agnostic
+by construction, so a future Gemini/Codex engine only has to solve the **engine/dispatch
+layer** (spawn, completion-detection, resume semantics) — not rewrite prompt content.
+
+**Exactly one role is a genuinely Claude-native, persistent session, not a spawned
+one-shot:** the Manifest-maintaining orchestrator (a long-running architecture/design
+discussion, the kind this file's own history comes out of) — it uses Claude Code skills,
+gets compacted periodically, and should be explicitly asked to maintain its own rich
+handoff for itself (more thorough than an auto-compact summary) — the same
+distill-the-prose-keep-the-ledger-lossless discipline `Treadle`'s judge-maintained
+handoff already uses, just for a human-collaborative session instead of a review round.
+
+**One narrow, known exception inside the spawned-agent side:** Burler's cluster-review
+mode calls Claude Code's own Agent tool (`subagent_type: "fork"`) directly — genuinely
+Claude-Code-tool-specific, not just engine-specific. This is scoped to the **optional**
+cluster variant only; Burler's default, single-reviewer round (`ForkSubagents` false,
+the common case) has no such dependency and would work against a non-Claude engine
+once one exists, minus clustering.
+
 ## Task completion
 
 Every task that adds a module, changes observable CLI behaviour, or introduces
