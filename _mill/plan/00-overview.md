@@ -167,5 +167,6 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` target path across every c
 - `manifest/designs/loom-finalize.md`
 - `manifest/designs/raddle.md`
 - `manifest/roadmap.md`
+- `tools/sandbox/SANDBOX-CORE-SUITE.md`
 - `tools/sandbox/SANDBOX-FABRIC-SUITE.md`
 - `tools/sandbox/main.go`
