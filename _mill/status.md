@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: planned
 slug: fabric-cutover
 branch: fabric-cutover
 plan: _mill/plan
@@ -22,4 +22,5 @@ plan-fix-r1  '2026-07-26T11:09:34Z'
 plan-review-r2  '2026-07-26T14:42:44Z'
 plan-fix-r2  '2026-07-26T14:42:44Z'
 plan-fix-r3  '2026-07-26T14:47:55Z'
+planned  '2026-07-26T14:48:20Z'
 ```
