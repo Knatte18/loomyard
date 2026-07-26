@@ -65,6 +65,10 @@ infrastructure must update docs in the same commit:
 bugfixes, hardening, or polish passes; those are covered by git history and the module
 docs, not the roadmap.
 
+## Markdown: one line per paragraph, no hard-wrap
+
+Write markdown prose as a single continuous line per paragraph/list item — never break a line at a fixed column width. Let the reader's own viewer soft-wrap. A hard-wrapped raw file reads badly (mid-phrase breaks) and diffs badly (an edit anywhere in a paragraph touches every wrapped line in it, not just the changed words). Applies to every `.md` file in this repo, not just newly-written ones.
+
 ## Filesystem links (fslink)
 
 All cross-OS links go through `internal/fslink`. Windows uses directory junctions (no
