@@ -52,7 +52,12 @@ runs without a seed (Warn), exactly like a judge miss.
   ignore it (perch's burler adapter does, per the
   burler-hydration-unchanged decision).
   `roundfiles.go`: `roundArtifactPaths` gains a `Seed` field named
-  `round-<token>-seed.md`.
+  `round-<token>-seed.md`. The seed is round-scoped, not attempt-scoped:
+  the loop resolves the seed path ONCE per round at attempt 1's token
+  (`round-3-seed.md`, never `round-3b-seed.md`) before any attempt runs,
+  and threads that same path into every attempt's `AttemptInput.SeedPath`
+  alongside the equally round-scoped `PriorReviews`/`PriorFixerReports` —
+  it is never recomputed per attempt via `artifactPaths(round, attempt)`.
   `state.go`: `roundRecord` gains `SeedPath string
   `json:"seedPath,omitempty"`` (additive); `moveStaleArtifacts` includes
   the seed path.

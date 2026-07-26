@@ -199,8 +199,11 @@ behavior. Burler-round hydration is deliberately untouched
   prompt lists every prior round's review, assert the handoff contract
   instead (first judge call: all reviews, no previous handoff; subsequent:
   handoff + uncovered). The scripted shuttle fake must now also produce
-  handoff files where a scenario depends on coverage — extend the fake's
-  scripting minimally. Burler-hydration assertions (including failed-gate
+  handoff files where a scenario depends on coverage — concretely:
+  `queuedShuttle`'s scripted-call entry gains a `handoffContent string`
+  field, and its `Run` writes it to `Spec.OutputFiles[1]` when non-empty
+  (today it writes only the verdict file at `OutputFiles[0]`).
+  Burler-hydration assertions (including failed-gate
   feed-forward) must remain byte-identical and passing.
   `internal/perchengine/doc.go`: update the verdict-judge section — the
   judge reads {latest valid handoff + uncovered reviews}, degrading to

@@ -3,7 +3,7 @@
 ```yaml
 task: 'Treadle: shared round-loop engine + perch rewrite'
 slug: treadle
-approved: false
+approved: true
 started: '20260726-143105'
 parent: main
 root: ""
@@ -45,10 +45,14 @@ batches:
     verify: go test ./...
 ```
 
-The DAG is a deliberate linear chain: batches 2–5 each edit files their
-predecessor also touches (`internal/treadleengine/run.go`, `judge.go`,
-`state.go`, the judge templates, `internal/perchengine/doc.go`), so no two
-batches are safe to run in parallel.
+The DAG is a deliberate linear chain. Batches 2 and 3 each edit files
+their predecessor also touches (`internal/treadleengine/run.go`,
+`judge.go`, `state.go`, the judge templates), and batch 5 edits doc files
+batches 2 and 4 touch — those edges are file-conflict-required. Batch 4's
+file-overlap predecessor is batch 2 (`internal/perchengine/doc.go`), not
+batch 3; its `depends-on: [3]` is a deliberate simplicity choice (one
+serialized chain, no partial parallelism to reason about), transitively
+satisfying the real batch-2 dependency.
 
 ## Shared Decisions
 

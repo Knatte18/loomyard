@@ -87,17 +87,22 @@ resolved values change hashes differently and the existing
   `LoadConfig(baseDir, module)` keeps its exact signature and behavior by
   calling `modelspec.LoadRegistry(baseDir)` itself and delegating — an
   additive export, no existing symbol changes (perchcli reuses its own
-  registry via the new function in card 13). The resolution logic, after
-  unmarshal: `modelspec.Parse` the `judge_model` string (grammar
+  registry via the new function in card 13). The resolution logic lives in
+  ONE exported helper both packages share, so the identical-error-shape
+  requirement is structural rather than copy-paste discipline:
+  `func ResolveModelSpec(spec string, reg modelspec.Registry) (model,
+  effort string, err error)` in `config.go` — `modelspec.Parse` (grammar
   fail-loud), `Registry.Resolve` against the threaded registry (absent
   `models.yaml` already fell back to built-ins at LoadRegistry time), then
-  the explicit perch-layer params check — every key in `Resolved.Params`
+  the explicit perch-layer params check: every key in `Resolved.Params`
   other than `effort` is a loud error naming the offending key and the
   spec string (this is where `version` is rejected; perch has no Version
-  field to thread it into). Unpack `Config.JudgeModel = Resolved.Model`,
-  `Config.JudgeEffort = Resolved.Params["effort"]` (absent key → empty
-  string → provider default, exactly today's semantics for the built-in
-  default-free `haiku`). `Profile.validate`'s `profile > cfg > built-in`
+  field to thread it into). After unmarshal, `LoadConfigWithRegistry`
+  calls it on the `judge_model` string and unpacks
+  `Config.JudgeModel = model`, `Config.JudgeEffort = effort` (empty
+  effort → provider default, exactly today's semantics for the built-in
+  default-free `haiku`). Card 13's `decodeProfile` reuses the same helper
+  for both profile spec fields. `Profile.validate`'s `profile > cfg > built-in`
   chain in `profile.go` is untouched — it now receives already-resolved
   cfg values.
   `config_test.go`: new/updated cases — (a) template-default `haiku`
@@ -145,10 +150,11 @@ resolved values change hashes differently and the existing
   error (the intended migration failure mode; no bespoke error text
   needed). `judge-model:` and `model:` stay string keys but now hold
   model-spec strings. `decodeProfile` gains a `modelspec.Registry`
-  parameter and, for each NON-EMPTY spec string, runs Parse → Resolve →
-  the same effort-only params check as card 12 (identical error shape),
+  parameter and, for each NON-EMPTY spec string, calls card 12's shared
+  `perchengine.ResolveModelSpec` helper (Parse → Resolve → effort-only
+  params check — one implementation, structurally identical errors),
   unpacking `Profile.JudgeModel/JudgeEffort` and `Profile.Model/Effort`
-  from the resolved values; an empty string stays empty (defer to
+  from the returned values; an empty string stays empty (defer to
   config/built-in resolution, unchanged semantics). This runs BEFORE
   `ProfileHash` is taken in `deriveBlockRunID`/`resolveRunTarget` (both
   untouched), so the hash covers resolved values — the accepted fail-loud
