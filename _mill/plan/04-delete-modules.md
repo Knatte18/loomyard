@@ -26,7 +26,6 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
 - **Context:**
   - `internal/fabricengine/add_test.go`
   - `internal/fabricengine/revert_test.go`
-  - `internal/fabricengine/weftgit_exclude_test.go`
   - `internal/fabricengine/trailer_test.go`
   - `internal/fabricengine/syncweft_integration_test.go`
   - `internal/fabricengine/hook_test.go`
@@ -38,6 +37,7 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
   - `internal/fabricengine/checkout_rollback_test.go`
   - `internal/fabricengine/checkout_index_refresh_test.go`
   - `internal/fabricengine/add_branch_exists_test.go`
+  - `internal/fabricengine/weftgit_exclude_test.go`
 - **Creates:** none
 - **Deletes:**
   - `internal/fabricengine/clone_differential_test.go`
@@ -105,6 +105,15 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
   `dp.Fabric` call sites onto `newFabricFixture(t)` + `fabricengine.NewTopology(fabricengine.Config{})`
   in place. This is a mechanical, non-semantic rewrite (same fixture shape, same assertions,
   only the two-sided differential wrapper is dropped), not new coverage.
+
+  Deleting `weftgit_differential_test.go` similarly removes its unexported
+  `newWarpFixture`/`newFabricPair`/`writeWeftConfig`/`gitStatusPorcelain` helpers from
+  package `fabricengine_test`. `weftgit_exclude_test.go` (moved from Context to Edits above)
+  is the only other file in the package referencing them. Since it is this file's sole
+  consumer, relocate the four helpers into `weftgit_exclude_test.go` itself (no new shared
+  file) rather than generalizing them into `reconcile_stale_registration_test.go`, whose
+  `newFabricFixture` builds an incompatible paired-hub `*Topology` fixture, not the
+  weft-only `*Fabric` fixture these four helpers need.
 - **Commit:** `test(fabricengine): backfill fabric-only coverage, delete differential tests`
 
 ### Card 16: delete the four old modules
