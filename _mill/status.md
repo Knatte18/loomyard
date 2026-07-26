@@ -37,7 +37,9 @@ batches:
     start_sha: 6209cab47bf4135847ceffb05c8e661313c5cbb8
     commit_sha: cf13ab47a794f43483079752d430a2ff60ea869c
   - name: B -- config collapse
-    state: pending
+    state: running
+    implementer_session: e6973662-8f32-4475-a8cc-2855b82cce44
+    start_sha: ef4186d46b86a00ff2cfe04627df38af55957e69
   - name: C -- CLI de-registration + sandbox tags
     state: pending
   - name: D1 -- delete modules + enforcement
