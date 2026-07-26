@@ -174,9 +174,15 @@ func TestRegistration_AllModulesRegistered(t *testing.T) {
 
 	// allowlist holds packages that expose func Command() *cobra.Command but are
 	// intentionally not registered in newRoot() (for documented future exceptions).
-	// Empty today — muxpoccli, the only prior entry, was deleted once the reed
-	// module it was a proof-of-concept for was built and shipped.
-	allowlist := map[string]bool{}
+	// warpcli and weftcli are mid-deletion: the fabric cutover de-registers them
+	// from newRoot() in this batch, but the packages themselves are not deleted
+	// until batch D1, so this guard would otherwise fire for the whole transition
+	// window. muxpoccli, a prior entry, was deleted once the reed module it was a
+	// proof-of-concept for was built and shipped.
+	allowlist := map[string]bool{
+		"warpcli": true,
+		"weftcli": true,
+	}
 
 	for pkg := range discovered {
 		if allowlist[pkg] {
