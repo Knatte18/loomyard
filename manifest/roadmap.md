@@ -97,6 +97,20 @@ between these items.
 1. **raddle** — codeguide's woven-in successor; parallel-regeneration design exists; deferred phase
    slot between Builder and Finalize. See [designs/raddle.md](designs/raddle.md).
 
+1. **fabric: auto-routing `Commit`** — investigate a single `Commit(paths...)` entry point that
+   classifies each path against known weft junction mountpoints (`_lyx`, `_raddle`, later
+   `_pattern`) and dispatches to `Warp`/`Weft` accordingly, instead of requiring callers to pick
+   `Warp.StageAndCommit`/`SyncWeft` explicitly. Not atomic either way — a call spanning both sides
+   is still two underlying commits, so partial-failure semantics (report both results vs. attempt
+   rollback) need designing regardless of whether dispatch is manual or automatic. Open
+   counter-argument raised during design discussion: LoomYard already requires a caller to know
+   whether a given file belongs in weft or warp to decide where to *write* it in the first place —
+   auto-dispatch may not remove real complexity, and could mask a caller bug (writing to the wrong
+   side) that today surfaces as a loud failure when the wrong explicit method is called. Adjacent
+   to, but distinct from, the already-rejected "forwarding method per operation" alternative in
+   [designs/fabric.md](designs/fabric.md#rejected-alternatives-recorded-so-the-reasoning-isnt-re-litigated)
+   — this would be a path-classifying dispatcher, not a plain forwarder.
+
 1. **webster: parallel card execution** — worktree-per-card concurrent forking with a DAG;
    explored twice (pre- and during vacation discussion), rejected both times for git-index-race and
    mid-flight-visibility hazards. See
