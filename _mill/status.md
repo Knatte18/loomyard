@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: fabric-cutover
 branch: fabric-cutover
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-D3 -- de-parallel-build prose + final gate  '2026-07-26T16:45:15Z'
 holistic-reviewing  '2026-07-26T16:45:40Z'
 holistic-fixing  '2026-07-26T16:50:02Z'
 holistic-reviewing  '2026-07-26T16:58:10Z'
+holistic-fixing  '2026-07-26T17:05:47Z'
 ```
 
 ## Batches
