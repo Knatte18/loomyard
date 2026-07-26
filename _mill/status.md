@@ -56,7 +56,9 @@ batches:
     start_sha: 4ef7d1c3ed608a0d3f4f8bff1aae1a64ee850211
     commit_sha: be76eb008654c1d5822e76c2343ff7192b7b1dad
   - name: modelspec-migration
-    state: pending
+    state: running
+    implementer_session: 79b605ae-1a59-4ded-94ce-b107e09a7a31
+    start_sha: 01c7ba4d1689bb66c0799a4b387df78cae7c4fc5
   - name: docs-lifecycle
     state: pending
 ```
