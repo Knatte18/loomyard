@@ -1,14 +1,17 @@
 // beginbatch.go implements BeginBatch, the first of webster's two bracket
 // verbs Master calls around each in-session fork: the pause and fingerprint
-// refusal gates, the optional --restart-chain reset, start-SHA capture and
-// chain-anchor recording, the idempotent per-batch model assertion (the
-// ONLY model-injection site in webster — see doc.go's package comment), the
-// previous batch's persisted digest rendered into the fork prompt, and the
-// prompt file write itself. BeginBatch never touches weft (webster is
-// weft-blind throughout) and never persists deps.State itself — the caller
-// holds the state-mutation lease (AcquireStateMutation) across its whole
-// begin-batch call and saves state via SaveState once BeginBatch returns
-// successfully, mirroring builder's own weft-commit-boundary discipline.
+// refusal gates, start-SHA capture, the idempotent per-batch model
+// assertion (the ONLY model-injection site in webster — see doc.go's
+// package comment), the previous batch's persisted digest rendered into
+// the fork prompt, and the prompt file write itself. BeginBatch never
+// touches weft (webster is weft-blind throughout) and never persists
+// deps.State itself — the caller holds the state-mutation lease
+// (AcquireStateMutation) across its whole begin-batch call and saves state
+// via SaveState once BeginBatch returns successfully, mirroring builder's
+// own weft-commit-boundary discipline. Under the flat card-list model there
+// is no deferred-verify chain and no oversized-batch escalation: BeginBatch
+// always asserts the single RoleMaster model, and there is no
+// --restart-chain surface.
 
 package websterengine
 
@@ -20,13 +23,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // ErrPaused is the sentinel BeginBatch returns when deps.WebsterDir's pause
-// flag is present at the batch boundary (builderengine.PauseRequested).
+// flag is present at the batch boundary (PauseRequested).
 // Exported so a caller can distinguish the operational "paused" refusal
 // from every other begin-batch failure via errors.Is(err, ErrPaused) —
 // webster's own sentinel, independent of builder's ErrPaused, per the
@@ -48,20 +52,22 @@ type Injector interface {
 }
 
 // BeginDeps carries every seam BeginBatch needs, so a test can fake each one
-// independently: Plan and State are the already-parsed/loaded plan and run
-// state BeginBatch reads and mutates; Roles is the pre-flight-resolved
-// role->model-spec map (see ResolveRoles); Config is the loaded
-// webster.yaml; Engine supplies the provider-specific ModelSwitchSequence
-// choreography; Injector is what actually types that choreography into
-// Master's pane; Reed is the live reed query surface the strand-reclaim guards
-// consult (--restart-chain stopping live chain members, and the
-// prior-recovery-strand reclaim before a fork batch overwrites a
-// dead-but-live recovery record); WorktreeRoot is the host repo checkout
+// independently: Plan is the already-parsed plan; Batches is the
+// batchifier-derived execution batches (see internal/batcher.Select) `run`
+// computed once at entry and threads through every bracket verb call; State
+// is the already-loaded run state BeginBatch reads and mutates; Roles is the
+// pre-flight-resolved role->model-spec map (see ResolveRoles); Config is the
+// loaded webster.yaml; Engine supplies the provider-specific
+// ModelSwitchSequence choreography; Injector is what actually types that
+// choreography into Master's pane; Reed is the live reed query surface the
+// prior-recovery-strand reclaim consults (a dead-but-live recovery record a
+// fork batch is about to overwrite); WorktreeRoot is the host repo checkout
 // BeginBatch captures HeadSHA from; WebsterDir, ReportsDir, and PromptsDir
 // are the hubgeometry-resolved _lyx/webster, _lyx/webster/reports, and
 // _lyx/webster/prompts directories.
 type BeginDeps struct {
-	Plan         *builderengine.Plan
+	Plan         *planparser.Plan
+	Batches      []batcher.Batch
 	State        *State
 	Roles        map[Role]modelspec.Resolved
 	Config       Config
@@ -79,8 +85,7 @@ type BeginDeps struct {
 // needs to weft-commit state.json at the batch boundary without re-deriving
 // any of it from deps.State itself.
 type BeginResult struct {
-	// BatchName is the batch's "NN-<batch-slug>" identifier — the
-	// (possibly restart-chain-re-pointed) batch BeginBatch actually began.
+	// BatchName is the batch's "NN-<batch-slug>" identifier.
 	BatchName string
 	// PromptPath is the absolute path of the fork prompt file BeginBatch
 	// just wrote — what the caller's Agent-tool fork call reads.
@@ -95,119 +100,96 @@ type BeginResult struct {
 	AssertedModel string
 }
 
-// findBatch returns the PlanBatch in plan whose Number matches number, or an
-// error naming the missing number.
-func findBatch(plan *builderengine.Plan, number int) (builderengine.PlanBatch, error) {
-	for _, b := range plan.Batches {
-		if b.Number == number {
+// findBatch returns the batcher.Batch in batches whose own identity (see
+// batchIdentity) matches number, or an error naming the missing number.
+func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
+	for _, b := range batches {
+		if n, _ := batchIdentity(b); n == number {
 			return b, nil
 		}
 	}
-	return builderengine.PlanBatch{}, fmt.Errorf("webster: batch %d not found in plan", number)
+	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches", number)
 }
 
 // digestSummaryLine renders d into the fixed one-line summary
-// RenderForkPrompt's prevDigest parameter expects: batch name, status,
-// tests, and files_changed always; stuck_reason and drift_unreported
-// appended only when the digest actually carries them. Returns "" for a nil
-// d (no persisted digest yet), which RenderForkPrompt itself turns into the
-// "none (first batch)" sentinel — this function never renders that sentinel
-// itself, so the one fallback-wording decision lives in exactly one place.
-func digestSummaryLine(d *builderengine.Digest) string {
+// RenderForkPrompt's prevDigest parameter expects: batch name, status, and
+// head_sha always; deviations appended only when the digest actually
+// carries them. Returns "" for a nil d (no persisted digest yet), which
+// RenderForkPrompt itself turns into the "none (first batch)" sentinel —
+// this function never renders that sentinel itself, so the one
+// fallback-wording decision lives in exactly one place.
+func digestSummaryLine(d *Digest) string {
 	if d == nil {
 		return ""
 	}
 
-	line := fmt.Sprintf("%s: %s tests=%s files_changed=%d", d.Batch, d.Status, d.Tests, d.FilesChanged)
-	if d.StuckReason != "" {
-		line += fmt.Sprintf(" stuck_reason=%q", d.StuckReason)
-	}
-	if len(d.DriftUnreported) > 0 {
-		line += fmt.Sprintf(" drift_unreported=%s", strings.Join(d.DriftUnreported, ","))
+	line := fmt.Sprintf("%s: %s head_sha=%s", d.Batch, d.Status, d.HeadSHA)
+	if len(d.Deviations) > 0 {
+		line += fmt.Sprintf(" deviations=%s", strings.Join(d.Deviations, ","))
 	}
 	return line
 }
 
 // BeginBatch drives one begin-batch call to completion, immediately before
 // Master forks batchNumber's implementer: the pause gate, the fingerprint
-// gate, the optional --restart-chain reset (re-pointing at the chain's
-// lowest member per builder's own rule), start-SHA capture and first-member
-// chain-anchor recording, the previous batch's persisted digest rendered
+// gate, start-SHA capture, the previous batch's persisted digest rendered
 // into the fork prompt, the prompt file write itself, and — last, so an
 // earlier failure never leaves the pane switched with nothing persisted —
-// the idempotent per-batch model assertion. The caller holds the state-mutation lease
-// across this whole call and is responsible for persisting deps.State via
-// SaveState once BeginBatch returns successfully — BeginBatch itself never
-// calls SaveState and never touches weft.
-func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResult, error) {
-	if builderengine.PauseRequested(deps.WebsterDir) {
+// the idempotent per-batch model assertion. The caller holds the
+// state-mutation lease across this whole call and is responsible for
+// persisting deps.State via SaveState once BeginBatch returns successfully
+// — BeginBatch itself never calls SaveState and never touches weft.
+func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
+	if PauseRequested(deps.WebsterDir) {
 		return nil, ErrPaused
 	}
 
-	fingerprint, err := builderengine.Fingerprint(deps.Plan.Dir)
+	fp, err := fingerprint(deps.Plan.Dir)
 	if err != nil {
 		return nil, err
 	}
-	if deps.State.PlanFingerprint != fingerprint {
-		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run `lyx webster run --fresh` to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, deps.State.PlanFingerprint)
+	if deps.State.PlanFingerprint != fp {
+		return nil, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run `lyx webster run --fresh` to archive the stale state and reports and start over", ErrFingerprintMismatch, fp, deps.State.PlanFingerprint)
 	}
 
-	if restartChain {
-		lowest, err := RestartChain(deps.Reed, deps.WorktreeRoot, deps.State, deps.Plan, batchNumber, deps.ReportsDir)
-		if err != nil {
-			return nil, err
-		}
-		// The chain always restarts from its lowest member, regardless of
-		// which member the caller named — the same re-point rule builder's
-		// own spawn-batch applies.
-		batchNumber = lowest
-	}
-
-	batch, err := findBatch(deps.Plan, batchNumber)
+	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
 		return nil, err
+	}
+	number, slug := batchIdentity(batch)
+
+	// The fork writes its report here with whatever tool it likes — a plain
+	// shell redirect included, which unlike an agent Write tool never creates
+	// missing parents. Only the --fresh archive path recreated this dir
+	// before; the ordinary first run left it absent (found live in crucible
+	// round fable-r1).
+	if err := os.MkdirAll(deps.ReportsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
 	}
 
 	// Builder's pre-existing-report refusal, applied to the fork path: a
 	// batch whose report already landed is finished work — silently
 	// overwriting its BatchState (and letting a fresh fork overwrite the
-	// report) must never happen by accident. The legitimate re-begin paths
-	// arrive here report-free (--restart-chain deleted its members' reports
-	// above; a no_report re-fork never calls begin-batch again — the bracket
-	// is still open), with ONE exception: a run resumed after a crash that
-	// landed between the fork's report and record-batch re-drives a batch
-	// whose report IS on disk — that report is consumed by record-batch (the
-	// audit keys on the bracket-opening session, see RecordBatch), so the
-	// refusal message names that recourse alongside the stuck-batch ones.
-	existingReport := filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
+	// report) must never happen by accident. A no_report re-fork never
+	// calls begin-batch again (the bracket is still open), with ONE
+	// exception: a run resumed after a crash that landed between the
+	// fork's report and record-batch re-drives a batch whose report IS on
+	// disk — that report is consumed by record-batch (the audit keys on
+	// the bracket-opening session, see RecordBatch), so the refusal
+	// message names that recourse alongside the stuck-batch one.
+	existingReport := filepath.Join(deps.ReportsDir, ReportFileName(number, slug))
 	if _, statErr := os.Stat(existingReport); statErr == nil {
-		return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report), and a stuck deferred-verify chain restarts via `begin-batch --restart-chain`", batch.Number, batch.Slug, existingReport, batch.Number, batch.Number, batch.Number)
+		return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report)", number, slug, existingReport, number, number, number)
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
 	}
 
-	head, err := builderengine.HeadSHA(deps.WorktreeRoot)
+	head, err := headSHA(deps.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	if chainEnd := builderengine.ChainEndFor(deps.Plan, batch.Number); chainEnd != 0 {
-		if deps.State.ChainStartSHAs == nil {
-			deps.State.ChainStartSHAs = map[int]string{}
-		}
-		if _, recorded := deps.State.ChainStartSHAs[chainEnd]; !recorded {
-			// The anchor is this HEAD: the host commit immediately before
-			// the chain's first member ever forks. Recorded once, at
-			// whichever member begins first — never overwritten by a later
-			// member's own begin-batch call.
-			deps.State.ChainStartSHAs[chainEnd] = head
-		}
-	}
-
 	target := RoleMaster
-	if batch.Oversized {
-		target = RoleMasterOversized
-	}
 	resolved, ok := deps.Roles[target]
 	if !ok {
 		return nil, fmt.Errorf("webster: no resolved model-spec for role %q", target)
@@ -221,13 +203,13 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 		}
 	}
 
-	batchName := fmt.Sprintf("%02d-%s", batch.Number, batch.Slug)
-	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug)))
+	batchName := fmt.Sprintf("%02d-%s", number, slug)
+	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, ReportFileName(number, slug)))
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderForkPrompt(batch, deps.Plan.Dir, prevDigest, reportPath, deps.WorktreeRoot, deps.Config.SelfFixCap)
+	prompt, err := RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.WorktreeRoot, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}
@@ -255,23 +237,22 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 	// its StrandGUID: an unreclaimed recovery strand would race this batch's
 	// fresh fork on the host repo — the same kept-strand reclaim builder's
 	// respawn path performs. A plain fork batch's record has an empty
-	// StrandGUID and RemoveStrandIfLive no-ops on it.
-	if prior, ok := deps.State.Batches[batch.Number]; ok && prior != nil && prior.StrandGUID != "" {
-		if err := builderengine.RemoveStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
+	// StrandGUID and removeStrandIfLive no-ops on it.
+	if prior, ok := deps.State.Batches[number]; ok && prior != nil && prior.StrandGUID != "" {
+		if err := removeStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
 			return nil, err
 		}
 	}
 
-	// The ONLY model-injection site in webster (discussion.md
-	// oversized-model-escalation): idempotent against State.AssertedModel,
-	// so a resumed or repeated begin-batch call for the same batch never
-	// re-injects a switch Master's pane is already running. Deliberately the
-	// LAST fallible act of this call — every earlier step (prompt render and
-	// write, strand reclaim) can still fail without the pane having been
-	// switched, so the pane's model and the persisted AssertedModel can never
-	// diverge across an error return: either the injection and its memory
-	// both happen (only infallible in-memory recording remains below) or
-	// neither does.
+	// The ONLY model-injection site in webster: idempotent against
+	// State.AssertedModel, so a resumed or repeated begin-batch call for
+	// the same batch never re-injects a switch Master's pane is already
+	// running. Deliberately the LAST fallible act of this call — every
+	// earlier step (prompt render and write, strand reclaim) can still fail
+	// without the pane having been switched, so the pane's model and the
+	// persisted AssertedModel can never diverge across an error return:
+	// either the injection and its memory both happen (only infallible
+	// in-memory recording remains below) or neither does.
 	if deps.State.AssertedModel != targetModel {
 		if err := deps.Injector.Inject(deps.State.MasterStrand, deps.Engine.ModelSwitchSequence(targetModel)); err != nil {
 			return nil, fmt.Errorf("webster: inject model switch for batch %d: %w", batchNumber, err)
@@ -279,8 +260,8 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 		deps.State.AssertedModel = targetModel
 	}
 
-	deps.State.Batches[batch.Number] = &BatchState{
-		Slug:      batch.Slug,
+	deps.State.Batches[number] = &BatchState{
+		Slug:      slug,
 		StartSHA:  head,
 		Kind:      "fork",
 		SpawnedAt: time.Now().UTC().Format(time.RFC3339),
@@ -289,7 +270,7 @@ func BeginBatch(deps BeginDeps, batchNumber int, restartChain bool) (*BeginResul
 		// whole-session audit actually covers.
 		SessionID: deps.State.MasterSessionID,
 	}
-	deps.State.CurrentBatch = batch.Number
+	deps.State.CurrentBatch = number
 
 	return &BeginResult{
 		BatchName:     batchName,

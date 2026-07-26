@@ -1,10 +1,10 @@
 // state_test.go covers LoadState/SaveState's documented cases:
 // round-tripping a populated State through disk (including a persisted
-// digest, the field builderengine never needed to persist), an absent
-// state.json returning (nil, nil), a corrupt state.json returning a wrapped
-// error rather than a guessed value, and the state-mutation lease's
-// cross-holder exclusion. All plain t.TempDir() files — no git, no
-// subprocess spawns — Test Tier Purity Invariant.
+// digest and per-card SHA trail, fields builderengine never needed to
+// persist), an absent state.json returning (nil, nil), a corrupt state.json
+// returning a wrapped error rather than a guessed value, and the
+// state-mutation lease's cross-holder exclusion. All plain t.TempDir() files
+// — no git, no subprocess spawns — Test Tier Purity Invariant.
 
 package websterengine_test
 
@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -28,7 +27,7 @@ func TestState_RoundTrip(t *testing.T) {
 		CurrentBatch:    2,
 		MasterStrand:    "master-strand-1",
 		MasterSessionID: "session-1",
-		AssertedModel:   "master_oversized",
+		AssertedModel:   "opus",
 		Batches: map[int]*websterengine.BatchState{
 			1: {
 				Slug:            "first",
@@ -37,6 +36,7 @@ func TestState_RoundTrip(t *testing.T) {
 				SpawnedAt:       "2026-07-11T12:00:00Z",
 				Terminal:        true,
 				Status:          "done",
+				CardSHAs:        []string{"deadbeef"},
 				ForkTranscripts: []string{"subagents/abc.jsonl"},
 			},
 			2: {
@@ -50,7 +50,6 @@ func TestState_RoundTrip(t *testing.T) {
 				EventsPath:    "/runs/2/events.jsonl",
 			},
 		},
-		ChainStartSHAs:      map[int]string{4: "cafef00d"},
 		SeenForkTranscripts: []string{"subagents/abc.jsonl"},
 	}
 
@@ -84,9 +83,6 @@ func TestState_RoundTrip(t *testing.T) {
 	if got.AssertedModel != want.AssertedModel {
 		t.Errorf("AssertedModel = %q; want %q", got.AssertedModel, want.AssertedModel)
 	}
-	if got.ChainStartSHAs[4] != want.ChainStartSHAs[4] {
-		t.Errorf("ChainStartSHAs[4] = %q; want %q", got.ChainStartSHAs[4], want.ChainStartSHAs[4])
-	}
 	if len(got.SeenForkTranscripts) != 1 || got.SeenForkTranscripts[0] != "subagents/abc.jsonl" {
 		t.Errorf("SeenForkTranscripts = %v; want %v", got.SeenForkTranscripts, want.SeenForkTranscripts)
 	}
@@ -102,6 +98,8 @@ func TestState_RoundTrip(t *testing.T) {
 		gotBatch1.SpawnedAt != wantBatch1.SpawnedAt ||
 		gotBatch1.Terminal != wantBatch1.Terminal ||
 		gotBatch1.Status != wantBatch1.Status ||
+		len(gotBatch1.CardSHAs) != 1 ||
+		gotBatch1.CardSHAs[0] != wantBatch1.CardSHAs[0] ||
 		len(gotBatch1.ForkTranscripts) != 1 ||
 		gotBatch1.ForkTranscripts[0] != wantBatch1.ForkTranscripts[0] {
 		t.Errorf("Batches[1] = %+v; want %+v", gotBatch1, wantBatch1)
@@ -123,17 +121,16 @@ func TestState_RoundTrip(t *testing.T) {
 // TestState_DigestPersistsAcrossSaveLoad proves BatchState.Digest — the
 // field builderengine never persisted — survives a save/load round-trip
 // intact, since begin-batch(N+1) depends on reading it back rather than
-// re-Distilling a report.
+// re-distilling a report.
 func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 	t.Parallel()
 
 	websterDir := t.TempDir()
-	digest := &builderengine.Digest{
-		Batch:        "01-seam-extensions",
-		Status:       builderengine.DigestStatusDone,
-		Tests:        "green",
-		FilesChanged: 7,
-		Dirty:        false,
+	digest := &websterengine.Digest{
+		Batch:      "01-seam-extensions",
+		Status:     websterengine.DigestStatusDone,
+		HeadSHA:    "deadbeef",
+		Deviations: []string{"internal/extra.go"},
 	}
 	want := &websterengine.State{
 		RunGUID: "run-1",
@@ -143,6 +140,7 @@ func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 				Terminal: true,
 				Status:   "done",
 				Digest:   digest,
+				CardSHAs: []string{"deadbeef"},
 			},
 		},
 	}
@@ -168,10 +166,13 @@ func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 	}
 	if gotBatch.Digest.Batch != digest.Batch ||
 		gotBatch.Digest.Status != digest.Status ||
-		gotBatch.Digest.Tests != digest.Tests ||
-		gotBatch.Digest.FilesChanged != digest.FilesChanged ||
-		gotBatch.Digest.Dirty != digest.Dirty {
+		gotBatch.Digest.HeadSHA != digest.HeadSHA ||
+		len(gotBatch.Digest.Deviations) != 1 ||
+		gotBatch.Digest.Deviations[0] != digest.Deviations[0] {
 		t.Errorf("Batches[1].Digest = %+v; want %+v", gotBatch.Digest, digest)
+	}
+	if len(gotBatch.CardSHAs) != 1 || gotBatch.CardSHAs[0] != "deadbeef" {
+		t.Errorf("Batches[1].CardSHAs = %v; want [deadbeef]", gotBatch.CardSHAs)
 	}
 }
 

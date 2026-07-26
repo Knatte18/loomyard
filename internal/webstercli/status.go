@@ -14,7 +14,6 @@ package webstercli
 import (
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -89,7 +88,7 @@ Example:
 				"current_batch":    st.CurrentBatch,
 				"plan_fingerprint": st.PlanFingerprint,
 				"batches":          batches,
-				"paused":           builderengine.PauseRequested(c.websterDir),
+				"paused":           websterengine.PauseRequested(c.websterDir),
 			}))
 			return nil
 		},

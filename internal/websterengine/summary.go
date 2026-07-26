@@ -3,11 +3,14 @@
 // ParseSummary enforces discussion.md's summary-artifact decision's minimal
 // fail-loud validation (presence, non-empty, a "# <title>" first non-blank
 // line with a non-empty title) — the artifact is the future loom-finalize
-// PR-text source, never itself schema-validated beyond that; and
+// PR-text source, never itself schema-validated beyond that;
 // ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename
-// discipline as builderengine.ArchiveStaleOutcome, reusing
-// builderengine.FirstFreeArchivePath rather than re-implementing the
-// same-second collision loop, per the reuse-by-import-never-copy decision.
+// discipline as outcome.go's own archiveStaleOutcome, reusing archive.go's
+// firstFreeArchivePath rather than re-implementing the same-second
+// collision loop; and AppendIntegrationFailure extends an already-written
+// summary.md with the integration-suite bisect's own localized finding
+// (integration.go's BisectAndEscalate), the summary-document half of that
+// escalation path.
 
 package websterengine
 
@@ -17,19 +20,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/builderengine"
 )
 
 // SummaryFileName is summary.md's fixed filename inside a webster dir.
 const SummaryFileName = "summary.md"
-
-// summaryArchiveTimestampFormat is the UTC compact timestamp format
-// ArchiveStaleSummary archives a stale summary.md under — webster's own copy
-// of builderengine's own archiveTimestampFormat (runlevel.go), which is
-// unexported and so not importable; kept identical so an archived webster
-// artifact sorts and reads the same way as builder's own archived artifacts.
-const summaryArchiveTimestampFormat = "20060102T150405Z"
 
 // SummaryPath returns the path to summary.md inside websterDir.
 func SummaryPath(websterDir string) string {
@@ -51,8 +45,8 @@ type Summary struct {
 // first non-blank line must be a "# <title>" heading with a non-empty
 // title; every line after that heading is Body, exactly as written, never
 // itself schema-validated. Every violation is its own distinct wrapped
-// error, the same fail-loud posture builderengine.ParseOutcome applies to
-// outcome.yaml.
+// error, the same fail-loud posture this package's own parseOutcome
+// applies to outcome.yaml.
 func ParseSummary(path string) (*Summary, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -85,16 +79,15 @@ func ParseSummary(path string) (*Summary, error) {
 }
 
 // ArchiveStaleSummary renames websterDir's summary.md, if present, to
-// summary-<UTC compact timestamp>.md in place, mirroring
-// builderengine.ArchiveStaleOutcome's archive-never-refuse posture: a prior
-// run's own summary stays on disk, auditable, rather than being silently
-// overwritten or deleted when `run` spawns a fresh Master. now is a seam so
-// tests can pin the timestamp deterministically instead of racing the real
-// clock; production callers pass time.Now. Absent file: returns ("", nil) —
-// not an error — since a fresh run has never written one yet. Collision:
-// reuses builderengine.FirstFreeArchivePath's "-1"/"-2" suffix loop, per the
-// reuse-by-import-never-copy decision, so two archives landing in the same
-// clock-second never clobber each other.
+// summary-<UTC compact timestamp>.md in place, mirroring outcome.go's own
+// archiveStaleOutcome's archive-never-refuse posture: a prior run's own
+// summary stays on disk, auditable, rather than being silently overwritten
+// or deleted when `run` spawns a fresh Master. now is a seam so tests can
+// pin the timestamp deterministically instead of racing the real clock;
+// production callers pass time.Now. Absent file: returns ("", nil) — not an
+// error — since a fresh run has never written one yet. Collision: reuses
+// archive.go's own firstFreeArchivePath "-1"/"-2" suffix loop, so two
+// archives landing in the same clock-second never clobber each other.
 func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo string, err error) {
 	path := SummaryPath(websterDir)
 
@@ -105,8 +98,8 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 		return "", fmt.Errorf("webster: stat summary file %s: %w", path, statErr)
 	}
 
-	stamp := now().UTC().Format(summaryArchiveTimestampFormat)
-	target, err := builderengine.FirstFreeArchivePath(func(suffix string) string {
+	stamp := now().UTC().Format(archiveTimestampFormat)
+	target, err := firstFreeArchivePath(func(suffix string) string {
 		return filepath.Join(websterDir, fmt.Sprintf("summary-%s%s.md", stamp, suffix))
 	})
 	if err != nil {
@@ -117,4 +110,28 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 		return "", fmt.Errorf("webster: archive stale summary file %s: %w", path, err)
 	}
 	return target, nil
+}
+
+// AppendIntegrationFailure appends a short section naming the integration
+// bisect's own localized finding to websterDir's summary.md — the
+// summary-document half of the integration-suite escalation path (see
+// integration.go's bisect/BisectAndEscalate). Master's own final-action
+// rule (master-template.md) already guarantees summary.md exists by the
+// time this runs — shuttle classifies Master's own spawn done only once
+// BOTH outcome.yaml and summary.md have landed — so this always APPENDS to
+// an existing file rather than creating one from scratch.
+func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string) error {
+	path := SummaryPath(websterDir)
+	section := fmt.Sprintf("\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `%s` (commit `%s`).\n", offendingCard, offendingSHA)
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("webster: append integration failure to summary file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(section); err != nil {
+		return fmt.Errorf("webster: append integration failure to summary file %s: %w", path, err)
+	}
+	return nil
 }

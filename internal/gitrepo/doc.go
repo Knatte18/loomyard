@@ -39,6 +39,8 @@
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - SnapshotSHA and SetSnapshotSHA are the snapshot-tracking surface (see
 //     below).
+//   - CurrentBranch, CheckoutDetached, and RestoreBranch are the in-place
+//     bisect exception (see Scope boundaries below).
 //
 // Caller-supplied SHA arguments (SHAExists, ChangedFilesSince,
 // SetSnapshotSHA, ResetHard) are validated as plain hex object names before
@@ -76,16 +78,25 @@
 // gitrepo covers only the operations its consumers actually need
 // programmatically: stage+commit (explicit file list, never wildcard-stage),
 // diff-since-SHA, current-SHA, push, fast-forward pull, SHA-validated hard
-// reset, and snapshot/correspondence tracking. StageAllAndCommit is a
-// separate wildcard-stage variant provided as board's opt-in exception, not
-// a relaxation of the explicit-list default — fabric, raddle, and codeintel
-// keep using explicit-list StageAndCommit.
-// Rebase, interactive staging, cherry-pick, and conflict resolution are
+// reset, snapshot/correspondence tracking, and the CurrentBranch/CheckoutDetached/RestoreBranch
+// trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
+// opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
+// codeintel keep using explicit-list StageAndCommit. Rebase, interactive
+// staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are
 // explicitly not supported — a human can always use plain git directly in
 // the working tree, since it's an ordinary git repo underneath. fabric
 // layers a further, separate set of topology operations — clone, worktree
-// add/remove, checkout, branch naming — on top of gitrepo; those are
-// fabric-specific, not part of gitrepo itself.
+// add/remove, general checkout, branch naming — on top of gitrepo; those
+// remain fabric-specific, not part of gitrepo itself. The one admitted
+// exception is CurrentBranch/CheckoutDetached/RestoreBranch, used solely by
+// webster's integration bisect to check a candidate SHA out in place in its
+// single worktree, run the plan's verify step, and restore HEAD to the
+// branch it started on. That is a sequential, post-run, read-only-ish
+// inspection cycle over the one worktree gitrepo already has a handle
+// on — not a topology operation (no clone, no worktree add/remove, no new
+// branch), and never run concurrently with fabric's parallel topology work —
+// so it stays inside gitrepo rather than becoming a second, overlapping
+// checkout surface in fabric.
 //
 // # Push surface
 //

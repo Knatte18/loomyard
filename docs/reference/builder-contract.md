@@ -390,30 +390,35 @@ would move that judgment back into a Go branch, rejected as YAGNI.
 ## Webster: the fork-based sibling
 
 `webster` (`internal/websterengine` + `internal/webstercli`, `lyx webster`) is a second,
-parallel implementation of this same batch-implementation loop, built to be A/B tested
-against `builder` on the same plan rather than a revision of it: instead of a long-lived
-LLM **orchestrator** session spawning each batch's implementer as its own fresh reed/tmux
+parallel implementation of a batch-implementation loop: instead of a long-lived LLM
+**orchestrator** session spawning each batch's implementer as its own fresh reed/tmux
 strand, one long-lived **Master** session reads the plan once and forks one implementer
-per batch **in-session** (Claude Code's Agent tool). This section pins only the facts a
-future `loom` needs to treat the two as interchangeable underneath its own Builder-phase
-integration; webster's own design (the bracket-verb shape, the fork-audit policy, the
-`/model` escalation mechanism, crash/resume) lives in `internal/websterengine`'s package
+per batch **in-session** (Claude Code's Agent tool). Webster no longer shares builder's
+plan input, batch-report schema, or digest contract — it consumes the flat card-list
+[plan-format v3](plan-format-v3.md) plan via its own sole parser, `internal/planparser`,
+groups that plan's cards into execution batches via its own config-selected
+`internal/batcher` registry, and reports via its own minimal fork-return contract
+(`status: OK|FAILED` + `head_sha` + an informational `deviations` list) rather than
+builder's `done`/`stuck`/`green`/`red`/`skipped`/`out_of_scope` grammar. `builder` is now
+**obsolete as a plan-format consumer** — its own [plan-format v2](plan-format.md) input,
+digest contract, and `outcome.yaml` schema stay exactly as pinned above, for `builder`
+alone. Deleting `builder` outright is a separate later task; until then it stays frozen
+and fully functional in-tree, per the `builder-is-frozen-copy-not-move` decision.
+
+This section pins only the facts that remain true of webster's shape regardless of which
+plan format it consumes; webster's own design (the bracket-verb shape, plan/batch
+consumption, the fork-audit policy, the idempotent per-batch model assertion, crash/resume,
+the integration-suite fork + bisect) lives in `internal/websterengine`'s package
 documentation, not here — same split this file already draws against `builder`'s own
 package docs.
 
-- **Same plan input, one parser.** webster consumes the identical pinned
-  [plan-format v2](plan-format.md) plan via the exact same parser, `builderengine.ParsePlan`
-  — there is exactly one plan parser in the repo, imported by webster rather than
-  duplicated.
-- **Same batch-report schema, one parser.** A webster fork writes the same batch-report
-  shape builder's implementer writes, decoded by the same `builderengine.ParseReport` — no
-  second report parser exists.
-- **Compatible `outcome.yaml`, one parser.** webster's own final action writes an
-  `outcome.yaml` on the same schema (`outcome`/`stuck_reason`/`batches_done`), decoded by
-  the same `builderengine.ParseOutcome`.
-- **Shared digest contract.** The terse, prose-free digest fields (`batch`, `status`,
-  `tests`, `files_changed`, `dirty`, …) that builder's `poll` emits are the exact same
-  fields webster's `record-batch` emits — one digest contract, two producers.
+- **Own plan input, own parser.** webster consumes the pinned
+  [plan-format v3](plan-format-v3.md) flat card list via `internal/planparser`, the SOLE
+  parser of `_lyx/plan/` — no shared parser, and no card-list format overlap, with
+  `builder`'s own `builderengine.ParsePlan`.
+- **Own fork-report schema, own parser.** A webster fork writes webster's own minimal
+  report shape (`internal/websterengine`'s `Report`/`ParseReport`), not builder's
+  batch-report grammar — there is no shared report parser between the two modules.
 - **Webster-only addition: `_lyx/webster/summary.md`.** Alongside `outcome.yaml`, webster
   writes a prose summary artifact — first line `# <title>`, then a free-form narrative of
   what was actually built, including deviations from the original task. It is required
@@ -423,24 +428,24 @@ package docs.
   party with full oversight of what actually shipped — builder has no equivalent artifact.
 - **Independent state, no collision.** webster owns its own `_lyx/webster/` (its own
   `state.json`, reports dir, `outcome.yaml`, `summary.md`, locks, pause flag), resolved via
-  its own `hubgeometry` helpers — never `_lyx/builder/`. This is what lets an A/B run of
-  the same plan through both modules coexist without either clobbering the other's
-  progress.
+  its own `hubgeometry` helpers — never `_lyx/builder/`. This is what lets `webster` and
+  the frozen `builder` coexist in-tree without either clobbering the other's state.
 
 See the `internal/websterengine` package documentation for webster's own design: the
 bracket-verb shape (`begin-batch`/`await-batch`/`record-batch` in place of
 `spawn-batch`/`poll` — forks are backgrounded agents on current Claude Code, so Master
 long-polls `await-batch` for the report instead of relying on a synchronous fork
-return), the
-fork-audit policy, the `oversized:`-driven `/model` pane-injection escalation mechanism and
-its documented fallback, and crash/resume.
+return), plan/batch consumption via `internal/planparser` + `internal/batcher`, the
+fork-audit policy, the idempotent per-batch `/model` pane-injection assertion (dormant in
+the shipped flow — the launch model already equals RoleMaster's), the integration-suite
+fork with in-process SHA-bisect, and crash/resume.
 
 ## See also
 
 - [plan-format.md](plan-format.md) — builder's pinned input contract (plan structure,
   validation checks, the batch-report schema builder's `Distill` reads).
-- [plan-format-v3.md](plan-format-v3.md) — the emerging flat-card format the Planned
-  webster-rewrite will consume.
+- [plan-format-v3.md](plan-format-v3.md) — the flat-card format `webster` consumes via
+  `internal/planparser`.
 - [docs/reference/model-spec.md](model-spec.md) — the model-spec notation
   and registry `ResolveRoles` resolves against.
 - [loom.md](../../manifest/designs/loom.md) — the phase machine that will drive `builder run` as one phase,

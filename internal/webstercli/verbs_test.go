@@ -21,18 +21,22 @@
 package webstercli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -210,9 +214,16 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:          {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleMasterOversized: {Engine: "claude", Model: "oversized-model", Params: map[string]string{}},
-		websterengine.RoleRecovery:        {Engine: "claude", Model: "recovery-model", Params: map[string]string{}},
+		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
+		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{}},
+	}
+
+	// The default (empty) batcher name resolves to the identity batchifier
+	// -- exactly what PersistentPreRunE would have resolved and stored on
+	// c.batcher, bypassed here along with the rest of PersistentPreRunE.
+	activeBatcher, err := batcher.Select("")
+	if err != nil {
+		t.Fatalf("batcher.Select(\"\") error = %v", err)
 	}
 
 	c := &websterCLI{
@@ -224,14 +235,13 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		layout:     layout,
 		shuttleCfg: shuttleCfg,
 		cfg: websterengine.Config{
-			SelfFixCap:            2,
-			MasterTimeoutMin:      480,
-			RecoveryTimeoutMin:    60,
-			PollWaitS:             1,
-			BatchContextCapTokens: 1_000_000,
-			BatchCardCap:          50,
+			SelfFixCap:         2,
+			MasterTimeoutMin:   480,
+			RecoveryTimeoutMin: 60,
+			PollWaitS:          1,
 		},
 		roles:      roles,
+		batcher:    activeBatcher,
 		planDir:    hubgeometry.PlanDir(worktree),
 		websterDir: hubgeometry.WebsterDir(worktree),
 		reportsDir: hubgeometry.WebsterReportsDir(worktree),
@@ -241,16 +251,48 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}
 }
 
+// testPlanFingerprint recomputes the plan-identity hash websterengine's own
+// unexported fingerprint (fingerprint.go) computes -- duplicated here since
+// this test lives in webstercli, an external package, and that algorithm is
+// deliberately not exported. Must stay in lock-step with websterengine's
+// own implementation: a SHA-256 digest over every "*.md" file's sorted name
+// and contents in planDir.
+func testPlanFingerprint(t *testing.T, planDir string) string {
+	t.Helper()
+	entries, err := os.ReadDir(planDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", planDir, err)
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+
+	h := sha256.New()
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(planDir, name))
+		if err != nil {
+			t.Fatalf("ReadFile(%q): %v", name, err)
+		}
+		h.Write([]byte(name))
+		h.Write([]byte{0})
+		h.Write(data)
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // initState writes a minimal state.json (fingerprint-matched to fx's own
 // on-disk plan) for fx's webster dir, standing in for the state "lyx
 // webster run" would have already created before Master ever calls
 // begin-batch/record-batch/recover-batch.
 func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websterengine.State {
 	t.Helper()
-	fp, err := builderengine.Fingerprint(fx.CLI.planDir)
-	if err != nil {
-		t.Fatalf("Fingerprint(%q) error = %v", fx.CLI.planDir, err)
-	}
+	fp := testPlanFingerprint(t, fx.CLI.planDir)
 	st := &websterengine.State{
 		RunGUID:         "guid-1",
 		PlanFingerprint: fp,
@@ -258,7 +300,6 @@ func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websteren
 		MasterSessionID: "master-session-1",
 		AssertedModel:   assertedModel,
 		Batches:         map[int]*websterengine.BatchState{},
-		ChainStartSHAs:  map[int]string{},
 	}
 	if err := websterengine.SaveState(fx.CLI.websterDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
@@ -267,15 +308,21 @@ func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websteren
 }
 
 // writeBatchReport seeds fx's reportsDir with a batch-report YAML file for
-// batch 1 ("01-only") at its plan-format-pinned filename.
-func writeBatchReport(t *testing.T, reportsDir string) {
+// batch 1 ("01-only") at its plan-format-pinned filename, status OK, using
+// websterengine's own WriteReport so the on-disk shape always matches
+// ParseReport's contract exactly. headSHA must equal the worktree's actual
+// current HEAD when the caller drives record-batch's own terminal path
+// (RecordBatch cross-checks report.HeadSHA against the live worktree HEAD);
+// any non-empty placeholder is fine for await-batch (presence-only) and
+// recover-batch (no such cross-check).
+func writeBatchReport(t *testing.T, reportsDir, headSHA string) {
 	t.Helper()
 	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
 		t.Fatalf("mkdir reports dir: %v", err)
 	}
-	path := filepath.Join(reportsDir, builderengine.BatchReportFileName(1, "only"))
-	content := "batch: 01-only\nstatus: done\ntests: green\nstuck_reason: null\n"
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "only"))
+	report := &websterengine.Report{Status: websterengine.ReportStatusOK, HeadSHA: headSHA}
+	if err := websterengine.WriteReport(path, report); err != nil {
 		t.Fatalf("write batch report: %v", err)
 	}
 }
@@ -326,7 +373,7 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t, "master-model")
-	if err := builderengine.RequestPause(fx.CLI.websterDir); err != nil {
+	if err := websterengine.RequestPause(fx.CLI.websterDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 
@@ -369,7 +416,7 @@ func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	})
 
 	t.Run("ReportPresent", func(t *testing.T) {
-		writeBatchReport(t, fx.CLI.reportsDir)
+		writeBatchReport(t, fx.CLI.reportsDir, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
 		var out strings.Builder
 		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1"})
 		if exitCode != 0 {
@@ -409,7 +456,7 @@ func TestRecordBatchCmd_DigestEnvelope(t *testing.T) {
 	fx.Engine.auditForks = shuttleengine.ForkAudit{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
 	}
-	writeBatchReport(t, fx.CLI.reportsDir)
+	writeBatchReport(t, fx.CLI.reportsDir, startSHA)
 
 	var out strings.Builder
 	exitCode := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"})
@@ -418,7 +465,7 @@ func TestRecordBatchCmd_DigestEnvelope(t *testing.T) {
 		t.Fatalf("record-batch 1 = %d; want 0, output: %s", exitCode, out.String())
 	}
 	got := out.String()
-	for _, want := range []string{`"batch":"01-only"`, `"status":"done"`, `"tests":"green"`} {
+	for _, want := range []string{`"batch":"01-only"`, `"status":"done"`, fmt.Sprintf(`"head_sha":%q`, startSHA)} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)
 		}
@@ -518,8 +565,10 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	}
 
 	// Between the two calls, the recovery implementer "finishes": its
-	// report lands on disk.
-	writeBatchReport(t, fx.CLI.reportsDir)
+	// report lands on disk, self-reporting the worktree's real HEAD (the
+	// recovery path cross-checks head_sha against the worktree exactly like
+	// record-batch does).
+	writeBatchReport(t, fx.CLI.reportsDir, strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD")))
 
 	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
 	// -- recoverSpawn/archiveStaleReport never runs again, so the report
@@ -584,5 +633,69 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	}
 	if _, statErr := os.Stat(fx.CLI.layout.WeftWorktree()); !os.IsNotExist(statErr) {
 		t.Errorf("weft worktree dir exists after ErrRunBusy; want no weft commit ever attempted (stat err = %v)", statErr)
+	}
+}
+
+// seedPersistentPreRunFixture returns a fresh host-hub git fixture with
+// shuttle/reed/webster config seeded (webster.yaml's raw content is
+// caller-supplied, so a test can override its batcher: key) and chdir'd
+// into the host hub -- unlike every other test in this file, this one
+// drives Command()'s real PersistentPreRunE (never bypassing it with a
+// hand-built *websterCLI literal), since load-time batcher selection is
+// wired there.
+func seedPersistentPreRunFixture(t *testing.T, websterConfig string) lyxtest.HostFixture {
+	t.Helper()
+	fixture := lyxtest.CopyHostHub(t)
+	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+		"shuttle": shuttleengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
+		"webster": websterConfig,
+	})
+	t.Chdir(fixture.Hub)
+	return fixture
+}
+
+// TestPersistentPreRunE_UnknownBatcherFailsFast proves the load-time
+// batcher selection (batcher.Select(cfg.Batcher), wired into
+// PersistentPreRunE) is a true fail-fast gate: an unknown webster.yaml
+// batcher: name aborts before any verb's RunE ever runs, with an
+// output.Err envelope naming the bad batcher key -- proven here via the
+// `status` verb, which never itself touches the batcher.
+func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
+	websterConfig := strings.Replace(websterengine.ConfigTemplate(), `batcher: ""`, `batcher: "bogus"`, 1)
+	seedPersistentPreRunFixture(t, websterConfig)
+
+	var out strings.Builder
+	exitCode := RunCLI(&out, []string{"status"})
+
+	if exitCode != 1 {
+		t.Fatalf("status with an unknown batcher: name = %d; want 1, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"ok":false`) {
+		t.Errorf("output missing ok:false; got %q", got)
+	}
+	// The message is JSON-encoded (its literal quotes become \"), so match
+	// the two substrings separately rather than the raw Go-quoted form.
+	if !strings.Contains(got, "unknown batcher") || !strings.Contains(got, "bogus") {
+		t.Errorf("output missing the unknown-batcher message; got %q", got)
+	}
+}
+
+// TestPersistentPreRunE_DefaultBatcherResolves proves the default (empty)
+// webster.yaml batcher: key resolves to the identity batchifier and the
+// command proceeds normally through the rest of PersistentPreRunE and into
+// the verb's own RunE.
+func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
+	seedPersistentPreRunFixture(t, websterengine.ConfigTemplate())
+
+	var out strings.Builder
+	exitCode := RunCLI(&out, []string{"status"})
+
+	if exitCode != 0 {
+		t.Fatalf("status with the default batcher: name = %d; want 0, output: %s", exitCode, out.String())
+	}
+	if !strings.Contains(out.String(), `"initialized":false`) {
+		t.Errorf("output missing initialized:false; got %q", out.String())
 	}
 }

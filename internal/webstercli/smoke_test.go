@@ -27,8 +27,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -342,12 +343,12 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
 		t.Fatalf("mkdir reports dir: %v", err)
 	}
-	reportPath := filepath.Join(reportsDir, builderengine.BatchReportFileName(1, "alpha"))
+	reportPath := filepath.Join(reportsDir, websterengine.ReportFileName(1, "alpha"))
 	crashedSession := mintSessionID(t)
 
 	prompt := "Spawn exactly one Agent-tool subagent with subagent_type set to \"fork\" and NO name. " +
 		"Instruct the fork to create the file " + reportPath + " with exactly this content and nothing else:\n" +
-		"batch: 01-alpha\nstatus: done\ntests: green\nstuck_reason: null\n" +
+		"status: OK\nhead_sha: " + startSHA + "\n" +
 		"After the fork returns, stop."
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -387,7 +388,7 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 		},
 	}
 	deps := websterengine.RecordDeps{
-		Plan:         &builderengine.Plan{Batches: []builderengine.PlanBatch{{Number: 1, Slug: "alpha"}}},
+		Batches:      []batcher.Batch{{Cards: []planparser.Card{{Number: 1, Slug: "alpha"}}}},
 		State:        state,
 		Engine:       eng,
 		Layout:       layout,
@@ -402,7 +403,7 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordBatch() error = %v; want the crashed session's report consumed", err)
 	}
-	if result.Digest == nil || result.Digest.Status != builderengine.DigestStatusDone {
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
 	if !state.Batches[1].Terminal {
@@ -424,14 +425,14 @@ func TestSmoke_AwaitBatchSeesForkWrittenReport(t *testing.T) {
 	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
 		t.Fatalf("mkdir reports dir: %v", err)
 	}
-	reportPath := filepath.Join(reportsDir, builderengine.BatchReportFileName(1, "alpha"))
+	reportPath := filepath.Join(reportsDir, websterengine.ReportFileName(1, "alpha"))
 
 	prompt := "Spawn exactly one Agent-tool subagent with subagent_type set to \"fork\" and NO name. " +
 		"Instruct the fork to create the file " + reportPath + " with exactly this content and nothing else:\n" +
-		"batch: 01-alpha\nstatus: done\ntests: green\nstuck_reason: null\n" +
+		"status: OK\nhead_sha: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n" +
 		"After the fork returns, stop."
 
-	plan := &builderengine.Plan{Batches: []builderengine.PlanBatch{{Number: 1, Slug: "alpha"}}}
+	batches := []batcher.Batch{{Cards: []planparser.Card{{Number: 1, Slug: "alpha"}}}}
 
 	// Launch the fork run in the background so AwaitBatch genuinely polls a
 	// report that does not yet exist when the poll begins — the real
@@ -447,7 +448,7 @@ func TestSmoke_AwaitBatchSeesForkWrittenReport(t *testing.T) {
 	// AwaitBatch blocks up to its wait budget, returning the instant the report
 	// appears; a generous budget keeps a slow real fork from timing the poll
 	// out before it writes.
-	result, err := websterengine.AwaitBatch(plan, reportsDir, 1, 5*time.Minute, recoverRealClock{})
+	result, err := websterengine.AwaitBatch(batches, reportsDir, 1, 5*time.Minute, recoverRealClock{})
 	if err != nil {
 		t.Fatalf("AwaitBatch: %v", err)
 	}

@@ -2,8 +2,11 @@
 // bracket call immediately before forking a batch's implementer. It runs
 // websterengine.BeginBatch under the state-mutation lease (load, mutate,
 // save, release), then performs the first of webster's four weft-commit
-// points (see the discussion's weft-ownership decision) -- state.json and
-// the freshly-written fork prompt now durable before Master ever forks.
+// points (see the discussion's weft-ownership decision) -- state.json (the
+// batch's start-SHA and record) durable before Master ever forks. The
+// freshly-written fork prompt is deliberately NOT part of that commit:
+// websterWeftPathspec excludes prompts/* as machine-local re-renderable
+// artifacts (BeginBatch rewrites a batch's own prompt on every begin).
 // ErrPaused is an operational refusal, not a hard error: Master reads the
 // {"paused": true} envelope and writes its own outcome.yaml with
 // outcome: paused, mirroring buildercli's own pausedEnvelope pattern but
@@ -17,37 +20,30 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
 
 // beginBatchCmd builds the `begin-batch <NN>` subcommand.
 func (c *websterCLI) beginBatchCmd() *cobra.Command {
-	var restartChain bool
-
 	cmd := &cobra.Command{
 		Use:   "begin-batch <NN>",
 		Short: "Master's bracket call immediately before forking one batch's implementer",
 		Long: `begin-batch <NN> checks the webster pause flag (refusing with a
 "paused": true envelope if "lyx webster pause" was called), refuses loud
 when the batch's report file already exists (finished work is never
-silently overwritten -- a stuck batch escalates via recover-batch, a stuck
-chain via --restart-chain), records the
-batch's start-SHA in state.json, asserts the model that batch's own
-oversized: frontmatter requires (idempotent -- a repeated call for the same
-batch never re-injects a switch Master's pane is already running), renders
-and writes that batch's fork prompt (carrying the previous batch's own
-persisted digest), and returns the prompt path Master forwards to its
-Agent-tool fork call verbatim. --restart-chain resets the deferred-verify
-chain's rollback anchor before beginning, re-pointing at the chain's lowest
-member regardless of which member NN names.
+silently overwritten -- a stuck batch escalates via recover-batch), records
+the batch's start-SHA in state.json, idempotently asserts Master's model for
+this batch (a repeated call for the same batch never re-injects a switch
+Master's pane is already running), renders and writes that batch's fork
+prompt (carrying the previous batch's own persisted digest), and returns the
+prompt path Master forwards to its Agent-tool fork call verbatim.
 
 Example:
-  lyx webster begin-batch 3
-  lyx webster begin-batch 3 --restart-chain`,
+  lyx webster begin-batch 3`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
@@ -62,11 +58,12 @@ Example:
 				return nil
 			}
 
-			plan, err := builderengine.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.planDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+			batches := c.batcher.Batch(plan.Cards)
 
 			// Hold the state-mutation lease across the whole load ->
 			// BeginBatch (guards + mutate) -> SaveState sequence: every
@@ -96,6 +93,7 @@ Example:
 
 			deps := websterengine.BeginDeps{
 				Plan:         plan,
+				Batches:      batches,
 				State:        st,
 				Roles:        c.roles,
 				Config:       c.cfg,
@@ -108,7 +106,7 @@ Example:
 				PromptsDir:   c.promptsDir,
 			}
 
-			result, err := websterengine.BeginBatch(deps, batchNumber, restartChain)
+			result, err := websterengine.BeginBatch(deps, batchNumber)
 			if err != nil {
 				// Nothing to persist: BeginBatch mutates deps.State only on
 				// its success path, so the lease is released with no
@@ -151,8 +149,6 @@ Example:
 			return nil
 		},
 	}
-
-	cmd.Flags().BoolVar(&restartChain, "restart-chain", false, "reset the host repo to this batch's deferred-verify chain start SHA before beginning")
 
 	return cmd
 }

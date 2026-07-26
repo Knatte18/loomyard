@@ -1,16 +1,15 @@
 # Plan format v3 — flat card list
 
 > **Status: Contract — pinned.** This doc pins **plan-format v3**: the flat card-list plan
-> schema that [webster](../../manifest/designs/webster-rewrite.md) consumes once it lands. Per
-> the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable
-> reference doc that is kept — it does not get deleted once webster ships.
+> schema webster (`internal/websterengine`, via its sole parser `internal/planparser`)
+> consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is
+> a durable reference doc that is kept — it did not get deleted when webster shipped.
 >
 > **Coexistence, not replacement.** v3 does not retire v2 today. [plan-format.md
-> v2](plan-format.md) stays live and valid — the currently shipped `builder`/`webster` code
-> still parses it — and retires only when the **webster: rewrite for flat card list** roadmap
-> item lands and `builder` is deleted (v3 wins at that point). Until then the two formats
-> coexist: v2 is what shipped code consumes now; v3 is the format the (not-yet-built) webster
-> rewrite consumes.
+> v2](plan-format.md) stays live and valid — the frozen `builder` still parses it — and
+> retires only when `builder` is deleted (v3 wins at that point). Until then the two formats
+> coexist: v2 is what the frozen `builder` consumes; v3 is what the shipped webster
+> consumes.
 
 ## What a card is
 
@@ -245,14 +244,13 @@ what they'd depend on.
 `Creates:` ∪ `Deletes:` ∪ both `Moves:` endpoints) — is the artifact webster's future
 contract-verification compares actual changed files against (a fork reports `OK, SHA <x>` or a
 deviation note; a file-list mismatch against `changes-files` is always informational, never
-blocking on its own). See
-[../../manifest/designs/webster-rewrite.md](../../manifest/designs/webster-rewrite.md) for the
+blocking on its own). See `internal/websterengine`'s package documentation for the
 verification semantics.
 
-The detailed continuous-DAG-update / symbol-matching / SCC-merging **scheduling** design now
-lives in `webster-rewrite.md`'s scheduling section (a pointer only here — the detail is relocated
-there, not reproduced in this reference doc):
-[../../manifest/designs/webster-rewrite.md](../../manifest/designs/webster-rewrite.md#scheduling-no-dag-no-scc-merging-in-v0).
+The detailed continuous-DAG-update / symbol-matching / SCC-merging **scheduling** design is
+summarized in `internal/websterengine`'s package documentation ("Declared order now, a dead
+DAG seam for later") — v0 runs strictly in declared order; the eventual DAG scheduler waits
+on codeintel-backed symbol fields.
 
 A parked, more aggressive parallel-execution idea also exists — see
 [../../manifest/designs/webster-parallel-execution.md](../../manifest/designs/webster-parallel-execution.md).
@@ -434,8 +432,8 @@ escaping it for the files each card needs outside the shared prefix.
 
 ## Related
 
-- [webster-rewrite.md](../../manifest/designs/webster-rewrite.md) — the module that consumes
-  this format.
+- [builder-contract.md](builder-contract.md#webster-the-fork-based-sibling) and
+  `internal/websterengine`'s package documentation — the module that consumes this format.
 - [fabric.md](../../manifest/designs/fabric.md) — `ChangedFilesSince`/`SHAExists` used for
   contract verification.
 - [codeintel-redesign.md](../../manifest/designs/codeintel-redesign.md) — the module the symbol

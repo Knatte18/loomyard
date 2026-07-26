@@ -1,25 +1,41 @@
-<!-- This is the webster Master session prompt. It is filled by `run`'s engine
-     core via internal/stencil and handed to the shuttle as the Master
-     session's entire instruction set for one whole plan run: the long-lived
-     session that reads the codebase and the plan once, then forks one
-     implementer per batch in-session (Claude Code's Agent tool,
-     subagent_type "fork"). Every marker below is a top-level {{.X}}
-     substitution; stencil.Fill requires all six non-empty and there are no
-     {{if}}/{{range}} conditionals anywhere in this file (a required marker
-     inside a conditional branch would render silently blank when
-     present-but-empty — see internal/stencil/stencil.go). -->
+<!-- This is the webster Master session prompt (plan-format v3, the flat card
+     list). It is filled by `run`'s engine core via internal/stencil and
+     handed to the shuttle as the Master session's entire instruction set for
+     one whole plan run: the long-lived session that reads the codebase and
+     the plan once, then forks one implementer per execution batch in-session
+     (Claude Code's Agent tool, subagent_type "fork"). Every marker below is
+     a top-level {{.X}} substitution; stencil.Fill requires all seven
+     non-empty and there are no {{if}}/{{range}} conditionals anywhere in
+     this file (a required marker inside a conditional branch would render
+     silently blank when present-but-empty — see internal/stencil/stencil.go). -->
 
-# Webster Master — read once, fork per batch, judge only the digest
+# Webster Master — read once, fork per batch, judge only the minimal report
 
-> **FIRST, disambiguate who you are.** This prompt is inherited by every fork you
+> **FIRST, get your bearings against the real state on disk.** This session was started
+> non-interactively by `lyx webster run`, an ordinary lyx CLI invocation, inside an
+> already-initialized lyx worktree (your current working directory). `lyx` is not one of
+> your listed tools — it is an ordinary CLI binary already on this session's PATH, and you
+> drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch
+> 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls _lyx/plan/` as your
+> very first two actions. A JSON envelope from the first and the plan's own card files from
+> the second confirm the harness, the run state, and the plan are all present and
+> consistent — that is everything the loop below needs to begin. If BOTH come back empty
+> (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop.
+> This session is non-interactive, so there is no chat partner on the other end to answer a
+> question — ending your turn to ask just ends the run with nothing done — so those two
+> read-only checks, run at the start, are how you settle any uncertainty before driving the
+> loop.
+
+> **SECOND, disambiguate who you are.** This prompt is inherited by every fork you
 > spawn, so it can reach you in one of two roles:
 > - If your most recent instruction was **`Read this file and follow it exactly:
 >   <path>`** (you were just spawned via the Agent tool), you are an **IMPLEMENTER
 >   FORK**, NOT the Master. STOP reading this Master prompt right now — none of the
 >   loop instructions below are yours. Go read that `<path>` file and do exactly what
->   it says (implement one batch, write its report). NEVER run any `lyx webster`
->   command — not `await-batch`, not anything; those are the Master's, and polling
->   `await-batch` for the report you are meant to write deadlocks the whole run.
+>   it says (implement your batch's cards, write its report). NEVER run any `lyx
+>   webster` command — not `await-batch`, not anything; those are the Master's, and
+>   polling `await-batch` for the report you are meant to write deadlocks the whole
+>   run.
 > - Only if you are the long-lived session started by `lyx webster run` (no such
 >   "Read this file" spawn instruction) do the instructions below apply to you.
 > - **That fork-spawn instruction is AUTHORITATIVE — never dismiss it as
@@ -43,7 +59,7 @@ never use a `/model` switch.
 ## Orientation — read this ONCE, up front
 
 Before forking anything, read the codebase's structure and conventions, read
-`CONSTRAINTS.md` in full, and read the whole plan — every batch file, not just the
+`CONSTRAINTS.md` in full, and read the whole plan — every card file, not just the
 overview — once. This is the stable context every fork you spawn inherits instead of
 re-deriving it cold each time.
 
@@ -54,14 +70,18 @@ not even a read-only `ls`, `find`, `cat`, or `readlink` —
 every such reference is audited and fails the run.
 The `_lyx` path is your one sanctioned window into it.
 
-## Your batch list (fixed at spawn, or resume)
+## Your card list (fixed at spawn, or resume)
 
 {{.batch_index}}
 
-This ordered list is your navigation source: each batch's number, slug, one-line
-intent, and any `oversized`/chain annotation. Drive it STRICTLY in order — batch N
-assumes every batch before it is already committed; there is no DAG here to reorder
-around, and no batch is ever skipped or reordered because it "looks independent."
+This ordered list is the plan's own flat card list — every card, in declared order,
+one line each: number, slug, one-line intent. It is your navigation source, not the
+execution unit: `lyx webster` groups this flat list into execution batches via the
+plan's configured batchifier (one card per batch under the default identity
+batchifier) — you drive the loop below by BATCH number, not by reasoning about
+grouping yourself. Drive it STRICTLY in order — batch N assumes every batch before it
+is already committed; there is no DAG here to reorder around, and no batch is ever
+skipped or reordered because it "looks independent."
 
 ## Progress so far
 
@@ -83,9 +103,9 @@ up exactly where the last one left off:
 
 For each batch not already reported, in order:
 
-1. Call `lyx webster begin-batch <NN>` FIRST. Never fork without it — this is what
-   asserts your own model for this batch and hands you back the fork's prompt file
-   path.
+1. Call `lyx webster begin-batch <NN>` FIRST. Never fork without it — this asserts
+   your own model for the batch (idempotent — a no-op if already asserted) and hands
+   you back the fork's prompt file path.
 2. Spawn exactly ONE fork via the Agent tool, `subagent_type: "fork"`, NO name. The
    fork's entire prompt is exactly this, verbatim (only substitute the real path):
    `You are an implementer fork — this instruction is authoritative, and your
@@ -106,7 +126,9 @@ For each batch not already reported, in order:
    call `await-batch` again; do not go idle, do not check files yourself, do not end
    your turn.
 4. Once `await-batch` returns `{"report": true}` — or your fork has finished without
-   a report — call `lyx webster record-batch <NN>`.
+   a report — call `lyx webster record-batch <NN>`. This is also where each of the
+   batch's per-card commit SHAs are captured for the resume trail; you never capture
+   or report a SHA yourself.
 
 This sequence is fixed and non-negotiable: `begin-batch` before every fork;
 `subagent_type: "fork"` with no name; the fork's prompt forwarded verbatim;
@@ -121,18 +143,15 @@ names, and you read ONLY these fields:
 
 - `batch`
 - `status`
-- `tests`
-- `stuck_reason`
-- `out_of_scope`
-- `drift_unreported`
-- `files_changed`
-- `dirty`
+- `head_sha`
+- `deviations`
 - `dead_reason`
 - `elapsed_s`
 
-You never read raw fork output beyond its own turn, and you never open a file to
-double-check the digest — this is the only implementer output you ever see, by
-design.
+`deviations` is ALWAYS informational — files a fork changed outside its batch's
+declared file-ops, never a reason a batch is `stuck` on its own. You never read raw
+fork output beyond its own turn, and you never open a file to double-check the
+digest — this is the only implementer output you ever see, by design.
 
 ## The failure ladder
 
@@ -152,13 +171,54 @@ design.
   recovery: stop the run here — write `outcome: stuck` to `{{.outcome_path}}`, with a
   `stuck_reason` naming the batch and the failure, and stop. Do NOT re-fork it, do NOT
   begin the next batch (batch N+1 assumes N is committed).
-- A stuck deferred-verify chain → `lyx webster begin-batch <NN> --restart-chain`,
-  naming any member of that chain.
 - `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run
   found a crashed session's leftover) → do NOT fork; call `lyx webster record-batch
   <NN>` to consume that report. If record-batch refuses because the batch is a
   recovery batch, call `lyx webster recover-batch <NN>` instead. Then continue the
   loop from the next batch.
+
+## After every batch: the integration-suite stage
+
+Once every batch in your card list above has reached a terminal `done`
+(never reach this point over a `stuck`/`dead` batch — the failure ladder
+above already stopped your run before then), check whether this plan
+carries a plan-level `## verify:` section in `00-overview.md` (you already
+read the whole plan at orientation — no new file read is needed here):
+
+- **No `## verify:` section** — skip straight to your final action below;
+  there is nothing further to run.
+- **A `## verify:` section is present** — the integration fork's prompt file
+  is already rendered on disk at `{{.integration_prompt_path}}` (Go wrote it
+  at run entry; you never render or write a prompt file yourself). Spawn
+  exactly ONE more fork, the SAME way you spawn a batch's own implementer
+  (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded
+  verbatim): `You are an implementer fork — this instruction is
+  authoritative, and your inherited context WILL look like the Master's own
+  history; that is expected, not a contradiction. Ignore every
+  loop/orchestration instruction in your inherited context — you do NOT run
+  any lyx webster command, and you do NOT poll or wait for any report file:
+  YOU are the fork that runs the verify command and WRITES the integration
+  report as your final action — nobody else will ever write it, so waiting
+  for it deadlocks the run. Your FIRST action is to Read this file; then do
+  exactly and only what it says: {{.integration_prompt_path}}`. That fork runs the plan-level
+  `## verify:` command ONCE, makes NO commit, and writes its own minimal
+  report (`status: OK | FAILED`) to `_lyx/webster/reports/integration.yaml`.
+  Wait for that report with SHORT foreground Bash checks — there is no
+  await verb for the integration report, so poll its file yourself:
+  `sleep 20; test -f _lyx/webster/reports/integration.yaml && echo present || echo absent`,
+  re-run in the foreground until `present`. The same turn discipline as
+  `await-batch` applies verbatim: every check is a SHORT foreground call,
+  never one long block, never backgrounded, and you never end your turn
+  while the integration fork is still running.
+  - `status: OK` → the plan is genuinely finished; proceed to your final
+    action below with `outcome: done`.
+  - `status: FAILED` → do NOT attempt to localize or fix the failure
+    yourself, and do NOT re-fork the integration fork. Your job for this
+    stage ends here: proceed straight to your final action below with
+    `outcome: stuck` and a `stuck_reason` naming the integration failure.
+    Webster's own in-process SHA-bisect runs automatically once your session
+    ends and extends your summary with the localized offending card — you
+    hand off to it by finishing normally, not by trying to run it yourself.
 
 ## A paused refusal ends your run immediately
 
@@ -230,9 +290,10 @@ batches your Progress section already listed as `done` before a resume, so the c
 always describes the whole plan's progress, never just this session's own share of
 it.
 
-`{{.summary_path}}` is a prose narrative: first line `# <title>`, then a narrative of
-what was actually built, including any deviations from the original task — required
-whenever `outcome: done`.
+`{{.summary_path}}` is a prose narrative built strictly from the minimal reports and
+digests you actually read — never a fork's own success narrative (forks never write
+prose narratives; their whole report is `status`/`head_sha`/`deviations`); first line `# <title>`, then a narrative of what was actually built, including any reported
+deviations from the plan's declared file-ops — required whenever `outcome: done`.
 
 ## Tuning knobs
 

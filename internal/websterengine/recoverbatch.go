@@ -2,16 +2,15 @@
 // exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach
 // (the only place webster spawns a genuinely separate process — escalating
 // a batch a fork reported stuck, or never reported at all, to a cold
-// implementer strand at the recovery role, reusing builderengine's
-// SpawnBatch machinery by import: the stencil-filled implementer template,
-// the shuttleengine.Spec construction, and the cross-process FindRun
-// resolution), RecoverAwait (the bounded wait, reusing builder's own
-// classification machinery — Classify/PollUntilTerminal/TurnEnded/
-// StrandLive), and PersistRecoveryTerminal (the terminal digest merge into
-// a freshly reloaded state). First call spawns and records; every call (the
-// first included) blocks at most one wait window and returns either the
-// terminal digest or a running snapshot; a caller (webstercli) re-calls
-// until terminal.
+// implementer strand at the recovery role, rendering the SAME fork prompt a
+// fork would have gotten via RenderForkPrompt, since the recovery strand
+// implements the same batch), RecoverAwait (the bounded wait, over
+// webster's own classification machinery — Classify/PollUntilTerminal/
+// TurnEnded/StrandLive), and PersistRecoveryTerminal (the terminal digest
+// merge into a freshly reloaded state). First call spawns and records;
+// every call (the first included) blocks at most one wait window and
+// returns either the terminal digest or a running snapshot; a caller
+// (webstercli) re-calls until terminal.
 //
 // The three-phase split exists for the state-mutation lease: the caller
 // holds it across spawn-or-attach and across the terminal persist, but
@@ -30,42 +29,44 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
 // Clock abstracts time.Now/time.Sleep so RecoverBatch's bounded wait runs
 // instantly under test, mirroring shuttleengine's wait.go seam and
-// builderengine's own poll.go clock. Clock is deliberately a plain,
-// exported webster-local interface — it structurally satisfies
-// builderengine's unexported clock interface (identical Now/Sleep method
-// set), which is what lets RecoverBatch hand a Clock value straight to
-// builderengine.PollUntilTerminal without any adapter: Go interface
-// satisfaction is structural, not by declared type identity, so this is the
-// documented reuse path, not a coincidence.
+// webster's own poll.go clock. Clock is deliberately a plain, exported
+// webster-local interface — it structurally satisfies poll.go's unexported
+// clock interface (identical Now/Sleep method set), which is what lets
+// RecoverBatch hand a Clock value straight to PollUntilTerminal without any
+// adapter: Go interface satisfaction is structural, not by declared type
+// identity.
 type Clock interface {
 	Now() time.Time
 	Sleep(time.Duration)
 }
 
 // RecoverDeps carries every seam RecoverBatch needs, so a test can fake each
-// one independently: Starter spawns the cold recovery strand (exactly
-// builderengine.Starter's signature — production code passes a real
-// *shuttleengine.Runner); Plan and State are the already-parsed/loaded plan
-// and run state RecoverBatch reads and mutates; Roles is the pre-flight-
-// resolved role->model-spec map (see ResolveRoles); Config is the loaded
-// webster.yaml; Engine supplies TurnEnded's event-grammar parsing; Reed is
-// the live reed query surface StrandLive/RemoveStrand consult; ShuttleCfg and
-// Layout are what shuttleengine.FindRun needs to resolve the just-started
-// run's cross-process identity; WorktreeRoot, WebsterDir, and ReportsDir are
-// the hubgeometry-resolved host checkout, _lyx/webster, and
+// one independently: Starter spawns the cold recovery strand (see strand.go's
+// Starter — production code passes a real *shuttleengine.Runner); Plan is
+// the already-parsed plan RenderForkPrompt reads its plan-level context
+// from; Batches is the batchifier-derived execution batches (see
+// internal/batcher.Select) `run` computed once at entry; State is the
+// already-loaded run state RecoverBatch reads and mutates; Roles is the
+// pre-flight-resolved role->model-spec map (see ResolveRoles); Config is the
+// loaded webster.yaml; Engine supplies TurnEnded's event-grammar parsing;
+// Reed is the live reed query surface StrandLive/RemoveStrand consult;
+// ShuttleCfg and Layout are what shuttleengine.FindRun needs to resolve the
+// just-started run's cross-process identity; WorktreeRoot, WebsterDir, and
+// ReportsDir are the hubgeometry-resolved host checkout, _lyx/webster, and
 // _lyx/webster/reports directories.
 type RecoverDeps struct {
-	Starter      builderengine.Starter
-	Plan         *builderengine.Plan
+	Starter      Starter
+	Plan         *planparser.Plan
+	Batches      []batcher.Batch
 	State        *State
 	Roles        map[Role]modelspec.Resolved
 	Config       Config
@@ -88,23 +89,14 @@ type RecoverDeps struct {
 // non-fatal substrate-cleanup failure observed at terminal classification,
 // never treated as a failure.
 type RecoverResult struct {
-	Digest   *builderengine.Digest
+	Digest   *Digest
 	Running  bool
 	ElapsedS int
 	Warnings []string
 }
 
-// recoverArchiveTimestampFormat is the UTC compact timestamp format
-// archiveStaleReport archives a stale batch report under — webster's own
-// copy of builder's archiveTimestampFormat (runlevel.go), which is
-// unexported and so not importable; the two format strings are kept
-// identical so an archived webster artifact sorts and reads the same way as
-// builder's own archived artifacts.
-const recoverArchiveTimestampFormat = "20060102T150405Z"
-
 // archiveStaleReport renames reportsDir's NN-<slug>.yaml, if present, to
-// NN-<slug>-<UTC-compact-timestamp>.yaml in place, mirroring
-// builderengine's own archiveStaleReport (spawn.go): the recovery path's
+// NN-<slug>-<UTC-compact-timestamp>.yaml in place: the recovery path's
 // archive-never-refuse escape. A recovery spawn re-uses the batch's own
 // report path as its sole shuttle OutputFiles entry, which both a
 // pre-existing-report guard and shuttle's own Spec.validate would refuse
@@ -112,11 +104,10 @@ const recoverArchiveTimestampFormat = "20060102T150405Z"
 // while keeping the stuck report auditable rather than deleting it. now is
 // a seam so tests can pin the timestamp; production callers pass time.Now.
 // Absent file: ("", nil), a no-op — a recovery spawn is legitimate even
-// when no prior report exists. Built on builderengine.FirstFreeArchivePath
-// so the same-second "-1"/"-2" collision rule lives in exactly one place,
-// per the reuse-by-import-never-copy decision.
+// when no prior report exists. Built on firstFreeArchivePath so the same-
+// second "-1"/"-2" collision rule lives in exactly one place.
 func archiveStaleReport(reportsDir string, number int, slug string, now func() time.Time) (string, error) {
-	path := filepath.Join(reportsDir, builderengine.BatchReportFileName(number, slug))
+	path := filepath.Join(reportsDir, ReportFileName(number, slug))
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -125,9 +116,9 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	}
 
 	const ext = ".yaml"
-	base := strings.TrimSuffix(builderengine.BatchReportFileName(number, slug), ext)
-	stamp := now().UTC().Format(recoverArchiveTimestampFormat)
-	target, err := builderengine.FirstFreeArchivePath(func(suffix string) string {
+	base := strings.TrimSuffix(ReportFileName(number, slug), ext)
+	stamp := now().UTC().Format(archiveTimestampFormat)
+	target, err := firstFreeArchivePath(func(suffix string) string {
 		return filepath.Join(reportsDir, fmt.Sprintf("%s-%s%s%s", base, stamp, suffix, ext))
 	})
 	if err != nil {
@@ -141,33 +132,33 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 }
 
 // refuseRecoveringDoneReport is recoverSpawn's finished-work guard: when the
-// batch's on-disk report already parses to status: done, spawning a recovery
+// batch's on-disk report already parses to status: OK, spawning a recovery
 // strand would silently archive finished work away and pay for a cold
 // implementer to redo a complete batch — record-batch, not recover-batch, is
-// the verb that consumes a done report (found live in round fable-r1: a
+// the verb that consumes an OK report (found live in round fable-r1: a
 // record-batch-wedged Master recovered two already-done batches). The ONE
 // exception mirrors builder's dead-respawn rule: a batch whose persisted
-// state is terminal dead may carry a LATE done report its orphaned strand
+// state is terminal dead may carry a LATE OK report its orphaned strand
 // wrote after the classification — that report is archive-never-refuse
 // material, so the guard steps aside. A missing or unparseable report also
 // steps aside: recovery is exactly the path for a batch with no usable
 // report.
-func refuseRecoveringDoneReport(reportsDir string, batch builderengine.PlanBatch, prior *BatchState) error {
-	// The dead-orphan late-report exception: builder's ladder archives, never
+func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prior *BatchState) error {
+	// The dead-orphan late-report exception: the ladder archives, never
 	// refuses, a report the orphan wrote after a dead classification.
-	if prior != nil && prior.Terminal && prior.Status == builderengine.DigestStatusDead {
+	if prior != nil && prior.Terminal && prior.Status == DigestStatusDead {
 		return nil
 	}
 
-	reportPath := filepath.Join(reportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
-	report, err := builderengine.ParseReport(reportPath)
+	reportPath := filepath.Join(reportsDir, ReportFileName(number, slug))
+	report, err := ParseReport(reportPath)
 	if err != nil {
 		// Absent or malformed: nothing finished to protect — recovery is the
 		// designed path for exactly this state.
 		return nil
 	}
-	if report.Status == builderengine.ReportStatusDone {
-		return fmt.Errorf("webster: batch %02d-%s already has a report with status: done at %s — recover-batch never archives finished work; record it with `lyx webster record-batch %d` instead", batch.Number, batch.Slug, reportPath, batch.Number)
+	if report.Status == ReportStatusOK {
+		return fmt.Errorf("webster: batch %02d-%s already has a report with status: OK at %s — recover-batch never archives finished work; record it with `lyx webster record-batch %d` instead", number, slug, reportPath, number)
 	}
 	return nil
 }
@@ -178,56 +169,53 @@ func refuseRecoveringDoneReport(reportsDir string, batch builderengine.PlanBatch
 // output path), stop prior's recorded strand when it is still live (a
 // timed-out implementer may still be WORKING, not hung, and left alive it
 // races the fresh session — the same reclaim discipline builder's
-// dead-respawn ladder applies), fill builderengine.ImplementerTemplate()
-// via stencil.Fill with the batch's markers (a cold recovery session gets
-// builder's full implementer orientation, per discussion.md
-// single-model-forks-and-cold-recovery), build and start the
-// shuttleengine.Spec at the recovery role, and resolve the just-started
-// run's cross-process identity via shuttleengine.FindRun. prior is the
-// batch's existing BatchState, if any (nil for a batch that has never been
-// touched by begin-batch or a prior recovery); its StrandGUID (empty for a
-// plain fork batch, since only recovery batches carry strand fields) is the
-// only field this function reads from it. clk stamps SpawnedAt (clk.Now(),
-// never the wall clock directly) so the elapsed-since-spawn measurement
-// awaitTerminal performs later is computed against the SAME clock a caller
-// injects for the whole call — the property a fake clock's tests depend on.
-// Returns the freshly-built BatchState the caller records into
+// dead-respawn ladder applies), render the SAME fork prompt a fork would
+// have gotten via RenderForkPrompt (the recovery strand implements the same
+// batch), build and start the shuttleengine.Spec at the recovery role, and
+// resolve the just-started run's cross-process identity via
+// shuttleengine.FindRun. prior is the batch's existing BatchState, if any
+// (nil for a batch that has never been touched by begin-batch or a prior
+// recovery); its StrandGUID (empty for a plain fork batch, since only
+// recovery batches carry strand fields) is the only field this function
+// reads from it. clk stamps SpawnedAt (clk.Now(), never the wall clock
+// directly) so the elapsed-since-spawn measurement awaitTerminal performs
+// later is computed against the SAME clock a caller injects for the whole
+// call — the property a fake clock's tests depend on. Returns the
+// freshly-built BatchState the caller records into
 // deps.State.Batches[batchNumber].
-func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchState, clk Clock) (*BatchState, error) {
-	if err := refuseRecoveringDoneReport(deps.ReportsDir, batch, prior); err != nil {
+func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
+	number, slug := batchIdentity(batch)
+
+	if err := refuseRecoveringDoneReport(deps.ReportsDir, number, slug, prior); err != nil {
 		return nil, err
 	}
 
-	if _, err := archiveStaleReport(deps.ReportsDir, batch.Number, batch.Slug, clk.Now); err != nil {
+	// Same reports-dir guarantee BeginBatch makes for a fork batch: the
+	// recovery strand's report write must never fail on a missing parent dir
+	// (a recover-batch can legitimately be the first verb to ever need it).
+	if err := os.MkdirAll(deps.ReportsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
+	}
+
+	if _, err := archiveStaleReport(deps.ReportsDir, number, slug, clk.Now); err != nil {
 		return nil, err
 	}
 
 	if prior != nil {
-		if err := builderengine.RemoveStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
+		if err := removeStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {
 			return nil, err
 		}
 	}
 
-	batchName := fmt.Sprintf("%02d-%s", batch.Number, batch.Slug)
-	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug)))
+	batchName := fmt.Sprintf("%02d-%s", number, slug)
+	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, ReportFileName(number, slug)))
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
-	batchFilePath, err := filepath.Abs(filepath.Join(deps.Plan.Dir, batch.File))
-	if err != nil {
-		return nil, fmt.Errorf("webster: resolve batch file path: %w", err)
-	}
 
-	values := map[string]string{
-		"batch_file":    batchFilePath,
-		"batch_name":    batchName,
-		"report_path":   reportPath,
-		"self_fix_cap":  fmt.Sprintf("%d", deps.Config.SelfFixCap),
-		"worktree_root": deps.WorktreeRoot,
-	}
-	prompt, err := stencil.Fill(builderengine.ImplementerTemplate(), values)
+	prompt, err := RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.WorktreeRoot, deps.Config.SelfFixCap)
 	if err != nil {
-		return nil, fmt.Errorf("webster: fill implementer template: %w", err)
+		return nil, err
 	}
 
 	resolved, ok := deps.Roles[RoleRecovery]
@@ -256,13 +244,13 @@ func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchS
 		return nil, fmt.Errorf("webster: resolve spawned recovery run: %w", err)
 	}
 
-	head, err := builderengine.HeadSHA(deps.WorktreeRoot)
+	head, err := headSHA(deps.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
 
 	return &BatchState{
-		Slug:          batch.Slug,
+		Slug:          slug,
 		StartSHA:      head,
 		Kind:          "recovery",
 		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
@@ -284,7 +272,7 @@ func recoverSpawn(deps RecoverDeps, batch builderengine.PlanBatch, prior *BatchS
 // responsible for persisting deps.State via SaveState when spawned is true.
 // This function never calls SaveState and never touches weft.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
-	batch, err := findBatch(deps.Plan, batchNumber)
+	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
 		return nil, false, err
 	}
@@ -294,7 +282,14 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		return prior, false, nil
 	}
 
-	fresh, err := recoverSpawn(deps, batch, prior, clk)
+	var prevDigest string
+	if batchNumber > 1 {
+		if prev, ok := deps.State.Batches[batchNumber-1]; ok && prev != nil {
+			prevDigest = digestSummaryLine(prev.Digest)
+		}
+	}
+
+	fresh, err := recoverSpawn(deps, batch, prior, prevDigest, clk)
 	if err != nil {
 		return nil, false, err
 	}
@@ -317,7 +312,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 // re-acquires the lease and persists a terminal digest into a FRESHLY
 // loaded state via PersistRecoveryTerminal.
 func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
-	batch, err := findBatch(deps.Plan, batchNumber)
+	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +327,7 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 // terminal with digest and clears the in-flight cursor; a missing batch
 // record is a hard error, never silently recreated — the record was
 // persisted at spawn time and nothing in the normal flow removes it.
-func PersistRecoveryTerminal(st *State, batchNumber int, digest *builderengine.Digest) error {
+func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 	bs, ok := st.Batches[batchNumber]
 	if !ok || bs == nil {
 		return fmt.Errorf("webster: no recorded state for batch %d at recovery terminal persistence — state.json changed underneath the recovery wait", batchNumber)
@@ -340,22 +335,29 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *builderengine.D
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status
+	// Record the per-card SHA trail exactly as record-batch does for a fork
+	// batch: without it, a recovery-completed batch is a silent gap in the
+	// accumulated CardSHAs the integration-suite bisect searches, and the
+	// bisect blames the NEXT card in the gapped trail (found in crucible
+	// round fable-r1). A report-derived terminal digest always carries the
+	// head SHA; a dead classification carries none and contributes no trail
+	// entry, matching the batch's not-actually-built reality.
+	if digest.HeadSHA != "" {
+		bs.CardSHAs = []string{digest.HeadSHA}
+	}
 	st.CurrentBatch = 0
 	return nil
 }
 
 // awaitTerminal drives one bounded long-poll wait for bs's recovery strand:
-// a gather closure assembles builderengine.ClassifyInputs — the
-// report-presence branch of Classify (parsed only when the report file
-// exists), TurnEnded(bs.EventsPath, deps.Engine), StrandLive(deps.Reed,
-// bs.StrandGUID), Elapsed computed from bs.SpawnedAt (parsed once, up
-// front) so RecoveryTimeoutMin measures wall-clock time since the strand
-// was SPAWNED, not since this particular call started — the property that
-// makes the long-poll safely re-entrant across the tool-call ceiling — and
-// Changed/Dirty via the gitquery helpers, populated only once a report has
-// landed, mirroring Classify's own documented contract. gather is handed to
-// builderengine.PollUntilTerminal, which re-runs it on its fixed tick until
-// terminal or wait elapses.
+// a gather closure assembles ClassifyInputs — the report-presence branch of
+// Classify (parsed only when the report file exists), TurnEnded(bs.EventsPath,
+// deps.Engine), StrandLive(deps.Reed, bs.StrandGUID), Elapsed computed from
+// bs.SpawnedAt (parsed once, up front) so RecoveryTimeoutMin measures
+// wall-clock time since the strand was SPAWNED, not since this particular
+// call started — the property that makes the long-poll safely re-entrant
+// across the tool-call ceiling. gather is handed to PollUntilTerminal,
+// which re-runs it on its fixed tick until terminal or wait elapses.
 //
 // A non-terminal return after wait elapses reports RecoverResult{Running:
 // true, ElapsedS: <since spawn>} — nothing anywhere is mutated, so the
@@ -373,83 +375,82 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *builderengine.D
 // a warning on the result, never returned as a fatal error: the terminal
 // classification itself already succeeded, and a caller must not lose that
 // judgment over a best-effort housekeeping failure.
-func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
+func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
+	number, slug := batchIdentity(batch)
+
 	spawnedAt, err := time.Parse(time.RFC3339, bs.SpawnedAt)
 	if err != nil {
-		return nil, fmt.Errorf("webster: parse recorded spawnedAt %q for batch %d: %w", bs.SpawnedAt, batch.Number, err)
+		return nil, fmt.Errorf("webster: parse recorded spawnedAt %q for batch %d: %w", bs.SpawnedAt, number, err)
 	}
 
-	reportPath := filepath.Join(deps.ReportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
+	reportPath := filepath.Join(deps.ReportsDir, ReportFileName(number, slug))
 	timeout := time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute
 
-	gather := func() (builderengine.Digest, bool, error) {
-		var report *builderengine.Report
+	gather := func() (Digest, bool, error) {
+		var report *Report
 		if _, statErr := os.Stat(reportPath); statErr == nil {
-			r, err := builderengine.ParseReport(reportPath)
+			r, err := ParseReport(reportPath)
 			if err != nil {
-				return builderengine.Digest{}, false, err
+				return Digest{}, false, err
 			}
 			report = r
 		} else if !os.IsNotExist(statErr) {
-			return builderengine.Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
+			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := builderengine.TurnEnded(bs.EventsPath, deps.Engine)
+		turnEnded, err := TurnEnded(bs.EventsPath, deps.Engine)
 		if err != nil {
-			return builderengine.Digest{}, false, err
+			return Digest{}, false, err
 		}
-		strandLive, err := builderengine.StrandLive(deps.Reed, bs.StrandGUID)
+		strandLive, err := StrandLive(deps.Reed, bs.StrandGUID)
 		if err != nil {
-			return builderengine.Digest{}, false, err
+			return Digest{}, false, err
 		}
 
-		// Changed/Dirty are Distill's own inputs, populated only once a
-		// report has landed — a running snapshot never touches git, per
-		// ClassifyInputs' documented contract.
-		var changed []string
-		var dirty bool
-		if report != nil {
-			changed, err = builderengine.ChangedFiles(deps.WorktreeRoot, bs.StartSHA)
-			if err != nil {
-				return builderengine.Digest{}, false, err
-			}
-			dirty, err = builderengine.Dirty(deps.WorktreeRoot)
-			if err != nil {
-				return builderengine.Digest{}, false, err
-			}
-		}
-
-		in := builderengine.ClassifyInputs{
-			BatchNumber:  batch.Number,
-			BatchSlug:    batch.Slug,
+		in := ClassifyInputs{
+			BatchNumber:  number,
+			BatchSlug:    slug,
 			ReportPath:   reportPath,
 			Report:       report,
 			TurnEnded:    turnEnded,
 			StrandLive:   strandLive,
 			Elapsed:      clk.Now().Sub(spawnedAt),
 			BatchTimeout: timeout,
-			Changed:      changed,
-			Scope:        batch.Scope,
-			Dirty:        dirty,
 		}
-		digest, terminal := builderengine.Classify(in)
+		digest, terminal := Classify(in)
 		return digest, terminal, nil
 	}
 
-	digest, err := builderengine.PollUntilTerminal(gather, wait, clk)
+	digest, err := PollUntilTerminal(gather, wait, clk)
 	if err != nil {
 		return nil, err
 	}
 
 	elapsedS := int(clk.Now().Sub(spawnedAt).Seconds())
 
-	if digest.Status == builderengine.DigestStatusRunning {
+	if digest.Status == DigestStatusRunning {
 		return &RecoverResult{Running: true, ElapsedS: elapsedS}, nil
+	}
+
+	// A done/stuck classification is report-derived (dead never is), so its
+	// self-reported head_sha gets the same cross-check RecordBatch applies to
+	// a fork's report: a report disagreeing with the worktree it left behind
+	// is never trusted silently — the digest (and, for done, the bisect
+	// trail's CardSHAs entry) would otherwise carry a SHA that is not where
+	// the batch's work actually landed.
+	if digest.HeadSHA != "" {
+		actualHead, err := headSHA(deps.WorktreeRoot)
+		if err != nil {
+			return nil, err
+		}
+		if actualHead != digest.HeadSHA {
+			return nil, fmt.Errorf("webster: recovery report for batch %02d-%s: head_sha %q does not match the worktree's actual HEAD %q", number, slug, digest.HeadSHA, actualHead)
+		}
 	}
 
 	var warnings []string
 	removeStrand := func() {
-		if err := builderengine.RemoveStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
+		if err := removeStrandIfLive(deps.Reed, bs.StrandGUID); err != nil {
 			warnings = append(warnings, fmt.Sprintf("recover-batch: remove strand %s: %v", bs.StrandGUID, err))
 		}
 	}
@@ -463,14 +464,14 @@ func awaitTerminal(deps RecoverDeps, batch builderengine.PlanBatch, bs *BatchSta
 	}
 
 	switch digest.Status {
-	case builderengine.DigestStatusDone:
+	case DigestStatusDone:
 		removeStrand()
 		removeRunDir()
-	case builderengine.DigestStatusStuck:
+	case DigestStatusStuck:
 		// Strand removed, run dir KEPT — the stuck trail a fresh recovery
 		// diagnosis or a human reads.
 		removeStrand()
-	case builderengine.DigestStatusDead:
+	case DigestStatusDead:
 		// Both kept: a dead-classified strand may still be genuinely
 		// working, not hung — the same kept-substrate reclaim builder's own
 		// dead-respawn ladder consumes on its next spawn.

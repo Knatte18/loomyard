@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -95,8 +94,8 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 	walk(Command())
 }
 
-// TestCommand_AllSevenSubcommandsRegistered asserts every one of webster's
-// seven subcommands is present on the tree Command() builds.
+// TestCommand_AllEightSubcommandsRegistered asserts every one of webster's
+// eight subcommands is present on the tree Command() builds.
 func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
 	want := []string{"validate", "run", "status", "pause", "begin-batch", "await-batch", "record-batch", "recover-batch"}
 	got := map[string]bool{}
@@ -108,6 +107,31 @@ func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
 			t.Errorf("Command() is missing subcommand %q", name)
 		}
 	}
+}
+
+// TestCommand_LongStringsHaveNoStaleV2Language walks the full webster
+// command tree and asserts that no command's Long help string mentions
+// anything from the retired plan-format v2/chain/oversized-batch model:
+// --restart-chain, the deferred-verify chain, oversized batches, or a bare
+// "v2" version reference (plan-format-v3.md is fine; a literal "v2" is
+// not) -- per the CLI/Cobra Invariant's help-accuracy obligation and the
+// no-version-suffix-naming Shared Decision.
+func TestCommand_LongStringsHaveNoStaleV2Language(t *testing.T) {
+	forbidden := []string{"--restart-chain", "restart-chain", "chain", "oversized", "v2"}
+
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		lower := strings.ToLower(cmd.Long)
+		for _, bad := range forbidden {
+			if strings.Contains(lower, bad) {
+				t.Errorf("command %q Long string contains stale v2/chain/oversized language %q:\n%s", cmd.CommandPath(), bad, cmd.Long)
+			}
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(Command())
 }
 
 // TestWebsterWeftPathspec_ExcludesRuntimeArtifacts proves the pathspec every
@@ -162,7 +186,7 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	hub := t.TempDir()
 	c := &websterCLI{
 		layout:     &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."},
-		cfg:        websterengine.Config{BatchContextCapTokens: 1_000_000, BatchCardCap: 50},
+		cfg:        websterengine.Config{},
 		planDir:    hubgeometry.PlanDir(hub),
 		websterDir: hubgeometry.WebsterDir(hub),
 		reportsDir: hubgeometry.WebsterReportsDir(hub),
@@ -171,30 +195,30 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	return c, hub
 }
 
-// seedValidPlanDir writes a syntactically complete, validation-clean v2
-// plan with one batch into dir, mirroring websterengine's own
-// seedRunPlanDir (runlevel_test.go): one card whose sole file-op field is a
-// Creates: entry covered by the batch's own Scope, and a verify: command.
+// seedValidPlanDir writes a syntactically complete, validation-clean
+// plan-format v3 plan with one card into dir, mirroring websterengine's own
+// seedRunPlanDir (runlevel_test.go): a Card Index naming the one card, and
+// the card's own file with all seven required fields, its sole file-op
+// field a Creates: entry.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
-	overview := "---\nformat: 2\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Batch Index\n\n- 01 — only (1 card) — placeholder batch\n"
-	batch := "# Batch\n\n## Scope\n\n- internal/only\n\n## Cards\n\n### Card 01.1 — placeholder\n\n" +
-		"**What:** placeholder card.\n**Context:** none\n**Edits:** none\n" +
-		"**Creates:**\n- `internal/only/new.go`\n**Deletes:** none\n**Moves:** none\n\n" +
-		"## verify:\n\ngo build ./...\n"
+	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — only — placeholder card\n"
+	card := "# Card 1 — only\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n" +
+		"**Creates:**\n- `internal/only/new.go`\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
 		t.Fatalf("write overview: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(batch), 0o644); err != nil {
-		t.Fatalf("write batch file: %v", err)
+	if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
 	}
 }
 
 // TestValidateCmd_ValidPlan proves the happy path: a clean plan prints
-// {"valid": true, "batches": N}.
+// {"valid": true, "cards": N}.
 func TestValidateCmd_ValidPlan(t *testing.T) {
 	c, _ := newTestCLI(t)
 	seedValidPlanDir(t, c.planDir)
@@ -209,8 +233,8 @@ func TestValidateCmd_ValidPlan(t *testing.T) {
 	if !strings.Contains(got, `"valid":true`) {
 		t.Errorf("output missing valid:true; got %q", got)
 	}
-	if !strings.Contains(got, `"batches":1`) {
-		t.Errorf("output missing batches:1; got %q", got)
+	if !strings.Contains(got, `"cards":1`) {
+		t.Errorf("output missing cards:1; got %q", got)
 	}
 }
 
@@ -228,6 +252,61 @@ func TestValidateCmd_MissingPlan(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Errorf("output missing ok:false; got %q", out.String())
+	}
+}
+
+// seedMissingFieldPlanDir writes a plan-format v3 plan whose sole card omits
+// the **Deletes:** label entirely -- ParsePlan succeeds (the parser only
+// records HasDeletes = false; a missing field is a Validate-time finding,
+// never a parse-time error), so this plan reaches planparser.Validate and
+// trips exactly one card-missing-field finding.
+func seedMissingFieldPlanDir(t *testing.T, dir string) {
+	t.Helper()
+	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		"1 — only — placeholder card\n"
+	card := "# Card 1 — only\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n" +
+		"**Creates:**\n- `internal/only/new.go`\n**Moves:** none\n**Depends-on:** none\n"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir plan dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+		t.Fatalf("write overview: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "01-only.md"), []byte(card), 0o644); err != nil {
+		t.Fatalf("write card file: %v", err)
+	}
+}
+
+// TestValidateCmd_FindingsUseCardKey proves findingsEnvelope's per-finding
+// JSON entries carry the "card" key (f.Card) rather than the pre-rewrite
+// "batch" key: it drives a syntactically-parseable plan through validateCmd
+// that trips one planparser.Validate check (card-missing-field, via a card
+// missing its **Deletes:** label) and asserts the emitted findings array
+// shape end-to-end, since TestValidateCmd_ValidPlan only exercises the
+// zero-findings ok-envelope and TestValidateCmd_MissingPlan never reaches
+// Validate at all.
+func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
+	c, _ := newTestCLI(t)
+	seedMissingFieldPlanDir(t, c.planDir)
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
+
+	if exitCode != 1 {
+		t.Fatalf("validate on a plan missing a required field = %d; want 1, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"ok":false`) {
+		t.Errorf("output missing ok:false; got %q", got)
+	}
+	if !strings.Contains(got, `"check":"card-missing-field"`) {
+		t.Errorf("output missing check:card-missing-field; got %q", got)
+	}
+	if !strings.Contains(got, `"card":"1-only"`) {
+		t.Errorf("output missing card:1-only (findingsEnvelope must key each finding by f.Card, not f.Batch); got %q", got)
+	}
+	if strings.Contains(got, `"batch":`) {
+		t.Errorf("output carries a stale batch key; findingsEnvelope must emit only check/card/detail; got %q", got)
 	}
 }
 
@@ -302,6 +381,6 @@ func TestPauseCmd_RequestsPauseIdempotent(t *testing.T) {
 	}
 }
 
-// fakeDigest is a minimal terminal builderengine.Digest used only to prove
+// fakeDigest is a minimal terminal websterengine.Digest used only to prove
 // status's has_digest field distinguishes a persisted digest from a nil one.
-var fakeDigest = builderengine.Digest{Batch: "01-first", Status: builderengine.DigestStatusDone}
+var fakeDigest = websterengine.Digest{Batch: "01-first", Status: websterengine.DigestStatusDone}

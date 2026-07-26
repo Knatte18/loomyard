@@ -139,6 +139,9 @@ large-window variant realization — lives in the provider engine
 
 builder.yaml holds four roles, each a model-spec: `orchestrator`, `implementer` (Sonnet
 default), `implementer_oversized`, `recovery`. There is no builder `evaluator` — the LLM
-orchestrator judges digests itself. Stack-wide roles elsewhere (perch/burler reviewers
+orchestrator judges digests itself. webster.yaml holds two roles, each a model-spec:
+`master` (the long-lived Master session; its in-session forks always inherit Master's
+current model, so there are no per-fork roles) and `recovery` (the cold recovery strand
+`recover-batch` spawns). Stack-wide roles elsewhere (perch/burler reviewers
 and judges, loom producers) use the same notation in their own config sections; loom's
 config section overrides per role when loom drives the module.

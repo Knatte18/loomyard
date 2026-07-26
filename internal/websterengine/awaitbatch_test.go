@@ -13,7 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -37,26 +38,24 @@ func (c *awaitFakeClock) Sleep(d time.Duration) {
 
 var _ websterengine.Clock = (*awaitFakeClock)(nil)
 
-// awaitTestPlan returns a minimal one-batch plan and the batch's report path
-// inside dir.
-func awaitTestPlan(dir string) (*builderengine.Plan, string) {
-	plan := &builderengine.Plan{
-		Batches: []builderengine.PlanBatch{
-			{Number: 1, Slug: "json-flag", File: "01-json-flag.md"},
-		},
+// awaitTestBatches returns a minimal one-batch execution-batch list and the
+// batch's report path inside dir.
+func awaitTestBatches(dir string) ([]batcher.Batch, string) {
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
 	}
-	return plan, filepath.Join(dir, builderengine.BatchReportFileName(1, "json-flag"))
+	return batches, filepath.Join(dir, websterengine.ReportFileName(1, "json-flag"))
 }
 
 func TestAwaitBatch_ReportAlreadyPresentReturnsImmediately(t *testing.T) {
 	dir := t.TempDir()
-	plan, reportPath := awaitTestPlan(dir)
-	if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\n"), 0o644); err != nil {
+	batches, reportPath := awaitTestBatches(dir)
+	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
 		t.Fatalf("seed report: %v", err)
 	}
 
 	clk := &awaitFakeClock{now: time.Unix(1000, 0)}
-	result, err := websterengine.AwaitBatch(plan, dir, 1, time.Minute, clk)
+	result, err := websterengine.AwaitBatch(batches, dir, 1, time.Minute, clk)
 	if err != nil {
 		t.Fatalf("AwaitBatch() error: %v", err)
 	}
@@ -73,20 +72,20 @@ func TestAwaitBatch_ReportAlreadyPresentReturnsImmediately(t *testing.T) {
 
 func TestAwaitBatch_ReportAppearingMidWaitReturnsWithoutSleepingOutWindow(t *testing.T) {
 	dir := t.TempDir()
-	plan, reportPath := awaitTestPlan(dir)
+	batches, reportPath := awaitTestBatches(dir)
 
 	// The report lands after the third tick — AwaitBatch must return on the
 	// very next existence check, long before the one-hour window elapses.
 	clk := &awaitFakeClock{now: time.Unix(1000, 0)}
 	clk.onSleep = func(sleepCount int) {
 		if sleepCount == 3 {
-			if err := os.WriteFile(reportPath, []byte("batch: 01-json-flag\n"), 0o644); err != nil {
+			if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
 				t.Fatalf("write report mid-wait: %v", err)
 			}
 		}
 	}
 
-	result, err := websterengine.AwaitBatch(plan, dir, 1, time.Hour, clk)
+	result, err := websterengine.AwaitBatch(batches, dir, 1, time.Hour, clk)
 	if err != nil {
 		t.Fatalf("AwaitBatch() error: %v", err)
 	}
@@ -100,10 +99,10 @@ func TestAwaitBatch_ReportAppearingMidWaitReturnsWithoutSleepingOutWindow(t *tes
 
 func TestAwaitBatch_AbsentReportReturnsFalseOnceWindowElapses(t *testing.T) {
 	dir := t.TempDir()
-	plan, _ := awaitTestPlan(dir)
+	batches, _ := awaitTestBatches(dir)
 
 	clk := &awaitFakeClock{now: time.Unix(1000, 0)}
-	result, err := websterengine.AwaitBatch(plan, dir, 1, 5*time.Second, clk)
+	result, err := websterengine.AwaitBatch(batches, dir, 1, 5*time.Second, clk)
 	if err != nil {
 		t.Fatalf("AwaitBatch() error: %v", err)
 	}
@@ -117,9 +116,9 @@ func TestAwaitBatch_AbsentReportReturnsFalseOnceWindowElapses(t *testing.T) {
 
 func TestAwaitBatch_UnknownBatchNumberRefused(t *testing.T) {
 	dir := t.TempDir()
-	plan, _ := awaitTestPlan(dir)
+	batches, _ := awaitTestBatches(dir)
 
-	if _, err := websterengine.AwaitBatch(plan, dir, 7, time.Second, &awaitFakeClock{now: time.Unix(1000, 0)}); err == nil {
+	if _, err := websterengine.AwaitBatch(batches, dir, 7, time.Second, &awaitFakeClock{now: time.Unix(1000, 0)}); err == nil {
 		t.Fatal("AwaitBatch(unknown batch) = nil error; want the findBatch refusal")
 	}
 }

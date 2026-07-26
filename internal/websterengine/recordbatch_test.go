@@ -2,26 +2,29 @@
 
 // recordbatch_test.go exercises RecordBatch end to end (Tier 2 — see
 // docs/benchmarks/running-tests.md): a real scratch git repo backs
-// WorktreeRoot for the genuine ChangedFiles/Dirty drift computation, while
-// the incremental fork audit (shuttleengine.Engine.AuditForksIncremental)
-// is a local, call-scripted fake and SettleRetry's clock seam is a
-// recording fake Sleeper that never actually blocks, mirroring
-// audit_test.go's own SettleRetry fixture pattern (package-local — the
-// internal and external test packages deliberately do not share a
-// test-helper package).
+// WorktreeRoot for the genuine changedFiles/dirty/headSHA drift computation,
+// while the incremental fork audit
+// (shuttleengine.Engine.AuditForksIncremental) is a local, call-scripted
+// fake and SettleRetry's clock seam is a recording fake Sleeper that never
+// actually blocks, mirroring audit_test.go's own SettleRetry fixture
+// pattern (package-local — the internal and external test packages
+// deliberately do not share a test-helper package).
 
 package websterengine_test
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -52,15 +55,22 @@ type recordFakeEngine struct {
 	// test can assert WHICH session the audit was keyed on (the
 	// bracket-opening session, never blindly the current Master session).
 	sessions []string
+	// auditErr, when non-nil, is returned by every AuditForksIncremental call
+	// instead of the script — the missing-transcript failure double for the
+	// cross-machine resume path.
+	auditErr error
 }
 
 func (e *recordFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	idx := e.callCount
+	e.callCount++
+	e.sessions = append(e.sessions, sessionID)
+	if e.auditErr != nil {
+		return shuttleengine.ForkAudit{}, e.auditErr
+	}
+	idx := e.callCount - 1
 	if idx >= len(e.scripted) {
 		idx = len(e.scripted) - 1
 	}
-	e.callCount++
-	e.sessions = append(e.sessions, sessionID)
 	return e.scripted[idx], nil
 }
 
@@ -87,9 +97,13 @@ var _ shuttleengine.Engine = (*recordFakeEngine)(nil)
 
 // recordFixture is a fully-wired set of RecordBatch dependencies: a real
 // scratch git repo (one base commit plus one in-scope work commit) as
-// WorktreeRoot, a literal one-batch plan with an already-open BatchState
-// (the begin-batch record RecordBatch's bracket-discipline check requires),
-// and a scripted fake engine plus recording Sleeper.
+// WorktreeRoot, a literal one-batch execution-batch list with an
+// already-open BatchState (the begin-batch record RecordBatch's
+// bracket-discipline check requires), and a scripted fake engine plus
+// recording Sleeper. HeadSHA is the worktree's actual current HEAD (the
+// work commit) — every valid report fixture must self-report exactly this
+// SHA, since RecordBatch cross-checks report.HeadSHA against the worktree's
+// real HEAD.
 type recordFixture struct {
 	Deps       websterengine.RecordDeps
 	Engine     *recordFakeEngine
@@ -97,6 +111,7 @@ type recordFixture struct {
 	Worktree   string
 	ReportsDir string
 	StartSHA   string
+	HeadSHA    string
 }
 
 // newRecordFixture builds a fresh recordFixture whose engine is scripted with
@@ -107,12 +122,10 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 
 	worktree := newScratchRepo(t)
 	startSHA := commitFile(t, worktree, "base.txt", "base", "base commit")
-	commitFile(t, worktree, "internal/foo/impl.go", "package foo\n", "01.1: add impl")
+	headSHA := commitFile(t, worktree, "internal/foo/impl.go", "package foo\n", "01.1: add impl")
 
-	plan := &builderengine.Plan{
-		Batches: []builderengine.PlanBatch{
-			{Number: 1, Slug: "json-flag", File: "01-json-flag.md", Scope: []string{"internal/foo"}},
-		},
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
 	}
 
 	reportsDir := t.TempDir()
@@ -131,7 +144,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	}
 
 	deps := websterengine.RecordDeps{
-		Plan:         plan,
+		Batches:      batches,
 		State:        state,
 		Config:       websterengine.Config{},
 		Engine:       engine,
@@ -143,20 +156,25 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 		Sleeper:      sleeper,
 	}
 
-	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA}
+	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}
 }
 
 // writeReport seeds fx's reportsDir with a batch-report YAML file for batch
 // 1 at its plan-format-pinned filename, using content verbatim.
 func writeReport(t *testing.T, reportsDir, content string) {
 	t.Helper()
-	path := filepath.Join(reportsDir, builderengine.BatchReportFileName(1, "json-flag"))
+	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "json-flag"))
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write batch report: %v", err)
 	}
 }
 
-const validReportYAML = "batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"
+// validReport returns a well-formed minimal report YAML self-reporting
+// headSHA — the caller must pass fx.HeadSHA (the worktree's actual current
+// HEAD) so RecordBatch's head_sha cross-check passes.
+func validReport(headSHA string) string {
+	return "status: OK\nhead_sha: " + headSHA + "\n"
+}
 
 // TestRecordBatch_NoBeginRecord proves the bracket-discipline check: a
 // record call with no matching BatchState entry, or one already Terminal, is
@@ -217,13 +235,13 @@ func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{audit})
 	fx.Deps.State.MasterSessionID = "session-resumed"
 	fx.Deps.State.Batches[1].SessionID = "session-crashed"
-	writeReport(t, fx.ReportsDir, validReportYAML)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
 		t.Fatalf("RecordBatch() error = %v; want nil", err)
 	}
-	if result.Digest == nil || result.Digest.Status != builderengine.DigestStatusDone {
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 		t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
 	}
 	for i, session := range fx.Engine.sessions {
@@ -239,7 +257,7 @@ func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
 // on disk — a report with no fork behind it means Master wrote it itself.
 func TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{}})
-	writeReport(t, fx.ReportsDir, validReportYAML)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if !errors.Is(err, websterengine.ErrNoForkTranscripts) {
@@ -259,7 +277,7 @@ func TestRecordBatch_TranscriptAppearsOnLaterTick(t *testing.T) {
 		{},
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/late.jsonl", ReportReturned: true}}},
 	})
-	writeReport(t, fx.ReportsDir, validReportYAML)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -285,7 +303,7 @@ func TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted(t *testi
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
-	writeReport(t, fx.ReportsDir, validReportYAML)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -294,22 +312,28 @@ func TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted(t *testi
 	if result.NoReport {
 		t.Fatal("RecordResult.NoReport = true; want false (a valid report was present)")
 	}
-	if result.Digest == nil || result.Digest.Status != builderengine.DigestStatusDone {
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 		t.Fatalf("RecordResult.Digest = %+v; want a done digest", result.Digest)
 	}
-	if result.Digest.FilesChanged != 1 {
-		t.Errorf("Digest.FilesChanged = %d; want 1 (internal/foo/impl.go)", result.Digest.FilesChanged)
+	if result.Digest.Batch != "01-json-flag" {
+		t.Errorf("Digest.Batch = %q; want %q", result.Digest.Batch, "01-json-flag")
+	}
+	if result.Digest.HeadSHA != fx.HeadSHA {
+		t.Errorf("Digest.HeadSHA = %q; want %q", result.Digest.HeadSHA, fx.HeadSHA)
 	}
 
 	bs := fx.Deps.State.Batches[1]
 	if !bs.Terminal {
 		t.Error("BatchState.Terminal = false; want true")
 	}
-	if bs.Status != builderengine.DigestStatusDone {
-		t.Errorf("BatchState.Status = %q; want %q", bs.Status, builderengine.DigestStatusDone)
+	if bs.Status != websterengine.DigestStatusDone {
+		t.Errorf("BatchState.Status = %q; want %q", bs.Status, websterengine.DigestStatusDone)
 	}
 	if bs.Digest == nil {
 		t.Error("BatchState.Digest = nil; want the persisted digest")
+	}
+	if len(bs.CardSHAs) != 1 || bs.CardSHAs[0] != fx.HeadSHA {
+		t.Errorf("BatchState.CardSHAs = %v; want [%q]", bs.CardSHAs, fx.HeadSHA)
 	}
 	if fx.Deps.State.CurrentBatch != 0 {
 		t.Errorf("State.CurrentBatch = %d; want 0 (cleared)", fx.Deps.State.CurrentBatch)
@@ -359,7 +383,7 @@ func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.
 	// defensive re-filter (against the just-updated SeenForkTranscripts) is
 	// what keeps this call's classification down to exactly one new
 	// transcript (f2), not two.
-	writeReport(t, fx.ReportsDir, validReportYAML)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 	result, err = websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
 		t.Fatalf("RecordBatch() second call error = %v; want nil (clean, exactly one new transcript)", err)
@@ -387,7 +411,7 @@ func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
 			{TranscriptPath: "subagents/f2.jsonl", ReportReturned: true},
 		}},
 	})
-	writeReport(t, fx.ReportsDir, validReportYAML)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	result, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err != nil {
@@ -418,7 +442,7 @@ func TestRecordBatch_ParentWriteOutsideContractFilesErrors(t *testing.T) {
 			ParentWrites: []string{"/some/other/hand-written-file.go"},
 		},
 	})
-	writeReport(t, fx.ReportsDir, validReportYAML)
+	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err == nil {
@@ -429,21 +453,22 @@ func TestRecordBatch_ParentWriteOutsideContractFilesErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ReportBatchFieldMismatchErrors proves a batch-report whose
-// own batch: field disagrees with the polled batch ID is a hard error,
-// naming both.
-func TestRecordBatch_ReportBatchFieldMismatchErrors(t *testing.T) {
+// TestRecordBatch_HeadSHAMismatchErrors proves a batch-report whose own
+// self-reported head_sha disagrees with the worktree's actual current HEAD
+// is a hard error, naming both — the fork's report and the host repo it
+// left behind must never be trusted to agree silently.
+func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
-	writeReport(t, fx.ReportsDir, "batch: 99-wrong-batch\nstatus: done\ntests: green\nstuck_reason: null\n")
+	writeReport(t, fx.ReportsDir, "status: OK\nhead_sha: 0000000000000000000000000000000000000000000000000000000000000000\n")
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err == nil {
-		t.Fatal("RecordBatch() error = nil; want a hard error for a batch-field mismatch")
+		t.Fatal("RecordBatch() error = nil; want a hard error for a head_sha mismatch")
 	}
-	if !strings.Contains(err.Error(), "01-json-flag") || !strings.Contains(err.Error(), "99-wrong-batch") {
-		t.Errorf("RecordBatch() error = %q; want it to name both the polled batch and the report's own field", err.Error())
+	if !strings.Contains(err.Error(), fx.HeadSHA) {
+		t.Errorf("RecordBatch() error = %q; want it to name the worktree's actual HEAD %q", err.Error(), fx.HeadSHA)
 	}
 }
 
@@ -454,10 +479,36 @@ func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
-	writeReport(t, fx.ReportsDir, "batch: 01-json-flag\nstatus: bogus\ntests: green\nstuck_reason: null\n")
+	writeReport(t, fx.ReportsDir, "status: bogus\nhead_sha: "+fx.HeadSHA+"\n")
 
 	_, err := websterengine.RecordBatch(fx.Deps, 1)
 	if err == nil {
 		t.Fatal("RecordBatch() error = nil; want a hard error for an unrecognized status value")
+	}
+}
+
+// TestRecordBatch_MissingSessionTranscriptNamesRecourse proves the TRUE
+// cross-machine resume failure — the bracket-opening session's transcript
+// file does not exist on this machine at all, so the audit read itself fails
+// with fs.ErrNotExist — is wrapped with the machine-local-transcripts
+// explanation and the move-the-report-aside operator recourse, instead of
+// surfacing a bare "no such file or directory" (found live in crucible
+// round fable-r3). errors.Is must still see the underlying fs.ErrNotExist.
+func TestRecordBatch_MissingSessionTranscriptNamesRecourse(t *testing.T) {
+	fx := newRecordFixture(t, nil)
+	fx.Engine.auditErr = fmt.Errorf("claudeengine: read parent transcript %q: %w", "/nope/session.jsonl", fs.ErrNotExist)
+	writeReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.HeadSHA+"\n")
+
+	_, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil {
+		t.Fatal("RecordBatch() error = nil; want the wrapped missing-transcript error")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("RecordBatch() error = %v; want errors.Is(err, fs.ErrNotExist) preserved through the wrap", err)
+	}
+	for _, needle := range []string{"machine-local", "moving the batch's report file", "session-1"} {
+		if !strings.Contains(err.Error(), needle) {
+			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), needle)
+		}
 	}
 }

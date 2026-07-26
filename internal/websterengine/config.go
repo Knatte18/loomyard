@@ -17,22 +17,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the resolved webster.yaml configuration: the three
-// role model-specs (see docs/reference/model-spec.md's "Roles that use this
-// notation" section) and the numeric knobs the Master session's bracket
-// verbs and validation gate consult.
+// Config represents the resolved webster.yaml configuration: the two role
+// model-specs (see docs/reference/model-spec.md's "Roles that use this
+// notation" section), the batchifier selection, and the numeric knobs the
+// Master session's bracket verbs consult.
 type Config struct {
 	// Master is the model-spec for the long-lived Master session that reads
 	// the plan once and forks one implementer per batch in-session.
 	Master string `yaml:"master"`
-	// MasterOversized is the model-spec begin-batch injects into Master's
-	// pane for a batch flagged oversized: true; forks always inherit the
-	// session's current model, so this is what an oversized batch's fork
-	// actually runs at.
-	MasterOversized string `yaml:"master_oversized"`
 	// Recovery is the model-spec for the cold, fresh recovery strand
 	// recover-batch spawns when a fork reports stuck or writes no report.
 	Recovery string `yaml:"recovery"`
+
+	// Batcher names the active batchifier (see internal/batcher.Select) that
+	// groups the plan's flat card list into execution batches. Empty
+	// resolves to batcher.DefaultName (the identity batchifier — one card,
+	// one batch) at the cli wiring site.
+	Batcher string `yaml:"batcher"`
 
 	// SelfFixCap is the maximum number of self-fix attempts a forked
 	// implementer makes before reporting stuck.
@@ -50,12 +51,6 @@ type Config struct {
 	// watching the recovery strand for a terminal state before returning a
 	// running snapshot.
 	PollWaitS int `yaml:"poll_wait_s"`
-	// BatchContextCapTokens is validation check 5's context-estimate cap:
-	// a batch whose estimated context exceeds this without oversized:
-	// true fails validation.
-	BatchContextCapTokens int `yaml:"batch_context_cap_tokens"`
-	// BatchCardCap is validation check 5's card-count cap per batch.
-	BatchCardCap int `yaml:"batch_card_cap"`
 }
 
 // LoadConfig loads and unmarshals configuration for the webster module.
@@ -66,7 +61,7 @@ type Config struct {
 // a Config struct. The module name is threaded through by the caller
 // (never hardcoded to "webster" here), mirroring builderengine.LoadConfig.
 //
-// After unmarshal, each of the three role strings is checked against
+// After unmarshal, each of the two role strings is checked against
 // modelspec.Parse for grammar only (registry resolution is a separate
 // pre-flight — see ResolveRoles); a grammar error is wrapped naming the
 // offending config key, so a hand-edited webster.yaml with a malformed spec
@@ -99,7 +94,6 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		value string
 	}{
 		{"master", cfg.Master},
-		{"master_oversized", cfg.MasterOversized},
 		{"recovery", cfg.Recovery},
 	}
 	for _, role := range roles {
