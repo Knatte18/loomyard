@@ -4,8 +4,8 @@ Loomyard is a Go toolkit of one-shot CLI modules. Each invocation starts a proce
 runs one command, writes JSON to stdout, and exits — there is no daemon and no
 shared memory. State lives on disk per module and is coordinated with file locks,
 so concurrent `lyx` processes on a machine cooperate through the filesystem. The
-first module, **board** (a task tracker), is implemented; **warp** (the host↔weft
-topology owner) is implemented; and **reed**, the clean tmux overlay built on what its
+first module, **board** (a task tracker), is implemented; **fabric** (the host↔weft
+git-coordination module) is implemented; and **reed**, the clean tmux overlay built on what its
 now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [manifest/roadmap.md](../manifest/roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
@@ -20,23 +20,23 @@ Three distinct names for three layers, deliberately non-overlapping to avoid the
 `mill`/`millpy` collision (where one name meant two different things):
 
 - **`lyx`** — the binary/CLI, **L**oom**Y**ard e**X**ecutable — one binary with a namespaced
-  subcommand tree (`lyx board`, `lyx weft`, `lyx loom`, …). The analog of millhouse's `millpy`
+  subcommand tree (`lyx board`, `lyx fabric`, `lyx loom`, …). The analog of millhouse's `millpy`
   backend.
 - **`loom`** — the orchestrator *module* (`lyx loom run`, `lyx loom status`): the domain that
-  drives the phased run, a module like `board` or `weft`. See [manifest/designs/loom.md](../manifest/designs/loom.md).
+  drives the phased run, a module like `board` or `fabric`. See [manifest/designs/loom.md](../manifest/designs/loom.md).
 - **`ly`** — the skill / orchestration plugin (the analog of `mill`); skills are `/ly-*`.
 
 **Never name skills `lyx-*` or `loom-*`** — skills are `ly-*`, distinct from both the binary
 (`lyx`) and every module (`loom`, `perch`, …), so no name is shared between a skill and a
 script/module (the ambiguity that forced the millhouse `mill` → `millpy` rename). Internal Go feature packages follow the `<module>cli` / `<module>engine` split
-(e.g. `internal/boardcli` + `internal/boardengine`, `internal/warpcli` + `internal/warpengine`) —
+(e.g. `internal/boardcli` + `internal/boardengine`, `internal/fabriccli` + `internal/fabricengine`) —
 see the Package naming rule in [CONSTRAINTS.md](../CONSTRAINTS.md#package-naming).
 
 Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
 
 ## Principles
 
-1. **Toolkit-first.** Build small, composable primitives (board, warp, reed)
+1. **Toolkit-first.** Build small, composable primitives (board, fabric, reed)
    before any orchestrator that ties them together. mill's Agent Dispatch
    orchestrates for now.
 2. **Self-contained modules, deep internal tests.** All of a module's domain logic
@@ -56,9 +56,9 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
    than relying on an agent or operator remembering a rule. No on-disk operation is truly
    un-bypassable when a shell is available, so the achievable bar is "right path is easiest +
    mistakes are detectable," **not** "wrong path impossible." Hard blocks (hooks, permission rules)
-   are brittle and out of scope. Example: `lyx weft` owns the overlay's git so raw `git -C` is
-   never *needed* (it would be strictly more work), and `lyx weft status` flags drift — but it is a
-   friction asymmetry, not a wall.
+   are brittle and out of scope. Example: `lyx fabric` owns the overlay's git so raw `git -C` is
+   never *needed* (it would be strictly more work), and `lyx fabric status` flags drift — but it is
+   a friction asymmetry, not a wall.
 7. **Go where it can be; LLM only for judgment.** Everything deterministic — verbs,
    control-flow, parsing, distillation, geometry, git — is Go. An LLM is reserved for the
    irreducible judgment a program cannot do: review verdicts, triage, batch implementation,
@@ -132,7 +132,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 
 | Artifact | Location | Repo | Purpose |
 |----------|----------|------|---------|
-| `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, warp, weft); reconciled via `lyx config reconcile` |
+| `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_raddle/` | Weft worktree | Weft | Raddle documentation (the raddle nav-doc overlay) |
 | `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
@@ -179,7 +179,7 @@ The `-weft` suffix is fixed and non-configurable. Weft paths are computed on dem
 
 ### Status
 
-- **Go implementation** (paths geometry, paired spawn, `lyx weft` command): ✅ task 006 complete. The weft engine (paths geometry, paired `lyx warp add` spawn, and `lyx weft status|commit|push|pull|sync`) now exists in Go. Paired `lyx warp add` hard-requires a weft repo built by the downstream hub-creator.
+- **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync`) is the sole git-coordination module now. Paired `lyx fabric add` hard-requires a weft repo built by the downstream hub-creator.
 - **`lyx config` command**: ✅ task 008 complete. The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (`_raddle` junction activation and a raddle config schema are **raddle** nav-doc work, not part of this task — they were only historically mis-bundled here.)
 - **Portals**: unimplemented; the weft junction model is the live mechanism. (Symlink-based overlay sharing is not on the critical path.)
 
@@ -189,12 +189,8 @@ github.com/Knatte18/loomyard/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
-├── internal/warpcli/             the warp CLI command (host↔weft topology owner)
-├── internal/warpengine/          the warp domain kernel
-├── internal/weftcli/             the weft CLI command
-├── internal/weftengine/          the weft domain kernel
-├── internal/fabriccli/           the fabric CLI command (parallel build, see fabric doc above)
-├── internal/fabricengine/        the fabric domain kernel (parallel build, see fabric doc above)
+├── internal/fabriccli/           the fabric CLI command (host↔weft git coordination)
+├── internal/fabricengine/        the fabric domain kernel
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
 ├── internal/reedcli/             the reed CLI command
@@ -246,16 +242,13 @@ User-facing modules each get one `lyx <module>` namespace:
 - **init** — scaffolds the `_lyx/` directory structure and creates all module config files via reconciliation against templates (`internal/initcli` + `internal/initengine`). Idempotent: does not clobber existing config files. `lyx init --undo` reverses that scaffolding (junction, weft-side content, `.gitignore` block, `.git/info/exclude` entry) for test/sandbox cleanup. ✅ Implemented.
 - **board** — the task-tracker board (`internal/boardcli` + `internal/boardengine`). ✅ Implemented.
 - **config** — interactive menu for viewing and editing module configs; `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned; `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
-- **weft** — owns all git into the paired weft repo (`lyx weft status|commit|push|pull|sync`). ✅ Implemented.
-- **warp** — **host↔weft-coordinated git topology**: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup. The single owner of the mirror invariant — consolidates the former `worktree` / `git-clone` modules and `internal/git`; its CLI surface is `lyx warp clone|add|list|remove|checkout|status|reconcile|prune|cleanup`. ✅ Implemented.
-- **fabric** — unified git-coordination module over two `internal/gitrepo.Repo` instances,
-  combining warp's host↔weft topology and weft's content-sync verbs into one command tree
+- **fabric** — the sole host↔weft git-coordination module, unified over two
+  `internal/gitrepo.Repo` instances: clone (hub-creator), dual-worktree add/remove, coordinated
+  checkout (switches host+weft together + re-points junctions), reconcile, status, prune,
+  cleanup, and weft content-sync (commit/push/pull/sync), all in one command tree
   (`internal/fabriccli` + `internal/fabricengine`); CLI surface is `lyx fabric
-  clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|status|commit|push|pull|sync`.
-  **Parallel build — warp/weft remain the owners until cutover**: fabric exists alongside
-  warp and weft, validated by differential tests against them, but no consumer is rewired
-  onto it yet. ✅ Implemented (parallel build); see the `internal/fabricengine` package
-  documentation and [manifest/designs/fabric.md](../manifest/designs/fabric.md).
+  clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|status|commit|push|pull|sync`. ✅
+  Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via the `gh` CLI
   (`lyx selfreport create <title>`). Target repo is hardcoded; supports `--body` (or `-` for

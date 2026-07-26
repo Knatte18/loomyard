@@ -1,13 +1,13 @@
 // clone.go implements the clone orchestration logic with strict-abort teardown.
 //
-// Adapted from warpengine's clone.go. The one behavioral delta: after the weft
-// clone succeeds, the weft primary is checked out onto its WeftBranchName-suffixed
-// pairing (e.g. "main-weft" for a default branch "main") so weft:main is never
-// claimed directly — every fabric-managed weft branch, including the primary's,
-// carries the uniform "-weft" suffix. The suffixed branch is adopted from an
-// existing origin/<branch>-weft when the remote already carries one (a re-clone
-// of a hub with weft history) and created fresh only otherwise; the freshly-cloned
-// default branch itself remains, unclaimed.
+// After the weft clone succeeds, the weft primary is checked out onto its
+// WeftBranchName-suffixed pairing (e.g. "main-weft" for a default branch
+// "main") so weft:main is never claimed directly — every fabric-managed weft
+// branch, including the primary's, carries the uniform "-weft" suffix. The
+// suffixed branch is adopted from an existing origin/<branch>-weft when the
+// remote already carries one (a re-clone of a hub with weft history) and
+// created fresh only otherwise; the freshly-cloned default branch itself
+// remains, unclaimed.
 
 package fabricengine
 
@@ -23,9 +23,7 @@ import (
 )
 
 // RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to
-// inject errors. It is fabric's OWN teardown seam, distinct from warpengine's:
-// each module's clone orchestration and its differential test tear down through
-// its own module's RemoveAll, never the other's.
+// inject errors into fabric's own clone-orchestration teardown path.
 var RemoveAll = os.RemoveAll
 
 // CloneHub orchestrates the cloning of host, weft, and board repositories into a Hub directory.

@@ -1,6 +1,6 @@
 // configreg.go — module registry for configuration management.
 //
-// Provides a neutral registry of available config modules (board, warp, weft)
+// Provides a neutral registry of available config modules (board, fabric)
 // and their templates, used by init and config CLI commands.
 
 package configreg
@@ -15,14 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/warpengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 // Module represents a single config module with its name and template function.
 type Module struct {
-	// Name is the module identifier (e.g., "board", "warp", "weft").
+	// Name is the module identifier (e.g., "board", "fabric").
 	Name string
 	// Template is a function that returns the default YAML template for this module.
 	Template func() string
@@ -48,9 +46,7 @@ func Modules() []Module {
 		{Name: "reed", Template: reedengine.ConfigTemplate},
 		{Name: "perch", Template: perchengine.ConfigTemplate},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate},
-		{Name: "warp", Template: warpengine.ConfigTemplate},
 		{Name: "webster", Template: websterengine.ConfigTemplate},
-		{Name: "weft", Template: weftengine.ConfigTemplate},
 	}
 }
 

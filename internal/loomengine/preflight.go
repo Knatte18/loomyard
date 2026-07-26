@@ -12,9 +12,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
 // Preflight validates that the current worktree is fit for loom to begin
@@ -97,7 +97,7 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 
 	// Check 2: host worktree cleanliness. Collected, not short-circuited — a
 	// dirty host does not prevent the remaining checks from also reporting.
-	clean, reason, err := warpengine.HostClean(l)
+	clean, reason, err := fabricengine.HostClean(l)
 	if err != nil {
 		return Report{}, err
 	}
@@ -117,7 +117,7 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 		report.addFailure(CheckWeftPairing, "weft not paired")
 		check3BlocksSeed = true
 	} else {
-		ok, reason, err := warpengine.PairInSync(l)
+		ok, reason, err := fabricengine.PairInSync(l)
 		if err != nil {
 			return Report{}, err
 		}

@@ -7,8 +7,9 @@
 // to produce (a live review round reproduced this by making the host _lyx a real
 // directory so seedLyxJunction refuses). Checkout now rolls back BOTH sides.
 //
-// Package fabricengine_test to reuse the external-test-package fixture idiom of
-// lifecycle_differential_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test to reuse newFabricFixture/currentBranchOf/
+// branchExistsAt from reconcile_stale_registration_test.go; shares the single
+// TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -29,10 +30,9 @@ import (
 func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	t.Parallel()
 
-	dp := buildDiffPair(t, "")
-	fx := dp.FabricFixture
-	l := fx.Layout
-	top := dp.Fabric
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	top := fabricengine.NewTopology(fabricengine.Config{})
 
 	const targetBranch = "checkout-rollback-target"
 
@@ -91,10 +91,9 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	t.Parallel()
 
-	dp := buildDiffPair(t, "")
-	fx := dp.FabricFixture
-	l := fx.Layout
-	top := dp.Fabric
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	top := fabricengine.NewTopology(fabricengine.Config{})
 
 	const targetBranch = "checkout-rollback-forked"
 

@@ -15,10 +15,8 @@
 // orphan topology. A detached or unborn host HEAD aborts the spawn before any
 // creation, ensuring no partial state.
 //
-// Adapted from warpengine's weftwiring.go — byte-equivalent behavior, package
-// fabricengine. Push honors SkipGit/SkipPush via fabricengine.SyncOptions
-// (fabric's own options type, matching warp's AddOptions field shape exactly)
-// rather than warp's own AddOptions type.
+// Push honors SkipGit/SkipPush via fabricengine.SyncOptions, fabric's own
+// options type.
 
 package fabricengine
 

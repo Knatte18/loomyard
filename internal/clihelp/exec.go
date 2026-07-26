@@ -181,7 +181,7 @@ func Execute(cmd *cobra.Command, out io.Writer, args []string) int {
 	return RunRoot(cmd, out)
 }
 
-// GroupRunE is the RunE for parent module group commands (e.g. "lyx warp", "lyx board").
+// GroupRunE is the RunE for parent module group commands (e.g. "lyx fabric", "lyx board").
 // When args is non-empty it returns an error naming the unknown subcommand; when args is
 // empty it delegates to the command's built-in help output. Wire this as
 // cmd.RunE = clihelp.GroupRunE on each group command so that bare invocations print help

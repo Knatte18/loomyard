@@ -182,8 +182,9 @@ func resolveWritePath(workdir, path string) string {
 // NamedSpawns check), any parent write outside the two contract files (Master
 // implementing a batch itself, or hand-writing a batch report — the same
 // silent-quality-degradation class as a named spawn), and any parent Bash command
-// matching weftRef (Master never drives weft directly; weftengine.Commit/Push run
-// in-process inside webstercli's verbs, per the Weft Git Invariant).
+// matching weftRef (Master never drives weft directly; fabricengine's
+// CommitWeft/PushWeftAt run in-process inside webstercli's verbs, per the Weft
+// Git Invariant).
 func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
 	var violations []AuditViolation
 

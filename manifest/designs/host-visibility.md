@@ -1,6 +1,7 @@
 # host-visibility — CLAUDE.local.md / CONSTRAINTS.md invisible in host's git history
 
-> **Status: Design — not built.** Split out from [fabric.md](fabric.md) — the vacation-time
+> **Status: Design — not built.** Split out from
+> [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the vacation-time
 > discussion bundled this into the Fabric cutover step opportunistically ("we're touching that
 > area anyway"), but the mechanism itself is filesystem-linking/worktree setup, not git
 > coordination — it doesn't depend on `fabric`'s own architecture (`gitrepo`, `SyncWeft`,
@@ -45,7 +46,7 @@ directory junction doesn't apply directly:
 
 ## Related
 
-- [fabric.md](fabric.md) — owns the junction re-pointing mechanism this could reuse for the
-  `CONSTRAINTS.md`-equivalent directory.
+- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — owns the junction re-pointing
+  mechanism this could reuse for the `CONSTRAINTS.md`-equivalent directory.
 - [loom.md](loom.md) — the init/session-bootstrap step that would trigger the symlink fallback
   and `.gitignore` entry for `CLAUDE.local.md`.

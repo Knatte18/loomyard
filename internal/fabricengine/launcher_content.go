@@ -2,8 +2,7 @@
 // (ide, fabric-checkout, ide-menu) as pure, GOOS-parameterized functions. Keeping
 // this logic build-tag-free lets it be unit-tested on the Windows host for both
 // the Windows (.cmd) and non-Windows (.sh) branches; only the OS I/O in
-// launchers.go depends on the real runtime.GOOS. Adapted from warpengine's
-// launcher_content.go — byte-equivalent behavior, package fabricengine.
+// launchers.go depends on the real runtime.GOOS.
 
 package fabricengine
 

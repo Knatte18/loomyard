@@ -97,7 +97,7 @@ These pure functions construct geometry paths without requiring a resolved `Layo
 
 ### Reverse parser
 
-- **`WeftHostSlug(name string) (slug string, ok bool)`** — Reports whether `name` ends with `WeftSuffix` and the stripped prefix (the host slug) is non-empty. When `ok` is true, `slug` is the result of `strings.TrimSuffix(name, WeftSuffix)` and may be passed directly to the geometry constructors. The non-empty guard rejects a bare `"-weft"` entry. Used by `warpengine/prune.go` to identify weft siblings in a hub scan.
+- **`WeftHostSlug(name string) (slug string, ok bool)`** — Reports whether `name` ends with `WeftSuffix` and the stripped prefix (the host slug) is non-empty. When `ok` is true, `slug` is the result of `strings.TrimSuffix(name, WeftSuffix)` and may be passed directly to the geometry constructors. The non-empty guard rejects a bare `"-weft"` entry. Used by `fabricengine/prune.go` to identify weft siblings in a hub scan.
 
 ### Layout methods
 

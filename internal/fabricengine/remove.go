@@ -1,9 +1,6 @@
 // remove.go implements Remove: it tears down the portal and launchers before
 // the target-exists check, so cleanup still runs when the worktree dir is
-// already gone. Adapted from warpengine's remove.go — same early-teardown
-// ordering and best-effort discipline, package fabricengine. The branch
-// delta: the weft branch it removes is WeftBranchName(hostBranch), not a
-// mirrored name.
+// already gone. The weft branch it removes is WeftBranchName(hostBranch).
 
 package fabricengine
 

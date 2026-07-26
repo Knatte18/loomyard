@@ -19,9 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
+	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/weftcli"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -372,7 +372,7 @@ func RunCLI(out io.Writer, args []string) int {
 // runConfig is the package-private handler for the lyx config command.
 //
 // It resolves the layout from the current working directory, builds the real
-// editor (DefaultEditor) and the real sync function (weft.RunCLI with "sync"),
+// editor (DefaultEditor) and the real sync function (fabriccli.RunCLI with "sync"),
 // and dispatches to dispatch with os.Stdin as the interactive input reader.
 // When printOnly is true the command is read-only: it prints on-disk YAML
 // without opening an editor or running sync. setFlags carries the raw
@@ -392,7 +392,7 @@ func runConfig(out io.Writer, args []string, printOnly bool, setFlags []string) 
 
 	// Build the real editor and sync functions.
 	realSync := func(w io.Writer) int {
-		return weftcli.RunCLI(w, []string{"sync"})
+		return fabriccli.RunCLI(w, []string{"sync"})
 	}
 
 	// Dispatch to the print path, --set path, interactive menu, or specific module.

@@ -238,13 +238,13 @@
 //
 // # Weft-blindness and geometry-blindness
 //
-// perchengine never imports weftengine or warpengine and never constructs a
+// perchengine never imports fabricengine and never constructs a
 // _lyx/... path itself — Engine operates on a caller-supplied absolute
 // runDir; layout is held only to resolve the gate command's working
 // directory (layout.WorktreeRoot). Committing the run dir's artifacts to
 // the weft is the loop OWNER's job — perchcli's standalone CLI today, loom
 // once it exists — exactly once per block, at block exit (APPROVED, STUCK,
-// or PAUSED), via weftengine directly; see the Weft Git Invariant in
+// or PAUSED), via fabricengine directly; see the Weft Git Invariant in
 // CONSTRAINTS.md. This is the identical split burlerengine already enforces
 // one layer down.
 //

@@ -18,11 +18,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -407,7 +407,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				outcomeLabel = string(result.Outcome)
 			}
 			weftWorktree := c.layout.WeftWorktree()
-			opts := weftengine.EnvSyncOptions()
+			opts := fabricengine.EnvSyncOptions()
 			// Lock files (run.lock, state.json.lock) are machine-local
 			// advisory-lock artifacts, not block state: committing them
 			// would leak runtime noise into durable weft history and
@@ -420,17 +420,29 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// directory separators, covering every lock file under the
 			// scoped _lyx.
 			pathspec := append(
-				weftengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
+				fabricengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
 				":(exclude)*.lock",
 			)
-			committed, weftErr := weftengine.Commit(
-				weftWorktree,
-				pathspec,
-				fmt.Sprintf("perch: %s %s", id, outcomeLabel),
-				opts,
-			)
+			// SkipGit is checked here, before fabricengine.New's stat-based
+			// path validation, mirroring CommitWeft's own top-level
+			// short-circuit: the CI/test bypass must never require a real
+			// weft worktree to exist on disk, but New (unlike CommitWeft
+			// itself) validates both paths unconditionally.
+			var committed bool
+			var weftErr error
+			if !opts.SkipGit {
+				var fab *fabricengine.Fabric
+				fab, weftErr = fabricengine.New(c.layout.WorktreeRoot, weftWorktree)
+				if weftErr == nil {
+					_, committed, weftErr = fab.CommitWeft(
+						pathspec,
+						fmt.Sprintf("perch: %s %s", id, outcomeLabel),
+						opts,
+					)
+				}
+			}
 			if weftErr == nil {
-				weftErr = weftengine.Push(weftWorktree, opts)
+				weftErr = fabricengine.PushWeftAt(weftWorktree, opts)
 			}
 
 			if runErr != nil {

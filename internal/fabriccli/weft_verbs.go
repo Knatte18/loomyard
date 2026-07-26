@@ -2,10 +2,10 @@
 // sync) onto the "fabric" parent command built by fabric.go. addWeftVerbs installs
 // a hidden persistent --weft-path flag and a PersistentPreRunE scoped to these five
 // verb names only — the topology verbs built in fabric.go resolve their own layout
-// per invocation and never touch this file's closure state. Adapted from weftcli's
-// cli.go: same normal-mode/bypass-mode PersistentPreRunE split, same push-only gate
-// in bypass mode, with fabricengine.Fabric's StatusWeft/CommitWeft/PushWeft/PullWeft
-// standing in for weftengine's package-level functions.
+// per invocation and never touch this file's closure state. The PersistentPreRunE
+// splits normal mode (resolve cwd → layout → config → pathspec → Fabric handle) from
+// bypass mode (--weft-path injected by the detached push child, push-only gate),
+// driving fabricengine.Fabric's StatusWeft/CommitWeft/PushWeft/PullWeft.
 
 package fabriccli
 
@@ -36,12 +36,12 @@ var weftVerbNames = map[string]bool{
 // "fabric" parent command built by Command() in fabric.go.
 //
 // Normal mode (no --weft-path) resolves cwd → layout → weftBaseDir (the weft
-// worktree joined with the caller's RelPath, exactly as weftcli does) → fabric
-// config loaded from weftBaseDir → pathspec scoped to RelPath → a Fabric handle
-// over the resolved warp and weft worktree roots. Bypass mode (--weft-path set, used
-// by the detached push child spawned by spawnPush) skips all of that and permits only
+// worktree joined with the caller's RelPath) → fabric config loaded from
+// weftBaseDir → pathspec scoped to RelPath → a Fabric handle over the resolved
+// warp and weft worktree roots. Bypass mode (--weft-path set, used by the
+// detached push child spawned by spawnPush) skips all of that and permits only
 // the push verb, rejecting every other verb with "subcommand requires a worktree
-// context" at exit 1 — identical to weftcli's bypass gate.
+// context" at exit 1.
 func addWeftVerbs(cmd *cobra.Command) {
 	// Closure vars populated by PersistentPreRunE and read by subcommand RunEs.
 	var (
@@ -106,9 +106,9 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		// weftBaseDir mirrors weftcli's own RelPath-aware base: the fabric config
-		// governing weft-git verbs lives inside the weft worktree, scoped to the
-		// same subdirectory the caller is working in.
+		// weftBaseDir is the RelPath-aware base: the fabric config governing
+		// weft-git verbs lives inside the weft worktree, scoped to the same
+		// subdirectory the caller is working in.
 		weftBaseDir := filepath.Join(l.WeftWorktree(), l.RelPath)
 
 		loadedCfg, err := fabricengine.LoadConfig(weftBaseDir)
@@ -204,7 +204,7 @@ Related commands:
 				return nil
 			}
 
-			// Normal mode: commit first, then push — weftcli parity.
+			// Normal mode: commit first, then push.
 			opts := fabricengine.EnvSyncOptions()
 			if _, _, err := fab.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, opts); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

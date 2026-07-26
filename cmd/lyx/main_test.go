@@ -30,7 +30,7 @@ func TestRunNoArgs(t *testing.T) {
 	if got == "" {
 		t.Fatal("expected non-empty help output for no args")
 	}
-	for _, module := range []string{"board", "warp"} {
+	for _, module := range []string{"board"} {
 		if !strings.Contains(got, module) {
 			t.Errorf("expected help output to name module %q; got:\n%s", module, got)
 		}
@@ -62,23 +62,6 @@ func TestRunUnknownModule(t *testing.T) {
 	}
 }
 
-func TestRunDispatchesToWarp(t *testing.T) {
-	// Create temp cwd with no _lyx/ directory.
-	// This will cause LoadConfig to fail, which warp.RunCLI will return
-	// as an error envelope.
-	cwd := t.TempDir()
-	t.Chdir(cwd)
-
-	var out bytes.Buffer
-	code := run([]string{"warp", "list"}, &out)
-	if code != 1 {
-		t.Fatalf("expected exit 1 for warp in uninitialized repo, got %d; output: %s", code, out.String())
-	}
-	if !strings.Contains(out.String(), `"ok":false`) {
-		t.Fatalf("expected error JSON on out, got %q", out.String())
-	}
-}
-
 func TestRunDispatchesToIDE(t *testing.T) {
 	// Create temp cwd with no _lyx/ directory.
 	// This will cause ide.RunCLI to return an error (failed to resolve layout).
@@ -89,24 +72,6 @@ func TestRunDispatchesToIDE(t *testing.T) {
 	code := run([]string{"ide", "spawn", "test"}, &out)
 	if code != 1 {
 		t.Fatalf("expected exit 1 for ide in uninitialized repo, got %d; output: %s", code, out.String())
-	}
-	if !strings.Contains(out.String(), `"ok":false`) {
-		t.Fatalf("expected error JSON on out, got %q", out.String())
-	}
-}
-
-func TestRunDispatchesToWeft(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	// Create temp cwd with no _lyx/ directory.
-	// This will cause config/layout resolution to fail, which weft.RunCLI
-	// will return as an error envelope.
-	cwd := t.TempDir()
-	t.Chdir(cwd)
-
-	var out bytes.Buffer
-	code := run([]string{"weft", "status"}, &out)
-	if code != 1 {
-		t.Fatalf("expected exit 1 for weft in uninitialized repo, got %d; output: %s", code, out.String())
 	}
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())
@@ -127,17 +92,4 @@ func TestRunDispatchesToConfig(t *testing.T) {
 	}
 	// config errors are emitted as the JSON envelope (ok:false); exit code is the
 	// only assertion here because the precise error text is an implementation detail.
-}
-
-func TestRunDispatchesToWarpClone(t *testing.T) {
-	// Test dispatching to warp clone with missing arguments.
-	// warp.RunCLI should return an error envelope with ok=false and exit code 1.
-	var out bytes.Buffer
-	code := run([]string{"warp", "clone"}, &out)
-	if code != 1 {
-		t.Fatalf("expected exit 1 for warp clone with no args, got %d; output: %s", code, out.String())
-	}
-	if !strings.Contains(out.String(), `"ok":false`) {
-		t.Fatalf("expected error JSON on out, got %q", out.String())
-	}
 }

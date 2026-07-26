@@ -24,7 +24,7 @@ import (
 // Command returns the cobra command for lyx init.
 //
 // The returned command is a leaf with Use "init". It scaffolds _lyx/config/ in
-// the current directory, wires warp junctions, and maintains the managed
+// the current directory, wires fabric junctions, and maintains the managed
 // .gitignore block. The public RunInit seam delegates here via clihelp.Execute,
 // so all in-process callers continue to work unchanged. A local initCmd
 // variable holds the composite literal (mirroring configcli.Command()'s
@@ -36,11 +36,11 @@ func Command() *cobra.Command {
 		Short: "scaffold _lyx/config/ in the current directory (or reverse it with --undo)",
 		Long: `init activates the lyx topology for the current worktree.
 
-It wires cwd-keyed warp junctions, creates _lyx/ and _lyx/config/ directories,
+It wires cwd-keyed fabric junctions, creates _lyx/ and _lyx/config/ directories,
 maintains the managed .gitignore block for .lyx/, and reconciles all module
 config files against their templates (idempotent: existing user edits are
-preserved). A weft pairing must already exist (run 'lyx warp add' or
-'lyx warp clone' first).
+preserved). A weft pairing must already exist (run 'lyx fabric add' or
+'lyx fabric clone' first).
 
 Pass --undo to reverse a previous init: this removes the host _lyx junction,
 clears the weft-side _lyx content (committing and pushing the deletion),

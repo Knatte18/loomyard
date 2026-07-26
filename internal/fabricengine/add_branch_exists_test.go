@@ -6,8 +6,8 @@
 // rejection — a bare "already exists" left the operator stuck without
 // out-of-band git knowledge.
 //
-// Package fabricengine_test to reuse buildDiffPair from
-// lifecycle_differential_test.go; shares the TestMain in testmain_test.go.
+// Package fabricengine_test to reuse newFabricFixture from
+// reconcile_stale_registration_test.go; shares the TestMain in testmain_test.go.
 
 package fabricengine_test
 
@@ -25,13 +25,14 @@ import (
 func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	t.Parallel()
 
-	dp := buildDiffPair(t, "")
-	l := dp.FabricFixture.Layout
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	const slug = "leftover-pair"
 	lyxtest.MustRun(t, l.WorktreeRoot, "git", "branch", slug)
 
-	_, err := dp.Fabric.Add(l, slug, fabricengine.AddOptions{SkipGit: true})
+	_, err := topology.Add(l, slug, fabricengine.AddOptions{SkipGit: true})
 	if err == nil {
 		t.Fatalf("Add(%q) error = nil; want branch-already-exists rejection", slug)
 	}
