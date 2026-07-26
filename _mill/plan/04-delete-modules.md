@@ -38,7 +38,8 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
   - `internal/fabricengine/checkout_index_refresh_test.go`
   - `internal/fabricengine/add_branch_exists_test.go`
   - `internal/fabricengine/weftgit_exclude_test.go`
-- **Creates:** none
+- **Creates:**
+  - `internal/fabricengine/add_rollback_adopt_test.go`
 - **Deletes:**
   - `internal/fabricengine/clone_differential_test.go`
   - `internal/fabricengine/lifecycle_differential_test.go`
@@ -78,6 +79,16 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
     - `TestCloneHub_DifferentialEquivalence`'s "fresh" (non-adopt) weft-primary-branch-creation
       path — the only place this end-to-end path is exercised.
     - `TestCloneHub_DifferentialStrictAbort`'s `teardownHub` cleanup-on-failure behaviour.
+  - In `lifecycle_differential_test.go`, `TestAddRollback_DifferentialEquivalence` asserts
+    that when `Add` fails after adopting a pre-existing weft branch, rollback preserves that
+    branch (and its unpushed history) rather than deleting it -- a live review round
+    reproduced the pre-fix behaviour (branch and its unique commit destroyed after a
+    host-push failure) with no standalone equivalent. Add a new standalone test,
+    `internal/fabricengine/add_rollback_adopt_test.go` (`TestAddRollback_AdoptedWeftBranchSurvives`),
+    that injects a deterministic post-adopt failure (a portal blocker file, the same
+    injection `TestAddRollback_DifferentialEquivalence` uses) and asserts the rollback
+    removes only the worktree `Add` created, leaving the adopted branch and its commit
+    untouched.
 
   Port each listed subtest's fixture setup and assertions faithfully — preserve what real bug
   each guards against (per its doc comment / subtest name above) rather than writing a

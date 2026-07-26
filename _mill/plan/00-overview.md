@@ -162,6 +162,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` target path across every c
 - `internal/fabriccli/spawn.go`
 - `internal/fabriccli/weft_verbs.go`
 - `internal/fabricengine/add.go`
+- `internal/fabricengine/add_rollback_adopt_test.go`
 - `internal/fabricengine/ancestors.go`
 - `internal/fabricengine/ancestors_test.go`
 - `internal/fabricengine/checkout.go`
