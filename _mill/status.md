@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: treadle
 branch: treadle
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-preround-targeting  '2026-07-26T17:27:26Z'
 approved-modelspec-migration  '2026-07-26T17:38:03Z'
 approved-docs-lifecycle  '2026-07-26T17:46:05Z'
 holistic-reviewing  '2026-07-26T17:46:24Z'
+holistic-approved  '2026-07-26T17:48:49Z'
 ```
 
 ## Batches
