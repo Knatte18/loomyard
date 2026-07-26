@@ -381,14 +381,23 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				fabricengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
 				":(exclude)*.lock",
 			)
+			// SkipGit is checked here, before fabricengine.New's stat-based
+			// path validation, mirroring weftengine.Commit's own top-level
+			// short-circuit: the CI/test bypass must never require a real
+			// weft worktree to exist on disk, but New (unlike CommitWeft
+			// itself) validates both paths unconditionally.
 			var committed bool
-			fab, weftErr := fabricengine.New(c.layout.WorktreeRoot, weftWorktree)
-			if weftErr == nil {
-				_, committed, weftErr = fab.CommitWeft(
-					pathspec,
-					fmt.Sprintf("perch: %s %s", id, outcomeLabel),
-					opts,
-				)
+			var weftErr error
+			if !opts.SkipGit {
+				var fab *fabricengine.Fabric
+				fab, weftErr = fabricengine.New(c.layout.WorktreeRoot, weftWorktree)
+				if weftErr == nil {
+					_, committed, weftErr = fab.CommitWeft(
+						pathspec,
+						fmt.Sprintf("perch: %s %s", id, outcomeLabel),
+						opts,
+					)
+				}
 			}
 			if weftErr == nil {
 				weftErr = fabricengine.PushWeftAt(weftWorktree, opts)

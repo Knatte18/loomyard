@@ -50,13 +50,20 @@ func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	opts := fabricengine.EnvSyncOptions()
 	pathspec := builderWeftPathspec(layout)
 
-	f, err := fabricengine.New(layout.WorktreeRoot, weftWorktree)
-	if err != nil {
-		return false, err
-	}
-	_, committed, err := f.CommitWeft(pathspec, fmt.Sprintf("builder: %s", label), opts)
-	if err != nil {
-		return false, err
+	// SkipGit is checked here, before fabricengine.New's stat-based path
+	// validation, mirroring weftengine.Commit's own top-level short-circuit:
+	// the CI/test bypass must never require a real weft worktree to exist on
+	// disk, but New (unlike CommitWeft itself) validates both paths
+	// unconditionally.
+	var committed bool
+	if !opts.SkipGit {
+		f, err := fabricengine.New(layout.WorktreeRoot, weftWorktree)
+		if err != nil {
+			return false, err
+		}
+		if _, committed, err = f.CommitWeft(pathspec, fmt.Sprintf("builder: %s", label), opts); err != nil {
+			return false, err
+		}
 	}
 	if err := fabricengine.PushWeftAt(weftWorktree, opts); err != nil {
 		return committed, err
