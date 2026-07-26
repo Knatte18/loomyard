@@ -158,8 +158,8 @@ prompt-file read idiom — are built ONLY via `internal/shell`.
 
 ## Weft Git Invariant
 
-Every git operation on the weft repo goes through the weft/warp engines in Go, driven by the
-orchestration layer in-process — never raw git, and never an LLM agent.
+Every git operation on the weft repo goes through `internal/fabricengine` in Go, driven by
+the orchestration layer in-process — never raw git, and never an LLM agent.
 
 - **Module ownership.** Weft-internal git (`commit`/`push`/`pull`/`sync`) goes through
   `internal/fabricengine`; coordinated host↔weft topology (a checkout that moves both and
