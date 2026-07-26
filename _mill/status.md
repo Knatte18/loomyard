@@ -31,7 +31,9 @@ implementing  '2026-07-26T14:49:21Z'
 ```yaml
 batches:
   - name: A -- consumers
-    state: pending
+    state: running
+    implementer_session: 5125010a-d6f6-4a34-8b0c-2ca81606d967
+    start_sha: 6209cab47bf4135847ceffb05c8e661313c5cbb8
   - name: B -- config collapse
     state: pending
   - name: C -- CLI de-registration + sandbox tags
