@@ -79,10 +79,11 @@ the docs describe the code as actually shipped across batches 1–4.
   `internal/treadleengine` package documentation (a short prose pointer,
   since godoc has no markdown-linkable path). The known set — verify by
   grepping `treadle.md` across the repo before committing — is: four links
-  in `manifest/designs/shed.md`, four in `manifest/designs/hardener.md`
-  (one of which uses a `#process--do-not-fold-this-into-hardeners-task`
-  anchor whose surrounding sentence must be reworded to stand without the
-  anchor), and the `manifest/roadmap.md` Planned-item link handled above.
+  in `manifest/designs/shed.md` (one of which uses a
+  `#process--do-not-fold-this-into-hardeners-task` anchor — that sentence
+  must be reworded to stand without the anchor), four plain whole-file
+  links in `manifest/designs/hardener.md` (simple retargets), and the
+  `manifest/roadmap.md` Planned-item link handled above.
   `shed.md` and `hardener.md` themselves stay — they are Someday design
   docs, not this task's module doc.
   Delete `manifest/designs/treadle.md` (git rm) in this same commit.

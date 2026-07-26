@@ -119,6 +119,7 @@ resolved values change hashes differently and the existing
 ### Card 13: profile files and CLI move to model-spec strings
 
 - **Context:**
+  - `internal/modelspec/modelspec.go`
   - `internal/modelspec/parse.go`
   - `internal/modelspec/registry.go`
   - `internal/modelspec/load.go`

@@ -299,7 +299,13 @@ smaller sequence of fully-green commits that preserves `git mv` history.
   production code changed (e.g. `converged`'s verdict parameter type).
   `judgeverdict_test.go` additionally updates ONLY the error-prefix
   expectations from `perch: ` to `treadle: ` per card 2's pinned
-  parser-prefix resolution.
+  parser-prefix resolution. Header-comment corrections on moved files are
+  licensed alongside the package-declaration/identifier edits wherever the
+  move falsifies the header's own claims — concretely:
+  `smoke_judge_test.go`'s "This file stays in package perchengine ..."
+  rationale updates to name treadleengine, and `roundfiles_test.go`'s
+  header drops its `buildRoundProfile` claim once that test is extracted
+  out below.
   Two of the moved files contain sub-tests for functions that card 2 kept
   in perchengine — those tests move BACK out (rename-plus-extraction on the
   test side, so the bulk of each file keeps its `git mv` history):
