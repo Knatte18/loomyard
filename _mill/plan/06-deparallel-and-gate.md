@@ -84,6 +84,7 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   - `internal/fabricengine/portals.go`
   - `internal/fabricengine/prune.go`
   - `internal/fabricengine/reconcile.go`
+  - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/remove.go`
   - `internal/fabricengine/status.go`
   - `internal/fabricengine/topology.go`
@@ -104,9 +105,11 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   "mirroring warpengine's clone_integration_test.go" / "alongside a warpengine
   comparison" provenance comment, discovered while sweeping `clone_test.go` -- carry
   "Adapted from warpengine's X_test.go" / "mirroring weftengine..." provenance comments;
-  all are comment-only, no code import of a deleted engine, verified). This covers two
-  comment kinds,
-  both of which name a now-deleted module:
+  all are comment-only, no code import of a deleted engine, verified;
+  `reconcile_stale_registration_test.go` is also added to this card's scope, discovered
+  while sweeping `reconcile.go`, because its `TestCleanup_NonSuffixedBranchNeverDeleted`
+  doc comment carries a "parallel-build period" phrase caught by card 27's Tier 2b gate).
+  This covers two comment kinds, both of which name a now-deleted module:
   - **Provenance/mirror comments** -- "Adapted from warpengine's X.go", "distinct from
     warpengine's", "mirroring warpengine.Y", "matching warpengine's shape", and similar in
     `add.go`, `ancestors.go`, `checkout.go`, `clone.go`, `config.go`, `drift.go`,
