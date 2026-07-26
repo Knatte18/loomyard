@@ -149,6 +149,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` target path across every c
 - `crucible/gitrepo-review-prompt.md`
 - `docs/overview.md`
 - `docs/reference/plan-format-v3.md`
+- `docs/shared-libs/hubgeometry.md`
 - `internal/buildercli/weft.go`
 - `internal/clihelp/exec.go`
 - `internal/codeintelcli/cli.go`
@@ -217,6 +218,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` target path across every c
 - `manifest/designs/codeintel-redesign.md`
 - `manifest/designs/host-visibility.md`
 - `manifest/designs/loom-finalize.md`
+- `manifest/designs/loom.md`
 - `manifest/designs/raddle.md`
 - `manifest/roadmap.md`
 - `tools/sandbox/SANDBOX-CORE-SUITE.md`

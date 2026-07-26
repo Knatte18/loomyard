@@ -169,6 +169,8 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/hubgeometry/siblinglayout_test.go`
   - `internal/codeintelcli/cli.go`
+  - `docs/shared-libs/hubgeometry.md`
+  - `manifest/designs/loom.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -186,6 +188,14 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
     reference `internal/fabriccli` instead.
   - `internal/hubgeometry/siblinglayout_test.go`: sweep any `//` comment naming a deleted
     module (comment-only, verified -- no code import) to the fabric equivalent.
+  - `docs/shared-libs/hubgeometry.md`: line 100 cites "Used by `warpengine/prune.go`" as a
+    consumer of `WeftHostSlug` -- reword to name `internal/fabricengine`'s equivalent hub-scan
+    (`internal/fabricengine/prune.go`), which now owns that scan.
+  - `manifest/designs/loom.md`: the Preflight module-table row says the package "builds on
+    ... internal/warpengine, internal/state" -- reword to `internal/fabricengine`. Pre-existing
+    doc scope gap surfaced by holistic review r4 (neither file was in any batch's original
+    Edits list); folded into this card because it is the same "repoint stale full-path
+    deleted-module comment refs" pattern the rest of the card already covers.
 - **Commit:** `docs: repoint stale warp/weft package comments to fabric`
 
 ### Card 26: bare-name comment review sweep
