@@ -31,8 +31,9 @@ const (
 	hubName = "lyx-test-HUB"
 
 	// fabric-suite runs against its own dedicated hub, never the shared
-	// lyx-test-HUB above -- warp/weft's sandbox state must stay untouched by
-	// fabric's parallel-build testing and vice versa.
+	// lyx-test-HUB above -- the dedicated hub hosts fabric's stricter
+	// "main-weft"-suffixed branch-naming suite, which the shared hub's fixtures
+	// do not exercise.
 	fabricHostURL   = "https://github.com/Knatte18/lyx-fabric-test"
 	fabricWeftURL   = "https://github.com/Knatte18/lyx-fabric-test-weft"
 	fabricHubName   = "lyx-fabric-test-HUB"
@@ -68,9 +69,8 @@ var cloneRun = func(parentDir, lyxPath string) error {
 // fabricCloneRun is a testability seam for executing `lyx fabric clone` against
 // the dedicated fabric sandbox repos. It mirrors cloneRun's shape exactly --
 // same subprocess-error-vs-startup-error handling, same resolved-binary
-// parameter instead of a bare-PATH lookup -- but shells "fabric clone" (never
-// "warp clone") and targets fabric's own dedicated hub instead of the shared
-// lyx-test-HUB.
+// parameter instead of a bare-PATH lookup -- but targets fabric's own
+// dedicated hub instead of the shared lyx-test-HUB.
 var fabricCloneRun = func(parentDir, lyxPath string) error {
 	cmd := exec.Command(lyxPath, "fabric", "clone", fabricHostURL, fabricWeftURL)
 	cmd.Dir = parentDir
@@ -88,7 +88,7 @@ var fabricCloneRun = func(parentDir, lyxPath string) error {
 	return nil
 }
 
-// removeAll is a testability seam for os.RemoveAll, matching the pattern in internal/warpengine/clone.go.
+// removeAll is a testability seam for os.RemoveAll, matching the pattern in internal/fabricengine/clone.go.
 var removeAll = os.RemoveAll
 
 // decideClone determines whether to clone the Hub and performs the necessary actions.
