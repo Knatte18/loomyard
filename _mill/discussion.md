@@ -42,7 +42,9 @@ independent of whether Tenter is ever built.
   pre-round targeting.
 - Rewrite `internal/perchengine` as a thin configuration layer over `treadleengine`
   (burlerengine adapted into the `RoundRunner` seam). Public Go API of `perchengine`
-  stays byte-identical; `perchcli` compiles untouched.
+  stays byte-identical, so `perchcli`'s engine-facing code needs no changes — but
+  `perchcli`'s profile-parsing schema (yaml tags in `run.go`), embedded help text, and
+  test fixtures DO change as part of the model-spec migration below.
 - Perch adopts the handoff: the judge's read-set becomes {handoff + reviews since last
   valid handoff} instead of {every prior review}.
 - Model-spec migration of perch's operator config surface (a deliberate, fail-loud
@@ -177,8 +179,11 @@ independent of whether Tenter is ever built.
 
 - Decision: A third judge framing (alongside circling and milestone), profile-gated,
   using the same `runJudgeCall`-shaped machinery and fail-safe posture: read the latest
-  handoff, decide what to target, write `round-<token>-seed.md`. A Treadle profile
-  capability flag enables it; perch's profile does not set it. The per-attempt runner
+  handoff, decide what to target, write `round-<token>-seed.md`. The capability flag
+  lives on **Treadle's own per-block input struct** (`treadleengine`'s profile type — a
+  distinct type from perch's byte-identical `perchengine.Profile`; exact field name is
+  mill-plan's call, e.g. a `PreRoundTargeting bool`); perch's adapter leaves it
+  zero-valued, so perch never exercises it. The per-attempt runner
   input carries the optional seed path. Fail-safe: on any targeting failure the round
   runs without a seed (Warn logged), exactly like a judge miss. state.json's round
   record gains an optional `seedPath` field.
@@ -316,8 +321,9 @@ independent of whether Tenter is ever built.
   extended circling/milestone templates get updated/new pinned statements (incl. the
   ledger carry-forward rule) and the targeting template gets its own.
 - `perchengine/template.yaml` is perch.yaml's strict config template (judge_model,
-  judge_effort, round_caps) — `judge_effort` line is removed in the migration;
-  `configreg` registration may need the updated template.
+  judge_effort, round_caps) — the `judge_effort` line is removed in the migration, and
+  the strict-template/`configreg` registration update is **required** (perch.yaml stays
+  configreg-validated; strict validation is what makes old files fail loud).
 
 ## Constraints
 
@@ -405,6 +411,10 @@ From `CONSTRAINTS.md` (all apply; the machine-enforced ones fail `go test`):
   change? **A:** Accept fail-loud non-resume — the existing "different profile; use a
   fresh `--run-id`" error fires; no rehash/migration machinery, no pre-resolution
   hashing.
+- **Q:** (review gap r2) "perchcli compiles untouched" vs the migration? **A:** Reword
+  to the precise claim: engine-facing Go API unchanged; perchcli's profile-parsing
+  schema, help text, and fixtures DO change. (Operator delegated: recommended option
+  auto-applies for all review findings from round 2 on.)
 - **Q:** Config layer? **A:** No treadle.yaml; Treadle takes resolved data. Then
   operator identified perch's split `judge_model`+`judge_effort` as an oversight:
   perch's file surface migrates to the established model-spec notation
