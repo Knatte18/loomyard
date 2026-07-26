@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-treadle-extraction
 slug: treadle
 branch: treadle
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r5  '2026-07-26T15:57:23Z'
 plan-fix-r6  '2026-07-26T16:23:20Z'
 planned  '2026-07-26T16:23:30Z'
 implementing  '2026-07-26T16:25:21Z'
+approved-treadle-extraction  '2026-07-26T16:53:12Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ implementing  '2026-07-26T16:25:21Z'
 ```yaml
 batches:
   - name: treadle-extraction
-    state: running
+    state: approved
     implementer_session: b229bd69-d2ec-43d4-90fc-d1c1ebade9fe
     start_sha: 14ff3e0f784b219d3bb65df554110014d3000892
+    commit_sha: c860c64ec53be6e592f1077f04a0911384af0d76
   - name: judge-handoff
     state: pending
   - name: preround-targeting
