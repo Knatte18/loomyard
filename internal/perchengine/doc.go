@@ -234,4 +234,19 @@
 // as supplied (not the resolved values), and its resolved round-caps ladder
 // is stamped into state.json, so a later perch.yaml change neither alters
 // nor invalidates the resume of an in-flight block.
+//
+// # Treadle — where the round loop actually lives now
+//
+// The round loop this document describes — the round-caps ladder, the
+// verdict-judge model, the pluggable gate, the non-done-outcome retry/
+// triage machinery, pause, and run-dir locking — no longer lives in this
+// package's own code. It was extracted into internal/treadleengine, the
+// generalized round-loop engine a second future consumer (Tenter, see
+// manifest/designs/hardener.md) can also drive. perchengine is now the thin
+// configuration layer: it resolves perch.yaml/profile data (this file's
+// resolution-order and identity rules above), adapts burlerengine into
+// treadleengine's RoundRunner seam (adapter.go), and delegates to
+// treadleengine.Engine.Run (engine.go) — every invariant documented above
+// still holds exactly as described; only where the code lives has changed.
+// perch's own exported Go API is unchanged.
 package perchengine

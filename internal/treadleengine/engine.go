@@ -1,20 +1,17 @@
 // engine.go defines the RoundRunner-agnostic seams every caller wires
-// through: the gate-command execution seam (CommandRunner), the ephemeral
-// judge/triage utility seam (Shuttle), Options, and the Engine type and its
-// constructor. Engine drives a caller-supplied RoundRunner for every round's
-// attempt(s) and its own Shuttle seam (judge.go) for the two ephemeral
-// judge/triage calls; it never routes a round through Shuttle itself. Engine
-// is weft-blind and geometry-blind: it never imports weftengine/warpengine/
-// hubgeometry and never constructs a _lyx path itself — it operates on a
-// caller-supplied absolute runDir, and GateDir (Profile) is what resolves
-// the gate command's working directory.
+// through: the gate-command execution seam (CommandRunner), Options, and the
+// Engine type and its constructor. Engine drives a caller-supplied
+// RoundRunner for every round's attempt(s) and its own Shuttle seam
+// (judge.go) for the two ephemeral judge/triage calls; it never routes a
+// round through Shuttle itself. Engine is weft-blind and geometry-blind: it
+// never imports weftengine/warpengine/hubgeometry and never constructs a
+// _lyx path itself — it operates on a caller-supplied absolute runDir, and
+// GateDir (Profile) is what resolves the gate command's working directory.
 package treadleengine
 
 import (
 	"fmt"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // CommandRunner is the gate-command execution seam: it runs argv inside dir,
@@ -28,20 +25,6 @@ import (
 // where the gate never observed the artifact at all. (Doc text carried over
 // verbatim from perchengine's CommandRunner.)
 type CommandRunner func(argv []string, dir string, timeout time.Duration) (output []byte, exitZero bool, err error)
-
-// Shuttle is the seam Engine drives its two ephemeral judge/triage utility
-// calls through (judge.go): the subset of shuttleengine's API each call
-// needs, satisfied as-is by *shuttleengine.Runner in production and by a
-// fake in unit tests. Kept package-local rather than shared with
-// burlerengine's own Shuttle interface, mirroring that seam's own
-// rationale: it lets treadleengine stay engine-agnostic and testable
-// without wiring reed or an LLM provider. This is the seam's sole
-// declaration — perchengine's own Shuttle becomes a type alias onto this
-// one (card 2), so exactly one declaration survives across the two
-// packages.
-type Shuttle interface {
-	Run(shuttleengine.Spec) (shuttleengine.Result, error)
-}
 
 // Options carries the two seams a caller may override; both fields default
 // when left zero-valued. A nil PauseRequested means "no pause source
