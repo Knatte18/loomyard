@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
 // setupPreflightFixture builds a CopyPaired fixture, wires the host-weft
@@ -32,7 +32,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	f := lyxtest.CopyPaired(t)
 	slug := filepath.Base(f.Layout.WorktreeRoot)
 
-	if err := warpengine.WireJunctions(f.Layout, slug); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
