@@ -21,22 +21,21 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
 
 ## Cards
 
-### Card 15: confirm standalone coverage, then delete the four differential tests
+### Card 15: backfill fabric-only coverage gaps, confirm standalone coverage, then delete the four differential tests
 
 - **Context:**
-  - `internal/fabricengine/clone_test.go`
-  - `internal/fabricengine/clone_adopt_test.go`
   - `internal/fabricengine/add_test.go`
   - `internal/fabricengine/checkout_rollback_test.go`
   - `internal/fabricengine/revert_test.go`
-  - `internal/fabricengine/reconcile_stale_registration_test.go`
-  - `internal/fabricengine/corrindex_test.go`
-  - `internal/fabricengine/index_integration_test.go`
   - `internal/fabricengine/weftgit_exclude_test.go`
   - `internal/fabricengine/trailer_test.go`
   - `internal/fabricengine/syncweft_integration_test.go`
   - `internal/fabricengine/hook_test.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/fabricengine/reconcile_stale_registration_test.go`
+  - `internal/fabricengine/corrindex_test.go`
+  - `internal/fabricengine/clone_test.go`
+  - `internal/fabricengine/clone_adopt_test.go`
 - **Creates:** none
 - **Deletes:**
   - `internal/fabricengine/clone_differential_test.go`
@@ -52,13 +51,42 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
   revert) -> `add_test.go`/`checkout_rollback_test.go`/`revert_test.go`/`clone_adopt_test.go`;
   reconcile -> `reconcile_stale_registration_test.go`/`corrindex_test.go`/
   `index_integration_test.go`; weftgit -> `weftgit_exclude_test.go`/`trailer_test.go`/
-  `syncweft_integration_test.go`. If EVERY assertion is covered (expected -- fabric has a
-  dedicated standalone suite), `git rm` the four differential files. If a genuinely unique
-  fabric-behaviour assertion is found with no standalone equivalent, STOP and report it as a
-  stuck (`stuck_type: logic`) rather than silently dropping coverage -- do not invent a test
-  blind. Delete via `git rm` (blind script per the scripts decision), no need to open the
-  files beyond the coverage read.
-- **Commit:** `test(fabricengine): delete differential tests (coverage confirmed standalone)`
+  `syncweft_integration_test.go`.
+
+  A prior attempt at this card found the confirmation fails for two of the four files. This
+  revision requires backfilling those specific gaps as standalone (fabric-only, no
+  warp/weft-engine import) tests *before* deleting the differential files, then re-confirming
+  parity:
+  - In `reconcile_differential_test.go`, these six subtests are fabric-only regression guards
+    with no standalone equivalent — add an equivalent standalone test for each, exercising
+    `fabricengine` directly (no reference-engine comparison), into whichever of
+    `reconcile_stale_registration_test.go` / `corrindex_test.go` best fits the behaviour under
+    test:
+    - `TestPrune_DifferentialEquivalence/ApplyRemovesPortalAndLaunchers` (the R6 fix)
+    - `TestPrune_StaleRegistrationReportedOnce` (the F2/F3 regression guard)
+    - `TestCleanup_DifferentialEquivalence/PrimaryBranchSurvivesForceWhenNotCheckedOut` (the F1
+      regression guard)
+    - `TestCleanup_DifferentialEquivalence/NonSuffixedBranchNeverDeleted`
+    - `TestCleanup_DifferentialEquivalence/DetachedHostHeadProtectsCheckedOutWeftBranch` (the R5
+      fix)
+    - `TestPairInSyncAndHostClean_DifferentialEquivalence/PairInSync_RealDirNotAJunction` (the
+      R10 fix)
+  - In `clone_differential_test.go`, add standalone coverage (into `clone_test.go` or
+    `clone_adopt_test.go`, whichever fits) for:
+    - `TestCloneHub_DifferentialEquivalence`'s "fresh" (non-adopt) weft-primary-branch-creation
+      path — the only place this end-to-end path is exercised.
+    - `TestCloneHub_DifferentialStrictAbort`'s `teardownHub` cleanup-on-failure behaviour.
+
+  Port each listed subtest's fixture setup and assertions faithfully — preserve what real bug
+  each guards against (per its doc comment / subtest name above) rather than writing a
+  weaker smoke-test placeholder. Once every one of these six-plus-two assertions has a
+  standalone home and passes, re-run the coverage-confirmation read: if every assertion in all
+  four differential files is now covered by a standalone test in the Context list or the
+  files just edited, `git rm` the four differential files. If, after backfilling, a further
+  genuinely unique fabric-behaviour assertion turns up with no standalone equivalent, STOP and
+  report it as a stuck (`stuck_type: logic`) rather than silently dropping coverage -- do not
+  invent a test blind.
+- **Commit:** `test(fabricengine): backfill fabric-only coverage, delete differential tests`
 
 ### Card 16: delete the four old modules
 
