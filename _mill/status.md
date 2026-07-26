@@ -49,7 +49,9 @@ batches:
     start_sha: 9416063d96b39e76104a5bb11247351a2c8db5a8
     commit_sha: 98ffd3c396ed2af2c84d1ed52e12f56986a5e474
   - name: D1 -- delete modules + enforcement
-    state: pending
+    state: running
+    implementer_session: 5a32ca4d-1964-43f8-9d40-25342e769209
+    start_sha: 8b3b7efcb7e100a116e8f681d6dded059700e1bc
   - name: D2 -- doc repoint
     state: pending
   - name: D3 -- de-parallel-build prose + final gate
