@@ -47,7 +47,8 @@ that work.
 - Rewrite the consumer/registry integration tests that reference warp/weft onto fabric
   (see Testing).
 - Docs/invariants in the same effort: delete `manifest/designs/fabric.md`; add a **Done**
-  entry to `manifest/roadmap.md`; repoint the seven other docs that link to `fabric.md`;
+  entry to `manifest/roadmap.md`; repoint the nine other docs that link to `fabric.md`
+  (incl. `crucible/fabric-review-prompt.md`, `crucible/gitrepo-review-prompt.md`);
   cut the parallel-build paragraph from `internal/fabricengine/doc.go`; update
   `docs/overview.md`; update `CONSTRAINTS.md` (Weft Git Invariant, lyxtest Leaf Invariant);
   remove sandbox CORE-SUITE scenarios S7/S8 and de-parallel-build the FABRIC-SUITE +
@@ -259,10 +260,14 @@ prose (`:7`, `:182`) all reference the old modules and must be rewritten to fabr
 **doc.go.** `internal/fabricengine/doc.go` already carries the durable rationale but retains
 a parallel-build paragraph (`:9-12`) that must be cut.
 
-**fabric.md inbound links (7 to repoint + 1 roadmap Done):** `board-weft-storage.md`,
+**fabric.md inbound links (9 to repoint + 1 roadmap Done):** `board-weft-storage.md`,
 `raddle.md`, `loom-finalize.md`, `host-visibility.md`, `codeintel-redesign.md`,
-`docs/overview.md`, `docs/reference/plan-format-v3.md` -> repoint to `doc.go`;
+`docs/overview.md`, `docs/reference/plan-format-v3.md`, `crucible/fabric-review-prompt.md`
+(`:58,:288,:417`), `crucible/gitrepo-review-prompt.md` (`:72,:152`) -> repoint to `doc.go`;
 `manifest/roadmap.md:20` -> becomes the Done entry.
+(`crucible/` is durable review-prompt scaffolding, not ephemeral -- it is in the repoint
+scope; `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s link is handled by the FABRIC-SUITE
+de-parallel-build item, not counted here.)
 
 **Transition-window note (harmless).** While some consumers still use `weftengine.Commit`
 (no `Warp-SHA:` trailer) and others use `fabric.CommitWeft` (trailer + `RecordCorrespondence`),
@@ -334,8 +339,10 @@ wrong. Instead:
 **Stale full-path comment refs to repoint in Batch D (verified, not scheduled elsewhere):**
 `internal/lyxtest/doc.go:2-3` (lists all four deleted packages),
 `internal/hubgeometry/hubgeometry.go:700` ("seeders in internal/warpengine"),
-`internal/codeintelcli/cli.go:34` ("see internal/weftcli.Command"). Plus a bare-name review
-sweep of `internal/perchengine/{doc.go,engine.go}`, `internal/websterengine/audit.go`,
+`internal/codeintelcli/cli.go:34` ("see internal/weftcli.Command"), and
+`cmd/lyx/main.go:92` (bare-word comment "board, ide, reed, weft" -- drop the stale "weft"
+when registration is removed; sits at the Batch C registration edit). Plus a bare-name
+review sweep of `internal/perchengine/{doc.go,engine.go}`, `internal/websterengine/audit.go`,
 `internal/reedengine/config.go`, `internal/lyxtest/hermetic.go` -- repoint only where they
 name the deleted *modules*, leave where they describe the weft repo concept. These are
 comments (build-safe), but the Documentation-Lifecycle "no rot" rule and the Tier-1 gate
@@ -387,7 +394,8 @@ above onto fabric and (b) any standalone assertion ported off a differential tes
   warp/weft config modules fully phased out; no alias, no on-disk migration (regenerate via
   `lyx init`).
 - **Q:** fabric.md -- delete, stub, or keep? **A:** Delete; add a short Done entry in
-  roadmap.md (no link); repoint the seven other inbound links to `doc.go`. The code is the
+  roadmap.md (no link); repoint the nine other inbound links (incl. the two `crucible/`
+  review prompts) to `doc.go`. The code is the
   source of truth once the module is built.
 - **Q:** Sandbox -- which hub survives? **A:** Fabric's dedicated hub survives as the fabric
   suite (already seeded for `main-weft` naming); flip the shared-hub bootstrap `cloneRun`
@@ -407,4 +415,8 @@ above onto fabric and (b) any standalone assertion ported off a differential tes
   two tiers -- Tier 1 hard zero-match on import paths + CLI + config identifiers, Tier 2 a
   reviewed soft sweep of comment refs (fix where they name deleted modules, leave where they
   describe fabric's weft repo/role).
+- **Q:** (review r2 gap) The `fabric.md` inbound-link list said "seven" but
+  `crucible/fabric-review-prompt.md` and `crucible/gitrepo-review-prompt.md` also link to it
+  -- repoint or scope out? **A:** Repoint both; `crucible/` is durable review-prompt
+  scaffolding, so the count is nine repointed links, zero dangling.
 ```
