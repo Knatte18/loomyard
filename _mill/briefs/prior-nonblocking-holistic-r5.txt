@@ -1,0 +1,2 @@
+- config.go retains stale warp.yaml/weft.yaml provenance phrasing: `internal/fabricengine/config.go:3-4,20-21`
+- Pre-existing docs still cite internal/warpengine as live: `manifest/designs/loom.md:243`, `docs/shared-libs/hubgeometry.md:100`
