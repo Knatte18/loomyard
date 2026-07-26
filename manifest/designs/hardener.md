@@ -1,7 +1,7 @@
-# Module: hardener (DRAFT — concept not yet settled)
+# Module: Tenter + Hardener (DRAFT — concept not yet settled)
 
 > **⚠️ DRAFT. This is an early concept sketch, not a settled design.** Unlike the other module docs
-> (which are *Design — not built* but agreed), `hardener` is still being figured out. The shape below
+> (which are *Design — not built* but agreed), this one is still being figured out. The shape below
 > captures what a weekend of hand-running the method taught us and the decisions reached so far in
 > discussion; **expect fields, mechanisms, and even the boundary of the module to change.** Do not
 > implement from this doc yet. When the concept firms up this banner comes off and the doc becomes a
@@ -10,43 +10,62 @@
 >
 > **Hand-executed origin:** [`crucible`](../../crucible/README.md) is the method this module would
 > automate — the hand-run version of the same idea, named separately to avoid colliding with this
-> module's own name. `hardener` was developed over the last week out of a concrete need: to **run**
+> module's own name. This was developed over the last week out of a concrete need: to **run**
 > actual `reed` code hard enough to surface defects a green `go test` never proves. Six
 > hand-orchestrated rounds fixed what many rounds of text-based review could not — it was
 > genuinely *hardening*.
+>
+> **Status: Someday, deprioritized.** Not required to get `loom` running — `loom` only ever uses
+> text-review (`perch`), never behavior-review. Kept separate from the Planned `Treadle`/`Shed`/
+> perch-rewrite work for exactly that reason: nothing here blocks `loom`.
 
-`hardener` is a **behavior-based reviewer**: where `perch` (see the `internal/perchengine` package
-documentation) reads an artifact, hardener
-**runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial
-scenarios to break it. It is a separate, on-demand, **post-loom** module — not on the
-`shuttle → burler → perch → loom` spine — meant to harden a live-substrate module (the archetype:
-`reed` driving real tmux) before merge.
+## Naming: two things, not one
 
-## Why it is not `perch`
+Earlier drafts of this doc used "hardener" for both the review mechanism and the whole on-demand
+campaign, which turned out to conflate two distinct layers once the shared-engine design
+([treadle.md](treadle.md), [shed.md](shed.md)) was pinned:
 
-`perch` and `hardener` share the `burler` *round discipline* (see the `internal/burlerengine`
+- **`Tenter`** — the review-loop alone: `Treadle` (the generic round-loop engine — judge, gate,
+  round-spawn, cap, pause, lock) configured with a live-substrate-driving round-runner and a
+  behavior-review profile, instead of `perch`'s `burlerengine` + text-review profile. Perch's
+  direct structural sibling. Not separately runnable in isolation the simple way `perch` is,
+  because behavior-review needs a live sandbox/worktree lifecycle around it.
+- **`Hardener`** — the full, on-demand, autonomous campaign: `Shed` (the generic outer phase-FSM —
+  see [shed.md](shed.md)) wrapping `Tenter`, plus Hardener's own Preflight (sandbox provisioning,
+  live-suite readiness). This is what gets a worktree spawned for it (via `fabric`) and safe-merges
+  back into parent when done, the same lifecycle `loom` uses, just with `Tenter` in the
+  producer-slot instead of Discussion/Plan/Webster.
+
+`Tenter` is a **behavior-based reviewer**: where `perch` (see the `internal/perchengine` package
+documentation) reads an artifact, `Tenter` **runs** a live-substrate module, reacts to what it
+observes, and builds bespoke adversarial scenarios to break it. `Hardener` is a separate, on-demand,
+**post-loom** campaign — not on the `shuttle → burler → perch → loom` spine — meant to harden a
+live-substrate module (the archetype: `reed` driving real tmux) before merge.
+
+## Why `Tenter` is not `perch`
+
+`Tenter` and `perch` share the `burler` *round discipline* (see the `internal/burlerengine`
 package documentation) — A-review → B-fix, no self-grading, commit-per-fix, fix-everything — but
 they are different reviewers along two axes:
 
-| | `perch` | `hardener` |
+| | `perch` | `Tenter` |
 |---|---|---|
 | Mode | **text** — read the artifact | **behavior** — run the module, react, build scenarios |
 | Substrate | in-worktree, fast | a **live sandbox repo**; slow, heavy git/go operations |
 | Gate | LLM verdict (or a light `command` gate) | **deterministic**: run the smoke suite N× concurrent, zero stray state |
-| Orchestrator | stateless Go loop | an **accumulating** orchestrator (see below) |
 | Cost | cheap, minutes | token- **and** wall-clock-heavy; a single iteration ran 1–2 hours; a campaign, a weekend |
-| When | between every phase (on the spine) | **on demand, after loom**, only when needed |
+| When | between every phase (on the spine) | **on demand, after loom**, only when `Hardener` is invoked |
 
-perch's `command` gate lets a code profile *touch* behavior lightly; hardener is the heavy tier —
+perch's `command` gate lets a code profile *touch* behavior lightly; `Tenter` is the heavy tier —
 driving real substrate and hand-rolling crash/rebirth/concurrency scenarios is its whole job.
 
-## The orchestrator — resolved: Go drives per-round respawn, no persistent thread
+## `Tenter`'s round-loop — resolved: `Treadle` drives per-round respawn, no persistent thread
 
-**The engine underneath this is now designed jointly with `perch`, not hardener-specific — see
-[gorch.md](gorch.md).** That doc covers the round-runner interface, the judge-maintained handoff
-(a `perch` improvement too, not just hardener's), and the process for getting there (a dedicated
-discussion round precedes rewriting `perch` or building `hardener` — this is not folded into
-hardener's own task). What follows here is hardener's own instance of that shared design.
+**The engine underneath `Tenter` is designed jointly with `perch`, not Tenter-specific — see
+[treadle.md](treadle.md).** That doc covers the round-runner interface, the judge-maintained handoff
+(a `perch` improvement too, not just Tenter's), and the process for getting there (`Treadle` is
+Planned; `Tenter` itself stays Someday, built on `Treadle` only once `Treadle` exists). What
+follows here is Tenter's own instance of that shared design.
 
 In the hand-run version (see [crucible/README.md](../../crucible/README.md)), **one persistent
 orchestrator thread** stayed alive across the campaign: it spawned a fresh round agent per round,
@@ -57,21 +76,21 @@ where the module's bugs live, **targeted** each next round agent ("focus on X"),
 accumulation is what made the reed campaign's rounds succeed where stateless text-review rounds did
 not — the round agent kept re-discovering the terrain cold otherwise.
 
-**Resolved: no persistent thread.** Go itself is the orchestrator (`Gorch`); each round is three
+**Resolved: no persistent thread.** Go itself is the orchestrator (`Treadle`); each round is three
 fresh, one-shot spawns, not a living session accumulating state in a context window:
 
-1. **`progress-judge`, pre-round.** Gorch spawns a fresh one-shot agent that reads the handoff file,
-   decides what to target next, and writes the round's seed prompt (the file the reviewer will
-   read). It then terminates — no lingering session.
-2. **Reviewer.** Gorch spawns the round agent proper, pointed at the prompt the judge just wrote —
-   the same A-review → B-fix, commit-per-fix, no-self-grading round crucible already runs by hand.
+1. **`progress-judge`, pre-round.** `Treadle` spawns a fresh one-shot agent that reads the handoff
+   file, decides what to target next, and writes the round's seed prompt (the file the reviewer
+   will read). It then terminates — no lingering session.
+2. **Reviewer.** `Treadle` spawns the round agent proper, pointed at the prompt the judge just wrote
+   — the same A-review → B-fix, commit-per-fix, no-self-grading round crucible already runs by hand.
    This is the `burler`-shaped worker; the *campaign* loop wrapping it is new, the round itself is
    not.
-3. **`progress-judge`, post-round.** Gorch spawns a fresh one-shot agent that reads the handoff plus
-   the round's review/fixer-report artifacts, **independently validates the findings** (crucible's
-   non-negotiable rule — three of the reed campaign's seven rounds self-reported "merge-ready" and
-   were wrong each time), rewrites the handoff in place, and decides whether another round is needed
-   or the campaign has converged.
+3. **`progress-judge`, post-round.** `Treadle` spawns a fresh one-shot agent that reads the handoff
+   plus the round's review/fixer-report artifacts, **independently validates the findings**
+   (crucible's non-negotiable rule — three of the reed campaign's seven rounds self-reported
+   "merge-ready" and were wrong each time), rewrites the handoff in place, and decides whether
+   another round is needed or the campaign has converged.
 
 **Naming, fixed:** the pre/post role above is **`progress-judge`**, reusing the term perch's own
 module description already uses ("run `burler` rounds → `APPROVED`/`stuck` + `progress-judge` +
@@ -85,11 +104,11 @@ not just post-round — the pre-round targeting step (read handoff, decide focus
 round's seed prompt) is not something perch's `progress-judge` does for Discussion/Plan/Builder
 today; those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
 
-### Open question: does pre-round targeting belong in `perch` itself?
+### Pre-round targeting
 
-Superseded by [gorch.md](gorch.md) — pre-round targeting is designed there as a general capability
-`gorch`'s judge can support, exercised by hardener's profile and simply unused by perch's. See that
-doc's "Pre-round targeting" section instead of resolving this here.
+Superseded by [treadle.md](treadle.md) — pre-round targeting is designed there as a general
+capability `Treadle`'s judge can support, exercised by Tenter's profile and simply unused by
+perch's. See that doc's "Pre-round targeting" section instead of resolving this here.
 
 ### The handoff — two-tier memory, and the one crux
 
@@ -112,18 +131,22 @@ lost and stuck-detection fails quietly. So: **distill the prose, but keep the ke
 The migration persistent-thread → respawn is essentially this one audit — find what the live thread
 knew implicitly and make it explicit.
 
-## Autonomy
+## `Hardener` — the campaign
 
 The operator's role in the hand-run campaign was mostly **gating** — approve, ask for another round —
 not irreplaceable judgment. That is front-loadable into the seed instructions ("run until the gates
-are green or K rounds; do not ask"). So hardener can run **autonomously, overnight**, with reed + Go
-handling **auto-compaction** (which, per the insight above, *is* per-round respawn). Model rotation
-across rounds (Opus / Fable / Sonnet) stays as a cheap diversity lens — convergence across *different*
-models is stronger evidence than N passes from one.
+are green or K rounds; do not ask"). So `Hardener` can run **autonomously, overnight**, with reed +
+Go handling **auto-compaction** (which, per the insight above, *is* per-round respawn). Model
+rotation across rounds (Opus / Fable / Sonnet) stays as a cheap diversity lens — convergence across
+*different* models is stronger evidence than N passes from one.
 
-## The sandbox dependency
+`Hardener`'s own worktree-spawn (via `fabric`) and safe-merge-back-to-parent lifecycle is `Shed`'s
+job (see [shed.md](shed.md)) — the same lifecycle `loom` uses, with `Tenter` in the producer-slot
+instead of Discussion/Plan/Webster, and Hardener's own Preflight (below) instead of loom's.
 
-Hardener cannot run against the module's own repo alone — it needs a **live sandbox repo** to do
+### The sandbox dependency
+
+`Hardener` cannot run against the module's own repo alone — it needs a **live sandbox repo** to do
 destructive, stateful things (create worktrees, junctions, spawn tmux, tear down) without corrupting
 the real repo, and a maintained **live-driving suite** (`tools/sandbox/SANDBOX-<MODULE>-SUITE.md`) as
 the substrate-exercising vehicle. Consequences carried from the hand-run method:
@@ -138,16 +161,15 @@ the substrate-exercising vehicle. Consequences carried from the hand-run method:
 
 ## The likely `lyx` shape (open)
 
-Hardener's defining trait — an accumulating, targeting orchestrator — is precisely what lyx's thesis
-otherwise *replaces* with Go. So "hardener as a module" probably is **not** "Go takes over the
-orchestrator." More likely: **lyx provides the deterministic scaffolding** and the **orchestrator
-brain stays an LLM** —
+`Tenter`'s defining trait — an accumulating, targeting review-loop — is precisely what lyx's thesis
+otherwise *replaces* with Go. So this probably is **not** "Go takes over the orchestrator." More
+likely: **lyx provides the deterministic scaffolding** and the **orchestrator brain stays an LLM** —
 
-- **Go / lyx owns:** provision/reset the sandbox, deploy the binary, run the slow gates (smoke suite,
-  zero-stray-state), collect + structure results, maintain handoff files (via `internal/state`), the
-  per-round respawn loop, teardown.
-- **LLM orch-brain owns:** read results, accumulate understanding, decide what to target next, write
-  the next round's focused prompt.
+- **Go / lyx owns** (split across `Shed` and `Treadle`): provision/reset the sandbox, deploy the
+  binary, run the slow gates (smoke suite, zero-stray-state), collect + structure results, maintain
+  handoff files (via `internal/state`), the per-round respawn loop, teardown.
+- **LLM orch-brain owns** (Tenter's judge, within `Treadle`): read results, accumulate
+  understanding, decide what to target next, write the next round's focused prompt.
 - **`burler`-shaped round agent** (see the `internal/burlerengine` package documentation): the A→B
   worker, spawned per round (drives the sandbox; `fix-scope: source`; commit-per-fix).
 
@@ -156,23 +178,31 @@ Whether the round agent literally imports the `burler` package or only follows t
 
 ## Dependencies (tentative)
 
-- `shuttle` — spawns the orchestrator strand, the round agents, and any judges.
-- [`internal/stencil`](../../docs/shared-libs/stencil.md) — fills the round-agent / orchestrator prompt
-  templates (shared with `burler`/`perch`).
+- [`treadle.md`](treadle.md) — the generic round-loop engine `Tenter` configures; Planned,
+  independent of whether `Tenter`/`Hardener` ever get built.
+- [`shed.md`](shed.md) — the generic outer phase-FSM `Hardener` configures; Planned, same
+  independence.
+- `shuttle` — spawns the round agents and judges `Treadle`/`Tenter` drive.
+- [`internal/stencil`](../../docs/shared-libs/stencil.md) — fills the round-agent / orchestrator
+  prompt templates (shared with `burler`/`perch`).
 - `internal/state` — handoff + round artifacts on disk (the memory that makes respawn work).
 - a **sandbox repo + live suite** — a provisioned environment and a maintained asset, not just code.
 - `reed` transitively, via shuttle; possibly directly for the overnight/autonomous session + auto-compaction.
 
 ## Status / open questions
 
-- ~~Persistent thread vs. per-round respawn~~ — resolved: per-round respawn via `Gorch`'s
+- ~~Persistent thread vs. per-round respawn~~ — resolved: per-round respawn via `Treadle`'s
   three-step loop (pre-round `progress-judge` → reviewer → post-round `progress-judge`); see above.
-- The shared engine design (round-runner interface, handoff/ledger format, pre-round-targeting
-  mechanics) moved to [gorch.md](gorch.md) — not decided here anymore, and gated on gorch.md's own
-  dedicated discussion round before either perch or hardener builds on it.
+- ~~Naming: one module or two?~~ — resolved: `Tenter` (review-loop) + `Hardener` (`Shed` + `Tenter`,
+  the campaign); see "Naming" above.
+- The shared engine designs (round-runner interface, handoff/ledger format, pre-round-targeting
+  mechanics for `Treadle`; the outer FSM for `Shed`) live in their own docs — not decided here, and
+  both are Planned independently of whether `Tenter`/`Hardener` themselves ever get scheduled.
 - Exactly what the handoff must carry losslessly (key-ledger confirmed; what else?).
 - The Go-scaffolding / LLM-brain boundary above.
 - Whether it reuses the `burler` package or just the prompt template.
 - Sandbox provisioning: how much lyx automates vs. a pre-existing sandbox repo.
 
-**This module is post-loom and on-demand; nothing here blocks the `burler → perch → loom` spine.**
+**This module is post-loom and on-demand; nothing here blocks the `burler → perch → loom` spine,
+nor the Planned `Treadle`/`Shed`/perch-rewrite work, which proceeds independently of whether
+`Tenter`/`Hardener` are ever scheduled.**

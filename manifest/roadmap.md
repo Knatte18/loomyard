@@ -25,9 +25,25 @@ Committed to, in this order, next.
    uniformly) actually taking effect, not just `fabric`'s code existing alongside the old
    modules. See [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
+1. **Treadle: shared round-loop engine** — generalizes `perch`'s existing judge/gate/round-spawn/
+   cap/pause/lock loop into a shared engine with a pluggable round-runner (`burlerengine` for
+   `perch`, a live-substrate agent for the Someday `Tenter`) and a judge-maintained handoff (bounds
+   `perch`'s own O(N) review-history growth too, not just a `Tenter` need). Renamed from the
+   discussion-time placeholder `gorch`. See [designs/treadle.md](designs/treadle.md).
+
+1. **Shed: shared outer phase-FSM** — generalizes the phase-sequencing engine `loom.md` already
+   specifies (sequencing, resume, crash-recovery, pause, status-file contract) into a shared
+   skeleton with two swappable slots (Preflight, producer), reused by the Someday `Hardener`
+   module. Does not rewrite `loom.md`'s existing design — records the shared-engine name and scope
+   only. See [designs/shed.md](designs/shed.md).
+
+1. **perch: rewrite onto `Treadle`** — behavior/CLI unchanged from the outside; extracts the
+   round-runner interface and judge-maintained handoff `Treadle` introduces out from under perch's
+   shipped, tested implementation. See [designs/treadle.md](designs/treadle.md).
+
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
-   producers are wired in, plus the `lyx loom run` entry point. See
+   producers are wired in, plus the `lyx loom run` entry point. Builds on `Shed` above. See
    [designs/loom.md](designs/loom.md).
 
 1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
@@ -78,18 +94,14 @@ between these items.
    mid-flight-visibility hazards. See
    [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
-1. **gorch: shared orchestrator engine for `perch` + `hardener`** — generalizes perch's existing
-   judge/gate/round-spawn/cap/pause/lock loop into a shared engine with a pluggable round-runner
-   (`burlerengine` for perch, a live-substrate agent for hardener) and a judge-maintained handoff
-   (bounds perch's own O(N) review-history growth too, not just a hardener need). A dedicated
-   discussion round must pin the design before either perch gets rewritten onto it or hardener gets
-   built on it — not folded into hardener's own task. See [designs/gorch.md](designs/gorch.md).
-
-1. **hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving
-   real tmux) in a sandbox repo, on-demand and post-loom, off the `shuttle → burler → perch → loom`
-   spine. Concept still being figured out; its orchestrator design is now shared with `perch` via
-   the Someday `gorch` item above. See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do
-   not implement from it yet).
+1. **Tenter + Hardener** — behavior-based hardening of a live-substrate module (the archetype:
+   `reed` driving real tmux) in a sandbox repo, on-demand and post-loom, off the
+   `shuttle → burler → perch → loom` spine. Concept still being figured out. `Tenter` is the
+   review-loop (`Treadle` configured for behavior-review, `perch`'s direct sibling); `Hardener` is
+   the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe-merge-back, the same
+   lifecycle `loom` uses). Both stay Someday — neither is needed to get `loom` running, unlike the
+   Planned `Treadle`/`Shed`/perch-rewrite work they build on once scheduled. See
+   [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
 
 1. **host-visibility: CLAUDE.local.md / CONSTRAINTS.md invisible in host's git history** — a
    `CONSTRAINTS.md`-equivalent directory via junction, and `CLAUDE.local.md` via symlink (with a
