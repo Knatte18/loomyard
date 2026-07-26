@@ -165,19 +165,19 @@ between these items.
 
 1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`,
    `PushCoalesced`, `CurrentSHA`, `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/
-   `SetSnapshotSHA`) built on `internal/gitexec` (`internal/gitrepo`; consumed by the Planned
-   `fabric` item once it ships).
+   `SetSnapshotSHA`) built on `internal/gitexec` (`internal/gitrepo`; consumed by the `fabric`
+   module).
 
 1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by
    `warp`).
 
-1. **weft** — companion weft repo, paired host+weft spawn/teardown (superseded by the Planned
-   `fabric` item once it ships).
+1. **weft** — companion weft repo, paired host+weft spawn/teardown (superseded by the `fabric`
+   module).
 
 1. **config TUI** — `lyx config` interactive menu + `reconcile`.
 
 1. **warp** — host↔weft-coordinated git topology (clone, add/remove, checkout, reconcile, cleanup)
-   (superseded by the Planned `fabric` item once it ships).
+   (superseded by the `fabric` module).
 
 1. **proc** — cross-OS process spawn.
 
@@ -232,7 +232,7 @@ between these items.
   … with **zero number edits ever needed** — inserting, removing, or reordering items anywhere just
   works.
 - **Numbers are not stable cross-reference IDs** (the same number exists in all three sections).
-  Cross-reference by **bold item name** instead (e.g. "the Planned `fabric` item," "Someday's
+  Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's
   `codeintel` item") — every reference elsewhere in this file and in `designs/*.md` already does
   this.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when
