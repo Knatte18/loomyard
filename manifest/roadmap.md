@@ -10,15 +10,6 @@ doc under [designs/](designs/). See Maintenance below for how the numbering work
 
 Committed to, in this order, next.
 
-1. **fabric: cutover** — rewires every consumer currently calling into `warp`/`weft`
-   (`initengine`, `loomengine`, `buildercli`, `webstercli`, `perchcli`, `configcli`) onto the
-   already-built `fabric` (`internal/fabricengine` + `internal/fabriccli`, validated by
-   differential tests against `warp`/`weft` as the reference fixture), then deletes the old
-   `warp`/`weft` modules in one coordinated pass — not incremental, since the two old modules are
-   tightly coupled to how git state is read across the codebase today. Connecting `fabric` into
-   the actual system is what this item is — the parallel build itself already landed. See
-   [designs/fabric.md](designs/fabric.md).
-
 1. **board: move storage to `weft:main`** — replaces board's own separate remote repo with a
    reserved `weft:main` branch (README.md rendering, JSON-backed Proposals/Manifest/Tasks/Done).
    Depends on the Planned `fabric: cutover` item's branch-naming enforcement (`<slug>-weft`
@@ -150,6 +141,9 @@ between these items.
    develops loomyard.
 
 ## Done
+
+1. **fabric** — unified host↔weft git-coordination module replacing warp/weft; cut over and old
+   modules deleted.
 
 1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library
    (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface
