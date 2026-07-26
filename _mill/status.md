@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-judge-handoff
+phase: approved-preround-targeting
 slug: treadle
 branch: treadle
 plan: _mill/plan
@@ -33,6 +33,7 @@ planned  '2026-07-26T16:23:30Z'
 implementing  '2026-07-26T16:25:21Z'
 approved-treadle-extraction  '2026-07-26T16:53:12Z'
 approved-judge-handoff  '2026-07-26T17:14:49Z'
+approved-preround-targeting  '2026-07-26T17:27:26Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     start_sha: c669ab1d3084722251186f5c986019f19c66ec78
     commit_sha: f065d0e7fbe541d22758a908279107423ed9ec63
   - name: preround-targeting
-    state: running
+    state: approved
     implementer_session: abe7575d-69ed-4c9b-994e-d198abf37633
     start_sha: 4ef7d1c3ed608a0d3f4f8bff1aae1a64ee850211
+    commit_sha: be76eb008654c1d5822e76c2343ff7192b7b1dad
   - name: modelspec-migration
     state: pending
   - name: docs-lifecycle
