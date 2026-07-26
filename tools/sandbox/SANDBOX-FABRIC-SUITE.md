@@ -201,7 +201,7 @@ HEAD -- inspect the commit body (e.g. `git -C <weft-worktree> log -1`) and confi
 trailer is present and names a real, resolvable warp commit. `fabric sync` pushes via
 a detached child process, so `status` immediately after `sync` may lag behind the
 actual push -- a confusing-but-expected rough edge to note as a `WARN`, not to
-pre-judge here (mirroring `SANDBOX-CORE-SUITE.md`'s S7 guidance for `weft sync`).
+pre-judge here.
 Staging is scoped to the directories listed in the fabric config (default `_lyx`), so
 the test change should land inside that scope to be picked up at all.
 
