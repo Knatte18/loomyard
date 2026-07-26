@@ -28,6 +28,7 @@ overview.
   - `internal/fabricengine/fabric.go`
 - **Edits:**
   - `internal/initengine/init.go`
+  - `internal/initcli/initcli.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -39,7 +40,12 @@ overview.
   if no other reference to it remains in this file. In the same commit, sweep this file's
   comment that names the deleted module -- the step comment "Wiring the host _lyx junction
   via warpengine.WireJunctions" -> `fabricengine.WireJunctions` (per the tree-wide
-  comment-sweep Shared Decision). Do not change any other call.
+  comment-sweep Shared Decision). Do not change any other call. Also fix the two remaining
+  user-facing `lyx warp add`/`lyx warp clone` references caught by holistic review round 1:
+  `init.go`'s own "no weft pairing" error string, and `initcli/initcli.go`'s cobra `Long`
+  help text ("wires cwd-keyed warp junctions" and "run 'lyx warp add' or 'lyx warp clone'
+  first") -- both must repoint to `fabric` (`lyx fabric add` / `lyx fabric clone`, "fabric
+  junctions") since batch C deregisters `lyx warp`/`lyx weft` from the cobra root.
 - **Commit:** `refactor(initengine): rewire init.go WireJunctions onto fabricengine`
 
 ### Card 2: rewire initengine/undo.go (Unwire + CommitWeft/PushWeftAt)

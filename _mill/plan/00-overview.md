@@ -150,6 +150,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` target path across every c
 - `docs/overview.md`
 - `docs/reference/plan-format-v3.md`
 - `internal/buildercli/weft.go`
+- `internal/clihelp/exec.go`
 - `internal/codeintelcli/cli.go`
 - `internal/configcli/configcli.go`
 - `internal/configcli/configcli_integration_test.go`
@@ -192,6 +193,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` target path across every c
 - `internal/fabricengine/weftwiring.go`
 - `internal/hubgeometry/hubgeometry.go`
 - `internal/hubgeometry/siblinglayout_test.go`
+- `internal/initcli/initcli.go`
 - `internal/initengine/init.go`
 - `internal/initengine/init_test.go`
 - `internal/initengine/undo.go`

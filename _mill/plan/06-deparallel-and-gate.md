@@ -199,6 +199,7 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   - `internal/reedengine/config_test.go`
   - `internal/lyxtest/hermetic.go`
   - `internal/websterengine/audit.go`
+  - `internal/clihelp/exec.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -220,6 +221,9 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   - `internal/reedengine/config_test.go`: sweep any `//` comment naming a deleted module
     (e.g. "mirroring warpengine..." ; comment-only, verified -- no code import) to
     `fabricengine`.
+  - `internal/clihelp/exec.go`: the `GroupRunE` doc comment's example list "(e.g. \"lyx
+    warp\", \"lyx board\")" cites a deleted CLI verb as an illustrative example -- reword to
+    an example pair that is still live, e.g. "(e.g. \"lyx fabric\", \"lyx board\")".
 - **Commit:** `docs: repoint bare warp/weft module comments to fabricengine`
 
 ### Card 27: final acceptance grep-clean gate
