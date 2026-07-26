@@ -124,9 +124,14 @@ independent of whether Tenter is ever built.
 ### handoff-on-disk
 
 - Decision: One handoff file **per judge call**: `round-<token>-handoff.md`, latest-wins.
-  The judge call reads the previous handoff file (path supplied by the loop from
-  state.json) and writes a fresh one at this round's path. state.json's round record
-  gains an optional `handoffPath` field.
+  The handoff is produced by the **same judge call** that renders the verdict — no
+  separate handoff spawn: the circling and milestone templates are both extended with
+  handoff-maintenance instructions, a previous-handoff input marker, and a second
+  output file (the handoff path joins the verdict path in the shuttle Spec's
+  OutputFiles). The judge call reads the previous handoff file (path supplied by the
+  loop from state.json) and writes a fresh one at this round's path. state.json's round
+  record gains an optional `handoffPath` field. Pre-round targeting stays a separate
+  template/call (see pre-round-targeting).
 - Rationale: "edited in place" in the design means *bounded, not appended* — per-round
   files satisfy boundedness while reusing the existing crash machinery verbatim:
   stale-artifact move-aside, per-round records, no torn in-place writes, and a full
@@ -185,14 +190,31 @@ independent of whether Tenter is ever built.
 ### perch-api-and-identity-stability
 
 - Decision: `perchengine`'s exported Go surface stays byte-identical — same types, same
-  fields, same JSON encoding of `Profile`, so `ProfileHash` is unchanged for equivalent
-  profiles. `state.json` schema changes are strictly additive (`handoffPath`,
-  `seedPath` — omitempty). In-flight blocks started by the old binary resume with no
-  migration: their records simply lack handoff coverage, which the fallback rule already
-  handles (judge reads all uncovered reviews).
-- Rationale: the differential-test bar; no state-version machinery exists today and the
-  fallback makes it unnecessary.
-- Rejected: letting the API drift; a state-version bump that refuses cross-rewrite resume.
+  fields, same JSON encoding of `Profile`. `state.json` schema changes are strictly
+  additive (`handoffPath`, `seedPath` — omitempty); a resumed old block's records simply
+  lack handoff coverage, which the fallback rule already handles (judge reads all
+  uncovered reviews). **Resume across the config migration is guaranteed only when the
+  migrated config resolves to the identical `Profile` field values the block was started
+  with.** `ProfileHash` marshals the Profile as supplied (`state.go:95`), and the
+  migrated CLI unpacks the *resolved* effort into `Profile.JudgeEffort`/`Effort` at
+  block load — so a block started under the old keys with empty effort ("provider
+  default") hashes differently once a seeded `models.yaml` default effort applies, and
+  `loadOrInitState` refuses the resume with the existing fail-loud "started with a
+  different profile; use a fresh `--run-id`" error (`state.go:195`). That fail-loud
+  outcome is accepted, not worked around: in-flight blocks at migration time are rare
+  and short-lived, the error is loud, and the recovery (fresh `--run-id`) is trivial.
+  An old-format `perch.yaml`/profile also fails strict validation before any resume
+  starts — same accepted posture. There is no way to re-express "provider default"
+  effort once a registry default is seeded (`modelspec` rejects an empty bracket
+  value); that is fine — the registry default IS loomyard's chosen default.
+- Rationale: the differential-test bar for the Go API; no state-version machinery
+  exists today, the fallback covers handoff-coverage, and the fail-loud profile-hash
+  mismatch already handles the migration edge safely.
+- Rejected: letting the API drift; a state-version bump that refuses cross-rewrite
+  resume; hashing pre-resolution spec strings to preserve resume (changes ProfileHash
+  semantics for every caller and still cannot map old split-key hashes); a one-off
+  state migration/rehash mechanism (YAGNI — machinery for a dev-tool edge the loud
+  error handles).
 
 ### config-and-modelspec-migration
 
@@ -210,14 +232,19 @@ independent of whether Tenter is ever built.
   A bare alias (e.g. `sonnet`) picks up the operator-configured default effort from the
   seeded `models.yaml` registry entry (`Defaults: {effort: ...}`); built-ins are
   deliberately default-free, so loomyard's own defaults override the provider's in one
-  place, never baked into Go. Bracket params other than `effort` (e.g. `version`, which
-  perch has no field for) fail loud rather than being silently dropped. Old config files
-  carrying the removed keys fail strict validation with a clear message — a deliberate,
-  fail-loud breaking config change; no deprecated-fallback dual schema.
+  place, never baked into Go. Bracket params other than `effort` fail loud — as an
+  **explicit perch-layer check on `Resolved.Params` after resolution** (only `effort`
+  accepted), NOT a modelspec guarantee: `version` is in `modelspec`'s known-params set
+  (`modelspec.go:116`), so `Parse` accepts `sonnet[version=x]` and `Resolve` merges it
+  silently; perch (which has no Version field to thread it into) must reject it itself
+  rather than drop it. Old config files carrying the removed keys fail strict
+  validation with a clear message — a deliberate, fail-loud breaking config change; no
+  deprecated-fallback dual schema.
 - Rationale: operator decision — the split keys were an oversight; the repo's
-  established, pinned contract is `docs/reference/model-spec.md`. Because the Profile
-  struct is unchanged and equivalent configs resolve to equivalent field values,
-  `ProfileHash` equivalence and resume both survive the migration.
+  established, pinned contract is `docs/reference/model-spec.md`. The Profile struct is
+  unchanged, and a migrated config that resolves to the same field values keeps the
+  same `ProfileHash`; where resolution changes the values (seeded default effort), the
+  resume consequence is accepted fail-loud — see perch-api-and-identity-stability.
 - Rejected: a shared `treadle.yaml` (YAGNI); Treadle resolving model-specs internally
   (needless registry/baseDir dependency + split→string→split round-trip); deprecated
   fallback keys (contradicts strict fail-loud validation); deferring the migration to a
@@ -281,10 +308,13 @@ independent of whether Tenter is ever built.
   `PriorReviews` = all-reviews assertions (`run_test.go:240`, `judge_test.go`), and
   they pin burler hydration incl. failed-gate feed-forward (`run_test.go:665,806`) —
   the latter must keep passing unchanged.
-- Templates move/generalize: circling/milestone/triage templates become Treadle's; two
-  new templates are added (handoff maintenance folded into judge calls, targeting).
-  Template content changes affecting round discipline statements have pinned tests
-  (`template_test.go`) — pattern to follow for the new templates.
+- Templates move/generalize: circling/milestone/triage templates become Treadle's. The
+  circling and milestone templates are **extended in place** with handoff-maintenance
+  instructions (previous-handoff input marker, handoff output path — same call, second
+  output file); exactly one NEW template is added, for pre-round targeting. Template
+  content changes affecting pinned statements have tests (`template_test.go`) — the
+  extended circling/milestone templates get updated/new pinned statements (incl. the
+  ledger carry-forward rule) and the targeting template gets its own.
 - `perchengine/template.yaml` is perch.yaml's strict config template (judge_model,
   judge_effort, round_caps) — `judge_effort` line is removed in the migration;
   `configreg` registration may need the updated template.
@@ -340,9 +370,9 @@ From `CONSTRAINTS.md` (all apply; the machine-enforced ones fail `go test`):
   (pure function over round records); model-spec unpacking/validation in the perch
   config/profile layer (including bare-alias default-effort resolution and the
   unsupported-bracket-param rejection).
-- **Template tests:** new handoff/targeting templates get pinned statements tests in the
-  style of `template_test.go` where they encode discipline (e.g. the ledger
-  carry-forward rule).
+- **Template tests:** the extended circling/milestone templates and the new targeting
+  template get pinned-statement tests in the style of `template_test.go` where they
+  encode discipline (e.g. the ledger carry-forward rule).
 - **Integration/smoke:** existing tagged perch integration tests remain the end-to-end
   proof; extend only where the handoff artifact needs an end-to-end existence check.
 
@@ -367,9 +397,14 @@ From `CONSTRAINTS.md` (all apply; the machine-enforced ones fail `go test`):
 - **Q:** Pre-round targeting shape? **A:** Third judge framing, profile-gated, seed file
   per round, fail-safe skip; perch's profile doesn't enable it.
 - **Q:** Perch public API? **A:** Byte-identical exported surface; ProfileHash stable.
-- **Q:** Old in-flight blocks? **A:** Resume with zero migration; state.json changes are
-  additive only. (Clarified: state.json = per-block `<runDir>/state.json` under
-  `_lyx/perch-runs/<run-id>/`, written via `internal/state`.)
+- **Q:** Old in-flight blocks? **A:** state.json changes are additive only; resume
+  works when the profile resolves to identical values. (Clarified: state.json =
+  per-block `<runDir>/state.json` under `_lyx/perch-runs/<run-id>/`, written via
+  `internal/state`.)
+- **Q:** (review gap r1) Resume across the config migration when resolved values
+  change? **A:** Accept fail-loud non-resume — the existing "different profile; use a
+  fresh `--run-id`" error fires; no rehash/migration machinery, no pre-resolution
+  hashing.
 - **Q:** Config layer? **A:** No treadle.yaml; Treadle takes resolved data. Then
   operator identified perch's split `judge_model`+`judge_effort` as an oversight:
   perch's file surface migrates to the established model-spec notation
