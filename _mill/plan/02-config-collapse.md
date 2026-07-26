@@ -68,9 +68,10 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
 - **Moves:** none
 - **Requirements:** The test pins the module-name list (currently including `"warp"` and
   `"weft"`) and asserts against `weftengine.ConfigTemplate()`. Remove `"warp"` and `"weft"`
-  from the expected-names assertion (drop the module count by two), and re-point or drop the
-  `weftengine.ConfigTemplate()` assertion in favour of the `fabric` module's template
-  (`fabricengine.ConfigTemplate()`). Drop the `warpengine`/`weftengine` imports.
+  from the expected-names assertion (drop the module count by two), and re-point the
+  `want := weftengine.ConfigTemplate()` assertion to the `fabric` module's template
+  (`fabricengine.ConfigTemplate()`). Import-wise this file imports ONLY `weftengine` (not
+  `warpengine`): drop the `weftengine` import and add `fabricengine`.
 - **Commit:** `test(configreg): pin fabric-only module list`
 
 ### Card 12: rewrite configcli_integration_test.go onto fabric
@@ -85,12 +86,23 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** The fixture builds via `warpengine.New().Add()` +
-  `warpengine.WireJunctions` + `weftcli.RunCLI`, and dispatches the `"warp"` config module.
-  Rewrite onto `fabricengine.NewTopology(cfg).Add()` (note `New` -> `NewTopology`,
-  `*Worktree` -> `*Topology`) + `fabricengine.WireJunctions` + `fabriccli.RunCLI`, and
-  dispatch the `"fabric"` config module instead of `"warp"`. Drop the
-  `warpengine`/`weftcli` imports for `fabricengine`/`fabriccli`. Preserve every assertion.
+- **Requirements:** This file has MORE than one test that uses the removed `"warp"` module --
+  rewrite EVERY warp usage in the file, not just the first fixture:
+  - `TestE2ESyncIntegration`: the fixture builds via `warpengine.New().Add()` +
+    `warpengine.WireJunctions` + `weftcli.RunCLI` and dispatches `[]string{"warp"}` (and reads
+    `hubgeometry.ConfigFile(".", "warp")`, asserts `module == "warp"`). Rewrite onto
+    `fabricengine.NewTopology(cfg).Add()` (note `New` -> `NewTopology`, `*Worktree` ->
+    `*Topology`) + `fabricengine.WireJunctions` + `fabriccli.RunCLI`, dispatching
+    `[]string{"fabric"}` and asserting `module == "fabric"` / `ConfigFile(".", "fabric")`.
+  - `TestDispatchSet_PreservedKeyDetectedByReconcile`: it `seedModuleConfig(t, tmpDir,
+    "warp", ...)`, `dispatch(..., []string{"warp"}, ...)` with `--set`, and asserts
+    `mod["module"] == "warp"`. Rewrite all three onto the `"fabric"` module (seed `fabric`,
+    dispatch `[]string{"fabric"}`, assert `module == "fabric"`). Since card 9 removes `warp`
+    from the registry, any lingering `"warp"` dispatch would return not-found -> exit 1 ->
+    `t.Fatalf`, reddening the batch-B verify; every `"warp"` string in this file must move to
+    `"fabric"`.
+  Drop the `warpengine`/`weftcli` imports for `fabricengine`/`fabriccli`. Preserve each
+  assertion's intent against the `fabric` module.
 - **Commit:** `test(configcli): rewrite integration fixture onto fabric`
 
 ## Batch Tests

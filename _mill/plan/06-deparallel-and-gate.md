@@ -55,8 +55,16 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
 ### Card 23: sweep every fabricengine + fabriccli deleted-module comment
 
 - **Context:**
-  - `internal/fabricengine/fabric_test.go`
+  - `CONSTRAINTS.md`
 - **Edits:**
+  - `internal/fabriccli/cli_test.go`
+  - `internal/fabricengine/ancestors_test.go`
+  - `internal/fabricengine/clone_test.go`
+  - `internal/fabricengine/config_test.go`
+  - `internal/fabricengine/fabric_test.go`
+  - `internal/fabricengine/hook_test.go`
+  - `internal/fabricengine/launcher_content_test.go`
+  - `internal/fabricengine/template_test.go`
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/ancestors.go`
   - `internal/fabricengine/checkout.go`
@@ -89,8 +97,11 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
 - **Requirements:** Sweep EVERY `//` comment in these files that names a deleted module
   (`warpengine`/`weftengine`/`warpcli`/`weftcli`, full import-path or bare word) so that after
   this card `grep -rnw -E 'warpengine|weftengine|warpcli|weftcli' --include='*.go'
-  internal/fabricengine/ internal/fabriccli/` (excluding `_test.go`) returns nothing. This
-  covers two comment kinds, both of which name a now-deleted module:
+  internal/fabricengine/ internal/fabriccli/` returns nothing -- **including `_test.go`
+  files** (the eight fabricengine/fabriccli test files in Edits carry "Adapted from
+  warpengine's X_test.go" / "mirroring weftengine..." provenance comments; all are
+  comment-only, no code import of a deleted engine, verified). This covers two comment kinds,
+  both of which name a now-deleted module:
   - **Provenance/mirror comments** -- "Adapted from warpengine's X.go", "distinct from
     warpengine's", "mirroring warpengine.Y", "matching warpengine's shape", and similar in
     `add.go`, `ancestors.go`, `checkout.go`, `clone.go`, `config.go`, `drift.go`,
@@ -148,6 +159,7 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
 - **Edits:**
   - `internal/lyxtest/doc.go`
   - `internal/hubgeometry/hubgeometry.go`
+  - `internal/hubgeometry/siblinglayout_test.go`
   - `internal/codeintelcli/cli.go`
 - **Creates:** none
 - **Deletes:** none
@@ -164,6 +176,8 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
     comments; do not touch any geometry token/const.
   - `internal/codeintelcli/cli.go`: reword the "(see internal/weftcli.Command)" comment to
     reference `internal/fabriccli` instead.
+  - `internal/hubgeometry/siblinglayout_test.go`: sweep any `//` comment naming a deleted
+    module (comment-only, verified -- no code import) to the fabric equivalent.
 - **Commit:** `docs: repoint stale warp/weft package comments to fabric`
 
 ### Card 26: bare-name comment review sweep
@@ -174,6 +188,7 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   - `internal/perchengine/doc.go`
   - `internal/perchengine/engine.go`
   - `internal/reedengine/config.go`
+  - `internal/reedengine/config_test.go`
   - `internal/lyxtest/hermetic.go`
   - `internal/websterengine/audit.go`
 - **Creates:** none
@@ -194,6 +209,9 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
     detection strings and the `ClassWeftReference`/`weft-reference` concept names untouched --
     that guard describes the weft-touching concept (defense-in-depth), not a live module, and
     is functional code, not a stale reference.
+  - `internal/reedengine/config_test.go`: sweep any `//` comment naming a deleted module
+    (e.g. "mirroring warpengine..." ; comment-only, verified -- no code import) to
+    `fabricengine`.
 - **Commit:** `docs: repoint bare warp/weft module comments to fabricengine`
 
 ### Card 27: final acceptance grep-clean gate
@@ -215,10 +233,16 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
     remove every comment that names a deleted module, so both
     `grep -rnw -E 'warpengine|weftengine|warpcli|weftcli' --include='*.go' .` (excluding the
     deleted packages, which are gone) and `grep -rn -E 'internal/(warp|weft)(cli|engine)' .`
-    over `.go` comments should now return nothing. Any surviving `.go` hit is an unswept
-    deleted-module reference -- treat it as a gate failure and sweep it (it belongs to whatever
-    card owns that file). In non-`.go` docs, a remaining hit is only acceptable if it is a
-    legitimate weft-repo/role description, not a deleted-module name.
+    over `.go` comments should now return nothing -- **including `_test.go` files**: the
+    surviving test files that carried provenance comments are swept by card 23 (fabricengine +
+    fabriccli tests), card 25 (`hubgeometry/siblinglayout_test.go`), card 26
+    (`reedengine/config_test.go`), card 17 (`lyxtest/leaf_enforcement_test.go`), and the
+    batch-A cards (`initengine/undo_test.go`, `loomengine/testmain_test.go`,
+    `perchcli/run_integration_test.go`), so the tree-wide `--include='*.go'` grep is genuinely
+    reachable. Any surviving `.go` hit is an unswept deleted-module reference -- treat it as a
+    gate failure and sweep it (it belongs to whatever card owns that file). In non-`.go` docs,
+    a remaining hit is only acceptable if it is a legitimate weft-repo/role description, not a
+    deleted-module name.
   - **Tier 2b (fabric's own module):** `grep -rn -iE 'parallel[- ]build'
     internal/fabricengine/ internal/fabriccli/` returns nothing -- cards 22/23 cleared it; the
     `t.Parallel()`/"parallel to Add's logic" mentions do not match `parallel[- ]build`.

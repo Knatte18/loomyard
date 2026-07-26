@@ -97,7 +97,10 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
   compiles, but the entries are stale. Remove the four deleted-package entries; keep
   `fabricengine`/`fabriccli` (and every other feature package) in the banned list -- the
   invariant that `internal/lyxtest` imports only stdlib + `internal/hubgeometry` is
-  unchanged. Do not weaken the test.
+  unchanged. Do not weaken the test. Also sweep this file's `//` doc-comment lines that name a
+  deleted module (e.g. any comment citing `warpengine`/`weftengine` as an example banned
+  package) so the whole file carries no deleted-module reference -- otherwise card 27's
+  tree-wide `_test.go` grep flags it (per the tree-wide comment-sweep Shared Decision).
 - **Commit:** `test(lyxtest): drop deleted warp/weft packages from leaf enforcement list`
 
 ### Card 18: update CONSTRAINTS.md for the collapsed modules

@@ -49,6 +49,7 @@ overview.
   - `internal/fabriccli/weft_verbs.go`
 - **Edits:**
   - `internal/initengine/undo.go`
+  - `internal/initengine/undo_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -68,7 +69,10 @@ overview.
   comments that name the deleted modules -- "(see warpengine.UnwireJunctions)", "via
   warpengine.UnwireJunctions. Any error ...", "commit and push that deletion through
   weftengine.", and "weftengine.Commit must never be called ..." -> the fabricengine
-  equivalents (per the tree-wide comment-sweep Shared Decision).
+  equivalents (per the tree-wide comment-sweep Shared Decision). Also sweep
+  `undo_test.go`'s two comment references to the deleted modules ("weftengine.Status's own
+  dirty check ..." and "warpengine.Add's own push -u ...") -> the fabricengine equivalents;
+  these are comment-only (no code import), so the test's behaviour is unchanged.
 - **Commit:** `refactor(initengine): rewire undo.go onto fabricengine CommitWeft/PushWeftAt`
 
 ### Card 3: rewrite initengine/init_test.go onto fabric
@@ -114,6 +118,7 @@ overview.
   - `internal/fabricengine/add.go`
 - **Edits:**
   - `internal/loomengine/preflight_integration_test.go`
+  - `internal/loomengine/testmain_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -122,8 +127,9 @@ overview.
   `fabricengine`. If the fixture also constructs topology via `warpengine.New(cfg)`, replace
   with `fabricengine.NewTopology(cfg)` (`*Topology`, defined in `topology.go`) and adjust the
   receiver-method calls (`Add`/etc., see `add.go`) accordingly. In the same commit, sweep any
-  comment in this file that names the deleted module (per the tree-wide comment-sweep Shared
-  Decision). Preserve every assertion.
+  comment in this file AND in `testmain_test.go` that names a deleted module (per the
+  tree-wide comment-sweep Shared Decision; both are comment-only, no code import). Preserve
+  every assertion.
 - **Commit:** `test(loomengine): rewrite preflight fixture onto fabricengine`
 
 ### Card 6: rewire buildercli/weft.go
@@ -171,6 +177,7 @@ overview.
   - `internal/fabriccli/weft_verbs.go`
 - **Edits:**
   - `internal/perchcli/run.go`
+  - `internal/perchcli/run_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -180,9 +187,9 @@ overview.
   -> `fabricengine.PushWeftAt(...)`. Swap the `weftengine` import for `fabricengine`. Confirm
   the host worktree root is in scope for `New` (perchcli's standalone run owns the loop
   boundary; use the worktree root it already resolves). In the same commit, sweep any comment
-  in this file that names the deleted module (per the tree-wide comment-sweep Shared
-  Decision). Leave the `t.Parallel()`/test-concurrency wording untouched -- that is not a
-  module reference.
+  in `run.go` AND in `run_integration_test.go` that names a deleted module (per the tree-wide
+  comment-sweep Shared Decision; the test refs are comment-only, no code import). Leave the
+  `t.Parallel()`/test-concurrency wording untouched -- that is not a module reference.
 - **Commit:** `refactor(perchcli): rewire run.go onto fabricengine CommitWeft/PushWeftAt`
 
 ## Batch Tests
