@@ -18,9 +18,9 @@ package webstercli
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/websterengine"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 // websterWeftPathspec returns the scoped _lyx pathspec every webster weft
@@ -41,7 +41,7 @@ import (
 // layout.RelPath prefixes the _lyx path.
 func websterWeftPathspec(layout *hubgeometry.Layout) []string {
 	return append(
-		weftengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
+		fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
 		":(exclude)*.lock",
 		":(exclude)*/webster/"+websterengine.PauseFlagName,
 		":(exclude)*/webster/prompts/*",
@@ -57,14 +57,18 @@ func websterWeftPathspec(layout *hubgeometry.Layout) []string {
 // mirroring buildercli's weftCommit exactly.
 func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	weftWorktree := layout.WeftWorktree()
-	opts := weftengine.EnvSyncOptions()
+	opts := fabricengine.EnvSyncOptions()
 	pathspec := websterWeftPathspec(layout)
 
-	committed, err := weftengine.Commit(weftWorktree, pathspec, fmt.Sprintf("webster: %s", label), opts)
+	f, err := fabricengine.New(layout.WorktreeRoot, weftWorktree)
 	if err != nil {
 		return false, err
 	}
-	if err := weftengine.Push(weftWorktree, opts); err != nil {
+	_, committed, err := f.CommitWeft(pathspec, fmt.Sprintf("webster: %s", label), opts)
+	if err != nil {
+		return false, err
+	}
+	if err := fabricengine.PushWeftAt(weftWorktree, opts); err != nil {
 		return committed, err
 	}
 	return committed, nil
