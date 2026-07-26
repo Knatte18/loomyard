@@ -37,6 +37,7 @@ runs without a seed (Warn), exactly like a judge miss.
   - `internal/treadleengine/run.go`
   - `internal/treadleengine/state.go`
   - `internal/treadleengine/roundfiles.go`
+  - `internal/treadleengine/roundfiles_test.go`
   - `internal/treadleengine/template.go`
 - **Creates:**
   - `internal/treadleengine/targeting.go`
