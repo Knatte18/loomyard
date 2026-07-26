@@ -245,6 +245,7 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   - `internal/webstercli/weft.go`
   - `internal/perchcli/run.go`
   - `cmd/lyx/registration_test.go`
+  - `.gitattributes`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -260,8 +261,17 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   batch D1 deleted the packages but never removed the now-dead allowlist entries and their
   comment -- delete both entries and reword the comment, since `discovered` can no longer
   contain those package names (the packages no longer exist on disk), so removing the
-  allowlist changes no test behavior. Run and confirm the remaining checks (zero diff beyond
-  the four sweeps above):
+  allowlist changes no test behavior. `.gitattributes` still carries three stale
+  `text eol=lf` rules targeting `internal/warpengine/post-checkout.sh`,
+  `internal/warpengine/template.yaml`, and `internal/weftengine/template.yaml`, all deleted
+  in batch D1 (card 16); `internal/fabricengine` already ships its own `post-checkout.sh`
+  (embedded via `//go:embed post-checkout.sh` in `hook.go`) and `template.yaml` (embedded
+  via `//go:embed template.yaml` in `template.go`), each a genuine go:embed byte-determinism
+  target of the same kind every other line in this file pins -- repoint the three stale
+  lines to two `internal/fabricengine/{post-checkout.sh,template.yaml}` lines (the warp and
+  weft `template.yaml` rules collapse into the single fabric `template.yaml` line; do not
+  duplicate it). Run and confirm the remaining checks (zero diff beyond the five
+  sweeps above):
   - **Tier 1 (hard zero-match, acceptance blocker):** no `.go` file imports
     `github.com/Knatte18/loomyard/internal/{warpengine,warpcli,weftengine,weftcli}`
     (`grep -rn -E 'loomyard/internal/(warp|weft)(cli|engine)"' --include='*.go' .` returns
