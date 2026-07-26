@@ -1,3 +1,0 @@
-- Stray bare "warp"/"weft" CLI-verb references survive outside the module-name grep gate's scope: `internal/initengine/undo_test.go:205-206` ("never warp add'd either"); `internal/clihelp/exec.go:184` (doc-comment example "lyx warp", "lyx board"); `internal/fabriccli/fabric.go:31` ("like warp, fabric's topology verbs...")
-- CONSTRAINTS.md Weft Git Invariant intro sentence still says "weft/warp engines": `CONSTRAINTS.md:161`
-- roadmap.md's pre-existing "weft"/"warp" Done entries still describe fabric as not-yet-shipped: `manifest/roadmap.md:174-175,179-180`
