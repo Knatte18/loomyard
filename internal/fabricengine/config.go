@@ -26,7 +26,6 @@ type Config struct {
 }
 
 // Dirs returns the pathspec as a slice of directory names, split on whitespace.
-// Mirrors weftengine.Config.Dirs.
 func (c Config) Dirs() []string {
 	return strings.Fields(c.Pathspec)
 }
@@ -43,8 +42,7 @@ func LoadConfig(baseDir string) (Config, error) {
 	// Load and resolve the config file using the template
 	resolved, err := configengine.Load(baseDir, "fabric", []byte(ConfigTemplate()))
 	if err != nil {
-		// Wrap the generic error with a fabric-specific message, mirroring
-		// warpengine.LoadConfig's not-initialized wrapping.
+		// Wrap the generic error with a fabric-specific, actionable message.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
 		}

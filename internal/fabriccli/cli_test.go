@@ -3,9 +3,9 @@
 // cli_test.go covers the fabric CLI cobra surface: no-arg listing of all 14 verbs,
 // unknown-subcommand cobra error, the --weft-path push-only gate, pairs with a
 // minimal topology fixture, commit --help's fixed-message/Warp-SHA-trailer prose,
-// and the WEFT_SKIP_PUSH env-to-SyncOptions mapping on push. Adapted from
-// warpcli's warp_test.go and weftcli's cli_test.go — this package exercises both
-// verb families against the one fabric command tree.
+// and the WEFT_SKIP_PUSH env-to-SyncOptions mapping on push — this package
+// exercises both the topology and content-sync verb families against the one
+// fabric command tree.
 
 package fabriccli_test
 

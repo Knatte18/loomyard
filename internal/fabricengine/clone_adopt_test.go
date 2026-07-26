@@ -33,9 +33,7 @@ import (
 )
 
 // makeBareRemote creates a bare git repository with a single commit on the main
-// branch, mirroring warpengine's clone_integration_test.go helper of the same
-// name (duplicated here, not imported, since that helper is unexported in a
-// different package).
+// branch.
 //
 // It initializes a bare repo at <dir>/<name>.git, then seeds it by initializing
 // a working repository, creating and committing a README, and pushing back to
@@ -178,9 +176,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 // remote carries no existing WeftBranchName-suffixed branch (a genuinely new
 // hub — the non-adopt path), CloneHub creates the weft primary's suffixed
 // branch fresh at the cloned HEAD rather than requiring a pre-existing
-// remote ref to adopt. Formerly covered, alongside a warpengine comparison,
-// by clone_differential_test.go's TestCloneHub_DifferentialEquivalence
-// subtests before that file's deletion.
+// remote ref to adopt.
 func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -226,9 +222,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 // TestCloneHub_StrictAbortRemovesHubOnFailure covers teardownHub's
 // cleanup-on-failure behaviour: a failing weft clone leaves no residual Hub
 // directory behind, torn down through fabricengine's own RemoveAll teardown
-// seam (clone.go's teardownHub). Formerly covered, alongside a warpengine
-// comparison, by clone_differential_test.go's
-// TestCloneHub_DifferentialStrictAbort before that file's deletion.
+// seam (clone.go's teardownHub).
 func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	fixtures := t.TempDir()
 

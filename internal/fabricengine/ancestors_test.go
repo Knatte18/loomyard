@@ -1,5 +1,4 @@
-// ancestors_test.go tests the pruneEmptyAncestors helper. Adapted from
-// warpengine's ancestors_test.go — byte-equivalent cases, package fabricengine.
+// ancestors_test.go tests the pruneEmptyAncestors helper.
 
 package fabricengine
 

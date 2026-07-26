@@ -1,10 +1,8 @@
 // launchers.go writes and tears down the per-worktree launcher scripts and the
 // container-root menu launcher. Launchers are cross-platform: a .cmd script on
 // Windows, an executable .sh script everywhere else, both built from the pure
-// content builder in launcher_content.go. Adapted from warpengine's launchers.go;
-// the one delta is the checkout launcher file (fabric-checkout<ext>, invoking
-// "lyx fabric checkout" instead of "lyx warp checkout") — everything else is
-// byte-equivalent behavior in package fabricengine.
+// content builder in launcher_content.go. The checkout launcher file
+// (fabric-checkout<ext>) invokes "lyx fabric checkout".
 
 package fabricengine
 

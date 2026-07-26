@@ -1,8 +1,7 @@
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
 // Covers: happy-path with template keys present, branch_prefix/pathspec parsing,
-// environment variable resolution, and not-initialized error path. Mirrors
-// warpengine's config_test.go.
+// environment variable resolution, and not-initialized error path.
 
 package fabricengine_test
 

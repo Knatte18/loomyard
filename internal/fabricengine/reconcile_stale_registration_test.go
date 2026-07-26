@@ -13,7 +13,7 @@
 // portal/launcher teardown on apply (R6) and its once-only stale-registration
 // reporting (F2/F3), Cleanup's primary-weft-branch protection when the
 // primary is parked off its branch (F1), its refusal to ever delete a
-// non-suffixed (warp-managed) weft branch, and its checked-out protection for
+// non-suffixed (not fabric-managed) weft branch, and its checked-out protection for
 // a pair whose host sits on a detached HEAD (R5); and PairInSync's "real
 // directory in the junction's place" wording (R10). Each guards the same real
 // bug the differential file's subtest name/doc comment names — see git
@@ -351,10 +351,9 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	}
 }
 
-// TestCleanup_NonSuffixedBranchNeverDeleted covers the delta the
-// parallel-build period introduces: a weft branch with no "-weft" suffix is
-// a warp-managed branch sharing the same weft repo; fabric must never delete
-// it, even under apply+force.
+// TestCleanup_NonSuffixedBranchNeverDeleted covers a weft branch with no
+// "-weft" suffix: it is not fabric-managed, whatever its origin; fabric must
+// never delete it, even under apply+force.
 func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	t.Parallel()
 

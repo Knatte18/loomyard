@@ -1,6 +1,4 @@
 // clone_test.go — unit tests for URL-derivation helpers and cloneRepo's error path.
-// Adapted from warpengine's clone_test.go — byte-equivalent cases, package
-// fabricengine.
 
 package fabricengine
 

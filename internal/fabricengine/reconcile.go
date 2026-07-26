@@ -4,14 +4,11 @@
 // the minimal corrective action needed to restore a valid paired topology: it recreates
 // a missing weft worktree when the branch still exists, re-points a broken junction, adopts
 // a raw (non-lyx) host worktree by creating the weft side dormant, and reports (but does
-// not touch) a host worktree on an unmanaged branch. Adapted from warpengine's
-// reconcile.go — same action vocabulary and rule ordering, package fabricengine. The
-// branch delta: wherever warp mirrors the host branch name onto the weft side, fabric
-// uses WeftBranchName(hostBranch).
+// not touch) a host worktree on an unmanaged branch. Wherever a host branch name needs
+// a weft counterpart, fabric derives it via WeftBranchName(hostBranch).
 //
 // readBranch and checkJunctionHealth are also used by Status; they live here because
-// Reconcile needs them first and both verbs share the same package, mirroring warp's
-// status.go origin for the pair but relocated to the file that needs them earliest.
+// Reconcile needs them first and both verbs share the same package.
 
 package fabricengine
 
