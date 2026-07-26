@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: fabric-cutover
 branch: fabric-cutover
-plan: null
+plan: _mill/plan
 parent: main
 task: 'fabric: cutover -- rewire consumers onto fabric, delete warp/weft'
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-26T09:53:20Z'
 discussed  '2026-07-26T10:38:03Z'
+planning  '2026-07-26T10:54:19Z'
 ```
