@@ -24,7 +24,7 @@ import (
 // onto fabric's suffixed branch naming (CopyPaired's raw fixture leaves both
 // sides on "main", the warp-era equality convention; fabric's PairInSync
 // requires the weft branch to be WeftBranchName(hostBranch) — see
-// buildDiffPair's identical fixup in fabricengine's own differential tests),
+// newFabricFixture's identical fixup in fabricengine's own regression tests),
 // wires the host-weft _lyx junction (CopyPaired does not wire it — see
 // WireJunctions' host-pristine invariant), and seeds a fresh, coherent
 // status.json through the wired junction. Returns the fixture and the slug
