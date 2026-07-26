@@ -226,11 +226,28 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
 
 - **Context:**
   - `internal/fabricengine/doc.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/buildercli/weft.go`
+  - `internal/webstercli/weft.go`
+  - `internal/perchcli/run.go`
+  - `cmd/lyx/registration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Verification-only gate (zero diff). Run and confirm:
+- **Requirements:** Primarily a verification-only gate, but running it surfaced four files
+  the earlier batches' sweeps missed (each belonging to an already-committed card, per the
+  Tier 2 rule that a surviving hit is swept "wherever it is found" rather than left for a
+  closed batch to reopen): `buildercli/weft.go`, `webstercli/weft.go`, and `perchcli/run.go`
+  each carry a "mirroring weftengine.Commit's own top-level short-circuit" comment (batch A
+  rewired the calls to fabricengine but missed this provenance clause) -- reword to name
+  `fabricengine.CommitWeft`/`CommitWeft` instead. `cmd/lyx/registration_test.go` still
+  carries the `"warpcli": true, "weftcli": true` temporary allowlist entries batch C added
+  explicitly as a bridge "until batch D1" deletes the packages (see that card's own comment);
+  batch D1 deleted the packages but never removed the now-dead allowlist entries and their
+  comment -- delete both entries and reword the comment, since `discovered` can no longer
+  contain those package names (the packages no longer exist on disk), so removing the
+  allowlist changes no test behavior. Run and confirm the remaining checks (zero diff beyond
+  the four sweeps above):
   - **Tier 1 (hard zero-match, acceptance blocker):** no `.go` file imports
     `github.com/Knatte18/loomyard/internal/{warpengine,warpcli,weftengine,weftcli}`
     (`grep -rn -E 'loomyard/internal/(warp|weft)(cli|engine)"' --include='*.go' .` returns
@@ -255,12 +272,11 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
     internal/fabricengine/ internal/fabriccli/` returns nothing -- cards 22/23 cleared it; the
     `t.Parallel()`/"parallel to Add's logic" mentions do not match `parallel[- ]build`.
   If any Tier-1 match appears, it is an acceptance failure -- fix the offending file (which
-  belongs to an earlier batch's scope) before the batch can pass. Tiers 2 and 2b should be
-  clean because the sweeping happened in cards 22-26 and the batch-A/B/C in-file sweeps; this
-  card only CONFIRMS (hence zero diff / `Commit: none`). If a stray deleted-module name
-  survives, that is a defect in the owning card -- surface it rather than silently editing here
-  (this card carries no commit). The full-suite `verify` runs alongside this gate.
-- **Commit:** none
+  belongs to an earlier batch's scope) before the batch can pass. Tiers 2 and 2b were expected
+  to be clean from cards 22-26 and the batch-A/B/C in-file sweeps alone; running the gate found
+  the four-file residue documented in Edits above, swept here instead of reopening the closed
+  batches. The full-suite `verify` runs alongside this gate.
+- **Commit:** `docs: sweep gate-discovered deleted-module residue from batch A/C`
 
 ## Batch Tests
 
