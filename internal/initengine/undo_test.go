@@ -202,8 +202,8 @@ func TestUndo_NeverInitialized(t *testing.T) {
 }
 
 // TestUndo_NoWeftPairing covers the truly-unpaired host case (no weft
-// sibling worktree at all — not merely "never init'd" but "never warp add'd
-// either"). Undo must not create a stray weft sibling as a side effect.
+// sibling worktree at all — not merely "never init'd" but "never fabric
+// add'd either"). Undo must not create a stray weft sibling as a side effect.
 func TestUndo_NoWeftPairing(t *testing.T) {
 	tmpDir := t.TempDir()
 

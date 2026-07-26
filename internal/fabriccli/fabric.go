@@ -28,8 +28,8 @@ import (
 // Command builds the cobra command tree for the fabric module.
 //
 // The parent command carries no persistent flags or PersistentPreRunE for the
-// topology verbs built here — like warp, fabric's topology verbs have no shared
-// cwd pre-dispatch and each resolves its own layout and config. weft_verbs.go
+// topology verbs built here — fabric's topology verbs have no shared cwd
+// pre-dispatch and each resolves its own layout and config. weft_verbs.go
 // extends the returned command with the weft-git verbs, their own hidden
 // --weft-path persistent flag, and a PersistentPreRunE scoped to those verbs only.
 func Command() *cobra.Command {
@@ -72,8 +72,8 @@ Example:
 The board URL defaults to <weft-url>.wiki.git when omitted.
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 
-Unlike "lyx warp clone", the weft prime is immediately checked out onto its
-suffixed pairing (e.g. "main` + hubgeometry.WeftSuffix + `" for default branch "main") — fabric's
+The weft prime is immediately checked out onto its suffixed pairing (e.g.
+"main` + hubgeometry.WeftSuffix + `" for default branch "main") — fabric's
 uniform branch scheme applies from the very first pair. When the weft remote
 already carries that suffixed branch (a re-clone of a hub with synced weft
 history), it is adopted as a tracking branch, inheriting the existing weft
