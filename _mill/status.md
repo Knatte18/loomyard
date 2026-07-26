@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: fabric-cutover
 branch: fabric-cutover
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-reviewing  '2026-07-26T16:58:10Z'
 holistic-fixing  '2026-07-26T17:05:47Z'
 holistic-reviewing  '2026-07-26T17:08:55Z'
 holistic-fixing  '2026-07-26T17:14:47Z'
+holistic-reviewing  '2026-07-26T17:18:12Z'
 ```
 
 ## Batches
