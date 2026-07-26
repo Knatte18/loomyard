@@ -100,7 +100,9 @@ warp/weft/host). The
 Raddle step is itself review-gated is an open choice; shown ungated above.)
 
 **Finalize** is loom's last phase — merge-back after Builder-review approval, optional PR
-creation. Substantial enough to warrant its own doc: see [loom-finalize.md](loom-finalize.md).
+creation. Substantial enough to warrant its own doc: see [finalize.md](finalize.md) — Finalize is
+now designed as `Shed`'s shared step (see [shed.md](shed.md)), not loom-specific, though this doc
+hasn't itself been rewritten to reflect that split yet.
 
 ## The gate
 

@@ -34,20 +34,24 @@ Committed to, in this order, next.
    that proves `Treadle` has everything `perch` needs. Renamed from the discussion-time placeholder
    `gorch`. See [designs/treadle.md](designs/treadle.md).
 
-1. **Shed: shared outer phase-FSM** — generalizes the phase-sequencing engine `loom.md` already
-   specifies (sequencing, resume, crash-recovery, pause, status-file contract) into a shared
-   skeleton with two swappable slots (Preflight, producer), reused by the Someday `Hardener`
-   module. Does not rewrite `loom.md`'s existing design — records the shared-engine name and scope
-   only. Independent of the `Treadle` item above — a different engine, not blocked on it. See
-   [designs/shed.md](designs/shed.md).
+1. **Shed: shared outer phase-FSM, combined with the Finalize step** — generalizes the
+   phase-sequencing engine `loom.md` already specifies (sequencing, resume, crash-recovery, pause,
+   status-file contract) into a shared skeleton with two swappable slots (Preflight, producer),
+   reused by the Someday `Hardener` module, **built together with Finalize** (see
+   [designs/finalize.md](designs/finalize.md) — merge-back, incl. the warp/weft split and the
+   Raddle-only-forward pathspec) since Finalize is Shed's own literally-shared code, not a
+   per-instance slot — one task, not two, same reasoning as the combined `Treadle`+`perch` item.
+   **Testable cheaply:** plug a quick, throwaway producer into the producer-slot to exercise the
+   skeleton + Finalize end-to-end before any real producer (Discussion/Plan/Webster, or the Someday
+   `Tenter`) needs to exist — the same "fake phases before real producers" approach `loom.md`
+   already specifies for its own skeleton. Does not rewrite `loom.md`'s existing design — records
+   the shared-engine name and scope only. Independent of the `Treadle` item above — a different
+   engine, not blocked on it. See [designs/shed.md](designs/shed.md).
 
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
    producers are wired in, plus the `lyx loom run` entry point. Builds on `Shed` above. See
    [designs/loom.md](designs/loom.md).
-
-1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
-   merge conflict; optional PR creation. See [designs/loom-finalize.md](designs/loom-finalize.md).
 
 1. **native clients: migrate `gitrepo` to `go-git` (ADOPT-PARTIAL) + `selfreportengine`'s internal
    `gh`-CLI transport to `go-github`** — executes the `git-native-library` spike's finding (read
