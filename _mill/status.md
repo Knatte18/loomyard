@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: treadle
 branch: treadle
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-docs-lifecycle  '2026-07-26T17:46:05Z'
 holistic-reviewing  '2026-07-26T17:46:24Z'
 holistic-approved  '2026-07-26T17:48:49Z'
 done  '2026-07-26T17:49:18Z'
+pr-pending  '2026-07-26T17:55:35Z'
 ```
 
 ## Batches
