@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: treadle
 branch: treadle
 plan: _mill/plan
@@ -18,4 +18,6 @@ discussing  '2026-07-26T10:19:21Z'
 discussion-fix-r3  '2026-07-26T10:54:03Z'
 discussed  '2026-07-26T10:54:03Z'
 planning  '2026-07-26T14:37:23Z'
+plan-review-r1  '2026-07-26T14:53:57Z'
+plan-fix-r1  '2026-07-26T14:53:57Z'
 ```

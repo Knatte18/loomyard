@@ -29,13 +29,14 @@ the docs describe the code as actually shipped across batches 1–4.
   - `internal/perchengine/adapter.go`
   - `internal/perchengine/config.go`
   - `manifest/designs/treadle.md`
-  - `manifest/designs/hardener.md`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/treadleengine/doc.go`
   - `internal/perchengine/doc.go`
   - `docs/overview.md`
   - `manifest/roadmap.md`
+  - `manifest/designs/shed.md`
+  - `manifest/designs/hardener.md`
 - **Creates:** none
 - **Deletes:**
   - `manifest/designs/treadle.md`
@@ -64,15 +65,26 @@ the docs describe the code as actually shipped across batches 1–4.
   tree listing with a one-line description; update the `perch` module
   bullet to name the treadleengine layering (behavior/CLI unchanged) and
   point at both package docs; leave the execution-stack table's `perch`
-  row's builds-on note accurate (perch builds on burler AND treadleengine).
+  row's builds-on note accurate (perch builds on burler AND treadleengine);
+  add an `## Other docs` bullet for the `internal/treadleengine` package
+  documentation alongside the existing `codeintelengine`/`tokenvocab`
+  entries, in the same "(as-built; module doc deleted per the
+  documentation lifecycle)" style.
   `manifest/roadmap.md`: move the "Treadle: shared round-loop engine,
   combined with the perch rewrite" item from Planned to Done per the
   file's existing Done convention, linking the `internal/treadleengine`
-  package documentation instead of the deleted design doc; scan the
-  Someday `Tenter`/`Hardener` entries for links to
-  `designs/treadle.md` and retarget them to the package doc (deleting a
-  linked file must not leave dangling links — `manifest/designs/hardener.md`
-  itself stays, it is not this task's module doc).
+  package documentation instead of the deleted design doc.
+  Dangling-link sweep (deleting a linked file must not leave dangling
+  links): retarget EVERY remaining `treadle.md` link to the
+  `internal/treadleengine` package documentation (a short prose pointer,
+  since godoc has no markdown-linkable path). The known set — verify by
+  grepping `treadle.md` across the repo before committing — is: four links
+  in `manifest/designs/shed.md`, four in `manifest/designs/hardener.md`
+  (one of which uses a `#process--do-not-fold-this-into-hardeners-task`
+  anchor whose surrounding sentence must be reworded to stand without the
+  anchor), and the `manifest/roadmap.md` Planned-item link handled above.
+  `shed.md` and `hardener.md` themselves stay — they are Someday design
+  docs, not this task's module doc.
   Delete `manifest/designs/treadle.md` (git rm) in this same commit.
 - **Commit:** `docs: absorb treadle design into package docs and close the roadmap item`
 

@@ -207,5 +207,7 @@ batches are safe to run in parallel.
 - `internal/treadleengine/template_test.go`
 - `internal/treadleengine/testmain_test.go`
 - `internal/treadleengine/triage-template.md`
+- `manifest/designs/hardener.md`
+- `manifest/designs/shed.md`
 - `manifest/roadmap.md`
 - `tools/sandbox/SANDBOX-PERCH-SUITE.md`

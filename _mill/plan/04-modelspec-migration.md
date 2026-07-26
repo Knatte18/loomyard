@@ -69,9 +69,17 @@ resolved values change hashes differently and the existing
   `config.go`: `Config` struct keeps both exported fields (`JudgeModel`,
   `JudgeEffort` — byte-identical Go API); `JudgeEffort`'s yaml binding is
   removed (tag `yaml:"-"`) since the key no longer exists in the file.
-  After unmarshal, `LoadConfig` resolves the spec: `modelspec.Parse` the
-  `judge_model` string (grammar fail-loud), `modelspec.LoadRegistry(baseDir)`
-  (absent `models.yaml` falls back to built-ins), `Registry.Resolve`, then
+  Resolution is registry-threaded so `models.yaml` is loaded ONCE per
+  invocation: add a new exported
+  `LoadConfigWithRegistry(baseDir, module string, reg modelspec.Registry)
+  (Config, error)` carrying the resolution logic; the existing
+  `LoadConfig(baseDir, module)` keeps its exact signature and behavior by
+  calling `modelspec.LoadRegistry(baseDir)` itself and delegating — an
+  additive export, no existing symbol changes (perchcli reuses its own
+  registry via the new function in card 13). The resolution logic, after
+  unmarshal: `modelspec.Parse` the `judge_model` string (grammar
+  fail-loud), `Registry.Resolve` against the threaded registry (absent
+  `models.yaml` already fell back to built-ins at LoadRegistry time), then
   the explicit perch-layer params check — every key in `Resolved.Params`
   other than `effort` is a loud error naming the offending key and the
   spec string (this is where `version` is rejected; perch has no Version
@@ -133,9 +141,12 @@ resolved values change hashes differently and the existing
   `ProfileHash` is taken in `deriveBlockRunID`/`resolveRunTarget` (both
   untouched), so the hash covers resolved values — the accepted fail-loud
   resume consequence documented in the batch scope.
-  `cli.go`: load the registry once in `PersistentPreRunE` via
+  `cli.go`: load the registry ONCE in `PersistentPreRunE` via
   `modelspec.LoadRegistry(layout.Cwd)` (same anchor as the config loads),
-  store it on `perchCLI`, thread it to `decodeProfile`.
+  store it on `perchCLI`, switch the perch config load to
+  `perchengine.LoadConfigWithRegistry(layout.Cwd, "perch", registry)`
+  (card 12's additive export), and thread the same registry instance to
+  `decodeProfile` — `models.yaml` is read exactly once per invocation.
   The `--model`/`--effort`/`--timeout` flags are UNCHANGED (plain provider
   overrides overlaid after hashing — out of scope per the discussion).
   Help text (`runCmd`'s `Long`): update the example profile — replace the
