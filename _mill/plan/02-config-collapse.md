@@ -27,6 +27,7 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
   - `internal/fabricengine/config.go`
 - **Edits:**
   - `internal/configreg/configreg.go`
+  - `internal/configsync/configsync_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -42,7 +43,14 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
   (Card 27's grep gate targets `warpengine|weftengine` words and import paths, so these bare
   `"warp"`/`"weft"` string examples would otherwise survive.) `configreg.Names()`
   now returns the list without `warp`/`weft`; consumers that surface the list (`configcli`)
-  update automatically.
+  update automatically. `internal/configsync/configsync_test.go` was discovered during
+  implementation as a downstream consumer of `configreg.Modules()` NOT anticipated by this
+  batch's "no other package is affected" scope note: `TestReconcileAll_ApplyCreatesFiles`
+  looks up a `"weft"` entry in `ReconcileAll`'s per-module results and asserts
+  `hubgeometry.ConfigFile(tmpDir, "weft")` was created on disk -- both go stale the moment
+  `Modules()` drops the `"weft"` row (ReconcileAll iterates `configreg.Modules()`, so no
+  `"weft"` result is ever produced). Re-point both the result lookup and the on-disk path
+  assertion from `"weft"` to `"fabric"` (the row `Modules()` now carries in weft's place).
 - **Commit:** `refactor(configreg): drop warp/weft modules, keep fabric`
 
 ### Card 10: switch configcli weft-sync to fabriccli
