@@ -16,29 +16,28 @@ Committed to, in this order, next.
    (`fabric` shipped Done below, old warp/weft modules deleted). See
    [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
-1. **Treadle: shared round-loop engine** — generalizes `perch`'s existing judge/gate/round-spawn/
-   cap/pause/lock loop into a shared engine with a pluggable round-runner (`burlerengine` for
-   `perch`, a live-substrate agent for the Someday `Tenter`) and a judge-maintained handoff (bounds
-   `perch`'s own O(N) review-history growth too, not just a `Tenter` need). Renamed from the
-   discussion-time placeholder `gorch`. See [designs/treadle.md](designs/treadle.md).
+1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalizes `perch`'s
+   existing judge/gate/round-spawn/cap/pause/lock loop into a shared engine with a pluggable
+   round-runner (`burlerengine` for `perch`, a live-substrate agent for the Someday `Tenter`) and a
+   judge-maintained handoff (bounds `perch`'s own O(N) review-history growth too, not just a
+   `Tenter` need), then rewrites `perch` onto it in the same task (behavior/CLI unchanged from the
+   outside) — one task, not two, since `perch`'s own existing behavior is the differential test
+   that proves `Treadle` has everything `perch` needs. Renamed from the discussion-time placeholder
+   `gorch`. See [designs/treadle.md](designs/treadle.md).
 
-1. **Shed: shared outer phase-FSM** — generalizes the phase-sequencing engine `loom.md` already
-   specifies (sequencing, resume, crash-recovery, pause, status-file contract) into a shared
-   skeleton with two swappable slots (Preflight, producer), reused by the Someday `Hardener`
-   module. Does not rewrite `loom.md`'s existing design — records the shared-engine name and scope
-   only. See [designs/shed.md](designs/shed.md).
-
-1. **perch: rewrite onto `Treadle`** — behavior/CLI unchanged from the outside; extracts the
-   round-runner interface and judge-maintained handoff `Treadle` introduces out from under perch's
-   shipped, tested implementation. See [designs/treadle.md](designs/treadle.md).
-
-1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
-   (sequencing, resume, crash-recovery, pause), testable against fake phases before real
-   producers are wired in, plus the `lyx loom run` entry point. Builds on `Shed` above. See
-   [designs/loom.md](designs/loom.md).
-
-1. **loom: Finalize phase** — merge-back after Builder-review approval; Go-first, LLM only on
-   merge conflict; optional PR creation. See [designs/loom-finalize.md](designs/loom-finalize.md).
+1. **Shed: shared outer phase-FSM, combined with the Finalize step** — generalizes the
+   phase-sequencing engine `loom.md` already specifies (sequencing, resume, crash-recovery, pause,
+   status-file contract) into a shared skeleton with two swappable slots (Preflight, producer),
+   reused by the Someday `Hardener` module, **built together with Finalize** (see
+   [designs/finalize.md](designs/finalize.md) — merge-back, incl. the warp/weft split and the
+   Raddle-only-forward pathspec) since Finalize is Shed's own literally-shared code, not a
+   per-instance slot — one task, not two, same reasoning as the combined `Treadle`+`perch` item.
+   **Testable cheaply:** plug a quick, throwaway producer into the producer-slot to exercise the
+   skeleton + Finalize end-to-end before any real producer (Discussion/Plan/Webster, or the Someday
+   `Tenter`) needs to exist — the same "fake phases before real producers" approach `loom.md`
+   already specifies for its own skeleton. Does not rewrite `loom.md`'s existing design — records
+   the shared-engine name and scope only. Independent of the `Treadle` item above — a different
+   engine, not blocked on it. See [designs/shed.md](designs/shed.md).
 
 1. **native clients: migrate `gitrepo` to `go-git` (ADOPT-PARTIAL) + `selfreportengine`'s internal
    `gh`-CLI transport to `go-github`** — executes the `git-native-library` spike's finding (read
@@ -47,8 +46,17 @@ Committed to, in this order, next.
    what's underneath `selfreportengine`'s public `CreateIssue` entry point — its `gh`-CLI shell-out
    — for `google/go-github`, for the same "stop parsing CLI output as an API" reason, on a much
    smaller, already-stable surface (no spike needed). `CreateIssue`'s signature/behavior and all its
-   callers are unaffected. One task, since both are the same underlying cleanup. See
+   callers are unaffected. One task, since both are the same underlying cleanup. Sequenced ahead of
+   `loom` even though `gitrepo`'s public surface is unchanged by the migration (callers, incl.
+   `fabric`, are unaffected either way): building `loom`'s Finalize logic against the final,
+   go-git-based `gitrepo` from the start avoids re-validating that logic later if the swap surfaces
+   any subtle CLI-vs-library behavioral difference. See
    [designs/native-clients-migration.md](designs/native-clients-migration.md).
+
+1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
+   (sequencing, resume, crash-recovery, pause), testable against fake phases before real
+   producers are wired in, plus the `lyx loom run` entry point. Builds on `Shed` above. See
+   [designs/loom.md](designs/loom.md).
 
 ## Someday
 
@@ -79,6 +87,13 @@ between these items.
 
 1. **raddle** — codeguide's woven-in successor; parallel-regeneration design exists; deferred phase
    slot between Builder and Finalize. See [designs/raddle.md](designs/raddle.md).
+
+1. **fabric: unified-repo view** — extend the "junctions make weft look like part of the host
+   repo" illusion all the way through `fabric`'s own API: a single auto-routing `Fabric.Commit`,
+   a unified diff/status spanning both repos, and SHA-bookkeeping reuse — all while keeping the
+   existing "an LLM never decides weft-commit timing" invariant intact, only enforced more
+   consistently (a hard block, not a silent no-op). Several sub-questions still open. See
+   [designs/fabric-unified-view.md](designs/fabric-unified-view.md).
 
 1. **webster: parallel card execution** — worktree-per-card concurrent forking with a DAG;
    explored twice (pre- and during vacation discussion), rejected both times for git-index-race and
@@ -114,7 +129,17 @@ between these items.
 
 1. **shuttle `Spec`: per-round provider selector** — today "provider" means whichever engine is
    wired into the `Runner`; a selector field is only needed once a second engine lands (non-Claude
-   engines are not a current priority, per `CLAUDE.md`).
+   engines are not a current priority, per `CLAUDE.md`). Scope, if this is ever picked up: almost
+   everything lyx spawns (Discussion, Planner, Webster, Burler rounds, the progress-judge) is
+   markdown-instruction + file-contract driven — no skill/slash-command/plugin dependency baked
+   into task content, unlike Millhouse's Claude-Code-specific skill layer — which is what makes a
+   second engine a real, not aspirational, swap: it only has to solve spawn/completion-detection/
+   resume, not rewrite prompts. The one real trade-off to weigh, not just a gap to patch: Burler's
+   cluster-review fan-out (N reviewers as cheap, context-sharing forks via Claude Code's own Agent
+   tool) is a genuine strength, including token cost — a non-Claude engine has no equivalent to
+   fork into, so cluster mode on a second engine would mean N full separate sessions instead,
+   costlier by construction, not a like-for-like swap. Only Burler's default single-reviewer round
+   (no clustering) is unaffected either way.
 
 1. **Bulk-mode clusters + provider-side context caching** — a `burler` cluster round can run
    *tool-use* or *bulk* (Go concatenates target + fasit + rubric into one blob). Bulk is what makes

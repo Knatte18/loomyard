@@ -424,7 +424,7 @@ package docs.
   what was actually built, including deviations from the original task. It is required
   (presence + non-empty + title line, fail-loud) only when `outcome: done`, and follows the
   same archive-never-refuse discipline as every other stale artifact here. This is the
-  future `loom-finalize`'s PR-text source, since a long-lived Master session is the only
+  future Finalize step's PR-text source, since a long-lived Master session is the only
   party with full oversight of what actually shipped — builder has no equivalent artifact.
 - **Independent state, no collision.** webster owns its own `_lyx/webster/` (its own
   `state.json`, reports dir, `outcome.yaml`, `summary.md`, locks, pause flag), resolved via
