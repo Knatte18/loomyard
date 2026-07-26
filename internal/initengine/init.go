@@ -15,9 +15,9 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/configsync"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
-	"github.com/Knatte18/loomyard/internal/warpengine"
 )
 
 // ModuleResult reports the reconciliation outcome for one module's config file.
@@ -38,7 +38,7 @@ type InitResult struct {
 // reconciles the config layer in cwd by:
 //  1. Resolving the layout from cwd
 //  2. Checking for a weft pairing; if absent, returning an error early
-//  3. Wiring the host _lyx junction via warpengine.WireJunctions
+//  3. Wiring the host _lyx junction via fabricengine.WireJunctions
 //  4. Creating _lyx and _lyx/config directories
 //  5. Maintaining the managed .gitignore block for .lyx/
 //  6. Reconciling all module config files against their templates via ReconcileAll
@@ -64,7 +64,7 @@ func Init(cwd string) (InitResult, error) {
 
 	// Wire junctions for the current worktree (keyed by its slug: filepath.Base(WorktreeRoot)).
 	slug := filepath.Base(l.WorktreeRoot)
-	if err := warpengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug); err != nil {
 		return InitResult{}, fmt.Errorf("failed to wire junctions: %w", err)
 	}
 
