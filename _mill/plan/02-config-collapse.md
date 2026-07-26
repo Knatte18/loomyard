@@ -87,10 +87,30 @@ live hub regenerates via `lyx init`. Batch D1 depends on this batch having remov
   - `internal/fabriccli/fabric.go`
 - **Edits:**
   - `internal/configcli/configcli_integration_test.go`
+  - `internal/configcli/configcli_test.go`
+  - `internal/configcli/reconcile_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** This file has MORE than one test that uses the removed `"warp"` module --
+- **Requirements:** `internal/configcli/configcli_test.go` (untagged unit tests) and
+  `internal/configcli/reconcile_integration_test.go` (the reconcile scenarios) are additional
+  same-package files discovered during implementation that also pin `"warp"`/`"weft"` module
+  names and go red once card 9 drops those two rows from the registry -- `go test -tags
+  integration ./internal/configcli/...` builds the whole package (both files) alongside
+  `configcli_integration_test.go`, so they are in-scope for this batch's `verify:` regardless
+  of the original card list. In `configcli_test.go`: every `editOne`/`dispatch`/
+  `seedModuleConfig` call and JSON-envelope assertion using `"warp"` moves to `"fabric"`
+  (module now seeded/dispatched/asserted as `"fabric"`); the one `"weft"` case in
+  `TestEditOneSyncFails` (sync-failure message uses the literal string "weft sync failed",
+  which is generic per-module wording, not a module-name reference, and stays unchanged) moves
+  its seeded/dispatched module to `"fabric"` too; `TestMenuStatus` seeds `board` + `fabric`
+  configured, asserts `fabric (configured)` and picks a still-unconfigured registry module
+  (e.g. `builder`) to assert `(default)` instead of the removed `weft`; the file-header comment
+  updates `weft.RunCLI` to `fabriccli.RunCLI`. In `reconcile_integration_test.go`:
+  `TestReconcile_Apply`'s final assertion swaps `hubgeometry.ConfigFile(tmpDir, "weft")` for
+  `hubgeometry.ConfigFile(tmpDir, "fabric")` (fabric.yaml is what --apply now materializes in
+  its place). This card's Commit: message covers all three files in one commit.
+- **Requirements (original):** This file has MORE than one test that uses the removed `"warp"` module --
   rewrite EVERY warp usage in the file, not just the first fixture:
   - `TestE2ESyncIntegration`: the fixture builds via `warpengine.New().Add()` +
     `warpengine.WireJunctions` + `weftcli.RunCLI` and dispatches `[]string{"warp"}` (and reads
