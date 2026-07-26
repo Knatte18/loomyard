@@ -148,9 +148,13 @@ independent of whether Tenter is ever built.
   **lossless finding-identity ledger** (per finding: identity/title, rounds-seen list,
   status open/resolved) plus a `covers_rounds` list naming exactly which rounds' reviews
   the handoff has absorbed; below the frontmatter, a **distilled prose narrative**.
-  Go parses the frontmatter fail-loud at read (mirroring `ParseJudgeVerdict`); the
-  carry-forward rule (every previous ledger entry must reappear, as open or resolved,
-  never dropped) is enforced at prompt level.
+  Go parses the frontmatter fail-loud at read, in the two-layer split
+  `ParseJudgeVerdict` already uses: the **parser function** returns an error on
+  malformed input (never silently defaults), while the **loop** swallows that error
+  into the judge's fail-safe posture — Warn + fallback read-set, never a propagated
+  error, never STUCK (see handoff-failure-fallback). The carry-forward rule (every
+  previous ledger entry must reappear, as open or resolved, never dropped) is enforced
+  at prompt level.
 - Rationale: mirrors the shipped judge-verdict pattern (strict YAML over prose); honors
   the design doc's hard constraint — "distill the prose, but keep the key-ledger
   lossless" — a prose-only summary that quietly drops a recurring finding breaks

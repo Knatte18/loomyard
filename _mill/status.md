@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: treadle
 branch: treadle
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-26T10:19:21Z'
+discussion-fix-r3  '2026-07-26T10:54:03Z'
+discussed  '2026-07-26T10:54:03Z'
 ```
