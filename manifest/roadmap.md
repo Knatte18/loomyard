@@ -25,21 +25,21 @@ Committed to, in this order, next.
    uniformly) actually taking effect, not just `fabric`'s code existing alongside the old
    modules. See [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
-1. **Treadle: shared round-loop engine** — generalizes `perch`'s existing judge/gate/round-spawn/
-   cap/pause/lock loop into a shared engine with a pluggable round-runner (`burlerengine` for
-   `perch`, a live-substrate agent for the Someday `Tenter`) and a judge-maintained handoff (bounds
-   `perch`'s own O(N) review-history growth too, not just a `Tenter` need). Renamed from the
-   discussion-time placeholder `gorch`. See [designs/treadle.md](designs/treadle.md).
+1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalizes `perch`'s
+   existing judge/gate/round-spawn/cap/pause/lock loop into a shared engine with a pluggable
+   round-runner (`burlerengine` for `perch`, a live-substrate agent for the Someday `Tenter`) and a
+   judge-maintained handoff (bounds `perch`'s own O(N) review-history growth too, not just a
+   `Tenter` need), then rewrites `perch` onto it in the same task (behavior/CLI unchanged from the
+   outside) — one task, not two, since `perch`'s own existing behavior is the differential test
+   that proves `Treadle` has everything `perch` needs. Renamed from the discussion-time placeholder
+   `gorch`. See [designs/treadle.md](designs/treadle.md).
 
 1. **Shed: shared outer phase-FSM** — generalizes the phase-sequencing engine `loom.md` already
    specifies (sequencing, resume, crash-recovery, pause, status-file contract) into a shared
    skeleton with two swappable slots (Preflight, producer), reused by the Someday `Hardener`
    module. Does not rewrite `loom.md`'s existing design — records the shared-engine name and scope
-   only. See [designs/shed.md](designs/shed.md).
-
-1. **perch: rewrite onto `Treadle`** — behavior/CLI unchanged from the outside; extracts the
-   round-runner interface and judge-maintained handoff `Treadle` introduces out from under perch's
-   shipped, tested implementation. See [designs/treadle.md](designs/treadle.md).
+   only. Independent of the `Treadle` item above — a different engine, not blocked on it. See
+   [designs/shed.md](designs/shed.md).
 
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine
    (sequencing, resume, crash-recovery, pause), testable against fake phases before real
