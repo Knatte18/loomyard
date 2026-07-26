@@ -382,7 +382,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				":(exclude)*.lock",
 			)
 			// SkipGit is checked here, before fabricengine.New's stat-based
-			// path validation, mirroring weftengine.Commit's own top-level
+			// path validation, mirroring CommitWeft's own top-level
 			// short-circuit: the CI/test bypass must never require a real
 			// weft worktree to exist on disk, but New (unlike CommitWeft
 			// itself) validates both paths unconditionally.
