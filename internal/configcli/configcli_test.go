@@ -2,7 +2,7 @@
 //
 // Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync
 // over temp baseDirs seeded via the paths helpers. Integration test (//go:build
-// integration): e2e test with real weft.RunCLI over CopyPaired. The
+// integration): e2e test with real fabriccli.RunCLI over CopyPaired. The
 // git-init-backed TestDispatchSet_PreservedKeyDetectedByReconcile lives in
 // configcli_integration_test.go per the Test Tier Purity Invariant.
 
@@ -65,7 +65,7 @@ func TestEditOneSuccess(t *testing.T) {
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "warp", fakeEditor("branch_prefix: test\n", nil), tracker.syncFunc())
+	code := editOne(baseDir, &out, "fabric", fakeEditor("branch_prefix: test\n", nil), tracker.syncFunc())
 
 	if code != 0 {
 		t.Errorf("editOne() = %d; want 0", code)
@@ -77,7 +77,7 @@ func TestEditOneSuccess(t *testing.T) {
 	if !strings.Contains(output, "edited and synced") {
 		t.Errorf("editOne output missing success message; got %q", output)
 	}
-	assertJSONOkContains(t, output, map[string]any{"module": "warp"})
+	assertJSONOkContains(t, output, map[string]any{"module": "fabric"})
 }
 
 // TestEditOneUnknownModule tests unknown module handling.
@@ -141,7 +141,7 @@ func TestEditOneAbort(t *testing.T) {
 
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := editOne(baseDir, &out, "warp", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc())
+	code := editOne(baseDir, &out, "fabric", fakeEditor("test\n", errors.New("simulated editor exit 1")), tracker.syncFunc())
 
 	if code != 1 {
 		t.Errorf("editOne() = %d; want 1", code)
@@ -177,7 +177,7 @@ func TestEditOneSyncFails(t *testing.T) {
 		fmt.Fprint(w, "sync error: something went wrong")
 		return 1
 	}
-	code := editOne(baseDir, &out, "weft", fakeEditor("pathspec: _lyx\n", nil), syncWithOutput)
+	code := editOne(baseDir, &out, "fabric", fakeEditor("pathspec: _lyx\n", nil), syncWithOutput)
 
 	if code != 1 {
 		t.Errorf("editOne() = %d; want 1", code)
@@ -309,14 +309,14 @@ func TestMenuStatus(t *testing.T) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
-	// Create board.yaml and warp.yaml to mark them as (configured)
+	// Create board.yaml and fabric.yaml to mark them as (configured)
 	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "warp"), []byte("# warp\n"), 0o644); err != nil {
-		t.Fatalf("failed to write warp.yaml: %v", err)
+	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "fabric"), []byte("# fabric\n"), 0o644); err != nil {
+		t.Fatalf("failed to write fabric.yaml: %v", err)
 	}
-	// weft.yaml not created, so it should show (default)
+	// builder.yaml not created, so it should show (default)
 
 	l := &hubgeometry.Layout{
 		WorktreeRoot: baseDir,
@@ -332,11 +332,11 @@ func TestMenuStatus(t *testing.T) {
 	if !strings.Contains(output, "board (configured)") {
 		t.Errorf("menu output missing 'board (configured)'; got %q", output)
 	}
-	if !strings.Contains(output, "warp (configured)") {
-		t.Errorf("menu output missing 'warp (configured)'; got %q", output)
+	if !strings.Contains(output, "fabric (configured)") {
+		t.Errorf("menu output missing 'fabric (configured)'; got %q", output)
 	}
-	if !strings.Contains(output, "weft (default)") {
-		t.Errorf("menu output missing 'weft (default)'; got %q", output)
+	if !strings.Contains(output, "builder (default)") {
+		t.Errorf("menu output missing 'builder (default)'; got %q", output)
 	}
 }
 
@@ -425,18 +425,18 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 // YAML verbatim at exit 0 and never invokes the editor.
 func TestPrintModule_Seeded(t *testing.T) {
 	baseDir := t.TempDir()
-	const warpYAML = "branch_prefix: feature/\n"
-	seedModuleConfig(t, baseDir, "warp", warpYAML)
+	const fabricYAML = "branch_prefix: feature/\n"
+	seedModuleConfig(t, baseDir, "fabric", fabricYAML)
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 0 {
 		t.Errorf("dispatch(print=true, seeded) = %d; want 0; output: %q", code, out.String())
 	}
-	if got := out.String(); got != warpYAML {
-		t.Errorf("dispatch(print=true, seeded) output = %q; want %q", got, warpYAML)
+	if got := out.String(); got != fabricYAML {
+		t.Errorf("dispatch(print=true, seeded) output = %q; want %q", got, fabricYAML)
 	}
 }
 
@@ -444,14 +444,14 @@ func TestPrintModule_Seeded(t *testing.T) {
 // module with no on-disk file returns an ok:false JSON envelope at exit 1.
 func TestPrintModule_KnownButUnseeded(t *testing.T) {
 	baseDir := t.TempDir()
-	// Create the config directory but not the warp.yaml file.
+	// Create the config directory but not the fabric.yaml file.
 	if err := os.MkdirAll(hubgeometry.ConfigDir(baseDir), 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), nil, true, nil)
+	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), nil, true, nil)
 
 	if code != 1 {
 		t.Errorf("dispatch(print=true, unseeded) = %d; want 1", code)
@@ -466,7 +466,7 @@ func TestPrintAggregate_PartialSeed(t *testing.T) {
 	baseDir := t.TempDir()
 	const boardYAML = "path: board\nhome: Home.md\n"
 	seedModuleConfig(t, baseDir, "board", boardYAML)
-	// warp and weft are intentionally not seeded.
+	// fabric and builder are intentionally not seeded.
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
@@ -487,7 +487,7 @@ func TestPrintAggregate_PartialSeed(t *testing.T) {
 	if !strings.Contains(got, "path: board") {
 		t.Errorf("aggregate output missing seeded board YAML; output:\n%s", got)
 	}
-	// warp and weft are absent; their sections must each say # (not configured).
+	// The other nine modules are absent; their sections must each say # (not configured).
 	if count := strings.Count(got, "# (not configured)"); count < 2 {
 		t.Errorf("expected ≥2 '# (not configured)' lines; got %d; output:\n%s", count, got)
 	}
@@ -533,13 +533,13 @@ func countingEditor(calls *int) configengine.EditorFunc {
 // invocation never calls the injected EditorFunc.
 func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"warp"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, nil, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Errorf("dispatch(--set) = %d; want 0; output: %q", code, out.String())
@@ -547,20 +547,20 @@ func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
 	if editorCalls != 0 {
 		t.Errorf("dispatch(--set) invoked the editor %d times; want 0", editorCalls)
 	}
-	assertJSONOkContains(t, out.String(), map[string]any{"module": "warp"})
+	assertJSONOkContains(t, out.String(), map[string]any{"module": "fabric"})
 }
 
 // TestDispatchSet_UnknownKeyNeverSyncs verifies that an unknown key passed to
 // --set returns an error and the injected sync function is never invoked.
 func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"warp"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"bogus_key=x"})
+	code := dispatch(l, nil, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), false, []string{"bogus_key=x"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set unknown key) = %d; want 1", code)
@@ -580,7 +580,7 @@ func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {
 	var out bytes.Buffer
 	editorCalls := 0
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"warp"}, countingEditor(&editorCalls), tracker.syncFunc(), true, []string{"branch_prefix=new-"})
+	code := dispatch(l, nil, &out, []string{"fabric"}, countingEditor(&editorCalls), tracker.syncFunc(), true, []string{"branch_prefix=new-"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--print, --set) = %d; want 1", code)
@@ -613,7 +613,7 @@ func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
 // in one dispatch() call all land in a single sync invocation.
 func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
@@ -622,7 +622,7 @@ func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 		syncCalls++
 		return 0
 	}
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), sync, false, []string{"branch_prefix=new-"})
+	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), sync, false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Errorf("dispatch(--set multiple) = %d; want 0; output: %q", code, out.String())
@@ -630,7 +630,7 @@ func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 	if syncCalls != 1 {
 		t.Errorf("dispatch(--set multiple) called sync %d times; want 1", syncCalls)
 	}
-	assertJSONOkContains(t, out.String(), map[string]any{"module": "warp"})
+	assertJSONOkContains(t, out.String(), map[string]any{"module": "fabric"})
 }
 
 // TestDispatchSet_MalformedValue verifies that a malformed --set value with
@@ -640,7 +640,7 @@ func TestDispatchSet_MalformedValue(t *testing.T) {
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"no-equals-sign"})
+	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"no-equals-sign"})
 
 	if code != 1 {
 		t.Errorf("dispatch(--set malformed) = %d; want 1", code)
@@ -669,12 +669,12 @@ func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
 // the JSON envelope's "preserved" field.
 func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\nlegacy_key: keepme\n")
+	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\nlegacy_key: keepme\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Fatalf("dispatch(--set, orphan key) = %d; want 0; output: %q", code, out.String())
@@ -698,12 +698,12 @@ func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
 // field at all, rather than an empty one.
 func TestDispatchSet_CleanFileNoPreservedField(t *testing.T) {
 	baseDir := t.TempDir()
-	seedModuleConfig(t, baseDir, "warp", "branch_prefix: old-\n")
+	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer
 	tracker := &fakeSyncTracker{exitCode: 0}
-	code := dispatch(l, nil, &out, []string{"warp"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
+	code := dispatch(l, nil, &out, []string{"fabric"}, makeNeverCalledEditor(t), tracker.syncFunc(), false, []string{"branch_prefix=new-"})
 
 	if code != 0 {
 		t.Fatalf("dispatch(--set, clean file) = %d; want 0; output: %q", code, out.String())

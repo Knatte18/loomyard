@@ -1,7 +1,7 @@
 //go:build integration
 
 // configcli_integration_test.go — e2e integration tests for configcli.
-// Tests real weft.RunCLI over CopyPaired fixtures, plus the --set/reconcile
+// Tests real fabriccli.RunCLI over CopyPaired fixtures, plus the --set/reconcile
 // chain that spawns gitexec.RunGit(["init"], …).
 
 package configcli
@@ -17,11 +17,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/fabriccli"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/warpengine"
-	"github.com/Knatte18/loomyard/internal/weftcli"
 )
 
 // TestE2ESyncIntegration is an e2e test using CopyPaired: creates a host worktree with
@@ -33,24 +33,30 @@ func TestE2ESyncIntegration(t *testing.T) {
 	// Build paired fixture (host + weft).
 	f := lyxtest.CopyPaired(t)
 
-	// Seed the weft-prime fixture with real config templates that weft.RunCLI will need.
+	// Seed the weft-prime fixture with real config templates that fabriccli.RunCLI will need.
 	seeds := make(map[string]string)
 	for _, m := range configreg.Modules() {
 		seeds[m.Name] = m.Template()
 	}
 	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
 
-	// FIRST: Create the host worktree via warpengine.New().Add() (which is dormant).
+	// Mirror CloneHub's post-clone state: fabric's weft primary sits on the suffixed
+	// sibling of the host's branch ("main-weft"), not the mirrored "main" this
+	// warp/weft-oriented fixture starts on. Without this, Add's fork-from-parent
+	// step has no "main-weft" ref to fork the new pair's weft branch from.
+	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+
+	// FIRST: Create the host worktree via fabricengine.NewTopology().Add() (which is dormant).
 	// Then wire the host _lyx junction via WireJunctions.
 	// Without this the host worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
-	w := warpengine.New(warpengine.Config{})
-	_, err := w.Add(f.Layout, slug, warpengine.AddOptions{SkipPush: true})
+	top := fabricengine.NewTopology(fabricengine.Config{})
+	_, err := top.Add(f.Layout, slug, fabricengine.AddOptions{SkipPush: true})
 	if err != nil {
-		t.Fatalf("worktree.Add(%q): %v", slug, err)
+		t.Fatalf("Topology.Add(%q): %v", slug, err)
 	}
 
 	// Wire junctions for the new host worktree.
-	if err := warpengine.WireJunctions(f.Layout, slug); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug); err != nil {
 		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
@@ -61,7 +67,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 		t.Fatalf("hubgeometry.Resolve(%q): %v", hostWorktreePath, err)
 	}
 
-	// Chdir into the host worktree so weft.RunCLI's cwd resolution lands on the fixture.
+	// Chdir into the host worktree so fabriccli.RunCLI's cwd resolution lands on the fixture.
 	// NOTE: This test must NOT call t.Parallel() due to t.Chdir.
 	t.Chdir(hostWorktreePath)
 
@@ -69,30 +75,33 @@ func TestE2ESyncIntegration(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
-	// Create a fake editor that writes valid YAML.
-	validYAML := "branch_prefix: test-prefix\n"
+	// Create a fake editor that writes valid YAML. Unlike warp's single-field
+	// branch_prefix.yaml, fabric's Config carries both branch_prefix (from warp)
+	// and pathspec (from weft) in one file, so both keys must be present for
+	// strict schema validation to pass.
+	validYAML := "branch_prefix: test-prefix\npathspec: _lyx\n"
 	fakeEdit := func(path string) error {
 		return os.WriteFile(path, []byte(validYAML), 0o644)
 	}
 
-	// Create an injected sync function that calls weft.RunCLI with "commit" instead of "sync".
+	// Create an injected sync function that calls fabriccli.RunCLI with "commit" instead of "sync".
 	// (sync calls a detached spawnPush that cannot run in-process, so we use commit.)
 	injectedSync := func(w io.Writer) int {
-		return weftcli.RunCLI(w, []string{"commit"})
+		return fabriccli.RunCLI(w, []string{"commit"})
 	}
 
 	// Run dispatch with the fake editor and injected sync.
 	var out bytes.Buffer
-	code := dispatch(hostLayout, os.Stdin, &out, []string{"warp"}, fakeEdit, injectedSync, false, nil)
+	code := dispatch(hostLayout, os.Stdin, &out, []string{"fabric"}, fakeEdit, injectedSync, false, nil)
 
 	// Assert dispatch succeeded.
 	if code != 0 {
 		t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 	}
 
-	// Assert _lyx/config/warpengine.yaml is tracked/committed in the weft worktree.
+	// Assert _lyx/config/fabric.yaml is tracked/committed in the weft worktree.
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
-	configRelPath := hubgeometry.ConfigFile(".", "warp")
+	configRelPath := hubgeometry.ConfigFile(".", "fabric")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")
@@ -136,9 +145,9 @@ func TestE2ESyncIntegration(t *testing.T) {
 		t.Errorf("dispatch output missing success message; got %q", outStr)
 	}
 
-	// Assert the output is a JSON envelope with ok:true and module:"warp",
+	// Assert the output is a JSON envelope with ok:true and module:"fabric",
 	// the same shape Card 7/8 introduced, exercised here end-to-end through
-	// the real dispatch/weftcli.RunCLI("commit") path rather than a fake sync.
+	// the real dispatch/fabriccli.RunCLI("commit") path rather than a fake sync.
 	var env map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(outStr)), &env); err != nil {
 		t.Fatalf("dispatch output is not valid JSON: %v; got %q", err, outStr)
@@ -146,8 +155,8 @@ func TestE2ESyncIntegration(t *testing.T) {
 	if ok, _ := env["ok"].(bool); !ok {
 		t.Errorf("dispatch output envelope ok = %v; want true; got %q", env["ok"], outStr)
 	}
-	if module, _ := env["module"].(string); module != "warp" {
-		t.Errorf("dispatch output envelope module = %q; want \"warp\"; got %q", module, outStr)
+	if module, _ := env["module"].(string); module != "fabric" {
+		t.Errorf("dispatch output envelope module = %q; want \"fabric\"; got %q", module, outStr)
 	}
 }
 
@@ -167,14 +176,14 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	seedModuleConfig(t, tmpDir, "warp", "branch_prefix: old-\nlegacy_key: keepme\n")
+	seedModuleConfig(t, tmpDir, "fabric", "branch_prefix: old-\nlegacy_key: keepme\n")
 
 	// Run --set via dispatch, exactly as
 	// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning does, using an
 	// explicit *hubgeometry.Layout (dispatch takes one directly, unlike
 	// RunCLI which resolves it from cwd).
 	var setOut bytes.Buffer
-	setCode := dispatch(makeLayoutAt(tmpDir), nil, &setOut, []string{"warp"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"branch_prefix=new-"})
+	setCode := dispatch(makeLayoutAt(tmpDir), nil, &setOut, []string{"fabric"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"branch_prefix=new-"})
 	if setCode != 0 {
 		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 	}
@@ -204,23 +213,23 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	if !ok {
 		t.Fatalf("modules is not an array; got %v", result)
 	}
-	var warpMod map[string]any
+	var fabricMod map[string]any
 	for _, m := range modules {
 		mod, ok := m.(map[string]any)
 		if !ok {
 			continue
 		}
-		if mod["module"] == "warp" {
-			warpMod = mod
+		if mod["module"] == "fabric" {
+			fabricMod = mod
 			break
 		}
 	}
-	if warpMod == nil {
-		t.Fatalf("no modules entry for \"warp\"; got %v", modules)
+	if fabricMod == nil {
+		t.Fatalf("no modules entry for \"fabric\"; got %v", modules)
 	}
-	removed, ok := warpMod["removed"].([]any)
+	removed, ok := fabricMod["removed"].([]any)
 	if !ok {
-		t.Fatalf("warp module entry missing \"removed\" field or wrong type; got %v", warpMod)
+		t.Fatalf("fabric module entry missing \"removed\" field or wrong type; got %v", fabricMod)
 	}
 	found := false
 	for _, r := range removed {
@@ -230,6 +239,6 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("warp module's removed = %v; want it to contain \"legacy_key\"", removed)
+		t.Errorf("fabric module's removed = %v; want it to contain \"legacy_key\"", removed)
 	}
 }
