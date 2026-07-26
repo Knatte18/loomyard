@@ -250,19 +250,36 @@
 //
 // # Configuration: engine-general rails vs. phase knowledge
 //
-// perch.yaml (config keys judge_model, judge_effort, round_caps) holds only
-// engine-general defaults and NEVER learns a phase name. Per-phase
-// knowledge — which rubric, which fasit, a phase's own round-cap ladder,
-// gate mode — is supplied per invocation via the profile, and for loom's
-// phases that profile data will live in loom's OWN per-phase config, not
-// perch.yaml. This is a recurring design rule worth stating once:
-// knowledge of phases and lifecycle collects in loom; the engines beneath
-// it (perch, burler) stay phase-agnostic. Resolution order for every
-// perch-owned tunable is uniformly profile > perch.yaml > built-in default,
-// applied once at block CREATION: a block's identity hash covers the profile
-// as supplied (not the resolved values), and its resolved round-caps ladder
-// is stamped into state.json, so a later perch.yaml change neither alters
-// nor invalidates the resume of an in-flight block.
+// perch.yaml (config keys judge_model, round_caps) holds only engine-general
+// defaults and NEVER learns a phase name. Per-phase knowledge — which
+// rubric, which fasit, a phase's own round-cap ladder, gate mode — is
+// supplied per invocation via the profile, and for loom's phases that
+// profile data will live in loom's OWN per-phase config, not perch.yaml.
+// This is a recurring design rule worth stating once: knowledge of phases
+// and lifecycle collects in loom; the engines beneath it (perch, burler)
+// stay phase-agnostic. Resolution order for every perch-owned tunable is
+// uniformly profile > perch.yaml > built-in default, applied once at block
+// CREATION: a block's identity hash covers the profile as supplied (not the
+// resolved values), and its resolved round-caps ladder is stamped into
+// state.json, so a later perch.yaml change neither alters nor invalidates
+// the resume of an in-flight block.
+//
+// judge_model (and a profile's judge-model/model keys, see perchcli) is a
+// model-spec string, not a bare model name — docs/reference/model-spec.md's
+// notation: a registry alias with an optional [effort=...] bracket, the
+// escape form for a model not (yet) in the registry, or a bare alias that
+// picks up its default effort from the operator-owned models.yaml. Effort
+// is the ONLY bracket param perch accepts — a spec setting any other param
+// (e.g. version) fails loud, since perch's Config/Profile carry no field to
+// put it in. Resolution (modelspec.Parse, then Registry.Resolve against a
+// models.yaml loaded once per invocation) runs exactly once, at config/
+// profile load, unpacking the resolved (model, effort) pair into Config's
+// and Profile's unchanged JudgeModel/JudgeEffort and Model/Effort fields —
+// never re-resolved later, and never threaded as a spec string past load
+// time. A pre-migration perch.yaml or profile file still carrying the old
+// split judge_effort/effort keys fails strict validation loud rather than
+// silently dropping the value (a deliberate fail-loud breaking change to
+// config FILES only; perch's own Go API is unchanged — see "Treadle" below).
 //
 // # Treadle — where the round loop actually lives now
 //
