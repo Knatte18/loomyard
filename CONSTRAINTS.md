@@ -28,7 +28,7 @@ Fuller design/how-to lives in godoc and `docs/`, not here — this file is the i
 
 `internal/lyxtest` stays a leaf: it imports only the standard library and
 `internal/hubgeometry` — never `internal/configreg` or any feature package
-(`boardengine`/`boardcli`, `warpengine`/`warpcli`, `weftengine`/`weftcli`, …).
+(`boardengine`/`boardcli`, …).
 
 - A `lyxtest → configreg → feature` edge closes a test-build cycle under
   `-tags integration`. Tests needing real config call `lyxtest.SeedConfig(tb, dir,
@@ -162,25 +162,23 @@ Every git operation on the weft repo goes through the weft/warp engines in Go, d
 orchestration layer in-process — never raw git, and never an LLM agent.
 
 - **Module ownership.** Weft-internal git (`commit`/`push`/`pull`/`sync`) goes through
-  `internal/weftengine` **or** `internal/fabricengine`; coordinated host↔weft topology (a checkout
-  that moves both and re-points junctions, dual-worktree add/remove/clone) goes through
-  `internal/warpengine` **or** `internal/fabricengine`. No other package runs raw git against a weft
-  worktree. The **host** repo is unrestricted — it is an ordinary project repo. **Parallel-build
-  note:** `fabricengine` is the in-progress unified replacement for `weftengine`/`warpengine`; this
-  dual ownership lasts only until the warp/weft cutover task, which rewires every consumer onto
-  `fabricengine` and collapses this bullet back down to a single module per concern.
+  `internal/fabricengine`; coordinated host↔weft topology (a checkout that moves both and
+  re-points junctions, dual-worktree add/remove/clone) goes through `internal/fabricengine`
+  too. No other package runs raw git against a weft worktree. The **host** repo is
+  unrestricted — it is an ordinary project repo.
 - **Orchestration, not agent.** The weft commit is Go calling the engine in-process
-  (`weftengine.Sync`/`Commit`) at a round/phase boundary the loop owner (loom, or perch's CLI
-  standalone) controls. An LLM agent never drives weft git — not raw git, not by shelling `lyx weft`.
-  Agents ride the file contract: they **write** overlay files (reviews, fixer-reports, status, raddle
-  docs) into `_lyx`/`_raddle` via the junction; Go **reads and commits** them. Asymmetry: an agent
-  **does** commit its own code to the **host** repo (commit-per-fix, normal dev git) — the weft, never.
+  (`fabricengine`'s `SyncWeft`/`CommitWeft`) at a round/phase boundary the loop owner (loom, or
+  perch's CLI standalone) controls. An LLM agent never drives weft git — not raw git, not by
+  shelling `lyx fabric`. Agents ride the file contract: they **write** overlay files (reviews,
+  fixer-reports, status, raddle docs) into `_lyx`/`_raddle` via the junction; Go **reads and
+  commits** them. Asymmetry: an agent **does** commit its own code to the **host** repo
+  (commit-per-fix, normal dev git) — the weft, never.
 - **Why.** A weft commit is an orchestration act (persist round/phase state at the right boundary,
   coordinate host↔weft) — the deterministic Go responsibility that is the whole lyx thesis. An
   agent-run weft commit reintroduces the non-deterministic, untestable, mis-ordered LLM orchestration
   lyx exists to remove.
 - **Enforced by** review obligation: agent prompt templates never instruct a weft git op, and weft
-  git stays inside `weftengine`/`warpengine`. The module-ownership half is a candidate for a future
+  git stays inside `internal/fabricengine`. The module-ownership half is a candidate for a future
   import/grep guard; not machine-checked today.
 
 ## Review Round Invariant
