@@ -22,6 +22,12 @@ human-facing wrappers over these. The everyday call has a convenience alias:
 **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary,
 `loom`/`perch`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
+**Naming note (later addition):** the generic outer phase-FSM this doc specifies — sequencing,
+resume, crash recovery, pause, the status-file contract — is being generalized for reuse by the
+Someday `Hardener` module under the name **`Shed`** (see [shed.md](shed.md)); `loom` = `Shed` +
+loom's own Preflight + the Discussion/Plan/Webster producer. This doc has not been rewritten to
+extract `Shed` explicitly — it remains the authoritative design for the engine described here.
+
 ## Why — the inversion
 
 Today the LLM **is** the orchestrator: the `mill-start` / `mill-go` skills encode the
