@@ -27,7 +27,7 @@ itself (resume-on-files, crash recovery, graceful pause — all already specifie
 [loom.md](loom.md#state--contracts)), the Raddle-regeneration trigger and merge-lock scope (see
 [raddle.md](raddle.md#when-it-runs-deferred-to-merge-time-not-mid-task) — open question there on
 whether Raddle collapses into Finalize/Merge or keeps a separate slot), and Finalize/Merge (see
-[loom-finalize.md](loom-finalize.md)) — including the warp-side real-git-conflict path and the
+[finalize.md](finalize.md)) — including the warp-side real-git-conflict path and the
 weft-side document-driven (non-git) conflict path for `_raddle`/`_pattern` content.
 
 Two named products come from configuring the same engine differently:
@@ -37,6 +37,24 @@ Two named products come from configuring the same engine differently:
 - **`Hardener`** = `Shed` + Hardener's own Preflight + `Tenter` producer (`Treadle` + a
   live-substrate round-runner + behavior-review profile — see the `internal/treadleengine` package
   documentation) — `lyx hardener run`. Someday, deprioritized; not part of this doc's Planned scope.
+
+## Testable cheaply — a throwaway producer proves the skeleton
+
+Building `Shed` (skeleton + Finalize together — see Process below) doesn't need a real producer to
+validate against. Plug something quick and disposable into the producer-slot — one step that just
+succeeds immediately — and the skeleton (sequencing, resume, crash-recovery, pause) plus Finalize
+(warp merge, weft merge, PR creation) can all be exercised end-to-end without Discussion/Plan/
+Webster or the Someday `Tenter` needing to exist yet. This mirrors `loom.md`'s own already-stated
+approach ("testable against fake phases before real producers are wired in... the same fake-tested
+approach `perch` used against a fake `burler`") — just reused here to validate the *extraction*,
+the same way `perch`'s own existing behavior validates `Treadle`'s extraction.
+
+## Process — build together with Finalize, one task
+
+`Shed`'s skeleton and its Finalize step (see [finalize.md](finalize.md)) are **one Planned task,
+not two** — Finalize is `Shed`'s own literally-shared code (not a per-instance slot), so splitting
+them into separate tasks would just mean building the same engine's two halves as if they were
+independent, with no reason to. Same reasoning as the combined `Treadle` + `perch`-rewrite task.
 
 ## Why this doc doesn't rewrite loom.md
 
@@ -53,7 +71,7 @@ engine is being named `Shed` and is intended to be reused by `Hardener`.
 
 - [loom.md](loom.md) — the authoritative, already-detailed design this doc generalizes a name over,
   not yet rewritten to extract `Shed` explicitly.
-- [loom-finalize.md](loom-finalize.md) — the Finalize/Merge phase `Shed` shares as literal code.
+- [finalize.md](finalize.md) — the Finalize/Merge phase `Shed` shares as literal code.
 - [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope `Shed`'s
   Finalize/Merge step must honor.
 - `internal/treadleengine` package documentation — the sibling generic engine (inner round-loop,
