@@ -18,17 +18,17 @@ package webstercli
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/loomyard/internal/weftengine"
 )
 
 // websterWeftPathspec returns the scoped _lyx pathspec every webster weft
 // commit stages under, with the machine-local runtime artifacts excluded:
 // any *.lock file (run.lock, mutate.lock -- advisory OS locks), the pause
-// flag (_lyx/webster/<builderengine.PauseFlagName> -- webster reuses
-// builder's own pause-flag mechanics by import, per the
-// reuse-by-import-never-copy decision), and every rendered fork prompt
+// flag (_lyx/webster/<websterengine.PauseFlagName> -- webster's own
+// webster-local pause-flag mechanics, per the builder-is-frozen-copy-not-move
+// decision), and every rendered fork prompt
 // (_lyx/webster/prompts/*). All three are per-machine or purely-derived
 // runtime state, never durable webster state, so committing them would leak
 // runtime noise into weft history and materialize on every other machine's
@@ -43,7 +43,7 @@ func websterWeftPathspec(layout *hubgeometry.Layout) []string {
 	return append(
 		weftengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
 		":(exclude)*.lock",
-		":(exclude)*/webster/"+builderengine.PauseFlagName,
+		":(exclude)*/webster/"+websterengine.PauseFlagName,
 		":(exclude)*/webster/prompts/*",
 	)
 }

@@ -3,20 +3,22 @@
 // runlevel_test.go exercises Run end to end (Tier 2 — see
 // docs/benchmarks/running-tests.md): a real scratch git repo backs
 // WorktreeRoot and a real on-disk plan directory backs PlanDir (so
-// ParsePlan/Validate/Fingerprint all run for real), while the Master spawn
-// itself is a local, fully-scripted fake (MasterStarter/MasterHandle) whose
-// Wait method can carry an onWait side effect that writes outcome.yaml/
-// summary.md the instant before it returns — modeling the real ordering
-// (Master writes its two contract files DURING the run Wait blocks on).
-// FindRun's cross-process resolution is satisfied by hand-seeding a
-// run.json under the fixture's own shuttle run-dir root, mirroring what a
-// real *shuttleengine.Runner.Start would have produced. This package's
-// testmain_test.go already wires lyxtest.HermeticGitEnv() for the whole
-// test binary — package-local (the internal and external test packages
-// deliberately do not share a test-helper package, mirroring
-// recoverbatch_test.go/recordbatch_test.go's own precedent), except for the
-// shared newScratchRepo/commitFile/seedPlanDir helpers already defined in
-// beginbatch_test.go.
+// ParsePlan/Validate/the batchifier/fingerprint all run for real, against
+// the real identity batchifier — Config.Batcher is left empty in every
+// fixture, resolving to internal/batcher's own DefaultName), while the
+// Master spawn itself is a local, fully-scripted fake (MasterStarter/
+// MasterHandle) whose Wait method can carry an onWait
+// side effect that writes outcome.yaml/summary.md the instant before it
+// returns — modeling the real ordering (Master writes its two contract
+// files DURING the run Wait blocks on). FindRun's cross-process resolution
+// is satisfied by hand-seeding a run.json under the fixture's own shuttle
+// run-dir root, mirroring what a real *shuttleengine.Runner.Start would
+// have produced. This package's testmain_test.go already wires
+// lyxtest.HermeticGitEnv() for the whole test binary — package-local (the
+// internal and external test packages deliberately do not share a
+// test-helper package, mirroring recoverbatch_test.go/recordbatch_test.go's
+// own precedent), except for the shared newScratchRepo/commitFile/
+// seedPlanDir/mustFingerprint helpers already defined in beginbatch_test.go.
 
 package websterengine_test
 
@@ -31,7 +33,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -163,39 +164,41 @@ func (s *runFakeStarter) callCount() int {
 
 var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 
-// seedRunPlanDir writes a syntactically complete, validation-clean v2 plan
-// with numBatches batches into a fresh temp plan directory: each batch has
-// one card whose sole file-op field is a Creates: entry covered by the
-// batch's own Scope (so card-outside-scope and path-missing both pass
-// without needing any file to actually exist on disk), and a verify:
-// command. numBatches == 0 yields a "## Batch Index" section with no
-// entries at all, which ParsePlan's own parseBatchIndex refuses loud
-// ("no batch index entries found") — the vehicle for the zero-batch
-// refusal test, whichever layer (ParsePlan itself, or Run's own explicit
-// pre-flight) ends up naming the refusal.
-func seedRunPlanDir(t *testing.T, numBatches int) string {
+// seedRunPlanDir writes a syntactically complete, validation-clean
+// plan-format v3 plan with numCards cards into a fresh temp plan directory:
+// each card's sole file-op field is a Creates: entry (so path-missing never
+// fires — a Creates: target need not exist on disk), and Depends-on: none.
+// The overview carries NO plan-level "## verify:" section — deliberately,
+// so ShouldRunIntegration(plan) is false and the integration stage
+// (runlevel.go's runIntegrationStage) stays a no-op for every fixture built
+// on this helper; the dedicated integration-stage tests (integration_test.go)
+// instead call appendIntegrationVerify against an already-seeded plan dir.
+// numCards == 0 yields a "## Card Index" section with no entries at all,
+// which ParsePlan's own parseCardIndex refuses loud ("no card index entries
+// found") — the vehicle for the zero-batch refusal test, which under the
+// flat model is actually the batchifier-derived-zero-batches refusal (an
+// empty Cards list, if it ever parsed, would batchify to zero batches too).
+func seedRunPlanDir(t *testing.T, numCards int) string {
 	t.Helper()
 	dir := t.TempDir()
 
 	var index strings.Builder
 	files := map[string]string{}
-	for i := 1; i <= numBatches; i++ {
+	for i := 1; i <= numCards; i++ {
 		slug := fmt.Sprintf("batch%d", i)
 		file := fmt.Sprintf("%02d-%s.md", i, slug)
-		index.WriteString(fmt.Sprintf("- %02d — %s (1 card) — placeholder batch %d\n", i, slug, i))
+		index.WriteString(fmt.Sprintf("%d — %s — placeholder card %d\n", i, slug, i))
 
-		scope := fmt.Sprintf("internal/%s", slug)
-		creates := scope + "/new.go"
+		creates := fmt.Sprintf("internal/%s/new.go", slug)
 		body := fmt.Sprintf(
-			"# Batch\n\n## Scope\n\n- %s\n\n## Cards\n\n### Card %02d.1 — placeholder\n\n"+
-				"**What:** placeholder card.\n**Context:** none\n**Edits:** none\n"+
-				"**Creates:**\n- `%s`\n**Deletes:** none\n**Moves:** none\n\n"+
-				"## verify:\n\ngo build ./...\n",
-			scope, i, creates,
+			"# Card %d — %s\n\n**What:** placeholder card.\n**Context:** none\n**Edits:** none\n"+
+				"**Creates:**\n- `%s`\n**Deletes:** none\n**Moves:** none\n**Depends-on:** none\n",
+			i, slug, creates,
 		)
 		files[file] = body
 	}
-	files["00-overview.md"] = "---\nformat: 2\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Batch Index\n\n" + index.String()
+	files["00-overview.md"] = "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
+		index.String()
 
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
@@ -243,10 +246,10 @@ type runFixture struct {
 	ShuttleRunRoot string
 }
 
-func newRunFixture(t *testing.T, numBatches int) *runFixture {
+func newRunFixture(t *testing.T, numCards int) *runFixture {
 	t.Helper()
 
-	planDir := seedRunPlanDir(t, numBatches)
+	planDir := seedRunPlanDir(t, numCards)
 	worktree := newScratchRepo(t)
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
@@ -257,9 +260,8 @@ func newRunFixture(t *testing.T, numBatches int) *runFixture {
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 
 	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:          {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleMasterOversized: {Engine: "claude", Model: "oversized-model", Params: map[string]string{}},
-		websterengine.RoleRecovery:        {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
+		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
 	}
 
 	deps := websterengine.RunDeps{
@@ -270,11 +272,9 @@ func newRunFixture(t *testing.T, numBatches int) *runFixture {
 		Layout:     layout,
 		Roles:      roles,
 		Config: websterengine.Config{
-			SelfFixCap:            2,
-			MasterTimeoutMin:      480,
-			PollWaitS:             480,
-			BatchContextCapTokens: 1_000_000,
-			BatchCardCap:          50,
+			SelfFixCap:       2,
+			MasterTimeoutMin: 480,
+			PollWaitS:        480,
 		},
 		PlanDir:      planDir,
 		WebsterDir:   t.TempDir(),
@@ -288,20 +288,13 @@ func newRunFixture(t *testing.T, numBatches int) *runFixture {
 
 // seedMatchingState saves st into fx's webster dir after stamping its
 // PlanFingerprint to match fx's own on-disk plan directory (and defaulting
-// its two maps when nil), so Run's own fingerprint gate passes and the
+// its Batches map when nil), so Run's own fingerprint gate passes and the
 // pre-seeded state survives into the run unmodified.
 func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 	t.Helper()
-	fp, err := builderengine.Fingerprint(fx.PlanDir)
-	if err != nil {
-		t.Fatalf("Fingerprint(%q) error = %v", fx.PlanDir, err)
-	}
-	st.PlanFingerprint = fp
+	st.PlanFingerprint = mustFingerprint(t, fx.PlanDir)
 	if st.Batches == nil {
 		st.Batches = map[int]*websterengine.BatchState{}
-	}
-	if st.ChainStartSHAs == nil {
-		st.ChainStartSHAs = map[int]string{}
 	}
 	if err := websterengine.SaveState(fx.Deps.WebsterDir, st); err != nil {
 		t.Fatalf("seed matching state: %v", err)
@@ -333,9 +326,10 @@ func TestRun_ErrRunBusy(t *testing.T) {
 	}
 }
 
-// TestRun_ZeroBatchPlanRefusedLoud proves a plan that parses to zero batches
-// is refused loud before any spawn — nothing-to-build is a malformed plan,
-// never a vacuous outcome: done.
+// TestRun_ZeroBatchPlanRefusedLoud proves a plan that parses to zero cards
+// (and so batchifies to zero execution batches) is refused loud before any
+// spawn — nothing-to-build is a malformed plan, never a vacuous outcome:
+// done.
 func TestRun_ZeroBatchPlanRefusedLoud(t *testing.T) {
 	fx := newRunFixture(t, 0)
 
@@ -356,11 +350,11 @@ func TestRun_ZeroBatchPlanRefusedLoud(t *testing.T) {
 func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
-	st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}, ChainStartSHAs: map[int]string{}}
+	st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}
 	if err := websterengine.SaveState(fx.Deps.WebsterDir, st); err != nil {
 		t.Fatalf("seed stale state: %v", err)
 	}
-	if err := builderengine.RequestPause(fx.Deps.WebsterDir); err != nil {
+	if err := websterengine.RequestPause(fx.Deps.WebsterDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 
@@ -368,7 +362,7 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
-	if !builderengine.PauseRequested(fx.Deps.WebsterDir) {
+	if !websterengine.PauseRequested(fx.Deps.WebsterDir) {
 		t.Error("pause flag cleared on a refused run; want it left intact")
 	}
 	if fx.Starter.callCount() != 0 {
@@ -383,7 +377,7 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
-	staleState := &websterengine.State{PlanFingerprint: "stale", Batches: map[int]*websterengine.BatchState{}, ChainStartSHAs: map[int]string{}}
+	staleState := &websterengine.State{PlanFingerprint: "stale", Batches: map[int]*websterengine.BatchState{}}
 	if err := websterengine.SaveState(fx.Deps.WebsterDir, staleState); err != nil {
 		t.Fatalf("seed stale state: %v", err)
 	}
@@ -392,7 +386,7 @@ func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 		t.Fatalf("mkdir reports dir: %v", err)
 	}
 	reportPath := filepath.Join(fx.Deps.ReportsDir, "01-batch1.yaml")
-	if err := os.WriteFile(reportPath, []byte("batch: 01-batch1\nstatus: done\ntests: green\nstuck_reason: null\n"), 0o644); err != nil {
+	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
 		t.Fatalf("seed stale report: %v", err)
 	}
 
@@ -635,8 +629,8 @@ func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
 	}
-	if result.Outcome != builderengine.OutcomeDone {
-		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, builderengine.OutcomeDone)
+	if result.Outcome != "done" {
+		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
 	}
 	if result.BatchesDone != 1 {
 		t.Errorf("RunResult.BatchesDone = %d; want 1", result.BatchesDone)
@@ -644,7 +638,7 @@ func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.
 	if result.SummaryTitle != "Shipped batch1" {
 		t.Errorf("RunResult.SummaryTitle = %q; want %q", result.SummaryTitle, "Shipped batch1")
 	}
-	if builderengine.PauseRequested(fx.Deps.WebsterDir) {
+	if websterengine.PauseRequested(fx.Deps.WebsterDir) {
 		t.Error("pause flag present after a done outcome; want it cleared")
 	}
 }
@@ -960,7 +954,7 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 			// pre-spawn ClearPause already ran before Master started, so
 			// this is a genuinely new request Master's own paused final
 			// action is responding to.
-			if err := builderengine.RequestPause(fx.Deps.WebsterDir); err != nil {
+			if err := websterengine.RequestPause(fx.Deps.WebsterDir); err != nil {
 				t.Fatalf("RequestPause() error = %v", err)
 			}
 			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: paused\nstuck_reason: null\nbatches_done: 0\n"), 0o644); err != nil {
@@ -978,10 +972,10 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
 	}
-	if result.Outcome != builderengine.OutcomePaused {
-		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, builderengine.OutcomePaused)
+	if result.Outcome != "paused" {
+		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "paused")
 	}
-	if !builderengine.PauseRequested(fx.Deps.WebsterDir) {
+	if !websterengine.PauseRequested(fx.Deps.WebsterDir) {
 		t.Error("pause flag cleared on a paused outcome; want it left intact as the operator's own record")
 	}
 }

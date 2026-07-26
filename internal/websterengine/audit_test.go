@@ -459,6 +459,13 @@ func TestClassifyAttribution(t *testing.T) {
 				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("ClassifyAttribution() error = %v; want %v", err, tt.wantErr)
 				}
+				// The zero-transcript error is one leg of a three-verb refusal
+				// circle with no in-band exit (a cross-machine resume of the
+				// report-landed crash window reproduces it with no forgery), so
+				// its message must name the operator recourse.
+				if !strings.Contains(err.Error(), "machine-local") || !strings.Contains(err.Error(), "moving the batch's report file") {
+					t.Errorf("ClassifyAttribution() error %q does not name the machine-local transcript caveat and the operator recourse", err)
+				}
 				return
 			}
 			if err != nil {

@@ -1,7 +1,7 @@
 # webster: parallel card execution via worktrees + a DAG
 
 > **Status: Speculative, explored twice, rejected for now both times.** Not pursued further until
-> [webster-rewrite.md](webster-rewrite.md) is real and running, and this looks worth the
+> webster's card-list rewrite (`internal/websterengine`, landed) has real running mileage, and this looks worth the
 > complexity by measured evidence, not estimate. Per the [documentation
 > lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the
 > durable parts fold into `internal/websterengine`'s package doc and this file is deleted; if
@@ -79,7 +79,7 @@ proposal, which generalizes it to a multi-language, daemon-based design.
 
 ## Related
 
-- [webster-rewrite.md](webster-rewrite.md) — the sequential model this would extend.
+- `internal/websterengine`'s package documentation — the sequential model this would extend.
 - [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — already captures the cheap win
   (`depends-on`).
 - [codeintel-redesign.md](codeintel-redesign.md) — Part B's successor.

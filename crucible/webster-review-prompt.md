@@ -1,17 +1,37 @@
-# webster — independent review + fix
+# webster — independent review + fix (WebsterV3: planparser/batcher/in-session-fork rewrite)
+
+> **Superseded.** This file previously documented a completed 4-round campaign (R1–R4) against
+> the OLD, pre-rewrite webster — a builder-A/B-compatible design built on `chain.go`, a
+> `## Scope` plan section, oversized-batch `/model` escalation for individual forks, and a
+> deferred-verify chain. That design is GONE, but this was a RETARGETING of existing webster
+> code (branch `webster-rewrite`, PR [#97](https://github.com/Knatte18/loomyard/pull/97)), not a
+> from-scratch rebuild: the fork-based Master architecture, the bracket-verb shape
+> (begin/await/record-batch), digest persistence, crash/resume, weft-blindness, and the
+> fork-audit policy all predate this task and were CARRIED FORWARD (several are frozen copies of
+> `builderengine`, per the `builder-is-frozen-copy-not-move` decision). What actually changed:
+> the plan input/parser (`internal/planparser`, the sole parser of the flat card-list
+> [plan-format-v3.md](../docs/reference/plan-format-v3.md), replacing the old chain-based
+> format), a new `internal/batcher` config-selected batchifier registry (batching didn't exist
+> in the old format), the oversized/chain concepts dropped, and the integration-suite fork +
+> bisect added as new capability. This is a FRESH crucible campaign for
+> the retargeted module — rounds `fable-r1`, `opus-r2`, and `fable-r3` are now closed and
+> independently verified — see "Round context" below; do not assume anything from
+> the OLD, superseded campaign this file once documented still applies.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `webster`
-module in the loomyard repo, followed by FIXING what you find. Work in the worktree at
-`/home/knatte/Code/loomyard/wts/master-builder` (branch `master-builder`). This is a **Linux**
-host — the repo's `.cmd`/`tasklist` tooling is Windows-oriented; the Linux equivalents are given
-below. Adjust the path/branch if the task lives elsewhere now.
+module (`internal/websterengine` + `internal/webstercli`, `lyx webster`) in the loomyard repo,
+followed by FIXING what you find. Work in the worktree at
+`/home/knatte/Code/loomyard/wts/webster-rewrite` (branch `webster-rewrite`). Adjust that
+path/branch if the task lives elsewhere now. **Note:** PR #97 (webster-rewrite → main) is open
+but not yet merged as of this round's seeding — you are reviewing pre-merge code on its own task
+branch, not `main`.
 
 ## Your two jobs, in order
 1. REVIEW: form your own independent judgment of webster's scope and correctness. Hunt for bugs
-   by reading the code AND by driving the real substrate — `lyx webster run` / `begin-batch` /
-   `record-batch` / `recover-batch` / `pause` wired to a REAL shuttle spawn (real tmux, a real
-   logged-in `claude`, in-session Agent-tool forks) — this is where webster's defects hide, not
-   in the hermetic unit tests.
+   by reading the code AND by driving the real substrate — `lyx webster run` wired to a REAL
+   shuttle/reed spawn (real tmux, a real logged-in `claude` acting as Master, which then forks
+   implementers **in-session** via Claude Code's own Agent tool) — this is where webster's
+   defects hide, not in the hermetic unit tests.
 2. FIX: after you have a findings list, implement the fixes one at a time, verify each against the
    real substrate, keep the whole test suite green, and update the docs in the same change as the
    fix they document. COMMIT after each individual fix lands green (see "Commit per fix" below).
@@ -21,366 +41,399 @@ below. Adjust the path/branch if the task lives elsewhere now.
 As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the live
 smoke/suite check if the finding needed one), and its doc update (if any) is included, COMMIT it —
 on the current branch, no push — before starting the next finding. Commit message format:
-`webster: fix <finding-id> — <one-line what/why>` (e.g. `webster: fix W3 — begin-batch injects the
-oversized role before, not after, writing the fork prompt`). Do not commit `.scratch/` (gitignored;
-your review and fixer reports never belong in a commit regardless). This exists because a round
-agent's session can be killed mid-fix by something entirely outside the method's control (a
-corrupted terminal, a lost connection). A single monolithic uncommitted diff left behind by a crash
-forces the orchestrator to reverse-engineer, finding by finding, which fixes are actually complete;
-a trail of small commits turns that same crash into something the orchestrator can just read from
-`git log`.
+`webster: fix <finding-id> — <one-line what/why>` (e.g. `webster: fix F3 — record-batch accepts a
+report with no matching begin-batch entry`). Do not commit `.scratch/` (gitignored; your review
+and fixer reports never belong in a commit regardless). This exists because a round agent's
+session can be killed mid-fix by something entirely outside the method's control (a corrupted
+terminal, a lost connection) — a single monolithic uncommitted diff left behind by a crash forces
+the orchestrator to reverse-engineer, finding by finding, which fixes are actually complete. A
+trail of small commits turns that same crash into something the orchestrator can just read.
 
 ## Sequencing rule (BLOCKING — do not skip, do not interleave)
 Job 1 must be COMPLETE — and its full review report SAVED to
 `.scratch/webster-review-<yourtag>.md` on disk — before you touch (edit, create, or delete) a
 single production or test file. Do not fix findings as you go, even ones that look small and
-obviously right. A review written or finished after code has already changed is no longer an
-independent judgment — it is a post-hoc rationalization of edits you already made. If you catch
-yourself wanting to patch something the moment you spot it: don't. Write it down as a finding, keep
-reading, finish the review, save the file, THEN start Job 2.
+obviously right. Write it down as a finding, keep reading, finish the review, save the file, THEN
+start Job 2. A review written or finished after code has already changed is no longer an
+independent judgment — it is a post-hoc rationalization of edits you already made.
 
 ## Clean-room review constraint (do this part unprimed)
-Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you have
-your own list. Specifically do not open anything under `.scratch/` (gitignored; holds prior reviews
-`webster-review-*.md` and `*-fixer-report.md`). Reading the design SPEC and the module docs is
-expected and required (those are not reviews). AFTER you have written your own independent findings,
-you MAY consult the prior rounds' `.scratch/webster-review-*` material — regardless of which model
-produced it (rounds rotate across Fable / Opus; the most recent prior round is whichever
-`webster-review-*` file is newest), EXCEPT your own `-<yourtag>` deliverables — to (a) confirm
-previously-fixed behaviors have not regressed and (b) re-evaluate the deferred items at the bottom.
+Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you
+have your own list. Specifically do not open anything under `.scratch/` (gitignored; holds prior
+reviews `webster-review-*.md` and `*-fixer-report.md`) until your own findings are written down.
+Reading the design SPEC and the module docs is expected and required (those are not reviews).
+AFTER you have written your own independent findings, you MAY consult prior rounds'
+`.scratch/webster-review-*` material — regardless of which model produced it (rounds rotate
+Fable/Opus; the most recent prior round is whichever `webster-review-*` file is newest), EXCEPT
+your own `-<yourtag>` deliverables — to (a) confirm previously-fixed behaviors have not regressed
+and (b) re-evaluate the deferred items at the bottom.
+
+**A caveat specific to this module, round 1 only:** `internal/websterengine`'s package doc
+comment (`doc.go`) and `internal/webstercli/smoke_test.go`'s file doc comment already reference
+round tags (`fable-r1`, `opus-r2`, `fable-r3`) and finding IDs (F1, F2, R2-a) describing bugs
+"found live" during the module's *original implementation* (the fork-context deadlock guard, the
+fork-transcript audit, a crash/resume distinguishing-session bug). **Those are NOT prior rounds of
+this standalone crucible campaign** — they are artifacts of the implementation-time build/review
+process (mill-go's own per-batch and holistic code review, which independently used similar
+round-tag conventions), predating this file entirely. Reading them is not a clean-room violation
+(they are in production code/test comments, not `.scratch/`) — but treat every fix they describe
+as an EXISTING, already-shipped behavior to independently verify still works, never as "already
+reviewed by crucible" or as something to skip re-deriving yourself. This is genuinely round 1 of
+this method for this module.
 
 ## What to read
-- Code: `internal/websterengine/**` (audit, beginbatch, recordbatch, recoverbatch, chain, config,
-  state, roles, render, runlevel, summary, template + the `master-template.md`/`fork-template.md`
-  embeds), `internal/webstercli/**` (the 8 verbs: beginbatch, recordbatch, recoverbatch, run,
-  status, validate, pause, weft + cli.go), and the `cmd/lyx` integration (`main.go` line ~129
-  `webstercli.Command()`, help/registration guard tests).
-- The **authoritative as-built design SPEC** (this is not a review — read it fully):
-  - `internal/websterengine/doc.go` — webster's own package documentation: the A/B
-    contract-compatibility with builder, the bracket-verb shape, idempotent per-batch model
-    assertion, cold-recovery escalation, digest persistence, engine/cli weft-blind split,
-    crash/resume, and the builderengine reuse inventory (pause + validate pass-throughs). THIS is
-    the primary spec for webster's own mechanism-specific behavior.
-  - `docs/reference/builder-contract.md` — the `## Webster: the fork-based sibling` section (pins
-    the A/B facts a future `loom` treats as interchangeable) plus the whole doc for the shared
-    contract webster imports (digest fields, report schema, outcome schema, chain rollback, pause).
-  - `docs/reference/plan-format.md` — webster's pinned input contract (same parser as builder).
-- Docs: `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md`, `README.md`.
-- `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` (scenarios W1 = fork loop, W2 = `/model` injection) —
-  for SCENARIO IDEAS only. You run every scenario yourself, directly, with your own tool calls; you
-  do NOT invoke any `sandbox-webster-suite.cmd` launcher (that spawns a SEPARATE, context-free
-  interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn
-  on top of yourself; see "Live driving" below). W1/W2 are a FLOOR — the "High-yield focus" list
-  below is your primary script.
+- Code: `internal/websterengine/**`, `internal/webstercli/**`, `internal/planparser/**`,
+  `internal/batcher/**`, and the `cmd/lyx` integration (`main.go`, sandbox/help/registration guard
+  tests).
+- Docs: [`docs/reference/builder-contract.md`](../docs/reference/builder-contract.md)'s
+  **"Webster: the fork-based sibling"** section (the as-built contract pin: own plan input/parser,
+  own fork-report schema, the `summary.md` artifact, independent `_lyx/webster/` state — and where
+  it says webster's *own* design lives: `internal/websterengine`'s package doc, not this file),
+  [`docs/reference/plan-format-v3.md`](../docs/reference/plan-format-v3.md) (webster's pinned input
+  contract — read "Batch is gone / the card is the unit", "verify model", and "Validation checks"
+  closely), [`docs/reference/model-spec.md`](../docs/reference/model-spec.md)'s "Roles that use
+  this notation" section, `docs/overview.md`, `manifest/roadmap.md`, `CONSTRAINTS.md` (especially
+  the **Planparser Sole-Parser Invariant** and **Batcher Registry+Config Invariant**, both
+  webster-specific), `README.md`.
+- The dedicated live-driving suite you will RUN: `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`
+  (scenarios W1, W2) plus [`docs/sandbox-howto.md`](../docs/sandbox-howto.md) for how the harness
+  works. **Known issue, seeded below:** W2 appears to test a mechanism that no longer exists —
+  confirm and fix it as part of this round, not just note it.
 - Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
-  (Hub Geometry Invariant, CLI/Cobra Invariant, lyxtest Leaf Invariant, Weft Git Invariant,
-  Shuttle Provider-Seam Invariant, Sandbox Suite Coverage, Documentation Lifecycle). A change that
-  ships behaviour without updating the module doc / invariants in the SAME change is incomplete.
-- Design rationale recovery: the `master-builder` build plan's `_mill/` task state was removed by
-  the pre-merge cleanup commit. Recover the original discussion decisions with
-  `git show c548e223~1:_mill/discussion.md` (decisions referenced by name in `doc.go`:
-  `oversized-model-escalation`, `reuse-by-import`, `bracket-is-discipline-not-gate`), and
-  `git log --oneline --all -- 'internal/websterengine/**'` for the per-batch build history. Treat
-  `doc.go` + `builder-contract.md#webster` as the authoritative as-built contract.
+  (Hub Geometry Invariant, CLI/Cobra Invariant, lyxtest Leaf Invariant, Planparser Sole-Parser
+  Invariant, Batcher Registry+Config Invariant, Sandbox Suite Coverage, Documentation Lifecycle,
+  Hermetic Git Test Environment Invariant). A change that ships behaviour without updating the
+  module doc / invariants in the SAME change is incomplete.
+- Design intent (SPEC, not a review): the 10-batch plan that produced this rewrite
+  (`planparser-core`, `gitrepo-bisect-primitive`, `planparser-checks`, `batcher`,
+  `webster-mechanism-helpers`, `webster-report-digest`, `engine-retarget`,
+  `integration-fork-bisect`, `webstercli-rewire`, `docs-constraints`) has already landed and its
+  `_mill/` task state was cleaned up on merge-prep. Treat `internal/websterengine/doc.go`'s package
+  comment and `docs/reference/builder-contract.md`'s webster section as the authoritative as-built
+  contract; if you need the original design rationale, `git log --oneline --all -- '**/webster*'
+  '**/planparser*' '**/batcher*'` and PR [#97](https://github.com/Knatte18/loomyard/pull/97)'s
+  history are your recovery path.
 
 ## Mission (assess on two axes, be adversarial)
-1. Scope / omfang — is the module's scope right? Does the as-built code deliver what `doc.go` and
-   `builder-contract.md#webster` promise? Gaps, over-reach, silently-dropped requirements,
-   deferred-that-should-ship-in-v1. In particular: is "holistic review is perch's job, not
-   webster's" honored (webster must never itself perform or fake a terminal review), and does
-   webster stay strictly contract-compatible with builder (one plan parser, one report parser, one
-   outcome parser, one digest contract — imported, never duplicated; import direction
-   websterengine → builderengine only)?
-2. Correctness — bugs, races, error handling, edge cases; concentrate on the structurally-fragile
-   seams below (this is round 1 — read "historically fragile" as "the seams most likely to hide a
-   live-only bug by design"). Also assess docs accuracy (do the docs match the code?) and operability.
+1. Scope / omfang — is the module's scope right? Does the as-built code deliver what
+   `internal/websterengine/doc.go` and `builder-contract.md`'s webster section promise? Gaps,
+   over-reach, silently-dropped requirements, deferred-that-should-ship-in-v0. In particular: is
+   webster genuinely independent of `builder` (own state dir, own parser, own report schema, no
+   accidental import or shared mutable state), and does it genuinely carry NO oversized-batch,
+   no chain/`--restart-chain`, and no `## Scope` concept — their deliberate absence is correct,
+   not a gap (see "Explicitly OUT of scope" below).
+2. Correctness — bugs, races, error handling, edge cases; concentrate on the historically-fragile
+   areas below (this is round 1 of the standalone method, but NOT round 1 of the module's life —
+   read the "seeded" caveat above). Also assess docs accuracy (do the docs match the code?) and
+   operability.
 
 ## High-yield focus — where webster's real bugs live (drive these, do not just read them)
-The pure/unit-tested parts (fingerprint hashing, config parsing, outcome YAML decode, plan
-validation — most of it imported from builderengine and already hardened) are usually solid;
-defects concentrate in webster's OWN mechanism-specific, COMPOSED, live behavior the hermetic tests
-never exercise: the fork loop, the in-pane `/model` injection, digest carry, cold recovery, and
-crash/resume. Treat each as an INVARIANT you must actively verify by driving the real substrate — a
-green `go test` proves nothing here:
+The pure/unit-tested parts (fingerprint hashing, config parsing, digest field shaping, plan
+parsing) are usually solid; defects concentrate in the COMPOSED, LIVE, timing-sensitive behavior
+the hermetic tests never exercise — everything downstream of "Master forks an implementer
+IN-SESSION via its own Agent tool call, rather than spawning a fresh reed/tmux strand the way
+builder does." Treat each of these as an INVARIANT you must actively verify by driving the real
+substrate — a green `go test` proves nothing here:
 
-- **Bracket discipline is two-layer enforcement, NOT a gate around the fork.** The fork is Master's
-  own un-gateable act (it happens inside Master's turn, Go never sees it). Enforcement = template
-  discipline (the master template pins begin → fork → record, property-tested) PLUS fail-loud
-  detection after the fact. Verify: `record-batch N` with NO prior `begin-batch N` record must
-  hard-error (not silently distil a report); the run-exit audit must cross-check fork-transcript
-  count against begun-batch count and fail loud on a mismatch. Try to slip a fork past the audit
-  (begin without record, record without begin, a batch that forks twice, a batch that never forks).
-- **Fork audit / attribution (the `subagents/<id>.jsonl` transcript check).** At the exact moment
-  the Agent fork tool call returns control to Master, the fork's transcript file must already exist
-  on disk (under `~/.claude/projects/<encoded-cwd>/<sessionID>/subagents/`). The incremental
-  per-batch audit's transcript-count-before-report-presence check depends on this flush having
-  already happened by call-return time, not merely by session end (SANDBOX W2c). Verify the
-  attribution counting is robust: exactly one new transcript per batch (zero = fork never ran; two =
-  double-fork), any settle/retry the audit does to tolerate a slow flush is bounded and deterministic
-  — never an unbounded or flaky wait, never a false "no fork" on a machine under load.
-- **`/model` pane injection for oversized batches — the escalation-vs-fallback decider (SANDBOX W2).**
-  `begin-batch` for an `oversized: true` batch synchronously injects `/model <target>` into Master's
-  own pane via `shuttleengine`'s `Runner.Inject` before returning its envelope — while the
-  `begin-batch` subprocess is itself the foreground tool call inside Master's pane. This is the ONE
-  load-bearing, previously-UNVALIDATED production timing. Verify three separately: (a) the model
-  actually switches for subsequent calls in the same turn — a MISS here is the BENIGN documented
-  fallback (`oversized:` keeps plan-format compatibility but has no spawn effect), not a defect to
-  invent a fix for; (b) the injected keystrokes do NOT leak into / corrupt the running foreground
-  subprocess's stdin/result — a HIT here (corruption) is the DANGEROUS mode that unconditionally
-  forces the fallback; (c) the injection races the still-running subprocess correctly. Also verify
-  the assertion is IDEMPOTENT per batch: `begin-batch` injects `master` or `master_oversized`
-  (whichever THIS batch declares) fresh every time; there is no de-escalation step and nothing to
-  forget on a failure path that skipped `record-batch` — the next batch's `begin-batch` re-asserts
-  regardless of what the prior batch left behind. (Webster carries NO implementer/implementer_oversized
-  fork roles — forks always inherit Master's current model; confirm no dead per-fork-override path.)
-- **Digest persistence carries batch context forward.** Unlike builder (which never persisted its
-  Digest), webster MUST: `record-batch` persists the digest into `BatchState.Digest` at terminal
-  classification; `begin-batch(N+1)` renders the immediately-preceding batch's digest into the next
-  fork's prompt, and a crash-resumed Master reconstructs `{{.progress}}` from the persisted digests.
-  Nothing downstream ever re-`Distill`s a report (its originating HEAD may have moved). Verify: after
-  `record-batch N`, batch N+1's fork prompt carries batch N's digest read from `state.json`, NOT
-  re-distilled; a crash-resumed Master reconstructs progress from persisted digests, not by
-  re-reading reports against a moved HEAD.
-- **`recover-batch` — bounded, re-entrant long-poll; spawn-or-attach, never double-spawn.** The one
-  place webster spawns a genuinely separate process: when a fork reports stuck or writes no report,
-  `recover-batch` spawns a fresh implementer as its OWN shuttle/reed strand at the `recovery` role
-  (reusing `builderengine.SpawnBatch` by import). EVERY call (including the first) blocks for at most
-  `poll_wait_s` and returns either a terminal digest or a running snapshot; a re-entrant call must
-  find the strand already recorded in state and skip STRAIGHT to the bounded wait — it must NOT
-  spawn a second recovery strand. Verify live: first `recover-batch` spawns one strand; a second
-  `recover-batch` for the same batch attaches to the SAME strand (confirm exactly one recovery
-  strand in `lyx reed status`), waits bounded, returns. Confirm each call's Bash-tool duration is
-  bounded by `poll_wait_s`, never open for the whole recovery timeout.
-- **Crash/resume: fresh Master re-drives the first unreported batch.** Forks die WITH Master (same
-  process) — so, unlike builder, there is never an orphaned in-flight NORMAL-batch implementer; only
-  Master's own strand and a possible recovery strand ever need reclaiming. Resuming = re-running
-  `lyx webster run`: entry-time reclaim stops any live recorded strand, then a FRESH Master (never a
-  provider `--resume`) is spawned, hydrated from the on-disk register (reports dir + `state.json` →
-  `{{.progress}}`), and re-drives the first batch with no terminal record. Verify live: kill Master
-  mid-run; re-run; confirm NO double-spawn of Master (the old strand is reclaimed first), the resume
-  lands on the first unreported batch, and every card an implementer already committed survives
-  independently (only reports + state are weft-committed per batch).
-- **Weft scoping — engine is weft-blind; every commit lives in `webstercli` at deterministic
-  boundaries.** `websterengine` takes already-resolved directory strings and touches NO weft/git;
-  all `_lyx/webster` path construction is in `internal/hubgeometry`
-  (`WebsterDir`/`WebsterReportsDir`/`WebsterPromptsDir`), per the Hub Geometry Invariant. Every weft
-  commit (state.json, batch report, outcome.yaml, summary.md) happens in `internal/webstercli` at
-  exactly: begin-batch, record-batch, recover-batch (spawn AND terminal), and run's exit backstop.
-  Neither Master nor its forks ever drive weft/git for webster's bookkeeping (Weft Git Invariant).
-  Verify (SANDBOX W1): `state.json` committed at each `begin-batch` (start-SHA + batch entry durable
-  BEFORE the fork), and batch report + `state.json` committed at each `record-batch`; inspect the
-  weft's own commit log; confirm no engine-level git call exists.
-- **Pause / fingerprint / validate / zero-batch gates (imported builderengine against webster dirs).**
-  `BeginBatch` checks `PauseRequested` at the begin-batch boundary — the ONLY place a pause gate can
-  fire (Master's fork call is un-gateable) — and refuses with webster's own `ErrPaused`. `Run` clears
-  the pause flag once it is committed to spawning (a resumed run must never instantly re-pause on the
-  very flag it is resuming from) AND at every non-paused terminal outcome (a paused terminal
-  deliberately leaves the flag as the operator's record — see `mapMasterDone`). `Run` refuses a plan
-  that parses to zero batches (Validate itself carries no such check — "nothing to build" must never
-  resolve to a vacuous `done`). Fingerprint mismatch + `--fresh` is archive-never-refuse (imported).
-  Verify live: pause mid-run → the in-flight batch finishes normally, the NEXT `begin-batch` refuses
-  with `ErrPaused`; a paused terminal leaves the flag; a fresh `run` clears it and does not
-  instantly re-pause; a zero-batch plan is refused loud.
-- **`summary.md` gate (webster-only artifact).** Alongside `outcome.yaml`, webster writes
-  `_lyx/webster/summary.md` — first line `# <title>`, then a non-empty narrative of what shipped
-  (incl. deviations). REQUIRED (presence + non-empty + title line, fail-loud) ONLY when
-  `outcome: done`; a stale pre-existing summary follows archive-never-refuse. Verify: an
-  `outcome: done` run with a missing / empty / title-less summary fails LOUD; a non-done terminal
-  does not require it.
-- **Co-versioning: `master-template.md` / `fork-template.md` ↔ Go parsers.** Both are `//go:embed`'d
-  and filled via `internal/stencil`; each is half of a Go-parsed contract (the fields the fork emits
-  into its batch-report that `Distill` parses; the `{{.progress}}`/role/digest fields the master
-  template consumes). Drift is silent, not a compile error. Deliberately hand-edit one side (rename a
-  field the template tells the fork to emit) and confirm `template_test.go`'s property tests actually
-  catch it — a drift here breaks silently in production.
+- **The begin → fork → await → record bracket, and the turn-ending livelock guard.** Run a real
+  `lyx webster run` against a tiny real plan; attach to Master's strand (`lyx reed attach <guid>`,
+  guid from `lyx reed status`) and WATCH it call `begin-batch`, fork (Agent tool,
+  `subagent_type: "fork"`), long-poll `await-batch` in a loop (each call blocks ~30s —
+  `DefaultAwaitWaitS` — deliberately short so Claude Code's own auto-backgrounding of a
+  long-running foreground command, which fires past roughly 2 minutes, never silently ends
+  Master's "waiting" turn and kills the run), then `record-batch`. Confirm the fork prompt a fork
+  actually gets (`_lyx/webster/prompts/NN-<slug>.md`) matches what `RenderForkPrompt` claims to
+  render. Separately, confirm the **fork-context PreToolUse(Bash) hook** actually refuses a `lyx
+  webster` command called from INSIDE a fork's own transcript (the deterministic fix for the
+  fork-loop deadlock a fork polling its own await-batch would otherwise cause) while Master's own
+  calls pass — `internal/webstercli/smoke_test.go` already has a live test for this; independently
+  re-run it (`go test -tags smoke ./internal/webstercli/... -run Smoke -v -count=1`) and don't just
+  trust that it's green — read what it actually asserts and try to defeat it live yourself too.
+- **The idempotent per-batch Master model assertion is the ONLY model-injection site.**
+  `BeginBatch` asserts `RoleMaster`'s model onto Master's own pane, idempotently against
+  `State.AssertedModel`, and DELIBERATELY as the LAST fallible act of the call (every earlier
+  step — prompt render/write, strand reclaim — must be able to fail without the pane having
+  switched, so pane-model and persisted `AssertedModel` never diverge across an error return).
+  Verify: (a) a repeated `begin-batch` for the SAME batch never re-injects; (b) an injected switch
+  actually changes Master's live model for subsequent calls within the turn; (c) an injection
+  failure leaves NEITHER the pane switched NOR `AssertedModel` updated (partial-failure atomicity).
+  **Also verify there is genuinely no per-fork model override or oversized-batch escalation
+  anywhere** — `roles.go`'s package comment and `beginbatch.go` both assert this explicitly
+  (`RoleMaster`/`RoleRecovery` are the only two roles), and `template_test.go` /
+  `beginbatch_test.go` / `cli_test.go` all assert the absence of "oversized" language. **Known,
+  pre-identified issue — confirm and FIX, don't just note it:** `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`'s
+  scenario **W2** ("`/model` injection validation — the escalation-vs-fallback decider") describes
+  driving an `oversized: true` batch's per-fork `/model` escalation and its "documented fallback" —
+  that mechanism does not exist in this codebase (plan-format v3 has no `oversized:` field at all;
+  see `docs/reference/plan-format-v3.md` and `internal/planparser/validate.go`'s comment "the
+  oversized-batch cap dies with batch itself"). Confirm this staleness yourself, then REWRITE W2 to
+  actually test the real mechanism described in this bullet (the idempotent per-batch Master
+  assertion + its last-fallible-act ordering guarantee) — do not just delete the scenario; the
+  underlying live-timing risk W2 was trying to protect against (does a pane-injected `/model` switch
+  actually land while Master's own foreground Bash call is mid-flight, and does it corrupt that
+  call) is real and worth keeping, just pointed at the mechanism that actually ships.
+- **Fork-return contract: deviation is ALWAYS informational, never a failure condition.** Drive a
+  real batch whose fork touches a file outside its cards' declared file-ops union; confirm the
+  batch still classifies `OK`/success (deviations recorded, not failed) — a fork fails ONLY on a
+  non-zero build/unit gate or a non-zero per-card `verify:`. Confirm each card lands as its own
+  commit and `BatchState.CardSHAs` records the ordered per-card SHA trail correctly under the
+  identity batchifier (one card, one batch, `CardSHAs` has exactly one element).
+- **Digest persistence carries batch context forward, never re-derived.** Confirm
+  `begin-batch(N+1)` renders batch N's PERSISTED `BatchState.Digest` (not a re-`Distill`'d report —
+  the report's originating HEAD may have moved since) into the next fork's prompt as the one-line
+  `digestSummaryLine` summary, and that a crash-resumed Master reconstructs `{{.progress}}`
+  correctly from every terminal batch's persisted digest.
+- **Crash/resume — the two distinct crash windows.** (a) Kill Master's own strand mid-run (e.g.
+  stop its tmux pane's process) before any batch completes; confirm entry-time reclaim stops the
+  recorded strand and a freshly re-run `lyx webster run` hydrates from `state.json` + the reports
+  dir and re-drives the first batch with no terminal record — never a double-spawn. (b) The subtler
+  case: force a crash window landing BETWEEN a fork's report landing and `record-batch` consuming
+  it (e.g. kill Master right after you observe the report file appear, before the next
+  `record-batch` call). Confirm the resumed Master's `begin-batch` REFUSES to overwrite the
+  existing report (per its own documented refusal message) and that `record-batch` instead
+  consumes it — confirm its fork audit keys on the BRACKET-OPENING session recorded in
+  `BatchState.SessionID`, never the newly-resumed session (this exact bug was "found live in round
+  fable-r3" per `doc.go`'s comment — independently re-verify it still works, do not take the
+  comment's word for it).
+- **`recover-batch`'s bounded, re-entrant long-poll.** Force a fork into stuck/no-report
+  classification (e.g. a batch whose card can never complete); call `recover-batch` and confirm
+  EVERY call, including the first, blocks for at most `poll_wait_s` and returns either a terminal
+  digest or a running snapshot — never open-ended. Call it again while the recovery strand is still
+  running (re-entrant) and confirm it finds the strand already recorded and skips straight to the
+  bounded wait rather than re-spawning. Confirm the recovery strand gets rendered the SAME fork
+  prompt (`RenderForkPrompt`) an in-session fork for that batch would have gotten.
+- **Integration-suite fork + in-process bisect.** Construct a small real plan with a plan-level
+  `## verify:` section (`ShouldRunIntegration` gate) where the verify command deliberately fails
+  because of a specific, known-bad card among several. Run it for real; confirm the integration
+  fork spawns exactly ONCE, only after every batch has landed — never per-card, never per-batch.
+  On the FAILED report, confirm `bisect` performs an in-process binary search over the accumulated
+  `CardSHAs` trail (checking out each candidate detached via `gitrepo.CheckoutDetached` and running
+  the verify command in-process — NOT a fork per candidate) and correctly localizes the exact
+  offending card in logarithmic, not linear, re-runs (instrument or log-count the candidates
+  checked). Confirm `RecordIntegrationFailure` lands under the reserved key `-1` in `State.Batches`
+  (never colliding with a real positive card number) and that `RenderProgress`'s walk over positive
+  card numbers never accidentally surfaces it. Confirm `AppendIntegrationFailure` extends
+  `summary.md` naming the actual offending card. Confirm `gitrepo.RestoreBranch` leaves the host
+  repo back on its original branch afterward — no dangling detached HEAD.
+- **Fork-audit fail-loud policy — all five violation classes, driven for real, not just read.**
+  `audit.go`'s `CheckFork`/`CheckParent` police: `nested-agent` (a fork attempting its own Agent
+  call), `weft-reference` (any Bash command — fork OR parent — touching `lyx weft`/`lyx warp` or
+  the weft worktree path), `named-spawn` (Master's OWN transcript recording a NAMED Agent call,
+  which silently drops inherited context), `parent-write` (Master writing any file OTHER than
+  `outcome.yaml`/`summary.md`), and `fork-contract-write` (a FORK writing `outcome.yaml` or
+  `summary.md` — Master's exclusive files; `doc.go` says this was "found live in round fable-r3":
+  a misidentifying fork overwrote `outcome.yaml` mid-run). At minimum trace each class against a
+  real fork/Master transcript from your live run above and confirm `record-batch`'s incremental
+  audit and `run`'s exit-time whole-session audit both actually fire the right class when
+  deliberately provoked (you may need to hand-edit a captured transcript file to inject a
+  violation and re-run just the audit check, if provoking one live is impractical for a given
+  class — but say explicitly which classes you drove live vs. which you provoked by transcript
+  mutation, and why).
+- **Weft-blindness is absolute.** `websterengine` takes only already-resolved directory strings —
+  every `_lyx/webster` path construction lives in `hubgeometry` (`WebsterDir`/`WebsterReportsDir`/
+  `WebsterPromptsDir`), and every actual weft commit of a webster artifact happens in
+  `internal/webstercli`, at exactly four points: `begin-batch`, `record-batch`, `recover-batch`
+  (spawn AND terminal), and `run`'s exit backstop. Grep for any git/weft call inside
+  `internal/websterengine` itself that isn't one of the documented host-repo git helpers
+  (`gitwrap.go`, `internal/gitrepo`) — there should be none. Confirm neither Master nor a fork ever
+  touches weft or git for webster's OWN bookkeeping (as opposed to the host repo work a fork does
+  as its actual job).
+- **Batcher default resolution.** Confirm an empty `batcher:` key in `webster.yaml` resolves to
+  `batcher.DefaultName` (the identity batchifier: one card, one batch) at the CLI wiring site —
+  never inside `websterengine` itself (per the Batcher Registry+Config Invariant, batching is
+  webster's own execution-policy decision, never the plan's).
 
-## Explicitly OUT of scope for webster v1
-- **Holistic / terminal review of the plan's output.** That is perch's job
-  (`internal/perchengine`), driven separately by `loom` or an operator running `lyx perch run`
-  AFTER `webster run` returns `done`. Its absence from webster's own loop is correct — do NOT flag
-  it as a gap. DO flag it if you find webster's code secretly performing or faking any part of it.
-- **`loom`'s phase-machine wiring.** `loom` (not yet built) will drive `webster run` (or
-  `builder run`) as one phase, gated by `perch`. webster must not contain loom-specific orchestration.
-- **The `websterv2.md` redesign (DAG-based intra-batch parallelism, worktree-isolated parallel
-  cards, atomic-card dependency lists).** `manifest/designs/websterv2.md` is a DRAFT FUTURE-REDESIGN
-  CONCEPT — it is NOT the v1 spec. webster v1 is deliberately strictly sequential (one in-session
-  fork per batch, batches in DAG order, same as builder), and that is CORRECT, not a missing feature.
-  Do NOT flag v1 for failing to match websterv2's parallel-card design. Judge v1 solely against
-  `doc.go` + `builder-contract.md#webster`.
-- **Non-Claude engines.** Per `CLAUDE.md`, non-Claude LLM support is not a current priority — don't
-  flag the absence of a Gemini/other-provider path. (webster's `/model` injection and Agent-tool
-  fork are legitimately Claude-Code-specific by design.)
-- **Changing shuttle's outcome contract.** Do NOT modify `internal/shuttleengine/wait.go`'s
-  Stop-without-output⇒`OutcomeAsking` classification, the `Outcome` enum in `engine.go`, or the
-  run-loop. That done-or-asking model is correct for shuttle's other clients (builder's single-
-  deliverable implementers) and is a deliberately-accepted limitation webster works around in its own
-  package (`await-batch`). A true async/parallel Master would need a shuttle "still-working" third
-  state — that is a SEPARATE future shuttle task, explicitly not this campaign's. Your R2-a mechanism
-  guard belongs in the **claudeengine hook seam** (`settings.go`, like `steerAgentNonForkDeny`), NOT
-  in shuttle's outcome classification. Keep v1 strictly serial — no fan-out / await-many / parallel
-  fork orchestration (that is websterv2).
+## Explicitly OUT of scope for webster v0
+- **Any DAG/dependency-graph scheduling.** `doc.go`'s own package comment documents a dead
+  conditional branch (`if card.HasSymbolFields() { /* DAG */ } else { /* v0: declared order */ }`)
+  that is UNREACHABLE in v0 (plan-format-v3 cards carry no symbol fields yet) — its absence of a
+  real scheduler is correct, not a gap. Do flag it if you find that branch somehow IS reachable
+  today (a v0 regression) or if declared-order execution is violated anywhere.
+- **Oversized-batch escalation, deferred-verify chains, `--restart-chain`, and `## Scope`.** All
+  four belonged to the OLD (pre-rewrite) webster and to `builder`'s own separate v2 plan format;
+  none exist in plan-format-v3 or in this module's code. Their absence is correct — do not flag it
+  as missing functionality. (The one exception, already called out above as a required FIX: the
+  sandbox suite doc W2 scenario still describes the retired oversized mechanism and needs
+  rewriting, not the code.)
+- **`builder`-A/B compatibility.** Webster is explicitly NOT contract-compatible with `builder`
+  anymore (own parser, own report schema, own digest contract, own `_lyx/webster/` state) — this
+  was a deliberate scope change from the old design. Flag it ONLY if you find leftover "A/B
+  testable with builder" framing anywhere in the docs (this exact stale sentence was already found
+  and removed once from `docs/overview.md` during PR #97's merge-conflict resolution — round 1
+  should sweep for any other place it might have survived) or if webster's code accidentally
+  imports/shares mutable state with `internal/builderengine`.
+- **Holistic/terminal review of a plan's output.** Not webster's job (mirrors builder's own
+  perch-does-this split, if/when webster grows an equivalent). Flag only if webster's code path
+  secretly performs or fakes any part of that review itself.
+- **`loom`'s phase-machine wiring.** Not yet built; webster must not itself contain any
+  loom-specific orchestration.
+- **Non-Claude engines.** Per `CLAUDE.md`, non-Claude LLM support is not a current priority; don't
+  flag the absence of a Gemini/other-provider path.
+- **Stray `mux`/`Mux`/`MuxOps`-era naming from `main`'s concurrent `mux`→`reed` rename.** PR #97
+  required manually resolving an 11-file merge conflict against this rename mid-flight; the
+  operator caught and fixed several stragglers (`beginbatch.go`, `strand.go`, two `_test.go`
+  files) by hand. This is IN scope to re-check (see "Round context" below), not out of it — listed
+  here only so you know the rename itself, where already correctly applied, is not itself a defect
+  to relitigate.
 
 ## Round context seeded from prior-round verification
-You are round tag `opus-r4` — **round 4**, the **LAST authorized round** of an initial cap of **up to
-4 rounds**, model rotation **Fable → Opus → Fable → Opus**. **This is a SAFETY PASS.** Rounds 1, 2,
-and 3 have all been independently orchestrator-verified. Crucially, **round 3 (the previous safety
-pass) did NOT come back clean** — a genuinely independent Fable pass found a **BLOCKING happy-path
-run-killer** (FR3-1: the run-exit audit false-failed a fully-successful `done` run whenever Master
-spelled its contract-file Write path relatively) plus two more confirmed-live MEDIUMs, all in seams
-the earlier fork-loop deadlock had blocked from being reached. That is exactly why a fresh-model
-safety pass has value: **the last two rounds each found real bugs the prior cold verification missed.**
-Your job is the belt-and-suspenders check the method requires before merge: a genuinely independent
-clean-room pass — with an OPUS lens this time — to find anything the three prior rounds missed, OR to
-honestly confirm merge-readiness. **"No new defects, ship it" is the EXPECTED, valuable outcome of a
-safety pass — do not invent work to justify the round.** Equally, do not rubber-stamp: round 3 proves
-these now-reachable seams still hide bugs — genuinely exercise them, especially the ones round 3 just
-touched.
+You are round tag **`opus-r4`** — **round 4 of a 4-round cap, the LAST round**, alternating
+Fable/Opus (Fable → Opus → Fable → Opus), set by the operator. **Safety pass.** Round `fable-r1`
+found and fixed 19 real findings (3 BLOCKING); round `opus-r2` found and fixed 2 more (1 MEDIUM,
+1 NIT); round `fable-r3` found and fixed 10 more (0 BLOCKING, 3 MEDIUM, 3 LOW, 4 NIT) — a
+decreasing-but-nonzero trend across all three rounds, never yet a clean pass. The orchestrator
+independently re-verified ALL THREE rounds: cold-state `go build`/`vet`/`test -count=5`/
+`-tags integration`/`-tags smoke` all green at HEAD after each round, zero stray tmux processes
+every time, and hand-reproduced revert-and-confirm-fail proofs for every BLOCKING/MEDIUM finding
+with a pinned regression test — round `fable-r1`'s F19
+(`TestIntegrationTemplate_ForbidsPollingForOwnReport`) and F3
+(`TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest`), plus confirmed F18's dedicated new
+coverage; round `opus-r2`'s F1
+(`TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal`); round `fable-r3`'s R3-1
+(`TestRenderForkPrompt_RendersWhatProseOverIntent` — reverting `renderCard`'s What-prose fallback
+to always use `c.Intent` makes the "What prose wins over Intent" subtest fail exactly at the
+missing-prose assertion) and R3-2 (`TestRenderForkPrompt_RendersPinnedCommitSubject` — removing
+the pinned-Commit rendering block makes the "pinned Commit renders verbatim" subtest fail exactly
+at the missing-Commit-line assertion) — all reverts restored to a confirmed-empty diff. **Do NOT
+re-open the CLOSED-AND-VERIFIED work** — read `.scratch/webster-review-fable-r1.md` +
+`.scratch/webster-review-fable-r1-fixer-report.md` (F1–F19, commits `d11fd991`..`237b91fa`),
+`.scratch/webster-review-opus-r2.md` + `.scratch/webster-review-opus-r2-fixer-report.md` (F1–F2,
+commits `f1b53ec1`..`0cf7c668`), and `.scratch/webster-review-fable-r3.md` +
+`.scratch/webster-review-fable-r3-fixer-report.md` (R3-1–R3-10, commits `04ec601d`..`03bf953c`)
+AFTER you have written your own independent findings, per the clean-room rule above.
 
-**CLOSED AND ORCHESTRATOR-VERIFIED — do NOT re-litigate (confirm no regression only):**
-- Round 1 (`fable-r1`, commits `aea58060..51b65cf2`): F1–F18, 18 findings. Headline: on Claude Code
-  2.1.205 the Agent-tool fork is **BACKGROUNDED, not synchronous**; F1's fix is the current
-  authoritative design — `begin-batch` → spawn the (async) fork → **`lyx webster await-batch <NN>`**
-  polled in a loop by the master template until the report lands → `record-batch`, strictly serial.
-  Also: F2 (fork audit miscounted the parent's spawning `Agent` call), F3 (weft-path read wedged
-  record-batch), F18 (`/model` injection's leading **Escape** interrupted the foreground begin-batch
-  — dropped), F4–F17.
-- Round 2 (`opus-r2`, commits `10ffa16b..9cddf9d9`): F-R2a — the **deterministic fork-context guard**
-  (`steerWebsterForkDeny`, a `PreToolUse(Bash)` hook in `claudeengine/settings.go`, gated on
-  `forkSubagents`, keyed on the fork payload's top-level `agent_id`/`agent_type:"fork"`) that refuses
-  a fork's `lyx webster` call while Master's own + a fork's git/verify Bash pass — this is what makes
-  the deadlock mechanically impossible; recovery strands run `ForkSubagents:false` so they are
-  unaffected. F-R2b — the `//go:build smoke` suite (`internal/webstercli/smoke_test.go`). Plus two
-  LOWs.
-- Round 3 (`fable-r3`, commits `804c6b83..9d9b4642`): 8 findings, 3 CONFIRMED live. **FR3-1
-  (BLOCKING):** `CheckParent`/`CheckFork` now canonicalize each transcript-recorded write path via
-  `resolveWritePath(workdir, path)` (relative → resolved against the pane cwd) before comparing to the
-  absolute contract paths — killed a false `parent-write` violation that failed healthy `done` runs
-  on a path-spelling coin-flip. **FR3-2 (MEDIUM):** `RecordBatch` now audits the bracket-OPENING
-  session (`bs.SessionID`), not the current Master session, so a resume after a crash between a fork's
-  report landing and `record-batch` can still consume that report (the crashed session's fork
-  transcript persists on disk); + a Kind guard refusing a recovery-kind batch loud, a template resume
-  rung, and a live smoke `TestSmoke_RecordBatchConsumesCrashedSessionReport`. **FR3-3 (MEDIUM):**
-  `shuttleengine.ForkReport.WritePaths` + a `fork-contract-write` hard-violation class flag a fork
-  writing Master's `outcome.yaml`/`summary.md`. **FR3-4 (MEDIUM):** master template hardened against a
-  fork reasoning "I am the Master" past the disambiguation banner. FR3-5/6 (LOW: progress-trail
-  status-awareness; model-injection-is-last-fallible-act ordering), FR3-7 (doc pin), FR3-8 (NIT flag
-  help). **W2 `/model` was closed live in round 3:** on Claude Code 2.1.205 the injected `/model` is
-  QUEUED for Master's whole single turn and never executes mid-run — the oversized escalation degrades
-  to its documented benign fallback (forks inherit the launch model); (b) no foreground corruption
-  holds post-F18; (c) exactly one transcript attributed per batch. This is now pinned in `doc.go`
-  (FR3-7) — do NOT re-litigate whether oversized "should" switch the model mid-run; it structurally
-  cannot on 2.1.205, and that is documented, not a defect.
+**This is the last round under the operator's cap.** There is no known residual, but three rounds
+in a row have each found real, previously-undetected defects — treat this round as the campaign's
+final adversarial pass, not a formality. Do a genuinely independent clean-room pass to find what
+rounds 1–3 missed, or honestly confirm merge-readiness — "no new defects, ship it" is a completely
+legitimate outcome, do not invent work to justify the round, but also do not under-invest just
+because it's round 4. One specific thing to prioritize re-driving, not just re-reading:
 
-**Your mandate this round:**
-1. **Independent safety pass (Opus lens).** Read the SPEC + current code yourself; drive the real
-   substrate against every "High-yield focus" invariant. Form your own findings before consulting any
-   prior `.scratch/webster-review-*` material.
-2. **Regression-check round 3's fresh fixes specifically** (these are the newest, least-weathered
-   code): the relative-path write resolution (`resolveWritePath` — probe odd spellings: `../`
-   escaping the workdir, a symlinked cwd, an absolute path that differs only by a trailing slash or
-   `//`, a Windows-style path if the parser ever sees one; does the canonicalization ever FALSE-flag a
-   legitimate Master write, or MISS a genuine rogue one?); the FR3-2 bracket-opening-session keying
-   (does any OTHER resume path — recover-batch, --fresh, a double crash — now key on the wrong session,
-   or does record-batch's new Kind guard reject a legitimate call?); FR3-3's fork-contract-write class
-   (can a fork evade it, e.g. via a relative path FR3-1's resolution then normalizes AWAY from the
-   contract path?); FR3-4's template wording (does the new banner rung ever mis-fire and confuse a
-   legitimate Master?). Also the seams round 3 exercised but you should re-drive independently:
-   `await-batch` under a slow/never-arriving report; the R2-a guard vs `recover-batch`; crash/resume
-   THROUGH the async await loop.
+- **Master-refusal rate — keep counting, this is now round 4 of counting the same rate, and it is
+  the cap's last chance to see it recur.** Round 1's grounding fix (`d11fd991`, then `379edeb8`)
+  brought the rate from 3/7 (~43%) to 0/2. Round 2 hit a NEW refusal (1/5, ~20% — a fresh Master
+  quoted round 1's OWN anti-refusal wording back as the injection tell) and reframed the grounding
+  again (`65a68c78`); post-fix 6/6, 0 refusals. Round 3 then drove 9 MORE spawns with **0/9
+  refusals** — the best result yet, and the first round where the rate held at zero across a
+  larger sample without a fix being needed mid-round. Drive several more real `lyx webster run`
+  spawns and extend the count one more time. If it holds at 0, that is meaningful evidence the
+  round-2 reframe actually closed the recurring failure mode (say so plainly). If it recurs even
+  once, that is this round's highest-priority finding — and given this would be the fourth time
+  across four rounds, the right conclusion is almost certainly "this class of defensive grounding
+  wording cannot fully close this," not a fifth wording iteration; say so explicitly rather than
+  proposing another rewrite by reflex.
 
-If your safety pass finds real defects, fix them (all severities incl. NIT, per the discipline below)
-— finding real bugs is itself the signal to keep hardening. If it finds none, say so plainly with the
-transcript of what you drove as evidence. **This is the last authorized round: an honest, evidenced
-"clean — ship it" is the outcome that lets the campaign converge.**
+Two items rounds 1–3 deliberately deferred as operator design decisions, re-evaluated by every
+round so far and left unbuilt every time — RE-EVALUATE them one final time (read `fable-r3`'s
+fixer report's "Deliberately deferred" section for the full reasoning, including two NEW small
+deferred items it added), but do NOT treat any as an obligation to build; they are yours to judge,
+not close by default:
 
-State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one
-`lyx webster run` at a time, no artificial concurrency stress) is the gate. If you run N× concurrent
-runs against the same worktree as a diagnostic amplifier, a timeout or lock-contention under that
-artificial peg is NOT itself a defect — but any state corruption, double-spawn (a second Master, a
-second recovery strand), or silent data loss IS, regardless of how much concurrency it took to
-surface it.
+1. **F2's in-band escape** for the cross-machine resume deadlock (report-present + no fork
+   transcript + non-terminal record — begin-batch/record-batch/recover-batch all refuse). Three
+   rounds running have documented/reconfirmed a manual operator recourse (move the orphan report
+   aside, now also named directly in the error path per R3-10) rather than building an in-band
+   escape verb, on the grounds that it trades away forged-report unfakeability for a rare
+   cross-machine resume. Confirm the documented recourse still works live; form your own opinion,
+   but do not build it unilaterally if unconfident.
+2. **An `await-integration` verb.** Three rounds running have left Master with a shell-level
+   bounded poll instead of a first-class CLI verb; round 3 live-observed it drive another full
+   integration+bisect run to a clean terminal outcome. Confirm it is still robust; flag only if you
+   find genuine fragility.
+3. **`--fresh`'s scope (R3-4, new this round).** `run --fresh` only acts on a fingerprint
+   mismatch; an unconditional always-archive variant was flagged as an operator ergonomics call,
+   not taken. Re-evaluate only if you find the current documented behavior is itself misleading or
+   wrong, not to change the behavior by default.
+4. **`poll_wait_s` default (R3-5, new this round).** Two rounds now have live-observed a
+   foreground `recover-batch` call run past the ~2-minute auto-background threshold without
+   triggering it in this environment; the 480s default was kept rather than churned on that
+   evidence. Re-evaluate only if you observe genuinely different behavior live.
+
+Beyond those, try combinations no one has scripted yet — e.g. two overlapping `lyx webster run`
+invocations against the same worktree (confirm `run.lock` contention is refused correctly,
+mirroring builder's own discipline — check whether webster even has an equivalent lock; if it
+doesn't, that itself may be a finding), pausing mid-fork, a plan whose integration `## verify:` is
+flaky (passes sometimes, fails other times) racing the bisect, or killing a `recover-batch`'s
+spawned recovery strand mid-poll.
+
+State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow (one `lyx
+webster run` at a time, no artificial concurrency stress) is the gate. If you run N× concurrent
+`lyx webster run` invocations against the SAME worktree as a diagnostic amplifier, a timeout or
+contention under that artificial peg is not itself a defect — but any state corruption,
+double-fork, or silent data loss IS, regardless of how much concurrency it took to surface it.
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
 
-**Environment check FIRST.** This is a Linux host. Confirm up front: `tmux` on PATH, a logged-in
-`claude` on PATH, `lyx` on PATH, `go` on PATH. (At authoring time all four were present:
-`/usr/bin/tmux`, `/home/knatte/.local/bin/claude`, `/home/knatte/.local/bin/lyx`, `/usr/bin/go`.)
-If any is genuinely missing, that is a real environment gap — flag it specifically and say what it
-blocked; it is the ONLY legitimate "cannot verify headlessly" reason besides a scenario that
-structurally needs a human's physical eyes.
-
 Hermetic (must stay green throughout):
 - `go build ./...`
-- `go vet ./internal/websterengine/... ./internal/webstercli/... ./internal/shuttleengine/...`
-- `go test -count=5 ./internal/websterengine/... ./internal/webstercli/... ./cmd/lyx/...`
-- **`go test -tags integration -count=2 ./internal/websterengine/... ./internal/webstercli/...`** —
-  DO NOT skip this. Webster's `beginbatch/recordbatch/recoverbatch/runlevel/chain _test.go` are ALL
-  `//go:build integration` (Tier-2, real scratch git repo + call-scripted fakes). A plain
-  `go test -count=5` compiles and runs NONE of them — the FR3-2 keying test, the FR3-1/FR3-3 audit
-  tests, and the template-drift guards all live behind this tag. Rounds 1–2's gate missed it.
+- `go vet ./internal/websterengine/... ./internal/webstercli/... ./internal/planparser/... ./internal/batcher/...`
+- `go test ./internal/websterengine/... ./internal/webstercli/... ./internal/planparser/... ./internal/batcher/... ./cmd/lyx/...` —
+  stress timing/concurrency-sensitive tests (the await-batch poll loop, recover-batch's bounded
+  poll) with `-count=5`.
+- `go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/gitrepo/...` —
+  the hermetic-but-real-git tier (bisect's `CheckoutDetached`/`RestoreBranch`, begin/record/recover-batch's
+  real git fixtures); runs under `lyxtest.HermeticGitEnv()` so it never touches your operator
+  gitconfig.
 
 Live smoke (real substrate, behind the `smoke` build tag):
-- `go test -tags smoke ./internal/webstercli/... -run Smoke -v -count=1` — webster now has **5**
-  `//go:build smoke` tests (`internal/webstercli/smoke_test.go`), the newest being
-  `TestSmoke_RecordBatchConsumesCrashedSessionReport` (FR3-2, spawns a real fork under one session and
-  drives RecordBatch under a different session). Keep accreting: for every NEW live-only defect you
-  fix, add a deterministic smoke test that walks the failing scenario against the real substrate
-  (follow the existing ones' pattern, incl. the substrate-absent skip).
+- `go test -tags smoke ./internal/webstercli/... -run Smoke -v -count=1` — self-skips cleanly if
+  `claude` is absent from PATH; if it skips, note that as an environment gap up front (see "Live
+  driving" below) rather than treating a skip as a pass.
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
-- **Deploy on Linux:** `go run ./tools/deploy -dev` (this is the Linux equivalent of the Windows
-  `deploy-dev.cmd`; it builds the current source and installs `lyx` into the derived `.dev-bin/`
-  directory — no `-dest`, no `/home/knatte/.local/bin` target). The dev binary lands deliberately
-  NOT on your default `PATH`, so for this hands-on driving session prepend it: `export
-  PATH="$PWD/.dev-bin:$PATH"` (run from the repo root) so bare `lyx` resolves to the dev build —
-  this keeps the production `lyx` untouched. **FOOTGUN:** live driving runs the DEPLOYED snapshot,
-  not your working tree — re-run `go run ./tools/deploy -dev` after EVERY source change or you
-  validate a stale binary. Deploy first, always.
-- **Materialize a throwaway test hub yourself** (there is no `sandbox-build.cmd` on this host): make
-  a temp dir OUTSIDE this worktree (e.g. under `/tmp` or the session scratchpad — never inside the
-  repo, never a second git worktree of loomyard), `git init` it, `lyx init` it (webster needs
-  `_lyx/config/webster.yaml` + `shuttle.yaml`/`reed.yaml`), `lyx reed up`, then write a tiny plan
-  under `_lyx/plan/`. Keep plan cards TRIVIAL — e.g. "create `resultN.md` containing the single line
-  `OK`" — so a real fork finishes each batch in one card, one commit, fast.
-- **Do NOT invoke any `sandbox-webster-suite.cmd` launcher.** It spawns a SEPARATE, context-free
-  interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn
-  on top of yourself. Run the real CLI commands yourself, directly, foreground, waiting for each to
-  return: `lyx webster validate` / `run` / `begin-batch` / `record-batch` / `recover-batch` /
-  `pause` / `status`. This spawns real tmux panes and a real interactive `claude` Master session
-  underneath (webster's own substrate via shuttle) — that is expected and required. None of it needs
-  an attached TTY of its own: a tmux pane is a real pty regardless of whether anyone is watching it.
-- Walk the "High-yield focus" list (and W1/W2's scenarios for extra ideas) and record OK/WARN/FAIL
-  for each. The list is a FLOOR — devise and run MANY more adversarial scenarios of your own
-  (record-batch without begin-batch; a double-fork batch; a crash between begin-batch and
-  record-batch then resume; recover-batch re-entrancy; pause racing the last batch settling; an
-  oversized batch's `/model` injection timing).
-- **"Headless" means "no human required" — NOT "no time/token cost to me."** A real Master/fork
-  session doing real work takes real wall-clock MINUTES, not seconds. That cost is EXPECTED and
-  BUDGETED FOR, never a reason to skip a scenario. **You are explicitly forbidden from writing
-  "operator-assisted", "cost-bearing", "long-running", "impractical", or "automated context" as a
-  reason to skip live driving** — those words describe a cost to YOU, never a reason a human is
-  required. (Builder's first hardening round skipped its entire live suite citing exactly those
-  words; it was a rationalization, not a real blocker.)
-- **Before writing "could not verify", ask literally: "would a human's physical eyes be required
-  here, or am I just avoiding spending my own time/turns?"** Only the first is a real reason. If a
-  scenario just takes several minutes of you waiting on a real command to return, wait for it, and
-  report the actual output (with the commands you ran) as evidence — not a summary claim.
-- **W2's `/model` injection (a/b/c) is the highest-value live scenario** — it decides whether the
-  oversized-batch escalation feature stays enabled or degrades to its documented fallback. Drive it
-  for real and record all three assertions separately; a benign miss on (a) is fine, a corruption
-  hit on (b) is a real defect.
+- **Environment check FIRST.** `lyx init` must already be done in this worktree; `lyx reed up`
+  must be running (webster's `run` spawns Master THROUGH shuttle into an EXISTING reed session —
+  it does not boot one itself, and fails loud with "no reed session; run \"lyx reed up\"" if you
+  skip this); tmux (or the platform's tmux port) and a logged-in `claude` must be on PATH. If any
+  of these is genuinely unavailable in your environment, say so explicitly and specifically before
+  anything else — do not silently fall back to code-tracing.
+- Deploy the current source as the dev binary under test (`deploy-dev.cmd` / `deploy-dev`).
+  **FOOTGUN:** live driving runs the DEPLOYED snapshot, not your working tree — re-run
+  `deploy-dev.cmd` after EVERY source change or you validate a stale binary. Deploy first, always,
+  and again after every fix in Job 2.
+- **Do NOT invoke `sandbox-webster-suite.cmd`.** That launcher spawns a SEPARATE, context-free
+  interactive `claude` session for a human operator's own black-box dogfooding — meaningless for
+  you to spawn on top of yourself. Instead run the real CLI commands yourself, directly,
+  foreground, waiting for each to return: walk the "High-yield focus" list above (and
+  `SANDBOX-WEBSTER-SUITE.md`'s W1/W2 scenarios for extra scaffolding ideas — you are also fixing
+  W2's staleness as part of Job 2, see above) and record OK/WARN/FAIL for each. A real `lyx webster
+  run` spawns real substrate underneath (real tmux, a real Master session, real in-session forks)
+  — that is expected and required, not something to avoid. None of it needs an attached TTY of its
+  own — a tmux pane is a real pty regardless of whether anyone is watching it (though
+  `lyx reed attach`-ing to WATCH Master fork live is strongly recommended for the bracket-sequence
+  invariant above).
+- The list above is a FLOOR — devise and run MANY more adversarial scenarios of your own beyond it
+  (combine verbs in orders nothing has tried; chase anything the code makes you suspicious of).
+  Report exact commands + observations.
+- **"Headless" means "no human required" — NOT "no time/token cost to me."** A real Master
+  session forking a real implementer takes real wall-clock MINUTES, not seconds. That cost is
+  EXPECTED and BUDGETED FOR, never a reason to skip a scenario. **You are explicitly forbidden
+  from writing "operator-assisted", "cost-bearing", "long-running", "impractical", or "automated
+  context" as a reason to skip live driving** — those words describe a cost to YOU, never a reason
+  a human is required.
+- **Before writing "could not verify", ask yourself literally: "would a human's physical eyes be
+  required here, or am I just trying to avoid spending my own time/turns?"** Only the first is a
+  real reason. If a scenario just takes several minutes of you waiting on a real `lyx webster run`
+  to return, that is not a reason — wait for it, and report the actual output (with the commands
+  you ran) as evidence, not a summary claim that you "verified" it.
+- The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
+  to visually confirm something, or (b) a genuine environment gap (checked FIRST, above). Flag
+  those specific cases as not-headlessly-verifiable rather than skipping silently, and say exactly
+  what blocked you.
 
-TEARDOWN DISCIPLINE (critical): if you start any substrate (Master's strand, a recovery strand,
-`lyx reed up`), tear it down (`lyx reed down`). At the end confirm ZERO stray substrate: `lyx reed
-status` lists nothing, and `pgrep -a tmux` shows no leftover server for your test hub. Leave no
-stray state. Be honest about what you could NOT verify and why.
+TEARDOWN DISCIPLINE (critical): if you start any substrate server/session, tear it down. At the
+end, confirm ZERO stray substrate processes (`tasklist | grep -i tmux` on Windows, or the
+platform-equivalent tmux-server check). Leave no stray state — including no dangling recovery
+strand from a `recover-batch` scenario, and no detached-HEAD host-repo checkout left over from a
+bisect scenario (confirm `git status` on whatever repo you drove batches against ends back on its
+original branch). Be honest about what you could NOT verify and why.
 
 ## How to judge each finding
 For each code finding give: `file:line`, a concrete failure scenario (inputs/state → wrong
-behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED (reproduced/traced)
-vs PLAUSIBLE (looks wrong, unverified). For scope: doc-promised vs shipped; flag
-deferred-that-should-be-v1 and shipped-beyond-scope.
+behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED
+(reproduced/traced) vs PLAUSIBLE (looks wrong, unverified). For scope: plan-promised vs shipped;
+flag deferred-that-should-be-v0 and shipped-beyond-scope.
 
 **Severity affects how you REPORT a finding, not whether you fix it.** ALL findings you record get
 fixed in Job 2 — including every NIT — not just BLOCKING/MEDIUM ones. A finding you write down but
@@ -388,56 +441,64 @@ leave unfixed as "low priority" is not actually a reported finding; it is a drop
 either silently vanish or re-surface and loop across future rounds instead of closing. The only
 legitimate reason to leave a finding unfixed is that fixing it genuinely requires something you
 cannot do alone this round — an operator decision on a real design tradeoff, or a live capability
-you don't have. Even then say so explicitly in the fixer report's deferred section — never bucket
-something as "deferred, low priority" just because it felt small.
+you don't have. Even then you must say so explicitly, with the specific reason, in the fixer
+report's deferred section.
 
 ## Deferred items from the prior rounds — RE-EVALUATE these (after your own pass)
-Nothing outstanding to FIX — R1's residuals (R2-a fork-loop deadlock guard, R2-b smoke tests) closed
-in R2; R3 fixed all 8 of its own findings (FR3-1..FR3-8), nothing deferred. The only consciously-
-carried item is an **accepted limitation, not a defect to fix**: `await-batch` has no Go-side upper
-bound / fork-liveness signal — a mis-looping Master only stops at `master_timeout_min`. This is
-inherent to the backgrounded-fork + shuttle done-or-asking model; a "still-working" third state in
-shuttle is explicitly OUT OF SCOPE for this campaign (future shuttle task). The R2-a guard already
-forces a mis-driving fork to abandon the loop, which is the in-scope mitigation. Do NOT re-open it as
-a finding; note it only if you discover it is worse than characterized. If your own pass surfaces
-something new you cannot resolve alone this round, defer it here explicitly with the reason; do not
-silently drop it.
+1. **F2's in-band escape** for the cross-machine resume deadlock — build it only if you're
+   confident the tradeoff (some forged-report unfakeability, for cross-machine resumability) is
+   worth it; otherwise leave the documented manual recourse in place and say so.
+2. **An `await-integration` verb** vs. the current shell-level bounded poll in the master
+   template — build it only if live driving shows the shell-level poll is actually fragile.
+3. **`--fresh`'s always-archive scope (R3-4)** — an operator ergonomics call, not a default change.
+4. **`poll_wait_s` default lowering (R3-5)** — kept at 480 on two rounds of live evidence the
+   auto-background hazard hasn't materialized; only revisit on genuinely different live evidence.
+
+(Full reasoning: `.scratch/webster-review-fable-r1-fixer-report.md`'s,
+`.scratch/webster-review-opus-r2-fixer-report.md`'s, and
+`.scratch/webster-review-fable-r3-fixer-report.md`'s "Deliberately deferred" sections — three
+rounds have independently reached the same "not worth building/changing" call on items 1–2.)
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
-- Load the code-quality guidance (`/code-quality` skill) AND `mill:golang-build` /
-  `mill:golang-testing` / `mill:golang-comments` before editing — ALL of the relevant skills, not
-  code-quality alone. Prefer surgical edits; match existing style and the file-level doc-comment
-  convention (see `doc.go`).
-- For every bug you fix, add or extend a test that would have caught it. For a live-only defect, add
-  a `//go:build smoke` test that walks the failing scenario against the real substrate (webster has
-  none yet — you are starting this file; follow another module's smoke-test pattern incl. a skip
-  when the substrate is absent). A hermetic unit test for the pure helper is good; a smoke test for
-  the composed behavior is what protects the recovery paths.
-- MAKE SMOKE TESTS DETERMINISTIC. Substrate operations are asynchronous; wait on the actual state
-  transition (poll with a deadline), never sleep a fixed amount. Prove determinism by running the
-  new test many times in parallel under load, not once.
-- If your review surfaces a live/visual behavior `SANDBOX-WEBSTER-SUITE.md` doesn't cover, EXTEND it
-  (match the W1/W2 scenario shape; keep `sandbox_coverage_test.go`'s `**Covers:** webster` guard
-  green in the SAME change). Creating a brand-new suite file/launcher is NOT required.
-- Keep `go build`/`vet`/`test` green after every change. Then re-run `go run ./tools/deploy -dev`
-  and re-run every live scenario yourself — re-deploying FIRST is mandatory.
-- Update `internal/websterengine/doc.go` and/or `docs/reference/builder-contract.md` (and
-  `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change
-  as the fix. Do NOT add bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones
-  only, per CLAUDE.md).
-- Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it — do
-  NOT push unless the user explicitly asks. Report the changed files and how you verified each fix.
+- Load the code-quality guidance (`/code-quality` skill) AND the Go-specific skills
+  (`mill:golang-build`/`mill:golang-testing`/`mill:golang-comments`) before editing — ALL of them,
+  not code-quality alone. Prefer surgical edits; match existing style and the file-level
+  doc-comment convention (every file in this package opens with a "what this file implements"
+  comment — see any existing file for the pattern).
+- For every bug you fix, add or extend a test that would have caught it. For a live-only defect,
+  add a `//go:build smoke` test in `internal/webstercli/smoke_test.go` that walks the failing
+  scenario against the real substrate (the existing tests in that file show the self-skip and
+  deadline-poll pattern). A hermetic unit test for the pure helper is good; a smoke test for the
+  composed behavior is what protects the fork/bracket paths.
+- MAKE SMOKE TESTS DETERMINISTIC. Substrate operations are asynchronous; a test that assumes a
+  verb is synchronous passes on a quiet machine and FLAKES on a loaded one. Wait on the actual
+  state transition (poll with a deadline), never sleep a fixed amount. Prove determinism by
+  running the new test many times in parallel under load, not once.
+- Extend `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` when a review surfaces a live/visual behavior it
+  doesn't cover (match the existing scenario shape; keep `sandbox_coverage_test.go`'s coverage
+  guard green in the SAME change) — W2's rewrite (seeded above) is required regardless of what
+  else you find.
+- Keep `go build`/`vet`/`test` (hermetic, `-tags integration`, `-tags smoke`) green after every
+  change. Then RE-DEPLOY (`deploy-dev.cmd`) and re-run every live scenario yourself, directly —
+  re-deploying FIRST is mandatory.
+- Update `internal/websterengine/doc.go`'s package comment (and `docs/reference/builder-contract.md`'s
+  webster section / `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move)
+  IN THE SAME change as any behavior fix. Do NOT add bugfix/hardening notes to
+  `manifest/roadmap.md` (roadmap is planned milestones only, per `CLAUDE.md`).
+- Tear down all substrate state; confirm zero stray processes. COMMIT each fix as you finish it
+  (see "Commit per fix" above) — do NOT push unless the user explicitly asks. Report the changed
+  files and how you verified each fix.
 
 ## Deliverables
 1. A structured review report (Executive summary with top risks + merge-readiness opinion; Scope
-   assessment doc-vs-shipped; Code findings severity-ranked with file:line + scenario + fix +
+   assessment plan-vs-shipped; Code findings severity-ranked with file:line + scenario + fix +
    CONFIRMED/PLAUSIBLE; Docs & operability findings; What-was-tested with exact commands + observed
    results, including what you could NOT verify and why). Write it to
-   `.scratch/webster-review-<yourtag>.md`.
+   `.scratch/webster-review-opus-r4.md`.
 2. A fixer report: what you implemented, what you deliberately deferred (with reasons), the exact
    test commands run + results, and the changed files. Write it to
-   `.scratch/webster-review-<yourtag>-fixer-report.md`.
+   `.scratch/webster-review-opus-r4-fixer-report.md`.
 3. In your final chat message: a concise summary (executive summary + counts by severity + the two
    report paths + an explicit merge-readiness verdict). Do not paste the whole reports.
 

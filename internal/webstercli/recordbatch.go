@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -32,15 +32,14 @@ func (realSleeper) Sleep(d time.Duration) { time.Sleep(d) }
 
 var _ websterengine.Sleeper = realSleeper{}
 
-// digestFields converts a Digest into the map output.Ok expects: Digest's
-// own json tags already spell the pinned terse field set the Master reads,
+// digestFields converts a websterengine.Digest into the map output.Ok
+// expects: Digest's own json tags already spell the pinned terse field set
+// the Master reads (batch/status/head_sha/deviations/dead_reason/elapsed_s),
 // so a marshal/unmarshal round trip through map[string]any reuses them
-// exactly rather than re-listing every field by hand here. Mirrors
-// buildercli's own digestFields, minus the running-snapshot field-stripping
-// buildercli's poll needs: RecordBatch only ever returns a terminal digest
-// (never a running one -- that classification belongs to recover-batch),
-// so files_changed/dirty are always populated here.
-func digestFields(d builderengine.Digest) map[string]any {
+// exactly rather than re-listing every field by hand here. RecordBatch only
+// ever returns a terminal digest (never a running one -- that classification
+// belongs to recover-batch), so head_sha is always populated here.
+func digestFields(d websterengine.Digest) map[string]any {
 	data, _ := json.Marshal(d)
 	var fields map[string]any
 	_ = json.Unmarshal(data, &fields)
@@ -78,11 +77,12 @@ Example:
 				return nil
 			}
 
-			plan, err := builderengine.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.planDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
+			batches := c.batcher.Batch(plan.Cards)
 
 			mutateLock, err := websterengine.AcquireStateMutation(c.websterDir)
 			if err != nil {
@@ -107,7 +107,7 @@ Example:
 			}
 
 			deps := websterengine.RecordDeps{
-				Plan:         plan,
+				Batches:      batches,
 				State:        st,
 				Config:       c.cfg,
 				Engine:       c.engine,

@@ -16,7 +16,8 @@ codeintel replaces this with fast, deterministic, compiler-derived lookups, and 
 [plan-format v3](../../docs/reference/plan-format-v3.md)'s symbol fields
 (`creates-symbols`/`edits-symbols`/`reads-symbols`) trustworthy enough to write into a card at
 all — without it, they degrade to guesses (see
-[webster-rewrite.md](webster-rewrite.md)'s resolution of this exact machine-mismatch problem).
+`internal/websterengine`'s package documentation for the resolution of this exact
+machine-mismatch problem).
 
 **What codeintel is not:** not a semantic/conceptual index ("what have we written that's
 thematically similar" — see [semantic-index.md](semantic-index.md), a separate, further-out idea,
@@ -24,7 +25,7 @@ not part of this proposal); not a
 replacement for raddle (raddle answers "where does this belong and why," codeintel answers "what
 exactly is affected"); not a DAG builder itself (it provides raw reference/definition facts;
 mechanical DAG-derivation is webster's own logic — see
-[webster-rewrite.md](webster-rewrite.md)).
+`internal/websterengine`'s package documentation).
 
 ## Four-layer architecture
 
@@ -138,7 +139,7 @@ path immediately rather than attempting the call and getting an undefined result
 
 - **Cannot resolve symbols that don't exist yet** — a structural limit, not a bug. Mitigated at
   the webster/plan-format level by plan-internal name matching for not-yet-existing symbols (see
-  [webster-rewrite.md](webster-rewrite.md)), not by codeintel itself.
+  `internal/websterengine`'s package documentation, the dead-DAG-seam section), not by codeintel itself.
 - Reduced precision around generics, reflection, and heavy dynamic-dispatch patterns (DI
   containers, `dynamic` in C#) — worth explicit measurement per language before trusting
   codeintel as a hard collision judge, especially for C#.
@@ -150,7 +151,7 @@ path immediately rather than attempting the call and getting an undefined result
 
 - **Planner:** verifies symbol names against the real codebase before writing
   `edits-symbols`/`reads-symbols` into a card (see
-  [webster-rewrite.md](webster-rewrite.md)).
+  [plan-format-v3.md](../../docs/reference/plan-format-v3.md)'s deferred symbol fields).
 - **Webster forks:** conditional prompt injection — only when a card has declared
   `edits-symbols` *and* the relevant language's codeintel daemon is confirmed reachable. Put the
   instruction in the card/task prompt itself, near the relevant field, not in a static

@@ -67,7 +67,7 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via `gh`.
 - **builder** — an LLM orchestrator over Go verbs: drives a pinned implementation plan batch by batch, spawning each batch's implementer as its own tmux strand.
-- **webster** — a fork-based sibling of `builder`, built to be A/B tested on the same plan: one long-lived Master session forks one implementer per batch **in-session** instead of spawning a fresh strand per batch.
+- **webster** — a fork-based sibling of `builder` with its own plan format and report contract: one long-lived Master session reads the flat card-list plan (plan-format v3, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch. `builder` stays frozen in-tree as the plan-format-v2 consumer.
 - **perch** — a generic profile-driven review-gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK`, standalone or as loom's gate between phases.
 - **burler** — one review+fix round (review → fix, no self-grading) over the shuttle file contract; composed by `perch`.
 

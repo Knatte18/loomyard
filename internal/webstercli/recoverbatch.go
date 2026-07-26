@@ -19,9 +19,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +36,24 @@ func (recoverRealClock) Now() time.Time        { return time.Now() }
 func (recoverRealClock) Sleep(d time.Duration) { time.Sleep(d) }
 
 var _ websterengine.Clock = recoverRealClock{}
+
+// batchSlugFor returns the slug of the batchifier-derived group whose own
+// identity is batchNumber, mirroring websterengine's own v0
+// identity-batcher assumption (runlevel.go's unexported batchIdentity): a
+// batch's identity is its first card's Number/Slug, exact for today's only
+// registered batchifier (batcher/identity.go), since every batcher.Batch it
+// produces holds exactly one card. Used only to name batchNumber in this
+// verb's own status/weft-commit messages before RecoverSpawnOrAttach's own
+// findBatch call (which shares the same identity convention) ever runs;
+// returns "" when no batch in batches carries that identity.
+func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
+	for _, b := range batches {
+		if len(b.Cards) > 0 && b.Cards[0].Number == batchNumber {
+			return b.Cards[0].Slug
+		}
+	}
+	return ""
+}
 
 // recoverBatchCmd builds the `recover-batch <NN>` subcommand.
 func (c *websterCLI) recoverBatchCmd() *cobra.Command {
@@ -72,20 +91,13 @@ Example:
 				return nil
 			}
 
-			plan, err := builderengine.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.planDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-
-			var slug string
-			for _, b := range plan.Batches {
-				if b.Number == batchNumber {
-					slug = b.Slug
-					break
-				}
-			}
-			batchName := fmt.Sprintf("%02d-%s", batchNumber, slug)
+			batches := c.batcher.Batch(plan.Cards)
+			batchName := fmt.Sprintf("%02d-%s", batchNumber, batchSlugFor(batches, batchNumber))
 
 			mutateLock, err := websterengine.AcquireStateMutation(c.websterDir)
 			if err != nil {
@@ -117,6 +129,7 @@ Example:
 			deps := websterengine.RecoverDeps{
 				Starter:      c.starter,
 				Plan:         plan,
+				Batches:      batches,
 				State:        st,
 				Roles:        c.roles,
 				Config:       c.cfg,

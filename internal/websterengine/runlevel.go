@@ -24,10 +24,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -60,6 +62,12 @@ var ErrRunBusy = errors.New("webster: run is already in progress")
 // warning about. A probe error (never an OS lock outcome, only an
 // underlying filesystem failure) is returned so the caller can decide; it
 // is not itself a reason to refuse the verb.
+//
+// Known benign race: the probe momentarily HOLDS run.lock, so a real `lyx
+// webster run` starting in exactly that instant loses its own TryAcquire and
+// refuses ErrRunBusy once even though no run is in progress — a retry
+// succeeds. Advisory file locks admit no portable non-acquiring probe, so
+// this window is accepted rather than engineered around.
 func RunActive(websterDir string) (bool, error) {
 	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, runLockName))
 	if err != nil {
@@ -74,10 +82,10 @@ func RunActive(websterDir string) (bool, error) {
 	return true, nil
 }
 
-// OutcomeFileName is outcome.yaml's fixed filename inside a webster dir —
-// webster's own copy of builderengine's own unexported outcomeFileName
-// constant, kept identical so a webster run's outcome.yaml reads exactly
-// like builder's, per the A/B contract-compatibility decision.
+// OutcomeFileName is outcome.yaml's fixed filename inside a webster dir.
+// The name matches builder's own outcome-file convention by heritage, but
+// the file's schema is webster's alone (outcome.go) — webster is not
+// contract-compatible with builder.
 const OutcomeFileName = "outcome.yaml"
 
 // OutcomePath returns the path to outcome.yaml inside websterDir.
@@ -128,6 +136,12 @@ type RunDeps struct {
 	ReportsDir   string
 	PromptsDir   string
 	WorktreeRoot string
+
+	// Clock is the integration stage's bounded-wait clock seam: nil selects
+	// the production realClock, and a test injects a fake so the
+	// missing-integration-report wait replays instantly instead of blocking
+	// a real DefaultAwaitWaitS window.
+	Clock Clock
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices. Fresh
@@ -143,15 +157,16 @@ type RunOptions struct {
 // (Outcome/StuckReason/BatchesDone) plus, once a valid summary.md has been
 // read, its title — the future loom-finalize PR-text source's headline.
 type RunResult struct {
-	// Outcome is one of builderengine.OutcomeDone, OutcomeStuck, or
-	// OutcomePaused, taken verbatim from the parsed outcome.yaml.
+	// Outcome is one of webster's own outcomeDone, outcomeStuck, or
+	// outcomePaused values (outcome.go), taken verbatim from the parsed
+	// outcome.yaml.
 	Outcome string
 	// StuckReason is the parsed outcome.yaml's stuck_reason, verbatim.
 	StuckReason string
 	// BatchesDone is the parsed outcome.yaml's batches_done, verbatim.
 	BatchesDone int
 	// SummaryTitle is the parsed summary.md's title heading. Always
-	// populated for Outcome == builderengine.OutcomeDone (ParseSummary is
+	// populated for Outcome == outcomeDone (ParseSummary is
 	// required there — a missing or malformed summary is a hard error);
 	// populated best-effort for stuck/paused (empty when summary.md is
 	// itself missing or malformed, which is not an error on those two
@@ -257,14 +272,14 @@ func reclaimEntryTimeStrands(reed shuttleengine.ReedOps, st *State) error {
 	}
 
 	if st.MasterStrand != "" {
-		if err := builderengine.RemoveStrandIfLive(reed, st.MasterStrand); err != nil {
+		if err := removeStrandIfLive(reed, st.MasterStrand); err != nil {
 			return err
 		}
 	}
 
 	for _, bs := range st.Batches {
 		if bs != nil && bs.Kind == "recovery" && !bs.Terminal {
-			if err := builderengine.RemoveStrandIfLive(reed, bs.StrandGUID); err != nil {
+			if err := removeStrandIfLive(reed, bs.StrandGUID); err != nil {
 				return err
 			}
 		}
@@ -323,23 +338,12 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 	defer runLock.Release()
 
-	plan, err := builderengine.ParsePlan(deps.PlanDir)
+	plan, err := planparser.ParsePlan(deps.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
 
-	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
-	// webster's own pre-flight ahead of builderengine.Validate, per
-	// discussion.md's run-verb-shape decision.
-	if len(plan.Batches) == 0 {
-		return RunResult{}, fmt.Errorf("webster: plan %s has zero batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.PlanDir)
-	}
-
-	caps := builderengine.ValidateCaps{
-		ContextCapTokens: deps.Config.BatchContextCapTokens,
-		CardCap:          deps.Config.BatchCardCap,
-	}
-	if findings := builderengine.Validate(plan, deps.WorktreeRoot, caps); len(findings) > 0 {
+	if findings := planparser.Validate(plan, deps.WorktreeRoot); len(findings) > 0 {
 		msgs := make([]string, len(findings))
 		for i, f := range findings {
 			msgs[i] = f.Error()
@@ -347,7 +351,20 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
 	}
 
-	fingerprint, err := builderengine.Fingerprint(deps.PlanDir)
+	active, err := batcher.Select(deps.Config.Batcher)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: %w", err)
+	}
+	batches := active.Batch(plan.Cards)
+
+	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
+	// webster's own pre-flight over the batchifier's own output, per
+	// discussion.md's run-verb-shape decision.
+	if len(batches) == 0 {
+		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.PlanDir)
+	}
+
+	fingerprint, err := fingerprint(deps.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -392,7 +409,6 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
-			ChainStartSHAs:  map[int]string{},
 		}
 		if err := SaveState(deps.WebsterDir, st); err != nil {
 			return RunResult{}, err
@@ -403,10 +419,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run with --fresh to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
 		}
 
-		if _, err := builderengine.ArchiveStateFile(deps.WebsterDir, time.Now); err != nil {
+		if _, err := archiveStateFile(deps.WebsterDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
-		if err := builderengine.ArchiveReportsDir(deps.ReportsDir, time.Now); err != nil {
+		if err := archiveReportsDir(deps.ReportsDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
 		if err := clearRenderedPrompts(deps.PromptsDir); err != nil {
@@ -421,7 +437,6 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			RunGUID:         guid,
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
-			ChainStartSHAs:  map[int]string{},
 		}
 		if err := SaveState(deps.WebsterDir, st); err != nil {
 			return RunResult{}, err
@@ -435,11 +450,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// now resuming from. Placing the clear HERE — not at the bare entry —
 	// means a run that refused above leaves the operator's pending pause
 	// intact rather than silently discarding a request it never acted on.
-	if err := builderengine.ClearPause(deps.WebsterDir); err != nil {
+	if err := ClearPause(deps.WebsterDir); err != nil {
 		return RunResult{}, err
 	}
 
-	if _, err := builderengine.ArchiveStaleOutcome(deps.WebsterDir, time.Now); err != nil {
+	if _, err := archiveStaleOutcome(deps.WebsterDir, time.Now); err != nil {
 		return RunResult{}, err
 	}
 	if _, err := ArchiveStaleSummary(deps.WebsterDir, time.Now); err != nil {
@@ -455,7 +470,36 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: resolve summary path: %w", err)
 	}
 
-	prompt, err := RenderMasterPrompt(plan, st, outcomePath, summaryPath, deps.Config.SelfFixCap, deps.Config.PollWaitS)
+	// The integration fork's prompt is Go-rendered and Go-written, up front,
+	// exactly like a batch's own fork prompt: Master may write nothing but its
+	// two contract files (a hand-synthesized prompt file would be a
+	// parent-write audit violation), so a plan with a "## verify:" section
+	// must find its integration prompt already on disk — found live in
+	// crucible round fable-r1, where a Master correctly refused to improvise
+	// one and the stage was unreachable.
+	integrationPromptPath := ""
+	if ShouldRunIntegration(plan) {
+		integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.ReportsDir))
+		if err != nil {
+			return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
+		}
+		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.WorktreeRoot)
+		if err != nil {
+			return RunResult{}, err
+		}
+		if err := os.MkdirAll(deps.PromptsDir, 0o755); err != nil {
+			return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.PromptsDir, err)
+		}
+		integrationPromptPath, err = filepath.Abs(filepath.Join(deps.PromptsDir, integrationPromptFileName))
+		if err != nil {
+			return RunResult{}, fmt.Errorf("webster: resolve integration prompt path: %w", err)
+		}
+		if err := os.WriteFile(integrationPromptPath, integrationPrompt, 0o644); err != nil {
+			return RunResult{}, fmt.Errorf("webster: write integration prompt %s: %w", integrationPromptPath, err)
+		}
+	}
+
+	prompt, err := RenderMasterPrompt(plan, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -506,8 +550,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	st.MasterSessionID = runState.SessionID
 	// The launch model IS the idempotent-assertion baseline BeginBatch's
 	// own per-batch model check consults from batch 1 onward — a batch 1
-	// begin-batch call for a non-oversized batch then finds AssertedModel
-	// already equal to RoleMaster's model and injects nothing.
+	// begin-batch call then finds AssertedModel already equal to
+	// RoleMaster's model and injects nothing.
 	st.AssertedModel = resolved.Model
 
 	// Second save: the session ID and launch-model baseline the verbs read.
@@ -527,7 +571,21 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	switch result.Outcome {
 	case shuttleengine.OutcomeDone:
-		return mapMasterDone(deps, plan, outcomePath, summaryPath, result)
+		runResult, mapErr := mapMasterDone(deps, batches, outcomePath, summaryPath, result)
+		if mapErr != nil {
+			return RunResult{}, mapErr
+		}
+		// The integration-suite stage is a minimal call-site addition at the
+		// end of the run, not a rewrite of the batch loop above: it re-derives
+		// everything it needs from disk (the plan's own ShouldRunIntegration,
+		// every batch's own persisted terminal record) rather than trusting
+		// whatever Master's own outcome.yaml/summary.md already said, so it
+		// runs the same way regardless of whether Master itself reported done
+		// or stuck for this plan.
+		if err := runIntegrationStage(deps, plan, batches, runResult.Outcome); err != nil {
+			return RunResult{}, err
+		}
+		return runResult, nil
 
 	case shuttleengine.OutcomeAsking:
 		return RunResult{}, &MasterAskingError{SessionID: result.SessionID, RunDir: result.RunDir, Message: result.LastAssistantMessage}
@@ -553,14 +611,14 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 // asking/died/timeout shuttle outcomes never reach this function — they are
 // mapped directly in Run, before any attempt to parse a file Master never
 // wrote.
-func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
-	outcome, err := builderengine.ParseOutcome(outcomePath)
+func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
+	outcome, err := parseOutcome(outcomePath)
 	if err != nil {
 		return RunResult{}, err
 	}
 
 	var summaryTitle string
-	if outcome.Outcome == builderengine.OutcomeDone {
+	if outcome.Outcome == outcomeDone {
 		// Required: a done run with a missing or malformed summary.md is a
 		// hard error, never guessed — the artifact is the future
 		// loom-finalize PR-text source.
@@ -575,7 +633,7 @@ func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryP
 		// batch was begun-but-never-recorded (a fork slipped past
 		// record-batch) is caught here, closing the begin-without-record leg
 		// of the two-layer bracket enforcement at run exit.
-		if err := verifyEveryBatchDone(deps.WebsterDir, plan); err != nil {
+		if err := verifyEveryBatchDone(deps.WebsterDir, batches); err != nil {
 			return RunResult{}, err
 		}
 
@@ -589,8 +647,8 @@ func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryP
 		summaryTitle = summary.Title
 	}
 
-	if outcome.Outcome != builderengine.OutcomePaused {
-		if err := builderengine.ClearPause(deps.WebsterDir); err != nil {
+	if outcome.Outcome != outcomePaused {
+		if err := ClearPause(deps.WebsterDir); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -603,17 +661,30 @@ func mapMasterDone(deps RunDeps, plan *builderengine.Plan, outcomePath, summaryP
 	}, nil
 }
 
+// batchIdentity returns b's own number/slug identity, taken from its first
+// card. This is a v0 identity-batcher assumption — one card per batch, so
+// the batch's own number/slug coincide with its sole card's — documented
+// the same way state.go's BatchState.CardSHAs is: the multi-card
+// enumeration path is dormant until a grouping batchifier ships, and needs
+// its own identity scheme then, not a change here.
+func batchIdentity(b batcher.Batch) (number int, slug string) {
+	if len(b.Cards) == 0 {
+		return 0, ""
+	}
+	return b.Cards[0].Number, b.Cards[0].Slug
+}
+
 // verifyEveryBatchDone reloads the persisted state and confirms every batch
-// in plan carries a terminal record whose status is done — the whole-plan
-// invariant an outcome: done claims. A batch with no record, a non-terminal
-// record, or a terminal non-done record (stuck/dead) means Master wrote
-// done while that batch was not actually built — most importantly a batch
-// begun but never recorded (its fork slipped past record-batch), which the
-// transcript-count cross-check alone cannot catch when the fork transcript
-// exists but no record-batch consumed it. State is reloaded fresh because
-// the in-memory copy Run captured before Master spawned is stale by run
-// exit (begin/record-batch mutated it repeatedly).
-func verifyEveryBatchDone(websterDir string, plan *builderengine.Plan) error {
+// in batches carries a terminal record whose status is done — the
+// whole-plan invariant an outcome: done claims. A batch with no record, a
+// non-terminal record, or a terminal non-done record (stuck/dead) means
+// Master wrote done while that batch was not actually built — most
+// importantly a batch begun but never recorded (its fork slipped past
+// record-batch), which the transcript-count cross-check alone cannot catch
+// when the fork transcript exists but no record-batch consumed it. State is
+// reloaded fresh because the in-memory copy Run captured before Master
+// spawned is stale by run exit (begin/record-batch mutated it repeatedly).
+func verifyEveryBatchDone(websterDir string, batches []batcher.Batch) error {
 	st, err := LoadState(websterDir)
 	if err != nil {
 		return err
@@ -623,15 +694,16 @@ func verifyEveryBatchDone(websterDir string, plan *builderengine.Plan) error {
 	}
 
 	var offenders []string
-	for _, b := range plan.Batches {
-		bs, ok := st.Batches[b.Number]
+	for _, b := range batches {
+		number, slug := batchIdentity(b)
+		bs, ok := st.Batches[number]
 		switch {
 		case !ok || bs == nil:
-			offenders = append(offenders, fmt.Sprintf("%02d-%s (never recorded)", b.Number, b.Slug))
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (never recorded)", number, slug))
 		case !bs.Terminal:
-			offenders = append(offenders, fmt.Sprintf("%02d-%s (begun, not recorded terminal)", b.Number, b.Slug))
-		case bs.Status != builderengine.DigestStatusDone:
-			offenders = append(offenders, fmt.Sprintf("%02d-%s (%s)", b.Number, b.Slug, bs.Status))
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (begun, not recorded terminal)", number, slug))
+		case bs.Status != DigestStatusDone:
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (%s)", number, slug, bs.Status))
 		}
 	}
 	if len(offenders) > 0 {
@@ -688,4 +760,134 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	}
 
 	return nil
+}
+
+// runIntegrationStage drives the plan-level integration-suite stage after
+// every batch has reached a terminal-done state, wired at the very end of
+// Run per the integration-suite-fork-with-bisect decision: a no-op when the
+// plan carries no plan-level "## verify:" section (ShouldRunIntegration) or
+// when the whole-plan batch set is not (yet) all terminal-done — a run that
+// ended stuck for an ordinary batch reason never reaches the integration
+// stage at all. Otherwise it confirms the one dedicated integration fork's
+// report has landed (RunIntegration — Master itself spawned that fork and
+// waited for its report per master-template.md's own integration-fork
+// bracket instruction, so the report is normally already on disk by the
+// time Run reaches this call; the bounded await here is a defensive
+// re-confirmation, mirroring the run-exit audit's own backstop posture)
+// and, on a FAILED report, runs the in-process SHA-bisect over every
+// batch's own accumulated BatchState.CardSHAs and escalates. The persisted
+// terminal record and summary.md extension this produces are authoritative
+// regardless of what Master's own outcome.yaml/summary.md already said,
+// since webster's own localized finding is strictly more precise than
+// Master's own best-effort report.
+func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch, masterOutcome string) error {
+	if !ShouldRunIntegration(plan) {
+		return nil
+	}
+	// A run whose batches are not all terminal-done never reached the
+	// integration stage in the first place (Master's own bracket
+	// instruction only spawns the integration fork after every batch is
+	// done) — this is expected, not a failure, so the error here is
+	// swallowed rather than propagated.
+	if err := verifyEveryBatchDone(deps.WebsterDir, batches); err != nil {
+		return nil
+	}
+
+	clk := deps.Clock
+	if clk == nil {
+		clk = realClock{}
+	}
+	await, err := AwaitIntegration(deps.ReportsDir, time.Duration(DefaultAwaitWaitS)*time.Second, clk)
+	if err != nil {
+		return err
+	}
+	if !await.ReportPresent {
+		// A done outcome CLAIMS a passing integration suite, so a missing
+		// report is a real inconsistency — fail loud. A non-done outcome with
+		// no report is instead consistent (the integration fork died, or
+		// Master stuck out before the stage) — Master's own graceful judgment
+		// is the run's result, and erroring here would overwrite it.
+		if masterOutcome == outcomeDone {
+			return fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported")
+		}
+		return nil
+	}
+
+	report, err := ParseReport(IntegrationReportPath(deps.ReportsDir))
+	if err != nil {
+		return err
+	}
+	if report.Status == ReportStatusOK {
+		// Master's own "done" outcome already reflects a passing integration
+		// suite correctly; nothing further to escalate.
+		return nil
+	}
+
+	mutateLock, err := AcquireStateMutation(deps.WebsterDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = mutateLock.Release() }()
+
+	// Reload state fresh: begin-batch/record-batch mutated and persisted it
+	// repeatedly across Master's whole run, so the in-memory copy captured
+	// before Master ever spawned is stale by the time this stage runs.
+	st, err := LoadState(deps.WebsterDir)
+	if err != nil {
+		return err
+	}
+	if st == nil {
+		return fmt.Errorf("webster: integration stage: no state.json to escalate against")
+	}
+
+	shas, labels := accumulatedCardSHAs(batches, st)
+
+	repo := gitrepo.New(deps.WorktreeRoot)
+	if err := BisectAndEscalate(repo, shas, labels, plan.Verify, deps.WorktreeRoot, deps.WebsterDir, st); err != nil {
+		return err
+	}
+
+	if err := SaveState(deps.WebsterDir, st); err != nil {
+		return err
+	}
+
+	// A Master that claimed outcome: done while the plan-level integration
+	// suite actually FAILED is the same contradiction the missing-report-under-
+	// done branch above already fails loud on: a done outcome CLAIMS a passing
+	// suite. Fail loud here too, symmetric with that branch — otherwise the run
+	// would report done over a suite webster itself just localized as failing,
+	// leaving the CLI envelope's outcome: done contradicting summary.md's own
+	// "integration suite failed" section. The escalation above (the reserved
+	// -1 record and summary.md's localized card) is already persisted and is
+	// weft-committed by webstercli's run backstop, so a resume or a human still
+	// sees the offending card despite this loud return. A non-done master
+	// outcome (the template-correct stuck) keeps its own judgment: the
+	// escalation merely sharpened its summary, so it returns nil below.
+	if masterOutcome == outcomeDone {
+		return fmt.Errorf("webster: run reached outcome: done but the plan-level \"## verify:\" suite FAILED and was escalated (see summary.md for the SHA-bisect-localized offending card) — a done outcome requires a passing integration suite")
+	}
+
+	return nil
+}
+
+// accumulatedCardSHAs walks batches in plan order and collects every
+// terminal batch's own CardSHAs alongside a matching "NN-slug" label — the
+// ordered per-card SHA trail and parallel label set bisect and its
+// escalation search over. A batch with no persisted record (should never
+// happen once verifyEveryBatchDone has already confirmed every batch is
+// terminal-done, but handled defensively rather than assumed) contributes
+// nothing.
+func accumulatedCardSHAs(batches []batcher.Batch, st *State) (shas, labels []string) {
+	for _, b := range batches {
+		number, slug := batchIdentity(b)
+		bs, ok := st.Batches[number]
+		if !ok || bs == nil {
+			continue
+		}
+		for _, sha := range bs.CardSHAs {
+			shas = append(shas, sha)
+			labels = append(labels, fmt.Sprintf("%02d-%s", number, slug))
+		}
+	}
+	return shas, labels
 }

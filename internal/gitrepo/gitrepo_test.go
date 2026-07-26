@@ -631,6 +631,91 @@ func TestSHAExists(t *testing.T) {
 	}
 }
 
+// TestBisectPrimitives_DetachRestoreCycle exercises the full in-place bisect
+// cycle the integration bisect drives: capture the current branch, detach to
+// an older commit, assert HEAD landed there detached, restore the branch,
+// and assert HEAD is back on it — the exact CurrentBranch -> CheckoutDetached
+// -> RestoreBranch sequence the bisect's per-candidate loop performs.
+func TestBisectPrimitives_DetachRestoreCycle(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "first")
+	commitAll(t, dir, "first commit")
+	older, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	writeFile(t, dir, "a.txt", "second")
+	commitAll(t, dir, "second commit")
+
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		t.Fatalf("CurrentBranch() error = %v; want nil", err)
+	}
+	if branch != "main" {
+		t.Fatalf("CurrentBranch() = %q; want %q", branch, "main")
+	}
+
+	if err := repo.CheckoutDetached(older); err != nil {
+		t.Fatalf("CheckoutDetached(%q) error = %v; want nil", older, err)
+	}
+
+	// A detached HEAD has no symbolic ref to resolve; `symbolic-ref -q HEAD`
+	// exits non-zero exactly when HEAD is detached.
+	if _, _, code, _ := runGit(t, dir, "symbolic-ref", "-q", "HEAD"); code == 0 {
+		t.Fatal("git symbolic-ref -q HEAD succeeded after CheckoutDetached(); want HEAD detached")
+	}
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if head != older {
+		t.Errorf("CurrentSHA() after CheckoutDetached(%q) = %q; want %q", older, head, older)
+	}
+
+	if err := repo.RestoreBranch(branch); err != nil {
+		t.Fatalf("RestoreBranch(%q) error = %v; want nil", branch, err)
+	}
+	restored, err := repo.CurrentBranch()
+	if err != nil {
+		t.Fatalf("CurrentBranch() after RestoreBranch() error = %v; want nil", err)
+	}
+	if restored != branch {
+		t.Errorf("CurrentBranch() after RestoreBranch(%q) = %q; want %q", branch, restored, branch)
+	}
+}
+
+// TestCheckoutDetached_RejectsNonHexSHA asserts CheckoutDetached validates
+// its sha argument the same way ChangedFilesSince and SHAExists do, before
+// ever spawning git.
+func TestCheckoutDetached_RejectsNonHexSHA(t *testing.T) {
+	_, repo := newRepo(t)
+
+	err := repo.CheckoutDetached("not-a-sha at all!!")
+	if !errors.Is(err, gitrepo.ErrInvalidSHA) {
+		t.Fatalf("CheckoutDetached(garbage) error = %v; want errors.Is(err, ErrInvalidSHA)", err)
+	}
+}
+
+// TestCurrentBranch_ErrorsOnDetachedHEAD asserts CurrentBranch surfaces an
+// error rather than an empty string when HEAD is detached, so a caller can
+// never mistake "no branch captured" for a legitimate empty branch name.
+func TestCurrentBranch_ErrorsOnDetachedHEAD(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+	sha, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	lyxtest.MustRun(t, dir, "git", "checkout", "--detach", sha)
+
+	if _, err := repo.CurrentBranch(); err == nil {
+		t.Fatal("CurrentBranch() on detached HEAD error = nil; want non-nil")
+	}
+}
+
 // firstCommitSHA returns the SHA of the repository's first (root) commit,
 // used as a fixed base point for ChangedFilesSince assertions.
 func firstCommitSHA(t *testing.T, dir string) string {

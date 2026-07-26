@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 )
 
 // awaitTick is the fixed re-check cadence AwaitBatch polls the report path
@@ -63,14 +63,15 @@ type AwaitResult struct {
 // applies); a report that never appears within wait is NOT an error — it
 // returns ReportPresent: false and the caller decides (re-call, or
 // record-batch's no_report ladder once the fork has finished).
-func AwaitBatch(plan *builderengine.Plan, reportsDir string, batchNumber int, wait time.Duration, clk Clock) (*AwaitResult, error) {
-	batch, err := findBatch(plan, batchNumber)
+func AwaitBatch(batches []batcher.Batch, reportsDir string, batchNumber int, wait time.Duration, clk Clock) (*AwaitResult, error) {
+	batch, err := findBatch(batches, batchNumber)
 	if err != nil {
 		return nil, err
 	}
+	number, slug := batchIdentity(batch)
 
-	batchName := fmt.Sprintf("%02d-%s", batch.Number, batch.Slug)
-	reportPath := filepath.Join(reportsDir, builderengine.BatchReportFileName(batch.Number, batch.Slug))
+	batchName := fmt.Sprintf("%02d-%s", number, slug)
+	reportPath := filepath.Join(reportsDir, ReportFileName(number, slug))
 
 	start := clk.Now()
 	for {

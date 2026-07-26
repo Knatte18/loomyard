@@ -37,7 +37,7 @@ to one job over a file contract:
   (batch-based) is being replaced by
   [plan-format v3](../../docs/reference/plan-format-v3.md) (a flat card list) — see that doc for
   the schema the Plan producer will write against, and
-  [webster-rewrite.md](webster-rewrite.md) for the consumer-side redesign this implies.
+  `internal/websterengine`'s package documentation for the consumer that now implements it.
 - Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 
 No agent knows about rounds, gates, N-caps, finalize, or the others. Each phase becomes
@@ -117,9 +117,9 @@ From loom's view, **Builder is a black box loom calls, exactly like perch**: `lo
 `builder run` and, once it returns `done`, drives the terminal **Builder-review gate** — a full
 `perch` converge-loop over the whole diff. loom does not see Builder's batch loop, its verbs, or
 its escalation mechanics, the same way it doesn't see perch's rounds. Builder's own internal
-design (today: a batch loop over `internal/builderengine`'s verbs; planned: a
-[card-level rewrite](webster-rewrite.md)) lives in
-[webster-rewrite.md](webster-rewrite.md) and [builder-contract.md](../../docs/reference/builder-contract.md),
+design (builder's frozen batch loop, and webster, its landed card-level
+sibling) lives in `internal/websterengine`'s package documentation and
+[builder-contract.md](../../docs/reference/builder-contract.md),
 not here — pause stays uniform across loom/perch/Builder (see [pause](#graceful-pause)) because
 every loop checks the same `pause_requested` flag at its own step boundary, regardless of which
 module holds the loop.
@@ -230,7 +230,7 @@ boundary**, never mid-operation — `mill-pause`'s natural-stopping-point proper
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | a black box from loom's view — see [webster-rewrite.md](webster-rewrite.md) and [builder-contract.md](../../docs/reference/builder-contract.md) |
+| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [builder-contract.md](../../docs/reference/builder-contract.md) |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `plan-template.md` prompt (carrying a compact plan-format-v3 spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`plan-template.md`, `plantemplate.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |

@@ -13,9 +13,9 @@
 // Unlike buildercli (which stores only a builderengine.Starter and a
 // builderengine.OrchestratorStarter adapter over the same Runner),
 // websterCLI stores THREE adapted views of the one constructed Runner:
-// starter (builderengine.Starter, consumed by recover-batch's cold-strand
-// spawn, reused by import per the reuse-by-import-never-copy decision),
-// injector (websterengine.Injector, consumed by begin-batch's model-switch
+// starter (websterengine.Starter, webster's own local copy of the spawn
+// seam, consumed by recover-batch's cold-strand spawn), injector
+// (websterengine.Injector, consumed by begin-batch's model-switch
 // choreography), and masterStarter (websterengine.MasterStarter, behind the
 // runnerMasterStarter adapter, consumed by run's Master spawn) -- because
 // webster's three verbs each need a distinct narrow seam onto the same
@@ -25,7 +25,7 @@ package webstercli
 import (
 	"io"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -50,19 +50,19 @@ type websterCLI struct {
 	// starter, injector, and masterStarter are the three narrow seams
 	// webster's verbs spawn/inject through, all backed by runner in
 	// production: starter is recover-batch's cold-strand spawn seam
-	// (builderengine.Starter, reused by import); injector is begin-batch's
-	// model-switch seam (websterengine.Injector); masterStarter is run's
-	// Master spawn seam (websterengine.MasterStarter), reached through the
-	// runnerMasterStarter adapter below. A test overrides any one
-	// independently with a fake to exercise a verb without a live
+	// (websterengine.Starter, webster's own local copy of the spawn seam);
+	// injector is begin-batch's model-switch seam (websterengine.Injector);
+	// masterStarter is run's Master spawn seam (websterengine.MasterStarter),
+	// reached through the runnerMasterStarter adapter below. A test overrides
+	// any one independently with a fake to exercise a verb without a live
 	// tmux/claude substrate.
-	starter       builderengine.Starter
+	starter       websterengine.Starter
 	injector      websterengine.Injector
 	masterStarter websterengine.MasterStarter
 
 	// engine and reed are the constructed claude and reed engines Runner
 	// itself holds unexported: record-batch and recover-batch call
-	// builderengine.TurnEnded/builderengine.StrandLive directly with these,
+	// websterengine.TurnEnded/websterengine.StrandLive directly with these,
 	// and both gatherers need to call ParseEvents/Status on them, which
 	// Runner's own surface does not expose.
 	engine shuttleengine.Engine
@@ -72,6 +72,14 @@ type websterCLI struct {
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
 	roles      map[websterengine.Role]modelspec.Resolved
+
+	// batcher is the load-time-resolved, config-selected batchifier (see
+	// internal/batcher.Select), validated once in PersistentPreRunE so an
+	// unknown webster.yaml batcher: name fails fast before any verb runs.
+	// Every state-mutating bracket verb (begin/await/record/recover-batch)
+	// calls batcher.Batch(plan.Cards) through this field to derive the same
+	// execution-batch grouping "lyx webster run" uses internally.
+	batcher batcher.Batcher
 
 	// planDir, websterDir, reportsDir, and promptsDir are the
 	// hubgeometry-resolved _lyx/plan, _lyx/webster, _lyx/webster/reports, and
@@ -114,7 +122,7 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine
 // shuttleengine.Runner into c, skipping that resolution entirely when the
 // group command itself is invoked (bare "lyx webster" listing or an
 // unknown-subcommand error via GroupRunE) so neither path requires a git
-// repository. Role resolution runs against every one of the config's three
+// repository. Role resolution runs against every one of the config's two
 // roles as a pre-flight -- deliberately uniform across all eight verbs,
 // mirroring buildercli's own uniform role pre-flight -- so a typo'd role
 // alias in webster.yaml aborts every verb here, before any agent ever forks
@@ -125,7 +133,7 @@ func Command() *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "webster",
 		Short: "drive a pinned plan-format plan through a long-lived Master session that forks one implementer per batch",
-		Long: `webster takes a pinned plan-format v2 plan (see docs/reference/plan-format.md)
+		Long: `webster takes a pinned plan-format plan (see docs/reference/plan-format-v3.md)
 and drives it through a long-lived Master session that reads the plan once
 and forks one implementer per batch in-session, bracketing each fork with
 begin-batch/record-batch calls, until the plan is built or the run reports
@@ -199,6 +207,17 @@ Verbs:
 				return nil
 			}
 
+			// Resolve and validate the active batchifier now, fail-fast,
+			// before any verb runs: an unknown webster.yaml batcher: name
+			// must never surface only once a bracket verb first needs it
+			// mid-run.
+			activeBatcher, err := batcher.Select(websterCfg.Batcher)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
 			registry, err := modelspec.LoadRegistry(layout.Cwd)
 			if err != nil {
 				output.Err(out, err.Error())
@@ -230,6 +249,7 @@ Verbs:
 			c.shuttleCfg = shuttleCfg
 			c.cfg = websterCfg
 			c.roles = roles
+			c.batcher = activeBatcher
 			// Anchored at layout.Cwd, like every config load above and like
 			// buildercli's own planDir/builderDir/reportsDir: the
 			// initialized _lyx (the weft junction) lives at the directory

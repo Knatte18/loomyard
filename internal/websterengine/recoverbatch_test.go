@@ -24,9 +24,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -155,10 +157,10 @@ func (c *recoverFakeClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
 var _ websterengine.Clock = (*recoverFakeClock)(nil)
 
 // recoverFixture is a fully-wired set of RecoverBatch dependencies: a real
-// scratch git repo (one base commit) as WorktreeRoot, a literal one-batch
-// plan backed by a seeded plan dir, a real *shuttleengine.Runner over
-// recoverFakeReed/recoverFakeEngine as the Starter, and webster's three
-// roles pre-resolved.
+// scratch git repo (one base commit) as WorktreeRoot, a one-batch plan backed
+// by a seeded plan dir and its corresponding execution-batch list, a real
+// *shuttleengine.Runner over recoverFakeReed/recoverFakeEngine as the Starter,
+// and webster's two roles pre-resolved.
 type recoverFixture struct {
 	Deps       websterengine.RecoverDeps
 	Reed       *recoverFakeReed
@@ -170,12 +172,9 @@ type recoverFixture struct {
 func newRecoverFixture(t *testing.T) *recoverFixture {
 	t.Helper()
 
-	planDir := seedPlanDir(t)
-	plan := &builderengine.Plan{
-		Dir: planDir,
-		Batches: []builderengine.PlanBatch{
-			{Number: 1, Slug: "json-flag", File: "01-json-flag.md", Scope: []string{"internal/foo"}},
-		},
+	plan := &planparser.Plan{}
+	batches := []batcher.Batch{
+		{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},
 	}
 
 	worktree := newScratchRepo(t)
@@ -188,9 +187,8 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
-		websterengine.RoleMaster:          {Engine: "claude", Model: "master-model", Params: map[string]string{}},
-		websterengine.RoleMasterOversized: {Engine: "claude", Model: "oversized-model", Params: map[string]string{}},
-		websterengine.RoleRecovery:        {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
+		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
+		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
 	}
 
 	reportsDir := t.TempDir()
@@ -198,6 +196,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	deps := websterengine.RecoverDeps{
 		Starter:      runner,
 		Plan:         plan,
+		Batches:      batches,
 		State:        &websterengine.State{Batches: map[int]*websterengine.BatchState{}},
 		Roles:        roles,
 		Config:       websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
@@ -217,7 +216,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 // batch 1 at its plan-format-pinned filename.
 func writeRecoverReport(t *testing.T, reportsDir, content string) {
 	t.Helper()
-	path := filepath.Join(reportsDir, builderengine.BatchReportFileName(1, "json-flag"))
+	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "json-flag"))
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write batch report: %v", err)
 	}
@@ -227,7 +226,7 @@ func writeRecoverReport(t *testing.T, reportsDir, content string) {
 // assembles from the three lease-scoped phases, so each test keeps asserting
 // one call's whole effect.
 type recoverDriveResult struct {
-	Digest   *builderengine.Digest
+	Digest   *websterengine.Digest
 	Running  bool
 	Spawned  bool
 	ElapsedS int
@@ -273,7 +272,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	fx := newRecoverFixture(t)
 
 	stalePath := filepath.Join(fx.ReportsDir, "01-json-flag.yaml")
-	if err := os.WriteFile(stalePath, []byte("batch: 01-json-flag\nstatus: stuck\ntests: red\nstuck_reason: \"blocked\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(stalePath, []byte("status: FAILED\nhead_sha: deadbeef\n"), 0o644); err != nil {
 		t.Fatalf("seed stale report: %v", err)
 	}
 
@@ -316,7 +315,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	if err != nil {
 		t.Fatalf("read archived report %s: %v", archived[0], err)
 	}
-	if !strings.Contains(string(data), "status: stuck") {
+	if !strings.Contains(string(data), "status: FAILED") {
 		t.Errorf("archived report content = %q; want the prior report preserved verbatim", string(data))
 	}
 
@@ -351,9 +350,9 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	if _, parseErr := time.Parse(time.RFC3339, bs.SpawnedAt); parseErr != nil {
 		t.Errorf("BatchState.SpawnedAt = %q: %v; want a valid RFC3339 timestamp", bs.SpawnedAt, parseErr)
 	}
-	wantHead, err := builderengine.HeadSHA(fx.Worktree)
+	wantHead, err := gitrepo.New(fx.Worktree).CurrentSHA()
 	if err != nil {
-		t.Fatalf("HeadSHA() error = %v", err)
+		t.Fatalf("CurrentSHA() error = %v", err)
 	}
 	if bs.StartSHA != wantHead {
 		t.Errorf("BatchState.StartSHA = %q; want the fresh HeadSHA %q", bs.StartSHA, wantHead)
@@ -371,7 +370,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 // state is terminal dead, builder's dead-orphan late-report case, where the
 // report is archived and the spawn proceeds.
 func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
-	doneReport := "batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"
+	doneReport := "status: OK\nhead_sha: deadbeef\n"
 
 	t.Run("DoneReport_NoPriorRecord_Refused", func(t *testing.T) {
 		fx := newRecoverFixture(t)
@@ -435,8 +434,14 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	runDir := fx.Deps.State.Batches[1].ShuttleRunDir
 	strandGUID := fx.Deps.State.Batches[1].StrandGUID
 
-	// The re-fork's report has now landed.
-	writeRecoverReport(t, fx.ReportsDir, "batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n")
+	// The re-fork's report has now landed, self-reporting the worktree's real
+	// HEAD (the head_sha cross-check refuses a report whose SHA disagrees
+	// with the worktree it left behind — see the mismatch test below).
+	realHead, err := gitrepo.New(fx.Worktree).CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+realHead+"\n")
 
 	second, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
 	if err != nil {
@@ -448,7 +453,7 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	if second.Running {
 		t.Error("second call Running = true; want false (terminal once the report landed)")
 	}
-	if second.Digest == nil || second.Digest.Status != builderengine.DigestStatusDone {
+	if second.Digest == nil || second.Digest.Status != websterengine.DigestStatusDone {
 		t.Fatalf("second call Digest = %+v; want a done digest", second.Digest)
 	}
 	if len(second.Warnings) != 0 {
@@ -462,11 +467,17 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	if !bs.Terminal {
 		t.Error("BatchState.Terminal = false; want true")
 	}
-	if bs.Status != builderengine.DigestStatusDone {
-		t.Errorf("BatchState.Status = %q; want %q", bs.Status, builderengine.DigestStatusDone)
+	if bs.Status != websterengine.DigestStatusDone {
+		t.Errorf("BatchState.Status = %q; want %q", bs.Status, websterengine.DigestStatusDone)
 	}
 	if bs.Digest == nil {
 		t.Error("BatchState.Digest = nil; want the persisted digest")
+	}
+	// A recovery-completed batch must land in the accumulated CardSHAs trail
+	// exactly like a fork batch, or the integration-suite bisect searches a
+	// gapped trail and blames the wrong card (crucible round fable-r1's F3).
+	if len(bs.CardSHAs) != 1 || bs.CardSHAs[0] != realHead {
+		t.Errorf("BatchState.CardSHAs = %v; want [%s] persisted at recovery terminal", bs.CardSHAs, realHead)
 	}
 	if fx.Deps.State.CurrentBatch != 0 {
 		t.Errorf("State.CurrentBatch = %d; want 0 (cleared)", fx.Deps.State.CurrentBatch)
@@ -484,6 +495,40 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	}
 	if _, statErr := os.Stat(runDir); !os.IsNotExist(statErr) {
 		t.Errorf("stat(%s) = %v; want the done run dir removed", runDir, statErr)
+	}
+}
+
+// TestRecoverBatch_ReportHeadSHAMismatchIsHardError proves the recovery
+// path applies RecordBatch's own head_sha cross-check: a recovery report
+// whose self-reported head_sha disagrees with the worktree's actual HEAD is
+// refused loud rather than persisted into the digest and the bisect trail
+// (crucible round fable-r1's F4 — before this check, only the fork path
+// verified the report against the repo it claimed to describe).
+func TestRecoverBatch_ReportHeadSHAMismatchIsHardError(t *testing.T) {
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+
+	first, err := driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() first call error = %v; want nil", err)
+	}
+	if !first.Running {
+		t.Fatalf("first call = %+v; want Running=true", first)
+	}
+
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: deadbeef\n")
+
+	_, err = driveRecoverBatch(fx.Deps, 1, time.Second, clk)
+	if err == nil {
+		t.Fatal("RecoverBatch() with a mismatching head_sha = nil error; want the cross-check refusal")
+	}
+	if !strings.Contains(err.Error(), "does not match the worktree's actual HEAD") {
+		t.Errorf("error = %q; want the head_sha mismatch refusal", err.Error())
+	}
+	// Nothing was persisted terminal: the batch record stays non-terminal for
+	// a corrected report or an operator to resolve.
+	if bs := fx.Deps.State.Batches[1]; bs.Terminal {
+		t.Errorf("BatchState.Terminal = true; want false after a refused report")
 	}
 }
 
@@ -521,11 +566,11 @@ func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	if second.Running {
 		t.Error("second call Running = true; want false (terminal dead/timeout)")
 	}
-	if second.Digest == nil || second.Digest.Status != builderengine.DigestStatusDead {
+	if second.Digest == nil || second.Digest.Status != websterengine.DigestStatusDead {
 		t.Fatalf("second call Digest = %+v; want a dead digest", second.Digest)
 	}
-	if second.Digest.DeadReason != builderengine.DeadReasonTimeout {
-		t.Errorf("second call Digest.DeadReason = %q; want %q", second.Digest.DeadReason, builderengine.DeadReasonTimeout)
+	if second.Digest.DeadReason != websterengine.DeadReasonTimeout {
+		t.Errorf("second call Digest.DeadReason = %q; want %q", second.Digest.DeadReason, websterengine.DeadReasonTimeout)
 	}
 	if second.ElapsedS < 120 {
 		t.Errorf("second call ElapsedS = %d; want >= 120 (measured since the original spawn)", second.ElapsedS)
