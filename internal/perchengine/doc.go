@@ -65,12 +65,41 @@
 // cost, while the hard cap already bounds the damage of a wrong verdict.
 // What ships instead is a holistic verdict judge — an ephemeral LLM
 // (default Haiku, config key judge_model / profile key judge-model) spawned
-// via shuttle that reads every prior round's already-written review file
-// and writes a verdict file: strict YAML frontmatter (a verdict enum plus a
-// rationale citing concrete finding evidence) over unconstrained prose. The
-// prose carries a human-facing THEMES OVERVIEW — what kinds of findings
-// keep recurring — so an operator can eyeball cross-round overlap; parsing
-// is fail-loud, mirroring burlerengine.ParseReview.
+// via shuttle that reads the judge's bounded read-set (below) and writes a
+// verdict file: strict YAML frontmatter (a verdict enum plus a rationale
+// citing concrete finding evidence) over unconstrained prose. The prose
+// carries a human-facing THEMES OVERVIEW — what kinds of findings keep
+// recurring — so an operator can eyeball cross-round overlap; parsing is
+// fail-loud, mirroring burlerengine.ParseReview.
+//
+// The judge's read-set is bounded, not unbounded: {the latest VALID
+// judge-maintained handoff + the reviews of every completed round its
+// covers_rounds does not already absorb} plus the current round's fresh
+// review — never every prior round's review file. The SAME judge call that
+// renders the verdict also maintains the handoff, writing a fresh
+// round-<token>-handoff.md alongside the verdict file: strict YAML
+// frontmatter (a lossless per-finding ledger plus covers_rounds) over a
+// distilled prose narrative, carrying forward every ledger entry from the
+// previous handoff (open or resolved, never dropped) so circling-detection
+// never silently loses a recurring finding. state.json's per-round record
+// carries this in an optional handoffPath field (additive, omitempty — see
+// the state-json-compatibility shared decision), set only when that
+// round's judge call both succeeded AND produced a handoff file that reads
+// and parses cleanly. A round with no judge call at all (round 1; the
+// round right after an APPROVED verdict; any round a judge call failed on)
+// carries no handoffPath and therefore never appears in a later handoff's
+// covers_rounds, so its review is always fed to the next judge call — this
+// is what closes the "judge-gap" hole a bounded read-set would otherwise
+// open. A missing or unparseable handoff file is the same fail-safe Warn
+// posture described below, never an error and never STUCK: the next judge
+// call simply falls back to the next older valid handoff, or — with no
+// valid handoff at all — degrades to exactly the pre-handoff all-reviews
+// behavior. This bounding was a genuine efficiency fix to perch's own
+// shipped behavior (unbounded O(N) judge context growth as rounds
+// accumulate), landed as part of extracting the loop into treadleengine
+// (below) — it does not change what a burler ROUND reads (still every
+// prior review/fixer-report/failed-gate output; see collectPriorHydration
+// in treadleengine), only what the JUDGE reads.
 //
 // The same judge, the same template, serves two framings selected by a mode
 // value:

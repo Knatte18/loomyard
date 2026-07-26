@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // queuedAttemptResult is one scripted (AttemptResult, error) pair
@@ -61,9 +62,13 @@ func (f *fakeRunner) RunAttempt(in AttemptInput) (AttemptResult, error) {
 }
 
 // queuedShuttleEntry is one scripted judge/triage verdict-file content (or
-// error) queuedShuttle.Run dequeues.
+// error) queuedShuttle.Run dequeues. handoffContent, when non-empty, is
+// written to a judge call's second OutputFiles entry (the handoff path) —
+// a triage call's Spec has only one OutputFiles entry, so handoffContent is
+// simply unused for those scripted entries.
 type queuedShuttleEntry struct {
 	verdictContent string
+	handoffContent string
 	err            error
 }
 
@@ -88,6 +93,11 @@ func (q *queuedShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, erro
 	}
 	if err := os.WriteFile(spec.OutputFiles[0], []byte(next.verdictContent), 0o644); err != nil {
 		return shuttleengine.Result{}, err
+	}
+	if next.handoffContent != "" {
+		if err := os.WriteFile(spec.OutputFiles[1], []byte(next.handoffContent), 0o644); err != nil {
+			return shuttleengine.Result{}, err
+		}
 	}
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 }
@@ -526,5 +536,323 @@ func TestEngine_ProfileValidation(t *testing.T) {
 				t.Errorf("fakeRunner called %d times; want 0 (an invalid profile must never reach the runner)", len(fr.calls))
 			}
 		})
+	}
+}
+
+// readRunState reads runDir's persisted state.json, failing the test loudly
+// if it is missing or unreadable. Same-package access to the unexported
+// runState/roundRecord types means this is a direct read of the real
+// persisted shape — no test-local mirror struct needed (contrast
+// perchengine/run_test.go's readRunState, which mirrors the shape across a
+// package boundary).
+func readRunState(t *testing.T, runDir string) runState {
+	t.Helper()
+	path := filepath.Join(runDir, stateFileName)
+	lockPath := path + ".lock"
+	got, found, err := state.ReadJSON[runState](path, lockPath)
+	if err != nil {
+		t.Fatalf("state.ReadJSON(%q) = %v; want nil", path, err)
+	}
+	if !found {
+		t.Fatalf("state.ReadJSON(%q) found = false; want true", path)
+	}
+	return got
+}
+
+// TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced proves (a): a judge
+// round's HandoffPath is set only when the shuttle fake actually wrote a
+// valid handoff file alongside its verdict. A judge call whose verdict
+// succeeds but never produces a handoff file still records the round's
+// JudgeVerdict — the two are independent — and leaves HandoffPath empty,
+// never an error and never STUCK from the missing handoff alone.
+func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
+	newProfile := func() Profile {
+		return Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+	}
+
+	t.Run("handoff file produced alongside the verdict", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		fr := &fakeRunner{}
+		fr.queue = []queuedAttemptResult{
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}},
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}},
+		}
+		qs := &queuedShuttle{}
+		qs.queue = []queuedShuttleEntry{
+			// Round 2's circling check: round 1 never runs a judge (no prior
+			// round to compare it against yet).
+			{
+				verdictContent: verdictFileContent(string(JudgeProgressing), "still moving"),
+				handoffContent: "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n",
+			},
+		}
+		e := New("perch", fr, qs, Options{})
+
+		got, err := e.Run(newProfile(), runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+
+		st := readRunState(t, runDir)
+		if len(st.Rounds) < 2 {
+			t.Fatalf("st.Rounds = %+v; want at least 2 rounds", st.Rounds)
+		}
+		if st.Rounds[1].JudgeVerdict != string(JudgeProgressing) {
+			t.Errorf("Rounds[1].JudgeVerdict = %q; want %q", st.Rounds[1].JudgeVerdict, JudgeProgressing)
+		}
+		wantHandoffPath := qs.specs[0].OutputFiles[1]
+		if st.Rounds[1].HandoffPath != wantHandoffPath {
+			t.Errorf("Rounds[1].HandoffPath = %q; want %q (the produced handoff file)", st.Rounds[1].HandoffPath, wantHandoffPath)
+		}
+	})
+
+	t.Run("no handoff file produced leaves HandoffPath empty", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		fr := &fakeRunner{}
+		fr.queue = []queuedAttemptResult{
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}},
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}},
+		}
+		qs := &queuedShuttle{}
+		qs.queue = []queuedShuttleEntry{
+			// A real verdict, but the fake never writes the handoff file —
+			// exactly what a genuine agent turn-limit or write failure looks
+			// like from the loop's perspective.
+			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+		}
+		e := New("perch", fr, qs, Options{})
+
+		got, err := e.Run(newProfile(), runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q (a missing handoff must never affect the verdict outcome)", got.Outcome, OutcomeApproved)
+		}
+
+		st := readRunState(t, runDir)
+		if len(st.Rounds) < 2 {
+			t.Fatalf("st.Rounds = %+v; want at least 2 rounds", st.Rounds)
+		}
+		if st.Rounds[1].JudgeVerdict != string(JudgeProgressing) {
+			t.Errorf("Rounds[1].JudgeVerdict = %q; want %q (the verdict itself still records)", st.Rounds[1].JudgeVerdict, JudgeProgressing)
+		}
+		if st.Rounds[1].HandoffPath != "" {
+			t.Errorf("Rounds[1].HandoffPath = %q; want empty (no handoff file was ever written)", st.Rounds[1].HandoffPath)
+		}
+	})
+}
+
+// TestEngine_HandoffLifecycle_ReadSetCoverage proves (b), (c), and the
+// first-call half of (e) together, in one flowing GateCommand scenario
+// chosen so a round can fail to converge on a passing VERDICT alone (an
+// APPROVED-but-gate-failing round never runs a judge at all, and neither
+// does the BLOCKING round immediately after it — both are judge-skipped
+// rounds that must still be fed forward):
+//
+//   - round 1: APPROVED, gate fails — no judge (Verdict != Blocking).
+//   - round 2: BLOCKING, gate fails — no judge (prevRoundApproved exemption).
+//   - round 3: BLOCKING, gate fails — FIRST judge call. No previous handoff
+//     exists yet, so (e): the read-set degrades to exactly all completed
+//     rounds' reviews — proving rounds 1 and 2's judge-skipped reviews are
+//     fed forward to this first call. Its scripted handoff covers rounds
+//     1-3.
+//   - round 4: BLOCKING, gate fails — SECOND judge call. (b): its
+//     previous_handoff marker carries round 3's recorded handoff path, and
+//     its read-set excludes rounds 1-3 (all covered) and carries only round
+//     4's own fresh review. (c): covers_rounds absorbing the judge-skipped
+//     rounds 1 and 2 (transitively, via round 3's handoff) is what keeps
+//     them out of round 4's read-set too, never resurfacing.
+//   - round 5: BLOCKING, gate passes — converges; no third judge call.
+func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
+	runDir := filepath.Join(t.TempDir(), "run")
+	gateDir := t.TempDir()
+
+	fr := &fakeRunner{}
+	fr.queue = []queuedAttemptResult{
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s1"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s3"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s4"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s5"}},
+	}
+	fcr := &fakeCommandRunner{}
+	fcr.queue = []queuedCommandResult{
+		{output: []byte("fail"), exitZero: false},
+		{output: []byte("fail"), exitZero: false},
+		{output: []byte("fail"), exitZero: false},
+		{output: []byte("fail"), exitZero: false},
+		{output: []byte("ok"), exitZero: true},
+	}
+	qs := &queuedShuttle{}
+	qs.queue = []queuedShuttleEntry{
+		// Round 3's circling check — the block's first-ever judge call.
+		{
+			verdictContent: verdictFileContent(string(JudgeProgressing), "still moving"),
+			handoffContent: "---\ncovers_rounds: [1, 2, 3]\nledger: []\n---\n\nstill moving.\n",
+		},
+		// Round 4's circling check — the "subsequent call" half.
+		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+	}
+
+	p := Profile{
+		ProfileHash: "hash-1",
+		Gate:        Gate{Mode: GateCommand, Command: []string{"make", "test"}},
+		GateDir:     gateDir,
+		RoundCaps:   []int{10},
+	}
+	e := New("perch", fr, qs, Options{RunCommand: fcr.run})
+
+	got, err := e.Run(p, runDir)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if got.Outcome != OutcomeApproved {
+		t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+	}
+	if len(qs.specs) != 2 {
+		t.Fatalf("queuedShuttle called %d times; want exactly 2 (rounds 3 and 4's circling checks)", len(qs.specs))
+	}
+
+	// (e): the first judge call (round 3) had no previous handoff, so its
+	// read-set is exactly today's all-reviews behavior — which is what
+	// feeds rounds 1 and 2's judge-skipped reviews forward at all.
+	firstCall := qs.specs[0]
+	if !strings.Contains(firstCall.Prompt, "(none)") {
+		t.Errorf("round 3 judge prompt = %q; want the previous_handoff marker to read \"(none)\"", firstCall.Prompt)
+	}
+	for _, want := range []string{"round-1-review.md", "round-2-review.md", "round-3-review.md"} {
+		if !strings.Contains(firstCall.Prompt, want) {
+			t.Errorf("round 3 judge prompt = %q; want it to list %q (no valid handoff yet degrades to all reviews)", firstCall.Prompt, want)
+		}
+	}
+	recordedHandoffPath := firstCall.OutputFiles[1]
+
+	// (b) + (c): the second judge call (round 4) reads {round 3's handoff +
+	// uncovered reviews} — rounds 1-3 are all covered (1 and 2
+	// transitively, via round 3's own all-reviews read-set), so only round
+	// 4's fresh review remains, and previous_handoff carries the handoff's
+	// own path.
+	secondCall := qs.specs[1]
+	if !strings.Contains(secondCall.Prompt, recordedHandoffPath) {
+		t.Errorf("round 4 judge prompt = %q; want the previous_handoff marker to carry %q", secondCall.Prompt, recordedHandoffPath)
+	}
+	for _, unwanted := range []string{"round-1-review.md", "round-2-review.md", "round-3-review.md"} {
+		if strings.Contains(secondCall.Prompt, unwanted) {
+			t.Errorf("round 4 judge prompt = %q; want %q excluded (covered by the round-3 handoff)", secondCall.Prompt, unwanted)
+		}
+	}
+	if !strings.Contains(secondCall.Prompt, "round-4-review.md") {
+		t.Errorf("round 4 judge prompt = %q; want it to list round-4-review.md (its own fresh review, never covered)", secondCall.Prompt)
+	}
+
+	st := readRunState(t, runDir)
+	if len(st.Rounds) != 5 {
+		t.Fatalf("st.Rounds = %+v; want 5 rounds", st.Rounds)
+	}
+	if st.Rounds[0].JudgeVerdict != "" || st.Rounds[1].JudgeVerdict != "" {
+		t.Errorf("Rounds[0].JudgeVerdict/Rounds[1].JudgeVerdict = %q/%q; want both empty (no judge ran either round)", st.Rounds[0].JudgeVerdict, st.Rounds[1].JudgeVerdict)
+	}
+	if st.Rounds[2].HandoffPath != recordedHandoffPath {
+		t.Errorf("Rounds[2].HandoffPath = %q; want %q", st.Rounds[2].HandoffPath, recordedHandoffPath)
+	}
+}
+
+// TestEngine_HandoffLifecycle_InvalidHandoffFallback proves (d): a recorded
+// handoff whose file content is corrupted (fails ParseHandoff) is a
+// fail-safe skip, never a hard stop. The loop simply behaves as if that
+// round's handoff had never been produced — the next judge call's read-set
+// falls back to the older-or-all-reviews list, and the block continues
+// (never STUCK, never an error) purely from the handoff machinery.
+func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
+	runDir := filepath.Join(t.TempDir(), "run")
+
+	fr := &fakeRunner{}
+	fr.queue = []queuedAttemptResult{
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s3"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s4"}},
+	}
+	qs := &queuedShuttle{}
+	qs.queue = []queuedShuttleEntry{
+		// Round 2's circling check: a real verdict, but a corrupted (not
+		// even frontmatter-shaped) handoff file.
+		{
+			verdictContent: verdictFileContent(string(JudgeProgressing), "still moving"),
+			handoffContent: "this is not YAML frontmatter at all",
+		},
+		// Round 3's circling check: must fall back to the all-reviews
+		// read-set, exactly as if round 2 had recorded no handoff.
+		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+	}
+	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+	e := New("perch", fr, qs, Options{})
+
+	got, err := e.Run(p, runDir)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a corrupted handoff must never surface as an engine error)", err)
+	}
+	if got.Outcome != OutcomeApproved {
+		t.Fatalf("Run() Outcome = %q; want %q (a corrupted handoff must never cause STUCK)", got.Outcome, OutcomeApproved)
+	}
+
+	st := readRunState(t, runDir)
+	if len(st.Rounds) < 2 || st.Rounds[1].HandoffPath != "" {
+		t.Fatalf("Rounds[1].HandoffPath = %q; want empty (the corrupted handoff must never be recorded as valid)", st.Rounds[1].HandoffPath)
+	}
+
+	secondCall := qs.specs[1]
+	if !strings.Contains(secondCall.Prompt, "(none)") {
+		t.Errorf("round 3 judge prompt = %q; want the previous_handoff marker to read \"(none)\" (the round-2 handoff was corrupted)", secondCall.Prompt)
+	}
+	if !strings.Contains(secondCall.Prompt, "round-1-review.md") || !strings.Contains(secondCall.Prompt, "round-2-review.md") {
+		t.Errorf("round 3 judge prompt = %q; want it to list both round-1-review.md and round-2-review.md (fallback to all reviews)", secondCall.Prompt)
+	}
+}
+
+// TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews proves (e)
+// as its own minimal case: with no handoff ever produced at all, a judge
+// call's read-set is exactly today's all-reviews list — the degrade path a
+// block with handoff-maintenance disabled (or simply never yet exercised)
+// must still behave identically to pre-handoff perch.
+func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T) {
+	runDir := filepath.Join(t.TempDir(), "run")
+
+	fr := &fakeRunner{}
+	fr.queue = []queuedAttemptResult{
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}},
+	}
+	qs := &queuedShuttle{}
+	qs.queue = []queuedShuttleEntry{
+		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+	}
+	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+	e := New("perch", fr, qs, Options{})
+
+	got, err := e.Run(p, runDir)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if got.Outcome != OutcomeApproved {
+		t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+	}
+	if len(qs.specs) != 1 {
+		t.Fatalf("queuedShuttle called %d times; want exactly 1", len(qs.specs))
+	}
+
+	got1 := qs.specs[0]
+	if !strings.Contains(got1.Prompt, "(none)") {
+		t.Errorf("judge prompt = %q; want the previous_handoff marker to read \"(none)\"", got1.Prompt)
+	}
+	if !strings.Contains(got1.Prompt, "round-1-review.md") {
+		t.Errorf("judge prompt = %q; want it to list round-1-review.md — exactly the all-reviews list", got1.Prompt)
 	}
 }

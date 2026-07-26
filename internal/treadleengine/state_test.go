@@ -124,6 +124,52 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Errorf("loadOrInitState() = %q; want substring %q", err.Error(), wantSubstr)
 		}
 	})
+
+	// A block written by a binary that predates handoffPath (the additive
+	// state-json-compatibility field — see roundRecord's doc) must resume
+	// with zero migration: its rounds simply lack handoff coverage, which
+	// judgeReadSet's fallback already handles. This writes the raw state.json
+	// bytes directly (bypassing saveState/roundRecord) so the JSON genuinely
+	// has no "handoffPath" key at all, rather than merely an empty one.
+	t.Run("legacy record without handoffPath resumes cleanly", func(t *testing.T) {
+		runDir := t.TempDir()
+		legacyJSON := `{
+			"profileHash": "hash-1",
+			"roundCaps": [5, 8, 10],
+			"rounds": [
+				{
+					"round": 1,
+					"attempts": 1,
+					"shuttleOutcome": "done",
+					"verdict": "BLOCKING",
+					"blockingCount": 1,
+					"reviewPath": "round-1-review.md",
+					"fixerReportPath": "round-1-fixer-report.md",
+					"sessionId": "session-abc"
+				}
+			]
+		}`
+		if err := os.MkdirAll(runDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+		if err := os.WriteFile(filepath.Join(runDir, stateFileName), []byte(legacyJSON), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v; want nil", err)
+		}
+
+		got, info, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
+		if err != nil {
+			t.Fatalf("loadOrInitState() = %v; want nil", err)
+		}
+		if info.Fresh {
+			t.Errorf("info.Fresh = true; want false (a legacy record resumes, it is not fresh)")
+		}
+		if info.NextRound != 2 {
+			t.Errorf("info.NextRound = %d; want 2", info.NextRound)
+		}
+		if len(got.Rounds) != 1 || got.Rounds[0].HandoffPath != "" {
+			t.Errorf("got.Rounds = %+v; want one round with an empty HandoffPath", got.Rounds)
+		}
+	})
 }
 
 // TestSaveState_ReadJSONRoundTrip round-trips a runState through saveState
@@ -145,6 +191,7 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 				ReviewPath:      "round-1-review.md",
 				FixerReportPath: "round-1-fixer-report.md",
 				JudgePath:       "round-1-judge.md",
+				HandoffPath:     "round-1-handoff.md",
 				GatePath:        "round-1-gate.md",
 				TriagePath:      "",
 				JudgeVerdict:    "PROGRESSING",
@@ -185,6 +232,7 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 		gotRound.ShuttleOutcome != wantRound.ShuttleOutcome || gotRound.Verdict != wantRound.Verdict ||
 		gotRound.BlockingCount != wantRound.BlockingCount || gotRound.ReviewPath != wantRound.ReviewPath ||
 		gotRound.FixerReportPath != wantRound.FixerReportPath || gotRound.JudgePath != wantRound.JudgePath ||
+		gotRound.HandoffPath != wantRound.HandoffPath ||
 		gotRound.GatePath != wantRound.GatePath || gotRound.TriagePath != wantRound.TriagePath ||
 		gotRound.JudgeVerdict != wantRound.JudgeVerdict || gotRound.SessionID != wantRound.SessionID {
 		t.Errorf("Rounds[0] = %+v; want %+v", gotRound, wantRound)
