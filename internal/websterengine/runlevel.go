@@ -847,7 +847,27 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return err
 	}
 
-	return SaveState(deps.WebsterDir, st)
+	if err := SaveState(deps.WebsterDir, st); err != nil {
+		return err
+	}
+
+	// A Master that claimed outcome: done while the plan-level integration
+	// suite actually FAILED is the same contradiction the missing-report-under-
+	// done branch above already fails loud on: a done outcome CLAIMS a passing
+	// suite. Fail loud here too, symmetric with that branch — otherwise the run
+	// would report done over a suite webster itself just localized as failing,
+	// leaving the CLI envelope's outcome: done contradicting summary.md's own
+	// "integration suite failed" section. The escalation above (the reserved
+	// -1 record and summary.md's localized card) is already persisted and is
+	// weft-committed by webstercli's run backstop, so a resume or a human still
+	// sees the offending card despite this loud return. A non-done master
+	// outcome (the template-correct stuck) keeps its own judgment: the
+	// escalation merely sharpened its summary, so it returns nil below.
+	if masterOutcome == outcomeDone {
+		return fmt.Errorf("webster: run reached outcome: done but the plan-level \"## verify:\" suite FAILED and was escalated (see summary.md for the SHA-bisect-localized offending card) — a done outcome requires a passing integration suite")
+	}
+
+	return nil
 }
 
 // accumulatedCardSHAs walks batches in plan order and collects every

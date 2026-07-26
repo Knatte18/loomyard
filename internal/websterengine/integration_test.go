@@ -409,3 +409,94 @@ func TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud(t *testing.T) {
 		t.Errorf("Run() error = %q; want the missing-integration-report inconsistency named", err.Error())
 	}
 }
+
+// TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud proves the FAILED
+// integration report under a done outcome is fail-loud, SYMMETRIC with the
+// missing-report-under-done case above: a done outcome CLAIMS a passing
+// integration suite, so a Master that wrote outcome: done while the
+// plan-level verify actually FAILED is a genuine inconsistency the run must
+// not report as done. It also proves the escalation still persists despite
+// the loud return — the reserved -1 record and summary.md's SHA-bisect-
+// localized card are written BEFORE the fail-loud error, so a resume or a
+// human still sees the offending card. (Before this was fixed the run
+// returned Master's done verbatim, contradicting its own escalated
+// summary.md.)
+func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
+	fx := newRunFixture(t, 3)
+	appendIntegrationVerify(t, fx.PlanDir, "test ! -f bad.marker")
+
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
+	sha3 := commitFile(t, fx.Worktree, "bad.marker", "bad", "card3 introduces the bug")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha2}},
+			3: {Slug: "batch3", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha3}},
+		},
+	})
+
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-intfaildone",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-intfaildone",
+			RunDir:    "/run/dir/intfaildone",
+			ForkAudit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+					{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+					{TranscriptPath: "/transcripts/fork3.jsonl", ReportReturned: true},
+				},
+			},
+		},
+		onWait: func() {
+			// The integration report lands FAILED, but Master (wrongly) claims
+			// outcome: done — the exact template-violating contradiction this
+			// test exists to catch.
+			reportPath := websterengine.IntegrationReportPath(fx.Deps.ReportsDir)
+			if err := os.WriteFile(reportPath, []byte("status: FAILED\nhead_sha: "+sha3+"\ndeviations: []\n"), 0o644); err != nil {
+				t.Fatalf("write integration report: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 3\n"), 0o644); err != nil {
+				t.Fatalf("write outcome.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll three batches landed.\n"), 0o644); err != nil {
+				t.Fatalf("write summary.md: %v", err)
+			}
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-intfaildone", "master-session-intfaildone")
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err == nil {
+		t.Fatal("Run() = nil error for outcome: done over a FAILED integration suite; want the fail-loud inconsistency error")
+	}
+	if !strings.Contains(err.Error(), "a done outcome requires a passing integration suite") {
+		t.Errorf("Run() error = %q; want the done-over-FAILED-suite inconsistency named", err.Error())
+	}
+
+	// The escalation must persist despite the loud return: the reserved -1
+	// record and summary.md's localized card are written before the error.
+	st, err := websterengine.LoadState(fx.Deps.WebsterDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	escalated, ok := st.Batches[-1]
+	if !ok || escalated == nil {
+		t.Fatalf("state.json carries no integration escalation record after the loud return; want one at the reserved key")
+	}
+	if escalated.Slug != "03-batch3" {
+		t.Errorf("escalated record Slug = %q; want %q (the localized offending card)", escalated.Slug, "03-batch3")
+	}
+
+	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summaryData), "03-batch3") {
+		t.Errorf("summary.md does not name the localized offending card after the loud return; got:\n%s", summaryData)
+	}
+}

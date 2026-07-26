@@ -226,7 +226,11 @@
 // under the reserved key -1 (RecordIntegrationFailure — never a real plan
 // card number, so RenderProgress's walk over positive card numbers can
 // never surface it by accident) and extends summary.md naming the
-// offending card (AppendIntegrationFailure).
+// offending card (AppendIntegrationFailure). A Master claiming outcome: done
+// over a FAILED suite is then fail-loud after that escalation — symmetric
+// with the missing-report-under-done case, since a done outcome requires a
+// passing suite; a stuck outcome keeps its own judgment, merely sharpened by
+// the localized card.
 //
 // # No shared substrate or parser with any other batch-implementation loop
 //
