@@ -17,10 +17,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
-	"github.com/Knatte18/loomyard/internal/weftengine"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -365,7 +365,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				outcomeLabel = string(result.Outcome)
 			}
 			weftWorktree := c.layout.WeftWorktree()
-			opts := weftengine.EnvSyncOptions()
+			opts := fabricengine.EnvSyncOptions()
 			// Lock files (run.lock, state.json.lock) are machine-local
 			// advisory-lock artifacts, not block state: committing them
 			// would leak runtime noise into durable weft history and
@@ -378,17 +378,20 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// directory separators, covering every lock file under the
 			// scoped _lyx.
 			pathspec := append(
-				weftengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
+				fabricengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
 				":(exclude)*.lock",
 			)
-			committed, weftErr := weftengine.Commit(
-				weftWorktree,
-				pathspec,
-				fmt.Sprintf("perch: %s %s", id, outcomeLabel),
-				opts,
-			)
+			var committed bool
+			fab, weftErr := fabricengine.New(c.layout.WorktreeRoot, weftWorktree)
 			if weftErr == nil {
-				weftErr = weftengine.Push(weftWorktree, opts)
+				_, committed, weftErr = fab.CommitWeft(
+					pathspec,
+					fmt.Sprintf("perch: %s %s", id, outcomeLabel),
+					opts,
+				)
+			}
+			if weftErr == nil {
+				weftErr = fabricengine.PushWeftAt(weftWorktree, opts)
 			}
 
 			if runErr != nil {
