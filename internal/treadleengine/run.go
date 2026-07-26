@@ -174,9 +174,20 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			return resultFromState(st, OutcomePaused, ""), nil
 		}
 
-		priorReviews, priorFixerReports := collectPriorHydration(st.Rounds)
+		// Cleared here, once per round, at attempt 1's token — BEFORE
+		// pre-round targeting runs below, so a leftover seed file from an
+		// interrupted prior attempt at this same round is moved aside before
+		// targeting tries to write a fresh one at the same path (spec.validate
+		// rejects a pre-existing output file). A later retry attempt's own
+		// stale artifacts are still handled inside runRound, per attempt.
+		if err := moveStaleArtifacts(e.name, runDir, round, 1); err != nil {
+			return Result{}, err
+		}
 
-		outcome, err := e.runRound(runDir, round, p, priorReviews, priorFixerReports)
+		priorReviews, priorFixerReports := collectPriorHydration(st.Rounds)
+		seedPath := e.runPreRoundTargeting(runDir, round, p, st.Rounds)
+
+		outcome, err := e.runRound(runDir, round, p, priorReviews, priorFixerReports, seedPath)
 		if err != nil {
 			return Result{}, err
 		}
@@ -190,6 +201,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			ReviewPath:      outcome.ReviewPath,
 			FixerReportPath: outcome.FixerReportPath,
 			TriagePath:      outcome.TriagePath,
+			SeedPath:        seedPath,
 			SessionID:       outcome.SessionID,
 		}
 
@@ -350,16 +362,49 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	}
 }
 
+// runPreRoundTargeting resolves and, when p.PreRoundTargeting is set, runs
+// this round's pre-round targeting call, returning the seed path to thread
+// into every attempt's AttemptInput.SeedPath for round, or "" when
+// targeting is off, no valid handoff exists yet to target from (round 1, or
+// every recorded handoff failed to read/parse — see latestValidHandoff),
+// or the targeting call itself fails. The seed path is resolved ONCE here,
+// at round's attempt-1 token via artifactPaths, and is never recomputed per
+// attempt — a same-round retry reuses the identical path, exactly like the
+// round-scoped priorReviews/priorFixerReports hydration. Callers must clear
+// any leftover seed file at that path (moveStaleArtifacts) before calling
+// this, so a re-run's targeting call never trips the pre-existing-output-
+// file rejection.
+func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, rounds []roundRecord) string {
+	if !p.PreRoundTargeting {
+		return ""
+	}
+	handoffPath, _, ok := latestValidHandoff(rounds)
+	if !ok {
+		// Nothing to target from yet (round 1, or no handoff has ever
+		// survived a valid parse) — this is not a failure, so it logs
+		// nothing, mirroring the round-1-runs-no-judge posture in the main
+		// loop below.
+		return ""
+	}
+	seedPath := artifactPaths(runDir, round, 1).Seed
+	if _, ok := runTargeting(e.shuttle, e.name, round, handoffPath, seedPath, p.JudgeModel, p.JudgeEffort); !ok {
+		return ""
+	}
+	return seedPath
+}
+
 // runRound drives round's RoundRunner attempts (up to two: a fresh attempt,
 // then one deterministic retry after a died/timeout outcome or an
 // asking-triage RETRY verdict), returning the round's outcome once the
 // runner reaches done. priorReviews and priorFixerReports are the hydration
-// accumulated from every already-completed round; both attempts of the same
-// round number reuse the same hydration, since a retry produces no new
-// completed round. A second consecutive non-done attempt is an
-// infrastructure error, deliberately NOT modeled as OutcomeStuck — it means
-// the machinery failed twice, not that the artifact will not converge.
-func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, priorFixerReports []string) (roundOutcome, error) {
+// accumulated from every already-completed round; seedPath is this round's
+// pre-round-targeting seed (already resolved once by runPreRoundTargeting,
+// or "" when targeting produced none) — both attempts of the same round
+// number reuse the SAME hydration and the SAME seed path, since a retry
+// produces no new completed round. A second consecutive non-done attempt is
+// an infrastructure error, deliberately NOT modeled as OutcomeStuck — it
+// means the machinery failed twice, not that the artifact will not converge.
+func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, priorFixerReports []string, seedPath string) (roundOutcome, error) {
 	// triagePath accumulates across the retry loop: it is set only when an
 	// asking attempt actually spawns a triage call, and is threaded into
 	// the eventual done-outcome's roundOutcome so state.json records that a
@@ -367,12 +412,15 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 	// round's final (done) attempt.
 	var triagePath string
 	for attempt := 1; attempt <= 2; attempt++ {
-		// A round that started but never reached done on a prior resume
-		// left partial artifacts behind; move them aside before this
-		// attempt writes to the same paths (a fresh spawn rejects
-		// pre-existing output files).
-		if err := moveStaleArtifacts(e.name, runDir, round, attempt); err != nil {
-			return roundOutcome{}, err
+		// Attempt 1's stale artifacts (including any leftover seed file)
+		// were already cleared by the caller, before pre-round targeting
+		// ran — clearing them again here would move aside the seed file
+		// targeting just wrote. A retry attempt's own stale artifacts from
+		// an earlier interrupted resume still need clearing here.
+		if attempt > 1 {
+			if err := moveStaleArtifacts(e.name, runDir, round, attempt); err != nil {
+				return roundOutcome{}, err
+			}
 		}
 		paths := artifactPaths(runDir, round, attempt)
 
@@ -383,6 +431,7 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 			RoundToken:        roundToken(round, attempt),
 			ReviewPath:        paths.Review,
 			FixerReportPath:   paths.FixerReport,
+			SeedPath:          seedPath,
 			PriorReviews:      priorReviews,
 			PriorFixerReports: priorFixerReports,
 			Model:             p.Model,

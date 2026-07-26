@@ -55,6 +55,7 @@ func TestArtifactPaths(t *testing.T) {
 				Handoff:     filepath.Join(runDir, "round-3-handoff.md"),
 				Gate:        filepath.Join(runDir, "round-3-gate.md"),
 				Triage:      filepath.Join(runDir, "round-3-triage.md"),
+				Seed:        filepath.Join(runDir, "round-3-seed.md"),
 			},
 		},
 		{
@@ -68,6 +69,7 @@ func TestArtifactPaths(t *testing.T) {
 				Handoff:     filepath.Join(runDir, "round-3b-handoff.md"),
 				Gate:        filepath.Join(runDir, "round-3b-gate.md"),
 				Triage:      filepath.Join(runDir, "round-3b-triage.md"),
+				Seed:        filepath.Join(runDir, "round-3b-seed.md"),
 			},
 		},
 	}

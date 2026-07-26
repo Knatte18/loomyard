@@ -35,8 +35,13 @@ const (
 // threads it through to its own domain's per-round naming, mirroring
 // burlerengine.RunOpts.Round today), this attempt's own review/fixer-report
 // output paths, the hydration lists accumulated from every already-completed
-// round, and per-round tuning. A SeedPath field for pre-round targeting is
-// added in a later batch, not here.
+// round, and per-round tuning. SeedPath is optional pre-round-targeting
+// input: empty when Profile.PreRoundTargeting is off, or when it is on but
+// that round's targeting call produced no seed (no valid handoff yet, or a
+// fail-safe targeting failure) — a RoundRunner MAY ignore it entirely (perch's
+// burler adapter does, per the burler-hydration-unchanged shared decision).
+// SeedPath is round-scoped, not attempt-scoped: both attempts of the same
+// round (a fresh attempt and its retry) see the identical path.
 type AttemptInput struct {
 	RunDir            string
 	Round             int
@@ -44,6 +49,7 @@ type AttemptInput struct {
 	RoundToken        string
 	ReviewPath        string
 	FixerReportPath   string
+	SeedPath          string
 	PriorReviews      []string
 	PriorFixerReports []string
 	Model             string

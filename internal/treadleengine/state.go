@@ -56,9 +56,14 @@ type roundRecord struct {
 	// per the state-json-compatibility shared decision, so a block written
 	// by an older binary resumes with zero migration; its records simply
 	// lack handoff coverage, which judgeReadSet's fallback already handles.
-	HandoffPath  string `json:"handoffPath,omitempty"`
-	GatePath     string `json:"gatePath,omitempty"`
-	TriagePath   string `json:"triagePath,omitempty"`
+	HandoffPath string `json:"handoffPath,omitempty"`
+	GatePath    string `json:"gatePath,omitempty"`
+	TriagePath  string `json:"triagePath,omitempty"`
+	// SeedPath is the path of this round's pre-round targeting seed file
+	// (see run.go), set only when Profile.PreRoundTargeting was on AND that
+	// round's targeting call succeeded — additive per the
+	// state-json-compatibility shared decision, exactly like HandoffPath.
+	SeedPath     string `json:"seedPath,omitempty"`
 	JudgeVerdict string `json:"judgeVerdict,omitempty"`
 	GatePassed   *bool  `json:"gatePassed,omitempty"`
 	SessionID    string `json:"sessionId"`
@@ -171,10 +176,14 @@ func saveState(runDir string, s runState) error {
 // for round/attempt inside runDir, so a re-run round never trips a fresh
 // spawn's no-pre-existing-output-file rule. It is called on resume for a
 // round that started but never reached done (no roundRecord was appended
-// for it), just before that round is re-run from scratch.
+// for it), just before that round is re-run from scratch — once at attempt 1
+// (run.go, before the round's pre-round targeting call, so a leftover seed
+// file from an interrupted prior attempt at this round is cleared before
+// targeting tries to write a fresh one) and again at the top of each later
+// retry attempt (run.go's runRound).
 func moveStaleArtifacts(name string, runDir string, round, attempt int) error {
 	paths := artifactPaths(runDir, round, attempt)
-	for _, p := range []string{paths.Review, paths.FixerReport, paths.Judge, paths.Handoff, paths.Gate, paths.Triage} {
+	for _, p := range []string{paths.Review, paths.FixerReport, paths.Judge, paths.Handoff, paths.Gate, paths.Triage, paths.Seed} {
 		if err := moveStaleIfExists(name, p); err != nil {
 			return err
 		}

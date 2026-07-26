@@ -35,7 +35,11 @@ func roundToken(round, attempt int) string {
 // produce inside a run dir. Not every field is written every round: Judge
 // is written only when the progress judge runs, Handoff only alongside a
 // successful judge call (same call, second output file), Gate only when a
-// command gate fails, Triage only when asking-triage runs.
+// command gate fails, Triage only when asking-triage runs, Seed only when
+// pre-round targeting runs. Seed is round-scoped rather than attempt-scoped
+// (see run.go's pre-round targeting step): a caller wanting the ACTUAL seed
+// path for a round always resolves it at attempt 1's token, never via a
+// later attempt's own artifactPaths call.
 type roundArtifactPaths struct {
 	Review      string
 	FixerReport string
@@ -43,6 +47,7 @@ type roundArtifactPaths struct {
 	Handoff     string
 	Gate        string
 	Triage      string
+	Seed        string
 }
 
 // artifactPaths returns the roundArtifactPaths for round/attempt inside
@@ -56,5 +61,6 @@ func artifactPaths(runDir string, round, attempt int) roundArtifactPaths {
 		Handoff:     filepath.Join(runDir, fmt.Sprintf("round-%s-handoff.md", token)),
 		Gate:        filepath.Join(runDir, fmt.Sprintf("round-%s-gate.md", token)),
 		Triage:      filepath.Join(runDir, fmt.Sprintf("round-%s-triage.md", token)),
+		Seed:        filepath.Join(runDir, fmt.Sprintf("round-%s-seed.md", token)),
 	}
 }

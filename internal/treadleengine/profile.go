@@ -59,7 +59,9 @@ type Gate struct {
 // NO default resolution here — a caller (perchengine) resolves
 // profile > perch.yaml > built-in BEFORE constructing this Profile.
 // JudgeModel/JudgeEffort tune the judge/triage calls; Model/Effort/Timeout
-// tune every round's RoundRunner attempt uniformly.
+// tune every round's RoundRunner attempt uniformly. PreRoundTargeting gates
+// the optional pre-round targeting capability (see the pre-round-targeting
+// shared decision); its zero value is off.
 type Profile struct {
 	ProfileHash string
 	Gate        Gate
@@ -70,6 +72,14 @@ type Profile struct {
 	Model       string
 	Effort      string
 	Timeout     time.Duration
+	// PreRoundTargeting, when true, runs a pre-round targeting call once per
+	// round, before attempt 1, whenever a valid handoff already exists to
+	// target from (see latestValidHandoff): the call reads that handoff and
+	// writes a short prose seed brief threaded into the round's
+	// AttemptInput.SeedPath. The zero value (false) is off, and perch's
+	// adapter never sets it — perch's behavior is unchanged by this
+	// capability's mere existence.
+	PreRoundTargeting bool
 }
 
 // validate checks only the structural invariants treadle itself owns: a
