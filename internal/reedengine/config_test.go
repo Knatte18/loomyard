@@ -1,6 +1,6 @@
 // config_test.go verifies reed.yaml's template parses, defaults resolve
 // through LoadConfig, and environment overrides + the not-initialized error
-// path behave the way warpengine's config tests establish the pattern.
+// path behave the way fabricengine's config tests establish the pattern.
 
 package reedengine_test
 
