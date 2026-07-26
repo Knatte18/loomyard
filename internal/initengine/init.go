@@ -34,7 +34,7 @@ type InitResult struct {
 	Modules   []ModuleResult
 }
 
-// Init activates the warp topology by wiring cwd-keyed junctions, then
+// Init activates the fabric topology by wiring cwd-keyed junctions, then
 // reconciles the config layer in cwd by:
 //  1. Resolving the layout from cwd
 //  2. Checking for a weft pairing; if absent, returning an error early
@@ -59,7 +59,7 @@ func Init(cwd string) (InitResult, error) {
 	// If no weft sibling exists, the host is unpaired (dormant Add); report and exit.
 	weftWorktree := l.WeftWorktree()
 	if _, statErr := os.Stat(weftWorktree); os.IsNotExist(statErr) {
-		return InitResult{}, fmt.Errorf("no weft pairing — run `lyx warp add` or `lyx warp clone` first")
+		return InitResult{}, fmt.Errorf("no weft pairing — run `lyx fabric add` or `lyx fabric clone` first")
 	}
 
 	// Wire junctions for the current worktree (keyed by its slug: filepath.Base(WorktreeRoot)).
