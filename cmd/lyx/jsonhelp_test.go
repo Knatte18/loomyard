@@ -91,7 +91,7 @@ func TestJSONHelp_RootSchema(t *testing.T) {
 	// by renderCmdJSON so we must NOT assert them here.
 	cmds := commandNames(h.Commands)
 	requiredModules := []string{
-		"init", "board", "config", "ide", "reed", "weft", "warp", "selfreport",
+		"init", "board", "config", "ide", "reed", "selfreport",
 	}
 	for _, mod := range requiredModules {
 		if !cmds[mod] {
@@ -162,49 +162,6 @@ func TestJSONHelp_SelfreportSchema(t *testing.T) {
 	cmds := commandNames(h.Commands)
 	if !cmds["create"] {
 		t.Errorf("selfreport JSON commands missing 'create'; commands: %v", h.Commands)
-	}
-}
-
-// TestJSONHelp_LeafWithFlag asserts that "lyx warp remove --help --json" (a leaf
-// command that owns --force) produces valid JSON with a populated flags array
-// containing --force and an empty commands array. This prevents the flags assertion
-// from being vacuous on a flag-less leaf.
-func TestJSONHelp_LeafWithFlag(t *testing.T) {
-	var out bytes.Buffer
-	// --help triggers the HelpFunc even on a leaf; --json switches it to JSON mode.
-	code := run([]string{"warp", "remove", "--help", "--json"}, &out)
-	if code != 0 {
-		t.Fatalf("run([warp remove --help --json]) = %d; want 0. output:\n%s", code, out.String())
-	}
-
-	h := decodeHelpJSON(t, &out)
-
-	if !strings.Contains(h.Name, "remove") {
-		t.Errorf("warp remove JSON name %q does not contain 'remove'", h.Name)
-	}
-	if h.Short == "" {
-		t.Error("warp remove JSON: short is empty")
-	}
-
-	// A leaf command has no subcommands.
-	if len(h.Commands) != 0 {
-		t.Errorf("warp remove JSON commands: want empty, got %v", h.Commands)
-	}
-
-	// flags must be non-empty and include --force.
-	if len(h.Flags) == 0 {
-		t.Error("warp remove JSON: flags is empty; expected --force to be present")
-	}
-	flags := flagNames(h.Flags)
-	if !flags["--force"] {
-		t.Errorf("warp remove JSON flags missing --force; flags: %v", h.Flags)
-	}
-
-	// Meta flags must be absent.
-	for _, meta := range []string{"--json", "--help"} {
-		if flags[meta] {
-			t.Errorf("warp remove JSON flags must not include meta flag %q", meta)
-		}
 	}
 }
 

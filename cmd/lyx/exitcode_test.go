@@ -50,7 +50,6 @@ func TestExitCode_HelpPaths(t *testing.T) {
 	}{
 		{"bare lyx", nil},
 		{"lyx board (no subcommand)", []string{"board"}},
-		{"lyx warp (no subcommand)", []string{"warp"}},
 		{"lyx --help", []string{"--help"}},
 	}
 

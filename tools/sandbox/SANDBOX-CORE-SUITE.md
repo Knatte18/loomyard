@@ -249,54 +249,6 @@ the scaffolding?
 
 ---
 
-### S7 -- Weft lifecycle
-
-**Goal:** "Make a small, clearly-marked change inside the weft-tracked scope and run it
-through `weft status`, `commit`, `push`, `pull`, and `sync`."
-
-**Covers:** weft
-
-**Durability note:** S7 runs against the real shared sandbox remotes. Make a small,
-clearly-marked test change and do not leave the weft/host remotes diverged or broken for
-the next session.
-
-**Watch:** Does `weft status` report the change accurately? Do `commit`/`push` mirror it
-to the weft remote? The commit message is always the fixed string `"weft sync"` — it is
-not generated from changed files and there is no `-m` flag to customize it. Staging is
-scoped to the directories listed in the weft config (default `_lyx`), so the test change
-should land inside that scope to be picked up at all. `weft sync` pushes via a detached
-child process, so `status` immediately after `sync` may lag behind the actual push — a
-confusing-but-expected rough edge to note as a `WARN`, not to pre-judge here.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
----
-
-### S8 -- Warp introspection
-
-**Goal:** "Exercise `warp list`, `warp pairs`, `warp reconcile`, and `warp checkout` on
-a healthy pair."
-
-**Covers:** warp
-
-**Durability note:** Record the branch active before the scenario starts. Run
-`warp checkout <other-branch>` to prove the coordinated switch works, then
-`warp checkout <original-branch>` to restore it, leaving hub state clean for the rest of
-the session.
-
-**Watch:** Do `warp list`/`warp pairs` report sane host↔weft geometry? Is
-`warp reconcile` a safe no-op/idempotent read+report on an already-healthy pair — note
-it has no `--apply`/dry-run flag, unlike `config reconcile`; it always performs its
-repair check directly, so a destructive result on a healthy pair would itself be a
-finding worth recording. Does `warp checkout` perform a coordinated host+weft switch
-cleanly? A *bad* `warp checkout` (e.g. an unknown branch) now yields a clean wrapped
-error (`host switch to branch %q failed (git exit %d)`), not raw git stderr — a legible
-error there is the expected `OK` outcome, not a finding.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
----
-
 ### S9 -- Builder plan validate/status
 
 **Goal:** "Exercise `lyx builder validate` and `lyx builder status` against a trivial,

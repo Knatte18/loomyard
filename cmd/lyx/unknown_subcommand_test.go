@@ -1,6 +1,6 @@
 // unknown_subcommand_test.go covers W16 unknown-subcommand rejection and bare-group
-// listing for all module groups when mounted under the real lyx root command,
-// exercising the GroupRunE wiring and PersistentPreRunE guards via the run() seam.
+// listing for module groups mounted under the real lyx root command, exercising
+// the GroupRunE wiring and PersistentPreRunE guards via the run() seam.
 
 package main
 
@@ -14,13 +14,11 @@ import (
 // TestMountedUnknownSubcommand verifies that "lyx <group> bogus" exits 1 and emits
 // a JSON error envelope with ok=false and an error string containing "unknown subcommand".
 // This exercises the GroupRunE wiring applied to each mounted group command in batch 2:
-// warp (no guard), and weft/board/ide/reed (with PersistentPreRunE guards).
+// board/ide/reed (with PersistentPreRunE guards).
 func TestMountedUnknownSubcommand(t *testing.T) {
 	tests := []struct {
 		group string
 	}{
-		{"warp"},
-		{"weft"},
 		{"board"},
 		{"ide"},
 		{"reed"},
@@ -62,7 +60,6 @@ func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 		group       string
 		knownSubcmd string // a subcommand name expected in the help listing
 	}{
-		{"weft", "commit"},
 		{"board", "upsert"},
 		{"ide", "spawn"},
 		{"reed", "up"},
@@ -115,29 +112,5 @@ func TestUpdateCommandRemoved(t *testing.T) {
 	}
 	if ok, _ := env["ok"].(bool); ok {
 		t.Errorf("run([update]) ok = true; want false")
-	}
-}
-
-// TestMountedBareWarp verifies that bare "lyx warp" exits 0 and prints the subcommand
-// listing. warp has no PersistentPreRunE so no guard is needed; GroupRunE with empty
-// args delegates to cmd.Help(). This test confirms the GroupRunE-only wiring from card 5.
-func TestMountedBareWarp(t *testing.T) {
-	// Run from a temp dir to keep the test environment consistent with the guarded groups.
-	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
-
-	var out bytes.Buffer
-	code := run([]string{"warp"}, &out)
-	stdout := out.String()
-
-	if code != 0 {
-		t.Errorf("run([warp]) = %d; want 0 for bare group listing\noutput: %s", code, stdout)
-	}
-	if strings.Contains(stdout, `"ok":false`) {
-		t.Errorf("run([warp]) emitted error envelope; want plain help text\noutput: %s", stdout)
-	}
-	// Must list at least one known warp subcommand to confirm help was printed.
-	if !strings.Contains(stdout, "add") && !strings.Contains(stdout, "list") {
-		t.Errorf("run([warp]) output does not contain known subcommand; want listing\noutput: %s", stdout)
 	}
 }
