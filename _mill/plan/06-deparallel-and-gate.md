@@ -60,6 +60,7 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   - `internal/fabriccli/cli_test.go`
   - `internal/fabricengine/ancestors_test.go`
   - `internal/fabricengine/clone_test.go`
+  - `internal/fabricengine/clone_adopt_test.go`
   - `internal/fabricengine/config_test.go`
   - `internal/fabricengine/fabric_test.go`
   - `internal/fabricengine/hook_test.go`
@@ -98,9 +99,13 @@ so `verify` runs the full integration suite once as the acceptance gate (see Bat
   (`warpengine`/`weftengine`/`warpcli`/`weftcli`, full import-path or bare word) so that after
   this card `grep -rnw -E 'warpengine|weftengine|warpcli|weftcli' --include='*.go'
   internal/fabricengine/ internal/fabriccli/` returns nothing -- **including `_test.go`
-  files** (the eight fabricengine/fabriccli test files in Edits carry "Adapted from
-  warpengine's X_test.go" / "mirroring weftengine..." provenance comments; all are
-  comment-only, no code import of a deleted engine, verified). This covers two comment kinds,
+  files** (the nine fabricengine/fabriccli test files in Edits -- including
+  `clone_adopt_test.go`, added to this card's scope because it also carries a
+  "mirroring warpengine's clone_integration_test.go" / "alongside a warpengine
+  comparison" provenance comment, discovered while sweeping `clone_test.go` -- carry
+  "Adapted from warpengine's X_test.go" / "mirroring weftengine..." provenance comments;
+  all are comment-only, no code import of a deleted engine, verified). This covers two
+  comment kinds,
   both of which name a now-deleted module:
   - **Provenance/mirror comments** -- "Adapted from warpengine's X.go", "distinct from
     warpengine's", "mirroring warpengine.Y", "matching warpengine's shape", and similar in
