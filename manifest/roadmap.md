@@ -12,9 +12,9 @@ Committed to, in this order, next.
 
 1. **board: move storage to `weft:main`** — replaces board's own separate remote repo with a
    reserved `weft:main` branch (README.md rendering, JSON-backed Proposals/Manifest/Tasks/Done).
-   Depends on the Planned `fabric: cutover` item's branch-naming enforcement (`<slug>-weft`
-   uniformly) actually taking effect, not just `fabric`'s code existing alongside the old
-   modules. See [designs/board-weft-storage.md](designs/board-weft-storage.md).
+   Depends on `fabric`'s branch-naming enforcement (`<slug>-weft` uniformly), which is now live
+   (`fabric` shipped Done below, old warp/weft modules deleted). See
+   [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
 1. **Treadle: shared round-loop engine** — generalizes `perch`'s existing judge/gate/round-spawn/
    cap/pause/lock loop into a shared engine with a pluggable round-runner (`burlerengine` for
