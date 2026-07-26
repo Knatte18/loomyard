@@ -127,7 +127,17 @@ between these items.
 
 1. **shuttle `Spec`: per-round provider selector** — today "provider" means whichever engine is
    wired into the `Runner`; a selector field is only needed once a second engine lands (non-Claude
-   engines are not a current priority, per `CLAUDE.md`).
+   engines are not a current priority, per `CLAUDE.md`). Scope, if this is ever picked up: almost
+   everything lyx spawns (Discussion, Planner, Webster, Burler rounds, the progress-judge) is
+   markdown-instruction + file-contract driven — no skill/slash-command/plugin dependency baked
+   into task content, unlike Millhouse's Claude-Code-specific skill layer — which is what makes a
+   second engine a real, not aspirational, swap: it only has to solve spawn/completion-detection/
+   resume, not rewrite prompts. The one real trade-off to weigh, not just a gap to patch: Burler's
+   cluster-review fan-out (N reviewers as cheap, context-sharing forks via Claude Code's own Agent
+   tool) is a genuine strength, including token cost — a non-Claude engine has no equivalent to
+   fork into, so cluster mode on a second engine would mean N full separate sessions instead,
+   costlier by construction, not a like-for-like swap. Only Burler's default single-reviewer round
+   (no clustering) is unaffected either way.
 
 1. **Bulk-mode clusters + provider-side context caching** — a `burler` cluster round can run
    *tool-use* or *bulk* (Go concatenates target + fasit + rubric into one blob). Bulk is what makes
