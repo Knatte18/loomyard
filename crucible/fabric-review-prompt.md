@@ -86,7 +86,8 @@ The pure/unit-tested parts are usually solid; defects concentrate in the COMPOSE
 hermetic tests never exercise. Treat each as an INVARIANT you must actively verify by driving the
 real substrate — a green `go test` proves nothing here.
 - **Pair topology invariants** — `lyx fabric add` must always produce a weft branch named exactly
-  `<host-branch>-weft` (the fixed suffix scheme), never a mirrored name like `warp clone`'s. Verify
+  `<host-branch>-weft` (the fixed suffix scheme), never a mirrored name like the pre-fabric
+  convention's. Verify
   this holds for an empty branch prefix, a slash-containing slug, and a slug that collides with an
   existing branch. Confirm `lyx fabric pairs` reports sync state honestly after manual drift (edit
   one side out from under fabric with plain git, then check `pairs`/`reconcile` notice it — do not

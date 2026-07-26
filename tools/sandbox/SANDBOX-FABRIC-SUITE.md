@@ -160,7 +160,7 @@ the hub was materialized with an explicit `[board-url]` stand-in, record this ch
 blocked-by-precondition instead of failing it. The weft prime's checked-out branch is
 **`main-weft`**, not
 `main` -- fabric's uniform branch-suffix scheme applies from the very first pair, unlike
-`warp clone`'s mirrored (identical) branch names. Use `lyx fabric pairs` and plain git
+the pre-fabric mirrored (identical) branch-naming convention. Use `lyx fabric pairs` and plain git
 (`git -C <weft-prime> branch --show-current`, `git -C _board remote -v`) to confirm both;
 neither should require guessing or `ls`-ing around.
 
