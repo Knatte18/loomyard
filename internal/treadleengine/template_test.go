@@ -1,7 +1,7 @@
-// template_test.go pins the three embedded judge/triage prompt templates'
-// load-bearing statements as substring assertions, and separately proves
-// each template actually fills through stencil with its required markers —
-// mirroring burlerengine's TestTemplate_StatesRoundDiscipline /
+// template_test.go pins the four embedded judge/triage/targeting prompt
+// templates' load-bearing statements as substring assertions, and separately
+// proves each template actually fills through stencil with its required
+// markers — mirroring burlerengine's TestTemplate_StatesRoundDiscipline /
 // TestTemplate_FillsWithAllMarkers style.
 
 package treadleengine
@@ -85,6 +85,21 @@ func TestTriageTemplate_StatesLoadBearingRules(t *testing.T) {
 	requireQuotedRationaleRule(t, text)
 }
 
+// TestTargetingTemplate_StatesLoadBearingRules is the pre-round targeting
+// judge template's analogue of the other templates' load-bearing-statement
+// pins: the read-the-handoff instruction, the exactly-one-output-file rule,
+// and the free-form (no frontmatter) output rule — unlike every other
+// template in this package, targeting produces no verdict and so has no
+// rationale-quoting rule to pin.
+func TestTargetingTemplate_StatesLoadBearingRules(t *testing.T) {
+	text := string(targetingTemplate)
+
+	requireContains(t, text, "Read the previous handoff at")
+	requireContains(t, text, "EXACTLY ONE")
+	requireContains(t, text, "free-form prose")
+	requireContains(t, text, "NO `---`-delimited YAML frontmatter")
+}
+
 // requireQuotedRationaleRule asserts a template both SHOWS a double-quoted
 // rationale in its example frontmatter and STATES the quoting rule in prose.
 // This is load-bearing against a live-observed failure: a real judge writing
@@ -137,6 +152,17 @@ func triageMarkerValues() map[string]string {
 		"round":        "2",
 		"question":     "should I proceed without the fasit file?",
 		"verdict_path": "/run/round-2-triage.md",
+	}
+}
+
+// targetingMarkerValues returns a values map with every one of the
+// targeting template's required top-level markers set to a non-empty
+// placeholder, mirroring the three judge/triage marker-value helpers above.
+func targetingMarkerValues() map[string]string {
+	return map[string]string{
+		"round":            "3",
+		"previous_handoff": "/run/round-2-handoff.md",
+		"seed_path":        "/run/round-3-seed.md",
 	}
 }
 
@@ -203,6 +229,30 @@ func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
 			values := triageMarkerValues()
 			delete(values, marker)
 			_, err := stencil.Fill(triageTemplate, values)
+			if err == nil {
+				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
+			}
+			if !strings.Contains(err.Error(), marker) {
+				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
+			}
+		})
+	}
+}
+
+// TestTargetingTemplate_FillsWithAllMarkers is the pre-round targeting
+// template's analogue of the three fill tests above.
+func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
+	t.Run("all markers supplied", func(t *testing.T) {
+		if _, err := stencil.Fill(targetingTemplate, targetingMarkerValues()); err != nil {
+			t.Fatalf("stencil.Fill() = %v; want nil", err)
+		}
+	})
+
+	for _, marker := range []string{"round", "previous_handoff", "seed_path"} {
+		t.Run("missing "+marker, func(t *testing.T) {
+			values := targetingMarkerValues()
+			delete(values, marker)
+			_, err := stencil.Fill(targetingTemplate, values)
 			if err == nil {
 				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
 			}

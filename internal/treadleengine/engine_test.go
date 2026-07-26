@@ -1,13 +1,15 @@
 // engine_test.go drives Engine.Run against a scripted fakeRunner
-// (RoundRunner) and a scripted queuedShuttle (judge/triage), mirroring
-// internal/perchengine/run_test.go's fakeBurler/queuedShuttle style but
-// adapted to the attempt-level RoundRunner seam. Deliberately scoped to what
-// the perch differential suite CANNOT prove — that the generalized loop
-// works against a non-burler runner and that the seam contract itself
-// holds: AttemptInput population and hydration, retry/triage semantics at
-// the seam, name-parameterized diagnostics for a non-perch caller, ladder +
-// gate parity, and profile validation. Untagged file: no spawning — the
-// fake CommandRunner is an in-process func (Test Tier Purity Invariant).
+// (RoundRunner) and a scripted queuedShuttle (judge/triage/targeting),
+// mirroring internal/perchengine/run_test.go's fakeBurler/queuedShuttle
+// style but adapted to the attempt-level RoundRunner seam. Deliberately
+// scoped to what the perch differential suite CANNOT prove — that the
+// generalized loop works against a non-burler runner and that the seam
+// contract itself holds: AttemptInput population and hydration, retry/
+// triage semantics at the seam, name-parameterized diagnostics for a
+// non-perch caller, ladder + gate parity, profile validation, and the
+// profile-gated pre-round targeting capability. Untagged file: no
+// spawning — the fake CommandRunner is an in-process func (Test Tier
+// Purity Invariant).
 
 package treadleengine
 
@@ -854,5 +856,323 @@ func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T
 	}
 	if !strings.Contains(got1.Prompt, "round-1-review.md") {
 		t.Errorf("judge prompt = %q; want it to list round-1-review.md — exactly the all-reviews list", got1.Prompt)
+	}
+}
+
+// TestEngine_PreRoundTargeting drives Profile.PreRoundTargeting through
+// Engine.Run, covering (a)-(c) and (e) of the pre-round-targeting card's
+// requirements; (d)'s "targeting shuttle error" case is covered here too,
+// with the "non-done outcome"/"missing seed file" fail-safe paths covered
+// directly against runTargeting in TestRunTargeting_FailSafe below (the
+// scripted queuedShuttle fake used here has no way to produce a non-done
+// Outcome or a claimed-done-but-unwritten output file).
+func TestEngine_PreRoundTargeting(t *testing.T) {
+	// roundsThroughHandoff scripts a fakeRunner/queuedShuttle pair that
+	// carries a block through round 1 (BLOCKING, no judge — nothing to
+	// compare it against yet) and round 2 (BLOCKING, triggers the circling
+	// judge, which writes a valid handoff), leaving round 3 as the next
+	// round every subtest below actually exercises pre-round targeting
+	// against.
+	roundsThroughHandoff := func() (*fakeRunner, *queuedShuttle) {
+		fr := &fakeRunner{}
+		fr.queue = []queuedAttemptResult{
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}},
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
+		}
+		qs := &queuedShuttle{}
+		qs.queue = []queuedShuttleEntry{
+			{
+				verdictContent: verdictFileContent(string(JudgeProgressing), "still moving"),
+				handoffContent: "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n",
+			},
+		}
+		return fr, qs
+	}
+
+	t.Run("(a) flag off never issues a targeting spec and every SeedPath stays empty", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		fr, qs := roundsThroughHandoff()
+		// Round 3 converges once a valid handoff exists from round 2, so
+		// this subtest can observe whether targeting fires at the very
+		// round where — with the flag on — it would have something to
+		// target from.
+		fr.queue = append(fr.queue, queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}})
+
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+		e := New("perch", fr, qs, Options{})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+		for i, call := range fr.calls {
+			if call.SeedPath != "" {
+				t.Errorf("fr.calls[%d].SeedPath = %q; want empty (PreRoundTargeting is off)", i, call.SeedPath)
+			}
+		}
+		for _, spec := range qs.specs {
+			if spec.Role == "targeting" {
+				t.Errorf("queuedShuttle specs = %+v; want no \"targeting\" role spec (PreRoundTargeting is off)", qs.specs)
+			}
+		}
+	})
+
+	t.Run("(b) flag on with a valid handoff threads the seed through both attempts and records it", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		fr, qs := roundsThroughHandoff()
+		// Round 3's first attempt dies, forcing a same-round retry — both
+		// attempts must see the identical SeedPath (round-scoped, not
+		// recomputed per attempt).
+		fr.queue = append(fr.queue,
+			queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDied, SessionID: "died-3a", RunDir: "/kept/died-3a"}},
+			queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3b"}},
+		)
+		qs.queue = append(qs.queue, queuedShuttleEntry{verdictContent: "prioritize the auth findings; leave the docs alone"})
+
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
+		e := New("perch", fr, qs, Options{})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+		if len(fr.calls) != 4 {
+			t.Fatalf("fakeRunner called %d times; want 4 (round1, round2, round3 attempt1+2)", len(fr.calls))
+		}
+
+		wantSeedPath := artifactPaths(runDir, 3, 1).Seed
+		round3Attempt1, round3Attempt2 := fr.calls[2], fr.calls[3]
+		if round3Attempt1.SeedPath != wantSeedPath {
+			t.Errorf("round3 attempt1 SeedPath = %q; want %q (the round-scoped, attempt-1 token path)", round3Attempt1.SeedPath, wantSeedPath)
+		}
+		if round3Attempt2.SeedPath != wantSeedPath {
+			t.Errorf("round3 attempt2 SeedPath = %q; want %q (a same-round retry reuses the identical seed path)", round3Attempt2.SeedPath, wantSeedPath)
+		}
+		if fr.calls[0].SeedPath != "" || fr.calls[1].SeedPath != "" {
+			t.Errorf("round1/round2 SeedPath = %q/%q; want both empty (no valid handoff existed at either round)", fr.calls[0].SeedPath, fr.calls[1].SeedPath)
+		}
+
+		if len(qs.specs) != 2 {
+			t.Fatalf("queuedShuttle called %d times; want 2 (round2's circling judge, round3's targeting)", len(qs.specs))
+		}
+		targetingSpec := qs.specs[1]
+		if targetingSpec.Role != "targeting" {
+			t.Errorf("qs.specs[1].Role = %q; want %q", targetingSpec.Role, "targeting")
+		}
+		if len(targetingSpec.OutputFiles) != 1 || targetingSpec.OutputFiles[0] != wantSeedPath {
+			t.Errorf("targeting spec OutputFiles = %v; want exactly [%q]", targetingSpec.OutputFiles, wantSeedPath)
+		}
+		recordedHandoffPath := qs.specs[0].OutputFiles[1]
+		if !strings.Contains(targetingSpec.Prompt, recordedHandoffPath) {
+			t.Errorf("targeting prompt = %q; want it to carry round 2's handoff path %q", targetingSpec.Prompt, recordedHandoffPath)
+		}
+
+		st := readRunState(t, runDir)
+		if len(st.Rounds) != 3 {
+			t.Fatalf("st.Rounds = %+v; want 3 rounds", st.Rounds)
+		}
+		if st.Rounds[2].SeedPath != wantSeedPath {
+			t.Errorf("Rounds[2].SeedPath = %q; want %q", st.Rounds[2].SeedPath, wantSeedPath)
+		}
+
+		content, err := os.ReadFile(wantSeedPath)
+		if err != nil {
+			t.Fatalf("ReadFile(%q) = %v; want nil (the fake shuttle must have written the seed)", wantSeedPath, err)
+		}
+		if string(content) != "prioritize the auth findings; leave the docs alone" {
+			t.Errorf("seed file content = %q; want the scripted targeting brief", string(content))
+		}
+	})
+
+	t.Run("(c) flag on with no handoff yet at round 1 runs no targeting call", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		fr := &fakeRunner{}
+		fr.queue = []queuedAttemptResult{
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s1"}},
+		}
+		qs := &queuedShuttle{}
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
+		e := New("perch", fr, qs, Options{})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+		if len(fr.calls) != 1 || fr.calls[0].SeedPath != "" {
+			t.Errorf("fr.calls = %+v; want one call with an empty SeedPath (round 1 has nothing to target from yet)", fr.calls)
+		}
+		if len(qs.specs) != 0 {
+			t.Errorf("queuedShuttle called %d times; want 0 (no handoff exists yet, so no targeting call is issued)", len(qs.specs))
+		}
+	})
+
+	t.Run("(d) a failing targeting shuttle call leaves the round running with an empty SeedPath", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		fr, qs := roundsThroughHandoff()
+		fr.queue = append(fr.queue, queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}})
+		qs.queue = append(qs.queue, queuedShuttleEntry{err: errors.New("targeting shuttle unavailable")})
+
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
+		e := New("perch", fr, qs, Options{})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil (a fail-safe targeting failure must never surface as an engine error)", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q (targeting failure must never block round convergence)", got.Outcome, OutcomeApproved)
+		}
+		if len(fr.calls) != 3 || fr.calls[2].SeedPath != "" {
+			t.Fatalf("fr.calls = %+v; want round3's call to carry an empty SeedPath", fr.calls)
+		}
+
+		st := readRunState(t, runDir)
+		if len(st.Rounds) != 3 || st.Rounds[2].SeedPath != "" {
+			t.Errorf("Rounds[2].SeedPath = %q; want empty (the failed targeting call must never be recorded)", st.Rounds[2].SeedPath)
+		}
+	})
+
+	t.Run("(e) stale-artifact move-aside covers a leftover seed file on re-run", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		if err := os.MkdirAll(runDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+
+		// Seed a resumable state: rounds 1-2 already recorded (round 2
+		// carrying a valid handoff), round 3 is next.
+		handoffPath := filepath.Join(runDir, "round-2-handoff.md")
+		writeFile(t, handoffPath, "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n")
+		seed := runState{
+			ProfileHash: "hash-1",
+			RoundCaps:   []int{10},
+			Rounds: []roundRecord{
+				{Round: 1, Attempts: 1, Verdict: "BLOCKING"},
+				{Round: 2, Attempts: 1, Verdict: "BLOCKING", JudgeVerdict: "PROGRESSING", HandoffPath: handoffPath},
+			},
+		}
+		if err := saveState(runDir, seed); err != nil {
+			t.Fatalf("saveState() = %v; want nil", err)
+		}
+
+		// A leftover seed file from an interrupted prior attempt at round
+		// 3 — exactly what a crash between targeting's write and round 3's
+		// own attempt completing would leave behind.
+		leftoverSeedPath := artifactPaths(runDir, 3, 1).Seed
+		writeFile(t, leftoverSeedPath, "stale seed from an interrupted run")
+
+		fr := &fakeRunner{}
+		fr.queue = []queuedAttemptResult{
+			{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}},
+		}
+		qs := &queuedShuttle{}
+		qs.queue = []queuedShuttleEntry{
+			{verdictContent: "fresh targeting brief for round 3"},
+		}
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
+		e := New("perch", fr, qs, Options{})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomeApproved {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+		}
+		if len(qs.specs) != 1 || qs.specs[0].Role != "targeting" {
+			t.Fatalf("queuedShuttle specs = %+v; want exactly one targeting spec", qs.specs)
+		}
+		if len(fr.calls) != 1 || fr.calls[0].SeedPath != leftoverSeedPath {
+			t.Fatalf("fr.calls = %+v; want one call carrying SeedPath %q", fr.calls, leftoverSeedPath)
+		}
+
+		if !fileExists(leftoverSeedPath + staleSuffix) {
+			t.Errorf("stale seed path %q was not created; want moveStaleArtifacts to have moved the leftover aside before targeting ran", leftoverSeedPath+staleSuffix)
+		}
+		content, err := os.ReadFile(leftoverSeedPath)
+		if err != nil {
+			t.Fatalf("ReadFile(%q) = %v; want nil", leftoverSeedPath, err)
+		}
+		if string(content) != "fresh targeting brief for round 3" {
+			t.Errorf("seed file content = %q; want the freshly written targeting brief, not the stale leftover", string(content))
+		}
+	})
+}
+
+// fixedShuttle is a same-package Shuttle double that always returns a fixed
+// (Result, error) pair without touching the filesystem, regardless of the
+// Spec it receives — used to drive runTargeting's fail-safe paths directly,
+// including outcomes queuedShuttle cannot script (a claimed-non-done
+// Outcome, or a claimed-done Outcome that never actually wrote its output
+// file).
+type fixedShuttle struct {
+	result shuttleengine.Result
+	err    error
+}
+
+// Run implements Shuttle by returning the scripted result unconditionally.
+func (f *fixedShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
+	return f.result, f.err
+}
+
+// TestRunTargeting_FailSafe proves runTargeting's fail-safe posture directly
+// against every failure path (d) names: a shuttle Run error, a non-done
+// Outcome, and a claimed-done Outcome whose seed file was never actually
+// written (or was written empty) — every path returns ("", false) rather
+// than an error, mirroring runCircling/runMilestone/runTriage.
+func TestRunTargeting_FailSafe(t *testing.T) {
+	tests := []struct {
+		name  string
+		shSet func(seedPath string) Shuttle
+	}{
+		{
+			name: "shuttle run error",
+			shSet: func(string) Shuttle {
+				return &fixedShuttle{err: errors.New("targeting shuttle unavailable")}
+			},
+		},
+		{
+			name: "non-done outcome",
+			shSet: func(string) Shuttle {
+				return &fixedShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}}
+			},
+		},
+		{
+			name: "claimed done but the seed file was never written",
+			shSet: func(string) Shuttle {
+				return &fixedShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			},
+		},
+		{
+			name: "claimed done but the seed file is empty",
+			shSet: func(seedPath string) Shuttle {
+				writeFile(t, seedPath, "   \n")
+				return &fixedShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			seedPath := filepath.Join(runDir, "round-3-seed.md")
+			sh := tt.shSet(seedPath)
+
+			content, ok := runTargeting(sh, "perch", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
+			if ok {
+				t.Errorf("runTargeting() ok = true; want false")
+			}
+			if content != "" {
+				t.Errorf("runTargeting() content = %q; want empty", content)
+			}
+		})
 	}
 }
