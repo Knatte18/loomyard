@@ -25,7 +25,6 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
 
 - **Context:**
   - `internal/fabricengine/add_test.go`
-  - `internal/fabricengine/checkout_rollback_test.go`
   - `internal/fabricengine/revert_test.go`
   - `internal/fabricengine/weftgit_exclude_test.go`
   - `internal/fabricengine/trailer_test.go`
@@ -36,6 +35,9 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
   - `internal/fabricengine/corrindex_test.go`
   - `internal/fabricengine/clone_test.go`
   - `internal/fabricengine/clone_adopt_test.go`
+  - `internal/fabricengine/checkout_rollback_test.go`
+  - `internal/fabricengine/checkout_index_refresh_test.go`
+  - `internal/fabricengine/add_branch_exists_test.go`
 - **Creates:** none
 - **Deletes:**
   - `internal/fabricengine/clone_differential_test.go`
@@ -86,6 +88,23 @@ fix the now-stale enforcement/constraint text. Depends on batches 1, 2, 3.
   genuinely unique fabric-behaviour assertion turns up with no standalone equivalent, STOP and
   report it as a stuck (`stuck_type: logic`) rather than silently dropping coverage -- do not
   invent a test blind.
+
+  Deleting `lifecycle_differential_test.go` also removes its unexported `diffPair`
+  type/`buildDiffPair`/`currentBranchOf` helpers from package `fabricengine_test` --
+  Go resolves symbols per-package across every `_test.go` file sharing that package, not
+  per-file, so any other file in the package referencing them breaks too. Three files outside
+  this card's original scope do: `checkout_rollback_test.go` (already in Context above) and
+  two more discovered only by attempting the build --
+  `checkout_index_refresh_test.go` and `add_branch_exists_test.go` -- both call
+  `buildDiffPair(t, "")` and then use only its `.FabricFixture`/`.Fabric` fields (never the
+  warp side). Add a small shared `newFabricFixture(t) lyxtest.PairedFixture` helper (fabric
+  config seeded, weft prime pre-switched to `fabricengine.WeftBranchName("main")`, mirroring
+  `buildDiffPair`'s fabric-side setup) plus standalone `currentBranchOf`/`branchExistsAt`
+  helpers into `reconcile_stale_registration_test.go` (this card already edits it), then
+  rewrite all three consumer files' `dp := buildDiffPair(t, "")` / `dp.FabricFixture.Layout` /
+  `dp.Fabric` call sites onto `newFabricFixture(t)` + `fabricengine.NewTopology(fabricengine.Config{})`
+  in place. This is a mechanical, non-semantic rewrite (same fixture shape, same assertions,
+  only the two-sided differential wrapper is dropped), not new coverage.
 - **Commit:** `test(fabricengine): backfill fabric-only coverage, delete differential tests`
 
 ### Card 16: delete the four old modules
