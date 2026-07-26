@@ -1,6 +1,6 @@
 //go:build integration
 
-// gate_lingering_test.go holds the one perchengine test that spawns real
+// gate_lingering_test.go holds the one treadleengine test that spawns real
 // cmd/ping child processes and, by design, sits in the production
 // gateWaitDelay (10s) pipe-abandon grace window — real-time cost that
 // violates the offline Tier 1 loop's premise (see the Test Tier Purity
@@ -10,7 +10,7 @@
 // than a banned token (gitexec.RunGit, exec.Command, lyxtest.Copy) the guard
 // greps for.
 
-package perchengine
+package treadleengine
 
 import (
 	"os"

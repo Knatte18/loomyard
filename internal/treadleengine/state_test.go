@@ -2,8 +2,10 @@
 // terminal classification, exercises moveStaleArtifacts' renaming
 // (including the double-.stale collision case), and round-trips a runState
 // through saveState/loadOrInitState to check the persisted shape survives.
+// ProfileHash/DeriveRunID/ValidRunID's own tests live in
+// internal/perchengine/identity_test.go — those functions stay perch-side.
 
-package perchengine
+package treadleengine
 
 import (
 	"os"
@@ -18,7 +20,7 @@ func TestLoadOrInitState(t *testing.T) {
 	t.Run("fresh dir writes an initial state and starts at round 1", func(t *testing.T) {
 		runDir := t.TempDir()
 
-		got, info, err := loadOrInitState(runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -57,7 +59,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		got, info, err := loadOrInitState(runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -79,7 +81,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState(runDir, "new-hash", []int{5, 8, 10})
+		_, _, err := loadOrInitState("perch", runDir, "new-hash", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -96,7 +98,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState(runDir, "hash-1", []int{5, 8, 10})
+		_, _, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -113,7 +115,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState(runDir, "new-hash", []int{5, 8, 10})
+		_, _, err := loadOrInitState("perch", runDir, "new-hash", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -192,10 +194,11 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestTerminalOutcome covers the three states perchcli's pause verb must
-// distinguish before writing a pause flag: no state file at all (a run dir
-// that never started a block), an in-flight block (empty Outcome), and a
-// finished block, whose recorded Outcome is reported with ok true.
+// TestTerminalOutcome covers the three states a caller's own pause verb
+// (e.g. perchcli's) must distinguish before writing a pause flag: no state
+// file at all (a run dir that never started a block), an in-flight block
+// (empty Outcome), and a finished block, whose recorded Outcome is reported
+// with ok true.
 func TestTerminalOutcome(t *testing.T) {
 	t.Run("no state file reports not terminal", func(t *testing.T) {
 		outcome, ok, err := TerminalOutcome(t.TempDir())
@@ -245,7 +248,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 		// Judge/Gate/Triage are left absent, as a round without a judge/gate/
 		// triage step would leave them.
 
-		if err := moveStaleArtifacts(runDir, 3, 1); err != nil {
+		if err := moveStaleArtifacts("perch", runDir, 3, 1); err != nil {
 			t.Fatalf("moveStaleArtifacts() = %v; want nil", err)
 		}
 
@@ -262,7 +265,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 
 	t.Run("no-op when no artifacts exist", func(t *testing.T) {
 		runDir := t.TempDir()
-		if err := moveStaleArtifacts(runDir, 5, 1); err != nil {
+		if err := moveStaleArtifacts("perch", runDir, 5, 1); err != nil {
 			t.Fatalf("moveStaleArtifacts() = %v; want nil", err)
 		}
 	})
@@ -271,7 +274,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 		runDir := t.TempDir()
 		paths := artifactPaths(runDir, 3, 1)
 		writeFile(t, paths.Review, "first stale review")
-		if err := moveStaleIfExists(paths.Review); err != nil {
+		if err := moveStaleIfExists("perch", paths.Review); err != nil {
 			t.Fatalf("moveStaleIfExists() (first) = %v; want nil", err)
 		}
 		if !fileExists(paths.Review + staleSuffix) {
@@ -281,7 +284,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 		// A fresh round re-run wrote the same round-3-review.md path again,
 		// and it is now stale too, colliding with the already-.stale file.
 		writeFile(t, paths.Review, "second stale review")
-		if err := moveStaleIfExists(paths.Review); err != nil {
+		if err := moveStaleIfExists("perch", paths.Review); err != nil {
 			t.Fatalf("moveStaleIfExists() (second) = %v; want nil", err)
 		}
 
@@ -297,99 +300,6 @@ func TestMoveStaleArtifacts(t *testing.T) {
 			t.Errorf("second stale path %q was not created", secondStale)
 		}
 	})
-}
-
-func TestProfileHash(t *testing.T) {
-	p1 := Profile{Rubric: "a", RoundCaps: []int{5, 8, 10}, JudgeModel: "haiku"}
-	p2 := Profile{Rubric: "a", RoundCaps: []int{5, 8, 10}, JudgeModel: "haiku"}
-	p3 := Profile{Rubric: "b", RoundCaps: []int{5, 8, 10}, JudgeModel: "haiku"}
-
-	h1, err := ProfileHash(p1)
-	if err != nil {
-		t.Fatalf("ProfileHash(p1) = %v; want nil", err)
-	}
-	h2, err := ProfileHash(p2)
-	if err != nil {
-		t.Fatalf("ProfileHash(p2) = %v; want nil", err)
-	}
-	h3, err := ProfileHash(p3)
-	if err != nil {
-		t.Fatalf("ProfileHash(p3) = %v; want nil", err)
-	}
-
-	if h1 != h2 {
-		t.Errorf("ProfileHash(p1) = %q; ProfileHash(p2) = %q; want equal for identical profiles", h1, h2)
-	}
-	if h1 == h3 {
-		t.Errorf("ProfileHash(p1) = ProfileHash(p3) = %q; want different for differing profiles", h1)
-	}
-	if len(h1) != 64 {
-		t.Errorf("len(ProfileHash(p1)) = %d; want 64 (sha256 hex)", len(h1))
-	}
-}
-
-func TestDeriveRunID(t *testing.T) {
-	tests := []struct {
-		name        string
-		profilePath string
-		hash        string
-		want        string
-	}{
-		{
-			name:        "simple basename",
-			profilePath: filepath.Join("profiles", "code-review.yaml"),
-			hash:        "abcdef0123456789",
-			want:        "code-review-abcdef01",
-		},
-		{
-			name:        "spaces and mixed case sanitize to dashes",
-			profilePath: filepath.Join("profiles", "My Profile.yml"),
-			hash:        "0011223344556677",
-			want:        "my-profile-00112233",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := DeriveRunID(tt.profilePath, tt.hash)
-			if got != tt.want {
-				t.Errorf("DeriveRunID(%q, %q) = %q; want %q", tt.profilePath, tt.hash, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestValidRunID proves the exact shape both perch CLI verbs must enforce on
-// an explicit --run-id before joining it into a run-dir path: every id
-// DeriveRunID could plausibly produce passes, while anything carrying a
-// path separator, a leading/trailing dash, or other punctuation — the class
-// of value that would escape hubgeometry.PerchRunsDir via filepath.Join —
-// fails.
-func TestValidRunID(t *testing.T) {
-	tests := []struct {
-		name string
-		id   string
-		want bool
-	}{
-		{"derived-shape id", "code-review-abcdef01", true},
-		{"single word", "myrun", true},
-		{"empty", "", false},
-		{"parent-dir traversal", "../elsewhere", false},
-		{"nested parent-dir traversal", "../../perchwork", false},
-		{"absolute path", "/etc/passwd", false},
-		{"windows path separator", `a\b`, false},
-		{"leading dash", "-abc", false},
-		{"trailing dash", "abc-", false},
-		{"uppercase", "MyRun", false},
-		{"space", "my run", false},
-		{"dot", "my.run", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := ValidRunID(tt.id); got != tt.want {
-				t.Errorf("ValidRunID(%q) = %v; want %v", tt.id, got, tt.want)
-			}
-		})
-	}
 }
 
 func TestPauseFlag(t *testing.T) {
@@ -423,4 +333,20 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) = %v; want nil", path, err)
 	}
+}
+
+// intSlicesEqual reports whether a and b contain the same ints in the same
+// order. Duplicated from perchengine's profile_test.go (which stays
+// perch-side) per the mechanical-package-split helper-fallout clause: a
+// handful of lines, duplicated verbatim rather than shared across packages.
+func intSlicesEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

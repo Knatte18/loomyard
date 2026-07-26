@@ -4,7 +4,7 @@
 // mirroring burlerengine's TestTemplate_StatesRoundDiscipline /
 // TestTemplate_FillsWithAllMarkers style.
 
-package perchengine
+package treadleengine
 
 import (
 	"strings"

@@ -25,6 +25,42 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
+// stateFileName mirrors treadleengine's own (unexported) state.json file
+// name constant — a test-local pin of the on-disk contract, per the
+// state-json-compatibility shared decision.
+const stateFileName = "state.json"
+
+// roundRecord and runState are test-local mirrors of treadleengine's own
+// (unexported) persisted-state shapes, carrying the same JSON tags: the
+// on-disk state.json schema is a pinned contract (state-json-compatibility
+// shared decision), so a test-side mirror struct is a legitimate way for
+// this differential suite to keep asserting on fields (like TriagePath)
+// that Result/RoundSummary does not surface, without perchengine importing
+// treadleengine's unexported types.
+type roundRecord struct {
+	Round           int    `json:"round"`
+	Attempts        int    `json:"attempts"`
+	ShuttleOutcome  string `json:"shuttleOutcome"`
+	Verdict         string `json:"verdict"`
+	BlockingCount   int    `json:"blockingCount"`
+	ReviewPath      string `json:"reviewPath"`
+	FixerReportPath string `json:"fixerReportPath"`
+	JudgePath       string `json:"judgePath,omitempty"`
+	GatePath        string `json:"gatePath,omitempty"`
+	TriagePath      string `json:"triagePath,omitempty"`
+	JudgeVerdict    string `json:"judgeVerdict,omitempty"`
+	GatePassed      *bool  `json:"gatePassed,omitempty"`
+	SessionID       string `json:"sessionId"`
+}
+
+type runState struct {
+	ProfileHash string        `json:"profileHash"`
+	RoundCaps   []int         `json:"roundCaps"`
+	Rounds      []roundRecord `json:"rounds"`
+	Outcome     string        `json:"outcome,omitempty"`
+	StuckReason string        `json:"stuckReason,omitempty"`
+}
+
 // readRunState reads runDir's persisted state.json, failing the test loudly
 // if it is missing or unreadable — a test-only shortcut for asserting on
 // roundRecord fields (like TriagePath) that Result/RoundSummary does not
@@ -41,6 +77,36 @@ func readRunState(t *testing.T, runDir string) runState {
 		t.Fatalf("state.ReadJSON(%q) found = false; want true", path)
 	}
 	return got
+}
+
+// writeFile writes content to path, creating parent directories as needed
+// and failing the test on any I/O error. Duplicated from
+// internal/treadleengine/state_test.go (which stays treadle-side) per the
+// mechanical-package-split helper-fallout clause.
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) = %v; want nil", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) = %v; want nil", path, err)
+	}
+}
+
+// stringSlicesEqual reports whether a and b contain the same strings in the
+// same order. Duplicated from internal/treadleengine/roundfiles_test.go's
+// predecessor (now perchengine/adapter_test.go, which stays perch-side too)
+// per the mechanical-package-split helper-fallout clause.
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // scriptedBurlerCall records one burlerengine.Profile/RunOpts pair fakeBurler
@@ -1341,7 +1407,10 @@ func TestRun_Resume(t *testing.T) {
 
 		// Simulate a crash mid-round-2: a partial review file was written
 		// but the round never reached done, so no roundRecord exists for it.
-		stalePath := artifactPaths(runDir, 2, 1).Review
+		// artifactPaths itself is now unexported inside treadleengine; the
+		// naming scheme it produces (round-<token>-<kind>.md) is a pinned
+		// contract, so an inline literal join is the mechanical replacement.
+		stalePath := filepath.Join(runDir, "round-2-review.md")
 		writeFile(t, stalePath, "partial content from an interrupted round")
 
 		fb2 := &fakeBurler{}
