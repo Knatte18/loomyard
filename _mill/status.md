@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-A -- consumers
 slug: fabric-cutover
 branch: fabric-cutover
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r2  '2026-07-26T14:42:44Z'
 plan-fix-r3  '2026-07-26T14:47:55Z'
 planned  '2026-07-26T14:48:20Z'
 implementing  '2026-07-26T14:49:21Z'
+approved-A -- consumers  '2026-07-26T15:02:47Z'
 ```
 
 ## Batches
@@ -31,9 +32,10 @@ implementing  '2026-07-26T14:49:21Z'
 ```yaml
 batches:
   - name: A -- consumers
-    state: running
+    state: approved
     implementer_session: 5125010a-d6f6-4a34-8b0c-2ca81606d967
     start_sha: 6209cab47bf4135847ceffb05c8e661313c5cbb8
+    commit_sha: cf13ab47a794f43483079752d430a2ff60ea869c
   - name: B -- config collapse
     state: pending
   - name: C -- CLI de-registration + sandbox tags
