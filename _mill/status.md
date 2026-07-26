@@ -44,7 +44,9 @@ batches:
     start_sha: 14ff3e0f784b219d3bb65df554110014d3000892
     commit_sha: c860c64ec53be6e592f1077f04a0911384af0d76
   - name: judge-handoff
-    state: pending
+    state: running
+    implementer_session: f44e6169-28b3-4ebc-bd8e-c21dc2a6cf79
+    start_sha: c669ab1d3084722251186f5c986019f19c66ec78
   - name: preround-targeting
     state: pending
   - name: modelspec-migration
