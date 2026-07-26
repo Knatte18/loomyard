@@ -14,8 +14,10 @@ package treadleengine
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -158,4 +160,74 @@ func frontmatterProse(content []byte) string {
 	}
 	prose := strings.Join(lines[closingIdx+1:], "\n")
 	return strings.TrimSpace(strings.ReplaceAll(prose, "\r", ""))
+}
+
+// latestValidHandoff walks rounds newest-to-oldest looking for the most
+// recent round record whose HandoffPath is non-empty AND whose file both
+// reads and ParseHandoffs cleanly. An unreadable or unparseable recorded
+// handoff is a fail-safe skip, not a hard stop: it logs a "treadle: "
+// -prefixed logger.Warn naming the round and cause (this helper has no
+// calling-engine name in scope, exactly like ParseHandoff's own errors —
+// see the file-level comment), then the walk continues to the next older
+// round, so a single corrupted handoff degrades to the next older valid one
+// instead of taking every future judge call down with it. ok is false only
+// when no round in rounds carries a handoff that reads and parses cleanly
+// (including the fresh-block case of zero rounds). This helper depends on
+// nothing but rounds — it must not assume a current-round review exists,
+// since pre-round targeting (a later batch) reuses it before any round has
+// run.
+func latestValidHandoff(rounds []roundRecord) (path string, h Handoff, ok bool) {
+	for i := len(rounds) - 1; i >= 0; i-- {
+		round := rounds[i]
+		if round.HandoffPath == "" {
+			continue
+		}
+		content, err := os.ReadFile(round.HandoffPath)
+		if err != nil {
+			logger.Warn("treadle: recorded handoff file unreadable, falling back to an older handoff", "round", round.Round, "cause", err)
+			continue
+		}
+		parsed, err := ParseHandoff(content)
+		if err != nil {
+			logger.Warn("treadle: recorded handoff file unparseable, falling back to an older handoff", "round", round.Round, "cause", err)
+			continue
+		}
+		return round.HandoffPath, parsed, true
+	}
+	return "", Handoff{}, false
+}
+
+// judgeReadSet builds the review-file read-set a progress-judge call is fed,
+// replacing the unbounded collectJudgeReviews call at both judge call sites
+// (run.go). With a valid handoff (see latestValidHandoff), readSet is the
+// reviews of every completed round in rounds whose number is NOT already in
+// that handoff's CoversRounds, in round order, plus currentReviewPath — the
+// rounds it omits are exactly the ones the handoff has already absorbed —
+// and prevHandoffPath is that handoff's own path, to thread into the next
+// judge call's previous_handoff input. With no valid handoff at all (a
+// fresh block, or every recorded handoff failed to read/parse), readSet
+// degrades to exactly today's all-reviews behavior via collectJudgeReviews
+// and prevHandoffPath is "". Rounds where no judge ran at all (round 1, a
+// round right after an approved round, or a round whose judge call itself
+// failed) carry no HandoffPath and so never appear in any handoff's
+// CoversRounds — their reviews are therefore always present in some future
+// call's readSet, which is what closes the judge-gap hole.
+func judgeReadSet(rounds []roundRecord, currentReviewPath string) (readSet []string, prevHandoffPath string) {
+	path, handoff, ok := latestValidHandoff(rounds)
+	if !ok {
+		return collectJudgeReviews(rounds, currentReviewPath), ""
+	}
+
+	covered := make(map[int]bool, len(handoff.CoversRounds))
+	for _, round := range handoff.CoversRounds {
+		covered[round] = true
+	}
+
+	reviews := make([]string, 0, len(rounds)+1)
+	for _, r := range rounds {
+		if !covered[r.Round] {
+			reviews = append(reviews, r.ReviewPath)
+		}
+	}
+	return append(reviews, currentReviewPath), path
 }

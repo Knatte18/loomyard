@@ -64,12 +64,15 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
 
+		handoffPath := filepath.Join(dir, "round-3-handoff.md")
 		in := judgeInputs{
-			Round:        3,
-			PriorReviews: []string{"/run/round-1-review.md", "/run/round-2-review.md"},
-			VerdictPath:  verdictPath,
-			Model:        "haiku",
-			Effort:       "low",
+			Round:               3,
+			PriorReviews:        []string{"/run/round-1-review.md", "/run/round-2-review.md"},
+			VerdictPath:         verdictPath,
+			PreviousHandoffPath: "/run/round-2-handoff.md",
+			HandoffPath:         handoffPath,
+			Model:               "haiku",
+			Effort:              "low",
 		}
 		verdict, rationale, ok := runCircling(sh, "perch", in)
 
@@ -94,8 +97,8 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 		if sh.spec.Effort != "low" {
 			t.Errorf("runCircling() spec.Effort = %q; want %q", sh.spec.Effort, "low")
 		}
-		if len(sh.spec.OutputFiles) != 1 || sh.spec.OutputFiles[0] != verdictPath {
-			t.Errorf("runCircling() spec.OutputFiles = %v; want [%q]", sh.spec.OutputFiles, verdictPath)
+		if len(sh.spec.OutputFiles) != 2 || sh.spec.OutputFiles[0] != verdictPath || sh.spec.OutputFiles[1] != handoffPath {
+			t.Errorf("runCircling() spec.OutputFiles = %v; want [%q, %q]", sh.spec.OutputFiles, verdictPath, handoffPath)
 		}
 	})
 
@@ -174,13 +177,16 @@ rationale: the same two findings oscillate every round
 			result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
 
+		handoffPath := filepath.Join(dir, "round-5-handoff.md")
 		in := judgeInputs{
-			Round:        5,
-			HardCap:      10,
-			PriorReviews: []string{"/run/round-1-review.md"},
-			VerdictPath:  verdictPath,
-			Model:        "haiku",
-			Effort:       "low",
+			Round:               5,
+			HardCap:             10,
+			PriorReviews:        []string{"/run/round-1-review.md"},
+			VerdictPath:         verdictPath,
+			PreviousHandoffPath: "/run/round-1-handoff.md",
+			HandoffPath:         handoffPath,
+			Model:               "haiku",
+			Effort:              "low",
 		}
 		verdict, rationale, ok := runMilestone(sh, "perch", in)
 
@@ -202,8 +208,8 @@ rationale: the same two findings oscillate every round
 		if sh.spec.Effort != "low" {
 			t.Errorf("runMilestone() spec.Effort = %q; want %q", sh.spec.Effort, "low")
 		}
-		if len(sh.spec.OutputFiles) != 1 || sh.spec.OutputFiles[0] != verdictPath {
-			t.Errorf("runMilestone() spec.OutputFiles = %v; want [%q]", sh.spec.OutputFiles, verdictPath)
+		if len(sh.spec.OutputFiles) != 2 || sh.spec.OutputFiles[0] != verdictPath || sh.spec.OutputFiles[1] != handoffPath {
+			t.Errorf("runMilestone() spec.OutputFiles = %v; want [%q, %q]", sh.spec.OutputFiles, verdictPath, handoffPath)
 		}
 	})
 

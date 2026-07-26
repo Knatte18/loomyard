@@ -50,11 +50,18 @@ type roundRecord struct {
 	ReviewPath      string `json:"reviewPath"`
 	FixerReportPath string `json:"fixerReportPath"`
 	JudgePath       string `json:"judgePath,omitempty"`
-	GatePath        string `json:"gatePath,omitempty"`
-	TriagePath      string `json:"triagePath,omitempty"`
-	JudgeVerdict    string `json:"judgeVerdict,omitempty"`
-	GatePassed      *bool  `json:"gatePassed,omitempty"`
-	SessionID       string `json:"sessionId"`
+	// HandoffPath is the path of this round's judge-maintained handoff file
+	// (see handoff.go), set only when that round's judge call succeeded AND
+	// its handoff output read and ParseHandoff-validated cleanly — additive
+	// per the state-json-compatibility shared decision, so a block written
+	// by an older binary resumes with zero migration; its records simply
+	// lack handoff coverage, which judgeReadSet's fallback already handles.
+	HandoffPath  string `json:"handoffPath,omitempty"`
+	GatePath     string `json:"gatePath,omitempty"`
+	TriagePath   string `json:"triagePath,omitempty"`
+	JudgeVerdict string `json:"judgeVerdict,omitempty"`
+	GatePassed   *bool  `json:"gatePassed,omitempty"`
+	SessionID    string `json:"sessionId"`
 }
 
 // runState is the persisted record for one treadle block, written as
@@ -167,7 +174,7 @@ func saveState(runDir string, s runState) error {
 // for it), just before that round is re-run from scratch.
 func moveStaleArtifacts(name string, runDir string, round, attempt int) error {
 	paths := artifactPaths(runDir, round, attempt)
-	for _, p := range []string{paths.Review, paths.FixerReport, paths.Judge, paths.Gate, paths.Triage} {
+	for _, p := range []string{paths.Review, paths.FixerReport, paths.Judge, paths.Handoff, paths.Gate, paths.Triage} {
 		if err := moveStaleIfExists(name, p); err != nil {
 			return err
 		}

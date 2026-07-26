@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -253,8 +254,10 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			// output files are deliberately excluded, since the judge's
 			// material is blocking findings recurring across review files
 			// (doc.go's verdict-judge contract), and a gate transcript has
-			// no findings to compare.
-			judgeReviews := collectJudgeReviews(st.Rounds, outcome.ReviewPath)
+			// no findings to compare. judgeReadSet bounds this list to
+			// {latest valid handoff + reviews it has not absorbed}
+			// instead of every prior review — see handoff.go.
+			judgeReviews, prevHandoffPath := judgeReadSet(st.Rounds, outcome.ReviewPath)
 
 			// The circling check never runs on the round immediately after an
 			// APPROVED round (reachable in command/both gate modes, where an
@@ -272,22 +275,27 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 				// The milestone gate REPLACES the circling check for this
 				// round — a rung round issues exactly one judge call.
 				jv, _, judgeOK := runMilestone(e.shuttle, e.name, judgeInputs{
-					Round:        round,
-					HardCap:      hardCap,
-					PriorReviews: judgeReviews,
-					VerdictPath:  outcome.Paths.Judge,
-					Model:        p.JudgeModel,
-					Effort:       p.JudgeEffort,
+					Round:               round,
+					HardCap:             hardCap,
+					PriorReviews:        judgeReviews,
+					VerdictPath:         outcome.Paths.Judge,
+					PreviousHandoffPath: prevHandoffPath,
+					HandoffPath:         outcome.Paths.Handoff,
+					Model:               p.JudgeModel,
+					Effort:              p.JudgeEffort,
 				})
 				// Only a REAL verdict is recorded — a fail-safe fallback
 				// (judgeOK false) leaves the record's judge fields empty, so
 				// an operator reading state.json can tell a genuine CONTINUE
 				// apart from a judge infrastructure failure that never
 				// actually answered (the Warn logged inside the call above
-				// is the only trace of the failure).
+				// is the only trace of the failure). A judge call whose
+				// verdict failed records no handoff either — recordHandoff
+				// is only ever consulted inside this same judgeOK guard.
 				if judgeOK {
 					record.JudgePath = outcome.Paths.Judge
 					record.JudgeVerdict = string(jv)
+					record.HandoffPath = recordHandoffIfValid(e.name, outcome.Paths.Handoff, round, "milestone judge")
 				}
 				if jv == JudgeStop {
 					st.Rounds = append(st.Rounds, record)
@@ -301,17 +309,21 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 				// JudgeContinue / JudgeUncertain: fall through and loop.
 			case round >= 2 && !prevRoundApproved:
 				jv, _, judgeOK := runCircling(e.shuttle, e.name, judgeInputs{
-					Round:        round,
-					PriorReviews: judgeReviews,
-					VerdictPath:  outcome.Paths.Judge,
-					Model:        p.JudgeModel,
-					Effort:       p.JudgeEffort,
+					Round:               round,
+					PriorReviews:        judgeReviews,
+					VerdictPath:         outcome.Paths.Judge,
+					PreviousHandoffPath: prevHandoffPath,
+					HandoffPath:         outcome.Paths.Handoff,
+					Model:               p.JudgeModel,
+					Effort:              p.JudgeEffort,
 				})
 				// See the milestone-rung branch above: only a REAL verdict
-				// is recorded, never the fail-safe fallback.
+				// is recorded, never the fail-safe fallback, and a failed
+				// verdict records no handoff either.
 				if judgeOK {
 					record.JudgePath = outcome.Paths.Judge
 					record.JudgeVerdict = string(jv)
+					record.HandoffPath = recordHandoffIfValid(e.name, outcome.Paths.Handoff, round, "circling judge")
 				}
 				if jv == JudgeCircling {
 					st.Rounds = append(st.Rounds, record)
@@ -457,6 +469,29 @@ func collectJudgeReviews(rounds []roundRecord, currentReviewPath string) []strin
 		reviews = append(reviews, r.ReviewPath)
 	}
 	return append(reviews, currentReviewPath)
+}
+
+// recordHandoffIfValid reads and ParseHandoff-validates the handoff file a
+// successful judge call (judgeOK true) just produced at path, returning
+// path back unchanged when it is well-formed. A missing or unparseable
+// handoff logs a name-prefixed logger.Warn naming label (matching
+// runJudgeCall's own label argument, e.g. "milestone judge", so the two
+// Warns read consistently in an operator's log), round, and cause, and
+// returns "" — never an error, never STUCK, and the verdict this handoff
+// rode alongside is completely unaffected either way; the loop only ever
+// calls this from inside the judgeOK guard, so a failed verdict never
+// reaches here at all.
+func recordHandoffIfValid(name string, path string, round int, label string) string {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		logger.Warn(name+": "+label+" handoff file unreadable, leaving no recorded handoff", "round", round, "cause", err)
+		return ""
+	}
+	if _, err := ParseHandoff(content); err != nil {
+		logger.Warn(name+": "+label+" handoff file unparseable, leaving no recorded handoff", "round", round, "cause", err)
+		return ""
+	}
+	return path
 }
 
 // isMilestoneRung reports whether round is one of caps' milestone rungs —

@@ -42,17 +42,25 @@ var _ Shuttle = (*shuttleengine.Runner)(nil)
 
 // judgeInputs bundles the values every judge call (either framing) needs to
 // compose its prompt and shuttle spec. HardCap is only read by the
-// milestone framing; PriorReviews is rendered into the prior_reviews marker
-// as a newline-separated absolute-path list — the judge agent reads the
-// files itself, so its input is self-contained with no memory carried
-// between calls.
+// milestone framing; PriorReviews is the judgeReadSet walk's output —
+// rendered into the prior_reviews marker as a newline-separated
+// absolute-path list of only the reviews NOT yet absorbed by
+// PreviousHandoffPath — the judge agent reads the files itself, so its
+// input is self-contained with no memory carried between calls beyond that
+// one handoff file. PreviousHandoffPath is the path the judge should read
+// as its starting handoff, or "" when there is none yet (rendered into the
+// previous_handoff marker as the literal "(none)"). HandoffPath is where
+// this call must write its own fresh handoff, alongside VerdictPath, in the
+// SAME call — see the handoff-on-disk shared decision.
 type judgeInputs struct {
-	Round        int
-	HardCap      int
-	PriorReviews []string
-	VerdictPath  string
-	Model        string
-	Effort       string
+	Round               int
+	HardCap             int
+	PriorReviews        []string
+	VerdictPath         string
+	PreviousHandoffPath string
+	HandoffPath         string
+	Model               string
+	Effort              string
 }
 
 // runCircling spawns the per-round circling-check progress judge: does the
@@ -68,9 +76,11 @@ type judgeInputs struct {
 // answered.
 func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
 	values := map[string]string{
-		"round":         strconv.Itoa(in.Round),
-		"prior_reviews": strings.Join(in.PriorReviews, "\n"),
-		"verdict_path":  in.VerdictPath,
+		"round":            strconv.Itoa(in.Round),
+		"prior_reviews":    strings.Join(in.PriorReviews, "\n"),
+		"verdict_path":     in.VerdictPath,
+		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
+		"handoff_path":     in.HandoffPath,
 	}
 	return runJudgeCall(sh, name, judgeCirclingTemplate, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
 }
@@ -84,24 +94,43 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 // See runCircling's doc for the ok return's meaning.
 func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
 	values := map[string]string{
-		"round":         strconv.Itoa(in.Round),
-		"hard_cap":      strconv.Itoa(in.HardCap),
-		"prior_reviews": strings.Join(in.PriorReviews, "\n"),
-		"verdict_path":  in.VerdictPath,
+		"round":            strconv.Itoa(in.Round),
+		"hard_cap":         strconv.Itoa(in.HardCap),
+		"prior_reviews":    strings.Join(in.PriorReviews, "\n"),
+		"verdict_path":     in.VerdictPath,
+		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
+		"handoff_path":     in.HandoffPath,
 	}
 	return runJudgeCall(sh, name, judgeMilestoneTemplate, values, framingMilestone, in.Round, in.Model, in.Effort, JudgeContinue, "milestone judge")
 }
 
+// previousHandoffMarker renders a judgeInputs.PreviousHandoffPath value into
+// the previous_handoff stencil marker: the path itself when a previous
+// handoff exists, or the literal "(none)" when this is the first handoff a
+// block has ever produced — stencil.Fill requires every marker to resolve
+// to some value (no conditionals in templates), so the "none yet" case
+// needs its own literal rather than an empty string.
+func previousHandoffMarker(path string) string {
+	if path == "" {
+		return "(none)"
+	}
+	return path
+}
+
 // runJudgeCall is the shared body runCircling and runMilestone drive
 // through their respective template/framing/default: compose the prompt,
-// build and run the shuttle spec (Role "judge" for both framings), then
-// read and parse the verdict file. Every failure point degrades to
-// (fallback, "", false) rather than an error, logging label (the call's
-// human-facing name, e.g. "circling judge"), name-prefixed, alongside round
-// and cause so an operator can tell which caller's which framing failed. ok
-// is true only on the success path, so a caller can distinguish a genuine
-// verdict from the fail-safe default without inspecting the verdict value
-// itself.
+// build and run the shuttle spec (Role "judge" for both framings, two
+// OutputFiles — the verdict AND the handoff the same call must write; see
+// the handoff-on-disk shared decision), then read and parse the verdict
+// file. Every failure point degrades to (fallback, "", false) rather than
+// an error, logging label (the call's human-facing name, e.g. "circling
+// judge"), name-prefixed, alongside round and cause so an operator can tell
+// which caller's which framing failed. ok is true only on the success path,
+// so a caller can distinguish a genuine verdict from the fail-safe default
+// without inspecting the verdict value itself. Reading and
+// ParseHandoff-validating the handoff output this call produced is the
+// round loop's job (run.go), not this function's — a failed handoff must
+// never affect the verdict it rides alongside.
 func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, model, effort string, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {
@@ -111,7 +140,7 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 
 	spec := shuttleengine.Spec{
 		Prompt:      string(prompt),
-		OutputFiles: []string{values["verdict_path"]},
+		OutputFiles: []string{values["verdict_path"], values["handoff_path"]},
 		Model:       model,
 		Effort:      effort,
 		Role:        "judge",
