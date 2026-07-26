@@ -38,7 +38,9 @@ implementing  '2026-07-26T16:25:21Z'
 ```yaml
 batches:
   - name: treadle-extraction
-    state: pending
+    state: running
+    implementer_session: b229bd69-d2ec-43d4-90fc-d1c1ebade9fe
+    start_sha: 14ff3e0f784b219d3bb65df554110014d3000892
   - name: judge-handoff
     state: pending
   - name: preround-targeting
