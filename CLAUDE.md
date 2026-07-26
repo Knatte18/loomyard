@@ -1,146 +1,74 @@
 # CLAUDE.md — Loomyard (lyx)
 
-## CONSTRAINTS.md is authoritative — read it, follow it
+## CONSTRAINTS.md is authoritative
 
-This repo has a `CONSTRAINTS.md` at its root. It exists, it is non-negotiable, and it
-**MUST be read before writing or reviewing any code** and followed exactly. It encodes
-structural invariants that are partly enforced at `go test` / CI time and partly by
-review discipline — violating one breaks the build or silently rots the design.
+Read `CONSTRAINTS.md` before writing or reviewing any code, every session — never proceed
+as if there are no constraints. It encodes structural invariants enforced partly by
+`go test`/CI and partly by review discipline; violating one breaks the build or silently
+rots the design. Current invariants include the **Hub Geometry Invariant**
+(`internal/hubgeometry` owns all cwd/geometry and `_lyx`/config paths), the **lyxtest Leaf
+Invariant**, the **CLI/Cobra Invariant** (module `Command()`/`RunCLI` seam, `Short` on
+every command, help-tree tests), and the **Documentation Lifecycle**. Record any new
+cross-cutting invariant there, same commit.
 
-Do **not** ever claim "no constraints in repo" or proceed as if there are none. The file
-is there. If you have not read it this session, read it now (`CONSTRAINTS.md`). Current
-invariants include: the **Hub Geometry Invariant** (`internal/hubgeometry` owns all cwd/geometry and
-`_lyx`/config paths), the **lyxtest Leaf Invariant**, the **CLI / Cobra Invariant**
-(module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests), and the
-**Documentation Lifecycle**. When you add a new cross-cutting invariant, record it in
-`CONSTRAINTS.md` in the same commit.
+## Persistent notes go in git, not file-memory
 
-## Persistent notes, not file-memory
+This project is worked in short-lived mill **worktrees** torn down on merge — the
+file-based `memory/` store is per-worktree and vanishes with it. Put durable notes in this
+file, `_raddle/`, or code comments instead: anything versioned and merged into `main`.
 
-This project is worked in short-lived mill **worktrees** that get torn down once a task
-merges. The file-based `memory/` store is per-worktree, so anything written there
-vanishes with the worktree — don't bother saving project facts as memory. Put durable
-notes where they get versioned and merged into `main` instead: this `CLAUDE.md`,
-`_raddle/`, or code comments.
+## Pushing to main — only from the worktree that IS main
 
-## Pushing to main is OK — only from the worktree that IS main
+Direct pushes to `main` are fine here, no PR gate — but only for the agent whose own
+current worktree is checked out on `main` (the long-lived `loomyard` worktree). Never for
+an agent working a task worktree (`<container>/wts/<slug>`), no matter how small the change.
 
-Pushing directly to `main` is fine in this repo — no PR or branch-first gate — **but
-only for the agent instance whose own current worktree's checked-out branch is
-`main`** (concretely: an agent invoked in the long-lived `loomyard` worktree). This is
-not a general license for any agent, anywhere, to go find or use a `main`-tracking
-worktree from wherever it happens to be running. An agent working a task worktree
-(`<container>/wts/<slug>`, checked out on the task's own branch) is never covered by
-this rule, no matter how small or "doc-only" the change is.
+## Worktree isolation — stay in yours
 
-## Worktree isolation — stay in YOUR OWN worktree, full stop
+An agent operates only within the worktree it was spawned in — never edit, commit, or
+push elsewhere, never spin up a new worktree of its own, unless the user explicitly says
+so for that case. Every other worktree is a black box: uncommitted changes, open files, a
+mid-commit/push you can't see. If work seems to belong elsewhere, say so and ask — don't
+resolve it unilaterally.
 
-**Default rule, no exceptions by convenience or judgment call: an agent operates only
-within the worktree it was invoked/spawned in.** Never edit, commit, or push in a
-different worktree; never spin up a new worktree of your own either — for ANY
-reason — unless the user has **explicitly** said so for that specific case. This repo
-always has several worktrees checked out at once (`<container>/wts/<slug>`, one per
-active mill task, plus the long-lived one tracking `main`) — a worktree that isn't
-yours is a black box: you cannot see whether another session, script, or the user has
-uncommitted changes there, holds a file open, or is mid-commit/push. Touching it risks
-silently clobbering someone else's in-progress work.
+## Mill wiki — never touched directly
 
-If work seems to belong on a different branch or in a different worktree than the one
-you're in (e.g. an unrelated `main`-only doc fixup surfaces while working a task
-worktree), that is not your call to resolve unilaterally — say so and ask the user
-how they want it handled. Only proceed outside your own worktree once they have
-explicitly authorized it, and then do only what was authorized.
+All wiki interaction goes through mill's wiki module: the daemon client (`wiki._client`:
+`upsert_task`, `set_phase`, `merge_tasks`, `list_tasks_*`) or the `/mill-*` skills. Never
+raw `git`, `Edit`/`Write`, or `cp` on wiki files (`Home.md`, `_Sidebar.md`, `proposal-*.md`,
+`tasks.json`) — the daemon owns the repo and serializes every write.
 
-## Mill wiki
+## Agent execution: interactive tmux, never `claude -p`
 
-Never write to the mill wiki directly. Absolutely all interaction with the mill
-wiki goes through mill's wiki module — never raw `git` on the wiki, never `Edit`/`Write`
-on wiki files (`Home.md`, `_Sidebar.md`, `proposal-*.md`, `tasks.json`), and never
-`cp`-into-wiki. Use the daemon client (`wiki._client`: `upsert_task`, `set_phase`,
-`merge_tasks`, `list_tasks_*`) or the `/mill-*` skills (`mill-add`, `mill-groom`,
-`mill-wiki-push`, …). The daemon owns the wiki repo and serializes every write.
+Every LLM agent lyx spawns runs as an interactive tmux session — never headless
+`claude -p`. Reason: Anthropic is moving headless usage off Pro/Max subscription coverage
+onto API billing; interactive sessions keep subscription coverage, and tmux is what makes
+a programmatically-driven session interactive.
 
-## Agent execution: interactive tmux sessions, NOT `claude -p`
+- The agent-driving layer depends on **reed** for this reason — it cannot be built on a
+  headless `exec`.
+- Agents are provider-agnostic via **engines** (a Claude engine now, others later) — the
+  verdict/output contract is provider-invariant. Non-Claude support is not a current priority.
+- Cluster reviews (N parallel reviewers) scale via tmux windows, not a pane explosion —
+  future reed work.
 
-Every LLM agent lyx spawns (loom producers, the review handler, cluster reviewers,
-the progress-judge) runs as an **interactive session inside tmux** — never headless
-`claude -p`.
+## Task completion — docs land in the same commit
 
-**Why (economic, not technical):** Anthropic announced that headless `claude -p` will
-no longer draw on a Pro/Max subscription — it will be billed as API and reserved
-interactive sessions for the subscription. (Slated for 2026-06-15, postponed, but
-expected to land.) Headless is technically possible but would force API cost, so we do
-not use it. Interactive sessions keep subscription coverage; tmux is what makes a
-programmatically-driven session *interactive*.
+A task adding a module, changing observable CLI behavior, or introducing cross-cutting
+infrastructure must update docs in the same commit:
 
-**Consequences for design:**
-- The orchestrator drives agents by launching an interactive session in a tmux
-  pane/window, injecting the prompt, and detecting completion via Claude Code hooks.
-  I/O still rides the **file contract** (the agent writes its output files; Go reads
-  them) — that part is unchanged from a headless model.
-- Therefore the agent-driving layer (loom's producers, the review handler, cluster
-  reviewers, the progress-judge) will depend on the **reed** module; it cannot be built
-  on a headless `exec`. reed is on loom's critical path for this reason.
-- Agents are provider-agnostic via **engines** — per-LLM adapters (a Claude engine now;
-  Gemini etc. later) that know how to launch/drive their provider as a tmux session.
-  The verdict/output contract is provider-invariant, which is what makes engines
-  swappable. **Non-Claude support is not a current priority.**
-- Cluster-reviews (N parallel reviewers) scale via tmux **windows** (spawned clusters
-  land in their own windows, not a pane explosion) — long-term reed work, not now.
+- The module doc in `manifest/designs/`, if the change touches one.
+- `docs/overview.md`, if the module table or execution stack changes.
+- `CONSTRAINTS.md`, for any new cross-cutting invariant.
 
-## Scope of Claude-specificity — only one role is genuinely Claude-native
-
-Almost everything lyx spawns (Discussion, Planner, Webster, Burler rounds, the
-progress-judge) is **markdown-instruction + file-contract** driven — no skills, no
-slash-commands, no plugin/hook dependency baked into the task content itself, unlike
-Millhouse's Claude-Code-specific skill layer. That is precisely what makes the engine
-abstraction above real rather than aspirational: the prompt content is provider-agnostic
-by construction, so a future Gemini/Codex engine only has to solve the **engine/dispatch
-layer** (spawn, completion-detection, resume semantics) — not rewrite prompt content.
-
-**Exactly one role is a genuinely Claude-native, persistent session, not a spawned
-one-shot:** the Manifest-maintaining orchestrator (a long-running architecture/design
-discussion, the kind this file's own history comes out of) — it uses Claude Code skills,
-gets compacted periodically, and should be explicitly asked to maintain its own rich
-handoff for itself (more thorough than an auto-compact summary) — the same
-distill-the-prose-keep-the-ledger-lossless discipline `Treadle`'s judge-maintained
-handoff already uses, just for a human-collaborative session instead of a review round.
-
-**One narrow, known exception inside the spawned-agent side:** Burler's cluster-review
-mode calls Claude Code's own Agent tool (`subagent_type: "fork"`) directly — genuinely
-Claude-Code-tool-specific, not just engine-specific. This is scoped to the **optional**
-cluster variant only; Burler's default, single-reviewer round (`ForkSubagents` false,
-the common case) has no such dependency and would work against a non-Claude engine
-once one exists, minus clustering.
-
-## Task completion
-
-Every task that adds a module, changes observable CLI behaviour, or introduces
-cross-cutting infrastructure **must update docs as part of the same commit** —
-not as a follow-up. Specifically:
-
-- Update or create the module doc in `manifest/designs/` if the change touches a named,
-  not-yet-built module's design.
-- Update `docs/overview.md` if the module table or execution stack changes.
-- Record new cross-cutting invariants in `CONSTRAINTS.md` (same commit).
-
-A commit that ships behaviour without updating the docs is incomplete. The docs
-are the shared reference — they rot the moment the code moves without them.
-
-**`manifest/roadmap.md` is for planned modules/milestones only.** Update it only when a task
-**completes a planned item** (move it from Planned to Done, with a link to the module doc
-if one exists) or **adds a new planned item**. Do *not* append notes to the
-roadmap for bugfixes, hardening, or ergonomics/polish passes — that is delivered
-work, not a planned goal, and a collection of fixes is not its own milestone.
-Such changes are recorded by git history, the relevant module doc, and
-`CONSTRAINTS.md` invariants — not by the roadmap.
+`manifest/roadmap.md` moves only on completing or adding a planned item — not for
+bugfixes, hardening, or polish passes; those are covered by git history and the module
+docs, not the roadmap.
 
 ## Filesystem links (fslink)
 
-All cross-OS links go through `internal/fslink`. On Windows it uses **directory
-junctions** (mount-point reparse points), which need no special privileges; on other
-platforms it uses symlinks. The cross-platform contract is **directory-only**:
-`fslink.CreateDirLink` is the entry point, and a `CreateFileLink` is reserved for the
-future. Do not rely on Windows **file** symlinks — they require admin / Developer Mode
-and are not available on every dev machine, so junctions (directory links) are the only
-link type guaranteed to work everywhere.
+All cross-OS links go through `internal/fslink`. Windows uses directory junctions (no
+special privileges needed); other platforms use symlinks. The contract is
+directory-only — `CreateDirLink` is the entry point, `CreateFileLink` is reserved for
+later. Don't rely on Windows file symlinks (need admin/Developer Mode); junctions are the
+only link type guaranteed everywhere.
