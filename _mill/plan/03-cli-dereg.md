@@ -25,13 +25,13 @@ dependency, hence a separate green commit).
 ### Card 13: de-register warp/weft from cobra root + update pinned cmd/lyx tests + CORE-SUITE tags
 
 - **Context:**
-  - `cmd/lyx/registration_test.go`
   - `cmd/lyx/longlist_test.go`
   - `cmd/lyx/drift_test.go`
   - `cmd/lyx/sandbox_coverage_test.go`
   - `internal/fabriccli/fabric.go`
 - **Edits:**
   - `cmd/lyx/main.go`
+  - `cmd/lyx/registration_test.go`
   - `cmd/lyx/helptree_test.go`
   - `cmd/lyx/main_test.go`
   - `cmd/lyx/unknown_subcommand_test.go`
@@ -69,8 +69,17 @@ dependency, hence a separate green commit).
     scenario S8 (`Covers: warp`) so no `Covers:` tag names an unregistered module (fabric
     stays covered by SANDBOX-FABRIC-SUITE.md). This keeps
     `sandbox_coverage_test.go` Assert 2 green.
-  `registration_test.go`, `longlist_test.go`, and `drift_test.go` are discovery-driven and
+  `longlist_test.go` and `drift_test.go` are discovery-driven from the live cobra tree and
   pass automatically once `main.go` is consistent -- listed as Context to confirm, not edit.
+  `registration_test.go` is discovery-driven from *packages on disk*, not the live cobra
+  tree: it independently discovers every `internal/` package exposing `func Command()
+  *cobra.Command` and asserts each is registered. Since `warpcli`/`weftcli` still exist on
+  disk (they are deleted in batch D1, not this batch), de-registering them from `newRoot()`
+  makes this guard fail as its "exists => registered" invariant is designed to. Add
+  `"warpcli": true` and `"weftcli": true` to `registration_test.go`'s `allowlist` map, with a
+  comment explaining they are mid-deletion (registration removed here in batch C, packages
+  deleted in batch D1) -- this is exactly the "documented future exception" the allowlist
+  mechanism exists for, not a weakening of the guard.
 - **Commit:** `refactor(cmd/lyx): de-register warp/weft CLI and update pinned test sets`
 
 ### Card 14: flip shared-hub sandbox bootstrap to fabric clone
