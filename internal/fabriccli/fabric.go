@@ -1,18 +1,16 @@
 // fabric.go is the cobra Command() entry point and the RunCLI seam for the fabric
 // module. It builds the "fabric" parent command and its hub-scoped topology verbs
-// (add, list, remove, checkout, pairs, reconcile, prune, cleanup) — each mirroring
-// its warpcli counterpart one-to-one, but driving fabricengine.Topology instead of
-// warpengine.Worktree. The weft-git content-sync verbs (status, commit, push, pull,
-// sync) are wired in by weft_verbs.go, which also extends this file's Command()
-// build with the --weft-path bypass flag and its PersistentPreRunE.
+// (add, list, remove, checkout, pairs, reconcile, prune, cleanup), each driving
+// fabricengine.Topology for the host↔weft worktree pairing. The weft-git
+// content-sync verbs (status, commit, push, pull, sync) are wired in by
+// weft_verbs.go, which also extends this file's Command() build with the
+// --weft-path bypass flag and its PersistentPreRunE.
 
 // Package fabriccli owns the unified host↔weft cobra surface for lyx: the flat
-// 14-verb "lyx fabric" tree combining warp's topology verbs and weft's content-sync
-// verbs over the fabricengine package. fabric is built and registered ALONGSIDE
-// warp and weft during the parallel-build period (see docs/overview.md); it is not
-// yet the default and does not replace either module. Every fabric weft branch
-// carries the uniform "-weft" suffix (fabricengine.WeftBranchName), unlike warp's
-// mirrored (identical) branch names.
+// 14-verb "lyx fabric" tree combining host↔weft topology verbs and weft
+// content-sync verbs over the fabricengine package. fabric is the sole
+// host↔weft git-coordination module (see docs/overview.md). Every fabric weft
+// branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).
 package fabriccli
 
 import (
@@ -37,21 +35,20 @@ import (
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fabric",
-		Short: "unified host↔weft git-coordination (parallel build alongside warp/weft)",
+		Short: "unified host↔weft git-coordination",
 		Long: `fabric manages the host↔weft topology and weft content-sync for lyx-managed
-git repositories, unifying warp's worktree pairing and weft's commit/push/pull.
+git repositories, unifying worktree pairing with commit/push/pull.
 
 It owns worktree pairing, coordinated branch switching with junction re-point,
 reconcile/prune/cleanup of managed pairs, and weft-side status/commit/push/pull/
-sync — the same operations warp and weft provide today, under one module.
+sync, all under one module.
 
 Branch scheme: every fabric weft branch is named after the paired host branch
 plus a fixed suffix (e.g. host branch "wt-foo" pairs with weft branch
 "wt-foo` + hubgeometry.WeftSuffix + `") — uniform for every pair, including the
-clone-time primary, unlike warp's mirrored (identical) branch names.
+clone-time primary.
 
-fabric exists alongside warp and weft during the parallel-build period; it is
-not yet the default. See docs/overview.md and manifest/designs/fabric.md.
+fabric is the sole host↔weft git-coordination module. See docs/overview.md.
 
 Example:
   lyx fabric add my-task
@@ -215,9 +212,9 @@ A weft branch currently checked out at a worktree is always reported as
 protected and never deleted, in every mode — git cannot delete a checked-out
 branch, and its being checked out means the pair is still on disk.
 
-During the parallel-build period the weft repo also holds warp-created weft
-branches (mirrored names, no fabric suffix); those are reported but never
-deleted here, since they are not fabric-managed.`,
+The weft repo may also hold weft branches without the fabric suffix (e.g.
+inherited from history predating fabric's uniform naming scheme); those are
+reported but never deleted here, since they are not fabric-managed.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			apply, _ := cleanupCmd.Flags().GetBool("apply")
 			force, _ := cleanupCmd.Flags().GetBool("force")
@@ -535,11 +532,11 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 // addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`.
 //
 // It intentionally returns the zero value: `lyx fabric add` always pushes both the host
-// and weft branches, matching warpcli's identical addOptionsFromEnv — a paired worktree
-// only exists once both remotes carry its branch, so add does not honor the
-// WEFT_SKIP_GIT / WEFT_SKIP_PUSH bypass gates (those gate the weft-git verbs —
-// commit/push/sync — via fabricengine.EnvSyncOptions, not topology creation). Tests pass
-// AddOptions directly rather than through the environment, keeping t.Parallel() safe.
+// and weft branches — a paired worktree only exists once both remotes carry its
+// branch, so add does not honor the WEFT_SKIP_GIT / WEFT_SKIP_PUSH bypass gates
+// (those gate the weft-git verbs — commit/push/sync — via fabricengine.EnvSyncOptions,
+// not topology creation). Tests pass AddOptions directly rather than through the
+// environment, keeping t.Parallel() safe.
 func addOptionsFromEnv() fabricengine.AddOptions {
 	return fabricengine.AddOptions{}
 }
