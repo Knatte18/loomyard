@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-modelspec-migration
+phase: approved-docs-lifecycle
 slug: treadle
 branch: treadle
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-treadle-extraction  '2026-07-26T16:53:12Z'
 approved-judge-handoff  '2026-07-26T17:14:49Z'
 approved-preround-targeting  '2026-07-26T17:27:26Z'
 approved-modelspec-migration  '2026-07-26T17:38:03Z'
+approved-docs-lifecycle  '2026-07-26T17:46:05Z'
 ```
 
 ## Batches
@@ -62,7 +63,8 @@ batches:
     start_sha: 01c7ba4d1689bb66c0799a4b387df78cae7c4fc5
     commit_sha: 50ba4983b6cc02c4bd043e592b1c2e26ed477808
   - name: docs-lifecycle
-    state: running
+    state: approved
     implementer_session: 7b1b89e9-e1af-41f4-b7f3-614e24e4ac54
     start_sha: fb9dc0fe43d6dd8f6c0605e0f2a05340ab4eec87
+    commit_sha: 357b853c4a773762f1481f021bedb7d8a2236fc0
 ```
