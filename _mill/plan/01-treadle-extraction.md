@@ -244,9 +244,14 @@ smaller sequence of fully-green commits that preserves `git mv` history.
   not duplicate it).
   `internal/perchengine/adapter.go` (create): unexported adapter type
   implementing `treadleengine.RoundRunner` over the `Burler` seam:
-  `RunAttempt` maps `AttemptInput` onto `burlerengine.Profile` (via the
-  relocated `buildRoundProfile` logic — content fields from the closed-over
-  perch Profile, paths and hydration from the input) and
+  `RunAttempt` maps `AttemptInput` onto `burlerengine.Profile` via the
+  relocated `buildRoundProfile` logic — whose post-extraction signature is
+  pinned here, since its old `roundArtifactPaths` parameter type stays
+  unexported in treadleengine: `buildRoundProfile(p Profile, reviewPath,
+  fixerReportPath string, priorReviews, priorFixerReports []string)
+  burlerengine.Profile` (content fields from the perch Profile; the two
+  path strings and hydration lists sourced from `AttemptInput`'s
+  `ReviewPath`/`FixerReportPath`/`PriorReviews`/`PriorFixerReports`) — and
   `burlerengine.RunOpts{Model, Effort, Timeout, Round: input.RoundToken}`,
   then maps `burlerengine.Result` onto `AttemptResult` (including
   `BlockingCount` via the relocated `countBlockingFindings` over
@@ -317,12 +322,30 @@ smaller sequence of fully-green commits that preserves `git mv` history.
   `roundfiles_test.go`'s `TestBuildRoundProfile_FieldMapping` (its subject
   lives in `perchengine/adapter.go`, and it builds a perch-shaped
   `Profile`) is extracted into the new
-  `internal/perchengine/adapter_test.go` — each extracted test body
-  verbatim, in `package perchengine`. What remains in the moved
+  `internal/perchengine/adapter_test.go` — in `package perchengine`. The
+  three identity tests move verbatim; the extracted
+  `TestBuildRoundProfile_FieldMapping` keeps its assertion structure but
+  its FIXTURE is necessarily rewritten: the current body calls
+  `artifactPaths` (unexported, now treadle-side) to build a
+  `roundArtifactPaths` argument, and `buildRoundProfile`'s post-extraction
+  signature (pinned in card 2) takes plain
+  `reviewPath`/`fixerReportPath` strings — construct those as literal
+  path strings and update the call accordingly. What remains in the moved
   `state_test.go` (`TestLoadOrInitState`, `TestSaveState_ReadJSONRoundTrip`,
   `TestTerminalOutcome`, `TestMoveStaleArtifacts`, `TestPauseFlag`) and
   `roundfiles_test.go` (`TestRoundToken`, `TestArtifactPaths`) compiles in
-  `package treadleengine` against the moved machinery. Preserve every
+  `package treadleengine` against the moved machinery.
+  Cross-package test-helper fallout (licensed by the differential-test-bar
+  decision's mechanical-package-split clause; each helper is a few lines,
+  duplicated verbatim): (a) `writeFile` is defined in the moving
+  `state_test.go` but called by the staying `run_test.go` — duplicate it
+  into a perchengine-side test file (e.g. `run_test.go` itself);
+  (b) `stringSlicesEqual` is defined in the moving `roundfiles_test.go`
+  but called by `run_test.go` — duplicate it perchengine-side likewise;
+  (c) `intSlicesEqual` is defined in the staying `profile_test.go` but
+  called by the moved `state_test.go` — duplicate it into the moved
+  `treadleengine/state_test.go`. Assertion bodies stay untouched in all
+  cases; only helper availability is restored. Preserve every
   build tag (`//go:build integration` on gate_lingering, `//go:build smoke`
   on smoke_judge) as the file's first line. `judge_test.go`'s Warn-label
   and fail-safe assertions must keep passing with the name-parameterized
@@ -335,14 +358,16 @@ smaller sequence of fully-green commits that preserves `git mv` history.
   `internal/perchengine/testmain_test.go` (the moved smoke test spawns git
   via lyxtest fixtures — the Hermetic Git guard requires this).
   `internal/perchengine/run_test.go` (edit, mechanical only): the file
-  stays in perchengine as the differential heart. Replace its two uses of
+  stays in perchengine as the differential heart. Replace its uses of
   moved unexported symbols: (a) `readRunState` unmarshals into a test-local
   mirror struct (declare test-local `runState`/`roundRecord` types in this
   file with the same JSON tags — the on-disk schema is a pinned contract,
   so a test-side mirror is legitimate); (b) the `artifactPaths(runDir, 2,
   1).Review` call becomes an inline
-  `filepath.Join(runDir, "round-2-review.md")`. Assertion bodies and test
-  names untouched. `internal/perchengine/testmain_test.go` stays.
+  `filepath.Join(runDir, "round-2-review.md")`; (c) receive the duplicated
+  `writeFile`/`stringSlicesEqual` helpers per the helper-fallout list
+  above. Assertion bodies and test names untouched.
+  `internal/perchengine/testmain_test.go` stays.
 - **Commit:** `treadle: relocate loop machinery tests to treadleengine`
 
 ### Card 4: runner-seam enforcement test and CONSTRAINTS entry

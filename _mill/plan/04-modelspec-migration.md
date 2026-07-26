@@ -170,10 +170,12 @@ resolved values change hashes differently and the existing
   effort; only `effort` is legal in brackets. The sandbox suite derives
   profiles from this help text (S0 ethos), so help accuracy is the
   review-obligation gate here (CLI/Cobra Invariant).
-  `run_test.go`: migrate the two fixture profiles (`judge-model: haiku` +
-  `judge-effort: low` becomes `judge-model: "haiku[effort=low]"` — the
-  resolved Profile field values are identical, so the existing assertions
-  stand); add cases — old split-key profile fails loud (unknown field
+  `run_test.go`: migrate BOTH key-pairs in each of the two fixture
+  profiles (`judge-model: haiku` + `judge-effort: low` becomes
+  `judge-model: "haiku[effort=low]"`, and `model: sonnet` +
+  `effort: high` becomes `model: "sonnet[effort=high]"` — the resolved
+  Profile field values are identical in all four cases, so the existing
+  assertions stand); add cases — old split-key profile fails loud (unknown field
   `judge-effort`), unknown alias fails loud, `version` bracket param fails
   loud, bare `sonnet` with a seeded test models.yaml resolves the default
   effort into `Profile.JudgeEffort`.
