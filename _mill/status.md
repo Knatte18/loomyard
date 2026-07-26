@@ -50,7 +50,9 @@ batches:
     start_sha: c669ab1d3084722251186f5c986019f19c66ec78
     commit_sha: f065d0e7fbe541d22758a908279107423ed9ec63
   - name: preround-targeting
-    state: pending
+    state: running
+    implementer_session: abe7575d-69ed-4c9b-994e-d198abf37633
+    start_sha: 4ef7d1c3ed608a0d3f4f8bff1aae1a64ee850211
   - name: modelspec-migration
     state: pending
   - name: docs-lifecycle
