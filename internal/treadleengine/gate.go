@@ -1,12 +1,12 @@
 // gate.go implements the command-gate execution seam and the convergence
 // check the round loop evaluates every round: execGateCommand is the
 // production CommandRunner (the seam type defined in engine.go),
-// writeGateOutput records a
-// command gate's raw output for the operator and the next round's
-// hydration, and converged evaluates GateMode against a round's burler
-// verdict and (when the mode runs a command) its pass/fail result.
+// writeGateOutput records a command gate's raw output for the operator and
+// the next round's hydration, and converged evaluates GateMode against a
+// round's runner verdict and (when the mode runs a command) its pass/fail
+// result.
 
-package perchengine
+package treadleengine
 
 import (
 	"context"
@@ -15,8 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
 // gateWaitDelay is how long execGateCommand's Wait may keep reading the
@@ -93,18 +91,20 @@ func execGateCommand(argv []string, dir string, timeout time.Duration) ([]byte, 
 	// Any other error means the process never started at all (binary not
 	// found, permission denied, ...) — a could-not-start failure the caller
 	// must treat as a hard error, since the gate never observed the
-	// artifact. Un-prefixed: the loop wraps it with its own "perch: " round
-	// context.
+	// artifact. Un-prefixed: the loop wraps it with its own name-prefixed
+	// round context (see Engine.errf).
 	return nil, false, fmt.Errorf("gate command %v failed to start: %w", argv, err)
 }
 
 // writeGateOutput writes path with a small header naming argv and whether
 // the run passed, followed by the raw combined output. This file is what
-// the next round's burler hydration and the operator read after a command
+// the next round's attempt hydration and the operator read after a command
 // gate runs; per the pluggable-gate decision it is written on both pass and
 // fail (the record is cheap either way), even though only a FAILED gate
-// file is ever fed forward into a later round's hydration.
-func writeGateOutput(path string, argv []string, output []byte, exitZero bool) error {
+// file is ever fed forward into a later round's hydration. name prefixes
+// the error, mirroring perch's own literal "perch: " prefix today (the
+// name-parameterized-diagnostics shared decision).
+func writeGateOutput(name string, path string, argv []string, output []byte, exitZero bool) error {
 	status := "FAIL"
 	if exitZero {
 		status = "PASS"
@@ -114,27 +114,27 @@ func writeGateOutput(path string, argv []string, output []byte, exitZero bool) e
 	content := append([]byte(header), output...)
 
 	if err := os.WriteFile(path, content, 0o644); err != nil {
-		return fmt.Errorf("perch: write gate output %q: %w", path, err)
+		return fmt.Errorf("%s: write gate output %q: %w", name, path, err)
 	}
 	return nil
 }
 
 // converged reports whether a round has reached the block's convergence
-// check under mode: GateLLMVerdict trusts the fresh burler verdict alone;
-// GateCommand trusts gatePassed alone (the burler verdict still drives what
+// check under mode: GateLLMVerdict trusts the fresh runner verdict alone;
+// GateCommand trusts gatePassed alone (the runner verdict still drives what
 // the fix phase changes, but never decides convergence in this mode);
 // GateBoth requires both signals to agree the round is clean. gatePassed is
 // nil for a round whose mode never ran a command (GateLLMVerdict), in which
 // case GateCommand/GateBoth's command check contributes false.
-func converged(mode GateMode, verdict burlerengine.Verdict, gatePassed *bool) bool {
+func converged(mode GateMode, verdict Verdict, gatePassed *bool) bool {
 	commandPassed := gatePassed != nil && *gatePassed
 	switch mode {
 	case GateLLMVerdict:
-		return verdict == burlerengine.VerdictApproved
+		return verdict == VerdictApproved
 	case GateCommand:
 		return commandPassed
 	case GateBoth:
-		return verdict == burlerengine.VerdictApproved && commandPassed
+		return verdict == VerdictApproved && commandPassed
 	default:
 		return false
 	}

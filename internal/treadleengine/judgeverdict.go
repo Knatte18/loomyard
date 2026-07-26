@@ -1,14 +1,18 @@
-// judgeverdict.go defines the two verdict-file contracts perch's ephemeral
+// judgeverdict.go defines the two verdict-file contracts treadle's ephemeral
 // LLM utilities read back — JudgeVerdict (both progress-judge framings) and
 // TriageVerdict (asking-triage) — plus the strict parsers that turn a
 // verdict file's raw bytes into those types. Both files are YAML
 // frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's
 // contract and error posture: every rule below is enforced fail-loud with a
-// "perch: "-prefixed error, because a self-contradictory or malformed
-// verdict file is an agent defect that must never be silently accepted —
-// the fail-safe posture lives one layer up, in judge.go's spawners, not
-// here.
-package perchengine
+// "treadle: "-prefixed error (these parsers are package-level pure
+// functions with no calling-engine name in scope, unlike the rest of this
+// package's diagnostics — see the pinned parser-prefix resolution in the
+// treadle-extraction batch notes), because a self-contradictory or
+// malformed verdict file is an agent defect that must never be silently
+// accepted — the fail-safe posture lives one layer up, in judge.go's
+// spawners, which swallow these errors into a Warn + fail-safe fallback and
+// never let them surface through a caller's public API.
+package treadleengine
 
 import (
 	"fmt"
@@ -71,7 +75,7 @@ type judgeHeader struct {
 // line and contain a closing "---" line delimiting YAML frontmatter (CRLF
 // line endings are tolerated); prose after the closing delimiter, including
 // the required "## Themes" section, is unconstrained and ignored. Every
-// rule below is enforced fail-loud with a "perch: "-prefixed error:
+// rule below is enforced fail-loud with a "treadle: "-prefixed error:
 //   - the frontmatter must be present, closed, and valid YAML;
 //   - verdict must be exactly one of framing's vocabulary (case-sensitive) —
 //     {PROGRESSING, CIRCLING, UNCERTAIN} for framingCircling, {CONTINUE,
@@ -85,7 +89,7 @@ func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, stri
 
 	var parsed judgeHeader
 	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", "", fmt.Errorf("perch: judge verdict file frontmatter is not valid YAML: %w", err)
+		return "", "", fmt.Errorf("treadle: judge verdict file frontmatter is not valid YAML: %w", err)
 	}
 
 	verdict, err := parseJudgeVerdict(parsed.Verdict, framing)
@@ -94,7 +98,7 @@ func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, stri
 	}
 
 	if strings.TrimSpace(parsed.Rationale) == "" {
-		return "", "", fmt.Errorf("perch: judge verdict file is missing a non-empty rationale")
+		return "", "", fmt.Errorf("treadle: judge verdict file is missing a non-empty rationale")
 	}
 
 	return verdict, parsed.Rationale, nil
@@ -112,7 +116,7 @@ func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
 
 	var parsed judgeHeader
 	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", "", fmt.Errorf("perch: triage verdict file frontmatter is not valid YAML: %w", err)
+		return "", "", fmt.Errorf("treadle: triage verdict file frontmatter is not valid YAML: %w", err)
 	}
 
 	verdict, err := parseTriageVerdict(parsed.Verdict)
@@ -121,7 +125,7 @@ func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
 	}
 
 	if strings.TrimSpace(parsed.Rationale) == "" {
-		return "", "", fmt.Errorf("perch: triage verdict file is missing a non-empty rationale")
+		return "", "", fmt.Errorf("treadle: triage verdict file is missing a non-empty rationale")
 	}
 
 	return verdict, parsed.Rationale, nil
@@ -131,13 +135,13 @@ func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
 // opening and closing "---" delimiter lines. This is a package-private copy
 // of burlerengine's splitFrontmatter (same three fail-loud checks: opening
 // "---", closing "---", non-empty header; CRLF-tolerant) rather than an
-// export of burler's, since the two parsers evolve independently (batch
-// decision, 03-judge-triage.md). Each line is compared with its trailing
-// "\r" trimmed so CRLF content parses identically to LF content.
+// export of burler's, since the two parsers evolve independently. Each line
+// is compared with its trailing "\r" trimmed so CRLF content parses
+// identically to LF content.
 func splitFrontmatter(content []byte) (string, error) {
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
-		return "", fmt.Errorf("perch: verdict file must open with a \"---\" frontmatter delimiter line")
+		return "", fmt.Errorf("treadle: verdict file must open with a \"---\" frontmatter delimiter line")
 	}
 
 	closingIdx := -1
@@ -148,12 +152,12 @@ func splitFrontmatter(content []byte) (string, error) {
 		}
 	}
 	if closingIdx == -1 {
-		return "", fmt.Errorf("perch: verdict file frontmatter is missing its closing \"---\" delimiter line")
+		return "", fmt.Errorf("treadle: verdict file frontmatter is missing its closing \"---\" delimiter line")
 	}
 
 	header := strings.Join(lines[1:closingIdx], "\n")
 	if strings.TrimSpace(header) == "" {
-		return "", fmt.Errorf("perch: verdict file frontmatter is empty")
+		return "", fmt.Errorf("treadle: verdict file frontmatter is empty")
 	}
 	return header, nil
 }
@@ -169,17 +173,17 @@ func parseJudgeVerdict(raw string, framing judgeFraming) (JudgeVerdict, error) {
 		case JudgeProgressing, JudgeCircling, JudgeUncertain:
 			return JudgeVerdict(raw), nil
 		default:
-			return "", fmt.Errorf("perch: judge verdict file verdict must be exactly %q, %q, or %q, got %q", JudgeProgressing, JudgeCircling, JudgeUncertain, raw)
+			return "", fmt.Errorf("treadle: judge verdict file verdict must be exactly %q, %q, or %q, got %q", JudgeProgressing, JudgeCircling, JudgeUncertain, raw)
 		}
 	case framingMilestone:
 		switch JudgeVerdict(raw) {
 		case JudgeContinue, JudgeStop, JudgeUncertain:
 			return JudgeVerdict(raw), nil
 		default:
-			return "", fmt.Errorf("perch: judge verdict file verdict must be exactly %q, %q, or %q, got %q", JudgeContinue, JudgeStop, JudgeUncertain, raw)
+			return "", fmt.Errorf("treadle: judge verdict file verdict must be exactly %q, %q, or %q, got %q", JudgeContinue, JudgeStop, JudgeUncertain, raw)
 		}
 	default:
-		return "", fmt.Errorf("perch: unknown judge framing %q", framing)
+		return "", fmt.Errorf("treadle: unknown judge framing %q", framing)
 	}
 }
 
@@ -190,6 +194,6 @@ func parseTriageVerdict(raw string) (TriageVerdict, error) {
 	case TriageRetry, TriageGiveUp:
 		return TriageVerdict(raw), nil
 	default:
-		return "", fmt.Errorf("perch: triage verdict file verdict must be exactly %q or %q, got %q", TriageRetry, TriageGiveUp, raw)
+		return "", fmt.Errorf("treadle: triage verdict file verdict must be exactly %q or %q, got %q", TriageRetry, TriageGiveUp, raw)
 	}
 }
