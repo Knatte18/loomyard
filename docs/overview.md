@@ -204,6 +204,7 @@ github.com/Knatte18/loomyard/
 ├── internal/ghissuesengine/      the ghissues domain kernel
 ├── internal/selfreportcli/       the selfreport CLI command
 ├── internal/selfreportengine/    the selfreport domain kernel
+├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/hubgeometry/         geometry resolver (the sole owner of cwd/root math)
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
@@ -351,7 +352,11 @@ User-facing modules each get one `lyx <module>` namespace:
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until
   `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an
   operational `PAUSED` exit; independent of `loom` but used by it between every phase, and standalone
-  (`lyx perch run|pause`). ✅ Implemented. See the `internal/perchengine` package documentation.
+  (`lyx perch run|pause`). The round loop itself (judge, gate, round-spawn, cap, pause, run-dir lock)
+  now lives in the shared `internal/treadleengine` engine; `internal/perchengine` is the thin
+  configuration layer that resolves `perch.yaml`/profile data and adapts `burlerengine` onto
+  treadle's `RoundRunner` seam — perch's own behavior/CLI are unchanged from the outside. ✅
+  Implemented. See the `internal/perchengine` and `internal/treadleengine` package documentation.
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle
   file contract (`internal/burlerengine` + `internal/burlercli`). Profile-driven: `{overlay, source}`
   fix-scope, tool-use. Cluster review fans job A out into N fork-subagent reviewers by naming a fan
@@ -391,7 +396,8 @@ internal/reed     the window to the world — overlay + strand bookkeeping +    
 internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [builds on reed]    ✅
                   the file contract; Stop-hook completion
 burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle] ✅
-perch             run burler rounds on one artifact → APPROVED|STUCK          [builds on burler]  ✅
+perch             run burler rounds on one artifact → APPROVED|STUCK          [builds on burler,  ✅
+                  treadleengine]
 loom              phase machine: drive each phase through a perch gate         [builds on perch]
 ```
 
@@ -476,6 +482,10 @@ The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workfl
 - `internal/shuttleengine` package documentation — run one LLM agent via a swappable engine over the file contract (as-built; module doc deleted per the documentation lifecycle).
 - `internal/burlerengine` package documentation — one review+fix round: A-review → B-fix, no self-grading (as-built; module doc deleted per the documentation lifecycle).
 - `internal/perchengine` package documentation — the gate loop: run `burler` rounds → `APPROVED`/`STUCK`/`PAUSED` (as-built; module doc deleted per the documentation lifecycle).
+- `internal/treadleengine` package documentation — the generalized round-loop engine `perch` runs
+  on (judge, gate, round-spawn, milestone cap ladder, judge-maintained handoff, pause, run-dir
+  lock), with a pluggable `RoundRunner` seam a future consumer (Tenter) can also drive (as-built;
+  module doc deleted per the documentation lifecycle).
 - [manifest/designs/hardener.md](../manifest/designs/hardener.md) — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.

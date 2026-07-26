@@ -33,6 +33,65 @@
 // report its result" onto its own domain — see internal/perchengine/adapter.go
 // for the burlerengine adapter.
 //
+// # Judge-maintained handoff — a bounded judge read-set
+//
+// The progress judge's per-round read-set was originally unbounded: every
+// prior round's review file, growing O(N) as rounds accumulate. Since the
+// judge already runs on every blocking round, the SAME call also maintains
+// a handoff (handoff.go) — round-<token>-handoff.md, written alongside the
+// verdict file in the same shuttle spawn (the handoff-on-disk shared
+// decision) — so the NEXT judge call reads {that handoff + the reviews of
+// every completed round its covers_rounds does not already absorb} plus the
+// current round's fresh review, instead of every prior round's review
+// (judgeReadSet). The handoff cannot be a single free-form prose summary:
+// the circling check depends on knowing whether a SPECIFIC finding has
+// recurred across rounds, so a distilled summary that silently drops a
+// recurring finding would break circling-detection quietly — worse than the
+// O(N) cost it replaces. It therefore carries two parts: a structured,
+// lossless finding-identity Ledger (a stable key, the rounds it has been
+// seen in, and an open/resolved Status — every entry from the previous
+// handoff must reappear here, never dropped, a rule enforced at prompt
+// level, not by this package) plus CoversRounds (which rounds' reviews this
+// handoff has already absorbed) over a distilled prose narrative for
+// everything else — "distill the prose, but keep the key-ledger lossless."
+//
+// Parsing is a deliberate two-layer split, mirroring judgeverdict.go:
+// ParseHandoff itself is fail-loud — a malformed handoff is an agent defect
+// that must be visible as an error to any direct caller, including tests —
+// but the round loop that calls it (run.go, via judgeReadSet and
+// latestValidHandoff) is fail-safe: a missing or unparseable handoff logs a
+// name-prefixed logger.Warn and falls back rather than erroring or forcing
+// STUCK. The fallback walks a block's rounds newest-to-oldest for the
+// latest handoff that both reads and ParseHandoffs cleanly, so one
+// corrupted handoff deterministically degrades to the next older valid one
+// instead of taking every future judge call down with it; with no valid
+// handoff at all (a fresh block, or every recorded one has failed), the
+// read-set degrades to exactly the pre-handoff all-reviews behavior
+// (collectJudgeReviews). A round with no judge call at all (round 1, a
+// round right after an APPROVED verdict, or a round whose judge call itself
+// failed) carries no HandoffPath and so never appears in a later handoff's
+// CoversRounds — its review is therefore always fed to some future judge
+// call, which is what closes the "judge-gap" hole a bounded read-set would
+// otherwise open.
+//
+// # Pre-round targeting — optional, profile-gated
+//
+// Profile.PreRoundTargeting (targeting.go) is a third, OPTIONAL ephemeral
+// judge framing, run once per round before attempt 1 when a valid handoff
+// already exists to target from: it reads that handoff and writes a short
+// prose seed brief to that round's AttemptInput.SeedPath, resolved once at
+// attempt 1's token and reused unchanged by a same-round retry. Unlike
+// runCircling/runMilestone it produces no verdict — only unconstrained
+// prose a RoundRunner MAY read or ignore entirely. Perch's own profile
+// never sets it (its rounds keep re-using a fixed rubric); the capability
+// exists for a future consumer (Tenter, see manifest/designs/hardener.md)
+// whose rounds benefit from dynamically retargeted focus. Like every other
+// ephemeral call in this package, it is fail-safe end to end: a stencil-fill
+// failure, a shuttle Run error, a non-done outcome, or an empty/unreadable
+// seed file all degrade to "no seed" with a name-prefixed logger.Warn,
+// never an error — a missed targeting call only costs the round the
+// guidance it would have added, never correctness.
+//
 // # Name-parameterized diagnostics
 //
 // Engine is constructed with a name (perch passes "perch") that every error

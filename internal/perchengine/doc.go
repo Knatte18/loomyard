@@ -295,4 +295,13 @@
 // treadleengine.Engine.Run (engine.go) — every invariant documented above
 // still holds exactly as described; only where the code lives has changed.
 // perch's own exported Go API is unchanged.
+//
+// One treadleengine capability this package deliberately does not exercise:
+// pre-round targeting (treadleengine.Profile.PreRoundTargeting). It exists
+// for a future consumer whose rounds benefit from dynamically retargeted
+// focus; perch's own rounds keep re-using a fixed rubric, so Engine.Run
+// never sets that field on the treadleengine.Profile it builds, and it
+// stays at its zero value (off). See the internal/treadleengine package
+// documentation for that capability and for the full mechanics of the
+// bounded judge handoff read-set summarized above.
 package perchengine
