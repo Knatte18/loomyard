@@ -172,11 +172,85 @@ the real substrate — a green `go test` proves nothing here.
   Weft Git Invariant) is intentionally retained post-cutover and is NOT itself a defect.
 
 ## Round context seeded from prior-round verification
-**Round 1 — first pass, no prior rounds.** This is the first round of a fresh, narrowly-scoped
-campaign; there is no CLOSED-AND-VERIFIED list yet and no known residual. Do a genuinely
-independent clean-room review of the four files' cutover integration per the Mission and
-High-yield focus above. The campaign is planned for up to 4 rounds total, alternating **Fable,
-Opus, Fable, Opus** — this round is Fable.
+**Safety pass — round 2 (Opus).** Round 1 (`fable-r1`) found and fixed 8 findings (0 BLOCKING, 2
+MEDIUM, 4 LOW, 2 NIT) plus one deferred residual; the orchestrator has independently verified
+every fix from a cold state on the committed tree — including reproducing the not-false-green
+proof for the two behavior-changing fixes (F8, F1) by reverting each to its pre-fix state,
+confirming the round's own new test fails at exactly the predicted assertion, then restoring and
+confirming an empty diff. There is **no known residual** in this campaign's scope. Do a genuinely
+independent clean-room pass to find anything round 1 missed — or, if you genuinely find nothing,
+honestly confirm merge-readiness. Do NOT re-open or re-litigate the CLOSED-AND-VERIFIED work below.
+The campaign is planned for up to 4 rounds total, alternating **Fable, Opus, Fable, Opus** — this
+round is Opus.
+
+**CLOSED-AND-VERIFIED (do not re-litigate):**
+
+Round 1 (`fable-r1`), full review at `.scratch/fabric-cutover-review-fable-r1.md`, fixer report at
+`.scratch/fabric-cutover-review-fable-r1-fixer-report.md`:
+- **F8 (MEDIUM, commit `695a4828`):** every builder/webster weft commit's git subject carried the
+  `Warp-SHA` trailer inline (e.g. `builder: poll 01-json-flag done Warp-SHA: <sha>`) because
+  `fabricengine.endsInTrailerBlock` misread a single-line, trailer-shaped subject as an existing
+  trailer block. Fixed: the first paragraph (the subject) is never treated as a trailer block.
+  Orchestrator reproduced by reverting `internal/fabricengine/trailer.go` to its pre-fix state and
+  confirming the new `TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock/builder_style_subject`
+  fails at exactly the predicted assertion; restoring passes with an empty diff.
+- **F1 (LOW, commit `7a49d44a`):** both `weftCommit` helpers forced `committed=false` on a
+  `CommitWeft` error even when the commit had actually landed (a `RecordCorrespondence` failure
+  after a real commit) — telling the caller no commit was made about a commit that was real. Fixed
+  by passing `committed` through instead of forcing false. Orchestrator reproduced by reverting
+  `internal/buildercli/weft.go`'s fix and confirming
+  `TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails` fails at exactly the predicted
+  assertion (`committed = false; want true`); restoring passes with an empty diff.
+- **F5 (LOW, commit `aca01431`):** new hermetic unit tests pin the SkipGit-before-`fabricengine.New`
+  guard ordering in both `weftCommit` helpers (bypass mode touches no filesystem/git even with no
+  worktrees on disk; non-bypass surfaces `*fabricengine.ErrMissingPath`). Verified green in the
+  orchestrator's full hermetic run.
+- **F3 (MEDIUM, commit `d53aeb7f`):** `go test -tags smoke ./internal/buildercli/...` did not
+  compile before this fix (scratch-git helpers/`pollFakeEngine` were tag-misplaced). Fixed by
+  moving them to the correct build-tag files. Orchestrator independently ran
+  `go test -tags smoke ./internal/buildercli/... -run Smoke -v` and confirmed it compiles and its
+  behavioral assertions pass (teardown is separately red — see F4 below, an already-known,
+  deliberately deferred residual, not new).
+- **F4 (LOW, commit `023453e5`, partial — residual explicitly deferred, not yours to re-open):**
+  reed's Windows socket probe hardcoded `Name='psmux.exe'`, matching nothing on a machine whose
+  `reed.yaml` resolves `tmux` to `tmux.exe` — fixed by deriving the process name from the
+  configured binary (`tmuxProcessName`, table-tested). The other half — this machine's psmux 3.3.4
+  `kill-session` being a silent no-op, which leaves reed's `Down` unable to fully tear down and
+  fails the builder smoke gate's `TempDir` cleanup — is a reed-lifecycle design decision
+  (socket-sharing semantics), explicitly out of this campaign's scope; owned by a future reed
+  campaign. Orchestrator independently reproduced this exact residual (`buildercli` smoke: all
+  three tests' behavioral assertions pass, only the `t.Cleanup`-registered teardown check fails)
+  and confirms it is pre-existing/environment, not a fabric-cutover defect. Do not attempt to fix
+  it here.
+- **F2, F7 (NIT, commits `c0c36b38`, `d5c975d8`):** doc-comment-only fixes (Warp-SHA trailer +
+  correspondence record documented on `weftCommit`; pathspec-magic reliance documented on both
+  pathspec helpers), no behavior change — verified by inspection.
+- **F6 (LOW, commit `e3391c67`):** `TestRunCmd_ErrRunBusySkipsWeftBackstop` asserted a vacuous
+  pre-cutover condition; replaced with assertions matching the actual post-cutover failure
+  signature. Verified green in the orchestrator's full hermetic run.
+- **F8 suite update (commit `fd3b6401`):** `SANDBOX-BUILDER-SUITE.md`'s end-to-end scenario now
+  checks for a clean weft-commit subject. Sandbox coverage guard (`go test ./tools/sandbox/...`)
+  confirmed green by the orchestrator.
+
+Full suite confirmed green by the orchestrator from a cold state on the committed tree (not just
+trusting the round's own report): `go build ./...`; `go vet` on
+buildercli+webstercli+configcli+configreg+fabricengine+fabriccli+reedengine+cmd/lyx; `go test
+-count=5` (hermetic, all scoped packages); `go test -tags integration -count=1` (all scoped
+packages); `go test -tags smoke` for both buildercli (compiles, assertions pass, teardown red per
+deferred F4) and webstercli (fully green); `go test ./tools/sandbox/...` (coverage guard green);
+zero stray tmux/psmux processes after all live runs.
+
+**One aside, NOT part of this campaign's scope, NOT seeded as a residual — do not chase it:** the
+orchestrator's `go test -tags integration -count=1 ./internal/reedengine/...` run surfaced two
+FAILing tests, `TestExactSessionTargetsNeverPrefixMatchSiblings` and
+`TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout`. Both pre-date round 1 (present since the
+`mux -> reed` rename, long before this campaign) and live in reedengine code round 1 never touched
+(session-target prefix matching and pane-split sizing — unrelated to F4's
+`serverProcessesOnSocket`/`tmuxProcessName` change). These are pre-existing reedengine
+defects/environment quirks on this machine, out of this campaign's scope (reedengine is not one of
+the four files under review) and not a fabric-cutover regression. If your own pass happens to touch
+reedengine and you independently notice something here, you may note it as an aside in your report,
+but do not spend review or fix budget chasing it — it belongs to a separate reed campaign.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
 gate; an N×-concurrent suite is optional here (this is not a concurrency-heavy surface), never a
@@ -243,7 +317,15 @@ then you must say so explicitly, with the specific reason, in the fixer report's
 never bucket something as "deferred, low priority" just because it felt small.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None — this is round 1 of the campaign.
+- **F4 residual (from `fable-r1`):** this machine's psmux 3.3.4 `kill-session` is a silent no-op,
+  so reed's `Down` cannot fully tear down a builder smoke test's server, and the builder smoke
+  gate's teardown check stays red (the tests' own behavioral assertions all pass — only teardown
+  fails). Round 1 judged this a reed-lifecycle design decision (verify session death? kill-server
+  when only the caller's own session remains? gate on psmux version?), not a fabric-cutover call.
+  Re-evaluate: do you agree it's genuinely a separate-module concern, or does your own review
+  surface a narrow, in-scope fix (e.g. purely in how buildercli's own smoke test tears down,
+  without touching reed's `Down` semantics)? Do not fix reed's `Down` semantics itself here even if
+  you conclude a fix is warranted — flag it for a future reed campaign instead.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
