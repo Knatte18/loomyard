@@ -309,7 +309,19 @@
 // caller as an engine error — a perch operator sees them only as the cause=
 // field of a "perch: "-prefixed fail-safe Warn.
 //
-// perch's own exported Go API is unchanged.
+// perch's own exported Go API is unchanged with exactly two recorded
+// exceptions, neither of which any caller in this repo depended on.
+// ParseJudgeVerdict and ParseTriageVerdict moved to treadleengine and are
+// not re-exported (see identity.go): ParseJudgeVerdict was never callable
+// from outside this package anyway, since its judgeFraming parameter type
+// was already unexported, but ParseTriageVerdict took only []byte and
+// genuinely was — so its removal is a real, deliberate narrowing rather than
+// a no-op. And perchengine.ErrBlockBusy is now an alias of treadleengine's
+// sentinel, whose own message text is the un-prefixed "block is already
+// running": the composed error a caller actually sees is byte-identical
+// (errf applies "perch: " at wrap time) and errors.Is still matches, but
+// ErrBlockBusy.Error() on its own reads differently than it did
+// pre-extraction.
 //
 // One treadleengine capability this package deliberately does not exercise:
 // pre-round targeting (treadleengine.Profile.PreRoundTargeting). It exists
