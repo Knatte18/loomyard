@@ -294,7 +294,13 @@
 // treadleengine's RoundRunner seam (adapter.go), and delegates to
 // treadleengine.Engine.Run (engine.go) — every invariant documented above
 // still holds exactly as described; only where the code lives has changed.
-// perch's own exported Go API is unchanged.
+// perch's own exported Go API is unchanged. One deliberate diagnostics
+// delta: hard round errors keep their "perch: " prefix but their BODY text
+// is now runner-agnostic — "round N attempt run: ..." instead of the old
+// "round N burler run: ...", and "kept run dir" instead of "kept shuttle
+// run dir" — because treadleengine cannot name burler or shuttle without
+// violating the Treadle Runner-Seam Invariant. No caller matches on these
+// bodies (ErrBlockBusy is the only sentinel), so the change is cosmetic.
 //
 // One treadleengine capability this package deliberately does not exercise:
 // pre-round targeting (treadleengine.Profile.PreRoundTargeting). It exists

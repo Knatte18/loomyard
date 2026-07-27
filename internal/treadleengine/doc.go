@@ -99,7 +99,12 @@
 // diagnostics read exactly like perch's own literal "perch: "-prefixed
 // messages today, and a future caller (e.g. "tenter") gets its own
 // consistently-prefixed diagnostics for free rather than a generic
-// "treadle: " label that would erase which caller's block failed.
+// "treadle: " label that would erase which caller's block failed. The
+// name parameterization pins the PREFIX only: error BODIES are
+// runner-agnostic by design ("round N attempt run", "kept run dir"),
+// since this package cannot name a specific runner's domain (burler,
+// shuttle) without violating the Runner-Seam Invariant — see
+// internal/perchengine's package doc for the perch-visible consequence.
 //
 // # No burlerengine import — the Treadle Runner-Seam Invariant
 //
