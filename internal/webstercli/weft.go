@@ -51,10 +51,13 @@ func websterWeftPathspec(layout *hubgeometry.Layout) []string {
 // weftCommit stages and commits every change under layout's scoped _lyx
 // pathspec (excluding the machine-local *.lock files, the pause flag, and
 // the rendered fork prompts -- see websterWeftPathspec) through the weft
-// junction, then pushes, using "webster: <label>" as the commit message. It
-// reports whether a commit was actually made (false when there was nothing
-// staged) and any error from either the commit or the push step --
-// mirroring buildercli's weftCommit exactly.
+// junction, then pushes, using "webster: <label>" as the commit subject.
+// Per fabric's CommitWeft contract, the commit also carries a
+// "Warp-SHA: <host HEAD>" trailer in its own blank-line-separated paragraph
+// and records a warp<->weft correspondence entry in the weft gitdir's
+// index. It reports whether a commit was actually made (false when there
+// was nothing staged) and any error from either the commit or the push
+// step -- mirroring buildercli's weftCommit exactly.
 func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	weftWorktree := layout.WeftWorktree()
 	opts := fabricengine.EnvSyncOptions()

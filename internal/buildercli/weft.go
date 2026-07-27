@@ -41,10 +41,13 @@ func builderWeftPathspec(layout *hubgeometry.Layout) []string {
 // weftCommit stages and commits every change under layout's scoped _lyx
 // pathspec (excluding the machine-local *.lock files and pause flag -- see
 // builderWeftPathspec) through the weft junction, then pushes, using
-// "builder: <label>" as the commit message. It reports whether a commit was
-// actually made (false when there was nothing staged) and any error from
-// either the commit or the push step -- mirroring perchcli's block-exit sync
-// exactly.
+// "builder: <label>" as the commit subject. Per fabric's CommitWeft
+// contract, the commit also carries a "Warp-SHA: <host HEAD>" trailer in
+// its own blank-line-separated paragraph and records a warp<->weft
+// correspondence entry in the weft gitdir's index. It reports whether a
+// commit was actually made (false when there was nothing staged) and any
+// error from either the commit or the push step -- mirroring perchcli's
+// block-exit sync exactly.
 func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	weftWorktree := layout.WeftWorktree()
 	opts := fabricengine.EnvSyncOptions()
