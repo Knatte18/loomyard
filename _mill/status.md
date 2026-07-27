@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: crucible-treadle-run
 branch: crucible-treadle-run
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-27T09:19:49Z'
+done  '2026-07-27T16:24:23Z'
 ```
