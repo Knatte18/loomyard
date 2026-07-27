@@ -391,6 +391,220 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 	})
 }
 
+// TestReconcileAll_MigratesLegacyFabricConfig pins the fabric-cutover's
+// one-shot migration (F-D): a pre-cutover hub's warp.yaml/weft.yaml values
+// must be folded into fabric.yaml's first write instead of silently
+// discarded in favor of the bare template default, and the legacy files must
+// be pruned afterward so the migration does not re-fire.
+func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
+	t.Run("both legacy files present, both values migrate, both files pruned", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(tmpDir)
+		if err := os.MkdirAll(configDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+
+		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
+			t.Fatalf("write warp.yaml: %v", err)
+		}
+		weftPath := hubgeometry.ConfigFile(tmpDir, "weft")
+		if err := os.WriteFile(weftPath, []byte("pathspec: _lyx custom-dir\n"), 0o644); err != nil {
+			t.Fatalf("write weft.yaml: %v", err)
+		}
+
+		results, err := ReconcileAll(tmpDir, true)
+		if err != nil {
+			t.Fatalf("ReconcileAll(true): %v", err)
+		}
+
+		fabricResult := findResult(results, "fabric")
+		if fabricResult == nil {
+			t.Fatal("fabric result not found")
+		}
+		if !fabricResult.Applied {
+			t.Error("fabric.Applied is false; want true (absent file should be created)")
+		}
+		wantMigrated := map[string]bool{"warp": true, "weft": true}
+		if len(fabricResult.MigratedFrom) != 2 {
+			t.Errorf("fabric.MigratedFrom = %v; want both warp and weft", fabricResult.MigratedFrom)
+		}
+		for _, m := range fabricResult.MigratedFrom {
+			if !wantMigrated[m] {
+				t.Errorf("fabric.MigratedFrom contains unexpected entry %q", m)
+			}
+		}
+
+		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		got, err := os.ReadFile(fabricPath)
+		if err != nil {
+			t.Fatalf("read fabric.yaml: %v", err)
+		}
+		if !contains(string(got), "branch_prefix: hanf/") {
+			t.Errorf("fabric.yaml = %q; want migrated branch_prefix: hanf/", got)
+		}
+		if !contains(string(got), "pathspec: _lyx custom-dir") {
+			t.Errorf("fabric.yaml = %q; want migrated pathspec: _lyx custom-dir", got)
+		}
+
+		if _, err := os.Stat(warpPath); !os.IsNotExist(err) {
+			t.Errorf("warp.yaml still exists after migration; want pruned (stat err = %v)", err)
+		}
+		if _, err := os.Stat(weftPath); !os.IsNotExist(err) {
+			t.Errorf("weft.yaml still exists after migration; want pruned (stat err = %v)", err)
+		}
+	})
+
+	t.Run("only warp.yaml present, pathspec falls back to template default", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(tmpDir)
+		if err := os.MkdirAll(configDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+
+		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
+			t.Fatalf("write warp.yaml: %v", err)
+		}
+
+		results, err := ReconcileAll(tmpDir, true)
+		if err != nil {
+			t.Fatalf("ReconcileAll(true): %v", err)
+		}
+
+		fabricResult := findResult(results, "fabric")
+		if fabricResult == nil {
+			t.Fatal("fabric result not found")
+		}
+		if len(fabricResult.MigratedFrom) != 1 || fabricResult.MigratedFrom[0] != "warp" {
+			t.Errorf("fabric.MigratedFrom = %v; want exactly [warp]", fabricResult.MigratedFrom)
+		}
+
+		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		got, err := os.ReadFile(fabricPath)
+		if err != nil {
+			t.Fatalf("read fabric.yaml: %v", err)
+		}
+		if !contains(string(got), "branch_prefix: hanf/") {
+			t.Errorf("fabric.yaml = %q; want migrated branch_prefix: hanf/", got)
+		}
+		if !contains(string(got), "pathspec: _lyx") {
+			t.Errorf("fabric.yaml = %q; want template-default pathspec: _lyx (weft.yaml was absent)", got)
+		}
+
+		if _, err := os.Stat(warpPath); !os.IsNotExist(err) {
+			t.Errorf("warp.yaml still exists after migration; want pruned (stat err = %v)", err)
+		}
+	})
+
+	t.Run("dry run reports the pending migration but writes and deletes nothing", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(tmpDir)
+		if err := os.MkdirAll(configDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+
+		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
+			t.Fatalf("write warp.yaml: %v", err)
+		}
+
+		results, err := ReconcileAll(tmpDir, false)
+		if err != nil {
+			t.Fatalf("ReconcileAll(false): %v", err)
+		}
+
+		fabricResult := findResult(results, "fabric")
+		if fabricResult == nil {
+			t.Fatal("fabric result not found")
+		}
+		if fabricResult.Applied {
+			t.Error("fabric.Applied is true; want false (dry-run)")
+		}
+		if len(fabricResult.MigratedFrom) != 1 || fabricResult.MigratedFrom[0] != "warp" {
+			t.Errorf("fabric.MigratedFrom = %v; want exactly [warp] even on a dry run", fabricResult.MigratedFrom)
+		}
+
+		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
+			t.Errorf("fabric.yaml was written on a dry run; want absent (stat err = %v)", err)
+		}
+		if _, err := os.Stat(warpPath); err != nil {
+			t.Errorf("warp.yaml was removed on a dry run; want it left alone (stat err = %v)", err)
+		}
+	})
+
+	t.Run("fabric.yaml already present, legacy files untouched and not migrated", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(tmpDir)
+		if err := os.MkdirAll(configDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+
+		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		if err := os.WriteFile(fabricPath, []byte("branch_prefix: existing/\npathspec: _lyx\n"), 0o644); err != nil {
+			t.Fatalf("write fabric.yaml: %v", err)
+		}
+		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		if err := os.WriteFile(warpPath, []byte("branch_prefix: stale/\n"), 0o644); err != nil {
+			t.Fatalf("write warp.yaml: %v", err)
+		}
+
+		results, err := ReconcileAll(tmpDir, true)
+		if err != nil {
+			t.Fatalf("ReconcileAll(true): %v", err)
+		}
+
+		fabricResult := findResult(results, "fabric")
+		if fabricResult == nil {
+			t.Fatal("fabric result not found")
+		}
+		if len(fabricResult.MigratedFrom) != 0 {
+			t.Errorf("fabric.MigratedFrom = %v; want empty (fabric.yaml already present)", fabricResult.MigratedFrom)
+		}
+
+		got, err := os.ReadFile(fabricPath)
+		if err != nil {
+			t.Fatalf("read fabric.yaml: %v", err)
+		}
+		if !contains(string(got), "branch_prefix: existing/") {
+			t.Errorf("fabric.yaml = %q; want its own pre-existing branch_prefix, not warp.yaml's stale one", got)
+		}
+		if _, err := os.Stat(warpPath); err != nil {
+			t.Errorf("warp.yaml was removed even though fabric.yaml already existed; want it left alone (stat err = %v)", err)
+		}
+	})
+
+	t.Run("unparseable legacy file is skipped, left on disk, and not migrated", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(tmpDir)
+		if err := os.MkdirAll(configDir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+
+		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		if err := os.WriteFile(warpPath, []byte("branch_prefix: [unterminated\n"), 0o644); err != nil {
+			t.Fatalf("write corrupt warp.yaml: %v", err)
+		}
+
+		results, err := ReconcileAll(tmpDir, true)
+		if err != nil {
+			t.Fatalf("ReconcileAll(true): %v", err)
+		}
+
+		fabricResult := findResult(results, "fabric")
+		if fabricResult == nil {
+			t.Fatal("fabric result not found")
+		}
+		if len(fabricResult.MigratedFrom) != 0 {
+			t.Errorf("fabric.MigratedFrom = %v; want empty (warp.yaml is unparseable)", fabricResult.MigratedFrom)
+		}
+		if _, err := os.Stat(warpPath); err != nil {
+			t.Errorf("corrupt warp.yaml was removed; want it left alone for the operator to inspect (stat err = %v)", err)
+		}
+	})
+}
+
 // findResult returns the Result for the named module, or nil if absent.
 func findResult(results []Result, module string) *Result {
 	for i := range results {
