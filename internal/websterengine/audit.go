@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -176,10 +177,26 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 // run's exit audit with a false parent-write violation).
 func resolveWritePath(workdir, path string) string {
 	cleaned := filepath.Clean(path)
-	if filepath.IsAbs(cleaned) {
+	if isTranscriptPathAbsolute(path) {
 		return cleaned
 	}
 	return filepath.Join(workdir, cleaned)
+}
+
+// isTranscriptPathAbsolute reports whether a transcript-recorded write path is
+// already absolute — in either the host OS's native sense (stdlib
+// filepath.IsAbs: a drive letter or UNC prefix on Windows) or POSIX-style (a
+// leading "/"). Transcript-recorded write paths and this package's own
+// workdir/contract-path arguments are always POSIX-style, regardless of host
+// OS (they come from the pane's own working-directory convention, not a raw
+// OS path) — so on Windows, stdlib filepath.IsAbs alone reports false for a
+// path like "/hub/master-builder/_lyx/webster/outcome.yaml" (Windows requires
+// a drive letter or UNC prefix to consider a path absolute), and
+// resolveWritePath would incorrectly join an already-absolute path against
+// workdir a second time, producing a path that can never match the caller's
+// absolute contract paths.
+func isTranscriptPathAbsolute(path string) bool {
+	return filepath.IsAbs(path) || strings.HasPrefix(path, "/")
 }
 
 // CheckParent evaluates Master's own parent-session facts against webster's Master
