@@ -37,8 +37,9 @@ const (
 	// ClassNestedAgent means a fork's own transcript attempted an Agent tool call —
 	// forks cannot nest, even when Claude Code denied the attempt.
 	ClassNestedAgent AuditViolationClass = "nested-agent"
-	// ClassWeftReference means a Bash command (fork or parent) invoked lyx weft/lyx
-	// warp, or referenced the weft worktree path — agents never touch weft directly.
+	// ClassWeftReference means a Bash command (fork or parent) invoked lyx fabric
+	// (or its pre-cutover spellings lyx weft/lyx warp), or referenced the weft
+	// worktree path — agents never touch weft directly.
 	ClassWeftReference AuditViolationClass = "weft-reference"
 	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent
 	// calls carrying a name parameter — named forks silently lose inherited context.
@@ -81,19 +82,25 @@ func (v AuditViolation) Error() string {
 }
 
 // weftReferencePattern builds the regexp CheckFork and CheckParent use to detect a
-// Bash command that touches weft: an invocation of `lyx weft` or `lyx warp`, or any
-// command referencing the weft worktree path (e.g. `git -C <weft-worktree> add`,
+// Bash command that touches weft: an invocation of `lyx fabric`, or any command
+// referencing the weft worktree path (e.g. `git -C <weft-worktree> add`,
 // `cd <weft-worktree> && ...`). It is built at runtime from layout.WeftWorktree()
 // (this run's own weft sibling path) and the exported hubgeometry.WeftSuffix
 // constant (so any OTHER weft-suffixed path an agent might reference — not just this
 // run's own — is caught too), NEVER from a "-weft" string literal in this package:
 // a literal here would trip TestEnforcement_GeometryLiterals, which bans every
 // geometry-path token outside internal/hubgeometry.
+//
+// `lyx fabric` is the live spelling the Weft Git Invariant names ("not by shelling
+// lyx fabric"); the pre-cutover `lyx weft`/`lyx warp` spellings are matched too and
+// deliberately kept. Those commands no longer exist, but an agent reaching for one
+// is still attempting to drive weft git — a violation worth failing loudly on rather
+// than letting it surface as an opaque "unknown command" in a transcript.
 func weftReferencePattern(layout *hubgeometry.Layout) *regexp.Regexp {
 	weftPath := regexp.QuoteMeta(layout.WeftWorktree())
 	weftSuffix := regexp.QuoteMeta(hubgeometry.WeftSuffix)
 	pattern := fmt.Sprintf(
-		`lyx\s+weft\b|lyx\s+warp\b|%s|\S*%s\b`,
+		`lyx\s+(fabric|weft|warp)\b|%s|\S*%s\b`,
 		weftPath, weftSuffix,
 	)
 	return regexp.MustCompile(pattern)
