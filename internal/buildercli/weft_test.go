@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestBuilderWeftPathspec_ExcludesRuntimeArtifacts proves the pathspec every
@@ -48,6 +49,11 @@ func TestBuilderWeftPathspec_ExcludesRuntimeArtifacts(t *testing.T) {
 			wantExcludes := []string{
 				":(exclude)" + tt.base + "/*.lock",
 				":(exclude)" + tt.base + "/builder/" + builderengine.PauseFlagName,
+				// Webster's machine-local artifacts are excluded too:
+				// both round-loop modules share one _lyx tree, so a
+				// builder commit stages whatever webster left on disk.
+				":(exclude)" + tt.base + "/webster/" + websterengine.PauseFlagName,
+				":(exclude)" + tt.base + "/webster/prompts/*",
 			}
 			for _, want := range wantExcludes {
 				if !containsString(pathspec, want) {

@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -164,8 +165,12 @@ func TestWebsterWeftPathspec_ExcludesRuntimeArtifacts(t *testing.T) {
 
 			wantExcludes := []string{
 				":(exclude)" + tt.base + "/*.lock",
-				":(exclude)" + tt.base + "/webster/pause",
+				":(exclude)" + tt.base + "/webster/" + websterengine.PauseFlagName,
 				":(exclude)" + tt.base + "/webster/prompts/*",
+				// Builder's pause flag is excluded too: both round-loop
+				// modules share one _lyx tree, so a webster commit stages
+				// whatever builder left on disk.
+				":(exclude)" + tt.base + "/builder/" + builderengine.PauseFlagName,
 			}
 			for _, want := range wantExcludes {
 				if !containsString(pathspec, want) {

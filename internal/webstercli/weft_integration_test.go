@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -36,7 +37,11 @@ func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
 // host subdirectory. Alongside state.json it seeds the three machine-local
 // artifacts websterWeftPathspec must exclude (an advisory *.lock file, the
 // pause flag, and a rendered fork prompt) so a caller can assert on what the
-// commit did and did not pick up.
+// commit did and did not pick up. It also seeds a builder tree in the same
+// _lyx -- the two round-loop modules share one -- carrying builder's own
+// durable state.json plus its pause flag, so a caller can assert that a
+// WEBSTER commit keeps builder's runtime state out while still carrying
+// builder's durable state.
 func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, string) {
 	t.Helper()
 
@@ -69,6 +74,21 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 	} {
 		if err := os.WriteFile(filepath.Join(websterDir, name), []byte(content), 0o644); err != nil {
 			t.Fatalf("write weft %s: %v", name, err)
+		}
+	}
+
+	// Builder's own tree, in the same shared _lyx: its durable state must
+	// still ride a webster commit, its pause flag must not.
+	builderDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "builder")
+	if err := os.MkdirAll(builderDir, 0o755); err != nil {
+		t.Fatalf("mkdir weft builder dir: %v", err)
+	}
+	for name, content := range map[string]string{
+		"state.json":                "{}",
+		builderengine.PauseFlagName: "paused",
+	} {
+		if err := os.WriteFile(filepath.Join(builderDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write weft builder %s: %v", name, err)
 		}
 	}
 
@@ -123,7 +143,12 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // entire subtree, so `git add` staged nothing, the staged-diff check reported
 // "nothing to commit", and weftCommit returned (false, nil) -- a completely
 // silent no-op that dropped every webster artifact on the floor with no error
-// for the caller to notice. WEFT_SKIP_PUSH is set because the scratch weft
+// for the caller to notice. It is also the cross-module regression guard: a
+// webster commit must hold back BUILDER's pause flag too, since both
+// round-loop modules share one _lyx -- committing it pins it in weft HEAD,
+// where builder can never stage its deletion (its own exclusion hides it from
+// `git add`), so every other machine's weft pull materializes a pause request
+// nobody made. WEFT_SKIP_PUSH is set because the scratch weft
 // repo has no remote; the commit half is what is under test.
 func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
@@ -158,14 +183,23 @@ func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 
-			wantPresent := base + "/webster/state.json"
+			// Builder's durable state.json rides a webster commit (the two
+			// modules share one _lyx); only the machine-local artifacts of
+			// EITHER module are held back.
+			wantPresent := []string{
+				base + "/webster/state.json",
+				base + "/builder/state.json",
+			}
 			wantAbsent := []string{
 				base + "/webster/mutate.lock",
 				base + "/webster/" + websterengine.PauseFlagName,
 				base + "/webster/prompts/1.md",
+				base + "/builder/" + builderengine.PauseFlagName,
 			}
-			if !containsString(committedFiles, wantPresent) {
-				t.Errorf("weft commit at RelPath %q = %v; want it to contain %q", tt.relPath, committedFiles, wantPresent)
+			for _, present := range wantPresent {
+				if !containsString(committedFiles, present) {
+					t.Errorf("weft commit at RelPath %q = %v; want it to contain %q", tt.relPath, committedFiles, present)
+				}
 			}
 			for _, absent := range wantAbsent {
 				if containsString(committedFiles, absent) {

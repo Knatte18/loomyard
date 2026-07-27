@@ -360,6 +360,18 @@ a `FAIL` (the round fable-r4 defects this scenario pins).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### B10 -- A weft commit never carries the OTHER module's machine-local artifacts
+
+**Covers:** builder
+
+**Goal:** "Prove a builder weft commit holds back every machine-local runtime artifact in the shared `_lyx` tree -- its own AND webster's -- while still carrying both modules' durable state. Machine-local means: any `*.lock` file, either module's `pause` flag, and webster's rendered fork prompts (`_lyx/webster/prompts/*`). None of them may ever appear in a weft commit or as a tracked file."
+
+**Watch:** In a worktree where both modules have run at least once, put every artifact class on disk at the same time: request a builder pause (`lyx builder pause`, which writes `_lyx/builder/pause`), and make sure `_lyx/webster/pause` and at least one `_lyx/webster/prompts/*.md` exist alongside a real `_lyx/webster/state.json` and some other real `_lyx` content. Now drive a builder verb to a weft-commit boundary (`lyx builder run` is enough -- its exit-time backstop commit fires regardless of outcome). In the weft worktree, `git show --stat HEAD` must list the real content and BOTH modules' `state.json`, and must list NO `pause` flag, NO `*.lock`, and NO `prompts/*` entry. Then `git status --porcelain -uall` must still show every one of those artifacts as untracked, and `git ls-files | grep -E 'lock|pause|prompts'` must return nothing. Repeat the whole check driving a WEBSTER verb instead (`lyx webster run`) -- the exclusion is symmetric, and webster's commit must likewise hold back `_lyx/builder/pause`. Any machine-local artifact appearing in the commit or in `ls-files` is a `FAIL`: once tracked, the module that owns the flag can never stage its own deletion (its own exclusion hides the path from `git add`), so the flag is pinned in weft `HEAD`, pushed, and materialized by every other machine's weft pull as a pause request nobody made.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:

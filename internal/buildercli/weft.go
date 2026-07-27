@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // builderWeftPathspec returns the scoped _lyx pathspec every builder weft
@@ -31,6 +32,21 @@ import (
 // the last in-flight batch). Extracted from weftCommit so the exclusion set is
 // asserted directly by a unit test rather than only implicitly through a live
 // commit.
+//
+// The exclusion set is deliberately NOT limited to builder's own artifacts.
+// Builder and webster are two round-loop drivers sharing one _lyx tree, so a
+// builder weft commit stages whatever webster happens to have left on disk;
+// webster's pause flag and its rendered fork prompts (re-rendered by every
+// BeginBatch, so a pulled copy is stale by construction) are the same class of
+// machine-local state as builder's own, and are excluded here for the same
+// reason. Leaving them in is not merely noise in one commit: once such a file
+// is tracked, the module that OWNS it can never stage its own deletion --
+// that module's exclusion entry removes the path from `git add`'s
+// consideration -- so the flag is pinned in weft HEAD, pushed, and
+// materialized by every other machine's weft pull as a pause request nobody
+// made. The *.lock exclusion below is already cross-module (a git pathspec
+// "*" crosses "/", so "<base>/*.lock" catches webster's locks too); only the
+// pause flag and the prompts needed naming explicitly.
 //
 // Every exclusion is ANCHORED under the same scoped base the positive
 // pathspec names, and spelled with forward slashes (a git pathspec is not an
@@ -55,6 +71,8 @@ func builderWeftPathspec(layout *hubgeometry.Layout) []string {
 		fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
 		":(exclude)"+base+"/*.lock",
 		":(exclude)"+base+"/builder/"+builderengine.PauseFlagName,
+		":(exclude)"+base+"/webster/"+websterengine.PauseFlagName,
+		":(exclude)"+base+"/webster/prompts/*",
 	)
 }
 
@@ -76,8 +94,9 @@ func weftPathspecBase(layout *hubgeometry.Layout) string {
 }
 
 // weftCommit stages and commits every change under layout's scoped _lyx
-// pathspec (excluding the machine-local *.lock files and pause flag -- see
-// builderWeftPathspec) through the weft junction, then pushes, using
+// pathspec (excluding the machine-local *.lock files and both round-loop
+// modules' pause flags and rendered prompts -- see builderWeftPathspec)
+// through the weft junction, then pushes, using
 // "builder: <label>" as the commit subject. Per fabric's CommitWeft
 // contract, the commit also carries a "Warp-SHA: <host HEAD>" trailer in
 // its own blank-line-separated paragraph and records a warp<->weft

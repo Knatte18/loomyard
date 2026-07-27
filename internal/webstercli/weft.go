@@ -20,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -39,6 +40,19 @@ import (
 // commit whenever a pause raced the last in-flight batch). Extracted from
 // weftCommit so the exclusion set is asserted directly by a unit test rather
 // than only implicitly through a live commit.
+//
+// The exclusion set is deliberately NOT limited to webster's own artifacts.
+// Webster and builder are two round-loop drivers sharing one _lyx tree, so a
+// webster weft commit stages whatever builder happens to have left on disk,
+// and builder's pause flag is the same class of machine-local state as
+// webster's own. Leaving it in is not merely noise in one commit: once the
+// flag is tracked, the module that OWNS it can never stage its own deletion
+// -- that module's exclusion entry removes the path from `git add`'s
+// consideration -- so the flag is pinned in weft HEAD, pushed, and
+// materialized by every other machine's weft pull as a pause request nobody
+// made. The *.lock exclusion below is already cross-module (a git pathspec
+// "*" crosses "/", so "<base>/*.lock" catches builder's locks too); only the
+// pause flag needed naming explicitly.
 //
 // Every exclusion is ANCHORED under the same scoped base the positive
 // pathspec names, and spelled with forward slashes (a git pathspec is not an
@@ -64,6 +78,7 @@ func websterWeftPathspec(layout *hubgeometry.Layout) []string {
 		":(exclude)"+base+"/*.lock",
 		":(exclude)"+base+"/webster/"+websterengine.PauseFlagName,
 		":(exclude)"+base+"/webster/prompts/*",
+		":(exclude)"+base+"/builder/"+builderengine.PauseFlagName,
 	)
 }
 
@@ -85,8 +100,9 @@ func weftPathspecBase(layout *hubgeometry.Layout) string {
 }
 
 // weftCommit stages and commits every change under layout's scoped _lyx
-// pathspec (excluding the machine-local *.lock files, the pause flag, and
-// the rendered fork prompts -- see websterWeftPathspec) through the weft
+// pathspec (excluding the machine-local *.lock files, both round-loop
+// modules' pause flags, and the rendered fork prompts -- see
+// websterWeftPathspec) through the weft
 // junction, then pushes, using "webster: <label>" as the commit subject.
 // Per fabric's CommitWeft contract, the commit also carries a
 // "Warp-SHA: <host HEAD>" trailer in its own blank-line-separated paragraph
