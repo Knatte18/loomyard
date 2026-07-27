@@ -8,6 +8,7 @@ package burlerengine
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -89,7 +90,7 @@ func ParseReview(content []byte) (Verdict, []Finding, error) {
 
 	var parsed reviewHeader
 	if err := yaml.Unmarshal([]byte(header), &parsed); err != nil {
-		return "", nil, fmt.Errorf("burler: review file frontmatter is not valid YAML: %w", err)
+		return "", nil, fmt.Errorf("burler: review file frontmatter is not valid YAML: %w%s", err, quotedSummaryHint(header))
 	}
 
 	verdict, err := parseVerdict(parsed.Verdict)
@@ -120,6 +121,23 @@ func ParseReview(content []byte) (Verdict, []Finding, error) {
 	}
 
 	return verdict, parsed.Findings, nil
+}
+
+// malformedQuotedSummary matches a `summary:` line whose value opens with a
+// double-quoted fragment and then carries more, unquoted content on the same
+// line (e.g. `summary: "capital" is misspelled as "captial"`) — invalid YAML,
+// since a quoted scalar must end the value. This is the single most common
+// way a reviewer agent has produced an unparseable review file live.
+var malformedQuotedSummary = regexp.MustCompile(`(?m)^\s*summary:\s*"[^"]*"\s*\S`)
+
+// quotedSummaryHint returns a targeted diagnostic suffix when header matches
+// malformedQuotedSummary, so a reviewer agent (or the operator reading a hard
+// error) is pointed straight at the fix instead of a bare YAML parser error.
+func quotedSummaryHint(header string) string {
+	if malformedQuotedSummary.MatchString(header) {
+		return " (a summary containing a \" character must be ONE double-quoted string covering the whole value, not a quoted fragment followed by trailing prose)"
+	}
+	return ""
 }
 
 // splitFrontmatter extracts the YAML header text between the file's
