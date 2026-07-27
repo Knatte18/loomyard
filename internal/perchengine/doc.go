@@ -125,7 +125,9 @@
 // Fail-safe posture: a validly-parsed UNCERTAIN verdict is a normal
 // outcome of the judge call — the loop simply continues, with no Warn
 // logged. ANY judge infrastructure failure (spawn error, a non-done
-// shuttle outcome, an unparseable verdict file) ALSO degrades to
+// shuttle outcome — which now includes a call that wrote its verdict but
+// not the handoff, since both are required output files of the same spawn
+// — or an unparseable verdict file) ALSO degrades to
 // "progressing"/CONTINUE, but is additionally logged via internal/logger's
 // Warn, carrying the round and cause (plus a human-facing label naming
 // which call failed). A judge failure is NEVER a perchengine error and

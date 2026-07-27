@@ -55,6 +55,19 @@
 // handoff has already absorbed) over a distilled prose narrative for
 // everything else — "distill the prose, but keep the key-ledger lossless."
 //
+// Riding the same call has one consequence worth naming, since it is a
+// behavior change from the pre-handoff design rather than a pure addition:
+// the handoff is a REQUIRED second entry in that spawn's OutputFiles, and
+// shuttle reports OutcomeDone only once every output file exists. A judge
+// call that renders a well-formed verdict and then fails to write its
+// handoff therefore comes back non-done, and runJudgeCall takes its
+// fail-safe branch with the verdict file unread — where pre-handoff, with
+// the verdict as sole output file, that same call would have been honoured.
+// The direction is safe (the fallback is PROGRESSING/CONTINUE, never STUCK,
+// and the hard cap still bounds the block) and the alternative would mean
+// trusting a file after shuttle's own done contract said the agent was not
+// finished, so the coupling is deliberate — see runJudgeCall's doc.
+//
 // Parsing is a deliberate two-layer split, mirroring judgeverdict.go:
 // ParseHandoff itself is fail-loud — a malformed handoff is an agent defect
 // that must be visible as an error to any direct caller, including tests —
