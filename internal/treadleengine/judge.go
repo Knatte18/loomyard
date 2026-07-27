@@ -127,10 +127,23 @@ func previousHandoffMarker(path string) string {
 // judge"), name-prefixed, alongside round and cause so an operator can tell
 // which caller's which framing failed. ok is true only on the success path,
 // so a caller can distinguish a genuine verdict from the fail-safe default
-// without inspecting the verdict value itself. Reading and
-// ParseHandoff-validating the handoff output this call produced is the
-// round loop's job (run.go), not this function's — a failed handoff must
-// never affect the verdict it rides alongside.
+// without inspecting the verdict value itself.
+//
+// Reading and ParseHandoff-validating the handoff CONTENT is the round
+// loop's job (run.go), not this function's, so a handoff that is written
+// but malformed never affects the verdict it rides alongside. A handoff
+// that is not written AT ALL is a different case, and a deliberate one:
+// listing it in OutputFiles makes it required, and shuttle reports
+// OutcomeDone only once EVERY output file exists, so a call that renders a
+// perfectly good verdict and then fails to write its handoff comes back
+// non-done and takes the fail-safe branch below with its verdict unread.
+// Pre-handoff, the verdict was the sole output file and that same call
+// would have been honoured. The direction is safe — the fallback is
+// PROGRESSING/CONTINUE, never STUCK, and the hard cap still bounds the
+// block — and the alternative (reading the verdict file anyway after a
+// non-done outcome) would mean reaching around shuttle's own done contract
+// to trust a file the agent may still have been writing. Pinned by
+// TestRunCircling's "valid verdict but missing handoff" case.
 func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, model, effort string, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {

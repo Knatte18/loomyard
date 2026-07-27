@@ -9,11 +9,25 @@ package reedcli
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// blockForever parks the keepalive tail without ever returning. It sleeps in
+// a loop rather than using `select {}`: with no other goroutines in this
+// process, an empty select trips Go's runtime deadlock detector and the
+// keepalive dies instantly with "fatal error: all goroutines are asleep -
+// deadlock!" — observed live as every header pane crashing right after
+// printing its text. A sleeping goroutine is never counted as deadlocked, so
+// this parks the process for the pane's whole life at zero CPU.
+func blockForever() {
+	for {
+		time.Sleep(time.Hour)
+	}
+}
 
 // headerCmd builds the `header` subcommand: calls c.eng.HeaderText() and
 // either returns it via the JSON envelope (default) or prints it then blocks
@@ -76,7 +90,7 @@ Example:
 				// with its trailing newlines trimmed via Fprint, leaving the
 				// cursor on the text's last row so that row stays visible.
 				fmt.Fprint(out, "\x1b[2J\x1b[H"+strings.TrimRight(text, "\r\n"))
-				select {}
+				blockForever()
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{

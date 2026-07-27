@@ -1,7 +1,9 @@
 # go:embed targets become byte-for-byte content baked into the built binary
 # (prompt templates sent to LLM agents, or scripts executed via shebang) --
 # their bytes must be deterministic across checkouts regardless of a given
-# machine's core.autocrlf setting, so they are pinned to LF here.
+# machine's core.autocrlf setting, so they are pinned to LF here. The same
+# byte-exact requirement applies to golden test fixtures compared verbatim
+# against literal \n-embedded expectations in Go source (planparser below).
 internal/builderengine/implementer-template.md text eol=lf
 internal/builderengine/orchestrator-template.md text eol=lf
 internal/builderengine/template.yaml text eol=lf
@@ -10,10 +12,12 @@ internal/boardengine/template.yaml text eol=lf
 internal/modelspec/template.yaml text eol=lf
 internal/reedengine/template_posix.yaml text eol=lf
 internal/reedengine/template_windows.yaml text eol=lf
-internal/perchengine/judge-circling-template.md text eol=lf
-internal/perchengine/judge-milestone-template.md text eol=lf
 internal/perchengine/template.yaml text eol=lf
-internal/perchengine/triage-template.md text eol=lf
 internal/shuttleengine/template.yaml text eol=lf
+internal/treadleengine/judge-circling-template.md text eol=lf
+internal/treadleengine/judge-milestone-template.md text eol=lf
+internal/treadleengine/targeting-template.md text eol=lf
+internal/treadleengine/triage-template.md text eol=lf
 internal/fabricengine/post-checkout.sh text eol=lf
 internal/fabricengine/template.yaml text eol=lf
+internal/planparser/testdata/goodplan/*.md text eol=lf

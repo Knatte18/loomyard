@@ -121,11 +121,21 @@ var ErrBlockBusy = treadleengine.ErrBlockBusy
 
 // JudgeVerdict and TriageVerdict are type aliases onto treadleengine's
 // identically-named types (byte-identical-perch-api shared decision):
-// ParseJudgeVerdict/ParseTriageVerdict themselves move to treadleengine and
-// are NOT re-exported — no external caller could have used them, since their
-// judgeFraming parameter type was already unexported — but perch-side code
-// (including run_test.go) that names a verdict value keeps compiling
-// unchanged.
+// ParseJudgeVerdict/ParseTriageVerdict themselves move to treadleengine with
+// the judge/triage machinery that renders their files, and are NOT
+// re-exported, but perch-side code (including run_test.go) that names a
+// verdict value keeps compiling unchanged.
+//
+// The two functions are not equally droppable, and the distinction is worth
+// stating so nobody re-derives a wrong reason later. ParseJudgeVerdict took
+// an unexported judgeFraming parameter, so no caller outside this package
+// could ever have called it — dropping it is provably a no-op.
+// ParseTriageVerdict took only []byte and WAS externally callable; it is
+// dropped because nothing in this repo called it and its file contract now
+// belongs to treadleengine, which is a deliberate narrowing of perch's
+// exported surface rather than a no-op. See this package's doc comment,
+// which records it as one of the two exceptions to "perch's exported Go API
+// is unchanged".
 type (
 	JudgeVerdict  = treadleengine.JudgeVerdict
 	TriageVerdict = treadleengine.TriageVerdict

@@ -67,6 +67,7 @@ Frontmatter rules, all strict:
 - Every `id` is unique within the file.
 - A `BLOCKING` verdict requires at least one `BLOCKING`-severity finding.
 - Never write `APPROVED` while any finding is `BLOCKING` — a self-contradictory review file must never happen and must never look approved.
+- `summary` must be valid YAML. If it needs to contain a `"` character (e.g. quoting a misspelled word or an error message), the ENTIRE value must be one double-quoted string covering the whole line — never a quoted fragment followed by unquoted trailing prose. `summary: "capital" is misspelled as "captial"` is INVALID YAML (the value ends at the first closing quote, and everything after it breaks the parse). Either quote the whole line (`summary: "\"capital\" is misspelled as \"captial\""`) or, simpler, just don't use literal quote characters in the summary (`summary: capital is misspelled as captial`).
 - Omit `findings` entirely when you found nothing. Never invent a finding to pad the list.
 - In a cluster round, each finding also carries an `origin:` key — `lens:<name>` for a finding kept from a named fork, or `handler` for one you found yourself.
 

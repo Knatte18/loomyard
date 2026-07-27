@@ -14,8 +14,9 @@ import _ "embed"
 var configTemplate string
 
 // ConfigTemplate returns the default YAML template for perch configuration:
-// judge_model, judge_effort (empty = provider default), and round_caps, the
-// default milestone cap ladder.
+// judge_model (a model-spec string; effort rides its optional [effort=...]
+// bracket — the split judge_effort key no longer exists on disk) and
+// round_caps, the default milestone cap ladder.
 func ConfigTemplate() string {
 	return configTemplate
 }

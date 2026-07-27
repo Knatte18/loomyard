@@ -82,7 +82,7 @@ type judgeHeader struct {
 //     STOP, UNCERTAIN} for framingMilestone;
 //   - rationale must be non-empty.
 func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, string, error) {
-	header, err := splitFrontmatter(content)
+	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {
 		return "", "", err
 	}
@@ -109,7 +109,7 @@ func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, stri
 // non-empty-rationale rules as ParseJudgeVerdict, with the triage
 // vocabulary: verdict must be exactly RETRY or GIVE_UP (case-sensitive).
 func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
-	header, err := splitFrontmatter(content)
+	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {
 		return "", "", err
 	}
@@ -131,17 +131,25 @@ func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
 	return verdict, parsed.Rationale, nil
 }
 
-// splitFrontmatter extracts the YAML header text between a verdict file's
-// opening and closing "---" delimiter lines. This is a package-private copy
-// of burlerengine's splitFrontmatter (same three fail-loud checks: opening
-// "---", closing "---", non-empty header; CRLF-tolerant) rather than an
-// export of burler's, since the two parsers evolve independently. Each line
-// is compared with its trailing "\r" trimmed so CRLF content parses
+// splitFrontmatter extracts the YAML header text between an agent-written
+// file's opening and closing "---" delimiter lines. This is a package-private
+// copy of burlerengine's splitFrontmatter (same three fail-loud checks:
+// opening "---", closing "---", non-empty header; CRLF-tolerant) rather than
+// an export of burler's, since the two parsers evolve independently. Each
+// line is compared with its trailing "\r" trimmed so CRLF content parses
 // identically to LF content.
-func splitFrontmatter(content []byte) (string, error) {
+//
+// kind names the file being parsed ("verdict" or "handoff") and appears in
+// every error this function returns. It is a parameter rather than a
+// hardcoded word because two DIFFERENT agent contracts share this helper —
+// judge/triage verdicts here and the judge-maintained handoff in handoff.go
+// — and these errors surface to an operator as the cause of a Warn that
+// already names the file kind ("handoff file unparseable"). A fixed noun
+// made that one log line contradict itself about which file was at fault.
+func splitFrontmatter(content []byte, kind string) (string, error) {
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
-		return "", fmt.Errorf("treadle: verdict file must open with a \"---\" frontmatter delimiter line")
+		return "", fmt.Errorf("treadle: %s file must open with a \"---\" frontmatter delimiter line", kind)
 	}
 
 	closingIdx := -1
@@ -152,12 +160,12 @@ func splitFrontmatter(content []byte) (string, error) {
 		}
 	}
 	if closingIdx == -1 {
-		return "", fmt.Errorf("treadle: verdict file frontmatter is missing its closing \"---\" delimiter line")
+		return "", fmt.Errorf("treadle: %s file frontmatter is missing its closing \"---\" delimiter line", kind)
 	}
 
 	header := strings.Join(lines[1:closingIdx], "\n")
 	if strings.TrimSpace(header) == "" {
-		return "", fmt.Errorf("treadle: verdict file frontmatter is empty")
+		return "", fmt.Errorf("treadle: %s file frontmatter is empty", kind)
 	}
 	return header, nil
 }

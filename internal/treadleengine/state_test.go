@@ -362,16 +362,31 @@ func TestPauseFlag(t *testing.T) {
 	}
 
 	// clearPauseFlag must be a no-op when the flag is absent.
-	if err := clearPauseFlag(runDir); err != nil {
+	if err := clearPauseFlag("perch", runDir); err != nil {
 		t.Fatalf("clearPauseFlag() (absent) = %v; want nil", err)
 	}
 
 	writeFile(t, flagPath, "")
-	if err := clearPauseFlag(runDir); err != nil {
+	if err := clearPauseFlag("perch", runDir); err != nil {
 		t.Fatalf("clearPauseFlag() (present) = %v; want nil", err)
 	}
 	if fileExists(flagPath) {
 		t.Errorf("pause flag %q still exists after clearPauseFlag", flagPath)
+	}
+
+	// A removal that fails for any reason other than "already absent" must
+	// still carry the calling engine's name: Run returns this error verbatim,
+	// so an unprefixed message would surface in a caller's CLI envelope as the
+	// only diagnostic with no module label. A non-empty directory at the flag
+	// path is the portable way to make os.Remove fail without touching
+	// permissions.
+	writeFile(t, filepath.Join(flagPath, "occupant.txt"), "x")
+	err := clearPauseFlag("tenter", runDir)
+	if err == nil {
+		t.Fatal("clearPauseFlag() (unremovable) = nil; want an error")
+	}
+	if !strings.HasPrefix(err.Error(), "tenter: ") {
+		t.Errorf("clearPauseFlag() error = %q; want a \"tenter: \"-prefixed message", err.Error())
 	}
 }
 
