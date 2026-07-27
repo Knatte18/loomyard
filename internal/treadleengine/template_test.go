@@ -66,7 +66,7 @@ func requireHandoffMaintenanceRules(t *testing.T, text string) {
 	// (b) covers_rounds computation.
 	requireContains(t, text, "covers_rounds")
 	requireContains(t, text, "the previous handoff's own `covers_rounds`")
-	requireContains(t, text, "PLUS the round number of every review file you\n  actually read this call")
+	requireContains(t, text, "PLUS the round number of every review file you actually read this call")
 	// (d) exactly two output files, same call.
 	requireContains(t, text, "Write EXACTLY TWO files this call")
 	requireContains(t, text, "{{.handoff_path}}")
