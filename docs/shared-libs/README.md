@@ -1,15 +1,8 @@
 # Shared internal libraries
 
-Loomyard's user-facing modules (`board`, `warp`, `ide`, `reed`) are self-contained: all
-of a module's *domain* logic and its deep test suite live in that module's package
-and nowhere else. What they share is a thin layer of **infrastructure plumbing** —
-mechanical helpers with no opinion about tasks, worktrees, or panes. See [overview.md](../overview.md).
+Loomyard's user-facing modules (`board`, `warp`, `ide`, `reed`) are self-contained: all of a module's *domain* logic and its deep test suite live in that module's package and nowhere else. What they share is a thin layer of **infrastructure plumbing** — mechanical helpers with no opinion about tasks, worktrees, or panes. See [overview.md](../overview.md).
 
-**The line we hold:** a shared lib does one mechanical thing — run a git command,
-take a lock, resolve a config, read a state file. It carries *no* domain logic. The
-command *sequences* (which git calls, which lock files, which config keys) stay in
-the modules. Each shared lib also carries its own deep tests, so it is vetted
-plumbing, not an untested dependency.
+**The line we hold:** a shared lib does one mechanical thing — run a git command, take a lock, resolve a config, read a state file. It carries *no* domain logic. The command *sequences* (which git calls, which lock files, which config keys) stay in the modules. Each shared lib also carries its own deep tests, so it is vetted plumbing, not an untested dependency.
 
 See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 
@@ -31,5 +24,4 @@ The following libraries ship in code and tests; their mechanics are documented t
 - `internal/lock` — cross-process file locking
 - `internal/proc` — cross-OS child-process window-hide (`HideWindow`) and detached-spawn (`Detach`) primitives
 - `internal/state` — generic locked typed JSON I/O
-- `internal/modelspec` — model-spec parser + models.yaml registry loader; the pinned
-  contract is `docs/reference/model-spec.md`, the as-built API lives in the package doc
+- `internal/modelspec` — model-spec parser + models.yaml registry loader; the pinned contract is `docs/reference/model-spec.md`, the as-built API lives in the package doc

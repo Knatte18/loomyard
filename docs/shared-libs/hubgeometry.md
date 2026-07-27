@@ -1,18 +1,12 @@
 # `internal/hubgeometry`
 
-The **canonical geometry resolver** — the single owner of all worktree and Hub
-path math. Centralizes cwd/worktree-root handling so the `cwd ≠ git-repo-path` bug
-class never recurs.
+The **canonical geometry resolver** — the single owner of all worktree and Hub path math. Centralizes cwd/worktree-root handling so the `cwd ≠ git-repo-path` bug class never recurs.
 
-**Dependency direction (Go enforces it):** `internal/hubgeometry` imports only
-`internal/gitexec` + stdlib and **never** a domain module. All domain modules
-(`warp`, `board`, `ide`, `reed`) import `hubgeometry` for geometry.
+**Dependency direction (Go enforces it):** `internal/hubgeometry` imports only `internal/gitexec` + stdlib and **never** a domain module. All domain modules (`warp`, `board`, `ide`, `reed`) import `hubgeometry` for geometry.
 
 ## The problem
 
-The cwd-≠-worktree-root bug recurs because path math is scattered: each module
-re-derives Hub, worktree-root, and relative-path ad hoc. A single resolver
-makes correctness structural, not a matter of discipline.
+The cwd-≠-worktree-root bug recurs because path math is scattered: each module re-derives Hub, worktree-root, and relative-path ad hoc. A single resolver makes correctness structural, not a matter of discipline.
 
 ## Exported API
 
@@ -38,14 +32,11 @@ These three constants are the single source of the geometry tokens for the whole
 
 Returns the current working directory.
 
-**Behavior:** A thin wrapper over `os.Getwd`; the only permitted `os.Getwd` call
-outside `internal/hubgeometry` (and `cmd/lyx/main.go`).
+**Behavior:** A thin wrapper over `os.Getwd`; the only permitted `os.Getwd` call outside `internal/hubgeometry` (and `cmd/lyx/main.go`).
 
-**Returns:** On success, the cleaned absolute path of the cwd. On failure, an error
-(e.g., the cwd no longer exists).
+**Returns:** On success, the cleaned absolute path of the cwd. On failure, an error (e.g., the cwd no longer exists).
 
-**Use case:** Pre-initialization (before a git repo is accessible), when you need a
-cwd but no git root yet.
+**Use case:** Pre-initialization (before a git repo is accessible), when you need a cwd but no git root yet.
 
 ### `Resolve(cwd string) (*Layout, error)`
 
@@ -54,18 +45,15 @@ Builds a complete geometry `Layout` from a cwd once, resolving all path math upf
 **Behavior:**
 
 1. Runs `git rev-parse --show-toplevel` from `cwd` to find the repo root.
-2. Normalizes the root via `filepath.FromSlash` + `filepath.Clean` (reconciles forward
-   slashes from git vs backslashes from `os.Getwd()`).
+2. Normalizes the root via `filepath.FromSlash` + `filepath.Clean` (reconciles forward slashes from git vs backslashes from `os.Getwd()`).
 3. Computes Hub = `parent(root)`, relative-path = `rel(root, cwd)`.
 4. Calls `worktreeList(cwd)` to fetch the `Main=true` entry and stores its `.Path`.
 5. Returns a `Layout` struct with all fields set.
 
-**Returns:** On success, a pointer to the `Layout`. On failure, an error (typically
-`ErrNotAGitRepo` if `cwd` is not in a git repository).
+**Returns:** On success, a pointer to the `Layout`. On failure, an error (typically `ErrNotAGitRepo` if `cwd` is not in a git repository).
 
 **Error types:**
-- `ErrNotAGitRepo` — the given cwd is not within a git repository, or `git
-  rev-parse --show-toplevel` failed.
+- `ErrNotAGitRepo` — the given cwd is not within a git repository, or `git rev-parse --show-toplevel` failed.
 
 ### `Layout` struct
 
@@ -101,87 +89,42 @@ These pure functions construct geometry paths without requiring a resolved `Layo
 
 ### Layout methods
 
-- **`LyxDir() string`** — `filepath.Join(Cwd, LyxDirName)`. The Loomyard config/state
-  directory at the current location.
-- **`WorktreePath(slug string) string`** — `filepath.Join(Hub, slug)`. Path to
-  a sibling worktree.
-- **`PortalsDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_portals")`. The portals
-  system container directory (prune boundary, not mirrored by subpath). Portals expose each
-  worktree's `_lyx/` at a Hub-level, subdir-mirrored location so any worktree can see sibling
-  task-state in the same subdir; present and working, kept on hold (see the weft proposal).
-- **`PortalLink(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_portals", RelPath, slug)`. The portal junction link,
-  mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the
-  flat `<Hub>/_portals/<slug>`.
-- **`PortalTarget(slug string) string`** — `filepath.Join(Hub, slug, RelPath,
-  "_lyx")`. The junction target for a given worktree's portal.
-- **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_launchers")`. The launchers
-  system container directory (prune boundary, not mirrored by subpath).
-- **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, slug)`.
-  Path to a specific worktree's launcher directory, mirrored into the repo subpath
-  structure. At `RelPath == "."`, collapses to the flat `<Hub>/_launchers/<slug>`.
-- **`MenuLauncherPath() string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, "ide-menu.cmd")`. The per-subpath
-  menu launcher script, mirrored into the repo subpath structure. At `RelPath == "."`,
-  collapses to `<Hub>/_launchers/ide-menu.cmd`.
-- **`LauncherSpawnRel(slug string) string`** — `filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath))`.
-  The relative path from a launcher directory to the target worktree's subpath for spawning.
-- **`MenuLauncherRel() string`** — `filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(Prime, RelPath))`.
-  The relative path from the menu launcher directory to the Prime worktree's subpath for menu spawning.
-- **`PrimeName() string`** — `filepath.Base(Prime)`. The Prime worktree's
-  directory name (stable, used in paths like `ide-menu.cmd`).
+- **`LyxDir() string`** — `filepath.Join(Cwd, LyxDirName)`. The Loomyard config/state directory at the current location.
+- **`WorktreePath(slug string) string`** — `filepath.Join(Hub, slug)`. Path to a sibling worktree.
+- **`PortalsDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_portals")`. The portals system container directory (prune boundary, not mirrored by subpath). Portals expose each worktree's `_lyx/` at a Hub-level, subdir-mirrored location so any worktree can see sibling task-state in the same subdir; present and working, kept on hold (see the weft proposal).
+- **`PortalLink(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_portals", RelPath, slug)`. The portal junction link, mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the flat `<Hub>/_portals/<slug>`.
+- **`PortalTarget(slug string) string`** — `filepath.Join(Hub, slug, RelPath, "_lyx")`. The junction target for a given worktree's portal.
+- **`LaunchersDir() string`** (un-mirrored root) — `filepath.Join(Hub, "_launchers")`. The launchers system container directory (prune boundary, not mirrored by subpath).
+- **`LauncherDir(slug string) string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, slug)`. Path to a specific worktree's launcher directory, mirrored into the repo subpath structure. At `RelPath == "."`, collapses to the flat `<Hub>/_launchers/<slug>`.
+- **`MenuLauncherPath() string`** (mirrored leaf) — `filepath.Join(Hub, "_launchers", RelPath, "ide-menu.cmd")`. The per-subpath menu launcher script, mirrored into the repo subpath structure. At `RelPath == "."`, collapses to `<Hub>/_launchers/ide-menu.cmd`.
+- **`LauncherSpawnRel(slug string) string`** — `filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath))`. The relative path from a launcher directory to the target worktree's subpath for spawning.
+- **`MenuLauncherRel() string`** — `filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(Prime, RelPath))`. The relative path from the menu launcher directory to the Prime worktree's subpath for menu spawning.
+- **`PrimeName() string`** — `filepath.Base(Prime)`. The Prime worktree's directory name (stable, used in paths like `ide-menu.cmd`).
 
 ## Design principles
 
-**Geometry-only.** `hubgeometry` computes *where* things are, never *mutates* them.
-Worktree creation/removal, junction setup, and config scaffolding stay in the
-domain modules. `hubgeometry` is the dumb geometry resolver so they can be smart about
-state transitions.
+**Geometry-only.** `hubgeometry` computes *where* things are, never *mutates* them. Worktree creation/removal, junction setup, and config scaffolding stay in the domain modules. `hubgeometry` is the dumb geometry resolver so they can be smart about state transitions.
 
-**Single call per invocation.** Most callsites invoke `Resolve(cwd)` once at the
-start of a command and re-use the returned `Layout` throughout. This amortizes all
-git calls and normalization upfront.
+**Single call per invocation.** Most callsites invoke `Resolve(cwd)` once at the start of a command and re-use the returned `Layout` throughout. This amortizes all git calls and normalization upfront.
 
-**Normalization in one place.** Forward slashes from `git rev-parse --show-toplevel`
-vs backslashes from `os.Getwd()` are reconciled once in `hubgeometry` via
-`filepath.FromSlash` + `filepath.Clean`, so callers never deal with mixed forms.
+**Normalization in one place.** Forward slashes from `git rev-parse --show-toplevel` vs backslashes from `os.Getwd()` are reconciled once in `hubgeometry` via `filepath.FromSlash` + `filepath.Clean`, so callers never deal with mixed forms.
 
-**Config resolution stays cwd-authoritative.** `hubgeometry.Resolve` is geometry-only and
-does NOT check for `_lyx/`. The cwd-authoritative config invariant (`_lyx/` must
-exist at cwd) remains enforced by `internal/configengine.FindBaseDir`. Board and other
-modules keep passing `cwd` to their `LoadConfig` (obtained via `hubgeometry.Getwd`). This
-lets `board init` (pre-init, no `_lyx/`) and other early-stage commands call into
-`hubgeometry` without a spurious "not initialized" failure.
+**Config resolution stays cwd-authoritative.** `hubgeometry.Resolve` is geometry-only and does NOT check for `_lyx/`. The cwd-authoritative config invariant (`_lyx/` must exist at cwd) remains enforced by `internal/configengine.FindBaseDir`. Board and other modules keep passing `cwd` to their `LoadConfig` (obtained via `hubgeometry.Getwd`). This lets `board init` (pre-init, no `_lyx/`) and other early-stage commands call into `hubgeometry` without a spurious "not initialized" failure.
 
-**Mirrored system dirs never enumerate the worktree.** `hubgeometry` only derives Loomyard's
-own system directories (`_lyx`, `_portals`, `_launchers`) from `RelPath` and never
-enumerates or mirrors user content. A nested or git-ignored `_raddle` sibling
-(or any other sibling repo) is never mirrored as a subpath-specific copy.
+**Mirrored system dirs never enumerate the worktree.** `hubgeometry` only derives Loomyard's own system directories (`_lyx`, `_portals`, `_launchers`) from `RelPath` and never enumerates or mirrors user content. A nested or git-ignored `_raddle` sibling (or any other sibling repo) is never mirrored as a subpath-specific copy.
 
 ## The enforcement wall
 
-`internal/hubgeometry/enforcement_test.go` runs two repo-wide AST scans on every
-`go test ./internal/hubgeometry/...` run:
+`internal/hubgeometry/enforcement_test.go` runs two repo-wide AST scans on every `go test ./internal/hubgeometry/...` run:
 
-**`TestEnforcement` (cwd/root primitives ban):**
-Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside
-`internal/hubgeometry` and `cmd/lyx/main.go`. The scan uses a substring check on the
-raw file bytes and fails the build if either token appears in any non-test `.go`
-file outside the allowlist.
+**`TestEnforcement` (cwd/root primitives ban):** Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/hubgeometry` and `cmd/lyx/main.go`. The scan uses a substring check on the raw file bytes and fails the build if either token appears in any non-test `.go` file outside the allowlist.
 
-**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):**
-The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`,
-`_raddle`, and `_lyx` may not appear as string literals in a
-**path-construction context** in any production file outside `internal/hubgeometry`.
-Path-construction contexts are:
+**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, and `_lyx` may not appear as string literals in a **path-construction context** in any production file outside `internal/hubgeometry`. Path-construction contexts are:
 
 - An argument to a `filepath.Join(...)` call.
 - An operand of a binary `+` (`token.ADD`) expression.
 - The value of a string `const` declaration.
 
-Matching is **whole-token** (exact equality after `strconv.Unquote`, not
-substring), so compound names like `_boardroom` or `-weft-bare` are not flagged.
-Test files (`*_test.go`) are excluded from the scan — test geometry is a
-code-review obligation, not machine-enforced. A `scanned_non_empty` sub-test
-guards against a misconfigured walk that would silently produce a vacuous pass.
+Matching is **whole-token** (exact equality after `strconv.Unquote`, not substring), so compound names like `_boardroom` or `-weft-bare` are not flagged. Test files (`*_test.go`) are excluded from the scan — test geometry is a code-review obligation, not machine-enforced. A `scanned_non_empty` sub-test guards against a misconfigured walk that would silently produce a vacuous pass.
 
-See [CONSTRAINTS.md](../../CONSTRAINTS.md) for the full invariant specification
-and guidance for new code.
+See [CONSTRAINTS.md](../../CONSTRAINTS.md) for the full invariant specification and guidance for new code.
