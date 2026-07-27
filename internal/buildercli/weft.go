@@ -61,8 +61,14 @@ func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		// On error, committed is passed through rather than forced to false:
+		// CommitWeft reports committed=true alongside a RecordCorrespondence
+		// error precisely because the commit already exists on disk at that
+		// point -- reporting false there would tell the caller no commit was
+		// made about a commit that is real. The push is still skipped (the
+		// next weft push sweeps it up), matching the pre-cutover error flow.
 		if _, committed, err = f.CommitWeft(pathspec, fmt.Sprintf("builder: %s", label), opts); err != nil {
-			return false, err
+			return committed, err
 		}
 	}
 	if err := fabricengine.PushWeftAt(weftWorktree, opts); err != nil {
