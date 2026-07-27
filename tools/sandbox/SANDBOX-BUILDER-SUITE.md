@@ -380,15 +380,16 @@ After running all scenarios, record a short session summary:
 Date: <YYYY-MM-DD>
 Binary fingerprint: <copy from the header above>
 
-B1: <OK|WARN|FAIL> -- <one-line note if not OK>
-B2: <OK|WARN|FAIL> -- <one-line note if not OK>
-B3: <OK|WARN|FAIL> -- <one-line note if not OK>
-B4: <OK|WARN|FAIL> -- <one-line note if not OK>
-B5: <OK|WARN|FAIL> -- <one-line note if not OK>
-B6: <OK|WARN|FAIL> -- <one-line note if not OK>
-B7: <OK|WARN|FAIL> -- <one-line note if not OK>
-B8: <OK|WARN|FAIL> -- <one-line note if not OK>
-B9: <OK|WARN|FAIL> -- <one-line note if not OK>
+B1:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B2:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B3:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B4:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B5:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B6:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B7:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B8:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B9:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B10: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
