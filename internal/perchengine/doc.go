@@ -65,12 +65,41 @@
 // cost, while the hard cap already bounds the damage of a wrong verdict.
 // What ships instead is a holistic verdict judge — an ephemeral LLM
 // (default Haiku, config key judge_model / profile key judge-model) spawned
-// via shuttle that reads every prior round's already-written review file
-// and writes a verdict file: strict YAML frontmatter (a verdict enum plus a
-// rationale citing concrete finding evidence) over unconstrained prose. The
-// prose carries a human-facing THEMES OVERVIEW — what kinds of findings
-// keep recurring — so an operator can eyeball cross-round overlap; parsing
-// is fail-loud, mirroring burlerengine.ParseReview.
+// via shuttle that reads the judge's bounded read-set (below) and writes a
+// verdict file: strict YAML frontmatter (a verdict enum plus a rationale
+// citing concrete finding evidence) over unconstrained prose. The prose
+// carries a human-facing THEMES OVERVIEW — what kinds of findings keep
+// recurring — so an operator can eyeball cross-round overlap; parsing is
+// fail-loud, mirroring burlerengine.ParseReview.
+//
+// The judge's read-set is bounded, not unbounded: {the latest VALID
+// judge-maintained handoff + the reviews of every completed round its
+// covers_rounds does not already absorb} plus the current round's fresh
+// review — never every prior round's review file. The SAME judge call that
+// renders the verdict also maintains the handoff, writing a fresh
+// round-<token>-handoff.md alongside the verdict file: strict YAML
+// frontmatter (a lossless per-finding ledger plus covers_rounds) over a
+// distilled prose narrative, carrying forward every ledger entry from the
+// previous handoff (open or resolved, never dropped) so circling-detection
+// never silently loses a recurring finding. state.json's per-round record
+// carries this in an optional handoffPath field (additive, omitempty — see
+// the state-json-compatibility shared decision), set only when that
+// round's judge call both succeeded AND produced a handoff file that reads
+// and parses cleanly. A round with no judge call at all (round 1; the
+// round right after an APPROVED verdict; any round a judge call failed on)
+// carries no handoffPath and therefore never appears in a later handoff's
+// covers_rounds, so its review is always fed to the next judge call — this
+// is what closes the "judge-gap" hole a bounded read-set would otherwise
+// open. A missing or unparseable handoff file is the same fail-safe Warn
+// posture described below, never an error and never STUCK: the next judge
+// call simply falls back to the next older valid handoff, or — with no
+// valid handoff at all — degrades to exactly the pre-handoff all-reviews
+// behavior. This bounding was a genuine efficiency fix to perch's own
+// shipped behavior (unbounded O(N) judge context growth as rounds
+// accumulate), landed as part of extracting the loop into treadleengine
+// (below) — it does not change what a burler ROUND reads (still every
+// prior review/fixer-report/failed-gate output; see collectPriorHydration
+// in treadleengine), only what the JUDGE reads.
 //
 // The same judge, the same template, serves two framings selected by a mode
 // value:
@@ -221,17 +250,58 @@
 //
 // # Configuration: engine-general rails vs. phase knowledge
 //
-// perch.yaml (config keys judge_model, judge_effort, round_caps) holds only
-// engine-general defaults and NEVER learns a phase name. Per-phase
-// knowledge — which rubric, which fasit, a phase's own round-cap ladder,
-// gate mode — is supplied per invocation via the profile, and for loom's
-// phases that profile data will live in loom's OWN per-phase config, not
-// perch.yaml. This is a recurring design rule worth stating once:
-// knowledge of phases and lifecycle collects in loom; the engines beneath
-// it (perch, burler) stay phase-agnostic. Resolution order for every
-// perch-owned tunable is uniformly profile > perch.yaml > built-in default,
-// applied once at block CREATION: a block's identity hash covers the profile
-// as supplied (not the resolved values), and its resolved round-caps ladder
-// is stamped into state.json, so a later perch.yaml change neither alters
-// nor invalidates the resume of an in-flight block.
+// perch.yaml (config keys judge_model, round_caps) holds only engine-general
+// defaults and NEVER learns a phase name. Per-phase knowledge — which
+// rubric, which fasit, a phase's own round-cap ladder, gate mode — is
+// supplied per invocation via the profile, and for loom's phases that
+// profile data will live in loom's OWN per-phase config, not perch.yaml.
+// This is a recurring design rule worth stating once: knowledge of phases
+// and lifecycle collects in loom; the engines beneath it (perch, burler)
+// stay phase-agnostic. Resolution order for every perch-owned tunable is
+// uniformly profile > perch.yaml > built-in default, applied once at block
+// CREATION: a block's identity hash covers the profile as supplied (not the
+// resolved values), and its resolved round-caps ladder is stamped into
+// state.json, so a later perch.yaml change neither alters nor invalidates
+// the resume of an in-flight block.
+//
+// judge_model (and a profile's judge-model/model keys, see perchcli) is a
+// model-spec string, not a bare model name — docs/reference/model-spec.md's
+// notation: a registry alias with an optional [effort=...] bracket, the
+// escape form for a model not (yet) in the registry, or a bare alias that
+// picks up its default effort from the operator-owned models.yaml. Effort
+// is the ONLY bracket param perch accepts — a spec setting any other param
+// (e.g. version) fails loud, since perch's Config/Profile carry no field to
+// put it in. Resolution (modelspec.Parse, then Registry.Resolve against a
+// models.yaml loaded once per invocation) runs exactly once, at config/
+// profile load, unpacking the resolved (model, effort) pair into Config's
+// and Profile's unchanged JudgeModel/JudgeEffort and Model/Effort fields —
+// never re-resolved later, and never threaded as a spec string past load
+// time. A pre-migration perch.yaml or profile file still carrying the old
+// split judge_effort/effort keys fails strict validation loud rather than
+// silently dropping the value (a deliberate fail-loud breaking change to
+// config FILES only; perch's own Go API is unchanged — see "Treadle" below).
+//
+// # Treadle — where the round loop actually lives now
+//
+// The round loop this document describes — the round-caps ladder, the
+// verdict-judge model, the pluggable gate, the non-done-outcome retry/
+// triage machinery, pause, and run-dir locking — no longer lives in this
+// package's own code. It was extracted into internal/treadleengine, the
+// generalized round-loop engine a second future consumer (Tenter, see
+// manifest/designs/hardener.md) can also drive. perchengine is now the thin
+// configuration layer: it resolves perch.yaml/profile data (this file's
+// resolution-order and identity rules above), adapts burlerengine into
+// treadleengine's RoundRunner seam (adapter.go), and delegates to
+// treadleengine.Engine.Run (engine.go) — every invariant documented above
+// still holds exactly as described; only where the code lives has changed.
+// perch's own exported Go API is unchanged.
+//
+// One treadleengine capability this package deliberately does not exercise:
+// pre-round targeting (treadleengine.Profile.PreRoundTargeting). It exists
+// for a future consumer whose rounds benefit from dynamically retargeted
+// focus; perch's own rounds keep re-using a fixed rubric, so Engine.Run
+// never sets that field on the treadleengine.Profile it builds, and it
+// stays at its zero value (off). See the internal/treadleengine package
+// documentation for that capability and for the full mechanics of the
+// bounded judge handoff read-set summarized above.
 package perchengine

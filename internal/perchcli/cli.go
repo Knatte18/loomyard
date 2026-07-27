@@ -1,8 +1,9 @@
 // cli.go builds the cobra command tree for the perch module and the
 // RunCLI seam that wires it into the standard io.Writer-based call contract.
 // The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> perch config -> burler config -> reed
-// engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
+// cwd -> layout -> shuttle config -> reed config -> models registry -> perch
+// config -> burler config -> reed engine -> claude engine ->
+// shuttleengine.Runner -> burlerengine.Engine
 // exactly once per invocation, storing the resolved ingredients on perchCLI
 // rather than a constructed *perchengine.Engine: the pause seam
 // (perchengine.Options.
@@ -19,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -38,15 +40,21 @@ type perchCLI struct {
 	burlerEngine *burlerengine.Engine
 	runner       *shuttleengine.Runner
 	perchCfg     perchengine.Config
-	layout       *hubgeometry.Layout
-	runDirBase   string
+	// modelReg is the models.yaml registry, loaded exactly once per
+	// invocation in PersistentPreRunE and reused for both perchCfg's
+	// judge_model resolution and decodeProfile's judge-model/model
+	// resolution — no second models.yaml read anywhere in the same run.
+	modelReg   modelspec.Registry
+	layout     *hubgeometry.Layout
+	runDirBase string
 }
 
 // Command returns the cobra command tree for the perch module.
 //
 // The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> perch config -> burler config -> reed
-// engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
+// cwd -> layout -> shuttle config -> reed config -> models registry -> perch
+// config -> burler config -> reed engine -> claude engine ->
+// shuttleengine.Runner -> burlerengine.Engine
 // into c, skipping that resolution entirely when the group command itself
 // is invoked (bare "lyx perch" listing or an unknown-subcommand error via
 // GroupRunE) so neither path requires a git repository. The run and pause
@@ -118,7 +126,19 @@ Example:
 				return nil
 			}
 
-			perchCfg, err := perchengine.LoadConfig(layout.Cwd, "perch")
+			// Loaded ONCE here, at the same layout.Cwd anchor every config
+			// load above uses, and reused for both perchCfg's judge_model
+			// resolution (via LoadConfigWithRegistry) and decodeProfile's
+			// profile-field resolution in runCmd — models.yaml is read
+			// exactly once per invocation.
+			modelReg, err := modelspec.LoadRegistry(layout.Cwd)
+			if err != nil {
+				output.Err(out, err.Error())
+				clihelp.Abort(ctx, 1)
+				return nil
+			}
+
+			perchCfg, err := perchengine.LoadConfigWithRegistry(layout.Cwd, "perch", modelReg)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -141,6 +161,7 @@ Example:
 			c.burlerEngine = burlerengine.New(runner, layout, burlerCfg)
 			c.runner = runner
 			c.perchCfg = perchCfg
+			c.modelReg = modelReg
 			c.layout = layout
 			// Anchored at layout.Cwd, like the config loads above and like
 			// Layout.LyxDir itself: the initialized _lyx (the weft junction,

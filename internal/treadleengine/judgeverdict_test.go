@@ -5,7 +5,7 @@
 // rejected, missing/unclosed/empty frontmatter rejected, and CRLF content
 // accepted.
 
-package perchengine
+package treadleengine
 
 import (
 	"strings"
@@ -201,8 +201,8 @@ date: 2026-07-08
 				if !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("ParseJudgeVerdict() error = %q; want substring %q", err.Error(), tt.errSubstr)
 				}
-				if !strings.HasPrefix(err.Error(), "perch: ") {
-					t.Errorf("ParseJudgeVerdict() error = %q; want perch: -prefixed message", err.Error())
+				if !strings.HasPrefix(err.Error(), "treadle: ") {
+					t.Errorf("ParseJudgeVerdict() error = %q; want treadle: -prefixed message", err.Error())
 				}
 				return
 			}
@@ -319,8 +319,8 @@ verdict: RETRY
 				if !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("ParseTriageVerdict() error = %q; want substring %q", err.Error(), tt.errSubstr)
 				}
-				if !strings.HasPrefix(err.Error(), "perch: ") {
-					t.Errorf("ParseTriageVerdict() error = %q; want perch: -prefixed message", err.Error())
+				if !strings.HasPrefix(err.Error(), "treadle: ") {
+					t.Errorf("ParseTriageVerdict() error = %q; want treadle: -prefixed message", err.Error())
 				}
 				return
 			}

@@ -20,7 +20,7 @@ shared skeleton with two swappable slots, not one:
   provisioning, live-suite readiness — see [hardener.md](hardener.md)). Not shared code.
 - **Producer-slot** — the phase(s) that actually do the work. For `loom`, this is
   Discussion → Plan → Webster (each gated by a `perch` review — see [loom.md](loom.md#the-gate));
-  for `Hardener`, this is `Tenter` (see [treadle.md](treadle.md)).
+  for `Hardener`, this is `Tenter` (see the `internal/treadleengine` package documentation).
 
 What **is** literally shared code (not swappable, identical either way): the sequencing skeleton
 itself (resume-on-files, crash recovery, graceful pause — all already specified in
@@ -35,8 +35,8 @@ Two named products come from configuring the same engine differently:
 - **`loom`** = `Shed` + loom's own Preflight + Discussion/Plan/Webster producer — unchanged
   behavior/CLI from the outside, `lyx loom run`.
 - **`Hardener`** = `Shed` + Hardener's own Preflight + `Tenter` producer (`Treadle` + a
-  live-substrate round-runner + behavior-review profile — see [treadle.md](treadle.md)) —
-  `lyx hardener run`. Someday, deprioritized; not part of this doc's Planned scope.
+  live-substrate round-runner + behavior-review profile — see the `internal/treadleengine` package
+  documentation) — `lyx hardener run`. Someday, deprioritized; not part of this doc's Planned scope.
 
 ## Testable cheaply — a throwaway producer proves the skeleton
 
@@ -61,8 +61,9 @@ independent, with no reason to. Same reasoning as the combined `Treadle` + `perc
 `loom.md` is a mature, ~320-line, already-detailed design (phase machine, crash recovery, pause
 semantics, session bootstrap, module decomposition) written before this generalization was
 conceived. Retrofitting it into "Shed does X, `loom` configures X" throughout is real work with
-real risk of quietly losing detail — the same discipline [treadle.md](treadle.md#process--do-not-fold-this-into-hardeners-task)
-already applies to perch's own extraction. Not folded into this pass. For now, `loom.md` remains
+real risk of quietly losing detail — the same discipline `Treadle`'s own extraction task applied
+when it pulled `perch`'s round loop out into `internal/treadleengine` without folding that work
+into `hardener`'s draft applies here too. Not folded into this pass. For now, `loom.md` remains
 the authoritative reference for what the engine actually does; this doc only records that the
 engine is being named `Shed` and is intended to be reused by `Hardener`.
 
@@ -73,5 +74,6 @@ engine is being named `Shed` and is intended to be reused by `Hardener`.
 - [finalize.md](finalize.md) — the Finalize/Merge phase `Shed` shares as literal code.
 - [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope `Shed`'s
   Finalize/Merge step must honor.
-- [treadle.md](treadle.md) — the sibling generic engine (inner round-loop, not outer phase-FSM).
+- `internal/treadleengine` package documentation — the sibling generic engine (inner round-loop,
+  not outer phase-FSM); as-built, its own module doc deleted per the documentation lifecycle.
 - [hardener.md](hardener.md) — `Hardener` (`Shed` + `Tenter`), Someday.

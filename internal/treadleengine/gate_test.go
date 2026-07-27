@@ -7,7 +7,7 @@
 // past gateWaitDelay) lives in gate_lingering_test.go under the integration
 // build tag instead — see the Test Tier Purity Invariant in CONSTRAINTS.md.
 
-package perchengine
+package treadleengine
 
 import (
 	"os"
@@ -15,8 +15,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
 func boolPtr(b bool) *bool {
@@ -30,19 +28,19 @@ func TestConverged(t *testing.T) {
 	tests := []struct {
 		name       string
 		mode       GateMode
-		verdict    burlerengine.Verdict
+		verdict    Verdict
 		gatePassed *bool
 		want       bool
 	}{
-		{"llm-verdict approved converges regardless of nil gatePassed", GateLLMVerdict, burlerengine.VerdictApproved, nil, true},
-		{"llm-verdict blocking never converges", GateLLMVerdict, burlerengine.VerdictBlocking, nil, false},
-		{"command mode ignores an approved verdict with failing command", GateCommand, burlerengine.VerdictApproved, boolPtr(false), false},
-		{"command mode converges on a passing command despite blocking verdict", GateCommand, burlerengine.VerdictBlocking, boolPtr(true), true},
-		{"command mode with nil gatePassed never converges", GateCommand, burlerengine.VerdictApproved, nil, false},
-		{"both requires approved and passing", GateBoth, burlerengine.VerdictApproved, boolPtr(true), true},
-		{"both fails when verdict is blocking despite a passing command", GateBoth, burlerengine.VerdictBlocking, boolPtr(true), false},
-		{"both fails when command fails despite an approved verdict", GateBoth, burlerengine.VerdictApproved, boolPtr(false), false},
-		{"both fails when gatePassed is nil", GateBoth, burlerengine.VerdictApproved, nil, false},
+		{"llm-verdict approved converges regardless of nil gatePassed", GateLLMVerdict, VerdictApproved, nil, true},
+		{"llm-verdict blocking never converges", GateLLMVerdict, VerdictBlocking, nil, false},
+		{"command mode ignores an approved verdict with failing command", GateCommand, VerdictApproved, boolPtr(false), false},
+		{"command mode converges on a passing command despite blocking verdict", GateCommand, VerdictBlocking, boolPtr(true), true},
+		{"command mode with nil gatePassed never converges", GateCommand, VerdictApproved, nil, false},
+		{"both requires approved and passing", GateBoth, VerdictApproved, boolPtr(true), true},
+		{"both fails when verdict is blocking despite a passing command", GateBoth, VerdictBlocking, boolPtr(true), false},
+		{"both fails when command fails despite an approved verdict", GateBoth, VerdictApproved, boolPtr(false), false},
+		{"both fails when gatePassed is nil", GateBoth, VerdictApproved, nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -139,7 +137,7 @@ func TestWriteGateOutput(t *testing.T) {
 			argv := []string{"make", "test"}
 			output := []byte("some command output\n")
 
-			if err := writeGateOutput(path, argv, output, tt.exitZero); err != nil {
+			if err := writeGateOutput("perch", path, argv, output, tt.exitZero); err != nil {
 				t.Fatalf("writeGateOutput() error = %v; want nil", err)
 			}
 

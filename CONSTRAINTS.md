@@ -47,6 +47,26 @@ import it without cycles.
 - **Enforced by** `internal/modelspec/leaf_enforcement_test.go`
   (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
+## Treadle Runner-Seam Invariant
+
+`internal/treadleengine` never imports `internal/burlerengine` or any `internal/*cli`
+package; round runners adapt onto treadle's `RoundRunner` vocabulary in their own
+packages.
+
+- The generalized round-loop engine's whole purpose is decoupling the loop from any one
+  round-runner's types (`burlerengine` today, a future behavior-review runner); importing
+  a runner's package back into treadle would defeat the seam it exists to provide. A type
+  genuinely needed by both is extracted out of burler into shared ground, never imported
+  downward — `internal/perchengine`'s `buildRoundProfile`/adapter own the burler-specific
+  mapping instead.
+- Import allowlist: stdlib, `internal/lock`, `internal/logger`, `internal/state`,
+  `internal/stencil`, `internal/shuttleengine`, and `gopkg.in/yaml.v3` — deliberately NOT
+  `internal/hubgeometry`: the engine is geometry-blind (caller-supplied absolute
+  `runDir`/`GateDir`), matching the Hub Geometry Invariant's carve-out for packages that
+  never construct `_lyx` paths themselves.
+- **Enforced by** `internal/treadleengine/seam_enforcement_test.go`
+  (`TestRunnerSeamInvariant_AllowlistOnly`) on every `go test`.
+
 ## Tokenvocab Leaf Invariant
 
 `internal/tokenvocab` production code imports only stdlib, `internal/hubgeometry`, and

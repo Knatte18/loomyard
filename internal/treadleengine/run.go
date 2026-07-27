@@ -1,21 +1,20 @@
 // run.go implements Engine.Run, the deterministic round loop that drives
-// one perch block from a fresh or resumed run dir to a terminal Result: it
-// validates the profile, resolves the block's on-disk identity and resume
-// point, then loops one round at a time through the burler round, the
-// pluggable convergence gate, and the milestone-laddered stuck ladder,
+// one treadle block from a fresh or resumed run dir to a terminal Result: it
+// validates the profile, resolves the block's resume point, then loops one
+// round at a time through a RoundRunner attempt (with its bounded retry),
+// the pluggable convergence gate, and the milestone-laddered stuck ladder,
 // persisting state after every round so a crash or an operator pause can
 // resume from exactly where the block left off.
 
-package perchengine
+package treadleengine
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -24,27 +23,32 @@ import (
 // errors.Is) because the caller must treat this refusal differently from
 // every other hard error: the losing invocation touched NOTHING on disk —
 // the winner is mid-round and owns the block's state — so a loop owner
-// must not run its block-exit bookkeeping (perchcli's weft sync) for it.
-var ErrBlockBusy = errors.New("perch: block is already running")
+// must not run its block-exit bookkeeping (e.g. perchcli's weft sync) for
+// it. The sentinel's own message is deliberately un-prefixed — the calling
+// engine's name is applied at wrap time below, by errf, so the composed
+// text still reads "<name>: block is already running: ..." exactly like
+// perch's own literal message did before the extraction (see the
+// name-parameterized-diagnostics shared decision).
+var ErrBlockBusy = errors.New("block is already running")
 
 // runLockName is the exclusive-lease file name inside a block's run dir,
 // held for the ENTIRE duration of one Engine.Run call — distinct from
 // state.json.lock, which internal/state only holds for the instant of one
-// read or write. Without this, two concurrent `lyx perch run` invocations
-// against the same run dir would each classify resume/fresh from state.json
-// and then both drive rounds into the same dir: colliding artifact paths,
-// clobbered state.json appends, and two burler agents editing the worktree
-// at once.
+// read or write. Without this, two concurrent invocations against the same
+// run dir would each classify resume/fresh from state.json and then both
+// drive rounds into the same dir: colliding artifact paths, clobbered
+// state.json appends, and two round-runner agents editing the worktree at
+// once.
 const runLockName = "run.lock"
 
-// roundOutcome captures what a round's retry loop produced once burler
+// roundOutcome captures what a round's retry loop produced once the runner
 // finally reached a done outcome: everything the round-loop body needs to
 // run the gate, evaluate convergence, run the stuck-ladder judge, and
 // persist a roundRecord.
 type roundOutcome struct {
 	Attempts        int
-	Verdict         burlerengine.Verdict
-	Findings        []burlerengine.Finding
+	Verdict         Verdict
+	BlockingCount   int
 	ReviewPath      string
 	FixerReportPath string
 	TriagePath      string
@@ -52,15 +56,16 @@ type roundOutcome struct {
 	Paths           roundArtifactPaths
 }
 
-// Run drives one perch block's round loop for Profile p, reading and
-// persisting state at runDir. It validates p against e.cfg, ensures runDir
-// exists, derives the block's identity (ProfileHash) and resume point
-// (loadOrInitState), then loops one round at a time: a pause check at the
-// round boundary only, a burler round with its bounded non-done retry, the
-// pluggable convergence gate, and — on a non-converged round — the
-// milestone-laddered stuck ladder. Every returned error is
-// "perch: "-prefixed; the returned Result mirrors the persisted state's
-// rounds as RoundSummary values.
+// Run drives one treadle block's round loop for Profile p, reading and
+// persisting state at runDir. It validates p (structural checks only) via
+// p.validate(e.name), ensures runDir exists, resolves the block's resume
+// point (loadOrInitState against p.ProfileHash, which the caller already
+// computed), then loops one round at a time: a pause check at the round
+// boundary only, a round-runner attempt with its bounded non-done retry,
+// the pluggable convergence gate, and — on a non-converged round — the
+// milestone-laddered stuck ladder. Every returned error is prefixed via
+// e.errf; the returned Result mirrors the persisted state's rounds as
+// RoundSummary values.
 func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	// A pause requested while the final round was still in flight can
 	// observe a terminal, non-PAUSED outcome once that round settles on its
@@ -75,36 +80,33 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		}
 	}()
 
-	// Identity is the profile AS SUPPLIED by the caller, hashed before
-	// default resolution mutates it: a perch.yaml default change (judge
-	// model, cap ladder) must never silently change — or invalidate the
-	// resume of — a block whose profile file the operator never touched.
-	hash, err := ProfileHash(p)
-	if err != nil {
+	if err := p.validate(e.name); err != nil {
 		return Result{}, err
 	}
-
-	if err := p.validate(e.cfg); err != nil {
-		return Result{}, err
-	}
+	// Identity is p.ProfileHash exactly as the caller supplied it — treadle
+	// never computes this itself (see the treadle-owns-no-config shared
+	// decision); a caller's own default-resolution change must never
+	// silently change, or invalidate the resume of, a block whose profile
+	// content the operator never touched.
+	hash := p.ProfileHash
 
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		return Result{}, fmt.Errorf("perch: create run dir %q: %w", runDir, err)
+		return Result{}, e.errf("create run dir %q: %w", runDir, err)
 	}
 
-	// Held for this entire call: a second concurrent `lyx perch run` (or a
-	// loom re-entry) against the SAME run dir must fail fast rather than
+	// Held for this entire call: a second concurrent invocation (or a
+	// re-entrant caller) against the SAME run dir must fail fast rather than
 	// silently interleave rounds with this one. Released by the OS on
 	// process exit/crash even if this call never reaches Release, so a
 	// killed process never bricks the run dir for a later resume.
 	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(runDir, runLockName))
 	if err != nil {
-		return Result{}, fmt.Errorf("perch: acquire run lock for %q: %w", runDir, err)
+		return Result{}, e.errf("acquire run lock for %q: %w", runDir, err)
 	}
 	if !locked {
 		// Wrapped with %w so the caller can errors.Is-match ErrBlockBusy and
 		// skip its block-exit bookkeeping — see the sentinel's doc.
-		return Result{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish or use a different --run-id", ErrBlockBusy, runDir)
+		return Result{}, e.errf("%w: %q (run.lock held); wait for it to finish or use a different --run-id", ErrBlockBusy, runDir)
 	}
 	defer runLock.Release()
 
@@ -114,7 +116,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		return Result{}, err
 	}
 
-	st, resume, err := loadOrInitState(runDir, hash, p.RoundCaps)
+	st, resume, err := loadOrInitState(e.name, runDir, hash, p.RoundCaps)
 	if err != nil {
 		return Result{}, err
 	}
@@ -134,11 +136,11 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	// The ladder that governs this block is the one STAMPED into state.json
 	// at block creation (a fresh block stamps p's just-resolved RoundCaps, so
 	// the two agree there) — a resumed block re-applies the ladder it
-	// actually started with even if perch.yaml's default changed in between,
-	// which the identity hash above deliberately does not cover.
+	// actually started with even if the caller's own default changed in
+	// between, which the identity hash above deliberately does not cover.
 	caps := st.RoundCaps
 	if len(caps) == 0 {
-		return Result{}, fmt.Errorf("perch: state.json in %q records no round-caps ladder; the state file is corrupt", runDir)
+		return Result{}, e.errf("state.json in %q records no round-caps ladder; the state file is corrupt", runDir)
 	}
 	hardCap := caps[len(caps)-1]
 
@@ -172,9 +174,20 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			return resultFromState(st, OutcomePaused, ""), nil
 		}
 
-		priorReviews, priorFixerReports := collectPriorHydration(st.Rounds)
+		// Cleared here, once per round, at attempt 1's token — BEFORE
+		// pre-round targeting runs below, so a leftover seed file from an
+		// interrupted prior attempt at this same round is moved aside before
+		// targeting tries to write a fresh one at the same path (spec.validate
+		// rejects a pre-existing output file). A later retry attempt's own
+		// stale artifacts are still handled inside runRound, per attempt.
+		if err := moveStaleArtifacts(e.name, runDir, round, 1); err != nil {
+			return Result{}, err
+		}
 
-		outcome, err := e.runRound(runDir, round, p, priorReviews, priorFixerReports)
+		priorReviews, priorFixerReports := collectPriorHydration(st.Rounds)
+		seedPath := e.runPreRoundTargeting(runDir, round, p, st.Rounds)
+
+		outcome, err := e.runRound(runDir, round, p, priorReviews, priorFixerReports, seedPath)
 		if err != nil {
 			return Result{}, err
 		}
@@ -184,36 +197,38 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			Attempts:        outcome.Attempts,
 			ShuttleOutcome:  string(shuttleengine.OutcomeDone),
 			Verdict:         string(outcome.Verdict),
-			BlockingCount:   countBlockingFindings(outcome.Findings),
+			BlockingCount:   outcome.BlockingCount,
 			ReviewPath:      outcome.ReviewPath,
 			FixerReportPath: outcome.FixerReportPath,
 			TriagePath:      outcome.TriagePath,
+			SeedPath:        seedPath,
 			SessionID:       outcome.SessionID,
 		}
 
 		// The gate command runs after this round's fix phase, in the command
 		// and both gate modes only (llm-verdict never runs a command; both
-		// still requires the burler verdict too, so it does not "ignore" it);
-		// its cwd is always the worktree root, not the run dir, since the
-		// command exercises the host repo's own build/test surface.
+		// still requires the runner verdict too, so it does not "ignore" it);
+		// its cwd is always p.GateDir (the caller-supplied absolute path —
+		// see Profile.GateDir), never the run dir, since the command
+		// exercises the host repo's own build/test surface.
 		if p.Gate.Mode == GateCommand || p.Gate.Mode == GateBoth {
-			output, exitZero, err := runCommand(p.Gate.Command, e.layout.WorktreeRoot, p.Gate.Timeout)
+			output, exitZero, err := runCommand(p.Gate.Command, p.GateDir, p.Gate.Timeout)
 			if err != nil {
 				// A could-not-start gate failure is a hard error, but the
-				// burler round it follows COMPLETED — persist its record
-				// first so a resume continues at the next round instead of
-				// re-buying this one. The record carries no gate result (nil
+				// round it follows COMPLETED — persist its record first so a
+				// resume continues at the next round instead of re-buying
+				// this one. The record carries no gate result (nil
 				// GatePassed), which the loop reads as non-converged: the
 				// safe direction.
 				st.Rounds = append(st.Rounds, record)
 				if saveErr := saveState(runDir, st); saveErr != nil {
 					return Result{}, saveErr
 				}
-				return Result{}, fmt.Errorf("perch: round %d gate command: %w", round, err)
+				return Result{}, e.errf("round %d gate command: %w", round, err)
 			}
 			// Written on pass AND fail — the record is cheap — even though
 			// only a failing gate file is ever fed forward as hydration.
-			if err := writeGateOutput(outcome.Paths.Gate, p.Gate.Command, output, exitZero); err != nil {
+			if err := writeGateOutput(e.name, outcome.Paths.Gate, p.Gate.Command, output, exitZero); err != nil {
 				return Result{}, err
 			}
 			record.GatePath = outcome.Paths.Gate
@@ -230,7 +245,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		}
 
 		// The stuck ladder is reached only on a non-converged round. Every
-		// trigger below is burler-verdict-based: a round with
+		// trigger below is runner-verdict-based: a round with
 		// VerdictApproved but a failing command (command/both gate modes)
 		// skips every rung and simply loops, bounded by the hard cap below
 		// and fed forward via the gate file.
@@ -244,14 +259,17 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			return resultFromState(st, OutcomeStuck, StuckHardCap), nil
 		}
 
-		if outcome.Verdict == burlerengine.VerdictBlocking {
+		if outcome.Verdict == VerdictBlocking {
 			// The judge reasons over the full REVIEW history including this
-			// round's own fresh review — and only reviews: unlike the burler
-			// hydration in priorReviews, failed gate-command output files are
-			// deliberately excluded, since the judge's material is blocking
-			// findings recurring across review files (doc.go's verdict-judge
-			// contract), and a gate transcript has no findings to compare.
-			judgeReviews := collectJudgeReviews(st.Rounds, outcome.ReviewPath)
+			// round's own fresh review — and only reviews: unlike the
+			// round-attempt hydration in priorReviews, failed gate-command
+			// output files are deliberately excluded, since the judge's
+			// material is blocking findings recurring across review files
+			// (doc.go's verdict-judge contract), and a gate transcript has
+			// no findings to compare. judgeReadSet bounds this list to
+			// {latest valid handoff + reviews it has not absorbed}
+			// instead of every prior review — see handoff.go.
+			judgeReviews, prevHandoffPath := judgeReadSet(st.Rounds, outcome.ReviewPath)
 
 			// The circling check never runs on the round immediately after an
 			// APPROVED round (reachable in command/both gate modes, where an
@@ -262,29 +280,34 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			// milestone gate is deliberately NOT exempted: a rung asks about
 			// the whole trajectory, not recurrence against the prior round.
 			prevRoundApproved := len(st.Rounds) > 0 &&
-				st.Rounds[len(st.Rounds)-1].Verdict == string(burlerengine.VerdictApproved)
+				st.Rounds[len(st.Rounds)-1].Verdict == string(VerdictApproved)
 
 			switch {
 			case isMilestoneRung(caps, round):
 				// The milestone gate REPLACES the circling check for this
 				// round — a rung round issues exactly one judge call.
-				jv, _, judgeOK := runMilestone(e.shuttle, judgeInputs{
-					Round:        round,
-					HardCap:      hardCap,
-					PriorReviews: judgeReviews,
-					VerdictPath:  outcome.Paths.Judge,
-					Model:        p.JudgeModel,
-					Effort:       p.JudgeEffort,
+				jv, _, judgeOK := runMilestone(e.shuttle, e.name, judgeInputs{
+					Round:               round,
+					HardCap:             hardCap,
+					PriorReviews:        judgeReviews,
+					VerdictPath:         outcome.Paths.Judge,
+					PreviousHandoffPath: prevHandoffPath,
+					HandoffPath:         outcome.Paths.Handoff,
+					Model:               p.JudgeModel,
+					Effort:              p.JudgeEffort,
 				})
 				// Only a REAL verdict is recorded — a fail-safe fallback
 				// (judgeOK false) leaves the record's judge fields empty, so
 				// an operator reading state.json can tell a genuine CONTINUE
 				// apart from a judge infrastructure failure that never
 				// actually answered (the Warn logged inside the call above
-				// is the only trace of the failure).
+				// is the only trace of the failure). A judge call whose
+				// verdict failed records no handoff either — recordHandoff
+				// is only ever consulted inside this same judgeOK guard.
 				if judgeOK {
 					record.JudgePath = outcome.Paths.Judge
 					record.JudgeVerdict = string(jv)
+					record.HandoffPath = recordHandoffIfValid(e.name, outcome.Paths.Handoff, round, "milestone judge")
 				}
 				if jv == JudgeStop {
 					st.Rounds = append(st.Rounds, record)
@@ -297,18 +320,22 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 				}
 				// JudgeContinue / JudgeUncertain: fall through and loop.
 			case round >= 2 && !prevRoundApproved:
-				jv, _, judgeOK := runCircling(e.shuttle, judgeInputs{
-					Round:        round,
-					PriorReviews: judgeReviews,
-					VerdictPath:  outcome.Paths.Judge,
-					Model:        p.JudgeModel,
-					Effort:       p.JudgeEffort,
+				jv, _, judgeOK := runCircling(e.shuttle, e.name, judgeInputs{
+					Round:               round,
+					PriorReviews:        judgeReviews,
+					VerdictPath:         outcome.Paths.Judge,
+					PreviousHandoffPath: prevHandoffPath,
+					HandoffPath:         outcome.Paths.Handoff,
+					Model:               p.JudgeModel,
+					Effort:              p.JudgeEffort,
 				})
 				// See the milestone-rung branch above: only a REAL verdict
-				// is recorded, never the fail-safe fallback.
+				// is recorded, never the fail-safe fallback, and a failed
+				// verdict records no handoff either.
 				if judgeOK {
 					record.JudgePath = outcome.Paths.Judge
 					record.JudgeVerdict = string(jv)
+					record.HandoffPath = recordHandoffIfValid(e.name, outcome.Paths.Handoff, round, "circling judge")
 				}
 				if jv == JudgeCircling {
 					st.Rounds = append(st.Rounds, record)
@@ -335,16 +362,49 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	}
 }
 
-// runRound drives round's burler attempts (up to two: a fresh attempt, then
-// one deterministic retry after a died/timeout outcome or an
-// asking-triage RETRY verdict), returning the round's outcome once burler
-// reaches done. priorReviews and priorFixerReports are the hydration
-// accumulated from every already-completed round; both attempts of the same
-// round number reuse the same hydration, since a retry produces no new
-// completed round. A second consecutive non-done attempt is an
-// infrastructure error, deliberately NOT modeled as OutcomeStuck — it means
-// the machinery failed twice, not that the artifact will not converge.
-func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, priorFixerReports []string) (roundOutcome, error) {
+// runPreRoundTargeting resolves and, when p.PreRoundTargeting is set, runs
+// this round's pre-round targeting call, returning the seed path to thread
+// into every attempt's AttemptInput.SeedPath for round, or "" when
+// targeting is off, no valid handoff exists yet to target from (round 1, or
+// every recorded handoff failed to read/parse — see latestValidHandoff),
+// or the targeting call itself fails. The seed path is resolved ONCE here,
+// at round's attempt-1 token via artifactPaths, and is never recomputed per
+// attempt — a same-round retry reuses the identical path, exactly like the
+// round-scoped priorReviews/priorFixerReports hydration. Callers must clear
+// any leftover seed file at that path (moveStaleArtifacts) before calling
+// this, so a re-run's targeting call never trips the pre-existing-output-
+// file rejection.
+func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, rounds []roundRecord) string {
+	if !p.PreRoundTargeting {
+		return ""
+	}
+	handoffPath, _, ok := latestValidHandoff(rounds)
+	if !ok {
+		// Nothing to target from yet (round 1, or no handoff has ever
+		// survived a valid parse) — this is not a failure, so it logs
+		// nothing, mirroring the round-1-runs-no-judge posture in the main
+		// loop below.
+		return ""
+	}
+	seedPath := artifactPaths(runDir, round, 1).Seed
+	if _, ok := runTargeting(e.shuttle, e.name, round, handoffPath, seedPath, p.JudgeModel, p.JudgeEffort); !ok {
+		return ""
+	}
+	return seedPath
+}
+
+// runRound drives round's RoundRunner attempts (up to two: a fresh attempt,
+// then one deterministic retry after a died/timeout outcome or an
+// asking-triage RETRY verdict), returning the round's outcome once the
+// runner reaches done. priorReviews and priorFixerReports are the hydration
+// accumulated from every already-completed round; seedPath is this round's
+// pre-round-targeting seed (already resolved once by runPreRoundTargeting,
+// or "" when targeting produced none) — both attempts of the same round
+// number reuse the SAME hydration and the SAME seed path, since a retry
+// produces no new completed round. A second consecutive non-done attempt is
+// an infrastructure error, deliberately NOT modeled as OutcomeStuck — it
+// means the machinery failed twice, not that the artifact will not converge.
+func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, priorFixerReports []string, seedPath string) (roundOutcome, error) {
 	// triagePath accumulates across the retry loop: it is set only when an
 	// asking attempt actually spawns a triage call, and is threaded into
 	// the eventual done-outcome's roundOutcome so state.json records that a
@@ -352,31 +412,41 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 	// round's final (done) attempt.
 	var triagePath string
 	for attempt := 1; attempt <= 2; attempt++ {
-		// A round that started but never reached done on a prior resume
-		// left partial artifacts behind; move them aside before this
-		// attempt writes to the same paths (shuttle rejects pre-existing
-		// output files).
-		if err := moveStaleArtifacts(runDir, round, attempt); err != nil {
-			return roundOutcome{}, err
+		// Attempt 1's stale artifacts (including any leftover seed file)
+		// were already cleared by the caller, before pre-round targeting
+		// ran — clearing them again here would move aside the seed file
+		// targeting just wrote. A retry attempt's own stale artifacts from
+		// an earlier interrupted resume still need clearing here.
+		if attempt > 1 {
+			if err := moveStaleArtifacts(e.name, runDir, round, attempt); err != nil {
+				return roundOutcome{}, err
+			}
 		}
 		paths := artifactPaths(runDir, round, attempt)
 
-		roundProfile := buildRoundProfile(p, paths, priorReviews, priorFixerReports)
-		result, err := e.burler.Run(roundProfile, burlerengine.RunOpts{
-			Model:   p.Model,
-			Effort:  p.Effort,
-			Timeout: p.Timeout,
-			Round:   roundToken(round, attempt),
+		result, err := e.runner.RunAttempt(AttemptInput{
+			RunDir:            runDir,
+			Round:             round,
+			Attempt:           attempt,
+			RoundToken:        roundToken(round, attempt),
+			ReviewPath:        paths.Review,
+			FixerReportPath:   paths.FixerReport,
+			SeedPath:          seedPath,
+			PriorReviews:      priorReviews,
+			PriorFixerReports: priorFixerReports,
+			Model:             p.Model,
+			Effort:            p.Effort,
+			Timeout:           p.Timeout,
 		})
 		if err != nil {
-			return roundOutcome{}, fmt.Errorf("perch: round %d burler run: %w", round, err)
+			return roundOutcome{}, e.errf("round %d attempt run: %w", round, err)
 		}
 
 		if result.Outcome == shuttleengine.OutcomeDone {
 			return roundOutcome{
 				Attempts:        attempt,
 				Verdict:         result.Verdict,
-				Findings:        result.Findings,
+				BlockingCount:   result.BlockingCount,
 				ReviewPath:      result.ReviewPath,
 				FixerReportPath: result.FixerReportPath,
 				TriagePath:      triagePath,
@@ -392,17 +462,17 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 			// of this attempt's triage verdict, so there is nothing left
 			// for triage to usefully classify.
 			if attempt == 2 {
-				return roundOutcome{}, fmt.Errorf("perch: round %d failed twice (%s); session %s, kept shuttle run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
+				return roundOutcome{}, e.errf("round %d failed twice (%s); session %s, kept run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
 			}
 			// The agent stopped mid-round asking a question rather than
 			// finishing; triage classifies whether a fresh retry can
 			// plausibly proceed. Triage itself is fail-safe (never an
 			// error) and defaults to RETRY on any of its own
 			// infrastructure failures.
-			triageVerdict, rationale := runTriage(e.shuttle, round, result.LastAssistantMessage, paths.Triage, p.JudgeModel, p.JudgeEffort)
+			triageVerdict, rationale := runTriage(e.shuttle, e.name, round, result.LastAssistantMessage, paths.Triage, p.JudgeModel, p.JudgeEffort)
 			triagePath = paths.Triage
 			if triageVerdict == TriageGiveUp {
-				return roundOutcome{}, fmt.Errorf("perch: round %d agent gave up asking: %s (session %s, run dir %s)", round, rationale, result.SessionID, result.RunDir)
+				return roundOutcome{}, e.errf("round %d agent gave up asking: %s (session %s, run dir %s)", round, rationale, result.SessionID, result.RunDir)
 			}
 			continue
 		}
@@ -410,20 +480,20 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 		// died / timeout: a cheap deterministic retry — these are nearly
 		// always environmental, unlike asking's interpretable text.
 		if attempt == 2 {
-			return roundOutcome{}, fmt.Errorf("perch: round %d failed twice (%s); session %s, kept shuttle run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
+			return roundOutcome{}, e.errf("round %d failed twice (%s); session %s, kept run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
 		}
 	}
 	// Unreachable: every path through the loop above returns by the end of
 	// attempt 2.
-	return roundOutcome{}, fmt.Errorf("perch: round %d exhausted its bounded retries without a terminal outcome", round)
+	return roundOutcome{}, e.errf("round %d exhausted its bounded retries without a terminal outcome", round)
 }
 
 // collectPriorHydration builds the priorReviews and priorFixerReports lists
-// a fresh round's burler profile is seeded with, from every already
-// completed round in rounds: each round's ReviewPath and FixerReportPath
-// are always included, and a round's GatePath is included in priorReviews
-// ONLY when that round's GatePassed is false — passing-gate output is never
-// fed forward, since a clean command run has nothing for the next round to
+// a fresh round's attempt is seeded with, from every already completed
+// round in rounds: each round's ReviewPath and FixerReportPath are always
+// included, and a round's GatePath is included in priorReviews ONLY when
+// that round's GatePassed is false — passing-gate output is never fed
+// forward, since a clean command run has nothing for the next round to
 // learn from.
 func collectPriorHydration(rounds []roundRecord) (priorReviews, priorFixerReports []string) {
 	for _, r := range rounds {
@@ -439,15 +509,38 @@ func collectPriorHydration(rounds []roundRecord) (priorReviews, priorFixerReport
 // collectJudgeReviews builds the review-file list a progress-judge call reads:
 // every completed round's ReviewPath in order, plus the current round's fresh
 // review. Gate-command output files are deliberately NOT included here even
-// though collectPriorHydration feeds them to the next BURLER round — the judge
-// compares blocking findings across reviews, and a gate transcript is not a
-// review (see the verdict-judge contract in doc.go).
+// though collectPriorHydration feeds them to the next round's attempt — the
+// judge compares blocking findings across reviews, and a gate transcript is
+// not a review (see the verdict-judge contract in doc.go).
 func collectJudgeReviews(rounds []roundRecord, currentReviewPath string) []string {
 	reviews := make([]string, 0, len(rounds)+1)
 	for _, r := range rounds {
 		reviews = append(reviews, r.ReviewPath)
 	}
 	return append(reviews, currentReviewPath)
+}
+
+// recordHandoffIfValid reads and ParseHandoff-validates the handoff file a
+// successful judge call (judgeOK true) just produced at path, returning
+// path back unchanged when it is well-formed. A missing or unparseable
+// handoff logs a name-prefixed logger.Warn naming label (matching
+// runJudgeCall's own label argument, e.g. "milestone judge", so the two
+// Warns read consistently in an operator's log), round, and cause, and
+// returns "" — never an error, never STUCK, and the verdict this handoff
+// rode alongside is completely unaffected either way; the loop only ever
+// calls this from inside the judgeOK guard, so a failed verdict never
+// reaches here at all.
+func recordHandoffIfValid(name string, path string, round int, label string) string {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		logger.Warn(name+": "+label+" handoff file unreadable, leaving no recorded handoff", "round", round, "cause", err)
+		return ""
+	}
+	if _, err := ParseHandoff(content); err != nil {
+		logger.Warn(name+": "+label+" handoff file unparseable, leaving no recorded handoff", "round", round, "cause", err)
+		return ""
+	}
+	return path
 }
 
 // isMilestoneRung reports whether round is one of caps' milestone rungs —
@@ -462,19 +555,6 @@ func isMilestoneRung(caps []int, round int) bool {
 	return false
 }
 
-// countBlockingFindings returns how many of findings carry
-// burlerengine.SeverityBlocking, the count a roundRecord persists
-// independent of the round's overall Verdict.
-func countBlockingFindings(findings []burlerengine.Finding) int {
-	count := 0
-	for _, f := range findings {
-		if f.Severity == burlerengine.SeverityBlocking {
-			count++
-		}
-	}
-	return count
-}
-
 // resultFromState builds the block-level Result Engine.Run returns from st,
 // mirroring every persisted roundRecord into a RoundSummary.
 func resultFromState(st runState, outcome Outcome, stuckReason StuckReason) Result {
@@ -483,7 +563,7 @@ func resultFromState(st runState, outcome Outcome, stuckReason StuckReason) Resu
 		rounds = append(rounds, RoundSummary{
 			Round:           r.Round,
 			Attempts:        r.Attempts,
-			Verdict:         burlerengine.Verdict(r.Verdict),
+			Verdict:         Verdict(r.Verdict),
 			BlockingCount:   r.BlockingCount,
 			ReviewPath:      r.ReviewPath,
 			FixerReportPath: r.FixerReportPath,

@@ -1,29 +1,30 @@
 //go:build smoke
 
-// smoke_judge_test.go is perchengine's opt-in live-integration smoke test:
-// TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check
-// progress judge call — runCircling — against a REAL claude in a REAL tmux
-// pane, over two tiny fixture review files the test writes itself. This is
-// the caller wiring the real substrate (reedengine + claudeengine +
-// shuttleengine.Runner) directly, mirroring the Shuttle Provider-Seam
-// Invariant burlerengine's own smoke_round_test.go exercises: perchengine
-// itself never imports claudeengine, but the test that exercises it as a
-// caller may. The assertion is deliberately narrow (the verdict file
-// parses) — this proves the judge spawn machinery, the file contract, and
-// the verdict parse against a real engine, never judge quality.
+// smoke_judge_test.go is treadleengine's opt-in live-integration smoke
+// test: TestSmokeJudgeCirclingToyFixture drives one real per-round
+// circling-check progress judge call — runCircling — against a REAL claude
+// in a REAL tmux pane, over two tiny fixture review files the test writes
+// itself. This is the caller wiring the real substrate (reedengine +
+// claudeengine + shuttleengine.Runner) directly, mirroring the Shuttle
+// Provider-Seam Invariant burlerengine's own smoke_round_test.go exercises:
+// treadleengine itself never imports claudeengine, but the test that
+// exercises it as a caller may. The assertion is deliberately narrow (the
+// verdict file parses) — this proves the judge spawn machinery, the file
+// contract, and the verdict parse against a real engine, never judge
+// quality.
 //
-// This file stays in package perchengine (not an external _test package)
+// This file stays in package treadleengine (not an external _test package)
 // because runCircling and judgeInputs are unexported — the same
-// package-local Shuttle-seam surface batch 4's gate loop consumes directly,
-// per this batch's "external interface for batch 4" note. Follows the
-// internal/burlerengine/smoke_round_test.go conventions otherwise: opt-in
-// via -tags smoke, skipped when no claude binary resolves, poll-with-
-// deadline waits only (via shuttleengine.Runner.Run itself), and the
-// orphaned-conhost teardown guard against the fixture hub. The helpers here
-// are reproduced (not imported) from burlerengine's smoke file, per the
-// smoke-files-are-self-contained convention.
+// package-local Shuttle-seam surface a future round-runner adapter (e.g.
+// perchengine's) drives. Follows the internal/burlerengine/smoke_round_test.go
+// conventions otherwise: opt-in via -tags smoke, skipped when no claude
+// binary resolves, poll-with-deadline waits only (via
+// shuttleengine.Runner.Run itself), and the orphaned-conhost teardown guard
+// against the fixture hub. The helpers here are reproduced (not imported)
+// from burlerengine's smoke file, per the smoke-files-are-self-contained
+// convention.
 
-package perchengine
+package treadleengine
 
 import (
 	"bytes"
@@ -286,7 +287,7 @@ The chair is red and the table is blue; they must match.
 	reedEngine := reedengine.New(reedCfg, fixture.Layout)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
 
-	verdict, rationale, ok := runCircling(runner, judgeInputs{
+	verdict, rationale, ok := runCircling(runner, "perch", judgeInputs{
 		Round:        2,
 		PriorReviews: []string{round1Path, round2Path},
 		VerdictPath:  verdictPath,

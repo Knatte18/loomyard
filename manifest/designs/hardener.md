@@ -23,7 +23,7 @@
 
 Earlier drafts of this doc used "hardener" for both the review mechanism and the whole on-demand
 campaign, which turned out to conflate two distinct layers once the shared-engine design
-([treadle.md](treadle.md), [shed.md](shed.md)) was pinned:
+(the `internal/treadleengine` package documentation, [shed.md](shed.md)) was pinned:
 
 - **`Tenter`** — the review-loop alone: `Treadle` (the generic round-loop engine — judge, gate,
   round-spawn, cap, pause, lock) configured with a live-substrate-driving round-runner and a
@@ -62,7 +62,7 @@ driving real substrate and hand-rolling crash/rebirth/concurrency scenarios is i
 ## `Tenter`'s round-loop — resolved: `Treadle` drives per-round respawn, no persistent thread
 
 **The engine underneath `Tenter` is designed jointly with `perch`, not Tenter-specific — see
-[treadle.md](treadle.md).** That doc covers the round-runner interface, the judge-maintained handoff
+the `internal/treadleengine` package documentation.** That doc covers the round-runner interface, the judge-maintained handoff
 (a `perch` improvement too, not just Tenter's), and the process for getting there (`Treadle` is
 Planned; `Tenter` itself stays Someday, built on `Treadle` only once `Treadle` exists). What
 follows here is Tenter's own instance of that shared design.
@@ -106,7 +106,7 @@ today; those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
 
 ### Pre-round targeting
 
-Superseded by [treadle.md](treadle.md) — pre-round targeting is designed there as a general
+Superseded by the `internal/treadleengine` package documentation — pre-round targeting is designed there as a general
 capability `Treadle`'s judge can support, exercised by Tenter's profile and simply unused by
 perch's. See that doc's "Pre-round targeting" section instead of resolving this here.
 
@@ -178,8 +178,9 @@ Whether the round agent literally imports the `burler` package or only follows t
 
 ## Dependencies (tentative)
 
-- [`treadle.md`](treadle.md) — the generic round-loop engine `Tenter` configures; Planned,
-  independent of whether `Tenter`/`Hardener` ever get built.
+- `internal/treadleengine` package documentation — the generic round-loop engine `Tenter` would
+  configure (as-built; module doc deleted per the documentation lifecycle), independent of whether
+  `Tenter`/`Hardener` ever get built.
 - [`shed.md`](shed.md) — the generic outer phase-FSM `Hardener` configures; Planned, same
   independence.
 - `shuttle` — spawns the round agents and judges `Treadle`/`Tenter` drive.
