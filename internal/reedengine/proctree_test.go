@@ -190,3 +190,29 @@ func TestMatchSocketCmdlines(t *testing.T) {
 		})
 	}
 }
+
+// TestTmuxProcessName proves the Windows process-table Name derivation
+// follows the CONFIGURED tmux binary — the hardcoded 'psmux.exe' filter it
+// replaces matched nothing on machines whose reed config resolves tmux to
+// tmux.exe, so Down leaked every server (round fable-r1, fabric-cutover
+// campaign).
+func TestTmuxProcessName(t *testing.T) {
+	tests := []struct {
+		name   string
+		binary string
+		want   string
+	}{
+		{"bare name", "tmux", "tmux.exe"},
+		{"bare psmux", "psmux", "psmux.exe"},
+		{"full windows path with exe", `C:\Code\tools\bin\tmux.exe`, "tmux.exe"},
+		{"uppercase extension kept", `C:\tools\PSMUX.EXE`, "PSMUX.EXE"},
+		{"unix-style path", "/usr/bin/tmux", "tmux.exe"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tmuxProcessName(tt.binary); got != tt.want {
+				t.Errorf("tmuxProcessName(%q) = %q; want %q", tt.binary, got, tt.want)
+			}
+		})
+	}
+}

@@ -68,6 +68,24 @@ func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string
 		if _, err := eng.Down(); err != nil {
 			t.Errorf("reed Down: %v", err)
 		}
+		// Windows releases the dir/file handles of just-reaped tmux
+		// processes asynchronously (the server's own cwd is the hub's
+		// .lyx/logs dir), so t.TempDir's cleanup can race the release and
+		// fail the test spuriously. Retry removal on a deadline -- the
+		// deterministic substrate wait -- and only report a leak if the
+		// hub is still locked once the deadline passes.
+		deadline := time.Now().Add(15 * time.Second)
+		for {
+			err := os.RemoveAll(hub)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("scratch hub still locked 15s after reed Down: %v", err)
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
 	})
 
 	return eng, layout, hub
