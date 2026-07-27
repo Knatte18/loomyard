@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -43,16 +44,58 @@ func (f *Fabric) ensureWeftLockDir() (string, error) {
 	return dir, nil
 }
 
-// seedWeftArtifactExcludes appends fabric's own operational artifacts — the
-// .weft/ lock directory and gitrepo's push lock file — to the weft repo's
-// .git/info/exclude, line-exact idempotent (the same discipline as
-// seedGitExclude). Without this, every weft worktree that has ever run a
-// weft-git verb reports the artifacts as untracked dirt forever: Remove's
-// no-force dirty gate then refuses with a "run lyx fabric sync" hint that a
-// pathspec-scoped sync can never satisfy. The exclude file lives in the
-// repo's common gitdir, so one seeding covers every linked weft worktree,
-// and — because excludes are evaluated at status time — it also heals
-// worktrees already carrying the lock files.
+// crossModuleMachineLocalExcludes are gitignore-syntax patterns for every
+// round-loop module's machine-local, never-committed artifacts under
+// _lyx/<module> — not just the caller's own module. This is what actually
+// stops them from being tracked: CommitWeft's callers (builder's/webster's
+// own weftCommit, and fabric's own `lyx fabric sync`/`lyx config --set`)
+// each build a pathspec, but a caller can only exclude what it knows about,
+// and fabric's own sync pathspec (internal/fabriccli/weft_verbs.go) has no
+// exclusions at all — so a plain config sync used to sweep every module's
+// lock files and pause flags into weft history permanently (see
+// CONSTRAINTS.md's Weft Git Invariant, "Cross-module exclusions"). Seeding
+// the exclude file here, at the one choke point every weft-git verb passes
+// through, makes every committer correct by construction without fabric
+// needing to import any module's CLI/engine package.
+//
+// Each pattern is `**/` + hubgeometry.LyxDirName + "/*/" + <name>, matching
+// at ANY depth (multiple hubs at different RelPath depths share one weft
+// checkout) and at exactly one module-name segment. This is gitignore glob
+// syntax, not git pathspec syntax: a bare `*` here does NOT cross `/` (unlike
+// the leading-wildcard pathspec bug CONSTRAINTS.md's "Anchored exclusions"
+// bullet documents), so no per-RelPath anchoring is needed — `**/` alone
+// handles arbitrary depth.
+//
+// "pause" and "prompts" are not sourced from hubgeometry — hubgeometry owns
+// directory geometry, not the filenames a module chooses to write inside its
+// own directory. They mirror builderengine.PauseFlagName,
+// websterengine.PauseFlagName, and treadleengine.PauseFlagName (all
+// literally "pause" by convention) and hubgeometry.WebsterPromptsDir's
+// "prompts" leaf. fabricengine cannot import those packages to reference the
+// constants directly: websterengine and perchengine already import
+// fabricengine, so an import back would cycle. Wildcarding the module
+// segment (rather than naming "builder"/"webster" specifically) means a
+// future module adopting either convention is covered with no fabricengine
+// change.
+var crossModuleMachineLocalExcludes = []string{
+	"**/" + hubgeometry.LyxDirName + "/*/*.lock",
+	"**/" + hubgeometry.LyxDirName + "/*/pause",
+	"**/" + hubgeometry.LyxDirName + "/*/prompts/",
+}
+
+// seedWeftArtifactExcludes appends fabric's own operational artifacts (the
+// .weft/ lock directory and gitrepo's push lock file) and every module's
+// cross-module machine-local artifacts (crossModuleMachineLocalExcludes) to
+// the weft repo's .git/info/exclude, line-exact idempotent (the same
+// discipline as seedGitExclude). Without this, every weft worktree that has
+// ever run a weft-git verb reports the artifacts as untracked dirt forever:
+// Remove's no-force dirty gate then refuses with a "run lyx fabric sync"
+// hint that a pathspec-scoped sync can never satisfy. The exclude file lives
+// in the repo's common gitdir, so one seeding covers every linked weft
+// worktree, and — because excludes are evaluated at status time — it also
+// heals worktrees that already carry the artifacts as untracked (though not
+// ones where a prior sync already committed them; see CommitWeft's doc
+// comment for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
 	stdout, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--git-path", "info/exclude"},
@@ -82,8 +125,10 @@ func seedWeftArtifactExcludes(weftPath string) error {
 	// The trailing slash on the lock-dir entry scopes it to the directory,
 	// matching gitignore semantics; the push lock is a single file at the
 	// worktree root, named via gitrepo's exported constant so the literal has
-	// exactly one owner.
-	for _, entry := range []string{weftLockDirName + "/", gitrepo.PushLockFileName} {
+	// exactly one owner. crossModuleMachineLocalExcludes appends every
+	// module's own machine-local patterns after fabric's own two.
+	entries := append([]string{weftLockDirName + "/", gitrepo.PushLockFileName}, crossModuleMachineLocalExcludes...)
+	for _, entry := range entries {
 		present := false
 		for _, line := range strings.Split(contentStr, "\n") {
 			if strings.TrimSpace(line) == entry {
