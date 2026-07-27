@@ -15,7 +15,7 @@ The Hub consists of two dedicated GitHub repositories and a local working direct
 
 ## Hub Location and Structure
 
-The Hub is cloned to `C:\Code\lyx-test-HUB` on this machine (the host basename `lyx-test` + `-HUB` suffix, derived via `internal/warpengine/clone.go`'s `DeriveHostName()`).
+The Hub is cloned to `C:\Code\lyx-test-HUB` on this machine (the host basename `lyx-test` + `-HUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveHostName()`).
 
 **Important:** The Hub lives **outside `C:\Code\loomyard\`** so it is never mistaken for part of Loomyard itself. This separation keeps the sandbox separate from the orchestrator codebase.
 
@@ -209,5 +209,5 @@ The two repositories (`lyx-test` and `lyx-test-weft`) are **dedicated to this sa
 
 ## See Also
 
-- [internal/warpengine/clone.go](../internal/warpengine/clone.go) — the hub cloning orchestration and URL derivation logic.
+- [internal/fabricengine/clone.go](../internal/fabricengine/clone.go) — the hub cloning orchestration and URL derivation logic.
 - [overview.md](overview.md#weft-overlay-model) — the weft overlay model and Hub topology.
