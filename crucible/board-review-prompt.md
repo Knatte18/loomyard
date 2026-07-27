@@ -1,201 +1,56 @@
 # `board` — independent review + fix
 
-> Instantiated from [`review-prompt-template.md`](review-prompt-template.md) for the `board`
-> module (`internal/boardengine` + `internal/boardcli`). See [README.md](README.md) for the loop
-> this prompt runs inside.
+> Instantiated from [`review-prompt-template.md`](review-prompt-template.md) for the `board` module (`internal/boardengine` + `internal/boardcli`). See [README.md](README.md) for the loop this prompt runs inside.
 
-You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `board` module
-in the loomyard repo, followed by FIXING what you find. Work in the worktree at
-`/home/knatte/Code/loomyard/wts/board-use-gitrepo` (branch `board-use-gitrepo`). Adjust that
-path/branch if the task lives elsewhere now.
+You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `board` module in the loomyard repo, followed by FIXING what you find. Work in the worktree at `/home/knatte/Code/loomyard/wts/board-use-gitrepo` (branch `board-use-gitrepo`). Adjust that path/branch if the task lives elsewhere now.
 
 ## Why this round exists — read this first
-This branch just replaced `board`'s hand-rolled git plumbing (`internal/gitexec` calls, a
-board-local `pushUnpushed`/`hasUnpushed` pair) with a single `gitrepo.Repo` — `sync.go`'s
-`commitDirty` now calls `gitrepo.StageAllAndCommit`, and pushing goes through `gitrepo.Push()`
-(which owns its own rebase-retry) under board's existing top-level push lock. **The operator's
-explicit ask for this round: confirm `board` still behaves exactly the way it did before this
-migration** — this is a regression hunt as much as a fresh review. Do not assume the migration is
-behavior-preserving just because the unit/integration suite is green; the whole point of this
-method is that a green `go test` does not prove it for composed, live git behavior. Below are
-specific behavioral-diff hypotheses worth chasing — treat them as a floor, not the whole list.
+This branch just replaced `board`'s hand-rolled git plumbing (`internal/gitexec` calls, a board-local `pushUnpushed`/`hasUnpushed` pair) with a single `gitrepo.Repo` — `sync.go`'s `commitDirty` now calls `gitrepo.StageAllAndCommit`, and pushing goes through `gitrepo.Push()` (which owns its own rebase-retry) under board's existing top-level push lock. **The operator's explicit ask for this round: confirm `board` still behaves exactly the way it did before this migration** — this is a regression hunt as much as a fresh review. Do not assume the migration is behavior-preserving just because the unit/integration suite is green; the whole point of this method is that a green `go test` does not prove it for composed, live git behavior. Below are specific behavioral-diff hypotheses worth chasing — treat them as a floor, not the whole list.
 
 ## Your two jobs, in order
-1. REVIEW: form your own independent judgment of `board`'s scope and correctness. Hunt for bugs by
-   reading the code AND by driving the real substrate — real `git` subprocesses against a real
-   remote, real cross-process file locks (`gofrs/flock` via `internal/lock`), and real detached
-   `lyx board sync` OS processes (not just in-process goroutines) — this is where the defects hide.
-2. FIX: after you have a findings list, implement the fixes one at a time, verify each against the
-   real substrate, keep the whole test suite green, and update the docs in the same change as the
-   fix they document. COMMIT after each individual fix lands green (see "Commit per fix" below). Do
-   NOT push unless the user explicitly tells you to.
+1. REVIEW: form your own independent judgment of `board`'s scope and correctness. Hunt for bugs by reading the code AND by driving the real substrate — real `git` subprocesses against a real remote, real cross-process file locks (`gofrs/flock` via `internal/lock`), and real detached `lyx board sync` OS processes (not just in-process goroutines) — this is where the defects hide.
+2. FIX: after you have a findings list, implement the fixes one at a time, verify each against the real substrate, keep the whole test suite green, and update the docs in the same change as the fix they document. COMMIT after each individual fix lands green (see "Commit per fix" below). Do NOT push unless the user explicitly tells you to.
 
 ## Commit per fix (BLOCKING — do not batch fixes into one uncommitted diff)
-As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the
-integration/live check if the finding needed one), and its doc update (if any) is included, COMMIT
-it — on the current branch, no push — before starting the next finding. Commit message format:
-`board: fix <finding-id> — <one-line what/why>` (e.g. `board: fix M1 — Sync no longer pushes when
-nothing is dirty and nothing is ahead`). Do not commit `.scratch/` (gitignored; your review and
-fixer reports never belong in a commit regardless). This exists because a round agent's session can
-be killed mid-fix by something entirely outside the method's control (a corrupted terminal, a lost
-connection). A single monolithic uncommitted diff left behind by a crash forces the orchestrator to
-reverse-engineer, finding by finding, which fixes are actually complete versus half-done, from the
-diff alone. A trail of small commits turns that same crash into something the orchestrator can just
-read: `git log` shows exactly which findings landed clean, and anything with no commit is
-unambiguously not done yet — no guesswork.
+As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the integration/live check if the finding needed one), and its doc update (if any) is included, COMMIT it — on the current branch, no push — before starting the next finding. Commit message format: `board: fix <finding-id> — <one-line what/why>` (e.g. `board: fix M1 — Sync no longer pushes when nothing is dirty and nothing is ahead`). Do not commit `.scratch/` (gitignored; your review and fixer reports never belong in a commit regardless). This exists because a round agent's session can be killed mid-fix by something entirely outside the method's control (a corrupted terminal, a lost connection). A single monolithic uncommitted diff left behind by a crash forces the orchestrator to reverse-engineer, finding by finding, which fixes are actually complete versus half-done, from the diff alone. A trail of small commits turns that same crash into something the orchestrator can just read: `git log` shows exactly which findings landed clean, and anything with no commit is unambiguously not done yet — no guesswork.
 
 ## Sequencing rule (BLOCKING — do not skip, do not interleave)
-Job 1 must be COMPLETE — and its full review report SAVED to
-`.scratch/board-review-<yourtag>.md` on disk — before you touch (edit, create, or delete) a single
-production or test file. Do not fix findings as you go, even ones that look small and obviously
-right. A review written or finished after code has already changed is no longer an independent
-judgment — it is a post-hoc rationalization of edits you already made. If you catch yourself
-wanting to patch something the moment you spot it: don't. Write it down as a finding, keep reading,
-finish the review, save the file, THEN start Job 2.
+Job 1 must be COMPLETE — and its full review report SAVED to `.scratch/board-review-<yourtag>.md` on disk — before you touch (edit, create, or delete) a single production or test file. Do not fix findings as you go, even ones that look small and obviously right. A review written or finished after code has already changed is no longer an independent judgment — it is a post-hoc rationalization of edits you already made. If you catch yourself wanting to patch something the moment you spot it: don't. Write it down as a finding, keep reading, finish the review, save the file, THEN start Job 2.
 
 ## Clean-room review constraint (do this part unprimed)
-Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you have
-your own list. Specifically do not open anything under `.scratch/` (gitignored; holds prior reviews
-`board-review-*.md` and `*-fixer-report.md`) — on round 1 there is nothing there yet, but this rule
-still applies to every later round of this loop. Reading the module doc and the module docs is
-expected and required (those are not reviews). AFTER you have written your own independent
-findings, on later rounds you MAY consult the prior rounds' `.scratch/board-review-*` material
-(rounds rotate across Fable / Opus) EXCEPT your own `-<yourtag>` deliverables — to (a) confirm
-previously-fixed behaviors have not regressed and (b) re-evaluate the deferred items at the bottom.
+Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you have your own list. Specifically do not open anything under `.scratch/` (gitignored; holds prior reviews `board-review-*.md` and `*-fixer-report.md`) — on round 1 there is nothing there yet, but this rule still applies to every later round of this loop. Reading the module doc and the module docs is expected and required (those are not reviews). AFTER you have written your own independent findings, on later rounds you MAY consult the prior rounds' `.scratch/board-review-*` material (rounds rotate across Fable / Opus) EXCEPT your own `-<yourtag>` deliverables — to (a) confirm previously-fixed behaviors have not regressed and (b) re-evaluate the deferred items at the bottom.
 
 ## What to read
-- Code: `internal/boardengine/**` (all of `board.go`, `sync.go`, `spawn.go`, `store.go`, `task.go`,
-  `layer.go`, `render.go`, `config.go`, `template.go`, and every `*_test.go`),
-  `internal/boardengine/boardtest/**` (the black-box benchmark/concurrency/git-integration suite —
-  `doc.go` explains why it lives separately from `boardengine`), `internal/boardcli/**` (`cli.go` +
-  all `*_test.go`, including the `BOARD_SKIP_GIT`/`BOARD_SKIP_PUSH` env-seam tests in
-  `skipenv_internal_test.go`). Also read `internal/gitrepo/push.go` and the `StageAllAndCommit`
-  method in `internal/gitrepo/gitrepo.go` — the new dependency `sync.go` now calls directly — and
-  `internal/lock/**` (the `gofrs/flock`-backed file lock both the write lock and push lock build
-  on). These are leaf dependencies shared by other modules; read-only awareness, out of scope to
-  modify unless a `board`-caused defect genuinely traces into them.
-- Docs: `internal/boardengine/board.go`'s package doc comment IS the module doc (the durable
-  gitrepo-backed-sync design summary was folded into it this same branch, per the Documentation
-  Lifecycle — see `docs/overview.md#documentation-lifecycle`). Also read `docs/overview.md` (board's
-  entries), `manifest/roadmap.md` (board's entry was just moved Planned→Done this branch),
-  `CONSTRAINTS.md` (in particular: Sandbox Suite Coverage, Test Tier Purity Invariant, Hermetic Git
-  Test Environment Invariant — board's git-spawning integration tests must have a `TestMain` calling
-  `lyxtest.HermeticGitEnv()`; the CLI/Cobra Invariant applies since `board` has a registered `lyx
-  board` command tree).
-- `tools/sandbox/SANDBOX-CORE-SUITE.md` scenario S3 ("Board and task interaction", `**Covers:**
-  board`) — for scenario ideas only. You run every scenario yourself, directly, with your own tool
-  calls; do NOT invoke any `sandbox-*-suite.cmd` launcher (that spawns a SEPARATE, context-free
-  interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn
-  on top of yourself).
-- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`. A
-  change that ships behaviour without updating the module doc / invariants in the SAME change is
-  incomplete.
-- Design intent (SPEC, not a review): `board.go`'s package doc comment is the authoritative source
-  of intended behavior. Note: `manifest/designs/board-weft-storage.md` exists but is an explicitly
-  **"Design — not built"** FUTURE replacement of board's storage model (its own separate remote repo
-  → `weft:main`) — do not treat it as describing current behavior, and do not flag today's
-  own-separate-repo storage model as a gap against it; that migration is deliberately out of scope
-  here.
+- Code: `internal/boardengine/**` (all of `board.go`, `sync.go`, `spawn.go`, `store.go`, `task.go`, `layer.go`, `render.go`, `config.go`, `template.go`, and every `*_test.go`), `internal/boardengine/boardtest/**` (the black-box benchmark/concurrency/git-integration suite — `doc.go` explains why it lives separately from `boardengine`), `internal/boardcli/**` (`cli.go` + all `*_test.go`, including the `BOARD_SKIP_GIT`/`BOARD_SKIP_PUSH` env-seam tests in `skipenv_internal_test.go`). Also read `internal/gitrepo/push.go` and the `StageAllAndCommit` method in `internal/gitrepo/gitrepo.go` — the new dependency `sync.go` now calls directly — and `internal/lock/**` (the `gofrs/flock`-backed file lock both the write lock and push lock build on). These are leaf dependencies shared by other modules; read-only awareness, out of scope to modify unless a `board`-caused defect genuinely traces into them.
+- Docs: `internal/boardengine/board.go`'s package doc comment IS the module doc (the durable gitrepo-backed-sync design summary was folded into it this same branch, per the Documentation Lifecycle — see `docs/overview.md#documentation-lifecycle`). Also read `docs/overview.md` (board's entries), `manifest/roadmap.md` (board's entry was just moved Planned→Done this branch), `CONSTRAINTS.md` (in particular: Sandbox Suite Coverage, Test Tier Purity Invariant, Hermetic Git Test Environment Invariant — board's git-spawning integration tests must have a `TestMain` calling `lyxtest.HermeticGitEnv()`; the CLI/Cobra Invariant applies since `board` has a registered `lyx board` command tree).
+- `tools/sandbox/SANDBOX-CORE-SUITE.md` scenario S3 ("Board and task interaction", `**Covers:** board`) — for scenario ideas only. You run every scenario yourself, directly, with your own tool calls; do NOT invoke any `sandbox-*-suite.cmd` launcher (that spawns a SEPARATE, context-free interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn on top of yourself).
+- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`. A change that ships behaviour without updating the module doc / invariants in the SAME change is incomplete.
+- Design intent (SPEC, not a review): `board.go`'s package doc comment is the authoritative source of intended behavior. Note: `manifest/designs/board-weft-storage.md` exists but is an explicitly **"Design — not built"** FUTURE replacement of board's storage model (its own separate remote repo → `weft:main`) — do not treat it as describing current behavior, and do not flag today's own-separate-repo storage model as a gap against it; that migration is deliberately out of scope here.
 
 ## Mission (assess on two axes, be adversarial)
-1. Scope / omfang — is the module's scope right? Does the as-built code deliver what `board.go`'s
-   package doc promises? Gaps, over-reach, silently-dropped requirements. **Specifically: does the
-   git-operator migration change any OBSERVABLE behavior from before** (commit timing/content, push
-   frequency, error surfaces, skip-env semantics, coalescing guarantees)? A silent behavior change
-   introduced by an "internal refactor" is exactly the kind of finding this round exists to catch.
-2. Correctness — bugs, races, error handling, edge cases; concentrate on the historically-fragile
-   areas below. Also assess docs accuracy (does `board.go`'s package doc match the code?) and
-   operability.
+1. Scope / omfang — is the module's scope right? Does the as-built code deliver what `board.go`'s package doc promises? Gaps, over-reach, silently-dropped requirements. **Specifically: does the git-operator migration change any OBSERVABLE behavior from before** (commit timing/content, push frequency, error surfaces, skip-env semantics, coalescing guarantees)? A silent behavior change introduced by an "internal refactor" is exactly the kind of finding this round exists to catch.
+2. Correctness — bugs, races, error handling, edge cases; concentrate on the historically-fragile areas below. Also assess docs accuracy (does `board.go`'s package doc match the code?) and operability.
 
 ## High-yield focus — where `board`'s real bugs live (drive these, do not just read them)
-The pure/unit-tested parts (store/task/layer/render/config) are largely untouched by this
-migration and are usually solid; defects concentrate in the COMPOSED, LIVE git behavior of
-`sync.go`/`spawn.go` that the existing tests only partially exercise. Treat each as an INVARIANT
-you must actively verify by driving the real substrate — a green `go test` proves nothing here on
-its own.
+The pure/unit-tested parts (store/task/layer/render/config) are largely untouched by this migration and are usually solid; defects concentrate in the COMPOSED, LIVE git behavior of `sync.go`/`spawn.go` that the existing tests only partially exercise. Treat each as an INVARIANT you must actively verify by driving the real substrate — a green `go test` proves nothing here on its own.
 
-- **Unconditional push per loop iteration — a real behavioral diff from before.** `Sync`'s loop now
-  calls `repo.Push()` unconditionally on EVERY iteration once `!skipPush` (see `sync.go`), whereas
-  the deleted `pushUnpushed` explicitly checked `hasUnpushed` first and no-op'd when there was
-  nothing to push. Concretely: a single `Sync()` call that commits once now issues at least TWO
-  `git push` invocations (one after the commit, one more on the next loop iteration once
-  `commitDirty` finds a clean tree and the loop is about to exit) where the old code issued at most
-  one. Drive this against a real remote: does the redundant "nothing to push" push ever surface an
-  error, a spurious log/exit-code difference, or a race against a concurrent pusher that the old
-  conditional-push code structurally avoided? Is this purely a wasted network round-trip (fine) or
-  does it change any caller-observable outcome (not fine)? Say which, with evidence.
-- **Cross-process push-lock serialization, with REAL separate OS processes.** No existing test
-  drives multiple real `lyx board sync` **processes** (not goroutines) racing on the SAME board dir
-  concurrently — `boardtest/concurrency_test.go` only exercises `SkipGit: true` read/write
-  contention (no git at all), and `boardtest/sync_test.go`'s sync tests call `Sync` directly,
-  sequentially, in one process. Build a small harness that launches several real
-  `exec.Command`-spawned `lyx board sync` (or `go run`) child processes against the same board dir
-  concurrently and confirm: exactly the expected commits land on the remote, no corruption, and the
-  push lock still coalesces the way `sync.go`'s doc comment claims — same spirit as the reed
-  campaign's "compile once, run N copies" concurrent gate and `gitrepo`'s own
-  `TestPushCoalesced_LockBlocking_Serializes` pattern (read that test for the shape, but this is a
-  NEW real-process test for `board`, not a port of it).
-- **Crash/rebirth under the push lock.** Kill (SIGKILL, not graceful) a `lyx board sync` process
-  while it holds `pushLockFile` mid-push. Confirm a subsequent `Sync()` call from a fresh process is
-  not wedged (`gofrs/flock` is supposed to release on process death — verify live, not just by
-  reading the comment) and correctly detects/finishes whatever the killed process left behind
-  (committed-but-not-pushed vs. mid-git-push-subprocess).
-- **`BOARD_SKIP_GIT`/`BOARD_SKIP_PUSH` env-seam still wired correctly end-to-end.** Unit-tested at
-  the `applySkipEnv` level (`skipenv_internal_test.go`), but drive it live through the actual `lyx
-  board sync` CLI path (`spawnSync` → `RunCLI` → `applySkipEnv` → `Board.Sync` → the package-level
-  `Sync` in `sync.go`) with both env vars set, confirm no commit/push happens with `BOARD_SKIP_GIT`
-  and a commit-but-no-push happens with `BOARD_SKIP_PUSH`, exactly as before.
-- **`ensureLockfilesIgnored` ordering vs. `StageAllAndCommit`'s wildcard staging, on a brand-new
-  board dir's FIRST sync.** `StageAllAndCommit` is new code (`gitrepo`'s wildcard-stage exception,
-  added this same branch) that `board` has never actually exercised through this exact path before.
-  On the very first `Sync()` call for a fresh board dir: `.gitignore` is written/appended BEFORE the
-  write lock is acquired, but `tasks.json.lock` (the write lock file) is created the moment
-  `commitDirty` acquires it, milliseconds before `StageAllAndCommit`'s `git add -A` runs. Confirm
-  live that the lock file is never accidentally staged/committed on this exact first-sync ordering
-  (a wildcard `add -A` is exactly the kind of change that could silently sweep up a file the old,
-  explicit-list-based staging never would have touched) — this is precisely the risk
-  `StageAllAndCommit`'s own review flagged as "opt-in wildcard exception", now exercised by a real
-  caller for the first time.
-- **Detached-process error visibility, unchanged or regressed?** `spawnSync`'s `cmd.Start()` is
-  "intentionally not Wait()ed" — a `Sync()` failure (e.g. `gitrepo.Push`'s rebase-retry exhausting
-  its one retry) is invisible to the write-path caller, exactly as before the migration. Confirm
-  this hasn't gotten WORSE: does a push failure from the new `gitrepo.Push()` path surface anywhere
-  an operator could plausibly notice (same as whatever the old `pushUnpushed` did, even if that was
-  "nowhere")? Not a regression if unchanged — but verify it IS unchanged, don't assume.
-- **`StageAllAndCommit`'s fixed `"board sync"` commit message vs. burst coalescing.** Confirm a
-  burst of several rapid `Board` writes (multiple goroutines/processes each triggering their own
-  detached `spawnSync`) still coalesces into as few commits/pushes as `TestSyncCoalescesBurstIntoOneCommit`
-  already proves for the SINGLE-process case — but drive it with real separate detached processes,
-  which is the actual production shape (`spawnSync` launches a real OS process per write, not a
-  goroutine).
+- **Unconditional push per loop iteration — a real behavioral diff from before.** `Sync`'s loop now calls `repo.Push()` unconditionally on EVERY iteration once `!skipPush` (see `sync.go`), whereas the deleted `pushUnpushed` explicitly checked `hasUnpushed` first and no-op'd when there was nothing to push. Concretely: a single `Sync()` call that commits once now issues at least TWO `git push` invocations (one after the commit, one more on the next loop iteration once `commitDirty` finds a clean tree and the loop is about to exit) where the old code issued at most one. Drive this against a real remote: does the redundant "nothing to push" push ever surface an error, a spurious log/exit-code difference, or a race against a concurrent pusher that the old conditional-push code structurally avoided? Is this purely a wasted network round-trip (fine) or does it change any caller-observable outcome (not fine)? Say which, with evidence.
+- **Cross-process push-lock serialization, with REAL separate OS processes.** No existing test drives multiple real `lyx board sync` **processes** (not goroutines) racing on the SAME board dir concurrently — `boardtest/concurrency_test.go` only exercises `SkipGit: true` read/write contention (no git at all), and `boardtest/sync_test.go`'s sync tests call `Sync` directly, sequentially, in one process. Build a small harness that launches several real `exec.Command`-spawned `lyx board sync` (or `go run`) child processes against the same board dir concurrently and confirm: exactly the expected commits land on the remote, no corruption, and the push lock still coalesces the way `sync.go`'s doc comment claims — same spirit as the reed campaign's "compile once, run N copies" concurrent gate and `gitrepo`'s own `TestPushCoalesced_LockBlocking_Serializes` pattern (read that test for the shape, but this is a NEW real-process test for `board`, not a port of it).
+- **Crash/rebirth under the push lock.** Kill (SIGKILL, not graceful) a `lyx board sync` process while it holds `pushLockFile` mid-push. Confirm a subsequent `Sync()` call from a fresh process is not wedged (`gofrs/flock` is supposed to release on process death — verify live, not just by reading the comment) and correctly detects/finishes whatever the killed process left behind (committed-but-not-pushed vs. mid-git-push-subprocess).
+- **`BOARD_SKIP_GIT`/`BOARD_SKIP_PUSH` env-seam still wired correctly end-to-end.** Unit-tested at the `applySkipEnv` level (`skipenv_internal_test.go`), but drive it live through the actual `lyx board sync` CLI path (`spawnSync` → `RunCLI` → `applySkipEnv` → `Board.Sync` → the package-level `Sync` in `sync.go`) with both env vars set, confirm no commit/push happens with `BOARD_SKIP_GIT` and a commit-but-no-push happens with `BOARD_SKIP_PUSH`, exactly as before.
+- **`ensureLockfilesIgnored` ordering vs. `StageAllAndCommit`'s wildcard staging, on a brand-new board dir's FIRST sync.** `StageAllAndCommit` is new code (`gitrepo`'s wildcard-stage exception, added this same branch) that `board` has never actually exercised through this exact path before. On the very first `Sync()` call for a fresh board dir: `.gitignore` is written/appended BEFORE the write lock is acquired, but `tasks.json.lock` (the write lock file) is created the moment `commitDirty` acquires it, milliseconds before `StageAllAndCommit`'s `git add -A` runs. Confirm live that the lock file is never accidentally staged/committed on this exact first-sync ordering (a wildcard `add -A` is exactly the kind of change that could silently sweep up a file the old, explicit-list-based staging never would have touched) — this is precisely the risk `StageAllAndCommit`'s own review flagged as "opt-in wildcard exception", now exercised by a real caller for the first time.
+- **Detached-process error visibility, unchanged or regressed?** `spawnSync`'s `cmd.Start()` is "intentionally not Wait()ed" — a `Sync()` failure (e.g. `gitrepo.Push`'s rebase-retry exhausting its one retry) is invisible to the write-path caller, exactly as before the migration. Confirm this hasn't gotten WORSE: does a push failure from the new `gitrepo.Push()` path surface anywhere an operator could plausibly notice (same as whatever the old `pushUnpushed` did, even if that was "nowhere")? Not a regression if unchanged — but verify it IS unchanged, don't assume.
+- **`StageAllAndCommit`'s fixed `"board sync"` commit message vs. burst coalescing.** Confirm a burst of several rapid `Board` writes (multiple goroutines/processes each triggering their own detached `spawnSync`) still coalesces into as few commits/pushes as `TestSyncCoalescesBurstIntoOneCommit` already proves for the SINGLE-process case — but drive it with real separate detached processes, which is the actual production shape (`spawnSync` launches a real OS process per write, not a goroutine).
 
 ## Explicitly OUT of scope for `board`
-- The storage-model migration described in `manifest/designs/board-weft-storage.md` (moving off
-  board's own separate remote repo onto `weft:main`) — that is a future, not-yet-built design;
-  today's own-repo model is correct as shipped and must not be flagged as a gap against it.
-- `gitrepo`'s own internal correctness (SHA-argument injection, snapshot-ref concurrency, etc.) —
-  that module has its own separate, already-in-progress crucible campaign
-  (`crucible/gitrepo-review-prompt.md`, 3 rounds deep). Flag a `gitrepo` defect here ONLY if it is
-  freshly reachable through `board`'s specific new call pattern (`StageAllAndCommit`/`Push` as used
-  by `sync.go`) and not already covered by that other campaign's scope — say explicitly why it's
-  `board`-specific if you do.
-- `render.go`/`layer.go`/`store.go`/`task.go`/`config.go`/`template.go` correctness in general is in
-  scope for a full review (this is a whole-module pass, not migration-only), but these files were
-  NOT touched by the git-operator migration — weight your time toward the git/sync surface above,
-  which is both what changed and where live-substrate bugs concentrate; a quick sanity pass over the
-  rest is enough unless something concrete looks wrong.
+- The storage-model migration described in `manifest/designs/board-weft-storage.md` (moving off board's own separate remote repo onto `weft:main`) — that is a future, not-yet-built design; today's own-repo model is correct as shipped and must not be flagged as a gap against it.
+- `gitrepo`'s own internal correctness (SHA-argument injection, snapshot-ref concurrency, etc.) — that module has its own separate, already-in-progress crucible campaign (`crucible/gitrepo-review-prompt.md`, 3 rounds deep). Flag a `gitrepo` defect here ONLY if it is freshly reachable through `board`'s specific new call pattern (`StageAllAndCommit`/`Push` as used by `sync.go`) and not already covered by that other campaign's scope — say explicitly why it's `board`-specific if you do.
+- `render.go`/`layer.go`/`store.go`/`task.go`/`config.go`/`template.go` correctness in general is in scope for a full review (this is a whole-module pass, not migration-only), but these files were NOT touched by the git-operator migration — weight your time toward the git/sync surface above, which is both what changed and where live-substrate bugs concentrate; a quick sanity pass over the rest is enough unless something concrete looks wrong.
 
 ## Round context seeded from prior-round verification
-**Round 1 — no prior round, no known residual.** This is the FIRST round of this loop for `board`.
-Do a genuinely independent clean-room pass covering the whole module, with particular weight on the
-git-operator migration hypotheses above (the operator's explicit ask is "confirm board still works
-the way it did before"). Nothing is CLOSED-AND-VERIFIED yet; nothing is deferred yet.
+**Round 1 — no prior round, no known residual.** This is the FIRST round of this loop for `board`. Do a genuinely independent clean-room pass covering the whole module, with particular weight on the git-operator migration hypotheses above (the operator's explicit ask is "confirm board still works the way it did before"). Nothing is CLOSED-AND-VERIFIED yet; nothing is deferred yet.
 
-State the **merge bar** so you calibrate: correctness in the NORMAL single-instance,
-single-or-few-concurrent-caller flow (the realistic shape: a handful of `lyx board <verb>` calls
-each spawning their own detached `sync`, occasionally overlapping) is the gate; an artificial
-many-way concurrency stress far beyond that realistic shape is a diagnostic amplifier, not a merge
-blocker, per the same principle the reed campaign used (see README.md's "Reading the result").
+State the **merge bar** so you calibrate: correctness in the NORMAL single-instance, single-or-few-concurrent-caller flow (the realistic shape: a handful of `lyx board <verb>` calls each spawning their own detached `sync`, occasionally overlapping) is the gate; an artificial many-way concurrency stress far beyond that realistic shape is a diagnostic amplifier, not a merge blocker, per the same principle the reed campaign used (see README.md's "Reading the result").
 
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
@@ -205,111 +60,39 @@ Hermetic (must stay green throughout — untagged, no git spawn, per the Test Ti
 - `go vet ./internal/boardengine/... ./internal/boardcli/...`
 - `go test ./internal/boardengine/... ./internal/boardcli/... ./cmd/lyx/...`
 
-Integration (real substrate — real git subprocesses, real temp repos and bare remotes, per the
-Hermetic Git Test Environment Invariant's `TestMain`):
+Integration (real substrate — real git subprocesses, real temp repos and bare remotes, per the Hermetic Git Test Environment Invariant's `TestMain`):
 - `go test -tags integration -count=5 ./internal/boardengine/... ./internal/boardengine/boardtest/... ./internal/boardcli/...`
-- Also run the whole-repo gate once: `go build ./... && go test ./...` (confirms nothing outside
-  `board` regressed — e.g. any lingering caller of the deleted `BoardPushError`/`pushUnpushed`/
-  `hasUnpushed` symbols, which should already be gone but verify by grep + a green whole-repo build).
+- Also run the whole-repo gate once: `go build ./... && go test ./...` (confirms nothing outside `board` regressed — e.g. any lingering caller of the deleted `BoardPushError`/`pushUnpushed`/ `hasUnpushed` symbols, which should already be gone but verify by grep + a green whole-repo build).
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
-- `board` HAS a `lyx` CLI surface (`lyx board <verb>`), unlike `gitrepo`. Deploy the current source
-  as the DEV binary under test before any live driving: `go run ./tools/deploy -dev` (this machine
-  is Linux; `deploy.cmd`/`deploy-dev.cmd` are Windows-only — use the underlying `go run
-  ./tools/deploy -dev` tool directly, no `-dest`, no `$(dirname "$(which lyx)")` target). The dev
-  binary lands in `.dev-bin/`, deliberately NOT on your default `PATH`, so for this hands-on
-  driving session prepend it: `export PATH="$PWD/.dev-bin:$PATH"` (run from the repo root) so bare
-  `lyx` resolves to the dev build — this keeps the production `lyx` untouched. **FOOTGUN:** live
-  driving runs the DEPLOYED binary, not your working tree — re-run `go run ./tools/deploy -dev`
-  after EVERY source change or you validate a stale binary and draw a false PASS/FAIL.
-- **Do NOT invoke any `sandbox-*-suite.cmd` launcher.** Run the real CLI commands yourself, directly,
-  foreground, waiting for each to return: `lyx board upsert '...'`, `lyx board list`, `lyx board
-  sync`, etc., against a real board dir pointed at a real (local bare, or scratch GitHub) remote.
-  Walk the "High-yield focus" list above — devise MANY more adversarial scenarios beyond it (combine
-  verbs in orders nothing has tried; interleave writes with concurrent `sync` calls; chase anything
-  the code makes you suspicious of).
-- **"Headless" means "no human required" — NOT "no time/token cost to me."** A real multi-process
-  concurrency scenario takes real wall-clock minutes, not seconds — that cost is EXPECTED and
-  BUDGETED FOR, never a reason to skip a scenario. You are explicitly forbidden from writing
-  "operator-assisted", "cost-bearing", "long-running", "impractical", or "automated context" as a
-  reason to skip live driving.
-- **Before writing "could not verify", ask yourself literally: "would a human's physical eyes be
-  required here, or am I just trying to avoid spending my own time/turns?"** There is no visual/TTY
-  surface in `board` at all, so a legitimate "cannot verify headlessly" here should be rare; if you
-  reach for it, say exactly what concrete environment gap (missing binary, no network, no GitHub
-  auth for a real remote) blocked you, and prefer a real *local* bare remote (as the existing
-  `lyxtest.CopyWeft`-based tests already do) over skipping a scenario for lack of network.
+- `board` HAS a `lyx` CLI surface (`lyx board <verb>`), unlike `gitrepo`. Deploy the current source as the DEV binary under test before any live driving: `go run ./tools/deploy -dev` (this machine is Linux; `deploy.cmd`/`deploy-dev.cmd` are Windows-only — use the underlying `go run ./tools/deploy -dev` tool directly, no `-dest`, no `$(dirname "$(which lyx)")` target). The dev binary lands in `.dev-bin/`, deliberately NOT on your default `PATH`, so for this hands-on driving session prepend it: `export PATH="$PWD/.dev-bin:$PATH"` (run from the repo root) so bare `lyx` resolves to the dev build — this keeps the production `lyx` untouched. **FOOTGUN:** live driving runs the DEPLOYED binary, not your working tree — re-run `go run ./tools/deploy -dev` after EVERY source change or you validate a stale binary and draw a false PASS/FAIL.
+- **Do NOT invoke any `sandbox-*-suite.cmd` launcher.** Run the real CLI commands yourself, directly, foreground, waiting for each to return: `lyx board upsert '...'`, `lyx board list`, `lyx board sync`, etc., against a real board dir pointed at a real (local bare, or scratch GitHub) remote. Walk the "High-yield focus" list above — devise MANY more adversarial scenarios beyond it (combine verbs in orders nothing has tried; interleave writes with concurrent `sync` calls; chase anything the code makes you suspicious of).
+- **"Headless" means "no human required" — NOT "no time/token cost to me."** A real multi-process concurrency scenario takes real wall-clock minutes, not seconds — that cost is EXPECTED and BUDGETED FOR, never a reason to skip a scenario. You are explicitly forbidden from writing "operator-assisted", "cost-bearing", "long-running", "impractical", or "automated context" as a reason to skip live driving.
+- **Before writing "could not verify", ask yourself literally: "would a human's physical eyes be required here, or am I just trying to avoid spending my own time/turns?"** There is no visual/TTY surface in `board` at all, so a legitimate "cannot verify headlessly" here should be rare; if you reach for it, say exactly what concrete environment gap (missing binary, no network, no GitHub auth for a real remote) blocked you, and prefer a real *local* bare remote (as the existing `lyxtest.CopyWeft`-based tests already do) over skipping a scenario for lack of network.
 
-TEARDOWN DISCIPLINE (critical): if you spawn any subprocess or background process for a
-multi-process scenario, confirm it is not left running afterward (`ps` grep for any harness
-binary/`lyx` process you launched) and that any temp directories you created outside `t.TempDir()`
-(i.e. anything under `.scratch/`) are cleaned up or clearly left as intentional artifacts. Leave no
-stray state. Be honest about what you could NOT verify and why.
+TEARDOWN DISCIPLINE (critical): if you spawn any subprocess or background process for a multi-process scenario, confirm it is not left running afterward (`ps` grep for any harness binary/`lyx` process you launched) and that any temp directories you created outside `t.TempDir()` (i.e. anything under `.scratch/`) are cleaned up or clearly left as intentional artifacts. Leave no stray state. Be honest about what you could NOT verify and why.
 
 ## How to judge each finding
-For each code finding give: `file:line`, a concrete failure scenario (inputs/state → wrong
-behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED
-(reproduced/traced) vs PLAUSIBLE (looks wrong, unverified). For scope: plan-promised vs shipped;
-flag deferred-that-should-be-v1 and shipped-beyond-scope. For a behavioral-diff finding (this
-round's special focus), explicitly say what the OLD code did, what the NEW code does, and whether
-that diff is externally observable by any real caller.
+For each code finding give: `file:line`, a concrete failure scenario (inputs/state → wrong behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED (reproduced/traced) vs PLAUSIBLE (looks wrong, unverified). For scope: plan-promised vs shipped; flag deferred-that-should-be-v1 and shipped-beyond-scope. For a behavioral-diff finding (this round's special focus), explicitly say what the OLD code did, what the NEW code does, and whether that diff is externally observable by any real caller.
 
-**Severity affects how you REPORT a finding, not whether you fix it.** ALL findings you record get
-fixed in Job 2 — including every NIT — not just BLOCKING/MEDIUM ones. A finding you write down but
-leave unfixed as "low priority" is not actually a reported finding; it is a dropped one. The only
-legitimate reason to leave a finding unfixed is that fixing it genuinely requires something you
-cannot do alone this round — an operator decision on a real design tradeoff. Even then you must say
-so explicitly, with the specific reason, in the fixer report's deferred section.
+**Severity affects how you REPORT a finding, not whether you fix it.** ALL findings you record get fixed in Job 2 — including every NIT — not just BLOCKING/MEDIUM ones. A finding you write down but leave unfixed as "low priority" is not actually a reported finding; it is a dropped one. The only legitimate reason to leave a finding unfixed is that fixing it genuinely requires something you cannot do alone this round — an operator decision on a real design tradeoff. Even then you must say so explicitly, with the specific reason, in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
 None — round 1, nothing deferred yet.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT — not just BLOCKING/MEDIUM ones.
-- Load the code-quality guidance (`/code-quality` skill) AND the Go-specific skills
-  (`mill:golang-build`, `mill:golang-testing`, `mill:golang-comments`) before editing — all of them,
-  not code-quality alone. Prefer surgical edits; match existing style and the file-level doc-comment
-  convention already used across `board.go`/`sync.go`/`spawn.go`/etc.
-- For every bug you fix, add or extend a test that would have caught it. For a real-substrate-only
-  defect (a concurrency race, a crash-recovery gap), add it under the `integration` build tag in
-  `internal/boardengine/boardtest/` following the existing fixture helpers (`lyxtest.CopyWeft`,
-  `newSyncRepo`) rather than inventing a parallel style. A pure hermetic unit test is right for
-  logic that doesn't need real git; an integration test in `boardtest` is right for anything that
-  needs the real subprocess/lock/multi-process behavior.
-- MAKE CONCURRENCY TESTS DETERMINISTIC. A test that assumes a fixed timing window passes on a quiet
-  machine and FLAKES on a loaded one. Wait on actual state transitions (poll with a deadline,
-  synchronize goroutines/processes with explicit signals), never a fixed `time.Sleep` alone as the
-  sole synchronization. Prove determinism by running the new test many times (`-count=5` or more)
-  under load, not once.
-- Keep `go build`/`vet`/`test` (both hermetic and `-tags integration`) green after every change.
-  Then re-run `go run ./tools/deploy -dev` and re-run every live scenario yourself, directly —
-  re-deploying FIRST is mandatory (live driving tests the deployed dev binary, not your working
-  tree).
-- Update `internal/boardengine/board.go`'s package doc (and `docs/overview.md` / `CONSTRAINTS.md` if
-  invariants or the module table move) IN THE SAME change as any behavior fix. Do NOT add
-  bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones only, per
-  `CLAUDE.md`).
-- If a scenario you drove live surfaces a gap in `tools/sandbox/SANDBOX-CORE-SUITE.md`'s S3 scenario
-  (`**Covers:** board`), extend it in the SAME change (keep `sandbox_coverage_test.go` green). If the
-  gap doesn't fit S3's shape, note the new scenario in your fixer report instead — creating a
-  brand-new suite file is not required by this method.
-- Tear down all substrate state (kill any harness subprocess you spawned; confirm zero stray
-  processes). COMMIT each fix as you finish it (see "Commit per fix" above) — do NOT push unless the
-  user explicitly asks. Report the changed files and how you verified each fix.
+- Load the code-quality guidance (`/code-quality` skill) AND the Go-specific skills (`mill:golang-build`, `mill:golang-testing`, `mill:golang-comments`) before editing — all of them, not code-quality alone. Prefer surgical edits; match existing style and the file-level doc-comment convention already used across `board.go`/`sync.go`/`spawn.go`/etc.
+- For every bug you fix, add or extend a test that would have caught it. For a real-substrate-only defect (a concurrency race, a crash-recovery gap), add it under the `integration` build tag in `internal/boardengine/boardtest/` following the existing fixture helpers (`lyxtest.CopyWeft`, `newSyncRepo`) rather than inventing a parallel style. A pure hermetic unit test is right for logic that doesn't need real git; an integration test in `boardtest` is right for anything that needs the real subprocess/lock/multi-process behavior.
+- MAKE CONCURRENCY TESTS DETERMINISTIC. A test that assumes a fixed timing window passes on a quiet machine and FLAKES on a loaded one. Wait on actual state transitions (poll with a deadline, synchronize goroutines/processes with explicit signals), never a fixed `time.Sleep` alone as the sole synchronization. Prove determinism by running the new test many times (`-count=5` or more) under load, not once.
+- Keep `go build`/`vet`/`test` (both hermetic and `-tags integration`) green after every change. Then re-run `go run ./tools/deploy -dev` and re-run every live scenario yourself, directly — re-deploying FIRST is mandatory (live driving tests the deployed dev binary, not your working tree).
+- Update `internal/boardengine/board.go`'s package doc (and `docs/overview.md` / `CONSTRAINTS.md` if invariants or the module table move) IN THE SAME change as any behavior fix. Do NOT add bugfix/hardening notes to `manifest/roadmap.md` (roadmap is planned milestones only, per `CLAUDE.md`).
+- If a scenario you drove live surfaces a gap in `tools/sandbox/SANDBOX-CORE-SUITE.md`'s S3 scenario (`**Covers:** board`), extend it in the SAME change (keep `sandbox_coverage_test.go` green). If the gap doesn't fit S3's shape, note the new scenario in your fixer report instead — creating a brand-new suite file is not required by this method.
+- Tear down all substrate state (kill any harness subprocess you spawned; confirm zero stray processes). COMMIT each fix as you finish it (see "Commit per fix" above) — do NOT push unless the user explicitly asks. Report the changed files and how you verified each fix.
 
 ## Deliverables
-1. A structured review report (Executive summary with top risks + merge-readiness opinion; Scope
-   assessment plan-vs-shipped, INCLUDING an explicit "did the git-operator migration change any
-   observable behavior?" verdict; Code findings severity-ranked with file:line + scenario + fix +
-   CONFIRMED/PLAUSIBLE; Docs & operability findings; What-was-tested with exact commands + observed
-   results, including what you could NOT verify and why). Write it to
-   `.scratch/board-review-<yourtag>.md`.
-2. A fixer report: what you implemented, what you deliberately deferred (with reasons), the exact
-   test commands run + results, and the changed files. Write it to
-   `.scratch/board-review-<yourtag>-fixer-report.md`.
-3. In your final chat message: a concise summary (executive summary + counts by severity + the two
-   report paths + an explicit merge-readiness verdict, including a direct yes/no answer to "does
-   board still work the way it did before this migration?"). Do not paste the whole reports.
+1. A structured review report (Executive summary with top risks + merge-readiness opinion; Scope assessment plan-vs-shipped, INCLUDING an explicit "did the git-operator migration change any observable behavior?" verdict; Code findings severity-ranked with file:line + scenario + fix + CONFIRMED/PLAUSIBLE; Docs & operability findings; What-was-tested with exact commands + observed results, including what you could NOT verify and why). Write it to `.scratch/board-review-<yourtag>.md`.
+2. A fixer report: what you implemented, what you deliberately deferred (with reasons), the exact test commands run + results, and the changed files. Write it to `.scratch/board-review-<yourtag>-fixer-report.md`.
+3. In your final chat message: a concise summary (executive summary + counts by severity + the two report paths + an explicit merge-readiness verdict, including a direct yes/no answer to "does board still work the way it did before this migration?"). Do not paste the whole reports.
 
-Begin with the clean-room review (read `board.go` + code + docs, then drive the real substrate),
-produce your independent findings, then implement and verify the fixes.
+Begin with the clean-room review (read `board.go` + code + docs, then drive the real substrate), produce your independent findings, then implement and verify the fixes.

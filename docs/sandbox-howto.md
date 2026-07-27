@@ -1,53 +1,21 @@
 # How-to: run the sandbox suite agent
 
-Operator runbook for exercising the deployed `lyx.exe` against the sandbox Hub.
-This is the **ordered procedure**; for the topology, repo layout, and design
-rationale see [sandbox-hub.md](sandbox-hub.md).
+Operator runbook for exercising the deployed `lyx.exe` against the sandbox Hub. This is the **ordered procedure**; for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox-hub.md).
 
-All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless
-stated otherwise. The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox-build.cmd`,
-`sandbox-core-suite.cmd`, `sandbox-reed-suite.cmd`, `sandbox-shuttle-suite.cmd`,
-`sandbox-burler-suite.cmd`, `sandbox-perch-suite.cmd`, `sandbox-builder-suite.cmd`,
-`sandbox-fetch.cmd`) hardcode the machine-specific paths for this machine: `deploy.cmd`'s
-deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception —
-it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path. Each
-sandbox launcher does exactly one thing (build / one suite / fetch).
+All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless stated otherwise. The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox-build.cmd`, `sandbox-core-suite.cmd`, `sandbox-reed-suite.cmd`, `sandbox-shuttle-suite.cmd`, `sandbox-burler-suite.cmd`, `sandbox-perch-suite.cmd`, `sandbox-builder-suite.cmd`, `sandbox-fetch.cmd`) hardcode the machine-specific paths for this machine: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path. Each sandbox launcher does exactly one thing (build / one suite / fetch).
 
-**Run every suite launcher in a real, attached interactive terminal** — never
-backgrounded, detached, or with stdout/stderr redirected. The agent session is
-an interactive `claude` process; without a TTY it cannot idle between turns
-waiting for notifications, so it may end early and silently abandon the
-remaining scenarios. The launcher prints a warning when it detects
-non-console stdio.
+**Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected. The agent session is an interactive `claude` process; without a TTY it cannot idle between turns waiting for notifications, so it may end early and silently abandon the remaining scenarios. The launcher prints a warning when it detects non-console stdio.
 
 ## What the suite does
 
-`sandbox-core-suite.cmd` resolves the `lyx` binary to test — the derived
-`.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback —
-fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint
-and a `Source: dev` / `Source: prod` marker) into the Hub host repo, and launches an
-interactive black-box agent there. When the resolved binary is the dev build, the
-suite prepends `.dev-bin` to the agent's own child-process PATH, so the agent's bare
-`lyx` invocations resolve to it — the agent still drives `lyx` from PATH only (never
-the source tree); it is just PATH scoped to the agent's session, not your own shell.
-The agent writes WARN/FAIL findings to `sandbox-report.json` in the host repo. The
-suite only launches the agent; collecting the report is a separate step — after the
-session ends you run `sandbox-fetch.cmd` to fetch a normalized copy into this repo's
-`.scratch/sandbox-report-<fingerprint>.json`.
+`sandbox-core-suite.cmd` resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub host repo, and launches an interactive black-box agent there. When the resolved binary is the dev build, the suite prepends `.dev-bin` to the agent's own child-process PATH, so the agent's bare `lyx` invocations resolve to it — the agent still drives `lyx` from PATH only (never the source tree); it is just PATH scoped to the agent's session, not your own shell. The agent writes WARN/FAIL findings to `sandbox-report.json` in the host repo. The suite only launches the agent; collecting the report is a separate step — after the session ends you run `sandbox-fetch.cmd` to fetch a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 
-Because the agent tests the resolved binary (dev-first, prod fallback), a stale
-`.dev-bin` binary means you are testing old code. Always deploy before a run (step 2)
-— `deploy-dev.cmd` is the fast path since it never touches the production binary.
+Because the agent tests the resolved binary (dev-first, prod fallback), a stale `.dev-bin` binary means you are testing old code. Always deploy before a run (step 2) — `deploy-dev.cmd` is the fast path since it never touches the production binary.
 
 ## Prerequisites (one-time)
 
-1. **Sandbox wiki initialized** — the board repo is the weft repo's GitHub wiki.
-   `lyx-test-weft` must have Wikis enabled and at least one page, or
-   `warp clone` fails and the Hub is torn down. See
-   [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
-2. **`C:\Code\tools\bin` is on PATH (production only)** — that is where `deploy.cmd`
-   installs the production `lyx`. The dev binary in `.dev-bin` does NOT need to be on
-   PATH; the suite resolves it directly and threads it to the agent itself.
+1. **Sandbox wiki initialized** — the board repo is the weft repo's GitHub wiki. `lyx-test-weft` must have Wikis enabled and at least one page, or `warp clone` fails and the Hub is torn down. See [sandbox-hub.md#prerequisites](sandbox-hub.md#prerequisites).
+2. **`C:\Code\tools\bin` is on PATH (production only)** — that is where `deploy.cmd` installs the production `lyx`. The dev binary in `.dev-bin` does NOT need to be on PATH; the suite resolves it directly and threads it to the agent itself.
 
 ## Each run
 
@@ -62,28 +30,19 @@ go test ./...
 
 ### 2. Deploy a fresh dev `lyx.exe`
 
-Rebuilds `lyx` from the current checkout and installs it into the derived
-`.dev-bin` directory at the repo root, overwriting the old dev binary. This never
-touches the production `lyx` in `C:\Code\tools\bin` — `deploy-dev.cmd` and
-`deploy.cmd` are independent targets, so the production binary stays untouched.
+Rebuilds `lyx` from the current checkout and installs it into the derived `.dev-bin` directory at the repo root, overwriting the old dev binary. This never touches the production `lyx` in `C:\Code\tools\bin` — `deploy-dev.cmd` and `deploy.cmd` are independent targets, so the production binary stays untouched.
 
 ```cmd
 deploy-dev.cmd
 ```
 
-Verify the deployed binary is the new one — e.g. confirm an expected surface
-change is present. The dev binary is deliberately not on PATH, so call it by its
-`.dev-bin` path directly:
+Verify the deployed binary is the new one — e.g. confirm an expected surface change is present. The dev binary is deliberately not on PATH, so call it by its `.dev-bin` path directly:
 
 ```cmd
 .dev-bin\lyx.exe config --help
 ```
 
-(After the cobra-cli-engine sweep, `lyx update` is gone and `lyx config reconcile`
-exists. If you still see `update` in the output, the deploy did not take.) Once the
-suite session starts, the fingerprint header's `Source: dev` line is the ongoing
-confirmation that the agent is exercising this build — no further manual check
-needed.
+(After the cobra-cli-engine sweep, `lyx update` is gone and `lyx config reconcile` exists. If you still see `update` in the output, the deploy did not take.) Once the suite session starts, the fingerprint header's `Source: dev` line is the ongoing confirmation that the agent is exercising this build — no further manual check needed.
 
 ### 3. Build the Hub (first time, or when you want a clean slate)
 
@@ -99,9 +58,7 @@ sandbox-build.cmd
 sandbox-build.cmd -reset
 ```
 
-Skip this step on repeat runs if the existing Hub is fine — `sandbox-core-suite.cmd`
-does not require a reset each time. Reset when the Hub topology may be stale
-(e.g. after a warp/weft change) or when a previous run left it dirty.
+Skip this step on repeat runs if the existing Hub is fine — `sandbox-core-suite.cmd` does not require a reset each time. Reset when the Hub topology may be stale (e.g. after a warp/weft change) or when a previous run left it dirty.
 
 ### 4. Run the suite
 
@@ -109,10 +66,7 @@ does not require a reset each time. Reset when the Hub topology may be stale
 sandbox-core-suite.cmd
 ```
 
-This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the
-Hub host repo and launches the interactive agent there. Let it run; it records
-findings to `sandbox-report.json` itself. Exit the agent session when it is done —
-the suite treats any exit code as normal and does not fetch the report itself.
+This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub host repo and launches the interactive agent there. Let it run; it records findings to `sandbox-report.json` itself. Exit the agent session when it is done — the suite treats any exit code as normal and does not fetch the report itself.
 
 Optional overrides:
 
@@ -127,14 +81,7 @@ sandbox-core-suite.cmd -prompt <text>   # override the instruction string
 sandbox-reed-suite.cmd
 ```
 
-This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo and
-launches the interactive agent there, same as step 4 but for `lyx reed`'s
-scenarios. It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7. The
-attach scenario (M7) pauses for the operator to run `lyx reed attach` in a
-second terminal and confirm visually. Findings go to the same
-`sandbox-report.json`, so step 5 (`sandbox-fetch.cmd`) and step 6 (triage)
-apply unchanged — fetch between sessions, do not run both suites and fetch
-once.
+This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo and launches the interactive agent there, same as step 4 but for `lyx reed`'s scenarios. It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7. The attach scenario (M7) pauses for the operator to run `lyx reed attach` in a second terminal and confirm visually. Findings go to the same `sandbox-report.json`, so step 5 (`sandbox-fetch.cmd`) and step 6 (triage) apply unchanged — fetch between sessions, do not run both suites and fetch once.
 
 Same `-claude`/`-prompt` overrides as `sandbox-core-suite.cmd`:
 
@@ -150,13 +97,7 @@ sandbox-shuttle-suite.cmd
 sandbox-burler-suite.cmd
 ```
 
-Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios
-respectively; both need a live tmux, PowerShell 7, a logged-in `claude`, and
-an `lyx init`-ed host repo. Same `-claude`/`-prompt` overrides. After the
-session ends, the launcher runs `lyx reed down` in the host repo (for the reed,
-shuttle, burler, and perch suites) so no tmux server outlives the run — an
-orphaned server holds handles inside the Hub and blocks the next
-`sandbox-build.cmd -reset`.
+Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios respectively; both need a live tmux, PowerShell 7, a logged-in `claude`, and an `lyx init`-ed host repo. Same `-claude`/`-prompt` overrides. After the session ends, the launcher runs `lyx reed down` in the host repo (for the reed, shuttle, burler, and perch suites) so no tmux server outlives the run — an orphaned server holds handles inside the Hub and blocks the next `sandbox-build.cmd -reset`.
 
 ### 4d. Run the perch suite (optional, needs live tmux + logged-in claude)
 
@@ -164,11 +105,7 @@ orphaned server holds handles inside the Hub and blocks the next
 sandbox-perch-suite.cmd
 ```
 
-Same operating model as 4c, for `lyx perch`'s gate-loop scenarios (convergence,
-pause/resume, the command gate) — perch wires the real burler substrate (which
-in turn wires shuttle) on every invocation, so the same live-tmux,
-PowerShell 7, logged-in-`claude`, and `lyx init`-ed prerequisites apply. Same
-`-claude`/`-prompt` overrides.
+Same operating model as 4c, for `lyx perch`'s gate-loop scenarios (convergence, pause/resume, the command gate) — perch wires the real burler substrate (which in turn wires shuttle) on every invocation, so the same live-tmux, PowerShell 7, logged-in-`claude`, and `lyx init`-ed prerequisites apply. Same `-claude`/`-prompt` overrides.
 
 ### 4e. Run the builder suite (optional, needs live tmux + logged-in claude)
 
@@ -176,12 +113,7 @@ PowerShell 7, logged-in-`claude`, and `lyx init`-ed prerequisites apply. Same
 sandbox-builder-suite.cmd
 ```
 
-Same operating model as 4c/4d, for `lyx builder`'s batch-loop scenarios (the
-autonomous `run` happy path, `poll`'s dead/timeout classification, pause as a
-batch-boundary check, `run.lock` contention, and fingerprint/outcome
-archiving) — builder branches off shuttle directly (real tmux + real
-`claude`), so the same live-tmux, PowerShell 7, logged-in-`claude`, and
-`lyx init`-ed prerequisites apply. Same `-claude`/`-prompt` overrides.
+Same operating model as 4c/4d, for `lyx builder`'s batch-loop scenarios (the autonomous `run` happy path, `poll`'s dead/timeout classification, pause as a batch-boundary check, `run.lock` contention, and fingerprint/outcome archiving) — builder branches off shuttle directly (real tmux + real `claude`), so the same live-tmux, PowerShell 7, logged-in-`claude`, and `lyx init`-ed prerequisites apply. Same `-claude`/`-prompt` overrides.
 
 ### 5. Fetch the report
 
@@ -189,25 +121,17 @@ archiving) — builder branches off shuttle directly (real tmux + real
 sandbox-fetch.cmd
 ```
 
-Reads `sandbox-report.json` from the Hub host repo, validates and stamps it, and
-writes a normalized copy into this repo's
-`.scratch/sandbox-report-<fingerprint>.json`. Run this after the suite session
-ends; if the agent wrote no report, this fails with a distinct "not found" error.
+Reads `sandbox-report.json` from the Hub host repo, validates and stamps it, and writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`. Run this after the suite session ends; if the agent wrote no report, this fails with a distinct "not found" error.
 
 ### 6. Triage findings
 
-The agent no longer files GitHub issues itself. Instead: the suite emits
-`sandbox-report.json` in the Hub host repo → `sandbox-fetch.cmd` fetches it
-into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the
-report-to-tasks triage skill against that file:
+The agent no longer files GitHub issues itself. Instead: the suite emits `sandbox-report.json` in the Hub host repo → `sandbox-fetch.cmd` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
 
 ```
 /mill-report-to-tasks "<path-to-fetched-json>"
 ```
 
-The path (the `.scratch/sandbox-report-<fingerprint>.json` that fetch printed) is
-a required positional argument. The skill groups the findings into wiki tasks;
-nothing is written until you approve. Then groom/spawn as usual.
+The path (the `.scratch/sandbox-report-<fingerprint>.json` that fetch printed) is a required positional argument. The skill groups the findings into wiki tasks; nothing is written until you approve. Then groom/spawn as usual.
 
 ## Troubleshooting
 

@@ -1,103 +1,52 @@
 # raddle — codeguide's woven-in successor (Someday, deprioritized)
 
-> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a
-> first `loom` plan. Already has a reserved-but-unbuilt phase slot between Builder and Finalize
-> (see [loom.md](loom.md#the-phase-machine)). This doc covers the parts of raddle's design
-> settled during the vacation-time discussion, not the whole module.
+> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Already has a reserved-but-unbuilt phase slot between Builder and Finalize (see [loom.md](loom.md#the-phase-machine)). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
 
 ## What it is
 
-Raddle is codeguide's weaving-vocabulary successor, living in `weft`: an always-run step after
-Builder (deliberately not the implementer's job — implementers, busy with code, forget the docs)
-that generates docs over the diff a plan produced, building heavily on Millhouse's
-`codeguide-update`.
+Raddle is codeguide's weaving-vocabulary successor, living in `weft`: an always-run step after Builder (deliberately not the implementer's job — implementers, busy with code, forget the docs) that generates docs over the diff a plan produced, building heavily on Millhouse's `codeguide-update`.
 
 ## Parallel regeneration — unlike card implementation, this is safe
 
-Unlike webster's card implementation (which needs real worktree isolation for safe parallelism —
-see [webster-parallel-execution.md](webster-parallel-execution.md)),
-raddle's doc regeneration can safely run as **parallel forks**, for reasons specific to what
-raddle does:
+Unlike webster's card implementation (which needs real worktree isolation for safe parallelism — see [webster-parallel-execution.md](webster-parallel-execution.md)), raddle's doc regeneration can safely run as **parallel forks**, for reasons specific to what raddle does:
 
-1. **No per-fork git commit needed mid-flight.** Card parallelism failed partly because
-   concurrent `git add`+commit from multiple forks race on the same git index. Raddle forks
-   don't need this — each fork just writes its own module doc to disk; **one single, combining
-   commit** happens at the end (`fabric.SyncWeft(...)`, see
-   [`internal/fabricengine`](../../internal/fabricengine/doc.go)), covering
-   all raddle changes at once. This eliminates the git-index race entirely.
-2. **Raddle only reads code, never writes it.** Card forks editing code concurrently risked
-   seeing each other's unstable, half-finished intermediate states. Raddle forks read an
-   already-landed, stable code state — no "who sees what when" problem.
-3. **True file-disjointness is easy to guarantee.** With a clean module → doc mapping (one
-   changed module → one raddle `.md` file), there's no ambiguity about who writes where, unlike
-   card `changes-files` declarations which could turn out wrong after the fact.
+1. **No per-fork git commit needed mid-flight.** Card parallelism failed partly because concurrent `git add`+commit from multiple forks race on the same git index. Raddle forks don't need this — each fork just writes its own module doc to disk; **one single, combining commit** happens at the end (`fabric.SyncWeft(...)`, see [`internal/fabricengine`](../../internal/fabricengine/doc.go)), covering all raddle changes at once. This eliminates the git-index race entirely.
+2. **Raddle only reads code, never writes it.** Card forks editing code concurrently risked seeing each other's unstable, half-finished intermediate states. Raddle forks read an already-landed, stable code state — no "who sees what when" problem.
+3. **True file-disjointness is easy to guarantee.** With a clean module → doc mapping (one changed module → one raddle `.md` file), there's no ambiguity about who writes where, unlike card `changes-files` declarations which could turn out wrong after the fact.
 
-**Structure:** parallel leaf forks (one per changed module, no dependencies between them) → one
-final step regenerating any top-level summary (`Overview.md`) from the now-updated module docs
-(must wait for all leaves) → one combined `fabric.SyncWeft(...)` commit covering everything.
+**Structure:** parallel leaf forks (one per changed module, no dependencies between them) → one final step regenerating any top-level summary (`Overview.md`) from the now-updated module docs (must wait for all leaves) → one combined `fabric.SyncWeft(...)` commit covering everything.
 
-**No race on `Overview.md`:** the "must wait for all leaves" sequencing above already prevents
-concurrent writers to `Overview.md` within one regeneration run — it's a single, serial final step,
-never touched by the leaf forks themselves. No additional lock needed there.
+**No race on `Overview.md`:** the "must wait for all leaves" sequencing above already prevents concurrent writers to `Overview.md` within one regeneration run — it's a single, serial final step, never touched by the leaf forks themselves. No additional lock needed there.
 
 ## When it runs: deferred to merge-time, not mid-task
 
-Regenerating raddle is token-heavy and takes real wall-clock time, so it should run **once**, not
-twice. Running it right after Builder (against the task's own fork-point) and then again at actual
-merge (against parent's real, possibly-since-moved HEAD) would be exactly that: two regenerations
-where the first is thrown away the moment parent has advanced in the meantime.
+Regenerating raddle is token-heavy and takes real wall-clock time, so it should run **once**, not twice. Running it right after Builder (against the task's own fork-point) and then again at actual merge (against parent's real, possibly-since-moved HEAD) would be exactly that: two regenerations where the first is thrown away the moment parent has advanced in the meantime.
 
-**Decision: raddle regenerates once, at merge-time, against parent's actual current HEAD** — not
-mid-task. This collapses the two potential runs into one and guarantees the output describes the
-real merge result, not a stale fork-point.
+**Decision: raddle regenerates once, at merge-time, against parent's actual current HEAD** — not mid-task. This collapses the two potential runs into one and guarantees the output describes the real merge result, not a stale fork-point.
 
-**Consequence for the merge lock:** the lock protecting this step must span the **entire** critical
-section — read parent's current HEAD, run the leaf-fork + `Overview.md` regeneration against it,
-commit via `SyncWeft` — as one atomic unit, not just around the final git write. If another task's
-merge landed in parent partway through regeneration, the docs would already be stale against the
-HEAD they're about to be committed onto. Same "advance only on confirmed success" discipline
-`SnapshotSHA` already uses elsewhere in `fabric`, extended to cover the compute step, not just the
-write step.
+**Consequence for the merge lock:** the lock protecting this step must span the **entire** critical section — read parent's current HEAD, run the leaf-fork + `Overview.md` regeneration against it, commit via `SyncWeft` — as one atomic unit, not just around the final git write. If another task's merge landed in parent partway through regeneration, the docs would already be stale against the HEAD they're about to be committed onto. Same "advance only on confirmed success" discipline `SnapshotSHA` already uses elsewhere in `fabric`, extended to cover the compute step, not just the write step.
 
-**Open, not yet decided:** whether this removes raddle's reserved phase slot between Builder and
-Finalize in [loom.md](loom.md#the-phase-machine) entirely (folding regeneration into the
-Finalize/Merge step instead), or whether an earlier, non-authoritative mid-task run stays for human
-visibility before PR. Not resolved here.
+**Open, not yet decided:** whether this removes raddle's reserved phase slot between Builder and Finalize in [loom.md](loom.md#the-phase-machine) entirely (folding regeneration into the Finalize/Merge step instead), or whether an earlier, non-authoritative mid-task run stays for human visibility before PR. Not resolved here.
 
 ## Staleness tracking, via `fabric`
 
-Raddle's snapshot files describe the codebase as of some SHA, and only get regenerated by an
-explicit, separate command — they can silently drift out of date as cards land. Using
-`fabric`'s snapshot tracking (see [`internal/fabricengine`](../../internal/fabricengine/doc.go)):
+Raddle's snapshot files describe the codebase as of some SHA, and only get regenerated by an explicit, separate command — they can silently drift out of date as cards land. Using `fabric`'s snapshot tracking (see [`internal/fabricengine`](../../internal/fabricengine/doc.go)):
 
-- Raddle's regeneration command records `fabric.Weft.SetSnapshotSHA("raddle", <sha-it-generated-from>)`.
-  **The SHA recorded should be the host (warp) code SHA raddle describes — the last host commit
-  *before* the regeneration — not raddle's own resulting weft commit SHA**, otherwise later
-  staleness checks compute against the wrong baseline.
-- An `IsStale()`-style check (`ChangedFilesSince(SnapshotSHA("raddle"))` non-empty) lets Master
-  or a fork get a precise answer — *"raddle's map is N commits behind current HEAD, covering
-  these files"* — instead of a vague, always-true warning that raddle "might" be outdated.
+- Raddle's regeneration command records `fabric.Weft.SetSnapshotSHA("raddle", <sha-it-generated-from>)`. **The SHA recorded should be the host (warp) code SHA raddle describes — the last host commit *before* the regeneration — not raddle's own resulting weft commit SHA**, otherwise later staleness checks compute against the wrong baseline.
+- An `IsStale()`-style check (`ChangedFilesSince(SnapshotSHA("raddle"))` non-empty) lets Master or a fork get a precise answer — *"raddle's map is N commits behind current HEAD, covering these files"* — instead of a vague, always-true warning that raddle "might" be outdated.
 
 ## Boundary with codeintel (deliberately not coupled)
 
-- **codeintel** only cares about source code files, never markdown, and has **no knowledge of
-  raddle whatsoever**.
-- **Raddle never modifies code and therefore has no reason to notify codeintel** — that coupling
-  was proposed once during design and correctly rejected. Raddle's own use of `fabric` is purely
-  for its own staleness tracking, unrelated to codeintel.
+- **codeintel** only cares about source code files, never markdown, and has **no knowledge of raddle whatsoever**.
+- **Raddle never modifies code and therefore has no reason to notify codeintel** — that coupling was proposed once during design and correctly rejected. Raddle's own use of `fabric` is purely for its own staleness tracking, unrelated to codeintel.
 - Both consumers independently depend on `fabric`; they do not depend on each other.
 
 ## What Master must know about raddle content (see `internal/websterengine`'s package documentation)
 
-Raddle files are a **snapshot** of the codebase from *before* a plan started — they are only
-regenerated by a separate, explicit command, not continuously. Master (and any fork inheriting
-its context) must treat raddle content as "how things were before this plan," never outranking
-a fresh codeintel query or an actual file read once cards have started landing.
+Raddle files are a **snapshot** of the codebase from *before* a plan started — they are only regenerated by a separate, explicit command, not continuously. Master (and any fork inheriting its context) must treat raddle content as "how things were before this plan," never outranking a fresh codeintel query or an actual file read once cards have started landing.
 
 ## Related
 
-- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the `SnapshotSHA`/`SyncWeft`
-  mechanics this design relies on.
+- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the `SnapshotSHA`/`SyncWeft` mechanics this design relies on.
 - [loom.md](loom.md) — where raddle's phase slot sits in the phase machine.
-- [board-weft-storage.md](board-weft-storage.md) — `PATTERN.md` (raddle's neighbor in `weft`)
-  mentioned there.
+- [board-weft-storage.md](board-weft-storage.md) — `PATTERN.md` (raddle's neighbor in `weft`) mentioned there.
