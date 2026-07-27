@@ -29,45 +29,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// pollFakeEngine is a minimal shuttleengine.Engine double for
-// builderengine.TurnEnded: only ParseEvents is scripted, mirroring
-// builderengine's own poll_test.go fakeEngine.
-type pollFakeEngine struct {
-	events []shuttleengine.Event
-}
-
-func (e *pollFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	return shuttleengine.Launch{}, nil
-}
-func (e *pollFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
-	return e.events, nil
-}
-func (e *pollFakeEngine) Startup(capture string) shuttleengine.StartupState {
-	return shuttleengine.StartupPending
-}
-func (e *pollFakeEngine) InterruptSequence() []shuttleengine.PaneInput      { return nil }
-func (e *pollFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
-func (e *pollFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
-
-// AuditForks is never reached: this double never runs fork-mode specs.
-func (e *pollFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-
-// AuditForksIncremental is never reached, for the same reason as AuditForks.
-func (e *pollFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
-	return shuttleengine.ForkAudit{}, nil
-}
-
-// ModelSwitchSequence is never reached: poll never drives a model switch.
-func (e *pollFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
-	return nil
-}
-
-var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
-
-// pollFakeReed (a git-free shuttleengine.ReedOps double) lives in
-// testdata_test.go, untagged, since run_test.go also uses it.
+// pollFakeEngine and pollFakeReed (both git-free doubles) live in
+// testdata_test.go, untagged, since smoke_test.go and run_test.go
+// respectively also use them.
 
 // pollFixture is a fully-wired *builderCLI plus a scratch git repo standing
 // in for the host worktree, with the plan-valid fixture seeded under its
