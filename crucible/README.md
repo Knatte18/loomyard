@@ -18,28 +18,28 @@ Reach for this before merging a **live-substrate module** — one whose real def
 
 ## The two roles
 
-- **Orchestrator** (a human operator + a steering Claude, i.e. *you* reading this). Owns the loop: seeds the prompt, spawns each round, **independently verifies** the round's work, re-seeds, rotates the model, and decides when it has converged. The orchestrator does **not** edit the module code during a round — it stays off the worktree so it never collides with the round agent.
-- **Round agent** — a fresh, **clean-room** sub-agent spawned per round (a `general-purpose` Agent, *not* a fork — a fork would inherit the orchestrator's context and destroy independence). It does two jobs in order: **A — review** (form its own findings by reading the code *and* driving the real substrate), then **B — fix** (implement, test, update docs). One agent does both because the review context is already loaded, so the fix is cheap. **The order is not advisory — it is a hard gate.** Job A must be fully written to its review-report file on disk before the agent touches any production or test file; fixing findings as it spots them (instead of after the report is saved) turns the "review" into a post-hoc rationalization of edits already made, which defeats the whole point of an independent judgment. Every per-module review prompt must state this explicitly (see the "Sequencing rule" in [`review-prompt-template.md`](review-prompt-template.md)) — this was missing from the template until shuttle's round 1 interleaved the two jobs.
+- **Orchestrator** (a human operator + a steering Claude, i.e. *you* reading this). Owns the loop: seeds the prompt, spawns each round, **independently verifies** the round's work, re-seeds, rotates the model and effort tier, and decides when it has converged. The orchestrator does **not** edit the module code during a round — it stays off the worktree so it never collides with the round agent.
+- **Round agent** — a fresh, **clean-room** sub-agent spawned per round (an effort-tiered `crucible-reviewer-<effort>` Agent, *not* a fork — a fork would inherit the orchestrator's context and destroy independence). It does two jobs in order: **A — review** (form its own findings by reading the code *and* driving the real substrate), then **B — fix** (implement, test, update docs). One agent does both because the review context is already loaded, so the fix is cheap. **The order is not advisory — it is a hard gate.** Job A must be fully written to its review-report file on disk before the agent touches any production or test file; fixing findings as it spots them (instead of after the report is saved) turns the "review" into a post-hoc rationalization of edits already made, which defeats the whole point of an independent judgment. Every per-module review prompt must state this explicitly (see the "Sequencing rule" in [`review-prompt-template.md`](review-prompt-template.md)) — this was missing from the template until shuttle's round 1 interleaved the two jobs.
 
 ## The loop
 
 ```
-        ┌─────────────────────────────────────────────────────────────┐
-        │  1. SEED the prompt with the current known state             │
-        │  2. SPAWN a fresh clean-room round agent (rotate the model)  │
-        │        A — review (independent findings, drive real substrate)│
-        │        B — fix (implement + test + docs, do NOT commit)       │
-        │  3. ORCHESTRATOR independently VERIFIES (never trust the      │
-        │        round's own "merge-ready" verdict)                     │
-        │  4. COMMIT the round's work; RE-SEED with what verification   │
-        │        found; go to 2 with the next model                    │
-        └───────────────────────── until converged ───────────────────┘
+        ┌───────────────────────────────────────────────────────────────────────┐
+        │  1. SEED the prompt with the current known state                      │
+        │  2. SPAWN a fresh clean-room round agent (rotate model + effort)      │
+        │        A — review (independent findings, drive real substrate)        │
+        │        B — fix (implement + test + docs, commit each fix as it lands) │
+        │  3. ORCHESTRATOR independently VERIFIES (never trust the              │
+        │        round's own "merge-ready" verdict)                             │
+        │  4. RE-SEED with what verification found; go to 2 with the            │
+        │        next model + effort tier                                       │
+        └─────────────────────────── until converged ───────────────────────────┘
 ```
 
 1. **Seed.** The prompt (`<module>-review-prompt.md`, instantiated from [`review-prompt-template.md`](review-prompt-template.md)) carries a *"round context seeded from prior-round verification"* section. Each round rewrites it with the residual the last verification found — or, once clean, flips it to a **safety pass** ("no known residual; confirm merge-readiness or find what every prior round missed").
-2. **Spawn.** One fresh `general-purpose` Agent with a `model:` override, told **only** to read the prompt file and do exactly what it says, tagged `<model>-r<N>`, told to **commit each individual fix as it lands** (message identifying the finding it closes — see "Commit per fix" in [`review-prompt-template.md`](review-prompt-template.md)) but **never push**. It writes two deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and `<module>-review-<tag>-fixer-report.md`.
+2. **Spawn.** One fresh `subagent_type: crucible-reviewer-<effort>` Agent (the operator's pick this round) with a `model:` override, told **only** to read the prompt file and do exactly what it says, tagged `<model>-<effort>-r<N>`, told to **commit each individual fix as it lands** (message identifying the finding it closes — see "Commit per fix" in [`review-prompt-template.md`](review-prompt-template.md)) but **never push**. It writes two deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and `<module>-review-<tag>-fixer-report.md`.
 3. **Verify — the part that actually catches residuals.** See the protocol below. The round's own verdict is **never** the gate: in the reed campaign rounds 3, 4, and 5 each self-reported "merge-ready" and each left a residual the orchestrator's independent verification caught.
-4. **Re-seed + rotate.** The round's fixes are already committed one-by-one (per-fix commits, not a single wrap-up commit from the orchestrator — see below). Re-seed the prompt with whatever verification found. Spawn the next round with a **different** model.
+4. **Re-seed + rotate.** The round's fixes are already committed one-by-one (per-fix commits, not a single wrap-up commit from the orchestrator — see below). Re-seed the prompt with whatever verification found. Spawn the next round with a **different** model and/or effort tier.
 
 ### Why commit per fix, not one commit for the whole round
 
@@ -48,6 +48,10 @@ A round agent's session can be killed by something entirely outside the method's
 ### Why rotate the model
 
 Different models miss different things and fixate on different risks. Rotating Opus / Fable / Sonnet across rounds is a cheap diversity lens: a bug one model reads past, another trips over. Convergence across *different* models is far stronger evidence than N passes from one.
+
+### The effort axis
+
+Reasoning effort is a second, independent knob a round agent's `subagent_type: crucible-reviewer-<effort>` spawn selects, alongside — not instead of — the model rotation above: the operator picks both per round. See `orchestrator-prompt.md`'s "Model + effort selection" section (including its enumeration of the shipped tier names) for the rationale and the full tier list; it is not repeated here.
 
 ### Why independent verification is non-negotiable
 
@@ -103,19 +107,19 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
 
 1. Copy [`review-prompt-template.md`](review-prompt-template.md) to `crucible/<module>-review-prompt.md` and fill every `<PLACEHOLDER>` (what to read, the high-yield focus list = where *this* module's bugs actually live, the exact test commands, the substrate-teardown check).
 2. Confirm the module already satisfies `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant (a `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`). That invariant is pre-existing and independent of this method — do NOT build a new dedicated suite file or launcher just to satisfy this hardening loop; the round agent drives the real CLI directly (see "Driving the real substrate" above) whether or not a dedicated suite file exists.
-3. Run the loop: seed → spawn (rotate model) → independently verify → re-seed → repeat until a safety pass finds nothing and your gates agree. Then do any operator-assisted step the harness can't reach headlessly (for reed: the visual `attach` test in a real TTY), and merge.
+3. Run the loop: seed → spawn (rotate model + effort) → independently verify → re-seed → repeat until a safety pass finds nothing and your gates agree. Then do any operator-assisted step the harness can't reach headlessly (for reed: the visual `attach` test in a real TTY), and merge.
 
 ## Worked example — the reed campaign (the evidence this works)
 
 Seven serial rounds, models rotated, one bug class chipped down each round; failure severity degraded monotonically until it hit zero:
 
-| Round | Model | What it closed |
-|------:|-------|----------------|
-| R3 | Opus  | `down` reap of pane children (left `remove`/churn leaking) |
-| R4 | Fable | shared `descendantClosurePIDs`/`reapPaneChildren` seam for `down`+`remove`; dash-leading cmd escape; anchor validation (residual under concurrency) |
-| R5 | Opus  | traced the real hub holder via PEB cwd; closed the tmux-**server** leak with saturation-tolerant deadlines (residual = pure timeout-under-saturation) |
-| R6 | Fable | **F1** zero-pane zombie (empty-layout apply destroyed every pane) + **F11** positional select-layout reaping a tracked pane — two *new product* bugs prior rounds missed; plus hardening (F5/F6) and harness (F2/F3/F4) |
-| R7 | Opus  | safety pass — **no new defects**; independently confirmed merge-ready |
+| Round | Model | Effort | What it closed |
+|------:|-------|--------|----------------|
+| R3 | Opus  | n/a | `down` reap of pane children (left `remove`/churn leaking) |
+| R4 | Fable | n/a | shared `descendantClosurePIDs`/`reapPaneChildren` seam for `down`+`remove`; dash-leading cmd escape; anchor validation (residual under concurrency) |
+| R5 | Opus  | n/a | traced the real hub holder via PEB cwd; closed the tmux-**server** leak with saturation-tolerant deadlines (residual = pure timeout-under-saturation) |
+| R6 | Fable | n/a | **F1** zero-pane zombie (empty-layout apply destroyed every pane) + **F11** positional select-layout reaping a tracked pane — two *new product* bugs prior rounds missed; plus hardening (F5/F6) and harness (F2/F3/F4) |
+| R7 | Opus  | n/a | safety pass — **no new defects**; independently confirmed merge-ready |
 
 R3, R4, and R5 each self-reported "merge-ready" and each was wrong — the orchestrator's independent verification is what caught every residual. R6 was the first round to survive verification; R7 (a belt-and-suspenders safety pass) and the orchestrator's gates *and* a live operator-assisted `attach` test all agreed: clean. That convergence — round verdict + independent gates + live operator sign-off, across rotated models — is the bar this method is built to reach.
 
