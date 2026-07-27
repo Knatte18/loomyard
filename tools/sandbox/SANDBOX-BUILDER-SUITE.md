@@ -149,7 +149,7 @@ landed as its own commit with the `NN.C: <what>` subject convention. `lyx builde
 after completion shows both batches `done`/`tests: green`. Confirm the three weft-commit
 points actually fired (not just the exit-time backstop): `state.json` was committed at each
 `spawn-batch`, the batch report was committed at each terminal `poll` classification, per
-`docs/reference/builder-contract.md`'s "three weft-commit points". Afterward, both batches' panes/run
+`docs/reference/builder-contract.md`'s "three weft-commit points". In the weft worktree's `git log --oneline`, each weft commit's subject is exactly its `builder: <label>` stem — the `Warp-SHA:` trailer sits in its own blank-line-separated paragraph, never joined into the subject line (a joined subject is the round-fable-r1 trailer regression). Afterward, both batches' panes/run
 dirs are cleaned up (no leftover pane, `lyx reed status` no longer lists either guid).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
