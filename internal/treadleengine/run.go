@@ -260,17 +260,6 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		}
 
 		if outcome.Verdict == VerdictBlocking {
-			// The judge reasons over the full REVIEW history including this
-			// round's own fresh review — and only reviews: unlike the
-			// round-attempt hydration in priorReviews, failed gate-command
-			// output files are deliberately excluded, since the judge's
-			// material is blocking findings recurring across review files
-			// (doc.go's verdict-judge contract), and a gate transcript has
-			// no findings to compare. judgeReadSet bounds this list to
-			// {latest valid handoff + reviews it has not absorbed}
-			// instead of every prior review — see handoff.go.
-			judgeReviews, prevHandoffPath := judgeReadSet(st.Rounds, outcome.ReviewPath)
-
 			// The circling check never runs on the round immediately after an
 			// APPROVED round (reachable in command/both gate modes, where an
 			// APPROVED round with a failing command does not converge): the
@@ -282,8 +271,24 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			prevRoundApproved := len(st.Rounds) > 0 &&
 				st.Rounds[len(st.Rounds)-1].Verdict == string(VerdictApproved)
 
+			// The read-set is computed INSIDE each judge branch, not before
+			// the switch: judgeReadSet walks recorded handoff files on disk
+			// (latestValidHandoff reads and parses them), and a judge-skipped
+			// blocking round — round 1, or the round right after an APPROVED
+			// round — must not pay that I/O or emit its corrupt-handoff Warns
+			// for a judge call that never happens. The judge reasons over the
+			// REVIEW history including this round's own fresh review — and
+			// only reviews: unlike the round-attempt hydration in
+			// priorReviews, failed gate-command output files are deliberately
+			// excluded, since the judge's material is blocking findings
+			// recurring across review files (doc.go's verdict-judge
+			// contract), and a gate transcript has no findings to compare.
+			// judgeReadSet bounds this list to {latest valid handoff +
+			// reviews it has not absorbed} instead of every prior review —
+			// see handoff.go.
 			switch {
 			case isMilestoneRung(caps, round):
+				judgeReviews, prevHandoffPath := judgeReadSet(st.Rounds, outcome.ReviewPath)
 				// The milestone gate REPLACES the circling check for this
 				// round — a rung round issues exactly one judge call.
 				jv, _, judgeOK := runMilestone(e.shuttle, e.name, judgeInputs{
@@ -320,6 +325,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 				}
 				// JudgeContinue / JudgeUncertain: fall through and loop.
 			case round >= 2 && !prevRoundApproved:
+				judgeReviews, prevHandoffPath := judgeReadSet(st.Rounds, outcome.ReviewPath)
 				jv, _, judgeOK := runCircling(e.shuttle, e.name, judgeInputs{
 					Round:               round,
 					PriorReviews:        judgeReviews,
