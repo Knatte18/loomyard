@@ -1,11 +1,13 @@
 // weftgit.go — the weft-git content-sync verbs on Fabric: StatusWeft,
 // CommitWeft, PushWeft, PullWeft, plus the package-level PushWeftAt for the
 // detached-push child. CommitWeft's commit carries a Warp-SHA trailer and
-// records the correspondence immediately.
+// records the correspondence immediately — except on an unborn warp HEAD
+// (see warpHeadSHA), where both are skipped for that one commit.
 
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -165,19 +167,42 @@ func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
 	return result, nil
 }
 
+// warpHeadSHA returns the warp repo's current HEAD SHA. On a host repo with
+// zero commits (a fresh `git init` -> `lyx init` -> `lyx config` first-run
+// path, before the operator's first host commit), it reports unborn=true
+// (sha="", err=nil) instead of propagating gitrepo.ErrNoCommits as a hard
+// failure: pre-cutover, weftengine.Commit never touched the host repo and
+// succeeded on exactly this path, and CommitWeft must not regress it just
+// because it now reads warp HEAD for the Warp-SHA trailer. Any other
+// CurrentSHA failure still propagates as a genuine error.
+func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
+	sha, err = f.Warp.CurrentSHA()
+	if err == nil {
+		return sha, false, nil
+	}
+	if errors.Is(err, gitrepo.ErrNoCommits) {
+		return "", true, nil
+	}
+	return "", false, err
+}
+
 // CommitWeft stages pathspec-scoped changes in the weft worktree and commits
-// them with a Warp-SHA trailer naming the warp repo's current HEAD, under
-// the fabric-layer write lock. Staging always goes through
+// them, under the fabric-layer write lock. Staging always goes through
 // f.Weft.StageAndCommit's explicit pathspec list — CommitWeft never calls
-// StageAllAndCommit, per gitrepo's doc.go consumer rules. On a real commit,
+// StageAllAndCommit, per gitrepo's doc.go consumer rules. When the warp repo
+// already has a HEAD, the commit carries a Warp-SHA trailer naming it, and
 // RecordCorrespondence is called immediately with the (pre-push) new weft
 // SHA: this is the detached CLI push path's pre-push record, which
 // self-corrects at lookup time if a later rebase-recovered push rewrites the
-// SHA out from under it. Returns ("", false, nil) when opts.SkipGit is true,
-// nothing was staged, or pathspec has already been fully removed from both
-// the working tree and the index by a prior commit — CommitWeft tolerates
-// git's "did not match any files" pathspec failure, which the shared
-// gitrepo.StageAndCommit primitive does not special-case on its own.
+// SHA out from under it. When the warp repo has no commits yet (see
+// warpHeadSHA), the commit lands with no trailer and no correspondence
+// record — there is no warp SHA yet to name — and normal trailer/record
+// behavior resumes on the first CommitWeft call after warp's first commit.
+// Returns ("", false, nil) when opts.SkipGit is true, nothing was staged, or
+// pathspec has already been fully removed from both the working tree and
+// the index by a prior commit — CommitWeft tolerates git's "did not match
+// any files" pathspec failure, which the shared gitrepo.StageAndCommit
+// primitive does not special-case on its own.
 func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
@@ -193,12 +218,17 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 	}
 	defer func() { _ = l.Release() }()
 
-	warpSHA, err := f.Warp.CurrentSHA()
+	warpSHA, unborn, err := f.warpHeadSHA()
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: warp CurrentSHA: %w", err)
 	}
 
-	sha, committed, err = f.Weft.StageAndCommit(appendWarpSHATrailer(message, warpSHA), pathspec)
+	commitMessage := message
+	if !unborn {
+		commitMessage = appendWarpSHATrailer(message, warpSHA)
+	}
+
+	sha, committed, err = f.Weft.StageAndCommit(commitMessage, pathspec)
 	if err != nil {
 		// gitrepo.StageAndCommit's `git add --` does not tolerate a pathspec
 		// that no longer matches anything at all, on disk or in the index.
@@ -211,6 +241,9 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 	}
 	if !committed {
 		return "", false, nil
+	}
+	if unborn {
+		return sha, true, nil
 	}
 
 	// The commit already exists on disk at this point; a RecordCorrespondence

@@ -41,7 +41,9 @@ type SyncResult struct {
 // never disagree with the index entry recorded beside it. Synchronous by
 // design — this is the path a caller willing to wait on a real push uses;
 // the detached CLI path (a later batch) uses CommitWeft plus a spawned
-// PushWeftAt instead.
+// PushWeftAt instead. On an unborn warp HEAD (see warpHeadSHA), the result's
+// WarpSHA is left empty and no correspondence is recorded, matching
+// CommitWeft's own trailer-less commit for that one call.
 func (f *Fabric) SyncWeft(message string, pathspec []string, opts SyncOptions) (SyncResult, error) {
 	sha, committed, err := f.CommitWeft(pathspec, message, opts)
 	if err != nil {
@@ -51,7 +53,21 @@ func (f *Fabric) SyncWeft(message string, pathspec []string, opts SyncOptions) (
 		return SyncResult{Committed: false}, nil
 	}
 
+	// Re-derive unborn independently of the commit just made, rather than
+	// inferring it from trailer absence: warpSHAFromTrailer's missing-trailer
+	// error stays a hard invariant-violation signal for every OTHER cause (a
+	// real trailer-writing bug), and this is the one call site allowed to
+	// bypass it, precisely because it re-confirms the unborn condition
+	// itself instead of trusting an absent trailer to mean it.
+	_, unborn, err := f.warpHeadSHA()
+	if err != nil {
+		return SyncResult{}, err
+	}
+
 	if opts.SkipGit || opts.SkipPush {
+		if unborn {
+			return SyncResult{Committed: true, Pushed: false, WeftSHA: sha}, nil
+		}
 		warpSHA, err := f.warpSHAFromTrailer(sha)
 		if err != nil {
 			return SyncResult{}, err
@@ -69,6 +85,10 @@ func (f *Fabric) SyncWeft(message string, pathspec []string, opts SyncOptions) (
 	postPushSHA, err := f.Weft.CurrentSHA()
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("fabricengine: weft CurrentSHA after push: %w", err)
+	}
+
+	if unborn {
+		return SyncResult{Committed: true, Pushed: true, WeftSHA: postPushSHA}, nil
 	}
 
 	// The warp SHA comes from the pushed commit's own trailer (a rebase
