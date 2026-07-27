@@ -18,15 +18,15 @@ Through Millhouse, LoomYard builds on ideas from three projects:
 
 Three names for three layers, deliberately non-overlapping:
 
-- **`lyx`** — the binary/CLI (**L**oom**Y**ard e**X**ecutable): one binary with a namespaced subcommand tree (`lyx board`, `lyx weft`, `lyx warp`, …).
-- **`loom`** — the orchestrator *module* (`lyx loom run`), a domain like `board` or `weft` that drives a phased run.
+- **`lyx`** — the binary/CLI (**L**oom**Y**ard e**X**ecutable): one binary with a namespaced subcommand tree (`lyx board`, `lyx fabric`, `lyx builder`, …).
+- **`loom`** — the orchestrator *module* (`lyx loom run`), a domain like `board` or `fabric` that drives a phased run.
 - **`ly`** — the skill / orchestration plugin; skills are `/ly-*`.
 
 Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
 
 ## Design principles
 
-1. **Toolkit-first.** Build small, composable primitives (board, warp, weft, reed) before the orchestrator that ties them together.
+1. **Toolkit-first.** Build small, composable primitives (board, fabric, reed) before the orchestrator that ties them together.
 2. **One-shot, daemonless, file-coordinated.** A command does its work, writes JSON to stdout, and exits. Concurrent processes cooperate through files and locks, not a server.
 3. **cwd-authoritative.** Config and state resolve from the current working directory, which need not equal the git-repo root.
 4. **Correctness by tool design, not by recall.** A `lyx` command makes the correct path the path of least resistance and makes drift *detectable*, rather than relying on an operator or agent to remember a rule.
@@ -58,8 +58,7 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **init** — scaffolds `_lyx/` and reconciles every module's config against its template (idempotent; never clobbers existing values).
 - **board** — the task-tracker board.
 - **config** — view/edit module configs; `lyx config reconcile` reconciles all configs against their templates; `lyx config <module> --set key=value` writes values non-interactively.
-- **weft** — owns all git into the paired weft repo (`status|commit|push|pull|sync`).
-- **warp** — the host↔weft git topology owner: clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup.
+- **fabric** — the sole host↔weft git-coordination module, unifying topology (clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup) and weft content-sync (`status|commit|push|pull|sync`) in one command tree.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
 - **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the
   proof-of-concept it was built from — `muxpoc` proved the risky parts, then was
