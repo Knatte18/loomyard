@@ -29,7 +29,11 @@ import (
 // the last in-flight batch). Extracted from weftCommit so the exclusion set is
 // asserted directly by a unit test rather than only implicitly through a live
 // commit. The pause-flag pattern uses a trailing "*/builder/<flag>" glob so it
-// matches whether or not layout.RelPath prefixes the _lyx path.
+// matches whether or not layout.RelPath prefixes the _lyx path. The
+// ":(exclude)" entries are git pathspec magic, carried by fabricengine's
+// CommitWeft pathspec parameter end-to-end through add, the staged-diff
+// check, and the pathspec-scoped commit -- gitrepo's "plain relative paths"
+// rule governs its own direct consumers, not CommitWeft callers.
 func builderWeftPathspec(layout *hubgeometry.Layout) []string {
 	return append(
 		fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),

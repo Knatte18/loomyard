@@ -38,7 +38,11 @@ import (
 // weftCommit so the exclusion set is asserted directly by a unit test rather
 // than only implicitly through a live commit. The pause-flag and prompts
 // patterns use a trailing "*/webster/..." glob so they match whether or not
-// layout.RelPath prefixes the _lyx path.
+// layout.RelPath prefixes the _lyx path. The ":(exclude)" entries are git
+// pathspec magic, carried by fabricengine's CommitWeft pathspec parameter
+// end-to-end through add, the staged-diff check, and the pathspec-scoped
+// commit -- gitrepo's "plain relative paths" rule governs its own direct
+// consumers, not CommitWeft callers.
 func websterWeftPathspec(layout *hubgeometry.Layout) []string {
 	return append(
 		fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
