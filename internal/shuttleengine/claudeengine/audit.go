@@ -113,7 +113,7 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 // not import test code, so this ~6-line encoding loop is re-implemented here
 // rather than shared with that test helper.
 func claudeProjectDirFor(workdir string) (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := claudeHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("claudeengine: resolve home dir: %w", err)
 	}
@@ -126,6 +126,24 @@ func claudeProjectDirFor(workdir string) (string, error) {
 		}
 	}
 	return filepath.Join(home, ".claude", "projects", string(encoded)), nil
+}
+
+// claudeHomeDir resolves the home directory Claude Code itself uses for
+// ~/.claude/projects/, honoring an explicit HOME override before falling back
+// to the platform-correct os.UserHomeDir(). Claude Code (like most POSIX
+// tooling) always honors HOME when set, on every OS it runs on — including
+// Windows, where stdlib os.UserHomeDir() reads USERPROFILE instead and never
+// consults HOME at all. Checking HOME first, unconditionally, keeps this
+// resolution correct for a caller that has deliberately overridden it
+// (t.Setenv("HOME", ...) is this package's own test suite's standard,
+// portable way to sandbox filesystem interactions) on every host OS, while a
+// normal run with no HOME override still falls through to the real
+// platform-specific home directory exactly as before.
+func claudeHomeDir() (string, error) {
+	if home := os.Getenv("HOME"); home != "" {
+		return home, nil
+	}
+	return os.UserHomeDir()
 }
 
 // transcriptBlock is one entry of a transcript message's content array: a
