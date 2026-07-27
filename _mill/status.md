@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: crucible-effort-agent-profiles
 branch: crucible-effort-agent-profiles
-plan: null
+plan: _mill/plan
 parent: main
 task: Crucible review spawn as effort-selectable Agent profiles
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-27T10:50:40Z'
 discussed  '2026-07-27T12:18:27Z'
+planning  '2026-07-27T12:21:39Z'
 ```
