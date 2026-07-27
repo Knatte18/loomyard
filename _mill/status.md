@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: crucible-effort-agent-profiles
 branch: crucible-effort-agent-profiles
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-27T10:50:40Z'
+discussed  '2026-07-27T12:18:27Z'
 ```
