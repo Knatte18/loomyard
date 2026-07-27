@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-effort-profiles-and-crucible-rewiring
+phase: holistic-reviewing
 slug: crucible-effort-agent-profiles
 branch: crucible-effort-agent-profiles
 plan: _mill/plan
@@ -21,6 +21,7 @@ plan-fix-r1  '2026-07-27T12:25:22Z'
 planned  '2026-07-27T12:25:51Z'
 implementing  '2026-07-27T12:42:02Z'
 approved-effort-profiles-and-crucible-rewiring  '2026-07-27T12:54:32Z'
+holistic-reviewing  '2026-07-27T12:54:59Z'
 ```
 
 ## Batches
