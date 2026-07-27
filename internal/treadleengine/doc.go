@@ -95,16 +95,28 @@
 // # Name-parameterized diagnostics
 //
 // Engine is constructed with a name (perch passes "perch") that every error
-// and Warn string this package produces is prefixed with, so a caller's
-// diagnostics read exactly like perch's own literal "perch: "-prefixed
-// messages today, and a future caller (e.g. "tenter") gets its own
+// and Warn string reached through an Engine method is prefixed with, so a
+// caller's diagnostics read exactly like perch's own literal "perch: "
+// -prefixed messages today, and a future caller (e.g. "tenter") gets its own
 // consistently-prefixed diagnostics for free rather than a generic
-// "treadle: " label that would erase which caller's block failed. The
-// name parameterization pins the PREFIX only: error BODIES are
-// runner-agnostic by design ("round N attempt run", "kept run dir"),
-// since this package cannot name a specific runner's domain (burler,
-// shuttle) without violating the Runner-Seam Invariant — see
+// "treadle: " label that would erase which caller's block failed. That
+// covers every Warn this package emits without exception — including the
+// fail-safe handoff-fallback Warns in latestValidHandoff, which reach an
+// operator's stderr at logger's default threshold during an ordinary run and
+// so must never wear a module name the operator has no CLI for.
+//
+// Two carve-outs, both deliberate. First, the name parameterization pins the
+// PREFIX only: error BODIES are runner-agnostic by design ("round N attempt
+// run", "kept run dir"), since this package cannot name a specific runner's
+// domain (burler, shuttle) without violating the Runner-Seam Invariant — see
 // internal/perchengine's package doc for the perch-visible consequence.
+// Second, the package's EXPORTED fail-loud parsers — ParseJudgeVerdict,
+// ParseTriageVerdict, ParseHandoff, and the splitFrontmatter they share —
+// are package-level pure functions with no Engine in scope, so their errors
+// keep a fixed "treadle: " prefix. Those strings are never returned to a
+// caller as an engine error; they surface only as the cause= field of a
+// name-prefixed Warn (judge.go, run.go) or to a direct caller such as a
+// test, where "treadle: " is the accurate attribution.
 //
 // # No burlerengine import — the Treadle Runner-Seam Invariant
 //

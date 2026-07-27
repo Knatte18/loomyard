@@ -294,13 +294,22 @@
 // treadleengine's RoundRunner seam (adapter.go), and delegates to
 // treadleengine.Engine.Run (engine.go) — every invariant documented above
 // still holds exactly as described; only where the code lives has changed.
-// perch's own exported Go API is unchanged. One deliberate diagnostics
-// delta: hard round errors keep their "perch: " prefix but their BODY text
-// is now runner-agnostic — "round N attempt run: ..." instead of the old
-// "round N burler run: ...", and "kept run dir" instead of "kept shuttle
-// run dir" — because treadleengine cannot name burler or shuttle without
-// violating the Treadle Runner-Seam Invariant. No caller matches on these
-// bodies (ErrBlockBusy is the only sentinel), so the change is cosmetic.
+//
+// Two deliberate diagnostics deltas, both cosmetic and both recorded here so
+// a later reader does not mistake them for drift. First, hard round errors
+// keep their "perch: " prefix but their BODY text is now runner-agnostic —
+// "round N attempt run: ..." instead of the old "round N burler run: ...",
+// and "kept run dir" instead of "kept shuttle run dir" — because
+// treadleengine cannot name burler or shuttle without violating the Treadle
+// Runner-Seam Invariant. No caller matches on these bodies (ErrBlockBusy is
+// the only sentinel). Second, treadleengine's EXPORTED fail-loud parsers
+// (ParseJudgeVerdict, ParseTriageVerdict, ParseHandoff) are package-level
+// functions with no engine in scope and keep a fixed "treadle: " prefix
+// where perch's own parsers said "perch: ". Those strings never reach a
+// caller as an engine error — a perch operator sees them only as the cause=
+// field of a "perch: "-prefixed fail-safe Warn.
+//
+// perch's own exported Go API is unchanged.
 //
 // One treadleengine capability this package deliberately does not exercise:
 // pre-round targeting (treadleengine.Profile.PreRoundTargeting). It exists
