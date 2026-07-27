@@ -2,8 +2,7 @@
 
 ## Overview
 
-> **Just want to run it?** See the operator runbook: [sandbox-howto.md](sandbox-howto.md)
-> (deploy → clone Hub → run suite). This document is the reference for topology and design.
+> **Just want to run it?** See the operator runbook: [sandbox-howto.md](sandbox-howto.md) (deploy → clone Hub → run suite). This document is the reference for topology and design.
 
 The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the resolved `lyx` binary under test — the dev binary deployed via `deploy-dev` into the derived `.dev-bin` directory when present, else the production binary on PATH deployed via `deploy.cmd` — testing the real command surface, JSON output, and topology wiring that users encounter. Its purpose is **dogfooding** — running lyx against itself to catch regressions early.
 
@@ -77,14 +76,12 @@ The `-reset` flag:
 
 ## Running the Suite Agent
 
-Once the Hub is built, the `suite` subcommand runs an automated black-box test session
-against the resolved `lyx.exe` under test.
+Once the Hub is built, the `suite` subcommand runs an automated black-box test session against the resolved `lyx.exe` under test.
 
 ### Prerequisites
 
 - Hub already built (`sandbox-build.cmd`).
-- `lyx` resolvable: dev binary in `.dev-bin` (deployed via `deploy-dev`), or, as a
-  fallback, on PATH (deployed via `deploy.cmd`).
+- `lyx` resolvable: dev binary in `.dev-bin` (deployed via `deploy-dev`), or, as a fallback, on PATH (deployed via `deploy.cmd`).
 
 ### Usage
 
@@ -95,25 +92,12 @@ sandbox-core-suite.cmd
 This command, run from the lyx repo directory:
 
 1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
-2. Resolves the `lyx` binary under test (derived `.dev-bin/lyx` first, else PATH as a
-   fallback) and fingerprints it (absolute path, size, modtime, SHA256 prefix, and a
-   `Source: dev`/`Source: prod` marker recording which one was picked).
-3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub host repo, prepending the fingerprint
-   block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`). Any previous copy
-   is overwritten so every session starts from a clean slate.
-4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the
-   copied file does not show up as an untracked change inside the host repo.
-5. Launches an interactive `claude --dangerously-skip-permissions` session with the
-   host repo as the working directory and a single instruction:
-   `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
+2. Resolves the `lyx` binary under test (derived `.dev-bin/lyx` first, else PATH as a fallback) and fingerprints it (absolute path, size, modtime, SHA256 prefix, and a `Source: dev`/`Source: prod` marker recording which one was picked).
+3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub host repo, prepending the fingerprint block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`). Any previous copy is overwritten so every session starts from a clean slate.
+4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the copied file does not show up as an untracked change inside the host repo.
+5. Launches an interactive `claude --dangerously-skip-permissions` session with the host repo as the working directory and a single instruction: `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
 
-The agent works entirely as a black box: it sees only `lyx` on PATH and the copied
-scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are
-written to `sandbox-report.json` in the host repo. The suite subcommand only launches
-the agent — it does **not** fetch the report. An interactive `claude` session never
-self-terminates and its manual exit gives a non-zero code, so gating a fetch on a
-clean exit would never fire. Collecting the report is a separate operator step
-(`fetch`, below).
+The agent works entirely as a black box: it sees only `lyx` on PATH and the copied scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are written to `sandbox-report.json` in the host repo. The suite subcommand only launches the agent — it does **not** fetch the report. An interactive `claude` session never self-terminates and its manual exit gives a non-zero code, so gating a fetch on a clean exit would never fire. Collecting the report is a separate operator step (`fetch`, below).
 
 ### Optional flags
 
@@ -124,15 +108,11 @@ sandbox-core-suite.cmd -prompt <text>   # override the instruction string (defau
 
 ### Exit-code note
 
-The suite treats any exit code from the interactive `claude` session as normal — a
-manual exit is expected — so `runSuite` always returns success and prints a reminder
-to run `sandbox-fetch.cmd`. The claude session's precise exit code is not
-otherwise acted upon.
+The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox-fetch.cmd`. The claude session's precise exit code is not otherwise acted upon.
 
 ## Fetching the report
 
-After the suite session ends, collect the agent-written report into this repo's
-`.scratch/`:
+After the suite session ends, collect the agent-written report into this repo's `.scratch/`:
 
 ```cmd
 sandbox-fetch.cmd
@@ -141,46 +121,24 @@ sandbox-fetch.cmd
 This command:
 
 1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
-2. Re-fingerprints the `lyx.exe` currently on PATH (for the normal run-then-fetch flow
-   this is the same binary the suite fingerprinted).
-3. Reads `sandbox-report.json` from the host repo, validates it against the shared
-   sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes
-   a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
+2. Re-fingerprints the `lyx.exe` currently on PATH (for the normal run-then-fetch flow this is the same binary the suite fingerprinted).
+3. Reads `sandbox-report.json` from the host repo, validates it against the shared sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
 
-On success it prints the fetched path and, when there are findings, the exact
-`/mill-report-to-tasks "<path>"` triage command to run next (nothing is written to
-the wiki until you approve); a clean run says so and points at nothing.
+On success it prints the fetched path and, when there are findings, the exact `/mill-report-to-tasks "<path>"` triage command to run next (nothing is written to the wiki until you approve); a clean run says so and points at nothing.
 
-If the agent produced no report, `fetch` fails with a distinct "not found"
-error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage".
-Only `sandbox-fetch.cmd` passes `-loomyard` (as `"%~dp0."`, the loomyard repo
-root); it is required only by this subcommand.
+If the agent produced no report, `fetch` fails with a distinct "not found" error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage". Only `sandbox-fetch.cmd` passes `-loomyard` (as `"%~dp0."`, the loomyard repo root); it is required only by this subcommand.
 
 ### Future: tmux launch
 
-The direct `claude` launch used today will be replaced by a tmux interactive session
-once the `reed` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the
-agent) is unchanged; only the launch mechanism will differ.
+The direct `claude` launch used today will be replaced by a tmux interactive session once the `reed` module is available. The file contract (`SANDBOX-CORE-SUITE.md` driving the agent) is unchanged; only the launch mechanism will differ.
 
 ## Running the reed suite
 
-Alongside the main suite, `sandbox-reed-suite.cmd` runs a dedicated black-box suite
-against `lyx reed`. It mirrors the main-suite flow: it copies a fingerprinted
-`SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes the copy the same way
-`SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches
-the interactive agent there. Because it exercises live tmux panes (crash simulation,
-layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a
-precondition beyond what the main suite requires. Findings land in the same
-`sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a reed-suite
-report exactly as it collects a main-suite report — the two suites share one report
-pipeline, one run at a time.
+Alongside the main suite, `sandbox-reed-suite.cmd` runs a dedicated black-box suite against `lyx reed`. It mirrors the main-suite flow: it copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes the copy the same way `SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches the interactive agent there. Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a precondition beyond what the main suite requires. Findings land in the same `sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
 
 ## Launchers and subcommands
 
-The single Go tool (`tools/sandbox`) still dispatches four subcommands
-internally — `build` (default), `suite`, `reed-suite`, and `fetch` — but each is
-fronted by its own single-purpose launcher, mirroring how `deploy.cmd`/`deploy-dev.cmd`
-each do one thing:
+The single Go tool (`tools/sandbox`) still dispatches four subcommands internally — `build` (default), `suite`, `reed-suite`, and `fetch` — but each is fronted by its own single-purpose launcher, mirroring how `deploy.cmd`/`deploy-dev.cmd` each do one thing:
 
 ```cmd
 sandbox-build.cmd            # go run ./tools/sandbox -parent C:\Code build
@@ -190,8 +148,7 @@ sandbox-reed-suite.cmd       # ... reed-suite  (run the reed-specific interactiv
 sandbox-fetch.cmd            # ... -loomyard "%~dp0." fetch  (collect the report)
 ```
 
-`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so
-`sandbox-build.cmd -reset` forwards `%*` straight through to `... build -reset`.
+`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so `sandbox-build.cmd -reset` forwards `%*` straight through to `... build -reset`.
 
 ## Purpose: dogfooding lyx
 

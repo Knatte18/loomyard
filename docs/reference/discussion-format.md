@@ -1,46 +1,24 @@
 # Discussion format — the `discussion.md` ↔ Plan contract
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/discussion/` directory contract:
-> the artifact the Discussion phase produces and the Plan producer consumes. Durable
-> reference doc — kept, not deleted on landing — the loom analogue of
-> [plan-format.md](plan-format.md).
+> **Status: Contract — pinned.** This doc pins the `_lyx/discussion/` directory contract: the artifact the Discussion phase produces and the Plan producer consumes. Durable reference doc — kept, not deleted on landing — the loom analogue of [plan-format.md](plan-format.md).
 
 ## What it is, and who consumes it
 
-`_lyx/discussion/` is a **directory with two files**, a hard access boundary between
-what the Plan producer sees and what stays review-only:
+`_lyx/discussion/` is a **directory with two files**, a hard access boundary between what the Plan producer sees and what stays review-only:
 
-- **`decision-record.md`** — the distilled record. The Plan producer's **sole** input:
-  it never reads anything else out of `_lyx/discussion/`.
-- **`support-log.md`** — the raw support log. Read by the **Discussion-review gate**,
-  **never** by the Plan producer.
+- **`decision-record.md`** — the distilled record. The Plan producer's **sole** input: it never reads anything else out of `_lyx/discussion/`.
+- **`support-log.md`** — the raw support log. Read by the **Discussion-review gate**, **never** by the Plan producer.
 
-Two files, not two sections of one file, on purpose: this mirrors Builder's "distilled
-digest, never raw prose" rule (see [builder-contract.md](builder-contract.md)'s digest
-contract). A hard filesystem boundary is stronger than a convention about which section
-an agent is allowed to read — the Plan producer cannot accidentally ingest the raw
-interview transcript, or pay its token cost, because the file simply is not in its
-input set. Filenames are self-describing rather than terse, matching the existing
-`decision-record.md` / `support-log.md` naming.
+Two files, not two sections of one file, on purpose: this mirrors Builder's "distilled digest, never raw prose" rule (see [builder-contract.md](builder-contract.md)'s digest contract). A hard filesystem boundary is stronger than a convention about which section an agent is allowed to read — the Plan producer cannot accidentally ingest the raw interview transcript, or pay its token cost, because the file simply is not in its input set. Filenames are self-describing rather than terse, matching the existing `decision-record.md` / `support-log.md` naming.
 
-Both paths are durable **weft-overlay state**: they live under `_lyx/` (git-synced via
-weft), not `.lyx/`'s ephemeral machine-local state — that is what makes them survive a
-resume across machines. Their paths resolve via `internal/hubgeometry` once code lands;
-this doc describes the files, it does not construct the paths.
+Both paths are durable **weft-overlay state**: they live under `_lyx/` (git-synced via weft), not `.lyx/`'s ephemeral machine-local state — that is what makes them survive a resume across machines. Their paths resolve via `internal/hubgeometry` once code lands; this doc describes the files, it does not construct the paths.
 
 ## `decision-record.md` shape
 
 **No frontmatter.** Two fields plan-format needs are deliberately absent here:
 
-- **No `format:`** — see [status-schema.md](status-schema.md)'s
-  `no-schema-version`: at this scale a version stamp is a rarely-exercised guard that
-  goes stale; reintroduce only if a real incompatibility ever forces it.
-- **No `approved:`** — approval is recorded in `_lyx/status.json`'s `history`
-  (`{"phase": "discussion", "outcome": "approved", ...}`) — the status file is loom's
-  single total-status locus, so a lone `approved:` flag here would duplicate it. This
-  differs from `plan-format.md`, whose `approved:` exists because `lyx builder run` can
-  be invoked standalone, outside loom; loom always drives the Plan producer *after*
-  approval, so the record needs no standalone gate of its own.
+- **No `format:`** — see [status-schema.md](status-schema.md)'s `no-schema-version`: at this scale a version stamp is a rarely-exercised guard that goes stale; reintroduce only if a real incompatibility ever forces it.
+- **No `approved:`** — approval is recorded in `_lyx/status.json`'s `history` (`{"phase": "discussion", "outcome": "approved", ...}`) — the status file is loom's single total-status locus, so a lone `approved:` flag here would duplicate it. This differs from `plan-format.md`, whose `approved:` exists because `lyx builder run` can be invoked standalone, outside loom; loom always drives the Plan producer *after* approval, so the record needs no standalone gate of its own.
 
 Sections, in this order:
 
@@ -58,59 +36,35 @@ Plus an **optional, non-binding** subsection at the end:
 
 Compaction rules the Discussion producer follows when writing this file:
 
-- **Decisions carry Decision + Rationale only.** Rejected alternatives do **not**
-  appear here — they belong in `support-log.md`'s Rejected alternatives section. A
-  decision record that re-litigates what was *not* chosen is not distilled.
-- **Must-cover test scenarios go under Acceptance criteria**, not a standalone
-  "Testing" section — there is no separate Technical-context/Testing pair the way
-  millhouse's discussion template had one.
-- **No italic prose-coaching.** The rendered record is terse, structured prose for the
-  Plan producer to act on — not a template with meta-commentary about how to fill it
-  in.
-- **"Notes for the plan writer" is a non-exhaustive head-start, never a completeness
-  requirement.** The Plan producer explores the codebase itself, so a useful pointer,
-  helper, or gotcha may go here, but nothing downstream depends on this subsection being
-  present or complete.
+- **Decisions carry Decision + Rationale only.** Rejected alternatives do **not** appear here — they belong in `support-log.md`'s Rejected alternatives section. A decision record that re-litigates what was *not* chosen is not distilled.
+- **Must-cover test scenarios go under Acceptance criteria**, not a standalone "Testing" section — there is no separate Technical-context/Testing pair the way millhouse's discussion template had one.
+- **No italic prose-coaching.** The rendered record is terse, structured prose for the Plan producer to act on — not a template with meta-commentary about how to fill it in.
+- **"Notes for the plan writer" is a non-exhaustive head-start, never a completeness requirement.** The Plan producer explores the codebase itself, so a useful pointer, helper, or gotcha may go here, but nothing downstream depends on this subsection being present or complete.
 
 ## `support-log.md` shape
 
 Sections, in this order:
 
 1. **Interview** — turn-by-turn, distilled, not a verbatim transcript.
-2. **Rejected alternatives** — what was considered and not chosen, and why (the
-   detail intentionally excluded from `decision-record.md`).
-3. **Review rounds** — one entry per Discussion-review round: verdict, findings, how
-   each finding was resolved.
-4. **Question ledger** — the running list of open and resolved questions, including
-   which picks `--auto` mode made.
+2. **Rejected alternatives** — what was considered and not chosen, and why (the detail intentionally excluded from `decision-record.md`).
+3. **Review rounds** — one entry per Discussion-review round: verdict, findings, how each finding was resolved.
+4. **Question ledger** — the running list of open and resolved questions, including which picks `--auto` mode made.
 
-**Review rounds is the anti-circling store.** Its primary purpose: each new
-Discussion-review round reads it *before* raising findings, so successive reviewers do
-not re-raise a point an earlier round already settled. This is the same shape of
-problem `discussion-on-disk-split`'s record↔log boundary solves at the file level,
-applied within the log itself — round N's context includes round N−1's resolutions.
+**Review rounds is the anti-circling store.** Its primary purpose: each new Discussion-review round reads it *before* raising findings, so successive reviewers do not re-raise a point an earlier round already settled. This is the same shape of problem `discussion-on-disk-split`'s record↔log boundary solves at the file level, applied within the log itself — round N's context includes round N−1's resolutions.
 
-Who *writes* the Review-rounds ledger — the Discussion producer itself, or the perch
-discussion-review gate — is a later milestone-12 implementation detail, not pinned by
-this doc. What this doc pins is the contract: the ledger exists, its purpose is
-anti-circling, and its shape is verdict + findings + resolution per round.
+Who *writes* the Review-rounds ledger — the Discussion producer itself, or the perch discussion-review gate — is a later milestone-12 implementation detail, not pinned by this doc. What this doc pins is the contract: the ledger exists, its purpose is anti-circling, and its shape is verdict + findings + resolution per round.
 
 ## Validation checklist
 
 Spec for a future validator:
 
-- Both files exist under `_lyx/discussion/` (`decision-record.md` and
-  `support-log.md`).
-- `decision-record.md` has all seven required sections present (Goal, Scope,
-  Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria);
-  "Notes for the plan writer" is optional and its absence is not a violation.
-- The **Plan-never-reads-`support-log`** boundary holds: the Plan producer's declared
-  input set never names `support-log.md`.
+- Both files exist under `_lyx/discussion/` (`decision-record.md` and `support-log.md`).
+- `decision-record.md` has all seven required sections present (Goal, Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria); "Notes for the plan writer" is optional and its absence is not a violation.
+- The **Plan-never-reads-`support-log`** boundary holds: the Plan producer's declared input set never names `support-log.md`.
 
 ## Worked example
 
-A minimal `decision-record.md` for a fictional task ("add a `--json` flag to `lyx board
-list`"):
+A minimal `decision-record.md` for a fictional task ("add a `--json` flag to `lyx board list`"):
 
 ```markdown
 # Discussion: add --json to `lyx board list`
