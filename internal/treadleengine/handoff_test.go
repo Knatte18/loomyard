@@ -185,7 +185,7 @@ ledger:
 			name:      "missing frontmatter",
 			content:   "covers_rounds: [1]\n",
 			wantErr:   true,
-			errSubstr: "must open with a \"---\"",
+			errSubstr: "handoff file must open with a \"---\"",
 		},
 		{
 			name: "unclosed frontmatter",
@@ -193,7 +193,7 @@ ledger:
 covers_rounds: [1]
 `,
 			wantErr:   true,
-			errSubstr: "missing its closing",
+			errSubstr: "handoff file frontmatter is missing its closing",
 		},
 		{
 			name: "empty frontmatter",
@@ -201,7 +201,7 @@ covers_rounds: [1]
 ---
 `,
 			wantErr:   true,
-			errSubstr: "frontmatter is empty",
+			errSubstr: "handoff file frontmatter is empty",
 		},
 		{
 			name:       "crlf content",

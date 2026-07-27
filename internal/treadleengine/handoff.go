@@ -68,10 +68,13 @@ type handoffLedgerEntry struct {
 // delimiting YAML frontmatter (CRLF line endings are tolerated), exactly
 // like ParseJudgeVerdict; everything after the closing delimiter is the
 // unconstrained prose narrative. Every rule below is enforced fail-loud with
-// a "treadle: "-prefixed error — this function NEVER silently defaults, so a
-// self-contradictory or malformed handoff file is always visible as an
-// error to its caller (the round loop is the one that turns that error into
-// a fail-safe Warn + fallback read-set; see the file-level comment):
+// a "treadle: handoff file "-prefixed error — including the three shared
+// frontmatter rules, which name the handoff rather than a verdict because
+// splitFrontmatter takes the file kind as a parameter; this function NEVER
+// silently defaults, so a self-contradictory or malformed handoff file is
+// always visible as an error to its caller (the round loop is the one that
+// turns that error into a fail-safe Warn + fallback read-set; see the
+// file-level comment):
 //   - the frontmatter must be present, closed, and valid YAML;
 //   - covers_rounds must be a non-empty list of positive round numbers;
 //   - every ledger entry must have a non-empty key, a non-empty list of
@@ -79,7 +82,7 @@ type handoffLedgerEntry struct {
 //     (case-sensitive) — the ledger list itself MAY be empty (a first
 //     handoff has nothing yet to carry forward).
 func ParseHandoff(content []byte) (Handoff, error) {
-	header, err := splitFrontmatter(content)
+	header, err := splitFrontmatter(content, "handoff")
 	if err != nil {
 		return Handoff{}, err
 	}
