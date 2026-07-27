@@ -2,10 +2,10 @@
 // listing, the unknown-subcommand JSON envelope, the PersistentPreRunE
 // group-command guard, and the help-tree Short completeness check --
 // mirroring buildercli's own cli_test.go (internal/buildercli/cli_test.go).
-// It also covers the three spawn-free verbs (validate/status/pause) and
-// websterWeftPathspec's exclusion set directly, since none of those need a
-// live tmux/claude substrate or even a git repository beyond a plain
-// t.TempDir(). Every fixture here builds a *websterCLI literal directly,
+// It also covers the three spawn-free verbs (validate/status/pause),
+// websterWeftPathspec's exclusion set, and weftCommit's SkipGit-before-New
+// guard ordering directly, since none of those need a live tmux/claude
+// substrate or even a git repository beyond a plain t.TempDir(). Every fixture here builds a *websterCLI literal directly,
 // bypassing Command()'s PersistentPreRunE, the package-local injection
 // point buildercli's own tests establish. Every other verb's own behavior
 // (begin-batch, record-batch, recover-batch, run) is covered by
@@ -14,12 +14,14 @@ package webstercli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -174,6 +176,60 @@ func containsString(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree pins the guard ordering
+// weftCommit's own block comment documents: with WEFT_SKIP_GIT=1 the bypass
+// must short-circuit BEFORE fabricengine.New's stat-based path validation,
+// so the CI/test bypass never requires a weft worktree (or even the host
+// worktree) to exist on disk. A regression hoisting New above the guard
+// turns every bypassed CI run into an ErrMissingPath failure.
+func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	t.Setenv("WEFT_SKIP_PUSH", "")
+
+	// Neither the host worktree nor its -weft sibling exists on disk.
+	hub := t.TempDir()
+	layout := &hubgeometry.Layout{
+		Hub:          hub,
+		WorktreeRoot: filepath.Join(hub, "host"),
+		Cwd:          filepath.Join(hub, "host"),
+		RelPath:      ".",
+	}
+
+	committed, err := weftCommit(layout, "bypass probe")
+	if err != nil {
+		t.Fatalf("weftCommit() error = %v; want nil, the bypass must never touch the filesystem or git", err)
+	}
+	if committed {
+		t.Error("weftCommit() committed = true; want false in bypass mode")
+	}
+}
+
+// TestWeftCommit_NonBypassValidatesPairPaths proves the counterpart of the
+// bypass test above: without WEFT_SKIP_GIT, weftCommit constructs the
+// fabric handle and surfaces fabricengine's typed ErrMissingPath when the
+// pair is absent -- evidence New runs, and runs only in non-bypass mode.
+func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "")
+	t.Setenv("WEFT_SKIP_PUSH", "")
+
+	hub := t.TempDir()
+	layout := &hubgeometry.Layout{
+		Hub:          hub,
+		WorktreeRoot: filepath.Join(hub, "host"),
+		Cwd:          filepath.Join(hub, "host"),
+		RelPath:      ".",
+	}
+
+	committed, err := weftCommit(layout, "missing-pair probe")
+	if committed {
+		t.Error("weftCommit() committed = true; want false, no repo exists to commit to")
+	}
+	var missing *fabricengine.ErrMissingPath
+	if !errors.As(err, &missing) {
+		t.Fatalf("weftCommit() error = %v; want a *fabricengine.ErrMissingPath from New's stat validation", err)
+	}
 }
 
 // newTestCLI builds a minimal *websterCLI wired only with the fields
