@@ -14,6 +14,8 @@ Committed to, in this order, next.
 
 1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine (sequencing, resume, crash-recovery, pause), testable against fake phases before real producers are wired in, plus the `lyx loom run` entry point. Builds on `Shed` above. See [designs/loom.md](designs/loom.md).
 
+1. **`PATTERN.md` — loomyard's own machine-and-review-enforced invariants doc, gating dogfooding** — a from-scratch (not a port) equivalent of Millhouse's `CONSTRAINTS.md`. This is the prerequisite for switching loomyard's *own* development onto `loom` (dogfooding lyx with lyx): you cannot self-host development until lyx has its own enforceable invariants doc. Sequenced last in Planned — it depends on `loom` existing (the dogfooding target) and on `board`/weft being live (where it physically lives — see [designs/board-weft-storage.md](designs/board-weft-storage.md), which already lists `PATTERN.md` as weft content). Format: short two-line entries (constraint + pointer), full rule/rationale/enforcement detail in a linked per-topic doc. Millhouse's own `CONSTRAINTS.md` stays untouched for as long as Millhouse develops loomyard. Also subsumes the constraints-hiding half of Someday's `host-visibility` item (PATTERN-in-weft is already invisible to the host repo).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next. No build order is implied between these items.
@@ -42,7 +44,7 @@ Committed to eventually — will be done — but not scheduled next. No build or
 
 1. **Tenter + Hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving real tmux) in a sandbox repo, on-demand and post-loom, off the `shuttle → burler → perch → loom` spine. Concept still being figured out. `Tenter` is the review-loop (`Treadle` configured for behavior-review, `perch`'s direct sibling); `Hardener` is the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe-merge-back, the same lifecycle `loom` uses). Both stay Someday — neither is needed to get `loom` running, unlike the Planned `Treadle`/`Shed`/perch-rewrite work they build on once scheduled. See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
 
-1. **host-visibility: CLAUDE.local.md / CONSTRAINTS.md invisible in host's git history** — a `CONSTRAINTS.md`-equivalent directory via junction, and `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in host's own git history. See [designs/host-visibility.md](designs/host-visibility.md).
+1. **host-visibility: CLAUDE.local.md invisible in host's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in host's own git history. The `CONSTRAINTS.md`-equivalent half is **superseded by the Planned `PATTERN.md`** — it lives in `weft`, already invisible to the host repo, so no junction-to-hide-a-constraints-dir is needed; only `CLAUDE.local.md` remains. See [designs/host-visibility.md](designs/host-visibility.md).
 
 1. **reed daemon: foreign-pane self-heal** — extends the **reed: daemon → Slack relay** item. Today reed is one-shot, so an operator-split or stray "faux" pane is only reaped on the *next* reed verb; the daemon could reconcile on its own. Prefer event-driven tmux hooks (`after-split-window`/`window-layout-changed`) over polling; gate behind a policy that distinguishes a bug-induced faux pane from an operator's intentional scratch pane. Prerequisite: make the reap probe cheaper first (it currently spawns a fresh pwsh + full `Win32_Process` WMI enumeration per poll).
 
@@ -55,8 +57,6 @@ Committed to eventually — will be done — but not scheduled next. No build or
 1. **semantic-index** — semantic search over docstrings/comments (Enzyme-inspired: catalysts + embeddings + temporal decay), to find code by concept rather than literal keyword. The "deferred idea" `codeintel-redesign.md` already refers to. Genuinely speculative, not yet designed in depth. See [designs/semantic-index.md](designs/semantic-index.md).
 
 1. **self-report: two-tier friction capture** — loom's per-phase file-contract design means no single LLM session has full-run context the way Millhouse's self-report assumes. Splits into Go-detected structural anomalies (crash-resumes, stuck escalations, repeated review rounds — off loom's own status/history, no LLM needed) plus a narrow per-phase friction note any spawned agent may write about its own scoped task, aggregated by Go and fed to one dedicated reflection agent at natural end points (Finalize/stuck) — mirroring the `Raddle` pattern. See [designs/self-report.md](designs/self-report.md).
-
-1. **`PATTERN.md`** — a loomyard-owned equivalent of Millhouse's `CONSTRAINTS.md`, written from scratch (not a port) once loomyard starts dogfooding its own development onto `loom`. Format: short two-line entries (constraint + pointer), full rule/rationale/enforcement detail in a linked per-topic doc. Millhouse's own `CONSTRAINTS.md` stays untouched for as long as Millhouse develops loomyard.
 
 ## Done
 
