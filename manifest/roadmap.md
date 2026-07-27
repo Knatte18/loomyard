@@ -16,15 +16,6 @@ Committed to, in this order, next.
    (`fabric` shipped Done below, old warp/weft modules deleted). See
    [designs/board-weft-storage.md](designs/board-weft-storage.md).
 
-1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalizes `perch`'s
-   existing judge/gate/round-spawn/cap/pause/lock loop into a shared engine with a pluggable
-   round-runner (`burlerengine` for `perch`, a live-substrate agent for the Someday `Tenter`) and a
-   judge-maintained handoff (bounds `perch`'s own O(N) review-history growth too, not just a
-   `Tenter` need), then rewrites `perch` onto it in the same task (behavior/CLI unchanged from the
-   outside) — one task, not two, since `perch`'s own existing behavior is the differential test
-   that proves `Treadle` has everything `perch` needs. Renamed from the discussion-time placeholder
-   `gorch`. See [designs/treadle.md](designs/treadle.md).
-
 1. **Shed: shared outer phase-FSM, combined with the Finalize step** — generalizes the
    phase-sequencing engine `loom.md` already specifies (sequencing, resume, crash-recovery, pause,
    status-file contract) into a shared skeleton with two swappable slots (Preflight, producer),
@@ -36,8 +27,9 @@ Committed to, in this order, next.
    skeleton + Finalize end-to-end before any real producer (Discussion/Plan/Webster, or the Someday
    `Tenter`) needs to exist — the same "fake phases before real producers" approach `loom.md`
    already specifies for its own skeleton. Does not rewrite `loom.md`'s existing design — records
-   the shared-engine name and scope only. Independent of the `Treadle` item above — a different
-   engine, not blocked on it. See [designs/shed.md](designs/shed.md).
+   the shared-engine name and scope only. Independent of the landed `Treadle` engine (see the
+   `internal/treadleengine` package documentation) — a different engine, was never blocked on it.
+   See [designs/shed.md](designs/shed.md).
 
 1. **native clients: migrate `gitrepo` to `go-git` (ADOPT-PARTIAL) + `selfreportengine`'s internal
    `gh`-CLI transport to `go-github`** — executes the `git-native-library` spike's finding (read
@@ -247,6 +239,17 @@ between these items.
    (`deploy-dev`/`deploy-dev.cmd`) so review/sandbox tooling never overwrites the stable
    production binary with an in-progress test build. See CONSTRAINTS.md's Dev/Prod Binary
    Separation invariant.
+
+1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalized `perch`'s
+   existing judge/gate/round-spawn/cap/pause/lock loop into `internal/treadleengine`, a shared
+   engine with a pluggable `RoundRunner` seam (`internal/perchengine`'s burler adapter is the
+   reference consumer; a live-substrate agent for the Someday `Tenter` is a future second one) and
+   a judge-maintained handoff that bounds the progress judge's read-set — an efficiency fix to
+   `perch`'s own shipped behavior, not just a `Tenter` need. `perch` was rewritten onto it in the
+   same task, behavior/CLI unchanged from the outside: `internal/perchengine` is now the thin
+   configuration layer that resolves `perch.yaml`/profile data and adapts `burlerengine` onto
+   treadle's `RoundRunner` seam. Renamed from the discussion-time placeholder `gorch`. See the
+   `internal/treadleengine` package documentation.
 
 ## Maintenance
 

@@ -1,3 +1,2 @@
-judge_model: haiku  # model the ephemeral progress judge and the asking-triage call both default to; provider-vocabulary, not a fixed enum — a Gemini engine behind shuttle would take e.g. "flash" here with no perch change
-judge_effort: ""  # effort knob for the judge/triage calls; empty means "use the provider's own default effort", not a fixed value
+judge_model: haiku  # model-spec string for the ephemeral progress judge and the asking-triage call: an alias with an optional [effort=...] bracket (e.g. "sonnet[effort=high]"), or the escape form "<engine>:<model-id>[...]" for a model not in the registry. A bare alias picks up its default effort from models.yaml; effort is the only bracket param perch accepts. See docs/reference/model-spec.md for the full grammar.
 round_caps: [5, 8, 10]  # engine-wide default milestone cap ladder: strictly increasing, the last entry is the hard cap a round loop can never exceed; a profile's own round-caps key overrides this per phase

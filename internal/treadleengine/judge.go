@@ -1,0 +1,225 @@
+// judge.go implements treadle's two ephemeral LLM utility calls — the
+// progress judge (per-round circling check, milestone continuation gate)
+// and the asking-triage call — as fail-safe spawns over a package-local
+// Shuttle seam, mirroring burlerengine.Engine's Shuttle pattern. Unlike a
+// round-runner attempt, none of the three calls here ever returns an error:
+// any infrastructure failure degrades to the safe default and logs a
+// logger.Warn, per perch's original error-and-fail-safe-posture decision
+// (03-judge-triage.md) — a false STUCK is the costly failure mode, not a
+// few extra bounded rounds. Every Warn label is prefixed with the calling
+// engine's name (threaded in as name), mirroring perch's own literal
+// "perch: " prefix today (the name-parameterized-diagnostics shared
+// decision).
+
+package treadleengine
+
+import (
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencil"
+)
+
+// Shuttle is the seam judge.go drives its three ephemeral calls through:
+// the subset of shuttleengine's API each call needs, satisfied as-is by
+// *shuttleengine.Runner in production and by a fake in unit tests. Kept
+// package-local rather than shared with burlerengine's own Shuttle
+// interface, mirroring that seam's own rationale: it lets treadleengine stay
+// engine-agnostic and testable without wiring reed or an LLM provider. This
+// is the seam's sole declaration; perchengine's own Shuttle is a type alias
+// onto this one.
+type Shuttle interface {
+	Run(shuttleengine.Spec) (shuttleengine.Result, error)
+}
+
+// var _ Shuttle = (*shuttleengine.Runner)(nil) is the compile-time proof
+// that *shuttleengine.Runner satisfies Shuttle as-is, so production wiring
+// never needs an adapter type.
+var _ Shuttle = (*shuttleengine.Runner)(nil)
+
+// judgeInputs bundles the values every judge call (either framing) needs to
+// compose its prompt and shuttle spec. HardCap is only read by the
+// milestone framing; PriorReviews is the judgeReadSet walk's output —
+// rendered into the prior_reviews marker as a newline-separated
+// absolute-path list of only the reviews NOT yet absorbed by
+// PreviousHandoffPath — the judge agent reads the files itself, so its
+// input is self-contained with no memory carried between calls beyond that
+// one handoff file. PreviousHandoffPath is the path the judge should read
+// as its starting handoff, or "" when there is none yet (rendered into the
+// previous_handoff marker as the literal "(none)"). HandoffPath is where
+// this call must write its own fresh handoff, alongside VerdictPath, in the
+// SAME call — see the handoff-on-disk shared decision.
+type judgeInputs struct {
+	Round               int
+	HardCap             int
+	PriorReviews        []string
+	VerdictPath         string
+	PreviousHandoffPath string
+	HandoffPath         string
+	Model               string
+	Effort              string
+}
+
+// runCircling spawns the per-round circling-check progress judge: does the
+// newest BLOCKING round's findings recur across prior rounds, or is the
+// block still moving forward? Fail-safe: any failure — stencil fill,
+// shuttle Run error, non-done Outcome, verdict file read, or parse — logs a
+// name-prefixed logger.Warn naming the round and cause, and returns
+// (JudgeProgressing, "", false) rather than an error, since a false CIRCLING
+// permanently kills a converging block while a false PROGRESSING only costs
+// a few more bounded rounds. The third return, ok, is false on every
+// fail-safe path and true only when a real verdict was parsed — callers use
+// it to avoid recording a fail-safe default as if the judge had actually
+// answered.
+func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
+	values := map[string]string{
+		"round":            strconv.Itoa(in.Round),
+		"prior_reviews":    strings.Join(in.PriorReviews, "\n"),
+		"verdict_path":     in.VerdictPath,
+		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
+		"handoff_path":     in.HandoffPath,
+	}
+	return runJudgeCall(sh, name, judgeCirclingTemplate, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
+}
+
+// runMilestone spawns the milestone continuation-gate progress judge: has a
+// block reached a soft cap whose trajectory still justifies continuing
+// toward HardCap? Fail-safe posture mirrors runCircling exactly, defaulting
+// to (JudgeContinue, "", false) on any failure — a false STOP permanently
+// kills a converging block while a false CONTINUE only spends the remaining
+// rounds up to the hard cap, which still catches a genuinely stuck block.
+// See runCircling's doc for the ok return's meaning.
+func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
+	values := map[string]string{
+		"round":            strconv.Itoa(in.Round),
+		"hard_cap":         strconv.Itoa(in.HardCap),
+		"prior_reviews":    strings.Join(in.PriorReviews, "\n"),
+		"verdict_path":     in.VerdictPath,
+		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
+		"handoff_path":     in.HandoffPath,
+	}
+	return runJudgeCall(sh, name, judgeMilestoneTemplate, values, framingMilestone, in.Round, in.Model, in.Effort, JudgeContinue, "milestone judge")
+}
+
+// previousHandoffMarker renders a judgeInputs.PreviousHandoffPath value into
+// the previous_handoff stencil marker: the path itself when a previous
+// handoff exists, or the literal "(none)" when this is the first handoff a
+// block has ever produced — stencil.Fill requires every marker to resolve
+// to some value (no conditionals in templates), so the "none yet" case
+// needs its own literal rather than an empty string.
+func previousHandoffMarker(path string) string {
+	if path == "" {
+		return "(none)"
+	}
+	return path
+}
+
+// runJudgeCall is the shared body runCircling and runMilestone drive
+// through their respective template/framing/default: compose the prompt,
+// build and run the shuttle spec (Role "judge" for both framings, two
+// OutputFiles — the verdict AND the handoff the same call must write; see
+// the handoff-on-disk shared decision), then read and parse the verdict
+// file. Every failure point degrades to (fallback, "", false) rather than
+// an error, logging label (the call's human-facing name, e.g. "circling
+// judge"), name-prefixed, alongside round and cause so an operator can tell
+// which caller's which framing failed. ok is true only on the success path,
+// so a caller can distinguish a genuine verdict from the fail-safe default
+// without inspecting the verdict value itself. Reading and
+// ParseHandoff-validating the handoff output this call produced is the
+// round loop's job (run.go), not this function's — a failed handoff must
+// never affect the verdict it rides alongside.
+func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, model, effort string, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
+	prompt, err := stencil.Fill(template, values)
+	if err != nil {
+		logger.Warn(name+": "+label+" failed, defaulting to "+string(fallback), "round", round, "cause", err)
+		return fallback, "", false
+	}
+
+	spec := shuttleengine.Spec{
+		Prompt:      string(prompt),
+		OutputFiles: []string{values["verdict_path"], values["handoff_path"]},
+		Model:       model,
+		Effort:      effort,
+		Role:        "judge",
+		Round:       strconv.Itoa(round),
+	}
+
+	result, err := sh.Run(spec)
+	if err != nil {
+		logger.Warn(name+": "+label+" shuttle run failed, defaulting to "+string(fallback), "round", round, "cause", err)
+		return fallback, "", false
+	}
+	if result.Outcome != shuttleengine.OutcomeDone {
+		logger.Warn(name+": "+label+" did not complete, defaulting to "+string(fallback), "round", round, "outcome", result.Outcome)
+		return fallback, "", false
+	}
+
+	content, err := os.ReadFile(values["verdict_path"])
+	if err != nil {
+		logger.Warn(name+": "+label+" verdict file unreadable, defaulting to "+string(fallback), "round", round, "cause", err)
+		return fallback, "", false
+	}
+
+	verdict, rationale, err := ParseJudgeVerdict(content, framing)
+	if err != nil {
+		logger.Warn(name+": "+label+" verdict file unparseable, defaulting to "+string(fallback), "round", round, "cause", err)
+		return fallback, "", false
+	}
+	return verdict, rationale, true
+}
+
+// runTriage spawns the asking-triage call: a review agent stopped mid-round
+// asking question rather than finishing, and this call classifies whether
+// a fresh retry can plausibly proceed (RETRY) or the round profile itself
+// is broken (GIVE_UP). Fail-safe: any failure — stencil fill, shuttle Run
+// error, non-done Outcome, verdict file read, or parse — logs a
+// name-prefixed logger.Warn naming the round and cause, and returns
+// (TriageRetry, "") rather than an error.
+func runTriage(sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string) {
+	values := map[string]string{
+		"round":        strconv.Itoa(round),
+		"question":     question,
+		"verdict_path": verdictPath,
+	}
+
+	prompt, err := stencil.Fill(triageTemplate, values)
+	if err != nil {
+		logger.Warn(name+": triage failed, defaulting to retry", "round", round, "cause", err)
+		return TriageRetry, ""
+	}
+
+	spec := shuttleengine.Spec{
+		Prompt:      string(prompt),
+		OutputFiles: []string{verdictPath},
+		Model:       model,
+		Effort:      effort,
+		Role:        "triage",
+		Round:       strconv.Itoa(round),
+	}
+
+	result, err := sh.Run(spec)
+	if err != nil {
+		logger.Warn(name+": triage shuttle run failed, defaulting to retry", "round", round, "cause", err)
+		return TriageRetry, ""
+	}
+	if result.Outcome != shuttleengine.OutcomeDone {
+		logger.Warn(name+": triage did not complete, defaulting to retry", "round", round, "outcome", result.Outcome)
+		return TriageRetry, ""
+	}
+
+	content, err := os.ReadFile(verdictPath)
+	if err != nil {
+		logger.Warn(name+": triage verdict file unreadable, defaulting to retry", "round", round, "cause", err)
+		return TriageRetry, ""
+	}
+
+	verdict, rationale, err := ParseTriageVerdict(content)
+	if err != nil {
+		logger.Warn(name+": triage verdict file unparseable, defaulting to retry", "round", round, "cause", err)
+		return TriageRetry, ""
+	}
+	return verdict, rationale
+}

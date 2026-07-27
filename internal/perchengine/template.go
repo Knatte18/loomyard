@@ -1,13 +1,11 @@
-// template.go — perch.yaml template accessor, plus the judge/triage prompt
-// template embeds.
+// template.go — perch.yaml template accessor.
 //
 // Provides the default YAML template for perch configuration, embedded
 // directly from template.yaml at build time, mirroring reedengine's and
-// shuttleengine's embed-and-accessor pattern. It also embeds the three
-// ephemeral-LLM-utility prompt templates (judge-circling, judge-milestone,
-// triage), mirroring internal/burlerengine/template.go's
-// //go:embed-directly-into-a-package-variable pattern; judge.go's fill
-// helper renders them via internal/stencil.
+// shuttleengine's embed-and-accessor pattern. The three ephemeral-LLM-
+// utility prompt templates (judge-circling, judge-milestone, triage) moved
+// to internal/treadleengine along with the judge/triage machinery that
+// renders them; perch never reads them directly.
 package perchengine
 
 import _ "embed"
@@ -21,12 +19,3 @@ var configTemplate string
 func ConfigTemplate() string {
 	return configTemplate
 }
-
-//go:embed judge-circling-template.md
-var judgeCirclingTemplate []byte
-
-//go:embed judge-milestone-template.md
-var judgeMilestoneTemplate []byte
-
-//go:embed triage-template.md
-var triageTemplate []byte

@@ -1,14 +1,16 @@
 // run_test.go covers the run verb's flag-shape validation and decodeProfile's
 // strict YAML decode: a full valid profile (every field, including the gate
-// mapping and both duration-string parses), a minimal valid profile, an
-// unknown key, malformed YAML, and a malformed gate duration. It also checks
-// that decodeProfile's output feeds perchengine's exported run-identity
-// helpers (ProfileHash, DeriveRunID) without error, in the shape run.go's
-// RunE itself relies on. Engine.Run itself is NOT exercised here — it needs
-// a live reed/claude session; that coverage lives in the smoke test and the
-// sandbox suite. The weft-sync run tests (lyxtest's CopyPairedLocal, real git
-// assertions) live in run_integration_test.go per the Test Tier Purity
-// Invariant.
+// mapping, both duration-string parses, and model-spec resolution of
+// judge-model/model), a minimal valid profile, an unknown key, malformed
+// YAML, a malformed gate duration, and the model-spec migration's fail-loud
+// cases (an old split-key profile, an unknown alias, a version bracket
+// param). It also checks that decodeProfile's output feeds perchengine's
+// exported run-identity helpers (ProfileHash, DeriveRunID) without error, in
+// the shape run.go's RunE itself relies on. Engine.Run itself is NOT
+// exercised here — it needs a live reed/claude session; that coverage lives
+// in the smoke test and the sandbox suite. The weft-sync run tests
+// (lyxtest's CopyPairedLocal, real git assertions) live in
+// run_integration_test.go per the Test Tier Purity Invariant.
 
 package perchcli
 
@@ -20,8 +22,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 )
+
+// testModelRegistry is the fixed registry every decodeProfile test call
+// resolves against: "haiku" carries no defaults (mirroring the built-in
+// fallback set), "sonnet" carries a "medium" default effort (mirroring a
+// seeded models.yaml), matching what the FullValid/FullValidFieldMapping
+// fixtures below rely on.
+var testModelRegistry = modelspec.Registry{
+	"haiku":  {Engine: "claude", Model: "haiku"},
+	"sonnet": {Engine: "claude", Model: "sonnet", Defaults: map[string]string{"effort": "medium"}},
+}
 
 // TestRunCLI_Run_MissingProfile verifies that "lyx perch run" without
 // --profile fails with run's own manual flag-shape error (not cobra's
@@ -99,10 +112,8 @@ gate:
   command: ["go", "test", "./..."]
   timeout: 10m
 round-caps: [5, 8, 10]
-judge-model: haiku
-judge-effort: low
-model: sonnet
-effort: high
+judge-model: "haiku[effort=low]"
+model: "sonnet[effort=high]"
 timeout: 30m
 `,
 		},
@@ -171,11 +182,86 @@ gate:
 `,
 			wantErr: true,
 		},
+		{
+			// A pre-migration profile still carrying the old split
+			// judge-effort key must fail loud (unknown field) rather than
+			// silently drop the value — the strict KnownFields(true) decode
+			// is the enforcement point, since profileYAML no longer binds
+			// this key to any field.
+			name: "OldSplitKeyJudgeEffort",
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+gate:
+  mode: llm-verdict
+judge-model: haiku
+judge-effort: low
+`,
+			wantErr: true,
+		},
+		{
+			// Same fail-loud posture for the run-tuning pair's old split
+			// "effort" key.
+			name: "OldSplitKeyEffort",
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+gate:
+  mode: llm-verdict
+model: sonnet
+effort: high
+`,
+			wantErr: true,
+		},
+		{
+			// An unknown judge-model alias fails loud through
+			// perchengine.ResolveModelSpec's Registry.Resolve call.
+			name: "UnknownAlias",
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+gate:
+  mode: llm-verdict
+judge-model: nonexistent-alias
+`,
+			wantErr: true,
+		},
+		{
+			// A "version" bracket param fails loud — perch's Profile has no
+			// field to carry it into, so ResolveModelSpec's perch-layer
+			// params check rejects it even though modelspec's own grammar
+			// allows "version" as a known param.
+			name: "VersionBracketParam",
+			yaml: `
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+gate:
+  mode: llm-verdict
+model: "sonnet[version=x]"
+`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			profile, err := decodeProfile([]byte(tt.yaml))
+			profile, err := decodeProfile([]byte(tt.yaml), testModelRegistry)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("decodeProfile(%q) error = nil; want error", tt.name)
@@ -218,14 +304,12 @@ gate:
   command: ["go", "test", "./..."]
   timeout: 10m
 round-caps: [5, 8, 10]
-judge-model: haiku
-judge-effort: low
-model: sonnet
-effort: high
+judge-model: "haiku[effort=low]"
+model: "sonnet[effort=high]"
 timeout: 30m
 `)
 
-	profile, err := decodeProfile(data)
+	profile, err := decodeProfile(data, testModelRegistry)
 	if err != nil {
 		t.Fatalf("decodeProfile() unexpected error: %v", err)
 	}
@@ -280,6 +364,34 @@ timeout: 30m
 	}
 }
 
+// TestDecodeProfile_BareAliasResolvesRegistryDefaultEffort proves a bare
+// alias with no bracket (judge-model: sonnet) picks up its registry's
+// default effort — testModelRegistry's "sonnet" entry defaults to
+// "medium" — landing in Profile.JudgeEffort exactly as a seeded
+// models.yaml's defaults would.
+func TestDecodeProfile_BareAliasResolvesRegistryDefaultEffort(t *testing.T) {
+	profile, err := decodeProfile([]byte(`
+target:
+  instructions: "diff against main"
+fasit:
+  instructions: "the discussion"
+rubric: "BLOCKING: x."
+fix-scope: overlay
+gate:
+  mode: llm-verdict
+judge-model: sonnet
+`), testModelRegistry)
+	if err != nil {
+		t.Fatalf("decodeProfile() unexpected error: %v", err)
+	}
+	if profile.JudgeModel != "sonnet" {
+		t.Errorf("JudgeModel = %q; want %q", profile.JudgeModel, "sonnet")
+	}
+	if profile.JudgeEffort != "medium" {
+		t.Errorf("JudgeEffort = %q; want %q (registry default)", profile.JudgeEffort, "medium")
+	}
+}
+
 // TestRunIdentity_DeriveRunIDShape asserts that decodeProfile's output feeds
 // perchengine's exported run-identity helpers (ProfileHash, DeriveRunID)
 // without error and produces the documented "<slug>-<hash8>" shape — the
@@ -294,7 +406,7 @@ rubric: "BLOCKING: x."
 fix-scope: overlay
 gate:
   mode: llm-verdict
-`))
+`), testModelRegistry)
 	if err != nil {
 		t.Fatalf("decodeProfile() unexpected error: %v", err)
 	}
@@ -332,7 +444,7 @@ rubric: "BLOCKING: x."
 fix-scope: overlay
 gate:
   mode: llm-verdict
-`))
+`), testModelRegistry)
 	if err != nil {
 		t.Fatalf("decodeProfile() unexpected error: %v", err)
 	}
@@ -416,7 +528,7 @@ func equalInts(got, want []int) bool {
 // (the "unset, use the default chain" spelling). The decode layer must
 // preserve that distinction or the engine cannot tell the two apart.
 func TestDecodeProfile_EmptyRoundCapsStaysNonNil(t *testing.T) {
-	explicit, err := decodeProfile([]byte("target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: []\n"))
+	explicit, err := decodeProfile([]byte("target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: []\n"), testModelRegistry)
 	if err != nil {
 		t.Fatalf("decodeProfile(round-caps: []) unexpected error: %v", err)
 	}
@@ -424,7 +536,7 @@ func TestDecodeProfile_EmptyRoundCapsStaysNonNil(t *testing.T) {
 		t.Errorf("decodeProfile(round-caps: []).RoundCaps = %v; want a non-nil empty slice", explicit.RoundCaps)
 	}
 
-	absent, err := decodeProfile([]byte("target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\n"))
+	absent, err := decodeProfile([]byte("target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\n"), testModelRegistry)
 	if err != nil {
 		t.Fatalf("decodeProfile(no round-caps) unexpected error: %v", err)
 	}
@@ -455,7 +567,7 @@ rubric: "BLOCKING: x."
 fix-scope: overlay
 gate:
   mode: llm-verdict
-`))
+`), testModelRegistry)
 	if err != nil {
 		t.Fatalf("decodeProfile() unexpected error: %v", err)
 	}

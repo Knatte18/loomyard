@@ -25,6 +25,46 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
+// stateFileName mirrors treadleengine's own (unexported) state.json file
+// name constant — a test-local pin of the on-disk contract, per the
+// state-json-compatibility shared decision.
+const stateFileName = "state.json"
+
+// roundRecord and runState are test-local mirrors of treadleengine's own
+// (unexported) persisted-state shapes, carrying the same JSON tags: the
+// on-disk state.json schema is a pinned contract (state-json-compatibility
+// shared decision), so a test-side mirror struct is a legitimate way for
+// this differential suite to keep asserting on fields (like TriagePath)
+// that Result/RoundSummary does not surface, without perchengine importing
+// treadleengine's unexported types.
+type roundRecord struct {
+	Round           int    `json:"round"`
+	Attempts        int    `json:"attempts"`
+	ShuttleOutcome  string `json:"shuttleOutcome"`
+	Verdict         string `json:"verdict"`
+	BlockingCount   int    `json:"blockingCount"`
+	ReviewPath      string `json:"reviewPath"`
+	FixerReportPath string `json:"fixerReportPath"`
+	JudgePath       string `json:"judgePath,omitempty"`
+	// HandoffPath mirrors treadleengine's additive roundRecord field (see
+	// the state-json-compatibility shared decision) — set only when this
+	// round's judge call recorded a valid handoff.
+	HandoffPath  string `json:"handoffPath,omitempty"`
+	GatePath     string `json:"gatePath,omitempty"`
+	TriagePath   string `json:"triagePath,omitempty"`
+	JudgeVerdict string `json:"judgeVerdict,omitempty"`
+	GatePassed   *bool  `json:"gatePassed,omitempty"`
+	SessionID    string `json:"sessionId"`
+}
+
+type runState struct {
+	ProfileHash string        `json:"profileHash"`
+	RoundCaps   []int         `json:"roundCaps"`
+	Rounds      []roundRecord `json:"rounds"`
+	Outcome     string        `json:"outcome,omitempty"`
+	StuckReason string        `json:"stuckReason,omitempty"`
+}
+
 // readRunState reads runDir's persisted state.json, failing the test loudly
 // if it is missing or unreadable — a test-only shortcut for asserting on
 // roundRecord fields (like TriagePath) that Result/RoundSummary does not
@@ -41,6 +81,36 @@ func readRunState(t *testing.T, runDir string) runState {
 		t.Fatalf("state.ReadJSON(%q) found = false; want true", path)
 	}
 	return got
+}
+
+// writeFile writes content to path, creating parent directories as needed
+// and failing the test on any I/O error. Duplicated from
+// internal/treadleengine/state_test.go (which stays treadle-side) per the
+// mechanical-package-split helper-fallout clause.
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) = %v; want nil", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) = %v; want nil", path, err)
+	}
+}
+
+// stringSlicesEqual reports whether a and b contain the same strings in the
+// same order. Duplicated from internal/treadleengine/roundfiles_test.go's
+// predecessor (now perchengine/adapter_test.go, which stays perch-side too)
+// per the mechanical-package-split helper-fallout clause.
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // scriptedBurlerCall records one burlerengine.Profile/RunOpts pair fakeBurler
@@ -97,11 +167,17 @@ func (f *fakeBurler) Run(p burlerengine.Profile, opts burlerengine.RunOpts) (bur
 // queuedShuttle is a same-package Shuttle double for the judge/triage calls:
 // Run records every Spec it receives, dequeues the next scripted verdict
 // file content (or error), writes it to the Spec's sole OutputFiles entry
-// when non-empty, and returns a scripted done Result.
+// when non-empty, and returns a scripted done Result. A judge call's Spec
+// carries a second OutputFiles entry (the handoff path) — handoffContent is
+// written there only when non-empty, mirroring a real judge call that
+// sometimes fails to produce a handoff even when its verdict succeeds; a
+// triage call's Spec has only the one entry, so handoffContent is simply
+// unused for those scripted entries.
 type queuedShuttle struct {
 	specs []shuttleengine.Spec
 	queue []struct {
 		verdictContent string
+		handoffContent string
 		err            error
 	}
 }
@@ -118,6 +194,11 @@ func (q *queuedShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, erro
 	}
 	if err := os.WriteFile(spec.OutputFiles[0], []byte(next.verdictContent), 0o644); err != nil {
 		return shuttleengine.Result{}, err
+	}
+	if next.handoffContent != "" {
+		if err := os.WriteFile(spec.OutputFiles[1], []byte(next.handoffContent), 0o644); err != nil {
+			return shuttleengine.Result{}, err
+		}
 	}
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil
 }
@@ -212,6 +293,7 @@ func TestRun_LoopUntilDry(t *testing.T) {
 	qs := &queuedShuttle{}
 	qs.queue = []struct {
 		verdictContent string
+		handoffContent string
 		err            error
 	}{
 		// Round 2's per-round circling check (round 1 never runs a judge —
@@ -324,6 +406,7 @@ func TestRun_MilestoneGate(t *testing.T) {
 			qs := &queuedShuttle{}
 			qs.queue = []struct {
 				verdictContent string
+				handoffContent string
 				err            error
 			}{
 				{verdictContent: verdictFileContent(string(tt.judgeVerdict), "milestone rationale")},
@@ -372,6 +455,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 		qs := &queuedShuttle{}
 		qs.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
 			{verdictContent: verdictFileContent(string(JudgeCircling), "the same finding recurs")},
@@ -431,6 +515,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 		qs := &queuedShuttle{}
 		qs.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
 			// Exactly ONE scripted judge response: round 3's circling check.
@@ -501,6 +586,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 		name  string
 		entry struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}
 		nonDone bool // when true, a nonDoneJudgeShuttle drives the case instead of entry
@@ -509,6 +595,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 			name: "shuttle run error",
 			entry: struct {
 				verdictContent string
+				handoffContent string
 				err            error
 			}{err: errors.New("fake shuttle run error")},
 		},
@@ -520,6 +607,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 			name: "unparseable verdict file",
 			entry: struct {
 				verdictContent string
+				handoffContent string
 				err            error
 			}{verdictContent: "not a valid verdict file at all"},
 		},
@@ -546,6 +634,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 				scripted := &queuedShuttle{}
 				scripted.queue = []struct {
 					verdictContent string
+					handoffContent string
 					err            error
 				}{tt.entry}
 				qs = scripted
@@ -751,13 +840,19 @@ func TestRun_GateModes(t *testing.T) {
 		}
 	})
 
-	t.Run("judge reads reviews only, never gate output files", func(t *testing.T) {
+	t.Run("judge reads reviews only, never gate output files, and the second call's read-set reflects the recorded handoff", func(t *testing.T) {
 		layout := newTestLayout(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		// Round 1 fails its gate, so round 2's BURLER hydration carries the
 		// round-1 gate file — but round 2's circling judge must read reviews
-		// only: a gate transcript has no findings for it to compare.
+		// only: a gate transcript has no findings for it to compare. Round 2's
+		// judge call also records a handoff covering rounds 1-2, so round 3's
+		// judge call — the handoff contract's "subsequent call" half — must
+		// read {that handoff + only the reviews it has not absorbed} instead
+		// of every prior review; round 4 converges on its passing command
+		// before the stuck ladder (and any further judge call) is ever
+		// reached.
 		fb := &fakeBurler{}
 		fb.queue = []struct {
 			result burlerengine.Result
@@ -766,6 +861,7 @@ func TestRun_GateModes(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s2"}},
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s3"}},
+			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s4"}},
 		}
 		fcr := &fakeCommandRunner{}
 		fcr.queue = []struct {
@@ -775,15 +871,23 @@ func TestRun_GateModes(t *testing.T) {
 		}{
 			{output: []byte("fail"), exitZero: false},
 			{output: []byte("fail"), exitZero: false},
+			{output: []byte("fail"), exitZero: false},
 			{output: []byte("ok"), exitZero: true},
 		}
 		qs := &queuedShuttle{}
 		qs.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
-			// Round 2's circling check only: round 3 converges on its passing
-			// command before the stuck ladder is ever reached.
+			// Round 2's circling check: the first call for this block, so its
+			// read-set is exactly today's all-reviews behavior (no previous
+			// handoff yet) — and it records a handoff covering rounds 1-2.
+			{
+				verdictContent: verdictFileContent(string(JudgeProgressing), "still moving"),
+				handoffContent: "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n",
+			},
+			// Round 3's circling check: the "subsequent call" half.
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 		}
 
@@ -797,8 +901,8 @@ func TestRun_GateModes(t *testing.T) {
 		if got.Outcome != OutcomeApproved {
 			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
 		}
-		if len(qs.specs) != 1 {
-			t.Fatalf("queuedShuttle called %d times; want 1 (round 2's circling check)", len(qs.specs))
+		if len(qs.specs) != 2 {
+			t.Fatalf("queuedShuttle called %d times; want 2 (round 2's and round 3's circling checks)", len(qs.specs))
 		}
 		// The burler hydration DOES carry the failed gate file forward…
 		round2Burler := fb.calls[1].profile
@@ -811,14 +915,48 @@ func TestRun_GateModes(t *testing.T) {
 		if !gateHydrated {
 			t.Errorf("round 2 burler PriorReviews = %v; want it to include the round-1 gate file", round2Burler.PriorReviews)
 		}
-		// …but the judge prompt must list review files only.
+		// …but neither judge prompt may list a gate output file.
 		for i, spec := range qs.specs {
 			if strings.Contains(spec.Prompt, "gate.md") {
 				t.Errorf("judge call %d prompt lists a gate output file; want reviews only", i+1)
 			}
-			if !strings.Contains(spec.Prompt, "round-1-review.md") {
-				t.Errorf("judge call %d prompt is missing the round-1 review", i+1)
-			}
+		}
+
+		// First judge call (round 2) — the handoff contract's "first call"
+		// half: no previous handoff yet, so the read-set is every completed
+		// round's review (round 1's).
+		firstCall := qs.specs[0]
+		if !strings.Contains(firstCall.Prompt, "round-1-review.md") {
+			t.Errorf("round 2 judge prompt = %q; want it to list round-1-review.md (no previous handoff yet)", firstCall.Prompt)
+		}
+		if !strings.Contains(firstCall.Prompt, "(none)") {
+			t.Errorf("round 2 judge prompt = %q; want the previous_handoff marker to read \"(none)\"", firstCall.Prompt)
+		}
+		recordedHandoffPath := firstCall.OutputFiles[1]
+
+		// Second judge call (round 3) — the handoff contract's "subsequent
+		// call" half: round 2's recorded handoff covers rounds 1-2, so the
+		// read-set excludes BOTH their reviews and carries only round 3's
+		// fresh one, plus the handoff's own path as previous_handoff.
+		secondCall := qs.specs[1]
+		if strings.Contains(secondCall.Prompt, "round-1-review.md") {
+			t.Errorf("round 3 judge prompt = %q; want round-1-review.md excluded (covered by the round-2 handoff)", secondCall.Prompt)
+		}
+		if strings.Contains(secondCall.Prompt, "round-2-review.md") {
+			t.Errorf("round 3 judge prompt = %q; want round-2-review.md excluded (covered by the round-2 handoff)", secondCall.Prompt)
+		}
+		if !strings.Contains(secondCall.Prompt, "round-3-review.md") {
+			t.Errorf("round 3 judge prompt = %q; want it to list round-3-review.md (its own fresh review, never covered)", secondCall.Prompt)
+		}
+		if !strings.Contains(secondCall.Prompt, recordedHandoffPath) {
+			t.Errorf("round 3 judge prompt = %q; want the previous_handoff marker to carry the round-2 handoff's own path %q", secondCall.Prompt, recordedHandoffPath)
+		}
+
+		// The recorded handoff path is also persisted onto round 2's own
+		// state.json record.
+		persisted := readRunState(t, runDir)
+		if len(persisted.Rounds) < 2 || persisted.Rounds[1].HandoffPath != recordedHandoffPath {
+			t.Errorf("persisted Rounds[1].HandoffPath = %q; want %q", persisted.Rounds[1].HandoffPath, recordedHandoffPath)
 		}
 	})
 
@@ -975,6 +1113,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		qs := &queuedShuttle{}
 		qs.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
 			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
@@ -1032,6 +1171,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		qs := &queuedShuttle{}
 		qs.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
 			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
@@ -1066,6 +1206,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		qs := &queuedShuttle{}
 		qs.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
 			{verdictContent: verdictFileContent(string(TriageGiveUp), "the fasit file referenced does not exist")},
@@ -1101,6 +1242,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		qs := &queuedShuttle{}
 		qs.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
 			{err: errors.New("fake triage shuttle error")},
@@ -1148,6 +1290,7 @@ func TestRun_Resume(t *testing.T) {
 		qs1 := &queuedShuttle{}
 		qs1.queue = []struct {
 			verdictContent string
+			handoffContent string
 			err            error
 		}{
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
@@ -1341,7 +1484,10 @@ func TestRun_Resume(t *testing.T) {
 
 		// Simulate a crash mid-round-2: a partial review file was written
 		// but the round never reached done, so no roundRecord exists for it.
-		stalePath := artifactPaths(runDir, 2, 1).Review
+		// artifactPaths itself is now unexported inside treadleengine; the
+		// naming scheme it produces (round-<token>-<kind>.md) is a pinned
+		// contract, so an inline literal join is the mechanical replacement.
+		stalePath := filepath.Join(runDir, "round-2-review.md")
 		writeFile(t, stalePath, "partial content from an interrupted round")
 
 		fb2 := &fakeBurler{}

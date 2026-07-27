@@ -36,10 +36,11 @@ Before starting a session:
    runtime availability.
 4. **`lyx init` first.** `lyx perch run`/`pause` require an initialized worktree,
    including `_lyx/config/perch.yaml` (created by `lyx init` alongside the other module
-   configs) -- perch's own config holds only the judge model/effort and the default
-   round-cap ladder, all of which the sandbox-build default template already sets
-   sanely. perch wires the real burler substrate (which in turn wires shuttle: reed +
-   claude) on every invocation; the profile YAML is the only perch-specific input.
+   configs) -- perch's own config holds only the judge model-spec (`judge_model`,
+   docs/reference/model-spec.md notation) and the default round-cap ladder, all of which
+   the sandbox-build default template already sets sanely. perch wires the real burler
+   substrate (which in turn wires shuttle: reed + claude) on every invocation; the
+   profile YAML is the only perch-specific input.
 5. **Attached interactive terminal.** Launch `sandbox-perch-suite.cmd` from a
    real, attached console -- never redirected, backgrounded, or detached.
    Without a TTY the driving claude session cannot idle between turns waiting

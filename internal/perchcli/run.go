@@ -3,7 +3,8 @@
 // perchengine.Engine.Run call, commits+pushes the resulting block artifacts
 // through weft once at block exit, and prints the Result as a single JSON
 // envelope. It also owns decodeProfile, the strict YAML decode that maps a
-// profile file 1:1 onto perchengine.Profile.
+// profile file 1:1 onto perchengine.Profile, resolving its judge-model/model
+// keys' model-spec strings against the invocation's shared registry.
 
 package perchcli
 
@@ -19,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/spf13/cobra"
@@ -49,24 +51,29 @@ type gateYAML struct {
 // perchengine.Profile's fields: the embedded burler content keys (Target,
 // Fasit, Rubric, FixScope, ToolUse, ClusterFan — burler's own kebab-case
 // vocabulary) plus the perch-owned loop keys (Gate, RoundCaps, JudgeModel,
-// JudgeEffort, Model, Effort, Timeout). It exists as a separate type (rather
-// than decoding straight into Profile) so the YAML key vocabulary stays
-// decoupled from Profile's Go field names, exactly like burlercli's
-// profileYAML.
+// Model, Timeout). It exists as a separate type (rather than decoding
+// straight into Profile) so the YAML key vocabulary stays decoupled from
+// Profile's Go field names, exactly like burlercli's profileYAML.
+//
+// JudgeEffort and Effort are DELETED — pre-migration split-key fields with
+// no home in the new model-spec shape. judge-model and model stay string
+// keys but now hold model-spec strings (docs/reference/model-spec.md); a
+// profile still carrying the old judge-effort/effort keys fails loud via
+// the strict KnownFields(true) decode below (yaml's unknown-field error),
+// which is the intended migration failure mode — no bespoke error text
+// needed.
 type profileYAML struct {
-	Target      fileSetYAML `yaml:"target"`
-	Fasit       fileSetYAML `yaml:"fasit"`
-	Rubric      string      `yaml:"rubric"`
-	FixScope    string      `yaml:"fix-scope"`
-	ToolUse     bool        `yaml:"tool-use"`
-	ClusterFan  string      `yaml:"cluster-fan"`
-	Gate        gateYAML    `yaml:"gate"`
-	RoundCaps   []int       `yaml:"round-caps"`
-	JudgeModel  string      `yaml:"judge-model"`
-	JudgeEffort string      `yaml:"judge-effort"`
-	Model       string      `yaml:"model"`
-	Effort      string      `yaml:"effort"`
-	Timeout     string      `yaml:"timeout"`
+	Target     fileSetYAML `yaml:"target"`
+	Fasit      fileSetYAML `yaml:"fasit"`
+	Rubric     string      `yaml:"rubric"`
+	FixScope   string      `yaml:"fix-scope"`
+	ToolUse    bool        `yaml:"tool-use"`
+	ClusterFan string      `yaml:"cluster-fan"`
+	Gate       gateYAML    `yaml:"gate"`
+	RoundCaps  []int       `yaml:"round-caps"`
+	JudgeModel string      `yaml:"judge-model"`
+	Model      string      `yaml:"model"`
+	Timeout    string      `yaml:"timeout"`
 }
 
 // decodeProfile strictly decodes a profile file's raw bytes into a
@@ -75,12 +82,25 @@ type profileYAML struct {
 // (e.g. "fixscope:" for "fix-scope:") must fail loudly here rather than
 // silently zeroing a safety-critical field. The two Go-duration-string
 // fields (gate.timeout, timeout) are parsed via time.ParseDuration, also
-// fail-loud on a malformed value. decodeProfile performs no further content
-// validation itself (RoundCaps shape, Gate.Mode legality, and so on) — that
-// stays perchengine.Profile's job via its own validate step inside
-// Engine.Run, so this function's only responsibility is the YAML-to-struct
-// mapping.
-func decodeProfile(data []byte) (perchengine.Profile, error) {
+// fail-loud on a malformed value.
+//
+// For each of judge-model and model that is NON-EMPTY, decodeProfile
+// resolves the model-spec string against reg via card 12's shared
+// perchengine.ResolveModelSpec helper (Parse -> Resolve -> the perch-layer
+// effort-only params check), unpacking the result into
+// Profile.JudgeModel/JudgeEffort and Profile.Model/Effort respectively. An
+// EMPTY spec string stays empty — unchanged semantics deferring to
+// Profile.validate's profile > cfg > built-in default chain, which runs
+// later, inside Engine.Run, and is untouched by this migration. This runs
+// BEFORE ProfileHash is taken in deriveBlockRunID/resolveRunTarget (both
+// untouched), so a block's identity hash covers the resolved values — the
+// accepted fail-loud resume consequence the batch scope documents.
+//
+// decodeProfile performs no further content validation itself (RoundCaps
+// shape, Gate.Mode legality, and so on) — that stays perchengine.Profile's
+// job via its own validate step inside Engine.Run, so this function's
+// responsibility is the YAML-to-struct mapping plus model-spec resolution.
+func decodeProfile(data []byte, reg modelspec.Registry) (perchengine.Profile, error) {
 	var parsed profileYAML
 
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -107,6 +127,24 @@ func decodeProfile(data []byte) (perchengine.Profile, error) {
 		timeout = d
 	}
 
+	var judgeModel, judgeEffort string
+	if parsed.JudgeModel != "" {
+		model, effort, err := perchengine.ResolveModelSpec(parsed.JudgeModel, reg)
+		if err != nil {
+			return perchengine.Profile{}, fmt.Errorf("perch: profile judge-model: %w", err)
+		}
+		judgeModel, judgeEffort = model, effort
+	}
+
+	var runModel, runEffort string
+	if parsed.Model != "" {
+		model, effort, err := perchengine.ResolveModelSpec(parsed.Model, reg)
+		if err != nil {
+			return perchengine.Profile{}, fmt.Errorf("perch: profile model: %w", err)
+		}
+		runModel, runEffort = model, effort
+	}
+
 	return perchengine.Profile{
 		Target: burlerengine.FileSet{
 			Paths:        parsed.Target.Paths,
@@ -126,10 +164,10 @@ func decodeProfile(data []byte) (perchengine.Profile, error) {
 			Timeout: gateTimeout,
 		},
 		RoundCaps:   parsed.RoundCaps,
-		JudgeModel:  parsed.JudgeModel,
-		JudgeEffort: parsed.JudgeEffort,
-		Model:       parsed.Model,
-		Effort:      parsed.Effort,
+		JudgeModel:  judgeModel,
+		JudgeEffort: judgeEffort,
+		Model:       runModel,
+		Effort:      runEffort,
 		Timeout:     timeout,
 	}, nil
 }
@@ -253,11 +291,15 @@ Example profile YAML (llm-verdict gate — the default for text review):
   gate:
     mode: llm-verdict
   round-caps: [5, 8, 10]
-  judge-model: haiku
-  judge-effort: ""
-  model: ""
-  effort: ""
+  judge-model: haiku            # judge-model: "sonnet[effort=medium]"  -- bracket overrides the registry default
+  model: ""                     # e.g. "sonnet" or "sonnet[effort=high]" -- empty defers to judge-model/perch.yaml/built-in
   timeout: 0s
+
+judge-model and model use the model-spec notation (docs/reference/model-spec.md):
+a registry alias, optionally with an [effort=...] bracket, or the escape form
+"<engine>:<model-id>[...]" for a model not (yet) in the registry. A bare alias
+picks up its default effort from the operator-owned models.yaml; effort is the
+only bracket param perch accepts.
 
 Example command-gate variant (convergence decided by a real command, not
 the burler verdict):
@@ -309,7 +351,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				return nil
 			}
 
-			fileProfile, err := decodeProfile(data)
+			fileProfile, err := decodeProfile(data, c.modelReg)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
