@@ -172,21 +172,23 @@ the real substrate — a green `go test` proves nothing here.
   Weft Git Invariant) is intentionally retained post-cutover and is NOT itself a defect.
 
 ## Round context seeded from prior-round verification
-**Round 3 (Opus).** Round 2 (`opus-r2`, a safety pass) was NOT clean: it found 5 new findings (0
-BLOCKING, 2 MEDIUM, 3 LOW) beyond round 1's 8, fixed 3 of them (O1, O2, O3), and deliberately
-deferred 2 with explicit reasons (O4, O5 — see the deferred-items section below). The orchestrator
-independently reproduced `go build ./...`, `go vet` on the full campaign package set, and `go test
--count=5` (hermetic) green from a cold state on the committed tree at `6261c1f8`. The round's own
-fixer report additionally documents, with printed failing-assertion output, its own
-not-false-green reproduction for both behavior-changing fixes (O1's widened
-`weftReferencePattern`, O2's anchored exclusion pathspecs) plus a full live/integration run
-(`-tags integration`, `-tags smoke` for both buildercli and webstercli, `tools/sandbox` coverage
-guard) — see `.scratch/fabric-cutover-review-opus-r2-fixer-report.md` for the exact commands and
-observed results this round did not re-run independently. Do NOT re-open or re-litigate the
-CLOSED-AND-VERIFIED work below (rounds 1 and 2). The operator has capped this campaign at up to 2
-more rounds and directed both onto **Opus** (overriding the original Fable/Opus/Fable/Opus
-rotation plan) — this round is Opus. Do a genuinely independent clean-room pass to find anything
-rounds 1-2 missed, or honestly confirm merge-readiness if you genuinely find nothing.
+**Round 4 (Opus) — the last round in the operator's cap.** Round 3 (`opus-r3`) was NOT clean: it
+found 6 findings (0 BLOCKING, 2 MEDIUM, 2 LOW, 2 NIT) beyond rounds 1-2's combined 13, fixed 4 of
+them (F-A, F-C, F-E, F-F), and deliberately deferred 2 with explicit reasons (F-B, F-D — see the
+deferred-items section below). The orchestrator independently reproduced, from a cold state on the
+committed tree at `ce5f3509`: `go build ./...`; `go vet` on the full campaign package set; `go test
+-count=5` (hermetic, all scoped packages) green. The orchestrator additionally, itself (not just
+trusting the round's fixer report), reverted the two production files behind round 3's
+behavior-changing fixes to their pre-fix state and reproduced BOTH not-false-green proofs firsthand:
+`TestWeftCommit_CommitsAtEveryRelPathDepth` (F-A) fails at exactly the predicted per-depth
+assertions in both `buildercli` and `webstercli`, and `TestNames` (F-E) fails at exactly
+`Names()[6]/[7]`; both restored to a byte-for-byte empty diff. Do NOT re-open or re-litigate the
+CLOSED-AND-VERIFIED work below (rounds 1-3). The operator capped this campaign at up to 2 more
+rounds after round 2, both on **Opus** (overriding the original Fable/Opus/Fable/Opus rotation
+plan) — round 3 was the first of those two; **this round is the second, and is the last round this
+campaign will run.** Do a genuinely independent clean-room pass to find anything rounds 1-3 missed.
+If you find nothing, honestly confirm merge-readiness — that verdict, plus the orchestrator's own
+independent verification, is what closes this campaign.
 
 **CLOSED-AND-VERIFIED (do not re-litigate):**
 
@@ -266,14 +268,51 @@ Round 2 (`opus-r2`), full review at `.scratch/fabric-cutover-review-opus-r2.md`,
   matching `docs/overview.md:245`; the concept-term uses of "weft" (weft-blind, weft
   repo/worktree) were correctly left alone. `go test ./cmd/lyx/` stays green.
 
+Round 3 (`opus-r3`), full review at `.scratch/fabric-cutover-review-opus-r3.md`, fixer report at
+`.scratch/fabric-cutover-review-opus-r3-fixer-report.md`:
+- **F-A (MEDIUM, commit `e94472e9`):** builder's and webster's weft-commit exclusions each named
+  only their OWN module's machine-local artifacts (pause flag, and for webster its rendered fork
+  prompts) — not the OTHER round-loop module's. A builder commit therefore committed
+  `_lyx/webster/pause` and `_lyx/webster/prompts/*`; a webster commit committed
+  `_lyx/builder/pause`. Worse than a one-off: once tracked, the owning module can never stage its
+  own deletion (its own exclusion hides the path from `git add`), so the artifact is pinned in weft
+  `HEAD` forever and materializes as a spurious pause request on every other machine's weft pull —
+  exactly the failure mode the exclusion code's own doc comments say it exists to prevent. Fixed:
+  each exclusion set now names both modules' artifacts. `CONSTRAINTS.md`'s Weft Git Invariant gained
+  a **Cross-module exclusions** bullet (and records F-B, below, as the still-outstanding
+  fabric-owned gap). `SANDBOX-BUILDER-SUITE.md` gained scenario B10 driving the full artifact set in
+  both directions. The orchestrator independently reverted both production files to their pre-fix
+  exclusion sets and reproduced `TestWeftCommit_CommitsAtEveryRelPathDepth` failing at all four
+  `RelPath` depths in both packages, at exactly the predicted assertions; restored to an empty diff.
+- **O2 depth confirmed live:** round 3 additionally drove O2's anchored exclusions live on a real
+  two-segment `RelPath` on the dedicated fabric hub — evidence round 2 only had via the integration
+  test.
+- **F-C (LOW, commit `fae8ae36`):** four more operator-facing docs (`docs/sandbox-hub.md`,
+  `docs/skills.md`, `manifest/designs/loom.md`, `tools/sandbox/SANDBOX-PERCH-SUITE.md`) still
+  referenced the deleted `lyx warp`/`lyx weft` commands (README's own residue was O3, already
+  closed). Rewritten to `lyx fabric`; `go test ./tools/sandbox/...` stays green.
+- **F-E (NIT, commit `d9d20d17`):** `configreg.Modules()`/`Names()` document themselves as
+  alphabetical but had `reed` sorted before `perch` — an inversion left by the `mux`→`reed` rename.
+  Round 2 had considered and declined this same inversion as "a behavior change for no benefit";
+  round 3 overruled narrowly (two lines, no durable reference to the old order, and leaving it means
+  every future round re-derives it as a suspected bug). The orchestrator independently reverted the
+  swap and reproduced `TestNames` failing at exactly `Names()[6] = "reed"; want "perch"` /
+  `Names()[7] = "perch"; want "reed"`; restored to an empty diff.
+- **F-F (NIT, commit `ce5f3509`):** `internal/buildercli/weft.go`'s file header claimed its
+  lock-exclusion rationale was copied from `internal/perchcli/run.go` without noting perchcli's copy
+  is still the unanchored, single-module `:(exclude)*.lock` form (the O2/F-A bug). Doc-comment only,
+  verified by inspection.
+
 Full suite confirmed green by the orchestrator from a cold state on the committed tree at
-`6261c1f8` (not just trusting the round's own report): `go build ./...`; `go vet` on
+`ce5f3509` (not just trusting the round's own report): `go build ./...`; `go vet` on
 buildercli+webstercli+configcli+configreg+fabricengine+fabriccli+cmd/lyx; `go test -count=5`
-(hermetic, all scoped packages). The `-tags integration`, `-tags smoke`, and
-`tools/sandbox` coverage-guard results for round 2 are taken from the round's own fixer report
-(which prints the exact revert/fail/restore output for its two behavior-changing fixes, not a bare
-self-verdict) rather than independently re-run this round, per operator direction to proceed
-straight to spawning further rounds.
+(hermetic, all scoped packages); AND, independently (not merely re-reading the fixer report), the
+not-false-green proof for both round 3 behavior-changing fixes (F-A, F-E), each reverted, confirmed
+failing at the predicted assertion, and restored to an empty diff — see above. The `-tags
+integration`, `-tags smoke`, and `tools/sandbox` coverage-guard results for rounds 2 and 3 (webster
+smoke fully green; buildercli smoke behaviorally green with only the known F4/O5 teardown residual
+red) are taken from each round's own fixer report, which in both cases prints exact revert/fail/
+restore output for its behavior-changing fixes rather than a bare self-verdict.
 
 **One aside, NOT part of this campaign's scope, NOT seeded as a residual — do not chase it:** the
 orchestrator's `go test -tags integration -count=1 ./internal/reedengine/...` run surfaced two
@@ -372,6 +411,34 @@ never bucket something as "deferred, low priority" just because it felt small.
   invariant fabric's own hardening campaign built) that is the operator's call, not a round agent's.
   Do not fix `fabricengine` here even if you find a clean-looking fix. If your own pass independently
   rediscovers this, just confirm it and cite this note rather than re-deriving it from scratch.
+- **F-B (`lyx fabric sync`/`lyx config <module> --set …` commits every machine-local artifact into
+  weft history, from `opus-r3`):** the fabric weft pathspec
+  (`internal/fabriccli/weft_verbs.go:122`, `fabricengine.ScopedPathspec(l.RelPath, cfg.Dirs())`) is
+  positive-entries-only — no `:(exclude)` at all — so a plain config sync permanently tracks every
+  module's lock files and pause flags, the same failure class F-A fixed for builder/webster's OWN
+  commits, but with no consumer-side lever: `configcli.realSync` calls `fabriccli.RunCLI(w,
+  []string{"sync"})` with no exclusion argument to pass. Round 3 live-confirmed this and recorded
+  the gap, with a suggested repair (seed the weft repo's `.git/info/exclude`, mirroring what
+  `fabricengine.seedWeftArtifactExcludes` already does for fabric's own `.weft/` artifacts), in
+  `CONSTRAINTS.md`'s Cross-module exclusions bullet. **Explicitly out of scope to fix here** — same
+  shape as O4: both candidate repairs change `fabricengine`/`fabriccli`'s own contract, not how the
+  four consumer files call it, and picking between them (fabric owns the exclude vs. each consumer
+  states its own) is a real layering decision for the operator, not a round agent's. Not a cutover
+  regression — pre-cutover `lyx weft sync` used the identical exclusion-free pathspec. Do not fix
+  `fabricengine`/`fabriccli` here. If your own pass independently rediscovers this, just confirm it
+  and cite this note.
+- **F-D (post-cutover `warp.yaml`/`weft.yaml` config orphans silently lose customized values, from
+  `opus-r3`):** every pre-cutover hub still carries `_lyx/config/warp.yaml` and `weft.yaml` (and
+  often `mux.yaml` from the earlier `mux`→`reed` rename); `configreg` no longer knows them, so they
+  are silently ignored by `--print`/the menu/`reconcile` — verified live. Worse: `lyx config
+  reconcile --apply` then writes `fabric.yaml` from the DEFAULT template, so an operator's
+  customized pre-cutover `weft.yaml` `pathspec` or `warp.yaml` `branch_prefix` is silently replaced,
+  not migrated. **Explicitly out of scope to fix here**: the repair is a one-shot value migration
+  belonging to `configsync`/`initengine` (fold the old files' values into `fabric.yaml`, then prune),
+  outside the four files under review, and an operator decision either way (migrate vs. prune and
+  let the operator re-set). `configreg` deliberately has no orphan-module concept; adding one is a
+  feature, not a cutover fix. Do not implement a migration path here. If your own pass independently
+  rediscovers this, just confirm it and cite this note.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
