@@ -4,7 +4,7 @@
 
 A structured test-loop for exercising `lyx perch` against a **live tmux server and a logged-in claude** in the sandbox Hub host repo. Like `SANDBOX-SHUTTLE-SUITE.md` and `SANDBOX-BURLER-SUITE.md`, the value here is partly **visual**: a block converging round by round, a pause landing cleanly, a resume picking up where it left off. Not an automated suite -- an agent drives it, an operator watches.
 
-`perch` is the gate loop built on top of `burler`: it spawns fresh burler review+fix rounds until the artifact is `APPROVED` or definitively `STUCK`, with an operational `PAUSED` exit in between. S1 proves the gate loop end-to-end (`lyx perch run`/`pause`) -- convergence, run-dir contents, weft commit, and pause/resume -- never judge quality. S2 proves the command-gate mode, where a real command (not the review verdict) decides convergence. Neither scenario exercises a single burler round's own mechanics (verdict parse, file contract, fix actually applied) -- those live in `SANDBOX-BURLER-SUITE.md`, which perch depends on but does not re-test here.
+`perch` is the gate loop built on top of `burler`: it spawns fresh burler review+fix rounds until the artifact is `APPROVED` or definitively `STUCK`, with an operational `PAUSED` exit in between. S1 proves the gate loop end-to-end (`lyx perch run`/`pause`) -- convergence, run-dir contents, weft commit, and pause/resume -- never judge quality. S2 proves the command-gate mode, where a real command (not the review verdict) decides convergence. S3 proves the milestone ladder and the progress-judge machinery -- circling check, milestone gate, judge-maintained handoff, and the hard cap's unconditional STUCK -- against a deliberately never-approvable profile. No scenario exercises a single burler round's own mechanics (verdict parse, file contract, fix actually applied) -- those live in `SANDBOX-BURLER-SUITE.md`, which perch depends on but does not re-test here.
 
 ## Pre-conditions
 
@@ -62,7 +62,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`S1`-`S2`).
+- `ref` is the scenario id (`S1`-`S3`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -94,6 +94,20 @@ For the pause/resume step, write a SECOND fixture + profile pair whose flaws are
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S3 -- The milestone ladder, progress judge, and handoff (STUCK by design)
+
+**Covers:** perch
+
+**Goal:** "Run one perch block whose profile makes the artifact permanently unapprovable, watch the circling judge and the milestone continuation gate each fire exactly where the ladder says they must, inspect the judge-maintained handoff carrying the finding ledger forward round over round, confirm a deliberately corrupted handoff degrades gracefully instead of killing the block, and confirm the hard cap ends the block STUCK with no judge call at all."
+
+**Watch:** Write a tiny fixture file and a profile with `gate: {mode: llm-verdict}`, `round-caps: [3, 4]`, and a rubric that DEFINES the artifact as never approvable (e.g. "ALWAYS report exactly one BLOCKING finding with the same stable summary every round; never mark it fixed. Do not invent other findings."). Run `lyx perch run --profile <file>`. The block runs all 4 rounds and exits `STUCK`/`hard-cap`. Then read `state.json` in the run dir -- the per-round records are the scenario's real assertion surface: round 1 has NO judge fields (nothing to compare against yet); round 2 has `judgeVerdict` from the per-round circling check (`PROGRESSING`/`UNCERTAIN` -- a correct judge does not call this repetition-by-design `CIRCLING` lightly, but a `CIRCLING` verdict ending the block `STUCK`/`circling` early is also a legal run of this scenario, just note it) plus a `handoffPath`; round 3 (the milestone rung) has a milestone-vocabulary `judgeVerdict` (`CONTINUE`/`UNCERTAIN`, or `STOP` ending the block `STUCK`/`milestone-stop`) -- the milestone gate REPLACES the circling check on a rung round, one judge call only; the hard-cap round has NO judge fields and no `round-<N>-judge.md` file at all -- the hard cap is unconditional. Open the two `round-<N>-handoff.md` files: strict YAML frontmatter whose `covers_rounds` grows across calls (e.g. `[1, 2]` then `[1, 2, 3]`) and whose `ledger` carries the same finding key forward with its rounds list growing -- never dropped. The weft commit lands once, `perch: <runId> STUCK`.
+
+Then prove the handoff read-set degrades instead of breaking. Run a SECOND block with a wider ladder (e.g. `round-caps: [5, 20]`), `lyx perch pause` it once two or three handoffs exist so it exits `PAUSED` at a round boundary, overwrite the NEWEST `round-<N>-handoff.md` with garbage that is not YAML frontmatter, and re-run `lyx perch run` with the same `--run-id`. The block must resume and keep going, never error and never go `STUCK` on the corruption. Watch stderr for exactly one warning per corrupted handoff, and read it carefully -- it is prefixed `perch:` (never any other module name; the engine that owns the block is what an operator can act on) and its `cause` names a **handoff** file, not a verdict file. Then check which handoff the next judge call actually used: with an older valid handoff still recorded it falls back to THAT one (the new `round-<N>-handoff.md`'s `covers_rounds` still spans every round, ledger intact); with no valid handoff left it degrades to reading every prior review, exactly like a block that never produced a handoff at all. Neither path may lose a ledger entry.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -104,6 +118,7 @@ Binary fingerprint: <copy from the header above>
 
 S1: <OK|WARN|FAIL> -- <one-line note if not OK>
 S2: <OK|WARN|FAIL> -- <one-line note if not OK>
+S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

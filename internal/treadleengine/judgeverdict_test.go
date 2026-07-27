@@ -149,7 +149,7 @@ rationale: ""
 			content:   "verdict: PROGRESSING\n",
 			framing:   framingCircling,
 			wantErr:   true,
-			errSubstr: "must open with a \"---\"",
+			errSubstr: "verdict file must open with a \"---\"",
 		},
 		{
 			name: "unclosed frontmatter",
@@ -158,7 +158,7 @@ verdict: PROGRESSING
 `,
 			framing:   framingCircling,
 			wantErr:   true,
-			errSubstr: "missing its closing",
+			errSubstr: "verdict file frontmatter is missing its closing",
 		},
 		{
 			name: "empty frontmatter",
@@ -167,7 +167,7 @@ verdict: PROGRESSING
 `,
 			framing:   framingCircling,
 			wantErr:   true,
-			errSubstr: "frontmatter is empty",
+			errSubstr: "verdict file frontmatter is empty",
 		},
 		{
 			name:          "crlf content",
@@ -282,7 +282,7 @@ verdict: RETRY
 			name:      "missing frontmatter",
 			content:   "verdict: RETRY\n",
 			wantErr:   true,
-			errSubstr: "must open with a \"---\"",
+			errSubstr: "verdict file must open with a \"---\"",
 		},
 		{
 			name: "unclosed frontmatter",
@@ -290,7 +290,7 @@ verdict: RETRY
 verdict: RETRY
 `,
 			wantErr:   true,
-			errSubstr: "missing its closing",
+			errSubstr: "verdict file frontmatter is missing its closing",
 		},
 		{
 			name: "empty frontmatter",
@@ -298,7 +298,7 @@ verdict: RETRY
 ---
 `,
 			wantErr:   true,
-			errSubstr: "frontmatter is empty",
+			errSubstr: "verdict file frontmatter is empty",
 		},
 		{
 			name:          "crlf content",
