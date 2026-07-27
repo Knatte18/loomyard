@@ -35,6 +35,14 @@ type Module struct {
 
 // Modules returns the ordered list of all available config modules.
 // Each module contains its name and a function to retrieve its YAML template.
+//
+// The order is ALPHABETICAL by name, and every caller-visible list of modules
+// inherits it: `lyx config`'s "Known modules" help line, its unknown-module
+// error, `--print`'s section order, `reconcile`'s per-module array, and the
+// interactive menu's numbering. Keep new entries in sort order -- a
+// misordered entry reads as a bug on every one of those surfaces (the `mux`
+// -> `reed` rename left exactly such an inversion behind until round
+// opus-r3).
 func Modules() []Module {
 	return []Module{
 		{Name: "board", Template: boardengine.ConfigTemplate},
@@ -43,8 +51,8 @@ func Modules() []Module {
 		{Name: "fabric", Template: fabricengine.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true},
-		{Name: "reed", Template: reedengine.ConfigTemplate},
 		{Name: "perch", Template: perchengine.ConfigTemplate},
+		{Name: "reed", Template: reedengine.ConfigTemplate},
 		{Name: "shuttle", Template: shuttleengine.ConfigTemplate},
 		{Name: "webster", Template: websterengine.ConfigTemplate},
 	}

@@ -120,3 +120,89 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 		t.Errorf("git status --porcelain reports %s as dirt: %q; want it git-excluded", gitrepo.PushLockFileName, status)
 	}
 }
+
+// mustWriteFile writes content to path, creating parent directories as
+// needed, failing the test on any error.
+func mustWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile %s: %v", path, err)
+	}
+}
+
+// gitLsFiles returns `git ls-files`'s raw output for repoPath — the tracked
+// (committed-or-staged) file set, as opposed to gitStatusPorcelain's
+// untracked/dirty view.
+func gitLsFiles(t *testing.T, repoPath string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "ls-files")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git ls-files in %s: %v", repoPath, err)
+	}
+	return string(out)
+}
+
+// TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth proves
+// F-B's fix (CONSTRAINTS.md's Weft Git Invariant, "Cross-module exclusions"):
+// fabric's OWN sync pathspec — fabricengine.ScopedPathspec(relPath,
+// []string{"_lyx"}), positive entries only, no exclusions, the exact shape
+// internal/fabriccli/weft_verbs.go builds for `lyx fabric sync`/`lyx config
+// <module> --set ...` — never stages another module's lock file, pause
+// flag, or rendered-prompt directory. Before this fix, that exact pathspec
+// permanently tracked all of them, because the caller had no exclusion
+// lever at all.
+//
+// Exercised at the weft worktree root AND at two nested RelPath depths in
+// the SAME weft checkout (multiple host hubs share one weft worktree at
+// different RelPath offsets) — proving crossModuleMachineLocalExcludes'
+// `**/` prefix actually reaches every depth, not just the root. A durable
+// per-module state file is written and committed alongside the excluded
+// artifacts at every depth, proving the exclusion is exact and does not
+// over-match real state.
+func TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth(t *testing.T) {
+	f, weftFixture := newFabricPair(t)
+
+	relPaths := []string{".", "sub", "wts/some-task"}
+	for _, rel := range relPaths {
+		lyxDir := filepath.Join(weftFixture.WeftPath, filepath.FromSlash(rel), "_lyx")
+		mustWriteFile(t, filepath.Join(lyxDir, "builder", "run.lock"), "lock")
+		mustWriteFile(t, filepath.Join(lyxDir, "builder", "pause"), "")
+		mustWriteFile(t, filepath.Join(lyxDir, "builder", "state.json"), "{}")
+		mustWriteFile(t, filepath.Join(lyxDir, "webster", "pause"), "")
+		mustWriteFile(t, filepath.Join(lyxDir, "webster", "prompts", "01.md"), "prompt")
+	}
+
+	for _, rel := range relPaths {
+		pathspec := fabricengine.ScopedPathspec(rel, []string{"_lyx"})
+		if _, _, err := f.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}); err != nil {
+			t.Fatalf("CommitWeft(rel=%q, pathspec=%v): %v", rel, pathspec, err)
+		}
+	}
+
+	tracked := gitLsFiles(t, weftFixture.WeftPath)
+	for _, rel := range relPaths {
+		lyxRel := filepath.ToSlash(filepath.Join(filepath.FromSlash(rel), "_lyx"))
+		for _, excluded := range []string{
+			lyxRel + "/builder/run.lock",
+			lyxRel + "/builder/pause",
+			lyxRel + "/webster/pause",
+			lyxRel + "/webster/prompts/01.md",
+		} {
+			if strings.Contains(tracked, excluded) {
+				t.Errorf("git ls-files at rel=%q tracks %q; want it excluded\nfull ls-files:\n%s", rel, excluded, tracked)
+			}
+		}
+
+		durable := lyxRel + "/builder/state.json"
+		if !strings.Contains(tracked, durable) {
+			t.Errorf("git ls-files at rel=%q does not track durable %q; want it committed\nfull ls-files:\n%s", rel, durable, tracked)
+		}
+	}
+}

@@ -66,9 +66,10 @@ $acc`, strings.Join(rootLiterals, ","))
 	return pids
 }
 
-// serverProcessesOnSocket returns the OS pids of every psmux.exe process
-// whose command line names this engine's -L socket — the main server AND
-// psmux's internal "__warm__" helper. It queries the Windows process table
+// serverProcessesOnSocket returns the OS pids of every configured-tmux-binary
+// process (tmuxProcessName — e.g. psmux.exe or tmux.exe, whichever reed.yaml
+// resolves) whose command line names this engine's -L socket — the main
+// server AND psmux's internal "__warm__" helper. It queries the Windows process table
 // through the configured shell (pwsh on Windows, via Get-CimInstance
 // Win32_Process), because that table is the ONLY reliable tmux-server
 // liveness signal: every tmux CLI probe (list-sessions, kill-server,
@@ -77,8 +78,12 @@ $acc`, strings.Join(rootLiterals, ","))
 // (including non-Windows, where Win32_Process does not exist) — callers
 // degrade to best-effort behavior rather than failing the op.
 func (e *Engine) serverProcessesOnSocket() []int {
+	// The Name filter must name the CONFIGURED binary: a hardcoded
+	// 'psmux.exe' matched nothing on a machine whose config resolves tmux
+	// to tmux.exe, so Down saw every socket as clear and leaked the server.
 	script := fmt.Sprintf(
-		`(Get-CimInstance Win32_Process -Filter "Name='psmux.exe'" | Where-Object { $_.CommandLine -match [regex]::Escape('-L %s') }).ProcessId`,
+		`(Get-CimInstance Win32_Process -Filter "Name='%s'" | Where-Object { $_.CommandLine -match [regex]::Escape('-L %s') }).ProcessId`,
+		tmuxProcessName(e.cfg.Tmux),
 		e.Socket(),
 	)
 	out, err := exec.Command(e.cfg.Shell, "-NoProfile", "-NonInteractive", "-Command", script).Output()

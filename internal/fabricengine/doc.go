@@ -13,7 +13,12 @@
 // Every weft commit fabric makes carries a `Warp-SHA: <sha>` trailer recording the
 // warp SHA it corresponds to (see WarpSHATrailerKey), and a rebuildable
 // correspondence index sits on top as a pure performance layer over that trailer
-// history, never authoritative on its own.
+// history, never authoritative on its own. The one exception is a commit made
+// while the warp repo itself has no commits yet (an unborn HEAD, e.g. a fresh
+// `git init` before the operator's first host commit): that commit carries no
+// trailer and no correspondence entry, since there is no warp SHA yet to name —
+// see CommitWeft's warpHeadSHA. Normal trailer/record behavior resumes on the
+// first weft commit made after warp's own first commit.
 //
 // fabric never calls gitrepo's `StageAllAndCommit` (board's opt-in wildcard-stage
 // exception, per gitrepo's doc.go) — all staging is explicit-list

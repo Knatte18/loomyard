@@ -33,6 +33,40 @@ func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock asserts that a
+// single-line message -- even one shaped exactly like a trailer line, the
+// "builder: <label>"/"webster: <label>" form every builder/webster weft
+// commit uses -- gets its Warp-SHA trailer in a NEW blank-line-separated
+// paragraph, keeping the git subject clean. Joining instead would fold the
+// trailer into the subject paragraph and pollute `git log --oneline` for
+// every such commit (the round fable-r1 regression).
+func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    string
+	}{
+		{
+			"builder_style_subject",
+			"builder: poll 01-json-flag done",
+			"builder: poll 01-json-flag done\n\nWarp-SHA: abc123",
+		},
+		{
+			"plain_subject",
+			"weft sync",
+			"weft sync\n\nWarp-SHA: abc123",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := appendWarpSHATrailer(tt.message, "abc123")
+			if got != tt.want {
+				t.Errorf("appendWarpSHATrailer(%q) = %q; want %q", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestAppendWarpSHATrailer_JoinsExistingTrailerBlock asserts that appending to
 // a message already ending in a trailer block (e.g. a prior Co-authored-by:)
 // joins the new line directly, without introducing a stray blank line.

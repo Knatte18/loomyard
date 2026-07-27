@@ -45,8 +45,13 @@ func appendWarpSHATrailer(message, warpSHA string) string {
 }
 
 // endsInTrailerBlock reports whether message's final paragraph (the lines
-// after its last blank line, or the whole message if it has none) consists
-// entirely of trailer-shaped lines. An empty message has no trailer block.
+// after its last blank line) consists entirely of trailer-shaped lines. The
+// FIRST paragraph is the commit subject and is never a trailer block, no
+// matter how trailer-shaped its lines look: a one-line message like
+// "builder: poll 01-json-flag done" matches the loose trailer pattern, and
+// treating it as a trailer block would join the appended Warp-SHA line into
+// the subject paragraph, polluting every such commit's `git log --oneline`
+// subject (found live in the fabric-cutover review, round fable-r1).
 func endsInTrailerBlock(message string) bool {
 	if message == "" {
 		return false
@@ -60,6 +65,13 @@ func endsInTrailerBlock(message string) bool {
 		if strings.TrimSpace(line) == "" {
 			lastParagraphStart = i + 1
 		}
+	}
+
+	// The subject paragraph can never be a trailer block: a trailer block
+	// only exists as a paragraph AFTER the subject (git's own convention --
+	// interpret-trailers never treats a subject-only message as trailers).
+	if lastParagraphStart == 0 {
+		return false
 	}
 	lastParagraph := lines[lastParagraphStart:]
 	if len(lastParagraph) == 0 {

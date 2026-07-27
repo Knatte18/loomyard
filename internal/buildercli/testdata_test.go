@@ -1,11 +1,13 @@
 // testdata_test.go holds the pure file-I/O plan-fixture helpers and
-// git-free test doubles shared by both tiers: builderengineTestdataDir and
-// seedPlanFixture spawn no git, and pollFakeReed is a plain
-// shuttleengine.ReedOps double, so all three stay untagged and available to
-// Tier 1 (e.g. run_test.go) as well as the integration-tagged fixtures that
-// also use them (validate_test.go, poll_test.go, spawnbatch_test.go,
-// smoke_test.go). Kept in one place so there is exactly one definition
-// regardless of which tier compiles it in.
+// git-free test doubles shared by every tier: builderengineTestdataDir and
+// seedPlanFixture spawn no git, and pollFakeEngine/pollFakeReed are plain
+// shuttleengine doubles, so all four stay untagged and available to
+// Tier 1 (e.g. run_test.go) as well as the integration-tagged fixtures
+// (validate_test.go, poll_test.go, spawnbatch_test.go) and the smoke tier
+// (smoke_test.go). Kept in one place so there is exactly one definition
+// regardless of which tier compiles it in. The scratch-git helpers the
+// integration and smoke tiers share live in gitfixture_test.go instead,
+// behind an `integration || smoke` tag, since they spawn real git.
 
 package buildercli
 
@@ -19,6 +21,44 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// pollFakeEngine is a minimal shuttleengine.Engine double for
+// builderengine.TurnEnded: only ParseEvents is scripted, mirroring
+// builderengine's own poll_test.go fakeEngine. Used by poll_test.go and
+// smoke_test.go, hence untagged here rather than integration-tagged.
+type pollFakeEngine struct {
+	events []shuttleengine.Event
+}
+
+func (e *pollFakeEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	return shuttleengine.Launch{}, nil
+}
+func (e *pollFakeEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
+	return e.events, nil
+}
+func (e *pollFakeEngine) Startup(capture string) shuttleengine.StartupState {
+	return shuttleengine.StartupPending
+}
+func (e *pollFakeEngine) InterruptSequence() []shuttleengine.PaneInput      { return nil }
+func (e *pollFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
+func (e *pollFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
+
+// AuditForks is never reached: this double never runs fork-mode specs.
+func (e *pollFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
+// AuditForksIncremental is never reached, for the same reason as AuditForks.
+func (e *pollFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
+	return shuttleengine.ForkAudit{}, nil
+}
+
+// ModelSwitchSequence is never reached: poll never drives a model switch.
+func (e *pollFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
+	return nil
+}
+
+var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
 
 // pollFakeReed is a minimal shuttleengine.ReedOps double for
 // builderengine.StrandLive and poll's terminal cleanup: Status is scripted,

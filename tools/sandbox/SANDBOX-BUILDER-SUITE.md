@@ -83,7 +83,7 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Goal:** "Pin a tiny two-batch plan whose cards each just write one fixed-content file, run `lyx builder run`, and confirm it drives itself end-to-end to a `done` outcome with both batches' cards committed and both weft-commit boundaries honored."
 
-**Watch:** `lyx builder run` blocks until the run reaches a terminal outcome; the printed JSON envelope reports `"outcome":"done"` with `batches_done: 2`. Each batch spawned a real implementer pane (visible via `lyx reed status` while running), and each batch's card(s) landed as its own commit with the `NN.C: <what>` subject convention. `lyx builder status` after completion shows both batches `done`/`tests: green`. Confirm the three weft-commit points actually fired (not just the exit-time backstop): `state.json` was committed at each `spawn-batch`, the batch report was committed at each terminal `poll` classification, per `docs/reference/builder-contract.md`'s "three weft-commit points". Afterward, both batches' panes/run dirs are cleaned up (no leftover pane, `lyx reed status` no longer lists either guid).
+**Watch:** `lyx builder run` blocks until the run reaches a terminal outcome; the printed JSON envelope reports `"outcome":"done"` with `batches_done: 2`. Each batch spawned a real implementer pane (visible via `lyx reed status` while running), and each batch's card(s) landed as its own commit with the `NN.C: <what>` subject convention. `lyx builder status` after completion shows both batches `done`/`tests: green`. Confirm the three weft-commit points actually fired (not just the exit-time backstop): `state.json` was committed at each `spawn-batch`, the batch report was committed at each terminal `poll` classification, per `docs/reference/builder-contract.md`'s "three weft-commit points". In the weft worktree's `git log --oneline`, each weft commit's subject is exactly its `builder: <label>` stem — the `Warp-SHA:` trailer sits in its own blank-line-separated paragraph, never joined into the subject line (a joined subject is the round-fable-r1 trailer regression). Afterward, both batches' panes/run dirs are cleaned up (no leftover pane, `lyx reed status` no longer lists either guid).
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -177,6 +177,18 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### B10 -- A weft commit never carries the OTHER module's machine-local artifacts
+
+**Covers:** builder
+
+**Goal:** "Prove a builder weft commit holds back every machine-local runtime artifact in the shared `_lyx` tree -- its own AND webster's -- while still carrying both modules' durable state. Machine-local means: any `*.lock` file, either module's `pause` flag, and webster's rendered fork prompts (`_lyx/webster/prompts/*`). None of them may ever appear in a weft commit or as a tracked file."
+
+**Watch:** In a worktree where both modules have run at least once, put every artifact class on disk at the same time: request a builder pause (`lyx builder pause`, which writes `_lyx/builder/pause`), and make sure `_lyx/webster/pause` and at least one `_lyx/webster/prompts/*.md` exist alongside a real `_lyx/webster/state.json` and some other real `_lyx` content. Now drive a builder verb to a weft-commit boundary (`lyx builder run` is enough -- its exit-time backstop commit fires regardless of outcome). In the weft worktree, `git show --stat HEAD` must list the real content and BOTH modules' `state.json`, and must list NO `pause` flag, NO `*.lock`, and NO `prompts/*` entry. Then `git status --porcelain -uall` must still show every one of those artifacts as untracked, and `git ls-files | grep -E 'lock|pause|prompts'` must return nothing. Repeat the whole check driving a WEBSTER verb instead (`lyx webster run`) -- the exclusion is symmetric, and webster's commit must likewise hold back `_lyx/builder/pause`. Any machine-local artifact appearing in the commit or in `ls-files` is a `FAIL`: once tracked, the module that owns the flag can never stage its own deletion (its own exclusion hides the path from `git add`), so the flag is pinned in weft `HEAD`, pushed, and materialized by every other machine's weft pull as a pause request nobody made.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -185,15 +197,16 @@ After running all scenarios, record a short session summary:
 Date: <YYYY-MM-DD>
 Binary fingerprint: <copy from the header above>
 
-B1: <OK|WARN|FAIL> -- <one-line note if not OK>
-B2: <OK|WARN|FAIL> -- <one-line note if not OK>
-B3: <OK|WARN|FAIL> -- <one-line note if not OK>
-B4: <OK|WARN|FAIL> -- <one-line note if not OK>
-B5: <OK|WARN|FAIL> -- <one-line note if not OK>
-B6: <OK|WARN|FAIL> -- <one-line note if not OK>
-B7: <OK|WARN|FAIL> -- <one-line note if not OK>
-B8: <OK|WARN|FAIL> -- <one-line note if not OK>
-B9: <OK|WARN|FAIL> -- <one-line note if not OK>
+B1:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B2:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B3:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B4:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B5:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B6:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B7:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B8:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B9:  <OK|WARN|FAIL> -- <one-line note if not OK>
+B10: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

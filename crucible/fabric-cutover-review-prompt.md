@@ -1,0 +1,499 @@
+# `fabric-cutover` — independent review + fix (round agent prompt)
+
+> Instantiated from [`review-prompt-template.md`](review-prompt-template.md) for the **consumer
+> side** of the fabric cutover (commit `9d0c4935`, "fabric: cutover -- rewire consumers onto
+> fabric, delete warp/weft"). See [README.md](README.md) for the loop this prompt runs inside.
+>
+> **Why this is a separate instance from `fabric-review-prompt.md`.** That file documents fabric's
+> own internal hardening campaign (5 rounds, Opus/Fable-rotated, already converged and merged) —
+> fabric's own git-coordination correctness is **already validated** and is explicitly OUT OF SCOPE
+> here (see below). This campaign instead reviews whether the modules the cutover **rewired onto**
+> fabric — `buildercli`/`webstercli`'s weft-commit helpers and `configcli`/`configreg`'s config-sync
+> wiring — still behave correctly now that they call `fabricengine`/`fabriccli` instead of the
+> deleted `warpengine`/`weftengine`/`weftcli`. Do not reuse or consult
+> `fabric-review-prompt.md`/its `.scratch/fabric-review-*` deliverables — different scope, different
+> module tag (`fabric-cutover-review-<tag>.md`, not `fabric-review-<tag>.md`).
+
+You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the fabric
+**cutover's consumer integration** in the loomyard repo, followed by FIXING what you find. Work in
+the worktree at `C:\Code\loomyard\wts\crucible-fabric-cutover` (branch
+`crucible-fabric-cutover`). Adjust that path/branch if the task lives elsewhere now.
+
+**Hub geometry note:** live driving of builder/webster weft commits and `lyx config` sync rides
+the same dedicated fabric test hub fabric's own campaign used — the two dedicated GitHub repos
+`Knatte18/lyx-fabric-test` (host) and `Knatte18/lyx-fabric-test-weft` (weft) — never the shared
+`Knatte18/lyx-test`/`Knatte18/lyx-test-weft` repos. `lyx fabric clone` materializes this dedicated
+hub; see `tools/sandbox/SANDBOX-FABRIC-SUITE.md`'s Pre-conditions for the exact clone/reuse
+semantics (`lyx-fabric-test-HUB` is reused idempotently if it already exists on this machine, never
+reset).
+
+## Your two jobs, in order
+1. REVIEW: form your own independent judgment of the cutover's consumer-side correctness. Hunt for
+   bugs by reading the code AND by driving the real substrate (real git repos/worktrees over real
+   filesystem junctions, real `lyx builder`/`lyx webster`/`lyx config` invocations) — this is where
+   the defects hide.
+2. FIX: after you have a findings list, implement the fixes one at a time, verify each against the
+   real substrate, keep the whole test suite green, and update the docs in the same change as the
+   fix they document. COMMIT after each individual fix lands green (see "Commit per fix" below). Do
+   NOT push unless the user explicitly tells you to.
+
+## Commit per fix (BLOCKING — do not batch fixes into one uncommitted diff)
+As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the live
+smoke/driving check if the finding needed one), and its doc update (if any) is included, COMMIT it
+— on the current branch, no push — before starting the next finding. Commit message format:
+`fabric-cutover: fix <finding-id> — <one-line what/why>` (e.g. `fabric-cutover: fix F2 — restore
+builder weftCommit SkipGit short-circuit parity`). Do not commit `.scratch/` (gitignored; your
+review and fixer reports never belong in a commit regardless).
+
+## Sequencing rule (BLOCKING — do not skip, do not interleave)
+Job 1 must be COMPLETE — and its full review report SAVED to
+`.scratch/fabric-cutover-review-<yourtag>.md` on disk — before you touch (edit, create, or delete)
+a single production or test file. Do not fix findings as you go, even ones that look small and
+obviously right. Write it down as a finding, keep reading, finish the review, save the file, THEN
+start Job 2.
+
+## Clean-room review constraint (do this part unprimed)
+Form your OWN findings first. Do NOT read any prior review or review-dialogue files before you have
+your own list. Specifically do not open anything under `.scratch/` (gitignored; holds prior reviews
+`fabric-cutover-review-*.md` and `*-fixer-report.md` — and unrelated prior campaigns'
+`fabric-review-*.md`, out of scope regardless). Reading the design SPEC and the module docs is
+expected and required (those are not reviews). AFTER you have written your own independent
+findings, you MAY consult the prior rounds' `.scratch/fabric-cutover-review-*` material —
+regardless of which model produced it (rounds alternate Fable/Opus; the most recent prior round is
+whichever `fabric-cutover-review-*` file is newest), EXCEPT your own `-<yourtag>` deliverables — to
+(a) confirm previously-fixed behaviors have not regressed and (b) re-evaluate the deferred items at
+the bottom.
+
+## What to read
+- Code under review: `internal/buildercli/weft.go`, `internal/webstercli/weft.go`,
+  `internal/configcli/configcli.go` (specifically `runConfig`'s `realSync` closure and
+  `dispatch`), `internal/configreg/configreg.go`.
+- The API surface these consumers now call: `internal/fabricengine/fabric.go` (`New`,
+  `EnvSyncOptions`, `SyncOptions.SkipGit`/`SkipPush`), `internal/fabricengine/weftgit.go`
+  (`CommitWeft`, `PushWeft`, `PushWeftAt` — note each independently re-checks
+  `SkipGit`/`SkipPush`), `internal/fabricengine/syncweft.go`, `internal/fabriccli/fabric.go` +
+  `internal/fabriccli/weft_verbs.go` (the `sync` subcommand `configcli` now shells into via
+  `fabriccli.RunCLI`).
+- `internal/hubgeometry` — `Layout.WeftWorktree()`/`WorktreeRoot`/`RelPath`, the fields both
+  `weftCommit` helpers depend on.
+- The exact diff that created this task, for the authoritative "what should have changed and what
+  shouldn't have": `git show 9d0c4935 -- internal/buildercli/weft.go internal/webstercli/weft.go
+  internal/configcli/configcli.go internal/configreg/configreg.go`. Treat any BEHAVIORAL delta
+  beyond "route through fabricengine/fabriccli instead of warpengine/weftengine/weftcli" as
+  suspect until proven intentional and correct.
+- Docs: `internal/builderengine/doc.go` and `internal/websterengine/doc.go` (the "weft-blind"
+  sections — `weft` as a concept term is intentionally retained post-cutover; only the
+  *implementation* moved to fabric), `docs/overview.md`, `CONSTRAINTS.md` (Weft Git Invariant, Hub
+  Geometry Invariant), `README.md`.
+- Scenario ideas (not a review): `tools/sandbox/SANDBOX-BUILDER-SUITE.md`,
+  `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, `tools/sandbox/SANDBOX-FABRIC-SUITE.md`. You run every
+  scenario yourself, directly, with your own tool calls; you do NOT invoke any
+  `sandbox-<module>-suite.cmd` launcher (that spawns a SEPARATE, context-free interactive `claude`
+  session for a human operator's own dogfooding — meaningless for you to spawn on top of yourself).
+- Existing smoke coverage to extend, not duplicate: `internal/buildercli/smoke_test.go`,
+  `internal/webstercli/smoke_test.go` (both `//go:build smoke`).
+- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `CONSTRAINTS.md`
+  (Hub Geometry, Weft Git, CLI/Cobra, lyxtest Leaf, Sandbox Suite Coverage, Documentation
+  Lifecycle). A change that ships behaviour without updating the module doc / invariants in the
+  SAME change is incomplete.
+- Design intent (SPEC, not a review): the cutover commit message and diff itself
+  (`git show 9d0c4935`) is the authoritative statement of intended behavior — a mechanical
+  rewire onto fabric with **zero** observable behavior change for builder/webster weft commits or
+  `lyx config`'s sync path. Anything that changed observable behavior beyond "which package does
+  the git work" is a candidate defect, not an intentional improvement, unless you find explicit
+  evidence otherwise (e.g. a doc comment explaining a deliberate behavior change).
+
+## Mission (assess on two axes, be adversarial)
+1. **Behavioral parity** — does builder/webster's weft-commit helper, and `configcli`'s sync
+   wiring, behave IDENTICALLY to the pre-cutover warp/weft-backed implementation (same pathspec
+   exclusions, same commit message format, same SkipGit/SkipPush/CI-bypass semantics, same
+   error-propagation and exit-code contract)? Any divergence is a regression unless justified.
+2. **Correctness** — bugs, races, error handling, edge cases introduced by the restructuring;
+   concentrate on the historically-fragile areas below. Also assess docs accuracy (do the docs
+   match the code?) and residue (stale references to the deleted `warpengine`/`weftengine`/
+   `weftcli`/`warpcli` packages or the deleted `lyx warp`/`lyx weft` CLI commands anywhere
+   reachable from these four files — imports, comments, help text, tests).
+
+## High-yield focus — where this cutover's real bugs live (drive these, do not just read them)
+The pure/unit-tested parts are usually solid; defects concentrate in the COMPOSED, LIVE behavior
+the hermetic tests never exercise. Treat each as an INVARIANT you must actively verify by driving
+the real substrate — a green `go test` proves nothing here.
+- **SkipGit/CI-bypass restructuring risk.** The cutover changed both `weftCommit` helpers from a
+  single `weftengine.Commit(...)` call to an explicit `if !opts.SkipGit { f, err :=
+  fabricengine.New(...); ...CommitWeft... }` guard, followed by an UNCONDITIONAL
+  `fabricengine.PushWeftAt(weftWorktree, opts)` call outside that guard. `PushWeftAt` internally
+  re-checks `opts.SkipGit || opts.SkipPush` (`weftgit.go`), so this LOOKS safe on inspection — but
+  verify it live, both ways: with `WEFT_SKIP_GIT=1` set (the CI/test bypass — confirm zero real git
+  calls happen, no error even when no weft worktree exists on disk) and unset (confirm a real
+  commit+push happens exactly as before). Also confirm `fabricengine.New`'s stat-based path
+  validation — which the old single-call shape may not have hit at all in bypass mode — doesn't now
+  spuriously reject a legitimate CI environment.
+- **Pathspec exclusion parity, driven end-to-end.** Builder excludes `*.lock` and its pause flag;
+  webster excludes those plus `*/webster/prompts/*`. Don't just read the exclusion list — drive a
+  real builder and a real webster run that produces lock files, a pause flag, and (webster) rendered
+  fork prompts, trigger a real weft commit, and confirm via `git show`/`git status` on the real weft
+  worktree that none of the excluded artifacts landed in the commit or show as tracked.
+- **`lyx config` sync parity.** `configcli.runConfig`'s `realSync` closure now calls
+  `fabriccli.RunCLI(w, []string{"sync"})` instead of the deleted `weftcli.RunCLI(w, []string{"sync"})`.
+  Confirm the exit code, stdout shape (JSON vs text, per whatever `lyx config`'s existing contract
+  is), and error surfacing are byte-for-byte equivalent to what a pre-cutover run would have
+  produced — drive `lyx config --set <module>.<key>=<value>` end-to-end against a real fabric-paired
+  hub and confirm the weft side actually receives the sync.
+- **`configreg.Modules()` completeness and correctness.** Confirm the module list no longer
+  references `warp`/`weft` anywhere (template names, comments, generated YAML keys) and that
+  whatever the config UI (`lyx config`) surfaces for module selection/help text is fully consistent
+  post-removal — drive `lyx config` interactively (or via its non-interactive flags) and read the
+  actual output, don't just read the Go literal.
+- **Residue sweep, scoped to these four files' blast radius only** (NOT a whole-repo sweep — that
+  is explicitly out of scope, see below): grep from `internal/buildercli`, `internal/webstercli`,
+  `internal/configcli`, `internal/configreg` outward for any surviving `warpengine`/`weftengine`/
+  `weftcli`/`warpcli` import, `lyx warp`/`lyx weft` string, or comment describing pre-cutover
+  behavior as current. Report anything found even if you don't fix all of it (see "Deferred" note
+  below for one already-known example explicitly out of scope).
+
+## Explicitly OUT of scope for this campaign
+- **Fabric's own internal git-coordination correctness** (topology invariants, reconcile/prune
+  drift repair, junction/symlink wiring, weft content-sync honesty) — already independently
+  hardened and converged via the separate `fabric-review-prompt.md` campaign (5 rounds,
+  Opus/Fable-rotated, merged). Do not re-review `internal/fabricengine`/`internal/fabriccli`'s own
+  logic; only review how the four consumer files listed above CALL it.
+- **`hubgeometry`, `initengine`, `loomengine/preflight`, `reedengine/config`, `cmd/lyx`
+  registration** — these were also touched by the cutover commit but are explicitly deferred to a
+  separate, narrower-scoped follow-up campaign at the operator's discretion. Do not review or fix
+  them here even if you notice something; note it in your report as an aside if you want, but do
+  not spend review or fix budget on them.
+- **`internal/treadleengine`** — unrelated to the fabric cutover (a separate round-loop-engine
+  extraction, commit `90856b5d`). One known stray doc-comment residue exists there
+  (`internal/treadleengine/engine.go:7` says "never imports weftengine/warpengine/hubgeometry",
+  naming two now-deleted packages) — this is informational only, already known, explicitly NOT
+  yours to fix; a different task owns treadle.
+- **Documentation Lifecycle-wide fabric terminology sweep** — do not go hunting for every mention
+  of "warp"/"weft" across the whole repo's docs; `weft` as a concept term (weft-blind, weft-commit,
+  Weft Git Invariant) is intentionally retained post-cutover and is NOT itself a defect.
+
+## Round context seeded from prior-round verification
+**Round 4 (Opus) — the last round in the operator's cap.** Round 3 (`opus-r3`) was NOT clean: it
+found 6 findings (0 BLOCKING, 2 MEDIUM, 2 LOW, 2 NIT) beyond rounds 1-2's combined 13, fixed 4 of
+them (F-A, F-C, F-E, F-F), and deliberately deferred 2 with explicit reasons (F-B, F-D — see the
+deferred-items section below). The orchestrator independently reproduced, from a cold state on the
+committed tree at `ce5f3509`: `go build ./...`; `go vet` on the full campaign package set; `go test
+-count=5` (hermetic, all scoped packages) green. The orchestrator additionally, itself (not just
+trusting the round's fixer report), reverted the two production files behind round 3's
+behavior-changing fixes to their pre-fix state and reproduced BOTH not-false-green proofs firsthand:
+`TestWeftCommit_CommitsAtEveryRelPathDepth` (F-A) fails at exactly the predicted per-depth
+assertions in both `buildercli` and `webstercli`, and `TestNames` (F-E) fails at exactly
+`Names()[6]/[7]`; both restored to a byte-for-byte empty diff. Do NOT re-open or re-litigate the
+CLOSED-AND-VERIFIED work below (rounds 1-3). The operator capped this campaign at up to 2 more
+rounds after round 2, both on **Opus** (overriding the original Fable/Opus/Fable/Opus rotation
+plan) — round 3 was the first of those two; **this round is the second, and is the last round this
+campaign will run.** Do a genuinely independent clean-room pass to find anything rounds 1-3 missed.
+If you find nothing, honestly confirm merge-readiness — that verdict, plus the orchestrator's own
+independent verification, is what closes this campaign.
+
+**CLOSED-AND-VERIFIED (do not re-litigate):**
+
+Round 1 (`fable-r1`), full review at `.scratch/fabric-cutover-review-fable-r1.md`, fixer report at
+`.scratch/fabric-cutover-review-fable-r1-fixer-report.md`:
+- **F8 (MEDIUM, commit `695a4828`):** every builder/webster weft commit's git subject carried the
+  `Warp-SHA` trailer inline (e.g. `builder: poll 01-json-flag done Warp-SHA: <sha>`) because
+  `fabricengine.endsInTrailerBlock` misread a single-line, trailer-shaped subject as an existing
+  trailer block. Fixed: the first paragraph (the subject) is never treated as a trailer block.
+  Orchestrator reproduced by reverting `internal/fabricengine/trailer.go` to its pre-fix state and
+  confirming the new `TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock/builder_style_subject`
+  fails at exactly the predicted assertion; restoring passes with an empty diff.
+- **F1 (LOW, commit `7a49d44a`):** both `weftCommit` helpers forced `committed=false` on a
+  `CommitWeft` error even when the commit had actually landed (a `RecordCorrespondence` failure
+  after a real commit) — telling the caller no commit was made about a commit that was real. Fixed
+  by passing `committed` through instead of forcing false. Orchestrator reproduced by reverting
+  `internal/buildercli/weft.go`'s fix and confirming
+  `TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails` fails at exactly the predicted
+  assertion (`committed = false; want true`); restoring passes with an empty diff.
+- **F5 (LOW, commit `aca01431`):** new hermetic unit tests pin the SkipGit-before-`fabricengine.New`
+  guard ordering in both `weftCommit` helpers (bypass mode touches no filesystem/git even with no
+  worktrees on disk; non-bypass surfaces `*fabricengine.ErrMissingPath`). Verified green in the
+  orchestrator's full hermetic run.
+- **F3 (MEDIUM, commit `d53aeb7f`):** `go test -tags smoke ./internal/buildercli/...` did not
+  compile before this fix (scratch-git helpers/`pollFakeEngine` were tag-misplaced). Fixed by
+  moving them to the correct build-tag files. Orchestrator independently ran
+  `go test -tags smoke ./internal/buildercli/... -run Smoke -v` and confirmed it compiles and its
+  behavioral assertions pass (teardown is separately red — see F4 below, an already-known,
+  deliberately deferred residual, not new).
+- **F4 (LOW, commit `023453e5`, partial — residual explicitly deferred, not yours to re-open):**
+  reed's Windows socket probe hardcoded `Name='psmux.exe'`, matching nothing on a machine whose
+  `reed.yaml` resolves `tmux` to `tmux.exe` — fixed by deriving the process name from the
+  configured binary (`tmuxProcessName`, table-tested). The other half — this machine's psmux 3.3.4
+  `kill-session` being a silent no-op, which leaves reed's `Down` unable to fully tear down and
+  fails the builder smoke gate's `TempDir` cleanup — is a reed-lifecycle design decision
+  (socket-sharing semantics), explicitly out of this campaign's scope; owned by a future reed
+  campaign. Orchestrator independently reproduced this exact residual (`buildercli` smoke: all
+  three tests' behavioral assertions pass, only the `t.Cleanup`-registered teardown check fails)
+  and confirms it is pre-existing/environment, not a fabric-cutover defect. Do not attempt to fix
+  it here.
+- **F2, F7 (NIT, commits `c0c36b38`, `d5c975d8`):** doc-comment-only fixes (Warp-SHA trailer +
+  correspondence record documented on `weftCommit`; pathspec-magic reliance documented on both
+  pathspec helpers), no behavior change — verified by inspection.
+- **F6 (LOW, commit `e3391c67`):** `TestRunCmd_ErrRunBusySkipsWeftBackstop` asserted a vacuous
+  pre-cutover condition; replaced with assertions matching the actual post-cutover failure
+  signature. Verified green in the orchestrator's full hermetic run.
+- **F8 suite update (commit `fd3b6401`):** `SANDBOX-BUILDER-SUITE.md`'s end-to-end scenario now
+  checks for a clean weft-commit subject. Sandbox coverage guard (`go test ./tools/sandbox/...`)
+  confirmed green by the orchestrator.
+
+Round 2 (`opus-r2`), full review at `.scratch/fabric-cutover-review-opus-r2.md`, fixer report at
+`.scratch/fabric-cutover-review-opus-r2-fixer-report.md`:
+- **O1 (MEDIUM, commit `b2f2884c`):** webster's weft-reference audit (`weftReferencePattern`) still
+  matched only the deleted `lyx weft`/`lyx warp` spellings, not `lyx fabric` — an agent driving the
+  post-cutover fabric CLI directly inside a weft-blind fork/webster session would not be caught by
+  the audit. Fixed: the alternation now matches `lyx (fabric|weft|warp)` (the pre-cutover spellings
+  are kept deliberately, documented at the function, since an agent reaching for a dead command
+  should still fail loudly on the audit rather than surface an opaque "unknown command"). Round 2
+  reproduced not-false-green by reverting the pattern and confirming all 5 new
+  `TestWeftReferencePattern` rows fail at exactly the predicted assertion; restoring passes with an
+  empty diff (12/12 rows).
+- **O2 (MEDIUM, commit `3424fb41`):** both builder's and webster's weft-commit exclusion pathspecs
+  used a leading-wildcard form (`:(exclude)*.lock`) that silently matches nothing — and therefore
+  commits nothing — once `layout.RelPath` is more than one segment deep (e.g. `wts/some-task`),
+  making the weft commit a silent no-op at real hub geometry depths. Fixed: both exclusions are now
+  anchored under the same scoped `_lyx` base the positive pathspec names, via a new
+  `weftPathspecBase(layout)` helper in each package. `CONSTRAINTS.md`'s Weft Git Invariant gained an
+  **Anchored exclusions** bullet naming the failure mode and flagging `internal/perchcli`'s
+  block-exit commit as carrying the same bug (explicitly not fixed here — outside this campaign's
+  four files). Round 2 reproduced not-false-green against real git
+  (`TestWeftCommit_CommitsAtEveryRelPathDepth` in both packages' new `weft_integration_test.go`) by
+  reverting to the unanchored spelling: depths ≤1 still pass, depths ≥2 fail exactly as predicted
+  (`weftCommit() committed = false; want true`); restoring passes all four depths in both packages.
+- **O3 (LOW, commit `6261c1f8`):** `README.md` still advertised the deleted `lyx weft`/`lyx warp`
+  commands and modules at four sites (subcommand-tree example, loom-domain example,
+  toolkit-primitives list, shipped-module list). Fixed to the unified `lyx fabric` topology,
+  matching `docs/overview.md:245`; the concept-term uses of "weft" (weft-blind, weft
+  repo/worktree) were correctly left alone. `go test ./cmd/lyx/` stays green.
+
+Round 3 (`opus-r3`), full review at `.scratch/fabric-cutover-review-opus-r3.md`, fixer report at
+`.scratch/fabric-cutover-review-opus-r3-fixer-report.md`:
+- **F-A (MEDIUM, commit `e94472e9`):** builder's and webster's weft-commit exclusions each named
+  only their OWN module's machine-local artifacts (pause flag, and for webster its rendered fork
+  prompts) — not the OTHER round-loop module's. A builder commit therefore committed
+  `_lyx/webster/pause` and `_lyx/webster/prompts/*`; a webster commit committed
+  `_lyx/builder/pause`. Worse than a one-off: once tracked, the owning module can never stage its
+  own deletion (its own exclusion hides the path from `git add`), so the artifact is pinned in weft
+  `HEAD` forever and materializes as a spurious pause request on every other machine's weft pull —
+  exactly the failure mode the exclusion code's own doc comments say it exists to prevent. Fixed:
+  each exclusion set now names both modules' artifacts. `CONSTRAINTS.md`'s Weft Git Invariant gained
+  a **Cross-module exclusions** bullet (and records F-B, below, as the still-outstanding
+  fabric-owned gap). `SANDBOX-BUILDER-SUITE.md` gained scenario B10 driving the full artifact set in
+  both directions. The orchestrator independently reverted both production files to their pre-fix
+  exclusion sets and reproduced `TestWeftCommit_CommitsAtEveryRelPathDepth` failing at all four
+  `RelPath` depths in both packages, at exactly the predicted assertions; restored to an empty diff.
+- **O2 depth confirmed live:** round 3 additionally drove O2's anchored exclusions live on a real
+  two-segment `RelPath` on the dedicated fabric hub — evidence round 2 only had via the integration
+  test.
+- **F-C (LOW, commit `fae8ae36`):** four more operator-facing docs (`docs/sandbox-hub.md`,
+  `docs/skills.md`, `manifest/designs/loom.md`, `tools/sandbox/SANDBOX-PERCH-SUITE.md`) still
+  referenced the deleted `lyx warp`/`lyx weft` commands (README's own residue was O3, already
+  closed). Rewritten to `lyx fabric`; `go test ./tools/sandbox/...` stays green.
+- **F-E (NIT, commit `d9d20d17`):** `configreg.Modules()`/`Names()` document themselves as
+  alphabetical but had `reed` sorted before `perch` — an inversion left by the `mux`→`reed` rename.
+  Round 2 had considered and declined this same inversion as "a behavior change for no benefit";
+  round 3 overruled narrowly (two lines, no durable reference to the old order, and leaving it means
+  every future round re-derives it as a suspected bug). The orchestrator independently reverted the
+  swap and reproduced `TestNames` failing at exactly `Names()[6] = "reed"; want "perch"` /
+  `Names()[7] = "perch"; want "reed"`; restored to an empty diff.
+- **F-F (NIT, commit `ce5f3509`):** `internal/buildercli/weft.go`'s file header claimed its
+  lock-exclusion rationale was copied from `internal/perchcli/run.go` without noting perchcli's copy
+  is still the unanchored, single-module `:(exclude)*.lock` form (the O2/F-A bug). Doc-comment only,
+  verified by inspection.
+
+Full suite confirmed green by the orchestrator from a cold state on the committed tree at
+`ce5f3509` (not just trusting the round's own report): `go build ./...`; `go vet` on
+buildercli+webstercli+configcli+configreg+fabricengine+fabriccli+cmd/lyx; `go test -count=5`
+(hermetic, all scoped packages); AND, independently (not merely re-reading the fixer report), the
+not-false-green proof for both round 3 behavior-changing fixes (F-A, F-E), each reverted, confirmed
+failing at the predicted assertion, and restored to an empty diff — see above. The `-tags
+integration`, `-tags smoke`, and `tools/sandbox` coverage-guard results for rounds 2 and 3 (webster
+smoke fully green; buildercli smoke behaviorally green with only the known F4/O5 teardown residual
+red) are taken from each round's own fixer report, which in both cases prints exact revert/fail/
+restore output for its behavior-changing fixes rather than a bare self-verdict.
+
+**One aside, NOT part of this campaign's scope, NOT seeded as a residual — do not chase it:** the
+orchestrator's `go test -tags integration -count=1 ./internal/reedengine/...` run surfaced two
+FAILing tests, `TestExactSessionTargetsNeverPrefixMatchSiblings` and
+`TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout`. Both pre-date round 1 (present since the
+`mux -> reed` rename, long before this campaign) and live in reedengine code round 1 never touched
+(session-target prefix matching and pane-split sizing — unrelated to F4's
+`serverProcessesOnSocket`/`tmuxProcessName` change). These are pre-existing reedengine
+defects/environment quirks on this machine, out of this campaign's scope (reedengine is not one of
+the four files under review) and not a fabric-cutover regression. If your own pass happens to touch
+reedengine and you independently notice something here, you may note it as an aside in your report,
+but do not spend review or fix budget chasing it — it belongs to a separate reed campaign.
+
+State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
+gate; an N×-concurrent suite is optional here (this is not a concurrency-heavy surface), never a
+required gate.
+
+## What to TEST — do not just read, EXERCISE it
+Report the exact commands you ran and what you observed.
+
+Hermetic (must stay green throughout):
+- `go build ./...`
+- `go vet ./internal/buildercli/... ./internal/webstercli/... ./internal/configcli/... ./internal/configreg/... ./internal/fabricengine/... ./internal/fabriccli/...`
+- `go test -count=5 ./internal/buildercli/... ./internal/webstercli/... ./internal/configcli/... ./internal/configreg/... ./internal/fabricengine/... ./internal/fabriccli/... ./cmd/lyx/...`
+
+Live smoke (real substrate, behind the `smoke` build tag):
+- `go test -tags smoke ./internal/buildercli/... -run Smoke -v -count=1`
+- `go test -tags smoke ./internal/webstercli/... -run Smoke -v -count=1`
+- Substrate is plain `git` (must be on PATH) plus real filesystem junctions via `internal/fslink`,
+  plus (for builder/webster's own live scenarios) a real logged-in `claude` — check for this FIRST,
+  before anything else, so you know up front whether it applies.
+
+Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):
+- Deploy the current source as the binary under test (`deploy-dev.cmd`). **FOOTGUN:** live driving
+  runs the DEPLOYED snapshot, not your working tree — re-deploy after EVERY source change or you
+  validate a stale binary.
+- **Do NOT invoke any `sandbox-<module>-suite.cmd`.** Those launchers spawn a SEPARATE,
+  context-free interactive `claude` session for a human operator's own dogfooding, not for you to
+  spawn on top of yourself. Instead, run the real CLI commands yourself, directly, foreground,
+  waiting for each to return: walk the "High-yield focus" list above against the dedicated fabric
+  hub geometry, and record OK/WARN/FAIL for each.
+- The list above is a FLOOR — devise and run MORE adversarial scenarios of your own beyond it
+  (e.g. a builder/webster run interrupted mid-weft-commit; `lyx config` invoked with no weft
+  worktree present at all; a `WEFT_SKIP_GIT=1` run followed immediately by a non-bypass run on the
+  same worktree).
+- **"Headless" means "no human required" — NOT "no time/token cost to me."** A real git/agent
+  operation takes real wall-clock time, not zero. That cost is EXPECTED and BUDGETED FOR, never a
+  reason to skip a scenario. You are explicitly forbidden from writing "operator-assisted",
+  "cost-bearing", "long-running", "impractical", or "automated context" as a reason to skip live
+  driving.
+- **Before writing "could not verify", ask yourself literally: "would a human's physical eyes be
+  required here, or am I just trying to avoid spending my own time/turns?"** Only the first is a
+  real reason.
+- The only legitimate "cannot verify" cases are: (a) a scenario that structurally requires a human
+  to visually confirm something, or (b) a genuine environment gap (missing `git`, no GitHub auth
+  for the dedicated test repos, no logged-in `claude` for builder/webster's own live driving — check
+  for this FIRST). Flag those specific cases as not-headlessly-verifiable rather than skipping
+  silently, and say exactly what blocked you.
+
+TEARDOWN DISCIPLINE (critical): if you clone/materialize any hub, worktree, link, or builder/webster
+run during testing, tear it down. At the end, confirm ZERO stray fabric-managed
+worktrees/junctions and no uncommitted drift left in the dedicated test repos you touched. Leave no
+stray state. Be honest about what you could NOT verify and why.
+
+## How to judge each finding
+For each code finding give: `file:line`, a concrete failure scenario (inputs/state → wrong
+behavior), severity (BLOCKING / MEDIUM / LOW / NIT), suggested fix, and CONFIRMED
+(reproduced/traced) vs PLAUSIBLE (looks wrong, unverified). For parity findings: pre-cutover
+behavior vs post-cutover behavior, with evidence for both sides where possible.
+
+**Severity affects how you REPORT a finding, not whether you fix it.** ALL findings you record get
+fixed in Job 2 — including every NIT — not just BLOCKING/MEDIUM ones. The only legitimate reason to
+leave a finding unfixed is that fixing it genuinely requires something you cannot do alone this
+round — an operator decision on a real design tradeoff, or a live capability you don't have. Even
+then you must say so explicitly, with the specific reason, in the fixer report's deferred section —
+never bucket something as "deferred, low priority" just because it felt small.
+
+## Scope was widened after round opus-r4 — O4/F-B/F-D are no longer deferred
+
+Rounds 1-4 scoped this campaign to "how the four consumer files call fabricengine, not
+fabricengine's own logic" and deferred O4, F-B, and F-D on exactly that basis. **The operator has
+since explicitly widened the campaign to also cover fixing fabricengine/fabriccli's own contract**
+for these three specific, already-diagnosed findings (not a general re-opening of fabricengine's
+design). All three were implemented directly — via targeted, narrowly-briefed forks, not a full
+review round, since each finding was already fully diagnosed with a known root cause and a
+suggested repair from the round that found it — independently verified by the orchestrator (build
++ vet + hermetic green from a cold state, plus a firsthand not-false-green reproduction for each:
+revert the production file, confirm the fix's new test fails at the predicted assertion, restore to
+an empty diff), and are now CLOSED-AND-VERIFIED:
+
+- **O4 (commit `41f335a9`):** `CommitWeft` now tolerates an unborn warp HEAD via a `warpHeadSHA`
+  helper that distinguishes `gitrepo.ErrNoCommits` from a genuine failure — the commit lands with no
+  `Warp-SHA` trailer and no `RecordCorrespondence` call, self-healing once warp gets its first
+  commit. `SyncWeft` re-derives the same unborn signal independently rather than inferring it from a
+  missing trailer, so `warpSHAFromTrailer`'s missing-trailer error stays a hard
+  invariant-violation signal for every other cause. Orchestrator independently reverted both
+  production files and reproduced both new tests
+  (`TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`,
+  `TestSyncWeft_UnbornWarpHEAD_SkipPushAndPush`) failing at exactly the predicted pre-fix error;
+  restored to an empty diff. Live driving at the full CLI-pairing-command level was not achieved
+  (both `lyx fabric add`/`clone` refuse an unborn source before reaching this code path at all) —
+  the new integration test exercises `Fabric.CommitWeft`/`SyncWeft` directly, the same depth round
+  opus-r2's original finding was made at.
+- **F-B (commit `b31c4cc8`):** fixed at the git-exclude layer, not the pathspec layer —
+  `seedWeftArtifactExcludes` (called from `CommitWeft`'s existing `ensureWeftLockDir` choke point)
+  now also seeds cross-module, gitignore-syntax patterns (`**/_lyx/*/*.lock`, `**/_lyx/*/pause`,
+  `**/_lyx/*/prompts/`, module name wildcarded) into the weft repo's `.git/info/exclude`. This makes
+  every committer correct by construction — `lyx fabric commit|push|sync`'s own pathspec, builder's
+  and webster's `weftCommit`, and `perchcli`'s still-unanchored block-exit commit all inherit the
+  same git-level exclusion — without `fabricengine` importing any consumer package (which would
+  cycle, since `websterengine`/`perchengine` already import `fabricengine`). Gitignore glob syntax
+  crosses `/` differently than git pathspec magic, so the `**/` prefix alone reaches every
+  `RelPath` depth with no per-caller anchoring — sidestepping the whole anchoring-bug class the
+  Anchored exclusions bullet documents. `CONSTRAINTS.md`'s Cross-module exclusions bullet is
+  rewritten to describe the fix as implemented. **Known limitation, stated in `CONSTRAINTS.md`:**
+  this stops new pollution but does not untrack an artifact a pre-fix sync already committed on an
+  existing hub (`.git/info/exclude` only affects untracked status); `git rm --cached` is the manual
+  remedy on an already-polluted hub, no migration tool was added. Orchestrator independently
+  reverted the production file and reproduced the new
+  `TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth` failing at every predicted
+  assertion across all three `RelPath` depths; restored to an empty diff.
+- **F-D (commit `ae5b8164`):** `configsync.ReconcileAll` gained a fabric-only special case — when
+  `fabric.yaml` is absent, a new `legacyFabricConfig` helper reads whichever of `warp.yaml`
+  (`branch_prefix`) / `weft.yaml` (`pathspec`) are present and YAML-parseable and folds their values
+  into the initial `fabric.yaml` write in place of the bare template default; both legacy files are
+  pruned only after a successful apply-mode write (a dry run reports the pending migration via the
+  new `Result.MigratedFrom` field but writes/deletes nothing); an unparseable or absent legacy file
+  falls back to the template default and is left on disk. `mux.yaml` (an unrelated, earlier
+  `mux`→`reed` rename orphan) is deliberately untouched — out of scope, not part of the fabric
+  cutover. Orchestrator independently reverted both production files; the new
+  `TestReconcileAll_MigratesLegacyFabricConfig` failed to even *compile* (`MigratedFrom` doesn't
+  exist on the pre-fix `Result`) — the strongest form of the not-false-green proof; restored to an
+  empty diff, all five subtests pass. Live-driven end-to-end against a real git repo and the
+  redeployed binary: seeded both legacy files with custom values, ran `lyx config reconcile
+  --apply`, confirmed `fabric.yaml` carried both migrated values, both legacy files were gone, and a
+  second reconcile was a clean no-op.
+
+**F4/O5 remains deferred and settled** (psmux `kill-session` no-op leaves the builder smoke gate's
+teardown check red) — two independent rounds (`fable-r1`, `opus-r2`) traced this to the same root
+cause and both judged it a reed-lifecycle design decision, not a fabric-cutover defect, and it was
+NOT included in the operator's scope-widening (it lives in `reedengine`, not `fabricengine`/
+`fabriccli`). Round 2 explicitly considered and rejected a narrow buildercli-local teardown
+workaround as masking the signal a future reed campaign needs. **Settled — do not re-litigate or
+attempt a fix here**, not even a local workaround. Flag it again only if your own independent pass
+surfaces a genuinely NEW angle no prior round considered.
+
+## Fixing — after the review
+- Fix EVERY finding from your review, all severities including NIT.
+- Load the code-quality guidance (`/code-quality` skill) AND `mill:golang-build`/
+  `mill:golang-testing`/`mill:golang-comments` before editing.
+- For every bug you fix, add or extend a test that would have caught it. For a live-only defect,
+  extend the existing `internal/buildercli/smoke_test.go` or `internal/webstercli/smoke_test.go`
+  (both `//go:build smoke`) rather than creating a new smoke file, unless the scenario doesn't fit
+  either's existing shape.
+- MAKE SMOKE TESTS DETERMINISTIC. Git/filesystem operations are not instantaneous; a test that
+  assumes a verb is synchronous passes on a quiet machine and FLAKES on a loaded one. Wait on the
+  actual state transition (poll with a deadline), never sleep a fixed amount.
+- If your review surfaces a live/visual behavior `SANDBOX-BUILDER-SUITE.md` or
+  `SANDBOX-WEBSTER-SUITE.md` doesn't cover, extend the relevant one (match the existing scenario
+  shape; keep each file's `**Covers:**` coverage guard green in the SAME change). If the change
+  doesn't warrant a new scenario, note it in your fixer report instead.
+- Keep `go build`/`vet`/`test` green after every change. Then RE-DEPLOY and re-run every live
+  scenario yourself, directly.
+- Update `internal/builderengine/doc.go`/`internal/websterengine/doc.go` (and `docs/overview.md`/
+  `CONSTRAINTS.md` if invariants move) IN THE SAME change as any fix that changes documented
+  behavior. Do NOT add bugfix/hardening notes to `manifest/roadmap.md`.
+- Tear down all substrate state; confirm zero stray processes/worktrees/links. COMMIT each fix as
+  you finish it (see "Commit per fix" above) — do NOT push unless the user explicitly asks. Report
+  the changed files and how you verified each fix.
+
+## Deliverables
+1. A structured review report (Executive summary with top risks + merge-readiness opinion; Parity
+   assessment pre-cutover-vs-post-cutover; Code findings severity-ranked with file:line + scenario
+   + fix + CONFIRMED/PLAUSIBLE; Docs & residue findings; What-was-tested with exact commands +
+   observed results, including what you could NOT verify and why). Write it to
+   `.scratch/fabric-cutover-review-<yourtag>.md`.
+2. A fixer report: what you implemented, what you deliberately deferred (with reasons), the exact
+   test commands run + results, and the changed files. Write it to
+   `.scratch/fabric-cutover-review-<yourtag>-fixer-report.md`.
+3. In your final chat message: a concise summary (executive summary + counts by severity + the two
+   report paths + an explicit merge-readiness verdict). Do not paste the whole reports.
+
+Begin with the clean-room review (read the diff + code + docs, then drive the real substrate),
+produce your independent findings, then implement and verify the fixes.

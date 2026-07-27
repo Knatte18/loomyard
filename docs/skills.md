@@ -139,17 +139,17 @@ The review-interpretation discipline (mill's `mill-receiving-review`) lives in t
 
 | mill skill | Replaced by |
 |---|---|
-| mill:mill-setup | `lyx warp clone` / `lyx init` |
-| mill:git-clone | `lyx warp clone` |
-| mill:mill-spawn | `lyx warp add` (+ loom) |
-| mill:mill-claim | `lyx warp add` / loom |
+| mill:mill-setup | `lyx fabric clone` / `lyx init` |
+| mill:git-clone | `lyx fabric clone` |
+| mill:mill-spawn | `lyx fabric add` (+ loom) |
+| mill:mill-claim | `lyx fabric add` / loom |
 | mill:mill-start | loom Discussion phase (a producer prompt) |
 | mill:mill-plan | loom Plan phase |
 | mill:mill-go | loom Builder phase |
 | mill:mill-finalize | loom Finalize |
-| mill:mill-merge | loom Finalize + `lyx warp cleanup` (conflict → `ly-git-resolve`) |
-| mill:mill-merge-in | loom / warp merge (conflict → `ly-git-resolve`) |
-| mill:mill-cleanup | `lyx warp cleanup` |
+| mill:mill-merge | loom Finalize + `lyx fabric cleanup` (conflict → `ly-git-resolve`) |
+| mill:mill-merge-in | loom / fabric merge (conflict → `ly-git-resolve`) |
+| mill:mill-cleanup | `lyx fabric cleanup` |
 | mill:mill-abandon | `lyx loom abandon` |
 | mill:mill-pause | `lyx loom pause` |
 | mill:mill-resume | loom resume + weft-sync + session-sync |

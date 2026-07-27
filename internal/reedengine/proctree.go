@@ -109,6 +109,22 @@ func matchSocketCmdlines(procs []ProcCmdline, binary, socket string) []int {
 	return out
 }
 
+// tmuxProcessName returns the Windows process-table Name for the configured
+// tmux binary: its base name with ".exe" appended when not already present
+// (case-insensitively). serverProcessesOnSocket's Win32_Process filter must
+// name the CONFIGURED binary — a hardcoded 'psmux.exe' silently matched
+// nothing on a machine whose reed config resolves tmux to tmux.exe, so Down
+// believed every socket was already clear and left the server plus its
+// "__warm__" helper alive, holding the hub's .lyx/logs directory forever
+// (found live in the fabric-cutover review, round fable-r1).
+func tmuxProcessName(binary string) string {
+	name := filepath.Base(binary)
+	if !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		name += ".exe"
+	}
+	return name
+}
+
 // argvNamesBinaryAndSocket reports whether argv contains both binary's base
 // name as one of its elements and an "-L" element immediately followed by an
 // element equal to socket.

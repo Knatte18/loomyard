@@ -25,7 +25,7 @@ go test -tags integration ./... -count=1
 go test ./... -count=1 -json
 
 # One package, verbose, with per-test seconds.
-go test ./internal/weftengine -count=1 -v
+go test ./internal/fabricengine -count=1 -v
 ```
 
 `-count=1` disables the test cache so every run is honest; without it, unchanged packages report `(cached)` in ~0 s and the numbers lie.
@@ -71,5 +71,5 @@ RESULT: all packages passed
 If the suite feels slow locally, the highest-leverage levers, in order:
 
 1. **Rely on the test cache** — drop `-count=1` for iterative runs; only changed packages re-run, so a no-op `go test ./...` returns in ~1 s.
-2. **Scope to the package you're editing** — `go test ./internal/weftengine` beats the whole repo.
-3. **Stay in the offline tier.** Tier 1 (`go test ./...`) spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#current-best-times)). Only reach for `-tags integration` when you are changing warp / weft / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.
+2. **Scope to the package you're editing** — `go test ./internal/fabricengine` beats the whole repo.
+3. **Stay in the offline tier.** Tier 1 (`go test ./...`) spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#current-best-times)). Only reach for `-tags integration` when you are changing fabric / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.
