@@ -76,7 +76,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	// return site without duplicating the call at each one.
 	defer func() {
 		if err == nil && result.Outcome != OutcomePaused {
-			_ = clearPauseFlag(runDir)
+			_ = clearPauseFlag(e.name, runDir)
 		}
 	}()
 
@@ -112,7 +112,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 
 	// A resumed block must never instantly re-pause on a flag left over
 	// from the run that requested the pause it is now resuming from.
-	if err := clearPauseFlag(runDir); err != nil {
+	if err := clearPauseFlag(e.name, runDir); err != nil {
 		return Result{}, err
 	}
 
