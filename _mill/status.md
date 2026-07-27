@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: crucible-effort-agent-profiles
 branch: crucible-effort-agent-profiles
 plan: _mill/plan
@@ -19,4 +19,13 @@ discussed  '2026-07-27T12:18:27Z'
 planning  '2026-07-27T12:21:39Z'
 plan-fix-r1  '2026-07-27T12:25:22Z'
 planned  '2026-07-27T12:25:51Z'
+implementing  '2026-07-27T12:42:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: effort-profiles-and-crucible-rewiring
+    state: pending
 ```
