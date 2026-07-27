@@ -172,10 +172,35 @@ nothing here:
 
 ## Round context seeded from prior-round verification
 
-**Round 1 — no known residual yet.** This is the FIRST round of this campaign. There is no prior
-review to seed from. Do a genuinely independent clean-room pass focused on the "High-yield focus"
-list above — the goal is to find any behavior the treadle extraction silently changed, or confirm
-(with real evidence, not a code-reading assertion) that none exists.
+**Safety pass — no known residual.** Round `fable-r1` found and fixed 5 real defects (F1 BLOCKING,
+F2 MEDIUM, F3/F4 LOW, F5 NIT) plus one out-of-scope substrate bug (O2, `reed header --blocking`
+instant deadlock-panic) and a sandbox-suite gap (D3, now closed with a new S3 scenario). The
+orchestrator independently re-verified from a cold state on the committed tree (`go build`, `go
+vet`, `go test -count=5` across `internal/perchengine`, `internal/perchcli`, `internal/treadleengine`,
+`cmd/lyx` — all green; `git ls-files --eol` confirms the four embedded templates are back to
+`w/lf`; the new `TestEngine_JudgeSkippedRoundReadsNoHandoffFiles` and
+`TestSmokeHeaderBlockingKeepaliveDoesNotDeadlock` regression tests both pass `-count=3..5`;
+`TestSandboxCoverage_AllModulesCoveredOrExcluded` still green after the S3 addition; working tree
+clean). The orchestrator did not re-run fable-r1's full live-substrate campaign (~20 real burler
+rounds + 6 real judge calls) — that evidence is taken from the round's own report, which is
+detailed and command-by-command, but treat it as read, not re-proven; you are not primed by it and
+your own live driving is the actual gate.
+
+**CLOSED-AND-VERIFIED — do NOT re-open or re-litigate these:**
+- F1: `.gitattributes` `eol=lf` pins moved to `internal/treadleengine/{judge-circling,judge-milestone,triage,targeting}-template.md` (`97aa88e0`).
+- F2: `internal/treadleengine/smoke_judge_test.go` now sets `judgeInputs.HandoffPath` and asserts the produced handoff parses (`40825a62`).
+- F3: the runner-agnostic error-body generalization ("round N attempt run", "kept run dir") is now documented in both `doc.go`s as a deliberate, prefix-preserving change (`b7f695b2`).
+- F4: `judgeReadSet` is now assembled lazily inside the judge branches so judge-skipped rounds do no handoff I/O (`56fdf6ad`).
+- F5: `ConfigTemplate`'s stale `judge_effort` doc comment corrected (`c64ec86a`).
+- D3: `tools/sandbox/SANDBOX-PERCH-SUITE.md` S3 (milestone ladder, circling vs. milestone judge, handoff ledger, hard-cap-no-judge) added (`7fa7a141`).
+- O2 (out-of-scope but fixed): `lyx reed header --blocking` deadlock-panic fixed via a sleep-loop park (`c7f0ace3`), with a smoke regression test.
+- Every "High-yield focus" invariant in this file was live-driven at least once by fable-r1 with real evidence (session output, state.json contents, timestamps) recorded in `.scratch/perch-review-fable-r1.md` — read it AFTER you have your own independent findings (see "Clean-room review constraint" above), and use it to decide what's worth re-driving vs. what's worth attacking from a fresh angle.
+
+**Your job this round:** do a genuinely independent clean-room pass. Do NOT assume fable-r1 caught
+everything — a different model, rotated in deliberately, is expected to notice different things.
+Either find a real residual (a behavior the treadle extraction changed that fable-r1 missed, or a
+new defect its own fixes introduced) or honestly confirm merge-readiness. "No new defects, ship it"
+is a valid, expected, valuable outcome of a safety pass — do not invent work to justify the round.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
 gate; concurrent/stress scenarios (e.g. many parallel perch invocations) are a diagnostic
@@ -241,7 +266,23 @@ or a capability you don't have) — say so explicitly in the fixer report's defe
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
 
-None yet — this is round 1.
+- **O1** (out of scope, recorded not fixed): a burler reviewer twice produced YAML-invalid review
+  frontmatter (a quoted-fragment summary followed by trailing prose), a fail-loud hard error that
+  kills the whole perch block. 2 of ~20 live rounds hit this. It is burler's own review-template
+  territory (SANDBOX-BURLER-SUITE/burler's crucible instance), explicitly out of scope for this
+  campaign — re-confirm that judgment still holds; do not fix it here.
+- **O3** (out of scope, recorded not fixed): the sandbox hub fixture repo ships a POSIX `reed.yaml`
+  (`shell: bash`), unusable as-is on Windows (worked around via `LYX_REED_SHELL`). Fixture-repo
+  content, not source in this tree — re-confirm still out of scope.
+- **Residual smoke-harness "died" gap**: `go test -tags smoke ./internal/treadleengine/... -run
+  Smoke` still dies in the fixture hub on fable-r1's machine (`outcome=died`), and fable-r1 showed
+  `internal/burlerengine`'s own untouched smoke test fails IDENTICALLY on the same machine — a
+  pre-existing, machine-wide substrate gap, not a treadle regression. If your environment can run
+  the live smoke tests, try it yourself and either corroborate this (same identical burler-and-treadle
+  failure) or, if it actually reveals something ONLY treadle hits, that would be a real finding —
+  don't just take the prior round's word for the "identical failure" claim if you can cheaply check it.
+- **O4** (not a finding): `perchcli` has no smoke test of its own. Per the brief's rule, add one only
+  if you find a live-only defect that's genuinely perchcli's own; do not add one just to have coverage.
 
 ## Fixing — after the review
 
