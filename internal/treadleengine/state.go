@@ -233,14 +233,19 @@ func PauseFlagPath(runDir string) string {
 // clearPauseFlag removes the pause flag file if present, doing nothing if
 // it is absent. It is called at Run's entry so a resumed block does not
 // instantly re-pause on a flag left over from the run that requested the
-// pause it is now resuming from.
-func clearPauseFlag(runDir string) error {
+// pause it is now resuming from, and again at every terminal, non-PAUSED
+// return so a finished block never leaves the flag behind. Its error is
+// prefixed with name (the calling engine's own name) like every other
+// message in this file — Run returns it verbatim rather than re-wrapping,
+// so without the prefix a removal failure would reach the caller's CLI
+// envelope as the one perch error carrying no module label at all.
+func clearPauseFlag(name string, runDir string) error {
 	path := PauseFlagPath(runDir)
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("remove pause flag %q: %w", path, err)
+		return fmt.Errorf("%s: remove pause flag %q: %w", name, path, err)
 	}
 	return nil
 }

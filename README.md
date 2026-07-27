@@ -60,9 +60,7 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **config** — view/edit module configs; `lyx config reconcile` reconciles all configs against their templates; `lyx config <module> --set key=value` writes values non-interactively.
 - **fabric** — the sole host↔weft git-coordination module, unifying topology (clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup) and weft content-sync (`status|commit|push|pull|sync`) in one command tree.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
-- **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the
-  proof-of-concept it was built from — `muxpoc` proved the risky parts, then was
-  deleted once `reed` shipped.)
+- **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the proof-of-concept it was built from — `muxpoc` proved the risky parts, then was deleted once `reed` shipped.)
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via `gh`.
 - **builder** — an LLM orchestrator over Go verbs: drives a pinned implementation plan batch by batch, spawning each batch's implementer as its own tmux strand.
@@ -118,6 +116,4 @@ The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, ex
 - [docs/overview.md](docs/overview.md) — architecture, naming, module and shared-lib map.
 - [manifest/roadmap.md](manifest/roadmap.md) — what's planned and what's shipped.
 - [manifest/designs/](manifest/designs/) — per-module design docs for planned, not-yet-built modules.
-- [crucible/](crucible/README.md) — `crucible`, the hand-run serial review+fix loop for hardening
-  a live-substrate module before merge (not documentation of shipped code, so it lives at the
-  repo root, not under `docs/`).
+- [crucible/](crucible/README.md) — `crucible`, the hand-run serial review+fix loop for hardening a live-substrate module before merge (not documentation of shipped code, so it lives at the repo root, not under `docs/`).

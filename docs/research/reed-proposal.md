@@ -1,12 +1,6 @@
 # Proposal: how to build `reed` (single-worktree agent stack)
 
-> **Status:** proposal, separate from the older reed design (superseded — reed is now built as
-> `internal/reedengine`; see the package documentation and
-> [overview.md#modules](../overview.md#modules)). It folds in the
-> hands-on findings from [`reed-hooks-exploration.md`](reed-hooks-exploration.md) and the proven
-> primitives in [`muxpoc.md`](../overview.md#modules), and it adopts a **module split** (below). Nothing here
-> is built yet. When accepted, the reed design should be re-scoped to match (its "column per worktree"
-> content moves to `mplex`).
+> **Status:** proposal, separate from the older reed design (superseded — reed is now built as `internal/reedengine`; see the package documentation and [overview.md#modules](../overview.md#modules)). It folds in the hands-on findings from [`reed-hooks-exploration.md`](reed-hooks-exploration.md) and the proven primitives in [`muxpoc.md`](../overview.md#modules), and it adopts a **module split** (below). Nothing here is built yet. When accepted, the reed design should be re-scoped to match (its "column per worktree" content moves to `mplex`).
 
 ## The module split (recommended)
 
@@ -17,10 +11,7 @@ Two modules, built in priority order:
 | **`reed`** | **One worktree at a time.** You open a terminal in the worktree you're working in (as today); reed runs the tmux session *for that worktree* — an **orchestrator claude plus the sub-agents it spawns**, stacked as visible panes you can watch and type in. | **Now** |
 | **`mplex`** | **Many worktrees.** One tmux instance with **a column per work-folder**, tiling several worktrees at once. | **Later / low** |
 
-This split is endorsed because the single-worktree agent stack is exactly where the hard parts are
-already **proven** (muxpoc: spawn, dominant-bottom layout, crash recovery) and where the exploration's
-event-driven model lands cleanly. `mplex` is additive layout work that can reuse `claude agents --json
---cwd` and the supervisor for cross-worktree discovery — so it loses nothing by waiting.
+This split is endorsed because the single-worktree agent stack is exactly where the hard parts are already **proven** (muxpoc: spawn, dominant-bottom layout, crash recovery) and where the exploration's event-driven model lands cleanly. `mplex` is additive layout work that can reuse `claude agents --json --cwd` and the supervisor for cross-worktree discovery — so it loses nothing by waiting.
 
 The rest of this doc is **`reed` only**. `mplex` is sketched briefly at the end.
 
@@ -28,30 +19,17 @@ The rest of this doc is **`reed` only**. `mplex` is sketched briefly at the end.
 
 ## What `reed` is
 
-Within one worktree: an **orchestrator** Claude Code session that spawns sub-agents (reviewer,
-implementer, …) as **real interactive `claude` processes in stacked tmux panes**, replacing the
-invisible in-process Agent tool. Nesting is orchestrator → child → grandchild (**≤3 deep**); only the
-deepest pane is active (ancestors block waiting on it), so the **bottom/active pane dominates** the
-column height. Driven by `lyx reed <subcommand>`; one tmux session per worktree.
+Within one worktree: an **orchestrator** Claude Code session that spawns sub-agents (reviewer, implementer, …) as **real interactive `claude` processes in stacked tmux panes**, replacing the invisible in-process Agent tool. Nesting is orchestrator → child → grandchild (**≤3 deep**); only the deepest pane is active (ancestors block waiting on it), so the **bottom/active pane dominates** the column height. Driven by `lyx reed <subcommand>`; one tmux session per worktree.
 
 This is muxpoc's proven model, productionised and made **event-driven** with the hook findings.
 
 ## Load-bearing decisions (each grounded in a verified finding)
 
-1. **Direct-launch, never attach.** `lyx reed spawn` launches a **fresh `claude` process directly in
-   the pane** — *not* `claude --bg` + `claude attach`. The live latency test showed `claude attach` →
-   `cc-daemon` adds perceptible per-keystroke lag; direct launch in a pane is materially snappier. The
-   supervisor (`claude --bg`) is **explicitly not** the interactive path here — it is reserved for a
-   possible future *headless* mode (see [Out of scope](#out-of-scope-for-reed)).
-2. **reed owns the pane↔session map.** It **assigns each pane a `--session-id` at launch** and records
-   it in local-state from t0. This id is the join key for everything (hooks, resume, reconciliation).
-3. **Task injected at launch** as the positional `[prompt]` arg. Multi-line prompts cannot be typed
-   into a running TUI (paste-buffer drops content; bracketed paste submits per `\n`).
-4. **Env hygiene is mandatory.** Strip `CLAUDE_CODE_*` / `CLAUDECODE` when spawning the tmux server
-   → every pane's claude is a clean top-level session → transcripts persist → `--resume` works.
-5. **Event-driven via per-child hooks (replaces the capture-pane idle poller).** Each spawned claude
-   is launched with a `--settings` whose hooks call back `lyx reed …`, keyed by **its own
-   `session_id`** (present in every payload — verified). Focus follows `Stop`:
+1. **Direct-launch, never attach.** `lyx reed spawn` launches a **fresh `claude` process directly in the pane** — *not* `claude --bg` + `claude attach`. The live latency test showed `claude attach` → `cc-daemon` adds perceptible per-keystroke lag; direct launch in a pane is materially snappier. The supervisor (`claude --bg`) is **explicitly not** the interactive path here — it is reserved for a possible future *headless* mode (see [Out of scope](#out-of-scope-for-reed)).
+2. **reed owns the pane↔session map.** It **assigns each pane a `--session-id` at launch** and records it in local-state from t0. This id is the join key for everything (hooks, resume, reconciliation).
+3. **Task injected at launch** as the positional `[prompt]` arg. Multi-line prompts cannot be typed into a running TUI (paste-buffer drops content; bracketed paste submits per `\n`).
+4. **Env hygiene is mandatory.** Strip `CLAUDE_CODE_*` / `CLAUDECODE` when spawning the tmux server → every pane's claude is a clean top-level session → transcripts persist → `--resume` works.
+5. **Event-driven via per-child hooks (replaces the capture-pane idle poller).** Each spawned claude is launched with a `--settings` whose hooks call back `lyx reed …`, keyed by **its own `session_id`** (present in every payload — verified). Focus follows `Stop`:
    ```jsonc
    // injected into every spawned child's --settings (commands run under git-bash → POSIX paths / PATH binary)
    {
@@ -63,38 +41,23 @@ This is muxpoc's proven model, productionised and made **event-driven** with the
      }
    }
    ```
-   - `Stop` is the **immediate** idle/needs-input edge (carries `last_assistant_message` +
-     `background_tasks`) → on it, reed `select-pane`s focus back to the parent / next active pane.
+   - `Stop` is the **immediate** idle/needs-input edge (carries `last_assistant_message` + `background_tasks`) → on it, reed `select-pane`s focus back to the parent / next active pane.
    - `SessionStart` confirms/repairs the pane↔session map (carries the child's own `session_id`).
-   - **`lyx` is invoked PATH-resolved** so the git-bash hook executor finds it (a literal Windows
-     path with backslashes is destroyed by bash — verified failure).
-6. **Deny-guardrail keeps work visible.** The `PreToolUse` matcher on `Agent` **denies** the in-process
-   Agent tool and injects a reason steering the model to run `lyx reed spawn` instead — so nested
-   delegation can't slip back to an invisible in-process subagent. (Deny path is a pending spike.)
-7. **Layout: bottom-active-dominant vertical stack**, hand-rendered `window_layout` string (preset
-   layouts can't express "bottom dominant"); checksum reproducible in Go. Proven in muxpoc.
-8. **Crash recovery: native `claude --resume <session-id>` per pane** (works because of decision 4),
-   rebuilding the layout from local-state. Proven in muxpoc end-to-end.
-9. **`claude agents --json` is the reconciler, not a poller.** Join `sessionId` to local-state **on a
-   hook event** to find orphaned panes / dead sessions / untracked processes; ~800 ms, so never on a
-   tight timer. Its `status` field is best-effort — don't depend on it for idle (hooks own that).
+   - **`lyx` is invoked PATH-resolved** so the git-bash hook executor finds it (a literal Windows path with backslashes is destroyed by bash — verified failure).
+6. **Deny-guardrail keeps work visible.** The `PreToolUse` matcher on `Agent` **denies** the in-process Agent tool and injects a reason steering the model to run `lyx reed spawn` instead — so nested delegation can't slip back to an invisible in-process subagent. (Deny path is a pending spike.)
+7. **Layout: bottom-active-dominant vertical stack**, hand-rendered `window_layout` string (preset layouts can't express "bottom dominant"); checksum reproducible in Go. Proven in muxpoc.
+8. **Crash recovery: native `claude --resume <session-id>` per pane** (works because of decision 4), rebuilding the layout from local-state. Proven in muxpoc end-to-end.
+9. **`claude agents --json` is the reconciler, not a poller.** Join `sessionId` to local-state **on a hook event** to find orphaned panes / dead sessions / untracked processes; ~800 ms, so never on a tight timer. Its `status` field is best-effort — don't depend on it for idle (hooks own that).
 
 ## The spawn lifecycle and the result contract (the one hard design choice)
 
-`lyx reed spawn` must behave **exactly like an Agent-tool dispatch** so the orchestrator can swap to it
-transparently:
+`lyx reed spawn` must behave **exactly like an Agent-tool dispatch** so the orchestrator can swap to it transparently:
 
-- **Task in:** the orchestrator (via its **Bash tool**, not the Agent tool) runs `lyx reed spawn` with
-  the brief/prompt; reed launches the child in a new bottom pane (decisions 1–5).
-- **Result out — the load-bearing part:** the child writes its **structured result to a file**
-  (JSON / `<brief>.out.md`); the orchestrator reads that file. *This file hand-off is what makes the
-  child "return" the way the Agent tool's return value does.* `capture-pane` is a **liveness fallback
-  only**, never the result channel.
-- **Lifecycle:** the parent blocks on the child; while it runs the child is the active, dominant
-  bottom pane; on the child's `Stop`, focus returns to the parent.
+- **Task in:** the orchestrator (via its **Bash tool**, not the Agent tool) runs `lyx reed spawn` with the brief/prompt; reed launches the child in a new bottom pane (decisions 1–5).
+- **Result out — the load-bearing part:** the child writes its **structured result to a file** (JSON / `<brief>.out.md`); the orchestrator reads that file. *This file hand-off is what makes the child "return" the way the Agent tool's return value does.* `capture-pane` is a **liveness fallback only**, never the result channel.
+- **Lifecycle:** the parent blocks on the child; while it runs the child is the active, dominant bottom pane; on the child's `Stop`, focus returns to the parent.
 
-This result contract is **the** thing to nail in a spike before building — it is what separates a
-robust `reed spawn` from a fragile one.
+This result contract is **the** thing to nail in a spike before building — it is what separates a robust `reed spawn` from a fragile one.
 
 ## Subcommands (v1)
 
@@ -111,44 +74,28 @@ robust `reed spawn` from a fragile one.
 
 ## v1 scope (smallest useful) and spikes-first
 
-**v1:** `up` + `spawn` (one level deep) + `attach` + the `on-start`/`on-idle` hooks + `down`. That is a
-visible orchestrator that can spawn one watchable, resumable sub-agent and auto-focus it — the core
-value. Stacking to ≤3 deep, `resume`, `status`, and the deny-guardrail come right after.
+**v1:** `up` + `spawn` (one level deep) + `attach` + the `on-start`/`on-idle` hooks + `down`. That is a visible orchestrator that can spawn one watchable, resumable sub-agent and auto-focus it — the core value. Stacking to ≤3 deep, `resume`, `status`, and the deny-guardrail come right after.
 
 **Do these spikes before committing the design:**
 1. **Result contract** — child-writes-file ↔ parent-reads, with a real reviewer brief.
-2. **Deny-guardrail** — confirm `PreToolUse(Agent)` deny + steer actually redirects the model to
-   `lyx reed spawn`.
-3. **Orchestrator bootstrap + pre-granted permissions** — so it can run `lyx reed spawn` autonomously
-   without hanging on a permission prompt (`--dangerously-skip-permissions` or a scoped allowlist).
+2. **Deny-guardrail** — confirm `PreToolUse(Agent)` deny + steer actually redirects the model to `lyx reed spawn`.
+3. **Orchestrator bootstrap + pre-granted permissions** — so it can run `lyx reed spawn` autonomously without hanging on a permission prompt (`--dangerously-skip-permissions` or a scoped allowlist).
 
 ## Out of scope for `reed`
 
 - **Multi-worktree tiling** → `mplex` (below).
-- **Headless / fire-and-forget agents + monitoring** → could later use Claude Code's **supervisor**
-  (`claude --bg`, `state`/`logs`/needs-input from `claude agents --json`) — see
-  [`reed-hooks-exploration.md` §D](reed-hooks-exploration.md). Deliberately not the interactive path
-  (latency), but a natural home for "dispatch and walk away" work and the Slack signal
-  (`state==blocked` = needs human).
+- **Headless / fire-and-forget agents + monitoring** → could later use Claude Code's **supervisor** (`claude --bg`, `state`/`logs`/needs-input from `claude agents --json`) — see [`reed-hooks-exploration.md` §D](reed-hooks-exploration.md). Deliberately not the interactive path (latency), but a natural home for "dispatch and walk away" work and the Slack signal (`state==blocked` = needs human).
 
 ---
 
 ## `mplex` (future, low priority — sketch only)
 
-One tmux instance, **a column per worktree**, tiling several worktrees at once (the old reed design's
-"v1"). It composes over `reed`: each column is a worktree's orchestrator. Cross-worktree discovery can
-reuse **`claude agents --json --cwd <repo>`** (sessions per subtree) and the supervisor for headless
-columns. Overflow/orchestrator-switch via tmux **windows** inside one attached client (proven in
-`reed-exploration.md`). Build only after `reed` is solid.
+One tmux instance, **a column per worktree**, tiling several worktrees at once (the old reed design's "v1"). It composes over `reed`: each column is a worktree's orchestrator. Cross-worktree discovery can reuse **`claude agents --json --cwd <repo>`** (sessions per subtree) and the supervisor for headless columns. Overflow/orchestrator-switch via tmux **windows** inside one attached client (proven in `reed-exploration.md`). Build only after `reed` is solid.
 
 ---
 
 ## Relationship to existing docs
 
-- [`muxpoc.md`](../overview.md#modules) — already proves spawn, dominant-bottom layout, and crash recovery; `reed`
-  productionises it.
-- [`reed-hooks-exploration.md`](reed-hooks-exploration.md) — the evidence for decisions 1, 4–6, 8–9 and
-  the §A-vs-§D split.
-- `internal/reedengine` (see the package documentation and
-  [overview.md#modules](../overview.md#modules)) — the as-built module this proposal informed
-  (its column-per-worktree part remains a candidate for a future `mplex`).
+- [`muxpoc.md`](../overview.md#modules) — already proves spawn, dominant-bottom layout, and crash recovery; `reed` productionises it.
+- [`reed-hooks-exploration.md`](reed-hooks-exploration.md) — the evidence for decisions 1, 4–6, 8–9 and the §A-vs-§D split.
+- `internal/reedengine` (see the package documentation and [overview.md#modules](../overview.md#modules)) — the as-built module this proposal informed (its column-per-worktree part remains a candidate for a future `mplex`).

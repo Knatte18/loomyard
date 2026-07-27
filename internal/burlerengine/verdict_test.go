@@ -144,6 +144,25 @@ verdict: [APPROVED
 			errSubstr: "not valid YAML",
 		},
 		{
+			// The single most frequent live review-file defect: a summary
+			// that opens with a quoted fragment then carries unquoted
+			// trailing prose on the same line — invalid YAML. ParseReview
+			// must append a targeted hint rather than just yaml.v3's raw,
+			// hard-to-act-on parser error.
+			name: "malformed quoted summary appends a targeted hint",
+			content: `---
+verdict: BLOCKING
+findings:
+  - id: b-1
+    severity: LOW
+    location: file.go:1
+    summary: "capital" is misspelled as "captial" (both occurrences on line 1)
+---
+`,
+			wantErr:   true,
+			errSubstr: "must be ONE double-quoted string covering the whole value",
+		},
+		{
 			name: "unknown verdict",
 			content: `---
 verdict: MAYBE

@@ -68,10 +68,13 @@ type handoffLedgerEntry struct {
 // delimiting YAML frontmatter (CRLF line endings are tolerated), exactly
 // like ParseJudgeVerdict; everything after the closing delimiter is the
 // unconstrained prose narrative. Every rule below is enforced fail-loud with
-// a "treadle: "-prefixed error — this function NEVER silently defaults, so a
-// self-contradictory or malformed handoff file is always visible as an
-// error to its caller (the round loop is the one that turns that error into
-// a fail-safe Warn + fallback read-set; see the file-level comment):
+// a "treadle: handoff file "-prefixed error — including the three shared
+// frontmatter rules, which name the handoff rather than a verdict because
+// splitFrontmatter takes the file kind as a parameter; this function NEVER
+// silently defaults, so a self-contradictory or malformed handoff file is
+// always visible as an error to its caller (the round loop is the one that
+// turns that error into a fail-safe Warn + fallback read-set; see the
+// file-level comment):
 //   - the frontmatter must be present, closed, and valid YAML;
 //   - covers_rounds must be a non-empty list of positive round numbers;
 //   - every ledger entry must have a non-empty key, a non-empty list of
@@ -79,7 +82,7 @@ type handoffLedgerEntry struct {
 //     (case-sensitive) — the ledger list itself MAY be empty (a first
 //     handoff has nothing yet to carry forward).
 func ParseHandoff(content []byte) (Handoff, error) {
-	header, err := splitFrontmatter(content)
+	header, err := splitFrontmatter(content, "handoff")
 	if err != nil {
 		return Handoff{}, err
 	}
@@ -165,18 +168,19 @@ func frontmatterProse(content []byte) string {
 // latestValidHandoff walks rounds newest-to-oldest looking for the most
 // recent round record whose HandoffPath is non-empty AND whose file both
 // reads and ParseHandoffs cleanly. An unreadable or unparseable recorded
-// handoff is a fail-safe skip, not a hard stop: it logs a "treadle: "
-// -prefixed logger.Warn naming the round and cause (this helper has no
-// calling-engine name in scope, exactly like ParseHandoff's own errors —
-// see the file-level comment), then the walk continues to the next older
-// round, so a single corrupted handoff degrades to the next older valid one
-// instead of taking every future judge call down with it. ok is false only
-// when no round in rounds carries a handoff that reads and parses cleanly
-// (including the fresh-block case of zero rounds). This helper depends on
+// handoff is a fail-safe skip, not a hard stop: it logs a logger.Warn
+// prefixed with name — the calling engine's own name, threaded down from
+// Engine.Run exactly like every other Warn this package emits, since these
+// lines reach an operator's stderr at logger's default threshold during an
+// ordinary run and must not label a perch block with a foreign module name
+// — then the walk continues to the next older round, so a single corrupted
+// handoff degrades to the next older valid one instead of taking every
+// future judge call down with it. ok is false only when no round in rounds
+// carries a handoff that reads and parses cleanly (including the
+// fresh-block case of zero rounds). Apart from name this helper depends on
 // nothing but rounds — it must not assume a current-round review exists,
-// since pre-round targeting (a later batch) reuses it before any round has
-// run.
-func latestValidHandoff(rounds []roundRecord) (path string, h Handoff, ok bool) {
+// since pre-round targeting reuses it before any round has run.
+func latestValidHandoff(name string, rounds []roundRecord) (path string, h Handoff, ok bool) {
 	for i := len(rounds) - 1; i >= 0; i-- {
 		round := rounds[i]
 		if round.HandoffPath == "" {
@@ -184,12 +188,12 @@ func latestValidHandoff(rounds []roundRecord) (path string, h Handoff, ok bool) 
 		}
 		content, err := os.ReadFile(round.HandoffPath)
 		if err != nil {
-			logger.Warn("treadle: recorded handoff file unreadable, falling back to an older handoff", "round", round.Round, "cause", err)
+			logger.Warn(name+": recorded handoff file unreadable, falling back to an older handoff", "round", round.Round, "cause", err)
 			continue
 		}
 		parsed, err := ParseHandoff(content)
 		if err != nil {
-			logger.Warn("treadle: recorded handoff file unparseable, falling back to an older handoff", "round", round.Round, "cause", err)
+			logger.Warn(name+": recorded handoff file unparseable, falling back to an older handoff", "round", round.Round, "cause", err)
 			continue
 		}
 		return round.HandoffPath, parsed, true
@@ -211,9 +215,11 @@ func latestValidHandoff(rounds []roundRecord) (path string, h Handoff, ok bool) 
 // round right after an approved round, or a round whose judge call itself
 // failed) carry no HandoffPath and so never appear in any handoff's
 // CoversRounds — their reviews are therefore always present in some future
-// call's readSet, which is what closes the judge-gap hole.
-func judgeReadSet(rounds []roundRecord, currentReviewPath string) (readSet []string, prevHandoffPath string) {
-	path, handoff, ok := latestValidHandoff(rounds)
+// call's readSet, which is what closes the judge-gap hole. name is the
+// calling engine's own name, passed straight through to latestValidHandoff
+// so its fail-safe Warns carry the caller's prefix.
+func judgeReadSet(name string, rounds []roundRecord, currentReviewPath string) (readSet []string, prevHandoffPath string) {
+	path, handoff, ok := latestValidHandoff(name, rounds)
 	if !ok {
 		return collectJudgeReviews(rounds, currentReviewPath), ""
 	}

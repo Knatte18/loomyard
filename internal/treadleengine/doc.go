@@ -55,6 +55,19 @@
 // handoff has already absorbed) over a distilled prose narrative for
 // everything else — "distill the prose, but keep the key-ledger lossless."
 //
+// Riding the same call has one consequence worth naming, since it is a
+// behavior change from the pre-handoff design rather than a pure addition:
+// the handoff is a REQUIRED second entry in that spawn's OutputFiles, and
+// shuttle reports OutcomeDone only once every output file exists. A judge
+// call that renders a well-formed verdict and then fails to write its
+// handoff therefore comes back non-done, and runJudgeCall takes its
+// fail-safe branch with the verdict file unread — where pre-handoff, with
+// the verdict as sole output file, that same call would have been honoured.
+// The direction is safe (the fallback is PROGRESSING/CONTINUE, never STUCK,
+// and the hard cap still bounds the block) and the alternative would mean
+// trusting a file after shuttle's own done contract said the agent was not
+// finished, so the coupling is deliberate — see runJudgeCall's doc.
+//
 // Parsing is a deliberate two-layer split, mirroring judgeverdict.go:
 // ParseHandoff itself is fail-loud — a malformed handoff is an agent defect
 // that must be visible as an error to any direct caller, including tests —
@@ -95,11 +108,28 @@
 // # Name-parameterized diagnostics
 //
 // Engine is constructed with a name (perch passes "perch") that every error
-// and Warn string this package produces is prefixed with, so a caller's
-// diagnostics read exactly like perch's own literal "perch: "-prefixed
-// messages today, and a future caller (e.g. "tenter") gets its own
+// and Warn string reached through an Engine method is prefixed with, so a
+// caller's diagnostics read exactly like perch's own literal "perch: "
+// -prefixed messages today, and a future caller (e.g. "tenter") gets its own
 // consistently-prefixed diagnostics for free rather than a generic
-// "treadle: " label that would erase which caller's block failed.
+// "treadle: " label that would erase which caller's block failed. That
+// covers every Warn this package emits without exception — including the
+// fail-safe handoff-fallback Warns in latestValidHandoff, which reach an
+// operator's stderr at logger's default threshold during an ordinary run and
+// so must never wear a module name the operator has no CLI for.
+//
+// Two carve-outs, both deliberate. First, the name parameterization pins the
+// PREFIX only: error BODIES are runner-agnostic by design ("round N attempt
+// run", "kept run dir"), since this package cannot name a specific runner's
+// domain (burler, shuttle) without violating the Runner-Seam Invariant — see
+// internal/perchengine's package doc for the perch-visible consequence.
+// Second, the package's EXPORTED fail-loud parsers — ParseJudgeVerdict,
+// ParseTriageVerdict, ParseHandoff, and the splitFrontmatter they share —
+// are package-level pure functions with no Engine in scope, so their errors
+// keep a fixed "treadle: " prefix. Those strings are never returned to a
+// caller as an engine error; they surface only as the cause= field of a
+// name-prefixed Warn (judge.go, run.go) or to a direct caller such as a
+// test, where "treadle: " is the accurate attribution.
 //
 // # No burlerengine import — the Treadle Runner-Seam Invariant
 //

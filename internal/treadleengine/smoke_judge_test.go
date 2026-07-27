@@ -273,6 +273,7 @@ The chair is red and the table is blue; they must match.
 	}
 
 	verdictPath := filepath.Join(fixture.Hub, "round-2-judge.md")
+	handoffPath := filepath.Join(fixture.Hub, "round-2-handoff.md")
 
 	// Wire the real stack directly: perchengine never imports claudeengine
 	// itself, but this test is the caller and may.
@@ -287,10 +288,17 @@ The chair is red and the table is blue; they must match.
 	reedEngine := reedengine.New(reedCfg, fixture.Layout)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
 
+	// HandoffPath is REQUIRED input: the same judge call must write its
+	// maintained handoff alongside the verdict (the handoff-on-disk shared
+	// decision), and the template's handoff_path marker is a mandatory
+	// top-level stencil marker — leaving it empty fails the fill before any
+	// spawn, which is exactly the silent fail-safe degrade this test exists
+	// to catch.
 	verdict, rationale, ok := runCircling(runner, "perch", judgeInputs{
 		Round:        2,
 		PriorReviews: []string{round1Path, round2Path},
 		VerdictPath:  verdictPath,
+		HandoffPath:  handoffPath,
 		Model:        "haiku",
 	})
 
@@ -313,5 +321,17 @@ The chair is red and the table is blue; they must match.
 	}
 	if strings.TrimSpace(rationale) == "" {
 		t.Error("runCircling() rationale is empty; want the real judge's non-empty rationale")
+	}
+
+	// The same call must also have produced a well-formed handoff file —
+	// this is the live half of the handoff file contract (a fake-shuttle
+	// test can only prove the loop's handling, never that a real agent
+	// actually writes a parseable handoff from the template's instructions).
+	handoffContent, err := os.ReadFile(handoffPath)
+	if err != nil {
+		t.Fatalf("read judge handoff file: %v (the judge call must write the handoff alongside the verdict)", err)
+	}
+	if _, err := ParseHandoff(handoffContent); err != nil {
+		t.Fatalf("judge handoff file failed to parse: %v; content:\n%s", err, handoffContent)
 	}
 }

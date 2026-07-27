@@ -160,6 +160,52 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 			t.Error("ok = true; want false on a fail-safe path")
 		}
 	})
+
+	// The handoff is a REQUIRED second output file, so an agent that writes a
+	// perfectly good verdict and no handoff never reaches OutcomeDone —
+	// shuttle classifies done only when EVERY OutputFiles entry exists — and
+	// this call therefore discards a real, parseable verdict and returns the
+	// fail-safe default. That is a deliberate consequence of the
+	// handoff-on-disk decision (pre-handoff, the verdict was the sole output
+	// file and would have been honoured), pinned here so the coupling stays a
+	// recorded choice rather than an accident of the spec's OutputFiles list.
+	t.Run("valid verdict but missing handoff discards the verdict", func(t *testing.T) {
+		dir := t.TempDir()
+		verdictPath := filepath.Join(dir, "round-3-judge.md")
+		sh := &fakeJudgeShuttle{
+			verdictContent: verdictContent,
+			// The file contract is unsatisfied (no handoff written), which is
+			// exactly what real shuttle reports as asking rather than done.
+			result: shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking},
+		}
+
+		verdict, rationale, ok := runCircling(sh, "perch", judgeInputs{
+			Round:        3,
+			PriorReviews: []string{"/run/round-2-review.md", "/run/round-3-review.md"},
+			VerdictPath:  verdictPath,
+			HandoffPath:  filepath.Join(dir, "round-3-handoff.md"),
+		})
+
+		if ok {
+			t.Error("ok = true; want false — a non-done outcome is a fail-safe path even with a good verdict on disk")
+		}
+		if verdict != JudgeProgressing {
+			t.Errorf("verdict = %q; want the fail-safe %q", verdict, JudgeProgressing)
+		}
+		if rationale != "" {
+			t.Errorf("rationale = %q; want empty", rationale)
+		}
+
+		// Prove the discarded verdict really was usable: the loss comes from
+		// the missing handoff alone, not from a malformed verdict file.
+		content, err := os.ReadFile(verdictPath)
+		if err != nil {
+			t.Fatalf("read verdict file: %v", err)
+		}
+		if _, _, err := ParseJudgeVerdict(content, framingCircling); err != nil {
+			t.Fatalf("scripted verdict file does not parse: %v", err)
+		}
+	})
 }
 
 func TestRunMilestone(t *testing.T) {
