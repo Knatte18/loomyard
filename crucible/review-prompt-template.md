@@ -1,6 +1,6 @@
 # `<MODULE>` — independent review + fix (prompt template)
 
-> **This is a TEMPLATE.** Copy it to `crucible/<module>-review-prompt.md` and replace every `<PLACEHOLDER>`. It is the round agent's *entire* instruction set — the orchestrator spawns a fresh clean-room agent told only "read this file and do exactly what it says". See [README.md](README.md) for the loop this prompt runs inside, and [`reed-review-prompt.md`](reed-review-prompt.md) for a fully-worked instance to crib from.
+> **This is a TEMPLATE.** Copy it to `crucible/<module>-review-prompt.md` and replace every `<PLACEHOLDER>`. It is the round agent's instruction set for the review+fix work itself — the orchestrator spawns a fresh clean-room agent told only "read this file and do exactly what it says". The `crucible-reviewer-<effort>` agent-file preamble under `.claude/agents/` also carries the clean-room / commit-per-fix / summary-only contract, but this file remains the authoritative statement of it. See [README.md](README.md) for the loop this prompt runs inside, and [`reed-review-prompt.md`](reed-review-prompt.md) for a fully-worked instance to crib from.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `<MODULE>` module in the loomyard repo, followed by FIXING what you find. Work in the worktree at `<WORKTREE_PATH>` (branch `<BRANCH>`). Adjust that path/branch if the task lives elsewhere now.
 
