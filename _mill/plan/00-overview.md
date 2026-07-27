@@ -3,7 +3,7 @@
 ```yaml
 task: Crucible review spawn as effort-selectable Agent profiles
 slug: crucible-effort-agent-profiles
-approved: false
+approved: true
 started: 20260727-121932
 parent: main
 root: ""
@@ -39,7 +39,7 @@ _Cross-cutting decisions every batch inherits: naming conventions, error-handlin
 - **Rationale:** Omitting `model:` keeps effort (selected via `subagent_type`) and model (the orchestrator's per-call `model:` override) fully orthogonal — no N-effort × M-model file explosion. Omitting `tools:` inherits the full default tool set, which is what `general-purpose` rounds get today; enumerating a narrower list (the original proposal copied millhouse's 7-tool `mill-implementer` list) would silently drop `BashOutput`/`KillShell` — needed for live-substrate driving and the "zero stray processes" teardown discipline — plus `TodoWrite`/`WebFetch`/`WebSearch`. These profiles change exactly one thing about the spawn: the effort tier.
 - **Applies to:** all batches
 
-### Decision: the five bodies stay byte-identical except three tokens
+### Decision: the five bodies stay byte-identical except four points
 
 - **Decision:** All five files are byte-identical apart from `name:`, the effort word inside `description:`, `effort:`, and the H1 heading. There is no automated drift guard, so this is a manual discipline point recorded in the batch file for whoever edits these next.
 - **Rationale:** The bodies restate `crucible/review-prompt-template.md`'s commit-per-fix / sequencing / clean-room contract. If that contract wording changes later, all five must be updated in the same commit or the tiers silently diverge in what they promise a round agent.
