@@ -7,15 +7,27 @@
 // machine-local advisory-lock artifacts, not builder state, so committing
 // them would leak runtime noise into durable weft history and materialize
 // stale lock files on every other machine's weft pull.
+//
+// That provenance is historical only -- do NOT treat perchcli's copy as the
+// current reference. This helper's exclusion set has since diverged twice and
+// perchcli has not followed: its entries are ANCHORED under the scoped _lyx
+// base (perchcli still spells the leading-wildcard ":(exclude)*.lock" that
+// CONSTRAINTS.md's Weft Git Invariant names as a silent no-op at a
+// multi-segment RelPath), and they are CROSS-MODULE (see
+// builderWeftPathspec). Copying perchcli's spelling back here reintroduces
+// both bugs.
 
 package buildercli
 
 import (
 	"fmt"
+	"path"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // builderWeftPathspec returns the scoped _lyx pathspec every builder weft
@@ -28,23 +40,79 @@ import (
 // (it is present on disk during poll's terminal commit whenever a pause raced
 // the last in-flight batch). Extracted from weftCommit so the exclusion set is
 // asserted directly by a unit test rather than only implicitly through a live
-// commit. The pause-flag pattern uses a trailing "*/builder/<flag>" glob so it
-// matches whether or not layout.RelPath prefixes the _lyx path.
+// commit.
+//
+// The exclusion set is deliberately NOT limited to builder's own artifacts.
+// Builder and webster are two round-loop drivers sharing one _lyx tree, so a
+// builder weft commit stages whatever webster happens to have left on disk;
+// webster's pause flag and its rendered fork prompts (re-rendered by every
+// BeginBatch, so a pulled copy is stale by construction) are the same class of
+// machine-local state as builder's own, and are excluded here for the same
+// reason. Leaving them in is not merely noise in one commit: once such a file
+// is tracked, the module that OWNS it can never stage its own deletion --
+// that module's exclusion entry removes the path from `git add`'s
+// consideration -- so the flag is pinned in weft HEAD, pushed, and
+// materialized by every other machine's weft pull as a pause request nobody
+// made. The *.lock exclusion below is already cross-module (a git pathspec
+// "*" crosses "/", so "<base>/*.lock" catches webster's locks too); only the
+// pause flag and the prompts needed naming explicitly.
+//
+// Every exclusion is ANCHORED under the same scoped base the positive
+// pathspec names, and spelled with forward slashes (a git pathspec is not an
+// OS path). A leading-wildcard exclusion such as ":(exclude)*.lock" is NOT
+// equivalent and must never be reintroduced: git classifies a pattern that
+// begins with "*" and carries no further wildcard as a one-star pathspec,
+// which then false-positive-matches every intermediate directory git has to
+// descend through to reach a multi-segment positive pathspec. At a
+// layout.RelPath of two or more segments that prunes the whole subtree, so
+// `git add` stages nothing at all, the staged-diff check reports "nothing to
+// commit", and the weft commit silently becomes a no-op with no error for the
+// caller to see. Within the anchored base "*" still crosses "/", so
+// "<base>/*.lock" keeps catching lock files at any depth beneath it.
+//
+// The ":(exclude)" entries are git pathspec magic, carried by fabricengine's
+// CommitWeft pathspec parameter end-to-end through add, the staged-diff
+// check, and the pathspec-scoped commit -- gitrepo's "plain relative paths"
+// rule governs its own direct consumers, not CommitWeft callers.
 func builderWeftPathspec(layout *hubgeometry.Layout) []string {
+	base := weftPathspecBase(layout)
 	return append(
 		fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
-		":(exclude)*.lock",
-		":(exclude)*/builder/"+builderengine.PauseFlagName,
+		":(exclude)"+base+"/*.lock",
+		":(exclude)"+base+"/builder/"+builderengine.PauseFlagName,
+		":(exclude)"+base+"/webster/"+websterengine.PauseFlagName,
+		":(exclude)"+base+"/webster/prompts/*",
 	)
 }
 
+// weftPathspecBase returns the scoped _lyx base every exclusion entry in
+// builderWeftPathspec anchors under, as a git pathspec: layout.RelPath joined
+// with the _lyx directory name using forward slashes, collapsing to plain
+// "_lyx" at RelPath "." or "". It exists so the exclusions are anchored to
+// exactly the base the positive ScopedPathspec entry names -- see
+// builderWeftPathspec for why an unanchored, leading-wildcard exclusion
+// silently empties the commit at a nested RelPath.
+func weftPathspecBase(layout *hubgeometry.Layout) string {
+	// path.Clean normalizes the empty RelPath to "." too, so the single "."
+	// check covers both the worktree-root and the unset-RelPath spellings.
+	rel := path.Clean(filepath.ToSlash(layout.RelPath))
+	if rel == "." {
+		return hubgeometry.LyxDirName
+	}
+	return rel + "/" + hubgeometry.LyxDirName
+}
+
 // weftCommit stages and commits every change under layout's scoped _lyx
-// pathspec (excluding the machine-local *.lock files and pause flag -- see
-// builderWeftPathspec) through the weft junction, then pushes, using
-// "builder: <label>" as the commit message. It reports whether a commit was
-// actually made (false when there was nothing staged) and any error from
-// either the commit or the push step -- mirroring perchcli's block-exit sync
-// exactly.
+// pathspec (excluding the machine-local *.lock files and both round-loop
+// modules' pause flags and rendered prompts -- see builderWeftPathspec)
+// through the weft junction, then pushes, using
+// "builder: <label>" as the commit subject. Per fabric's CommitWeft
+// contract, the commit also carries a "Warp-SHA: <host HEAD>" trailer in
+// its own blank-line-separated paragraph and records a warp<->weft
+// correspondence entry in the weft gitdir's index. It reports whether a
+// commit was actually made (false when there was nothing staged) and any
+// error from either the commit or the push step -- mirroring perchcli's
+// block-exit sync exactly.
 func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	weftWorktree := layout.WeftWorktree()
 	opts := fabricengine.EnvSyncOptions()
@@ -61,8 +129,14 @@ func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		// On error, committed is passed through rather than forced to false:
+		// CommitWeft reports committed=true alongside a RecordCorrespondence
+		// error precisely because the commit already exists on disk at that
+		// point -- reporting false there would tell the caller no commit was
+		// made about a commit that is real. The push is still skipped (the
+		// next weft push sweeps it up), matching the pre-cutover error flow.
 		if _, committed, err = f.CommitWeft(pathspec, fmt.Sprintf("builder: %s", label), opts); err != nil {
-			return false, err
+			return committed, err
 		}
 	}
 	if err := fabricengine.PushWeftAt(weftWorktree, opts); err != nil {

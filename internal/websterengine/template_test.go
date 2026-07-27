@@ -568,7 +568,7 @@ func TestRenderForkPrompt_RendersPinnedCommitSubject(t *testing.T) {
 		// (plan-format-v3.md "Numbering and commit subject"); the implementer
 		// only ever sees the fork template, so the convention must be stated
 		// there, not merely in the format doc.
-		requireContains(t, string(websterengine.ForkTemplate()), "The commit\n   subject is `N: <name>`")
+		requireContains(t, string(websterengine.ForkTemplate()), "The commit subject is `N: <name>`")
 	})
 
 	t.Run("no pin renders no Commit line", func(t *testing.T) {

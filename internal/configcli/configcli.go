@@ -298,12 +298,20 @@ func runReconcile(out io.Writer, apply bool) int {
 	// Build module result objects for JSON output.
 	modules := make([]map[string]any, len(results))
 	for i, result := range results {
-		modules[i] = map[string]any{
+		m := map[string]any{
 			"module":  result.Module,
 			"added":   result.Added,
 			"removed": result.Removed,
 			"applied": result.Applied,
 		}
+		// migratedFrom is exceptional -- only "fabric", only when a
+		// pre-cutover legacy config file's values were folded in this round
+		// (see configsync.ReconcileAll) -- so it's omitted for every
+		// ordinary module rather than always present as an empty array.
+		if len(result.MigratedFrom) > 0 {
+			m["migratedFrom"] = result.MigratedFrom
+		}
+		modules[i] = m
 	}
 
 	// Emit the JSON envelope with the aggregate applied flag and per-module details.

@@ -19,9 +19,12 @@ import (
 
 // menu presents an interactive picker of available config modules.
 //
-// It prints a numbered list of moduleNames(), each marked "(configured)" if its
-// YAML file exists at filepath.Join(baseDir, "_lyx", "config", name+".yaml"),
-// else "(default)".
+// It prints a numbered list of configreg.Names() -- the same registry order
+// every other config surface uses, so the menu's numbering agrees with
+// --print's section order and the "Known modules" help line -- each marked
+// "(configured)" when its config file is present on disk and "(default)" when
+// it is not. The path is resolved through hubgeometry.ConfigFile, never
+// assembled from _lyx/config literals here, per the Hub Geometry Invariant.
 //
 // Reads one line from in with bufio.NewReader.ReadString('\n').
 // Handles 'q' to quit (return 0).

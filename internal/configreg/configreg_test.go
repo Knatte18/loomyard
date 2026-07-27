@@ -8,9 +8,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
+// TestNames pins both the membership and the ORDER of the registry: the list
+// is alphabetical, and every `lyx config` surface (help text, unknown-module
+// error, --print sections, reconcile output, menu numbering) renders it in
+// exactly this order, so an out-of-sort entry is user-visible.
 func TestNames(t *testing.T) {
 	got := Names()
-	want := []string{"board", "builder", "burler", "fabric", "loom", "models", "reed", "perch", "shuttle", "webster"}
+	want := []string{"board", "builder", "burler", "fabric", "loom", "models", "perch", "reed", "shuttle", "webster"}
 	if len(got) != len(want) {
 		t.Errorf("Names() = %v; want %v", got, want)
 		return
