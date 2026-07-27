@@ -1,11 +1,12 @@
 //go:build integration
 
 // weft_integration_test.go covers weftCommit's composed behavior against real
-// git repositories, mirroring buildercli's own weft_integration_test.go. Its
-// one scenario pins the CommitWeft error-branch contract: a commit that lands
-// but fails its correspondence record must still be reported as
-// committed=true alongside the error, never swallowed into a false "no
-// commit was made".
+// git repositories, mirroring buildercli's own weft_integration_test.go. Two
+// scenarios: the CommitWeft error-branch contract (a commit that lands but
+// fails its correspondence record must still be reported as committed=true
+// alongside the error, never swallowed into a false "no commit was made"),
+// and the exclusion pathspec actually staging the right files at every
+// layout.RelPath depth, which only real git can decide.
 
 package webstercli
 
@@ -16,13 +17,27 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // newHostWeftPair builds a hub directory holding a "host" git repo and its
 // "host-weft" sibling git repo (each with one commit, so both have a HEAD),
 // plus an uncommitted _lyx change in the weft worktree for weftCommit to
-// stage, and returns the layout weftCommit resolves the pair from.
+// stage, and returns the layout weftCommit resolves the pair from. RelPath is
+// "." -- use newHostWeftPairAt for a nested layout.
 func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
+	t.Helper()
+	return newHostWeftPairAt(t, ".")
+}
+
+// newHostWeftPairAt is newHostWeftPair with an explicit layout.RelPath: the
+// weft-side _lyx is seeded at <weft>/<relPath>/_lyx, mirroring the host's own
+// repo-subpath geometry, and the returned layout's Cwd points at the matching
+// host subdirectory. Alongside state.json it seeds the three machine-local
+// artifacts websterWeftPathspec must exclude (an advisory *.lock file, the
+// pause flag, and a rendered fork prompt) so a caller can assert on what the
+// commit did and did not pick up.
+func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, string) {
 	t.Helper()
 
 	hub := t.TempDir()
@@ -39,17 +54,30 @@ func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
 	commitFile(t, host, "base.txt", "base", "host base commit")
 	commitFile(t, weft, "base.txt", "base", "weft base commit")
 
-	// An uncommitted change under the webster pathspec, so CommitWeft has
-	// something real to commit.
-	lyxDir := filepath.Join(weft, hubgeometry.LyxDirName, "webster")
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+	// Uncommitted changes under the webster pathspec, so CommitWeft has
+	// something real to commit -- plus the three artifacts the exclusion set
+	// must keep out of that commit.
+	websterDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "webster")
+	if err := os.MkdirAll(filepath.Join(websterDir, "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir weft _lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(lyxDir, "state.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatalf("write weft state.json: %v", err)
+	for name, content := range map[string]string{
+		"state.json":                     "{}",
+		"mutate.lock":                    "lock",
+		websterengine.PauseFlagName:      "paused",
+		filepath.Join("prompts", "1.md"): "rendered fork prompt",
+	} {
+		if err := os.WriteFile(filepath.Join(websterDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write weft %s: %v", name, err)
+		}
 	}
 
-	return &hubgeometry.Layout{Hub: hub, WorktreeRoot: host, Cwd: host, RelPath: "."}, weft
+	return &hubgeometry.Layout{
+		Hub:          hub,
+		WorktreeRoot: host,
+		Cwd:          filepath.Join(host, relPath),
+		RelPath:      relPath,
+	}, weft
 }
 
 // TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves the
@@ -83,5 +111,75 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	subject := strings.TrimSpace(mustGit(t, weft, "log", "-1", "--format=%s"))
 	if subject != "webster: corr-fail probe" {
 		t.Errorf("weft HEAD subject = %q; want %q", subject, "webster: corr-fail probe")
+	}
+}
+
+// TestWeftCommit_CommitsAtEveryRelPathDepth proves websterWeftPathspec's
+// exclusion set is honoured by REAL git at every layout.RelPath depth, not
+// merely present in the returned slice. The nested case is the regression
+// guard: with the pre-fix, unanchored ":(exclude)*.lock" spelling, git's
+// one-star pathspec matching false-positive-matched the intermediate
+// directories leading to a multi-segment positive pathspec and pruned the
+// entire subtree, so `git add` staged nothing, the staged-diff check reported
+// "nothing to commit", and weftCommit returned (false, nil) -- a completely
+// silent no-op that dropped every webster artifact on the floor with no error
+// for the caller to notice. WEFT_SKIP_PUSH is set because the scratch weft
+// repo has no remote; the commit half is what is under test.
+func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
+	tests := []struct {
+		name    string
+		relPath string
+	}{
+		{name: "worktree root", relPath: "."},
+		{name: "one segment", relPath: "sub"},
+		{name: "two segments", relPath: "wts/some-task"},
+		{name: "three segments", relPath: "a/b/c"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("WEFT_SKIP_GIT", "")
+			t.Setenv("WEFT_SKIP_PUSH", "1")
+			layout, weft := newHostWeftPairAt(t, tt.relPath)
+
+			committed, err := weftCommit(layout, "depth probe")
+			if err != nil {
+				t.Fatalf("weftCommit() error = %v; want nil", err)
+			}
+			if !committed {
+				t.Fatalf("weftCommit() committed = false; want true -- the pathspec staged nothing at RelPath %q, so the weft commit was a silent no-op", tt.relPath)
+			}
+
+			// git always reports commit contents with forward slashes,
+			// regardless of the OS-native separators the layout carries.
+			base := hubgeometry.LyxDirName
+			if tt.relPath != "." {
+				base = filepath.ToSlash(tt.relPath) + "/" + hubgeometry.LyxDirName
+			}
+			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
+
+			wantPresent := base + "/webster/state.json"
+			wantAbsent := []string{
+				base + "/webster/mutate.lock",
+				base + "/webster/" + websterengine.PauseFlagName,
+				base + "/webster/prompts/1.md",
+			}
+			if !containsString(committedFiles, wantPresent) {
+				t.Errorf("weft commit at RelPath %q = %v; want it to contain %q", tt.relPath, committedFiles, wantPresent)
+			}
+			for _, absent := range wantAbsent {
+				if containsString(committedFiles, absent) {
+					t.Errorf("weft commit at RelPath %q = %v; want it to EXCLUDE the machine-local %q", tt.relPath, committedFiles, absent)
+				}
+			}
+
+			// The excluded artifacts must also stay untracked, not merely be
+			// left out of this one commit.
+			for _, absent := range wantAbsent {
+				if tracked := strings.TrimSpace(mustGit(t, weft, "ls-files", "--", absent)); tracked != "" {
+					t.Errorf("weft ls-files %q = %q; want it untracked", absent, tracked)
+				}
+			}
+		})
 	}
 }

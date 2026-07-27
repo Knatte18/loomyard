@@ -197,9 +197,12 @@ the orchestration layer in-process — never raw git, and never an LLM agent.
   coordinate host↔weft) — the deterministic Go responsibility that is the whole lyx thesis. An
   agent-run weft commit reintroduces the non-deterministic, untestable, mis-ordered LLM orchestration
   lyx exists to remove.
+- **Anchored exclusions.** A caller that passes `CommitWeft` a pathspec with `:(exclude)` entries must **anchor every exclusion under the same scoped `_lyx` base the positive entry names**, forward-slash spelled — `":(exclude)" + base + "/*.lock"`, never `":(exclude)*.lock"`. Git classifies a leading-`*` pattern with no further wildcard as a one-star pathspec, which false-positive-matches the intermediate directories it must descend through to reach a multi-segment positive pathspec: at a `layout.RelPath` of two or more segments the whole subtree is pruned, `git add` stages nothing, and the weft commit becomes a **silent no-op with no error**. Live callers today are `internal/buildercli`'s and `internal/webstercli`'s `weftCommit` (both anchored, with real-git depth coverage in each package's `weft_integration_test.go`) and `internal/perchcli`'s block-exit commit (**still unanchored** — carries this bug, owned by perch). A slice-shape unit test cannot see this; only a real-git assertion can.
 - **Enforced by** review obligation: agent prompt templates never instruct a weft git op, and weft
   git stays inside `internal/fabricengine`. The module-ownership half is a candidate for a future
-  import/grep guard; not machine-checked today.
+  import/grep guard; not machine-checked today. The agent half is partly machine-checked for webster
+  runs by `websterengine`'s `weftReferencePattern` (a fork or Master Bash command matching `lyx
+  fabric` — or a weft worktree path — is a hard, round-failing `weft-reference` violation).
 
 ## Review Round Invariant
 

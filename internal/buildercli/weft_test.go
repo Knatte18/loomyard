@@ -11,6 +11,7 @@ package buildercli
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
@@ -19,29 +20,44 @@ import (
 )
 
 // TestBuilderWeftPathspec_ExcludesRuntimeArtifacts proves the pathspec every
-// builder weft commit stages under excludes both the advisory *.lock files and
-// the pause flag, regardless of whether layout.RelPath prefixes the _lyx path.
+// builder weft commit stages under excludes both the advisory *.lock files
+// and the pause flag, at each layout.RelPath shape -- and that every
+// exclusion is ANCHORED under the scoped _lyx base rather than spelled with a
+// leading wildcard. The anchoring is not cosmetic: git treats a leading-"*"
+// pattern with no further wildcard as a one-star pathspec that
+// false-positive-matches the intermediate directories leading to a
+// multi-segment positive pathspec, which prunes the whole subtree and turns
+// the weft commit into a silent no-op. Note this test can only prove the
+// SHAPE of the pathspec; that real git honours it is proved by
+// weft_integration_test.go's TestWeftCommit_CommitsAtEveryRelPathDepth.
 func TestBuilderWeftPathspec_ExcludesRuntimeArtifacts(t *testing.T) {
 	tests := []struct {
 		name    string
 		relPath string
+		base    string
 	}{
-		{name: "nested worktree (relPath set)", relPath: "wts/some-task"},
-		{name: "weft-root worktree (relPath empty)", relPath: ""},
-	}
-
-	wantExcludes := []string{
-		":(exclude)*.lock",
-		":(exclude)*/builder/" + builderengine.PauseFlagName,
+		{name: "nested worktree (relPath set)", relPath: "wts/some-task", base: "wts/some-task/_lyx"},
+		{name: "worktree root (relPath dot)", relPath: ".", base: "_lyx"},
+		{name: "weft-root worktree (relPath empty)", relPath: "", base: "_lyx"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pathspec := builderWeftPathspec(&hubgeometry.Layout{RelPath: tt.relPath})
 
+			wantExcludes := []string{
+				":(exclude)" + tt.base + "/*.lock",
+				":(exclude)" + tt.base + "/builder/" + builderengine.PauseFlagName,
+			}
 			for _, want := range wantExcludes {
 				if !containsString(pathspec, want) {
 					t.Errorf("builderWeftPathspec(relPath=%q) = %v; want it to contain %q", tt.relPath, pathspec, want)
+				}
+			}
+
+			for _, entry := range pathspec {
+				if strings.HasPrefix(entry, ":(exclude)*") {
+					t.Errorf("builderWeftPathspec(relPath=%q) has unanchored exclusion %q; every exclusion must be anchored under %q", tt.relPath, entry, tt.base)
 				}
 			}
 		})

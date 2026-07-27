@@ -138,30 +138,44 @@ func TestCommand_LongStringsHaveNoStaleV2Language(t *testing.T) {
 
 // TestWebsterWeftPathspec_ExcludesRuntimeArtifacts proves the pathspec every
 // webster weft commit stages under excludes the advisory *.lock files, the
-// pause flag, and every rendered fork prompt, regardless of whether
-// layout.RelPath prefixes the _lyx path.
+// pause flag, and every rendered fork prompt, at each layout.RelPath shape --
+// and that every exclusion is ANCHORED under the scoped _lyx base rather than
+// spelled with a leading wildcard. The anchoring is not cosmetic: git treats
+// a leading-"*" pattern with no further wildcard as a one-star pathspec that
+// false-positive-matches the intermediate directories leading to a
+// multi-segment positive pathspec, which prunes the whole subtree and turns
+// the weft commit into a silent no-op. Note this test can only prove the
+// SHAPE of the pathspec; that real git honours it is proved by
+// weft_integration_test.go's TestWeftCommit_CommitsAtEveryRelPathDepth.
 func TestWebsterWeftPathspec_ExcludesRuntimeArtifacts(t *testing.T) {
 	tests := []struct {
 		name    string
 		relPath string
+		base    string
 	}{
-		{name: "nested worktree (relPath set)", relPath: "wts/some-task"},
-		{name: "weft-root worktree (relPath empty)", relPath: ""},
-	}
-
-	wantExcludes := []string{
-		":(exclude)*.lock",
-		":(exclude)*/webster/pause",
-		":(exclude)*/webster/prompts/*",
+		{name: "nested worktree (relPath set)", relPath: "wts/some-task", base: "wts/some-task/_lyx"},
+		{name: "worktree root (relPath dot)", relPath: ".", base: "_lyx"},
+		{name: "weft-root worktree (relPath empty)", relPath: "", base: "_lyx"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pathspec := websterWeftPathspec(&hubgeometry.Layout{RelPath: tt.relPath})
 
+			wantExcludes := []string{
+				":(exclude)" + tt.base + "/*.lock",
+				":(exclude)" + tt.base + "/webster/pause",
+				":(exclude)" + tt.base + "/webster/prompts/*",
+			}
 			for _, want := range wantExcludes {
 				if !containsString(pathspec, want) {
 					t.Errorf("websterWeftPathspec(relPath=%q) = %v; want it to contain %q", tt.relPath, pathspec, want)
+				}
+			}
+
+			for _, entry := range pathspec {
+				if strings.HasPrefix(entry, ":(exclude)*") {
+					t.Errorf("websterWeftPathspec(relPath=%q) has unanchored exclusion %q; every exclusion must be anchored under %q", tt.relPath, entry, tt.base)
 				}
 			}
 		})

@@ -17,6 +17,8 @@ package webstercli
 
 import (
 	"fmt"
+	"path"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -36,20 +38,50 @@ import (
 // request elsewhere (it is present on disk during record-batch's terminal
 // commit whenever a pause raced the last in-flight batch). Extracted from
 // weftCommit so the exclusion set is asserted directly by a unit test rather
-// than only implicitly through a live commit. The pause-flag and prompts
-// patterns use a trailing "*/webster/..." glob so they match whether or not
-// layout.RelPath prefixes the _lyx path. The ":(exclude)" entries are git
-// pathspec magic, carried by fabricengine's CommitWeft pathspec parameter
-// end-to-end through add, the staged-diff check, and the pathspec-scoped
-// commit -- gitrepo's "plain relative paths" rule governs its own direct
-// consumers, not CommitWeft callers.
+// than only implicitly through a live commit.
+//
+// Every exclusion is ANCHORED under the same scoped base the positive
+// pathspec names, and spelled with forward slashes (a git pathspec is not an
+// OS path). A leading-wildcard exclusion such as ":(exclude)*.lock" is NOT
+// equivalent and must never be reintroduced: git classifies a pattern that
+// begins with "*" and carries no further wildcard as a one-star pathspec,
+// which then false-positive-matches every intermediate directory git has to
+// descend through to reach a multi-segment positive pathspec. At a
+// layout.RelPath of two or more segments that prunes the whole subtree, so
+// `git add` stages nothing at all, the staged-diff check reports "nothing to
+// commit", and the weft commit silently becomes a no-op with no error for the
+// caller to see. Within the anchored base "*" still crosses "/", so
+// "<base>/*.lock" keeps catching lock files at any depth beneath it.
+//
+// The ":(exclude)" entries are git pathspec magic, carried by fabricengine's
+// CommitWeft pathspec parameter end-to-end through add, the staged-diff
+// check, and the pathspec-scoped commit -- gitrepo's "plain relative paths"
+// rule governs its own direct consumers, not CommitWeft callers.
 func websterWeftPathspec(layout *hubgeometry.Layout) []string {
+	base := weftPathspecBase(layout)
 	return append(
 		fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName}),
-		":(exclude)*.lock",
-		":(exclude)*/webster/"+websterengine.PauseFlagName,
-		":(exclude)*/webster/prompts/*",
+		":(exclude)"+base+"/*.lock",
+		":(exclude)"+base+"/webster/"+websterengine.PauseFlagName,
+		":(exclude)"+base+"/webster/prompts/*",
 	)
+}
+
+// weftPathspecBase returns the scoped _lyx base every exclusion entry in
+// websterWeftPathspec anchors under, as a git pathspec: layout.RelPath joined
+// with the _lyx directory name using forward slashes, collapsing to plain
+// "_lyx" at RelPath "." or "". It exists so the exclusions are anchored to
+// exactly the base the positive ScopedPathspec entry names -- see
+// websterWeftPathspec for why an unanchored, leading-wildcard exclusion
+// silently empties the commit at a nested RelPath.
+func weftPathspecBase(layout *hubgeometry.Layout) string {
+	// path.Clean normalizes the empty RelPath to "." too, so the single "."
+	// check covers both the worktree-root and the unset-RelPath spellings.
+	rel := path.Clean(filepath.ToSlash(layout.RelPath))
+	if rel == "." {
+		return hubgeometry.LyxDirName
+	}
+	return rel + "/" + hubgeometry.LyxDirName
 }
 
 // weftCommit stages and commits every change under layout's scoped _lyx
