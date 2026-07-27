@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: crucible-effort-agent-profiles
 branch: crucible-effort-agent-profiles
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-07-27T10:50:40Z'
 discussed  '2026-07-27T12:18:27Z'
 planning  '2026-07-27T12:21:39Z'
 plan-fix-r1  '2026-07-27T12:25:22Z'
+planned  '2026-07-27T12:25:51Z'
 ```
