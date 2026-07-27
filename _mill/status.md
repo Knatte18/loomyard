@@ -27,5 +27,7 @@ implementing  '2026-07-27T12:42:02Z'
 ```yaml
 batches:
   - name: effort-profiles-and-crucible-rewiring
-    state: pending
+    state: running
+    implementer_session: 05fd3865-9dad-4efd-8425-04b0e9b81c71
+    start_sha: a3be98ddc486d475846a05746c624e092718428f
 ```
