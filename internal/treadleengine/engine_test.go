@@ -782,6 +782,16 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 // falls back to the older-or-all-reviews list, and the block continues
 // (never STUCK, never an error) purely from the handoff machinery.
 func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
+	// These fail-safe Warns reach an operator's stderr on an ordinary run
+	// (logger's default threshold IS Warn), so the engine is named "tenter"
+	// here rather than "perch": that proves the corrupt-handoff Warns carry
+	// the CALLING engine's name like every other Warn this package emits,
+	// instead of a hardcoded package label a perch operator would never
+	// recognize.
+	var logBuf bytes.Buffer
+	logger.SetOutput(&logBuf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
 	runDir := filepath.Join(t.TempDir(), "run")
 
 	fr := &fakeRunner{}
@@ -804,7 +814,7 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 	}
 	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-	e := New("perch", fr, qs, Options{})
+	e := New("tenter", fr, qs, Options{})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -825,6 +835,13 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	}
 	if !strings.Contains(secondCall.Prompt, "round-1-review.md") || !strings.Contains(secondCall.Prompt, "round-2-review.md") {
 		t.Errorf("round 3 judge prompt = %q; want it to list both round-1-review.md and round-2-review.md (fallback to all reviews)", secondCall.Prompt)
+	}
+
+	// The refusal to record the corrupted handoff must announce itself under
+	// the calling engine's name.
+	logged := logBuf.String()
+	if !strings.Contains(logged, "tenter: circling judge handoff file unparseable") {
+		t.Errorf("captured log = %q; want a \"tenter: \"-prefixed unparseable-handoff Warn", logged)
 	}
 }
 
@@ -957,6 +974,78 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 	// unparseable" for a judge call that never happened.
 	if logged := logBuf.String(); strings.Contains(logged, "recorded handoff") {
 		t.Errorf("judge-skipped round walked recorded handoff files; log:\n%s", logged)
+	}
+}
+
+// TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName covers the
+// one fail-safe path that only fires when a handoff was VALID at record time
+// and became unreadable afterwards: latestValidHandoff's newest-to-oldest
+// walk. Round 2 records a well-formed handoff; the fakeRunner hook corrupts
+// that file just before round 3's attempt, so round 3's circling judge finds
+// a recorded-but-broken handoff, skips it, and degrades its read-set. These
+// Warns reach an operator's stderr at logger's default threshold during an
+// ordinary run, so they must carry the CALLING engine's name — the engine is
+// named "tenter" here precisely so a hardcoded package label would fail.
+func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger.SetOutput(&logBuf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	runDir := filepath.Join(t.TempDir(), "run")
+
+	fr := &fakeRunner{}
+	fr.queue = []queuedAttemptResult{
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s2"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s3"}},
+		{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s4"}},
+	}
+	fr.onCall = func(in AttemptInput) {
+		if in.Round == 3 {
+			handoffPath := artifactPaths(runDir, 2, 1).Handoff
+			if err := os.WriteFile(handoffPath, []byte("no frontmatter garbage\n"), 0o644); err != nil {
+				t.Errorf("corrupt recorded handoff: %v", err)
+			}
+		}
+	}
+
+	qs := &queuedShuttle{}
+	qs.queue = []queuedShuttleEntry{
+		// Round 2's circling judge: a real verdict and a VALID handoff, so
+		// round 2's record carries a HandoffPath for round 3 to walk.
+		{
+			verdictContent: verdictFileContent(string(JudgeProgressing), "still moving"),
+			handoffContent: "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n",
+		},
+		// Round 3's circling judge: reached only after the walk above skipped
+		// the now-corrupt round-2 handoff.
+		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
+	}
+
+	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+	e := New("tenter", fr, qs, Options{})
+
+	got, err := e.Run(p, runDir)
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a corrupted recorded handoff must never surface as an engine error)", err)
+	}
+	if got.Outcome != OutcomeApproved {
+		t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomeApproved)
+	}
+
+	logged := logBuf.String()
+	if !strings.Contains(logged, "tenter: recorded handoff file unparseable, falling back to an older handoff") {
+		t.Errorf("captured log = %q; want the fallback Warn prefixed with the calling engine's name", logged)
+	}
+	if strings.Contains(logged, "treadle: recorded handoff") {
+		t.Errorf("captured log = %q; want no hardcoded \"treadle: \" label on this Warn — it must carry the caller's name", logged)
+	}
+
+	// With round 2's handoff skipped and no older one, round 3's read-set
+	// degrades to the full all-reviews list — the documented fallback.
+	secondCall := qs.specs[1]
+	if !strings.Contains(secondCall.Prompt, "(none)") {
+		t.Errorf("round 3 judge prompt = %q; want previous_handoff to read \"(none)\"", secondCall.Prompt)
 	}
 }
 

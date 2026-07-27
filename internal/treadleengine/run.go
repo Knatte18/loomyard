@@ -288,7 +288,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			// see handoff.go.
 			switch {
 			case isMilestoneRung(caps, round):
-				judgeReviews, prevHandoffPath := judgeReadSet(st.Rounds, outcome.ReviewPath)
+				judgeReviews, prevHandoffPath := judgeReadSet(e.name, st.Rounds, outcome.ReviewPath)
 				// The milestone gate REPLACES the circling check for this
 				// round — a rung round issues exactly one judge call.
 				jv, _, judgeOK := runMilestone(e.shuttle, e.name, judgeInputs{
@@ -325,7 +325,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 				}
 				// JudgeContinue / JudgeUncertain: fall through and loop.
 			case round >= 2 && !prevRoundApproved:
-				judgeReviews, prevHandoffPath := judgeReadSet(st.Rounds, outcome.ReviewPath)
+				judgeReviews, prevHandoffPath := judgeReadSet(e.name, st.Rounds, outcome.ReviewPath)
 				jv, _, judgeOK := runCircling(e.shuttle, e.name, judgeInputs{
 					Round:               round,
 					PriorReviews:        judgeReviews,
@@ -384,7 +384,7 @@ func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, round
 	if !p.PreRoundTargeting {
 		return ""
 	}
-	handoffPath, _, ok := latestValidHandoff(rounds)
+	handoffPath, _, ok := latestValidHandoff(e.name, rounds)
 	if !ok {
 		// Nothing to target from yet (round 1, or no handoff has ever
 		// survived a valid parse) — this is not a failure, so it logs
