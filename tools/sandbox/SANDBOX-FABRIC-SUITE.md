@@ -2,98 +2,50 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx fabric` against **dedicated** GitHub test
-repos (`Knatte18/lyx-fabric-test` as host, `Knatte18/lyx-fabric-test-weft` as weft) --
-never the shared `lyx-test`/`lyx-test-weft` repos the main and per-module suites use.
-This suite proves fabric's stricter `main-weft`-suffixed branch-naming scheme holds up
-on its own dedicated hub, whose fixtures the shared hub does not exercise.
+A structured test-loop for exercising `lyx fabric` against **dedicated** GitHub test repos (`Knatte18/lyx-fabric-test` as host, `Knatte18/lyx-fabric-test-weft` as weft) -- never the shared `lyx-test`/`lyx-test-weft` repos the main and per-module suites use. This suite proves fabric's stricter `main-weft`-suffixed branch-naming scheme holds up on its own dedicated hub, whose fixtures the shared hub does not exercise.
 
-Like the other suites, the value is a Claude session driving `lyx fabric` by hand in a
-real hub, treating every break, surprise, or rough edge as a LoomYard finding to
-record in the report.
+Like the other suites, the value is a Claude session driving `lyx fabric` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
 
 ## Pre-conditions
 
 Before starting a session:
 
-1. **Deploy a fresh binary.** Run `deploy.cmd` so `lyx.exe` on PATH is current source.
-   The deployed binary is a snapshot -- re-deploy after any source change you want to test.
-2. **Materialize the fabric hub.** Run `sandbox-fabric-suite.cmd`. Unlike the main and
-   per-module suites (which assume `sandbox-build.cmd` already ran), this launcher
-   clones the dedicated fabric hub itself via `lyx fabric clone` -- idempotently: if
-   `lyx-fabric-test-HUB` already exists it is reused as-is, never reset or re-cloned.
-   The very first run on a machine performs the real clone; every run after that starts
-   from whatever state the previous session left the hub in.
+1. **Deploy a fresh binary.** Run `deploy.cmd` so `lyx.exe` on PATH is current source. The deployed binary is a snapshot -- re-deploy after any source change you want to test.
+2. **Materialize the fabric hub.** Run `sandbox-fabric-suite.cmd`. Unlike the main and per-module suites (which assume `sandbox-build.cmd` already ran), this launcher clones the dedicated fabric hub itself via `lyx fabric clone` -- idempotently: if `lyx-fabric-test-HUB` already exists it is reused as-is, never reset or re-cloned. The very first run on a machine performs the real clone; every run after that starts from whatever state the previous session left the hub in.
 
-   **Re-clone adoption.** When a clone runs against a weft remote that already carries
-   the suffixed primary branch (a fresh machine, or `clone --reset`), the weft prime
-   adopts `origin/main-weft` as a tracking branch — inheriting the previously synced
-   weft state — rather than forking a new, untracked `main-weft` at `main`'s HEAD.
-   After any re-clone, confirm the weft prime's `main-weft` has an upstream
-   (`git -C <weft-prime> branch -vv`) and contains the previously synced `_lyx/`
-   content.
+   **Re-clone adoption.** When a clone runs against a weft remote that already carries the suffixed primary branch (a fresh machine, or `clone --reset`), the weft prime adopts `origin/main-weft` as a tracking branch — inheriting the previously synced weft state — rather than forking a new, untracked `main-weft` at `main`'s HEAD. After any re-clone, confirm the weft prime's `main-weft` has an upstream (`git -C <weft-prime> branch -vv`) and contains the previously synced `_lyx/` content.
 
-   **Board-URL fallback.** `lyx fabric clone`'s default board URL is the derived
-   `<weft-url>.wiki.git`, which only resolves once the weft repo's GitHub wiki has been
-   initialized (its first page created -- a one-time manual operator action; GitHub
-   offers no headless way to do it). Until that standing operator action is done, the
-   derived-URL clone fails at the board clone and correctly tears the hub down
-   (strict-abort). In that state, materialize the hub by passing an explicit
-   `[board-url]` naming any reachable repo as a board stand-in, and treat F1's
-   derived-URL check as blocked-by-precondition rather than a fabric defect.
+   **Board-URL fallback.** `lyx fabric clone`'s default board URL is the derived `<weft-url>.wiki.git`, which only resolves once the weft repo's GitHub wiki has been initialized (its first page created -- a one-time manual operator action; GitHub offers no headless way to do it). Until that standing operator action is done, the derived-URL clone fails at the board clone and correctly tears the hub down (strict-abort). In that state, materialize the hub by passing an explicit `[board-url]` naming any reachable repo as a board stand-in, and treat F1's derived-URL check as blocked-by-precondition rather than a fabric defect.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
-4. **Weft `_lyx/` must be seeded before `lyx init`.** `lyx init` wires the host
-   `_lyx` junction to the weft worktree's `_lyx/` directory via fabricengine. On a truly
-   empty weft repo that directory does not exist yet, so `init` creates a dangling
-   junction and then fails (`mkdir _lyx: file exists`). The dedicated `lyx-fabric-test-weft`
-   repo must therefore have an `_lyx/` directory committed on its primary branch (the
-   operator seeds it once, alongside initializing the weft wiki). Until then, treat an
-   `init` failure on a freshly-cloned fabric hub as this known precondition gap, not a
-   fabric defect — fabric's own verbs read their config from that same `_lyx/config/`.
+4. **Weft `_lyx/` must be seeded before `lyx init`.** `lyx init` wires the host `_lyx` junction to the weft worktree's `_lyx/` directory via fabricengine. On a truly empty weft repo that directory does not exist yet, so `init` creates a dangling junction and then fails (`mkdir _lyx: file exists`). The dedicated `lyx-fabric-test-weft` repo must therefore have an `_lyx/` directory committed on its primary branch (the operator seeds it once, alongside initializing the weft wiki). Until then, treat an `init` failure on a freshly-cloned fabric hub as this known precondition gap, not a fabric defect — fabric's own verbs read their config from that same `_lyx/config/`.
 
 ### PowerShell JSON-quoting
 
-See the PowerShell JSON-quoting note in `SANDBOX-CORE-SUITE.md`'s Pre-conditions --
-the same caveat applies here whenever a scenario below passes JSON as an argument.
+See the PowerShell JSON-quoting note in `SANDBOX-CORE-SUITE.md`'s Pre-conditions -- the same caveat applies here whenever a scenario below passes JSON as an argument.
 
 ### Operating model
 
-lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a
-parent. The hub host repo is initialized at its root, so the agent runs the entire
-session from there (cwd is fixed at the root).
+lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a parent. The hub host repo is initialized at its root, so the agent runs the entire session from there (cwd is fixed at the root).
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the dedicated fabric Hub host repo
-(`lyx-fabric-test-HUB/lyx-fabric-test`). It tests `lyx.exe` as a black box -- exactly
-as a real user with only the binary on PATH. It must not look for, read, or reason
-about the lyx source tree. No peeking at `C:\Code\loomyard\` or any other path outside
-the Hub.**
+**The agent under test works exclusively inside the dedicated fabric Hub host repo (`lyx-fabric-test-HUB/lyx-fabric-test`). It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH. It must not look for, read, or reason about the lyx source tree. No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
-Discovering the command surface is done via `lyx fabric`, `lyx fabric <subcommand>`,
-and `lyx fabric <subcommand> --help` alone -- not from documentation outside the Hub.
+Discovering the command surface is done via `lyx fabric`, `lyx fabric <subcommand>`, and `lyx fabric <subcommand> --help` alone -- not from documentation outside the Hub.
 
 ## Fingerprint header
 
-The launcher prepends a "binary under test" fingerprint block to this file when it
-copies it into the fabric Hub host repo. The fingerprint records the absolute path,
-file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch
-time.
+The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the fabric Hub host repo. The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
-The same fingerprint identifies the binary for the report's provenance: a separate
-fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched
-`sandbox-report.json` so a maintainer can reproduce the exact binary that produced
-each finding. The agent does not need to transcribe the fingerprint anywhere itself.
+The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding. The agent does not need to transcribe the fingerprint anywhere itself.
 
 ## How to run a scenario
 
 For each scenario below:
 
-- Read the **Goal** -- it names the task, not the commands. Discover the commands via
-  `lyx fabric`, `lyx fabric <subcommand>`, and `--help` flags (F0 ethos).
+- Read the **Goal** -- it names the task, not the commands. Discover the commands via `lyx fabric`, `lyx fabric <subcommand>`, and `--help` flags (F0 ethos).
 - **Watch** what lyx does. Note where it stalls, guesses wrong, or hits an error.
-- Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) /
-  `FAIL` (broke).
+- Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
 ## Verdict key
 
@@ -103,9 +55,7 @@ For each scenario below:
 
 ## Capturing findings
 
-After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json`
-(in the host-repo cwd) on this exact schema. **Always write the file, even when there are
-zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the host-repo cwd) on this exact schema. **Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 ```json
 {
@@ -126,21 +76,15 @@ zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
-Write only `source` and `items` -- a separate fetch step (run after the session)
-stamps `meta` (including the binary fingerprint). Confine all free text to the
-`title`/`body` string fields so the JSON stays well-formed.
+Write only `source` and `items` -- a separate fetch step (run after the session) stamps `meta` (including the binary fingerprint). Confine all free text to the `title`/`body` string fields so the JSON stays well-formed.
 
 ## Scenarios
 
 ### F0 -- Discovery (help surface smoke test)
 
-**Goal:** "You have `lyx` on PATH and nothing else inside this repo. Find out what
-`lyx fabric` can do and report its full command tree."
+**Goal:** "You have `lyx` on PATH and nothing else inside this repo. Find out what `lyx fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all 14 verbs (`clone`, `add`, `list`, `remove`,
-`checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`,
-`pull`, `sync`)? Does each `--help` explain itself? Is each description accurate and
-useful?
+**Watch:** Does `lyx fabric` list all 14 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`)? Does each `--help` explain itself? Is each description accurate and useful?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -150,19 +94,9 @@ useful?
 
 **Covers:** fabric
 
-**Goal:** "Confirm the dedicated fabric hub the launcher just materialized (or reused)
-looks the way `lyx fabric clone` promises."
+**Goal:** "Confirm the dedicated fabric hub the launcher just materialized (or reused) looks the way `lyx fabric clone` promises."
 
-**Watch:** The board passenger's origin URL is the **default derived** form --
-`<weft-url>.wiki.git` -- *provided the operator has initialized that wiki* (see the
-board-URL fallback in Pre-conditions; do not attempt to create the wiki yourself). If
-the hub was materialized with an explicit `[board-url]` stand-in, record this check as
-blocked-by-precondition instead of failing it. The weft prime's checked-out branch is
-**`main-weft`**, not
-`main` -- fabric's uniform branch-suffix scheme applies from the very first pair, unlike
-the pre-fabric mirrored (identical) branch-naming convention. Use `lyx fabric pairs` and plain git
-(`git -C <weft-prime> branch --show-current`, `git -C _board remote -v`) to confirm both;
-neither should require guessing or `ls`-ing around.
+**Watch:** The board passenger's origin URL is the **default derived** form -- `<weft-url>.wiki.git` -- *provided the operator has initialized that wiki* (see the board-URL fallback in Pre-conditions; do not attempt to create the wiki yourself). If the hub was materialized with an explicit `[board-url]` stand-in, record this check as blocked-by-precondition instead of failing it. The weft prime's checked-out branch is **`main-weft`**, not `main` -- fabric's uniform branch-suffix scheme applies from the very first pair, unlike the pre-fabric mirrored (identical) branch-naming convention. Use `lyx fabric pairs` and plain git (`git -C <weft-prime> branch --show-current`, `git -C _board remote -v`) to confirm both; neither should require guessing or `ls`-ing around.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -170,18 +104,9 @@ neither should require guessing or `ls`-ing around.
 
 ### F2 -- Topology lifecycle
 
-**Goal:** "Add a new host+weft worktree pair, inspect it, coordinate-checkout it,
-reconcile it, then prune and clean it up."
+**Goal:** "Add a new host+weft worktree pair, inspect it, coordinate-checkout it, reconcile it, then prune and clean it up."
 
-**Watch:** Run `lyx fabric add <slug>` and confirm the new weft branch is named
-`<host-branch>-weft` (the fixed suffix, not a mirrored name -- e.g. adding slug `foo`
-with an empty branch prefix yields host branch `foo` and weft branch `foo-weft`). Does
-`lyx fabric pairs` report the new pair as in-sync? Does `lyx fabric checkout` switch
-both sides together and re-point the junction? After removing the host side by hand
-(or via `lyx fabric remove`), does `lyx fabric reconcile` report and repair drift
-sanely, and do `lyx fabric prune`/`lyx fabric cleanup` (dry-run first, then `--apply`)
-correctly identify the orphaned `<slug>-weft` branch as fabric-managed (by its suffix)
-and handle it per the flag matrix described in `lyx fabric cleanup --help`?
+**Watch:** Run `lyx fabric add <slug>` and confirm the new weft branch is named `<host-branch>-weft` (the fixed suffix, not a mirrored name -- e.g. adding slug `foo` with an empty branch prefix yields host branch `foo` and weft branch `foo-weft`). Does `lyx fabric pairs` report the new pair as in-sync? Does `lyx fabric checkout` switch both sides together and re-point the junction? After removing the host side by hand (or via `lyx fabric remove`), does `lyx fabric reconcile` report and repair drift sanely, and do `lyx fabric prune`/`lyx fabric cleanup` (dry-run first, then `--apply`) correctly identify the orphaned `<slug>-weft` branch as fabric-managed (by its suffix) and handle it per the flag matrix described in `lyx fabric cleanup --help`?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -189,21 +114,9 @@ and handle it per the flag matrix described in `lyx fabric cleanup --help`?
 
 ### F3 -- Weft content sync
 
-**Goal:** "Make a small, clearly-marked change inside the weft-tracked scope and run
-it through `fabric status`, `commit`, `push`, `pull`, and `sync`."
+**Goal:** "Make a small, clearly-marked change inside the weft-tracked scope and run it through `fabric status`, `commit`, `push`, `pull`, and `sync`."
 
-**Watch:** Does `fabric status` report the change accurately? Do `commit`/`push`
-mirror it to the weft remote? The commit message is always the fixed string
-`"weft sync"` -- it is not generated from changed files and there is no `-m` flag to
-customize it (confirm via `lyx fabric commit --help`). Every fabric weft commit also
-carries a trailing `Warp-SHA: <sha>` trailer naming the paired host repo's current
-HEAD -- inspect the commit body (e.g. `git -C <weft-worktree> log -1`) and confirm the
-trailer is present and names a real, resolvable warp commit. `fabric sync` pushes via
-a detached child process, so `status` immediately after `sync` may lag behind the
-actual push -- a confusing-but-expected rough edge to note as a `WARN`, not to
-pre-judge here.
-Staging is scoped to the directories listed in the fabric config (default `_lyx`), so
-the test change should land inside that scope to be picked up at all.
+**Watch:** Does `fabric status` report the change accurately? Do `commit`/`push` mirror it to the weft remote? The commit message is always the fixed string `"weft sync"` -- it is not generated from changed files and there is no `-m` flag to customize it (confirm via `lyx fabric commit --help`). Every fabric weft commit also carries a trailing `Warp-SHA: <sha>` trailer naming the paired host repo's current HEAD -- inspect the commit body (e.g. `git -C <weft-worktree> log -1`) and confirm the trailer is present and names a real, resolvable warp commit. `fabric sync` pushes via a detached child process, so `status` immediately after `sync` may lag behind the actual push -- a confusing-but-expected rough edge to note as a `WARN`, not to pre-judge here. Staging is scoped to the directories listed in the fabric config (default `_lyx`), so the test change should land inside that scope to be picked up at all.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -213,18 +126,9 @@ the test change should land inside that scope to be picked up at all.
 
 **Covers:** fabric
 
-**Goal:** "Confirm `lyx fabric add` refuses a slug that would collide with the
-weft-worktree directory namespace, before it can create a booby-trapped pair."
+**Goal:** "Confirm `lyx fabric add` refuses a slug that would collide with the weft-worktree directory namespace, before it can create a booby-trapped pair."
 
-**Watch:** Run `lyx fabric add <name>-weft` (a slug ending in the reserved `-weft`
-suffix -- e.g. `add zed-weft`). It must be **rejected** with an `invalid slug` error and
-create nothing. It must NOT create a host worktree directory `<name>-weft`: such a
-directory is indistinguishable from a weft worktree, so a later `lyx fabric prune --apply`
-would misclassify the host worktree as an orphaned weft and delete it (destroying any
-uncommitted work). To confirm the guard holds, follow the rejected add with
-`lyx fabric list`/`lyx fabric pairs` and plain `ls` of the hub -- no `<name>-weft` host
-worktree should exist. (Historical: before this guard, `add zed-weft` succeeded and a
-routine `prune --apply` silently `os.RemoveAll`'d the host worktree -- a data-loss bug.)
+**Watch:** Run `lyx fabric add <name>-weft` (a slug ending in the reserved `-weft` suffix -- e.g. `add zed-weft`). It must be **rejected** with an `invalid slug` error and create nothing. It must NOT create a host worktree directory `<name>-weft`: such a directory is indistinguishable from a weft worktree, so a later `lyx fabric prune --apply` would misclassify the host worktree as an orphaned weft and delete it (destroying any uncommitted work). To confirm the guard holds, follow the rejected add with `lyx fabric list`/`lyx fabric pairs` and plain `ls` of the hub -- no `<name>-weft` host worktree should exist. (Historical: before this guard, `add zed-weft` succeeded and a routine `prune --apply` silently `os.RemoveAll`'d the host worktree -- a data-loss bug.)
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -247,15 +151,9 @@ F4: <OK|WARN|FAIL> -- <one-line note if not OK>
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
 
-`./sandbox-report.json` must be written before the session ends, per the Capturing
-findings section above -- with `items: []` when every scenario was `OK`.
+`./sandbox-report.json` must be written before the session ends, per the Capturing findings section above -- with `items: []` when every scenario was `OK`.
 
 ## Notes
 
-- This suite is deliberately scoped to fabric alone and runs against its own
-  dedicated hub -- it does not touch, and is not touched by, `SANDBOX-CORE-SUITE.md`'s
-  host/weft scenarios against `lyx-test`/`lyx-test-weft`.
-- fabric is lyx's sole host↔weft git-coordination module (see
-  `internal/fabricengine/doc.go`); its stricter `main-weft`-suffixed branch-naming
-  scheme is exactly why this suite runs against its own dedicated hub rather than
-  the shared sandbox hub.
+- This suite is deliberately scoped to fabric alone and runs against its own dedicated hub -- it does not touch, and is not touched by, `SANDBOX-CORE-SUITE.md`'s host/weft scenarios against `lyx-test`/`lyx-test-weft`.
+- fabric is lyx's sole host↔weft git-coordination module (see `internal/fabricengine/doc.go`); its stricter `main-weft`-suffixed branch-naming scheme is exactly why this suite runs against its own dedicated hub rather than the shared sandbox hub.
