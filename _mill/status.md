@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: markdown-unwrap
 branch: markdown-unwrap
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-07-27T09:19:30Z'
 done  '2026-07-27T10:24:13Z'
+pr-pending  '2026-07-27T10:24:49Z'
 ```
