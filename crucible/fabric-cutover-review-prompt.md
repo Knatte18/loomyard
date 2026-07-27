@@ -390,55 +390,74 @@ round — an operator decision on a real design tradeoff, or a live capability y
 then you must say so explicitly, with the specific reason, in the fixer report's deferred section —
 never bucket something as "deferred, low priority" just because it felt small.
 
-## Deferred items — settled, do NOT re-open
-- **F4/O5 (psmux `kill-session` no-op leaves the builder smoke gate's teardown check red):** two
-  independent rounds (`fable-r1`, `opus-r2`) traced this to the same root cause — this machine's
-  psmux 3.3.4 `kill-session` is a silent no-op, so `reedengine.Down`'s `list-sessions`-gated
-  `kill-server` escalation never fires — and both independently judged it a reed-lifecycle design
-  decision (verify session death? kill-server when only the caller's own session remains? gate on
-  psmux version?), not a fabric-cutover defect. Round 2 explicitly considered and rejected a narrow
-  buildercli-local teardown workaround as masking the signal a future reed campaign needs. This is
-  **settled — do not re-litigate or attempt a fix here**, not even a local workaround. Flag it again
-  only if your own independent pass surfaces a genuinely NEW angle neither prior round considered.
-- **O4 (unborn host HEAD fails every weft commit, from `opus-r2`):** post-cutover `CommitWeft` calls
-  `f.Warp.CurrentSHA()` unconditionally for the `Warp-SHA` trailer, so a host repo with zero commits
-  fails every builder/webster `weftCommit` and `lyx config <module> --set …`
-  (`fabricengine: warp CurrentSHA: gitrepo: repository has no commits`). Round 2 reproduced this
-  live. **Explicitly out of scope to fix here**: the only sensible fix changes `fabricengine`'s own
-  contract (tolerate an unborn warp HEAD, skip the trailer/`RecordCorrespondence`), which is (a)
-  outside this campaign's remit — review how the four consumer files CALL fabricengine, not
-  fabricengine's own logic — and (b) a real design tradeoff (weakens the warp↔weft correspondence
-  invariant fabric's own hardening campaign built) that is the operator's call, not a round agent's.
-  Do not fix `fabricengine` here even if you find a clean-looking fix. If your own pass independently
-  rediscovers this, just confirm it and cite this note rather than re-deriving it from scratch.
-- **F-B (`lyx fabric sync`/`lyx config <module> --set …` commits every machine-local artifact into
-  weft history, from `opus-r3`):** the fabric weft pathspec
-  (`internal/fabriccli/weft_verbs.go:122`, `fabricengine.ScopedPathspec(l.RelPath, cfg.Dirs())`) is
-  positive-entries-only — no `:(exclude)` at all — so a plain config sync permanently tracks every
-  module's lock files and pause flags, the same failure class F-A fixed for builder/webster's OWN
-  commits, but with no consumer-side lever: `configcli.realSync` calls `fabriccli.RunCLI(w,
-  []string{"sync"})` with no exclusion argument to pass. Round 3 live-confirmed this and recorded
-  the gap, with a suggested repair (seed the weft repo's `.git/info/exclude`, mirroring what
-  `fabricengine.seedWeftArtifactExcludes` already does for fabric's own `.weft/` artifacts), in
-  `CONSTRAINTS.md`'s Cross-module exclusions bullet. **Explicitly out of scope to fix here** — same
-  shape as O4: both candidate repairs change `fabricengine`/`fabriccli`'s own contract, not how the
-  four consumer files call it, and picking between them (fabric owns the exclude vs. each consumer
-  states its own) is a real layering decision for the operator, not a round agent's. Not a cutover
-  regression — pre-cutover `lyx weft sync` used the identical exclusion-free pathspec. Do not fix
-  `fabricengine`/`fabriccli` here. If your own pass independently rediscovers this, just confirm it
-  and cite this note.
-- **F-D (post-cutover `warp.yaml`/`weft.yaml` config orphans silently lose customized values, from
-  `opus-r3`):** every pre-cutover hub still carries `_lyx/config/warp.yaml` and `weft.yaml` (and
-  often `mux.yaml` from the earlier `mux`→`reed` rename); `configreg` no longer knows them, so they
-  are silently ignored by `--print`/the menu/`reconcile` — verified live. Worse: `lyx config
-  reconcile --apply` then writes `fabric.yaml` from the DEFAULT template, so an operator's
-  customized pre-cutover `weft.yaml` `pathspec` or `warp.yaml` `branch_prefix` is silently replaced,
-  not migrated. **Explicitly out of scope to fix here**: the repair is a one-shot value migration
-  belonging to `configsync`/`initengine` (fold the old files' values into `fabric.yaml`, then prune),
-  outside the four files under review, and an operator decision either way (migrate vs. prune and
-  let the operator re-set). `configreg` deliberately has no orphan-module concept; adding one is a
-  feature, not a cutover fix. Do not implement a migration path here. If your own pass independently
-  rediscovers this, just confirm it and cite this note.
+## Scope was widened after round opus-r4 — O4/F-B/F-D are no longer deferred
+
+Rounds 1-4 scoped this campaign to "how the four consumer files call fabricengine, not
+fabricengine's own logic" and deferred O4, F-B, and F-D on exactly that basis. **The operator has
+since explicitly widened the campaign to also cover fixing fabricengine/fabriccli's own contract**
+for these three specific, already-diagnosed findings (not a general re-opening of fabricengine's
+design). All three were implemented directly — via targeted, narrowly-briefed forks, not a full
+review round, since each finding was already fully diagnosed with a known root cause and a
+suggested repair from the round that found it — independently verified by the orchestrator (build
++ vet + hermetic green from a cold state, plus a firsthand not-false-green reproduction for each:
+revert the production file, confirm the fix's new test fails at the predicted assertion, restore to
+an empty diff), and are now CLOSED-AND-VERIFIED:
+
+- **O4 (commit `41f335a9`):** `CommitWeft` now tolerates an unborn warp HEAD via a `warpHeadSHA`
+  helper that distinguishes `gitrepo.ErrNoCommits` from a genuine failure — the commit lands with no
+  `Warp-SHA` trailer and no `RecordCorrespondence` call, self-healing once warp gets its first
+  commit. `SyncWeft` re-derives the same unborn signal independently rather than inferring it from a
+  missing trailer, so `warpSHAFromTrailer`'s missing-trailer error stays a hard
+  invariant-violation signal for every other cause. Orchestrator independently reverted both
+  production files and reproduced both new tests
+  (`TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord`,
+  `TestSyncWeft_UnbornWarpHEAD_SkipPushAndPush`) failing at exactly the predicted pre-fix error;
+  restored to an empty diff. Live driving at the full CLI-pairing-command level was not achieved
+  (both `lyx fabric add`/`clone` refuse an unborn source before reaching this code path at all) —
+  the new integration test exercises `Fabric.CommitWeft`/`SyncWeft` directly, the same depth round
+  opus-r2's original finding was made at.
+- **F-B (commit `b31c4cc8`):** fixed at the git-exclude layer, not the pathspec layer —
+  `seedWeftArtifactExcludes` (called from `CommitWeft`'s existing `ensureWeftLockDir` choke point)
+  now also seeds cross-module, gitignore-syntax patterns (`**/_lyx/*/*.lock`, `**/_lyx/*/pause`,
+  `**/_lyx/*/prompts/`, module name wildcarded) into the weft repo's `.git/info/exclude`. This makes
+  every committer correct by construction — `lyx fabric commit|push|sync`'s own pathspec, builder's
+  and webster's `weftCommit`, and `perchcli`'s still-unanchored block-exit commit all inherit the
+  same git-level exclusion — without `fabricengine` importing any consumer package (which would
+  cycle, since `websterengine`/`perchengine` already import `fabricengine`). Gitignore glob syntax
+  crosses `/` differently than git pathspec magic, so the `**/` prefix alone reaches every
+  `RelPath` depth with no per-caller anchoring — sidestepping the whole anchoring-bug class the
+  Anchored exclusions bullet documents. `CONSTRAINTS.md`'s Cross-module exclusions bullet is
+  rewritten to describe the fix as implemented. **Known limitation, stated in `CONSTRAINTS.md`:**
+  this stops new pollution but does not untrack an artifact a pre-fix sync already committed on an
+  existing hub (`.git/info/exclude` only affects untracked status); `git rm --cached` is the manual
+  remedy on an already-polluted hub, no migration tool was added. Orchestrator independently
+  reverted the production file and reproduced the new
+  `TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth` failing at every predicted
+  assertion across all three `RelPath` depths; restored to an empty diff.
+- **F-D (commit `ae5b8164`):** `configsync.ReconcileAll` gained a fabric-only special case — when
+  `fabric.yaml` is absent, a new `legacyFabricConfig` helper reads whichever of `warp.yaml`
+  (`branch_prefix`) / `weft.yaml` (`pathspec`) are present and YAML-parseable and folds their values
+  into the initial `fabric.yaml` write in place of the bare template default; both legacy files are
+  pruned only after a successful apply-mode write (a dry run reports the pending migration via the
+  new `Result.MigratedFrom` field but writes/deletes nothing); an unparseable or absent legacy file
+  falls back to the template default and is left on disk. `mux.yaml` (an unrelated, earlier
+  `mux`→`reed` rename orphan) is deliberately untouched — out of scope, not part of the fabric
+  cutover. Orchestrator independently reverted both production files; the new
+  `TestReconcileAll_MigratesLegacyFabricConfig` failed to even *compile* (`MigratedFrom` doesn't
+  exist on the pre-fix `Result`) — the strongest form of the not-false-green proof; restored to an
+  empty diff, all five subtests pass. Live-driven end-to-end against a real git repo and the
+  redeployed binary: seeded both legacy files with custom values, ran `lyx config reconcile
+  --apply`, confirmed `fabric.yaml` carried both migrated values, both legacy files were gone, and a
+  second reconcile was a clean no-op.
+
+**F4/O5 remains deferred and settled** (psmux `kill-session` no-op leaves the builder smoke gate's
+teardown check red) — two independent rounds (`fable-r1`, `opus-r2`) traced this to the same root
+cause and both judged it a reed-lifecycle design decision, not a fabric-cutover defect, and it was
+NOT included in the operator's scope-widening (it lives in `reedengine`, not `fabricengine`/
+`fabriccli`). Round 2 explicitly considered and rejected a narrow buildercli-local teardown
+workaround as masking the signal a future reed campaign needs. **Settled — do not re-litigate or
+attempt a fix here**, not even a local workaround. Flag it again only if your own independent pass
+surfaces a genuinely NEW angle no prior round considered.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
