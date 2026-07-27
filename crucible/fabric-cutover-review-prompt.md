@@ -172,16 +172,21 @@ the real substrate — a green `go test` proves nothing here.
   Weft Git Invariant) is intentionally retained post-cutover and is NOT itself a defect.
 
 ## Round context seeded from prior-round verification
-**Safety pass — round 2 (Opus).** Round 1 (`fable-r1`) found and fixed 8 findings (0 BLOCKING, 2
-MEDIUM, 4 LOW, 2 NIT) plus one deferred residual; the orchestrator has independently verified
-every fix from a cold state on the committed tree — including reproducing the not-false-green
-proof for the two behavior-changing fixes (F8, F1) by reverting each to its pre-fix state,
-confirming the round's own new test fails at exactly the predicted assertion, then restoring and
-confirming an empty diff. There is **no known residual** in this campaign's scope. Do a genuinely
-independent clean-room pass to find anything round 1 missed — or, if you genuinely find nothing,
-honestly confirm merge-readiness. Do NOT re-open or re-litigate the CLOSED-AND-VERIFIED work below.
-The campaign is planned for up to 4 rounds total, alternating **Fable, Opus, Fable, Opus** — this
-round is Opus.
+**Round 3 (Opus).** Round 2 (`opus-r2`, a safety pass) was NOT clean: it found 5 new findings (0
+BLOCKING, 2 MEDIUM, 3 LOW) beyond round 1's 8, fixed 3 of them (O1, O2, O3), and deliberately
+deferred 2 with explicit reasons (O4, O5 — see the deferred-items section below). The orchestrator
+independently reproduced `go build ./...`, `go vet` on the full campaign package set, and `go test
+-count=5` (hermetic) green from a cold state on the committed tree at `6261c1f8`. The round's own
+fixer report additionally documents, with printed failing-assertion output, its own
+not-false-green reproduction for both behavior-changing fixes (O1's widened
+`weftReferencePattern`, O2's anchored exclusion pathspecs) plus a full live/integration run
+(`-tags integration`, `-tags smoke` for both buildercli and webstercli, `tools/sandbox` coverage
+guard) — see `.scratch/fabric-cutover-review-opus-r2-fixer-report.md` for the exact commands and
+observed results this round did not re-run independently. Do NOT re-open or re-litigate the
+CLOSED-AND-VERIFIED work below (rounds 1 and 2). The operator has capped this campaign at up to 2
+more rounds and directed both onto **Opus** (overriding the original Fable/Opus/Fable/Opus
+rotation plan) — this round is Opus. Do a genuinely independent clean-room pass to find anything
+rounds 1-2 missed, or honestly confirm merge-readiness if you genuinely find nothing.
 
 **CLOSED-AND-VERIFIED (do not re-litigate):**
 
@@ -232,13 +237,43 @@ Round 1 (`fable-r1`), full review at `.scratch/fabric-cutover-review-fable-r1.md
   checks for a clean weft-commit subject. Sandbox coverage guard (`go test ./tools/sandbox/...`)
   confirmed green by the orchestrator.
 
-Full suite confirmed green by the orchestrator from a cold state on the committed tree (not just
-trusting the round's own report): `go build ./...`; `go vet` on
-buildercli+webstercli+configcli+configreg+fabricengine+fabriccli+reedengine+cmd/lyx; `go test
--count=5` (hermetic, all scoped packages); `go test -tags integration -count=1` (all scoped
-packages); `go test -tags smoke` for both buildercli (compiles, assertions pass, teardown red per
-deferred F4) and webstercli (fully green); `go test ./tools/sandbox/...` (coverage guard green);
-zero stray tmux/psmux processes after all live runs.
+Round 2 (`opus-r2`), full review at `.scratch/fabric-cutover-review-opus-r2.md`, fixer report at
+`.scratch/fabric-cutover-review-opus-r2-fixer-report.md`:
+- **O1 (MEDIUM, commit `b2f2884c`):** webster's weft-reference audit (`weftReferencePattern`) still
+  matched only the deleted `lyx weft`/`lyx warp` spellings, not `lyx fabric` — an agent driving the
+  post-cutover fabric CLI directly inside a weft-blind fork/webster session would not be caught by
+  the audit. Fixed: the alternation now matches `lyx (fabric|weft|warp)` (the pre-cutover spellings
+  are kept deliberately, documented at the function, since an agent reaching for a dead command
+  should still fail loudly on the audit rather than surface an opaque "unknown command"). Round 2
+  reproduced not-false-green by reverting the pattern and confirming all 5 new
+  `TestWeftReferencePattern` rows fail at exactly the predicted assertion; restoring passes with an
+  empty diff (12/12 rows).
+- **O2 (MEDIUM, commit `3424fb41`):** both builder's and webster's weft-commit exclusion pathspecs
+  used a leading-wildcard form (`:(exclude)*.lock`) that silently matches nothing — and therefore
+  commits nothing — once `layout.RelPath` is more than one segment deep (e.g. `wts/some-task`),
+  making the weft commit a silent no-op at real hub geometry depths. Fixed: both exclusions are now
+  anchored under the same scoped `_lyx` base the positive pathspec names, via a new
+  `weftPathspecBase(layout)` helper in each package. `CONSTRAINTS.md`'s Weft Git Invariant gained an
+  **Anchored exclusions** bullet naming the failure mode and flagging `internal/perchcli`'s
+  block-exit commit as carrying the same bug (explicitly not fixed here — outside this campaign's
+  four files). Round 2 reproduced not-false-green against real git
+  (`TestWeftCommit_CommitsAtEveryRelPathDepth` in both packages' new `weft_integration_test.go`) by
+  reverting to the unanchored spelling: depths ≤1 still pass, depths ≥2 fail exactly as predicted
+  (`weftCommit() committed = false; want true`); restoring passes all four depths in both packages.
+- **O3 (LOW, commit `6261c1f8`):** `README.md` still advertised the deleted `lyx weft`/`lyx warp`
+  commands and modules at four sites (subcommand-tree example, loom-domain example,
+  toolkit-primitives list, shipped-module list). Fixed to the unified `lyx fabric` topology,
+  matching `docs/overview.md:245`; the concept-term uses of "weft" (weft-blind, weft
+  repo/worktree) were correctly left alone. `go test ./cmd/lyx/` stays green.
+
+Full suite confirmed green by the orchestrator from a cold state on the committed tree at
+`6261c1f8` (not just trusting the round's own report): `go build ./...`; `go vet` on
+buildercli+webstercli+configcli+configreg+fabricengine+fabriccli+cmd/lyx; `go test -count=5`
+(hermetic, all scoped packages). The `-tags integration`, `-tags smoke`, and
+`tools/sandbox` coverage-guard results for round 2 are taken from the round's own fixer report
+(which prints the exact revert/fail/restore output for its two behavior-changing fixes, not a bare
+self-verdict) rather than independently re-run this round, per operator direction to proceed
+straight to spawning further rounds.
 
 **One aside, NOT part of this campaign's scope, NOT seeded as a residual — do not chase it:** the
 orchestrator's `go test -tags integration -count=1 ./internal/reedengine/...` run surfaced two
@@ -316,16 +351,27 @@ round — an operator decision on a real design tradeoff, or a live capability y
 then you must say so explicitly, with the specific reason, in the fixer report's deferred section —
 never bucket something as "deferred, low priority" just because it felt small.
 
-## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-- **F4 residual (from `fable-r1`):** this machine's psmux 3.3.4 `kill-session` is a silent no-op,
-  so reed's `Down` cannot fully tear down a builder smoke test's server, and the builder smoke
-  gate's teardown check stays red (the tests' own behavioral assertions all pass — only teardown
-  fails). Round 1 judged this a reed-lifecycle design decision (verify session death? kill-server
-  when only the caller's own session remains? gate on psmux version?), not a fabric-cutover call.
-  Re-evaluate: do you agree it's genuinely a separate-module concern, or does your own review
-  surface a narrow, in-scope fix (e.g. purely in how buildercli's own smoke test tears down,
-  without touching reed's `Down` semantics)? Do not fix reed's `Down` semantics itself here even if
-  you conclude a fix is warranted — flag it for a future reed campaign instead.
+## Deferred items — settled, do NOT re-open
+- **F4/O5 (psmux `kill-session` no-op leaves the builder smoke gate's teardown check red):** two
+  independent rounds (`fable-r1`, `opus-r2`) traced this to the same root cause — this machine's
+  psmux 3.3.4 `kill-session` is a silent no-op, so `reedengine.Down`'s `list-sessions`-gated
+  `kill-server` escalation never fires — and both independently judged it a reed-lifecycle design
+  decision (verify session death? kill-server when only the caller's own session remains? gate on
+  psmux version?), not a fabric-cutover defect. Round 2 explicitly considered and rejected a narrow
+  buildercli-local teardown workaround as masking the signal a future reed campaign needs. This is
+  **settled — do not re-litigate or attempt a fix here**, not even a local workaround. Flag it again
+  only if your own independent pass surfaces a genuinely NEW angle neither prior round considered.
+- **O4 (unborn host HEAD fails every weft commit, from `opus-r2`):** post-cutover `CommitWeft` calls
+  `f.Warp.CurrentSHA()` unconditionally for the `Warp-SHA` trailer, so a host repo with zero commits
+  fails every builder/webster `weftCommit` and `lyx config <module> --set …`
+  (`fabricengine: warp CurrentSHA: gitrepo: repository has no commits`). Round 2 reproduced this
+  live. **Explicitly out of scope to fix here**: the only sensible fix changes `fabricengine`'s own
+  contract (tolerate an unborn warp HEAD, skip the trailer/`RecordCorrespondence`), which is (a)
+  outside this campaign's remit — review how the four consumer files CALL fabricengine, not
+  fabricengine's own logic — and (b) a real design tradeoff (weakens the warp↔weft correspondence
+  invariant fabric's own hardening campaign built) that is the operator's call, not a round agent's.
+  Do not fix `fabricengine` here even if you find a clean-looking fix. If your own pass independently
+  rediscovers this, just confirm it and cite this note rather than re-deriving it from scratch.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
