@@ -96,11 +96,18 @@ func (v AuditViolation) Error() string {
 // deliberately kept. Those commands no longer exist, but an agent reaching for one
 // is still attempting to drive weft git — a violation worth failing loudly on rather
 // than letting it surface as an opaque "unknown command" in a transcript.
+//
+// The optional `.exe` is not cosmetic. Windows is lyx's primary platform, so
+// `lyx.exe fabric sync` is an entirely natural spelling for an agent to reach for,
+// and without it the `\s+` after `lyx` refuses to match — the command runs, drives
+// weft git, and the audit that is the machine-checked half of the Weft Git
+// Invariant reports nothing. Nothing else in the alternation covers it either: the
+// weft-path and weft-suffix branches only fire when the command names a path.
 func weftReferencePattern(layout *hubgeometry.Layout) *regexp.Regexp {
 	weftPath := regexp.QuoteMeta(layout.WeftWorktree())
 	weftSuffix := regexp.QuoteMeta(hubgeometry.WeftSuffix)
 	pattern := fmt.Sprintf(
-		`lyx\s+(fabric|weft|warp)\b|%s|\S*%s\b`,
+		`lyx(?:\.exe)?\s+(fabric|weft|warp)\b|%s|\S*%s\b`,
 		weftPath, weftSuffix,
 	)
 	return regexp.MustCompile(pattern)
