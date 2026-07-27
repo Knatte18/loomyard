@@ -7,6 +7,15 @@
 // machine-local advisory-lock artifacts, not builder state, so committing
 // them would leak runtime noise into durable weft history and materialize
 // stale lock files on every other machine's weft pull.
+//
+// That provenance is historical only -- do NOT treat perchcli's copy as the
+// current reference. This helper's exclusion set has since diverged twice and
+// perchcli has not followed: its entries are ANCHORED under the scoped _lyx
+// base (perchcli still spells the leading-wildcard ":(exclude)*.lock" that
+// CONSTRAINTS.md's Weft Git Invariant names as a silent no-op at a
+// multi-segment RelPath), and they are CROSS-MODULE (see
+// builderWeftPathspec). Copying perchcli's spelling back here reintroduces
+// both bugs.
 
 package buildercli
 
