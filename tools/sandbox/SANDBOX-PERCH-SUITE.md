@@ -152,7 +152,7 @@ until the block reaches a terminal outcome; the printed JSON envelope reports
 `round-<N>-review.md` / `round-<N>-fixer-report.md` pair per round actually run, numbered from 1;
 the fixture file's content has actually changed and no longer carries the seeded flaws. Confirm
 the weft commit landed (`git -C <weft worktree> log -1` on the host's weft sibling shows a
-`perch: <runId> APPROVED` commit, or use `lyx weft status`).
+`perch: <runId> APPROVED` commit, or use `lyx fabric status`).
 
 For the pause/resume step, write a SECOND fixture + profile pair whose flaws are subtler (so the
 block is likely to still be running after round 1) with a fresh `run-id` implied by the new

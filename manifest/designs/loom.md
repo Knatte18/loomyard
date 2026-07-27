@@ -94,9 +94,9 @@ head." Mechanism: loom stamps a **start-SHA** (host `HEAD`) into the status file
 begins; the Builder agent **commits its own work** (required anyway — for backtracking, and
 so there is a diff to read). The Raddle step then generates docs over
 `git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_raddle`) for a targeted
-update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx weft sync` (never raw git — this is `warp`'s responsibility boundary between
-warp/weft/host). The
-`_raddle` merge-back at Finalize is exactly what `warp cleanup` gates on. (Whether the
+update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx fabric sync` (never raw git — this is `fabric`'s responsibility boundary between
+host and weft). The
+`_raddle` merge-back at Finalize is exactly what `lyx fabric cleanup` gates on. (Whether the
 Raddle step is itself review-gated is an open choice; shown ungated above.)
 
 **Finalize** is loom's last phase — merge-back after Builder-review approval, optional PR
@@ -280,7 +280,7 @@ it coordinates through files and drives strands via reed — so the screen is fr
 (the status line on top, agents below as they spawn). loom and the view are independent: loom writes
 the `_lyx/` status file; the status strand reads and prints it; neither blocks the other.
 
-**The run-launcher.** A double-click shortcut makes this one click: `lyx warp add` drops a
+**The run-launcher.** A double-click shortcut makes this one click: `lyx fabric add` drops a
 small `.lyx/lyxrun.cmd` (machine-local, untracked — it embeds an absolute path) in the worktree
 that just does `cd <worktree>` then `lyx loom run`. Because everything is
 [cwd-authoritative](../../docs/overview.md#principles), the launcher needs no arguments — geometry resolves

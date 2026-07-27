@@ -37,11 +37,11 @@ The board repo is the weft repo's GitHub wiki. **This wiki must already exist an
 1. The weft repo (`lyx-test-weft`) must have **Wikis enabled** in its GitHub settings.
 2. The wiki must have **at least one page** created (a dedicated page can be the only content initially).
 
-If the wiki does not exist or is not initialized, `lyx warp clone` will fail when trying to clone the board, and the Hub will be torn down.
+If the wiki does not exist or is not initialized, `lyx fabric clone` will fail when trying to clone the board, and the Hub will be torn down.
 
 ### Current lyx Binary
 
-The sandbox tool invokes `lyx warp clone` as a subprocess and resolves which `lyx` to run: the derived `.dev-bin/lyx` binary when it exists (deployed via `deploy-dev`), else the `lyx` on your system PATH as a fallback (deployed via `deploy.cmd`). Deploy one of the two before the Hub can be built.
+The sandbox tool invokes `lyx fabric clone` as a subprocess and resolves which `lyx` to run: the derived `.dev-bin/lyx` binary when it exists (deployed via `deploy-dev`), else the `lyx` on your system PATH as a fallback (deployed via `deploy.cmd`). Deploy one of the two before the Hub can be built.
 
 If neither is resolvable, the sandbox tool will fail with a clear error message.
 
@@ -57,7 +57,7 @@ This command:
 1. Resolves the parent directory (`C:\Code`) from the launcher.
 2. Computes the Hub path as `C:\Code\lyx-test-HUB`.
 3. Checks if the Hub already exists; if not, proceeds to clone.
-4. Runs `lyx warp clone https://github.com/Knatte18/lyx-test https://github.com/Knatte18/lyx-test-weft` with the parent directory set to `C:\Code`.
+4. Runs `lyx fabric clone https://github.com/Knatte18/lyx-test https://github.com/Knatte18/lyx-test-weft` with the parent directory set to `C:\Code`.
 5. Streams all output (stdout/stderr) to the terminal.
 6. Exits with the clone command's exit code (0 on success, 1 on failure).
 
