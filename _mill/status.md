@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: crucible-fabric-cutover
 branch: crucible-fabric-cutover
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-27T09:19:41Z'
+done  '2026-07-27T17:45:05Z'
 ```
