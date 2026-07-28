@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-migrate-core-reads
+phase: approved-migrate-snapshot-push-reads
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-githubclient  '2026-07-28T11:55:44Z'
 approved-parity-oracle  '2026-07-28T12:36:58Z'
 approved-selfreport-transport  '2026-07-28T17:15:43Z'
 approved-migrate-core-reads  '2026-07-28T17:27:40Z'
+approved-migrate-snapshot-push-reads  '2026-07-28T17:42:58Z'
 ```
 
 ## Batches
@@ -67,9 +68,10 @@ batches:
     start_sha: e8d7801ada9c4d5210cc04a4fa69ed70421650c4
     commit_sha: 90dfd1a46f9658cb9238e154cc5579f22b32be9f
   - name: migrate-snapshot-push-reads
-    state: running
+    state: approved
     implementer_session: bb6aaef2-87e2-4660-b0a1-6b1a03742ac2
     start_sha: adf482014639e31016d429d4d40b2e788c5f4ba3
+    commit_sha: 80485d3caaf866f94e41f56b58ac931a302b6034
   - name: retire-poc-and-measure
     state: pending
   - name: guards
