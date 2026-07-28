@@ -121,8 +121,8 @@ These four methods mirror their `_lyx` counterparts exactly (`WeftLyxDir`/`WeftL
 
 ### Junction detection methods (Layout)
 
-- **`HostJunctions(slug string) []HostJunction`** — the list of host junctions (currently `_lyx`; `_pattern` follows in a later batch) for a named slug, each entry `{Name, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}`. `Hub`/slug-anchored: used by wiring, unwiring, and `remove`.
-- **`HostJunctionsHere() []HostJunction`** — the same junction records, resolved against the current worktree instead of a slug: each entry's `Link` comes from `HostLyxLinkHere()` and `Target` from `WeftLyxDir()`. Used by the three junction health-check sites (`internal/fabricengine/reconcile.go`, `status.go`, `drift.go`), which have no slug available — `PairInSync` in particular takes no slug parameter at all and is documented stateless.
+- **`HostJunctions(slug string) []HostJunction`** — the list of host junctions for a named slug: two entries, `_lyx` first (`{Name: LyxDirName, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}`) then `_pattern` (`{Name: PatternDirName, Link: HostPatternLink(slug), Target: WeftPatternDirFor(slug)}`). `Hub`/slug-anchored: used by wiring, unwiring, and `remove`.
+- **`HostJunctionsHere() []HostJunction`** — the same two junction records, resolved against the current worktree instead of a slug: `_lyx`'s `Link` comes from `HostLyxLinkHere()` and `Target` from `WeftLyxDir()`; `_pattern`'s `Link` comes from `HostPatternLinkHere()` and `Target` from `WeftPatternDir()`. Used by the three junction health-check sites (`internal/fabricengine/reconcile.go`, `status.go`, `drift.go`), which have no slug available — `PairInSync` in particular takes no slug parameter at all and is documented stateless.
 
 ## Design principles
 
