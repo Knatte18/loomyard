@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-githubclient
+phase: approved-parity-oracle
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -32,6 +32,7 @@ planned  '2026-07-28T10:22:16Z'
 implementing  '2026-07-28T10:29:07Z'
 approved-gogit-handle  '2026-07-28T11:24:47Z'
 approved-githubclient  '2026-07-28T11:55:44Z'
+approved-parity-oracle  '2026-07-28T12:36:58Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     start_sha: 390de36275247311965761a37c6e8731f35bb73e
     commit_sha: 1b29d86f5cf93ecaa7610c7edafe963fad91ca74
   - name: parity-oracle
-    state: running
+    state: approved
     implementer_session: 0c8bd158-ad12-41b6-912b-e7d937547b91
     start_sha: 6d03d2c41cf0170636bebc8f3b5f7600db65e865
+    commit_sha: 7b9df6499f3120cf6da1733089b696e77e9d39ff
   - name: selfreport-transport
     state: pending
   - name: migrate-core-reads
