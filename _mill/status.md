@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-pattern-package
+phase: approved-prompt-wiring
 slug: pattern-wiring
 branch: pattern-wiring
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-fabric-junction-generalisation  '2026-07-28T11:42:48Z'
 approved-weft-pathspec-tolerance  '2026-07-28T11:57:58Z'
 approved-pattern-junction-flip  '2026-07-28T12:45:36Z'
 approved-pattern-package  '2026-07-28T17:14:53Z'
+approved-prompt-wiring  '2026-07-28T17:54:56Z'
 ```
 
 ## Batches
@@ -67,7 +68,7 @@ batches:
     implementer_session: eb9e97c9-59b3-4ec9-aaa4-44042f51a984
     start_sha: 34cd61266611263c68c609a80417e2807c1ec2a3
   - name: prompt-wiring
-    state: running
+    state: approved
     implementer_session: 3eabb6b3-4b49-4cb0-af7b-41fce493d689
     start_sha: 07b80ec0478960e198f10dfde2607112074f13fd
 ```
