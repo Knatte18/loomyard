@@ -44,7 +44,9 @@ batches:
     start_sha: 1cb3b30c781cc137247eb9b13d0c26da08065f89
     commit_sha: 3481e9c74d44ae87345c443b5bed785eda2e098e
   - name: fabric-junction-generalisation
-    state: pending
+    state: running
+    implementer_session: a6cf902b-cc03-4423-93c4-abfc627c3801
+    start_sha: d6b92ba9ad3c0ff2aa4a622cd6b7918eb8130589
   - name: weft-pathspec-tolerance
     state: pending
   - name: pattern-junction-flip
