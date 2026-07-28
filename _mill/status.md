@@ -43,7 +43,9 @@ batches:
     start_sha: d3c8828308d1a7712dbfd57b03906a22a1853233
     commit_sha: a29a5ead4d4a6ed370559c25928c5fa613d3014d
   - name: githubclient
-    state: pending
+    state: running
+    implementer_session: a7f0765e-de94-4bb2-8acf-10053a2c131e
+    start_sha: 390de36275247311965761a37c6e8731f35bb73e
   - name: parity-oracle
     state: pending
   - name: selfreport-transport
