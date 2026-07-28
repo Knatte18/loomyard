@@ -42,13 +42,14 @@ _lyx/, _lyx/config/, and _pattern/ directories, maintains the managed
 their templates (idempotent: existing user edits are preserved). A weft
 pairing must already exist (run 'lyx fabric add' or 'lyx fabric clone' first).
 
-Pass --undo to reverse a previous init: this removes both host junctions,
-clears the weft-side _lyx content only — _pattern content is the host repo's
-own hand-authored invariants and is deliberately preserved — (committing and
-pushing the _lyx deletion), and reverts the managed .gitignore block and the
-.git/info/exclude entries that init added. --undo is safe to run on a
-directory that was never initialized (a clean no-op) and is mainly useful for
-test/sandbox cleanup.
+Pass --undo to reverse a previous init: this removes both host junctions and
+clears the weft-side _lyx content, committing and pushing that deletion.
+Weft _pattern content is deliberately preserved — it is the host repo's own
+hand-authored invariants, not lyx's runtime state — and is never cleared,
+committed, or pushed by --undo. --undo also reverts the managed .gitignore
+block and the .git/info/exclude entries that init added. --undo is safe to
+run on a directory that was never initialized (a clean no-op) and is mainly
+useful for test/sandbox cleanup.
 
 Breaking change: --undo's JSON output now reports "junctions_removed" (a
 list of junction names) in place of the old singular "lyx_junction" key.
