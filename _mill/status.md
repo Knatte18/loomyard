@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-selfreport-transport
+phase: approved-migrate-core-reads
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-gogit-handle  '2026-07-28T11:24:47Z'
 approved-githubclient  '2026-07-28T11:55:44Z'
 approved-parity-oracle  '2026-07-28T12:36:58Z'
 approved-selfreport-transport  '2026-07-28T17:15:43Z'
+approved-migrate-core-reads  '2026-07-28T17:27:40Z'
 ```
 
 ## Batches
@@ -61,9 +62,10 @@ batches:
     start_sha: 1a375a97cf9d6bc8f1660bbb744edf8c56ea3a41
     commit_sha: 12aee0e3bdcd907d176c7c8840c3127f66d5c2b4
   - name: migrate-core-reads
-    state: running
+    state: approved
     implementer_session: fc60b44b-a6d3-4a52-9019-68eab18a4663
     start_sha: e8d7801ada9c4d5210cc04a4fa69ed70421650c4
+    commit_sha: 90dfd1a46f9658cb9238e154cc5579f22b32be9f
   - name: migrate-snapshot-push-reads
     state: pending
   - name: retire-poc-and-measure
