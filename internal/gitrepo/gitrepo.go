@@ -49,21 +49,22 @@ func validSHA(sha string) bool {
 // pusher's single-pusher lock, and in-process callers must serialize their
 // own writes.
 //
-// goGitMu, goGitRepo, and goGitOK back the lazily-opened, cached go-git
-// handle described in gogit.go's goGit. See gogit.go's godoc for the full
+// goGitMu, goGitRepo, goGitOK, and lastPackFingerprint back the lazily-opened,
+// cached go-git handle described in gogit.go's goGit and the fingerprint-gated
+// object-lookup helper built on top of it. See gogit.go's godoc for the full
 // locking discipline every go-git-backed method (this batch and every batch
 // that migrates a read onto go-git) must follow.
 type Repo struct {
 	path string
 
-	// goGitMu guards goGitRepo and goGitOK, and is the single lock every
-	// go-git-backed call on this Repo coordinates through — see gogit.go. No
-	// migrated read calls goGit yet in this batch (that starts in batch 3),
-	// so golangci-lint's default (untagged) build sees no production caller
-	// for either field; each carries a trailing nolint for that reason,
-	// matching gitnativepoc/read.go's identical hasUnpushed precedent —
-	// gogit_test.go's integration-tagged coverage is the only caller until
-	// then.
+	// goGitMu guards goGitRepo, goGitOK, and lastPackFingerprint, and is the
+	// single lock every go-git-backed call on this Repo coordinates through —
+	// see gogit.go. No migrated read calls goGit yet in this batch (that
+	// starts in batch 3), so golangci-lint's default (untagged) build sees no
+	// production caller for any of these four fields; each carries a trailing
+	// nolint for that reason, matching gitnativepoc/read.go's identical
+	// hasUnpushed precedent — gogit_test.go's integration-tagged coverage is
+	// the only caller until then.
 	goGitMu sync.RWMutex //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
 	// goGitRepo is the cached go-git handle, valid only when goGitOK is true.
 	goGitRepo *git.Repository //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
@@ -75,6 +76,10 @@ type Repo struct {
 	// checkout existing yet, and a permanently-cached failure would break
 	// that.
 	goGitOK bool //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+	// lastPackFingerprint is the pack fingerprint recorded at the go-git
+	// handle's last index (re)build, read and written only inside the
+	// fingerprint-gated lookup helper's write-locked sequence — see gogit.go.
+	lastPackFingerprint string //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
 }
 
 // New returns a Repo wrapping the git checkout at path. New performs no

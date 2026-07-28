@@ -1,15 +1,23 @@
 // gogit.go implements the go-git handle infrastructure every migrated read in
 // later batches builds on: goGit, the lazily-opened and cached *git.Repository
-// accessor. Nothing in this file changes any existing method's backend — see
-// gitrepo.go's Repo struct doc and this file's own godoc for the locking
-// discipline it establishes.
+// accessor, and lookupObjectRetrying, the pack-fingerprint-gated
+// reindex-and-retry helper every migrated object lookup (commit, tree, or
+// blob resolution) must route through. Nothing in this file changes any
+// existing method's backend — see gitrepo.go's Repo struct doc and this
+// file's own godoc for the locking discipline both pieces establish.
 
 package gitrepo
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"sort"
+	"strings"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
 // goGit returns this Repo's go-git handle, opening it on first use via
@@ -79,10 +87,10 @@ import (
 //   - An object lookup (a commit, tree, or blob resolution — SHAExists,
 //     ChangedFilesSince, isStrictDescendant, hasUnpushed, and
 //     SetSnapshotSHA's ^{commit} canonicalization) never locks around the
-//     handle itself; it calls the pack-fingerprint-gated reindex-and-retry
-//     lookup helper instead (added alongside this method in the same
-//     package), which acquires r.goGitMu.Lock (not RLock) for its entire
-//     attempt-check-reindex-retry sequence as one unit.
+//     handle itself; it calls lookupObjectRetrying instead, which acquires
+//     r.goGitMu.Lock (not RLock) for its entire attempt-check-reindex-retry
+//     sequence as one unit — see that function's doc for why a read-only
+//     lock is not enough there.
 //
 // This is the single point of truth for that discipline; it exists in code,
 // here, rather than only in the plan, precisely so a future implementer
@@ -112,4 +120,142 @@ func (r *Repo) goGit() (*git.Repository, error) {
 	r.goGitRepo = repo
 	r.goGitOK = true
 	return repo, nil
+}
+
+// lookupObjectRetrying is the shared object-lookup helper every migrated
+// read that resolves a commit, tree, or blob must route through — never
+// calling the storer directly. It calls lookup once; if lookup succeeds, or
+// fails with anything other than plumbing.ErrObjectNotFound, that result is
+// returned unchanged. On an object-not-found miss, it computes the current
+// pack fingerprint (packFingerprint, below) of repo's common-dir packfiles
+// and compares it against the fingerprint recorded at this Repo's last index
+// build (r.lastPackFingerprint): only when the two differ does it call
+// Reindex() on the underlying *filesystem.Storage, record the new
+// fingerprint, and retry lookup exactly once more. When the fingerprint is
+// unchanged, the original not-found is returned as truth, with no rescan —
+// this is the gate that keeps a genuinely-absent object from paying a
+// reindex cost on every call.
+//
+// # Why the gate is on-disk state, not a per-Repo call counter
+//
+// One physical checkout is addressed concurrently by several live *Repo
+// values in this process and by a separate OS process entirely —
+// internal/fabricengine/fabric.go's cached Warp/Weft handles,
+// internal/fabricengine/weftgit.go's PushWeftAt, internal/websterengine/gitwrap.go,
+// and internal/fabriccli/spawn.go's detached child all address the same
+// worktree independently. A counter kept on one *Repo would never see a
+// write made through any of the others, so it could never detect that a
+// reindex is needed. The pack fingerprint is shared ground truth that any
+// of them can observe.
+//
+// # Why the whole sequence needs the write lock, not merely the reindex
+//
+// go-git's *filesystem.Storage builds its object index lazily on first
+// read (storage/filesystem/object.go's requireIndex), so even two
+// concurrent reindex-free FIRST reads mutate the same shared index map —
+// guarding only the Reindex() call would not deliver the safety this
+// package claims. lookupObjectRetrying therefore holds r.goGitMu.Lock (a
+// full write lock, not RLock) across the initial lookup attempt, the
+// fingerprint check, the conditional reindex, and the retry, as one
+// indivisible unit. The fingerprint field itself is read and written only
+// inside this locked sequence and needs no atomicity of its own as a
+// result.
+//
+// # A narrow, documented residual staleness
+//
+// A concurrent external repack landing between this call's not-found miss
+// and its fingerprint read can still yield one stale answer: the
+// fingerprint read might observe the pre-repack pack set even though the
+// repack has already replaced it on disk, in which case this call reports
+// not-found once more and a later call (whose fingerprint read lands after
+// the repack completes) reindexes and finds the object. This is strictly
+// narrower than the CLI behaviour it replaces, where every call reads
+// packfiles fresh and this window does not exist at all — but it is not
+// eliminated, only bounded to one stale read per repack race.
+//
+// Exercised by gogit_test.go's concurrency and reindex-retry coverage; no
+// migrated read calls it yet in this batch (that starts in batch 3), so
+// golangci-lint's default (untagged) build sees no caller, matching
+// gitnativepoc/read.go's identical hasUnpushed precedent.
+//
+//nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+func lookupObjectRetrying[T any](r *Repo, repo *git.Repository, lookup func() (T, error)) (T, error) {
+	r.goGitMu.Lock()
+	defer r.goGitMu.Unlock()
+
+	result, err := lookup()
+	if err == nil || !errors.Is(err, plumbing.ErrObjectNotFound) {
+		return result, err
+	}
+
+	storer, ok := repo.Storer.(*filesystem.Storage)
+	if !ok {
+		// Not a filesystem-backed storer (never true for a handle goGit
+		// opened, but the type assertion is the honest way to express the
+		// dependency) — nothing to reindex; the miss stands.
+		return result, err
+	}
+
+	fingerprint, fpErr := packFingerprint(storer)
+	if fpErr != nil {
+		// Could not even read the pack directory to compare; return the
+		// original not-found rather than risk masking it with a fingerprint
+		// error the caller never asked about.
+		return result, err
+	}
+	if fingerprint == r.lastPackFingerprint {
+		// The on-disk pack set has not changed since the last index build —
+		// the miss is truth, not staleness. No rescan.
+		return result, err
+	}
+
+	storer.Reindex()
+	r.lastPackFingerprint = fingerprint
+	return lookup()
+}
+
+// packFingerprint computes the pack fingerprint lookupObjectRetrying gates
+// its reindex decision on: the sorted (name, size) list of every *.idx file
+// in storer's routed objects/pack directory, joined into one comparable
+// string. Because storer's Filesystem() was built with
+// EnableDotGitCommonDir set (see goGit), "objects/pack" resolves to the
+// shared common dir even when repo is a linked worktree — the fingerprint is
+// therefore shared ground truth across every *Repo and OS process addressing
+// the same checkout, not a per-handle notion. A missing objects/pack
+// directory (no packfiles have ever been written) reports the empty
+// fingerprint rather than an error, since that is a normal, valid state, not
+// a failure to read the pack directory.
+//
+// Called only from lookupObjectRetrying, which is itself only reachable from
+// gogit_test.go's integration-tagged coverage in this batch — see that
+// function's doc.
+//
+//nolint:unused // only exercised (transitively) by the //go:build integration-tagged gogit_test.go
+func packFingerprint(storer *filesystem.Storage) (string, error) {
+	entries, err := storer.Filesystem().ReadDir("objects/pack")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	type idxEntry struct {
+		name string
+		size int64
+	}
+	var idxFiles []idxEntry
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".idx") {
+			continue
+		}
+		idxFiles = append(idxFiles, idxEntry{name: entry.Name(), size: entry.Size()})
+	}
+	sort.Slice(idxFiles, func(i, j int) bool { return idxFiles[i].name < idxFiles[j].name })
+
+	var b strings.Builder
+	for _, f := range idxFiles {
+		fmt.Fprintf(&b, "%s:%d;", f.name, f.size)
+	}
+	return b.String(), nil
 }
