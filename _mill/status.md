@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -48,6 +48,7 @@ holistic-fixing  '2026-07-28T19:07:16Z'
 nits-fixed-holistic  '2026-07-28T19:11:19Z'
 holistic-approved  '2026-07-28T19:11:23Z'
 done  '2026-07-28T19:11:53Z'
+pr-pending  '2026-07-28T19:21:12Z'
 ```
 
 ## Batches
