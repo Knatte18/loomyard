@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-retire-poc-and-measure
+phase: approved-guards
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-selfreport-transport  '2026-07-28T17:15:43Z'
 approved-migrate-core-reads  '2026-07-28T17:27:40Z'
 approved-migrate-snapshot-push-reads  '2026-07-28T17:42:58Z'
 approved-retire-poc-and-measure  '2026-07-28T18:06:27Z'
+approved-guards  '2026-07-28T18:17:50Z'
 ```
 
 ## Batches
@@ -79,9 +80,10 @@ batches:
     start_sha: ca4b69386f0a45d34ef49d4cc253834ad43cd5f7
     commit_sha: 3d6d552efbd98a97cb0f6db03267240cdfc25eb5
   - name: guards
-    state: running
+    state: approved
     implementer_session: bf1edee4-1194-4de4-a9cd-36ba6155237d
     start_sha: 66a86fdf7cdd3ebc01dd0f225f5e0750741876f5
+    commit_sha: e41647a09e9678165d4c22cf39ccb0279ead3ab3
   - name: docs-and-invariants
     state: pending
 ```
