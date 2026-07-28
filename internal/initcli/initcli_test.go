@@ -36,7 +36,7 @@ func TestRunInit_Smoke(t *testing.T) {
 	if ok, _ := result["ok"].(bool); !ok {
 		t.Error("ok flag is not true")
 	}
-	for _, key := range []string{"lyx_dir", "gitignore", "modules"} {
+	for _, key := range []string{"lyx_dir", "pattern_dir", "gitignore", "modules"} {
 		if _, present := result[key]; !present {
 			t.Errorf("result missing %q key; output: %s", key, buf.String())
 		}

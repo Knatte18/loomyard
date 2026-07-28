@@ -33,20 +33,22 @@ import (
 func Command() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "scaffold _lyx/config/ in the current directory (or reverse it with --undo)",
+		Short: "wire the _lyx and _pattern junctions and scaffold _lyx/config/ (or reverse it with --undo)",
 		Long: `init activates the lyx topology for the current worktree.
 
-It wires cwd-keyed fabric junctions, creates _lyx/ and _lyx/config/ directories,
-maintains the managed .gitignore block for .lyx/, and reconciles all module
-config files against their templates (idempotent: existing user edits are
-preserved). A weft pairing must already exist (run 'lyx fabric add' or
-'lyx fabric clone' first).
+It wires both cwd-keyed fabric junctions (_lyx and _pattern), creates the
+_lyx/, _lyx/config/, and _pattern/ directories, maintains the managed
+.gitignore block for .lyx/, and reconciles all module config files against
+their templates (idempotent: existing user edits are preserved). A weft
+pairing must already exist (run 'lyx fabric add' or 'lyx fabric clone' first).
 
-Pass --undo to reverse a previous init: this removes every host junction,
-clears the weft-side _lyx content (committing and pushing the deletion),
-and reverts the managed .gitignore block and the .git/info/exclude entries
-that init added. --undo is safe to run on a directory that was never
-initialized (a clean no-op) and is mainly useful for test/sandbox cleanup.
+Pass --undo to reverse a previous init: this removes both host junctions,
+clears the weft-side _lyx content only — _pattern content is the host repo's
+own hand-authored invariants and is deliberately preserved — (committing and
+pushing the _lyx deletion), and reverts the managed .gitignore block and the
+.git/info/exclude entries that init added. --undo is safe to run on a
+directory that was never initialized (a clean no-op) and is mainly useful for
+test/sandbox cleanup.
 
 Breaking change: --undo's JSON output now reports "junctions_removed" (a
 list of junction names) in place of the old singular "lyx_junction" key.
@@ -98,9 +100,10 @@ func runInit(out io.Writer, args []string) int {
 	}
 
 	return output.Ok(out, map[string]any{
-		"lyx_dir":   result.LyxDir,
-		"gitignore": result.Gitignore,
-		"modules":   modules,
+		"lyx_dir":     result.LyxDir,
+		"pattern_dir": result.PatternDir,
+		"gitignore":   result.Gitignore,
+		"modules":     modules,
 	})
 }
 

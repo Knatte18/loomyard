@@ -31,10 +31,37 @@ func TestInit_FirstRun(t *testing.T) {
 		t.Fatalf("Init() = %v; want nil", err)
 	}
 
+	// This is the regression guard for the ordering fix (card 16's whole reason for
+	// existing): both LyxDir and PatternDir must report "created" on a genuine first
+	// run. Before the fix, WireJunctions' seeder had already materialised the
+	// weft-side target by the time the host path was stated, so LyxDir would
+	// silently (and incorrectly) report "exists" here.
+	if result.LyxDir != "created" {
+		t.Errorf("result.LyxDir = %q; want %q on first run", result.LyxDir, "created")
+	}
+	if result.PatternDir != "created" {
+		t.Errorf("result.PatternDir = %q; want %q on first run", result.PatternDir, "created")
+	}
+
 	// Verify _lyx/config/ directories exist
 	configDir := hubgeometry.ConfigDir(f.Layout.WorktreeRoot)
 	if _, err := os.Stat(configDir); err != nil {
 		t.Fatalf("_lyx/config not created: %v", err)
+	}
+
+	// Verify both junctions resolve and both weft directories exist.
+	slug := filepath.Base(f.Layout.WorktreeRoot)
+	if _, err := os.Stat(f.Layout.HostLyxLink(slug)); err != nil {
+		t.Errorf("host _lyx junction does not resolve: %v", err)
+	}
+	if _, err := os.Stat(f.Layout.HostPatternLink(slug)); err != nil {
+		t.Errorf("host _pattern junction does not resolve: %v", err)
+	}
+	if _, err := os.Stat(f.Layout.WeftLyxDirFor(slug)); err != nil {
+		t.Errorf("weft _lyx directory does not exist: %v", err)
+	}
+	if _, err := os.Stat(f.Layout.WeftPatternDirFor(slug)); err != nil {
+		t.Errorf("weft _pattern directory does not exist: %v", err)
 	}
 
 	// Verify both config files exist
@@ -131,6 +158,9 @@ func TestInit_Idempotent(t *testing.T) {
 	// Verify result indicates no changes
 	if result2.LyxDir != "exists" {
 		t.Errorf("result2.LyxDir = %q; want %q", result2.LyxDir, "exists")
+	}
+	if result2.PatternDir != "exists" {
+		t.Errorf("result2.PatternDir = %q; want %q", result2.PatternDir, "exists")
 	}
 	if result2.Gitignore != "unchanged" {
 		t.Errorf("result2.Gitignore = %q; want %q", result2.Gitignore, "unchanged")
