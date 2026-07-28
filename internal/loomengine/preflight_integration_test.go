@@ -72,6 +72,13 @@ func seedValidStatus(t *testing.T, l *hubgeometry.Layout) {
 // hubgeometry.Getwd() — rather than checkResolved's injected-Layout form.
 // Because os.Chdir is process-global, callers of restoreCwd must never run
 // under t.Parallel().
+//
+// Callers MUST invoke restoreCwd AFTER creating any t.TempDir()/fixture the
+// test will os.Chdir into, never before: t.Cleanup runs LIFO, and on Windows
+// a directory cannot be removed while it is the process's current working
+// directory. Registering restoreCwd's chdir-back last is what makes it run
+// before that TempDir's own removal, so cleanup lands back outside the
+// directory before Go tries to delete it.
 func restoreCwd(t *testing.T) {
 	t.Helper()
 
@@ -147,9 +154,12 @@ func TestPreflight_HealthyPairAndSeed(t *testing.T) {
 // the public Preflight() (not checkResolved) because it needs
 // hubgeometry.Getwd() to observe a non-repo cwd.
 func TestPreflight_NotAGitRepo(t *testing.T) {
+	// t.TempDir() must be created before restoreCwd registers its cleanup —
+	// see restoreCwd's doc comment: on Windows, cleanup must chdir back out of
+	// dir before Go tries to remove it, and t.Cleanup runs LIFO.
+	dir := t.TempDir()
 	restoreCwd(t)
 
-	dir := t.TempDir()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("Chdir(%s): %v", dir, err)
 	}
@@ -166,9 +176,12 @@ func TestPreflight_NotAGitRepo(t *testing.T) {
 // single worktree-root failure. Exercises the public Preflight() for the
 // same reason as TestPreflight_NotAGitRepo.
 func TestPreflight_SubdirectoryInvocation(t *testing.T) {
-	restoreCwd(t)
-
+	// setupPreflightFixture's t.TempDir()-backed fixture must be created before
+	// restoreCwd registers its cleanup — see restoreCwd's doc comment: on
+	// Windows, cleanup must chdir back out of the fixture before Go tries to
+	// remove it, and t.Cleanup runs LIFO.
 	f, _ := setupPreflightFixture(t)
+	restoreCwd(t)
 
 	sub := filepath.Join(f.Hub, "sub")
 	if err := os.Mkdir(sub, 0o755); err != nil {
@@ -295,25 +308,68 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 	assertCheckSet(t, report, CheckWeftSync)
 }
 
-// TestPreflight_JunctionBroken asserts that removing the wired host _lyx
-// junction reports junction, and that the seed stat — which now resolves
-// through a missing _lyx entirely — is classified seed-unreadable (never
-// seed-missing) because check 3 already failed.
+// TestPreflight_JunctionBroken asserts that all three of PairInSync's
+// junction-drift shapes — missing, not-a-link, and points-elsewhere —
+// classify as junction (card 12's substring-match fix: a prefix match only
+// ever caught the missing shape), and that the seed stat, which now resolves
+// through a broken _lyx one way or another, is classified seed-unreadable
+// (never seed-missing) because check 3 already failed in every shape.
 func TestPreflight_JunctionBroken(t *testing.T) {
-	t.Parallel()
-
-	f, slug := setupPreflightFixture(t)
-
-	hostLink := f.Layout.HostLyxLink(slug)
-	if err := fslink.Remove(hostLink); err != nil {
-		t.Fatalf("remove host junction %s: %v", hostLink, err)
+	tests := []struct {
+		name    string
+		corrupt func(t *testing.T, hostLink string)
+	}{
+		{
+			name: "Missing",
+			corrupt: func(t *testing.T, hostLink string) {
+				if err := fslink.Remove(hostLink); err != nil {
+					t.Fatalf("remove host junction %s: %v", hostLink, err)
+				}
+			},
+		},
+		{
+			name: "NotALink",
+			corrupt: func(t *testing.T, hostLink string) {
+				if err := fslink.Remove(hostLink); err != nil {
+					t.Fatalf("remove host junction %s: %v", hostLink, err)
+				}
+				if err := os.Mkdir(hostLink, 0o755); err != nil {
+					t.Fatalf("mkdir real dir in junction's place %s: %v", hostLink, err)
+				}
+			},
+		},
+		{
+			name: "PointsElsewhere",
+			corrupt: func(t *testing.T, hostLink string) {
+				if err := fslink.Remove(hostLink); err != nil {
+					t.Fatalf("remove host junction %s: %v", hostLink, err)
+				}
+				wrongTarget := filepath.Join(filepath.Dir(hostLink), "not-the-weft-lyx-dir")
+				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
+					t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
+				}
+				if err := fslink.CreateDirLink(hostLink, wrongTarget); err != nil {
+					t.Fatalf("CreateDirLink(%s, %s): %v", hostLink, wrongTarget, err)
+				}
+			},
+		},
 	}
 
-	report, err := checkResolved(f.Layout)
-	if err != nil {
-		t.Fatalf("checkResolved: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, slug := setupPreflightFixture(t)
+			hostLink := f.Layout.HostLyxLink(slug)
+			tt.corrupt(t, hostLink)
+
+			report, err := checkResolved(f.Layout)
+			if err != nil {
+				t.Fatalf("checkResolved: %v", err)
+			}
+			assertCheckSet(t, report, CheckJunction, CheckSeedUnreadable)
+		})
 	}
-	assertCheckSet(t, report, CheckJunction, CheckSeedUnreadable)
 }
 
 // TestPreflight_SeedMissing asserts that a genuinely absent seed — junction
