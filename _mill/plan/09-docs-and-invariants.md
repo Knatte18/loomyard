@@ -39,8 +39,6 @@ Four doc sites are actively **false** after this task rather than merely incompl
   - `internal/gitrepo/gogit.go`
   - `internal/gitrepo/gitrepo.go`
   - `internal/gitrepo/snapshot.go`
-  - `.scratch/gogit-probe-report.md`
-  - `.scratch/gogit-worktree-probe-report.md`
 - **Edits:**
   - `internal/gitrepo/doc.go`
 - **Creates:** none

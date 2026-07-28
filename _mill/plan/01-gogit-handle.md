@@ -24,7 +24,6 @@ Batch-local decision: the handle open uses `git.PlainOpenWithOptions` with `Enab
 - **Context:**
   - `internal/gitnativepoc/gitnativepoc.go`
   - `internal/gitrepo/doc.go`
-  - `.scratch/gogit-worktree-probe-report.md`
 - **Edits:**
   - `internal/gitrepo/gitrepo.go`
 - **Creates:**
@@ -39,7 +38,6 @@ Batch-local decision: the handle open uses `git.PlainOpenWithOptions` with `Enab
 - **Context:**
   - `internal/gitrepo/snapshot.go`
   - `internal/gitrepo/push.go`
-  - `.scratch/gogit-probe-report.md`
 - **Edits:**
   - `internal/gitrepo/gogit.go`
   - `internal/gitrepo/gitrepo.go`

@@ -56,7 +56,6 @@ No method's exported signature, error sentinels, or documented behaviour change.
 - **Context:**
   - `internal/gitnativepoc/read.go`
   - `internal/gitrepo/gogit.go`
-  - `.scratch/gogit-worktree-probe-report.md`
 - **Edits:**
   - `internal/gitrepo/gitrepo.go`
 - **Creates:** none
