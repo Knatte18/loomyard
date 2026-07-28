@@ -155,8 +155,8 @@ func TestImplementerTemplate_StatesBatchDiscipline(t *testing.T) {
 	// overview (framing, Batch Index, Shared Decisions), but still never
 	// another batch's own file.
 	requireContains(t, text, "plan-format v2")
-	requireContains(t, text, "also read\n`00-overview.md`")
-	requireContains(t, text, "Never read another\nbatch's own file")
+	requireContains(t, text, "also read `00-overview.md`")
+	requireContains(t, text, "Never read another batch's own file")
 
 	// The five typed file-op field names a card carries.
 	requireContains(t, text, "**Edits:**")
@@ -167,8 +167,8 @@ func TestImplementerTemplate_StatesBatchDiscipline(t *testing.T) {
 
 	// Rename-mechanic compliance: git mv FIRST, then only surgical edits,
 	// never rewrite-and-recreate.
-	requireContains(t, text, "run\n`git mv <old> <new>` FIRST")
-	requireContains(t, text, "never rewrite\nthe relocated file from scratch and delete the original")
+	requireContains(t, text, "run `git mv <old> <new>` FIRST")
+	requireContains(t, text, "never rewrite the relocated file from scratch and delete the original")
 
 	// Commit-subject rule: the card's own **Commit:** value wins verbatim
 	// when present; otherwise the NN.C fallback is derived.
