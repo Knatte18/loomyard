@@ -231,23 +231,96 @@ func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 	return "", false, err
 }
 
+// weftPathspecFilter filters pathspec entries before staging, so a caller's
+// stale positive entry (e.g. "_pattern" in a worktree where nothing has ever
+// been written there) never reaches `git add`, which fails its ENTIRE
+// invocation — including every other, genuinely-matching entry — the moment
+// one entry matches nothing at all.
+//
+// An entry is kept if either:
+//   - it begins with ":" — git pathspec magic (an ":(exclude)..." entry from
+//     internal/buildercli/weft.go, internal/webstercli/weft.go, or
+//     internal/perchcli/run.go's cross-module exclusions). Magic entries are
+//     always passed through untouched and NEVER evaluated for a match: they
+//     do not name a path to check, and treating one as a plain path would
+//     both mis-evaluate it and defeat its own purpose.
+//   - it is a plain path that matches at least one path in the weft
+//     worktree OR the index (see entryMatchesWeft). Untracked-in-worktree
+//     must count: a brand-new "_pattern/PATTERN.md" is untracked at the
+//     moment of its first commit, so a tracked-only check would drop the
+//     very first PATTERN commit. Index-only must count too:
+//     internal/initengine/undo.go commits a "_lyx" path that os.RemoveAll
+//     has just deleted from the worktree, surviving only in the index, so a
+//     worktree-existence-only check would silently break `lyx init --undo`.
+//
+// Returns the filtered entries and whether at least one non-magic (plain)
+// entry survived the filter. When positive is false, CommitWeft must not
+// call StageAndCommit at all, even with a non-empty filtered slice: handing
+// git a pathspec made up of only ":(exclude)" entries and no positive entry
+// is read by git as "everything except those," staging the entire weft
+// worktree — the opposite of the no-op CommitWeft already promises for
+// "nothing of ours to stage."
+func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, positive bool, err error) {
+	for _, entry := range pathspec {
+		if strings.HasPrefix(entry, ":") {
+			filtered = append(filtered, entry)
+			continue
+		}
+		matches, err := entryMatchesWeft(weftPath, entry)
+		if err != nil {
+			return nil, false, err
+		}
+		if matches {
+			filtered = append(filtered, entry)
+			positive = true
+		}
+	}
+	return filtered, positive, nil
+}
+
+// entryMatchesWeft reports whether pathspec entry matches at least one path
+// tracked in the weft repo's index or present untracked in its worktree,
+// via `git ls-files --cached --others -- <entry>` run with cwd at weftPath
+// — the same anchor StageAndCommit's own `git add` uses, so this check can
+// never disagree with the command it is filtering for. --cached covers an
+// index-only path (already deleted from the worktree); --others covers a
+// brand-new untracked file. Either alone would miss one of the two real
+// callers this filter exists for — see weftPathspecFilter's doc comment.
+func entryMatchesWeft(weftPath, entry string) (bool, error) {
+	stdout, stderr, code, err := gitexec.RunGit([]string{"ls-files", "--cached", "--others", "--", entry}, weftPath)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: git ls-files --cached --others -- %s: %w", entry, err)
+	}
+	if code != 0 {
+		return false, fmt.Errorf("fabricengine: git ls-files --cached --others -- %s in %s: %s", entry, weftPath, stderr)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
 // CommitWeft stages pathspec-scoped changes in the weft worktree and commits
 // them, under the fabric-layer write lock. Staging always goes through
 // f.Weft.StageAndCommit's explicit pathspec list — CommitWeft never calls
-// StageAllAndCommit, per gitrepo's doc.go consumer rules. When the warp repo
-// already has a HEAD, the commit carries a Warp-SHA trailer naming it, and
-// RecordCorrespondence is called immediately with the (pre-push) new weft
-// SHA: this is the detached CLI push path's pre-push record, which
-// self-corrects at lookup time if a later rebase-recovered push rewrites the
-// SHA out from under it. When the warp repo has no commits yet (see
-// warpHeadSHA), the commit lands with no trailer and no correspondence
-// record — there is no warp SHA yet to name — and normal trailer/record
-// behavior resumes on the first CommitWeft call after warp's first commit.
-// Returns ("", false, nil) when opts.SkipGit is true, nothing was staged, or
-// pathspec has already been fully removed from both the working tree and
-// the index by a prior commit — CommitWeft tolerates git's "did not match
-// any files" pathspec failure, which the shared gitrepo.StageAndCommit
-// primitive does not special-case on its own.
+// StageAllAndCommit, per gitrepo's doc.go consumer rules. Immediately before
+// staging, pathspec is run through weftPathspecFilter (still inside the
+// write lock): non-magic entries that match nothing in the worktree or
+// index are dropped, and if no positive entry survives at all, CommitWeft
+// returns ("", false, nil) without calling StageAndCommit — see
+// weftPathspecFilter's doc comment for why that early return is not
+// optional. When the warp repo already has a HEAD, the commit carries a
+// Warp-SHA trailer naming it, and RecordCorrespondence is called immediately
+// with the (pre-push) new weft SHA: this is the detached CLI push path's
+// pre-push record, which self-corrects at lookup time if a later
+// rebase-recovered push rewrites the SHA out from under it. When the warp
+// repo has no commits yet (see warpHeadSHA), the commit lands with no
+// trailer and no correspondence record — there is no warp SHA yet to name —
+// and normal trailer/record behavior resumes on the first CommitWeft call
+// after warp's first commit. Returns ("", false, nil) when opts.SkipGit is
+// true, nothing was staged, or pathspec has already been fully removed from
+// both the working tree and the index by a prior commit — CommitWeft
+// tolerates git's "did not match any files" pathspec failure, which the
+// shared gitrepo.StageAndCommit primitive does not special-case on its own
+// (retained as a defense-in-depth fallback; weftPathspecFilter's own
+// pre-check is what keeps this path from being reached in practice).
 func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
@@ -273,7 +346,15 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 		commitMessage = appendWarpSHATrailer(message, warpSHA)
 	}
 
-	sha, committed, err = f.Weft.StageAndCommit(commitMessage, pathspec)
+	filteredPathspec, positive, err := weftPathspecFilter(f.weftPath, pathspec)
+	if err != nil {
+		return "", false, err
+	}
+	if !positive {
+		return "", false, nil
+	}
+
+	sha, committed, err = f.Weft.StageAndCommit(commitMessage, filteredPathspec)
 	if err != nil {
 		// gitrepo.StageAndCommit's `git add --` does not tolerate a pathspec
 		// that no longer matches anything at all, on disk or in the index.
