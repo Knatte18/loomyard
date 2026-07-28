@@ -696,3 +696,15 @@ func TestHostJunctionsHere(t *testing.T) {
 		}
 	})
 }
+
+// TestIsReservedHubName_Pattern pins _pattern into the reserved-name set alongside
+// _lyx, _raddle, _board, _portals, and _launchers (see geometry_test.go's
+// TestIsReservedHubName for the full table): a worktree slug must never claim the
+// PATTERN constraint-injection surface's directory name.
+func TestIsReservedHubName_Pattern(t *testing.T) {
+	t.Parallel()
+
+	if got := hubgeometry.IsReservedHubName("_pattern"); !got {
+		t.Errorf("IsReservedHubName(%q) = %v; want true", "_pattern", got)
+	}
+}

@@ -7,7 +7,7 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 `internal/hubgeometry` owns all cwd, worktree-root, and geometry resolution.
 
 - All cwd / worktree-root queries go through `hubgeometry.Getwd()` / `Resolve()`. Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/hubgeometry` and `cmd/lyx/main.go`.
-- Geometry tokens — `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_lyx` — are owned solely by `internal/hubgeometry`. No other package may use them in a path-construction context (a `filepath.Join` arg, a `+` operand, or a string `const`). Whole-token match; production files only; comparisons and git-pathspec slice literals are not path construction and stay allowed.
+- Geometry tokens — `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_lyx`, `_pattern` — are owned solely by `internal/hubgeometry`. No other package may use them in a path-construction context (a `filepath.Join` arg, a `+` operand, or a string `const`). Whole-token match; production files only; comparisons and git-pathspec slice literals are not path construction and stay allowed.
 - `_lyx`, its `config/` subdir, and any `<module>.yaml` resolve through `hubgeometry.LyxDirName` / `ConfigDir(base)` / `ConfigFile(base, module)` — **in test code too** (a config-layout migration once broke a hardcoded test fixture).
 - Geometry is structural, never config/env-overridable (the board dir is `--board-path` flag > `hubgeometry.BoardDir(l.Hub)`, not a config key).
 - **Enforced by** `internal/hubgeometry/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) on every `go test`. API and helpers: godoc for `internal/hubgeometry`.
