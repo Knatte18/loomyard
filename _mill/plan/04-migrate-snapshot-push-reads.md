@@ -94,6 +94,7 @@ Batch-local decision, and the one that makes the difference between a correct mi
 - **Context:**
   - `internal/gitrepo/oracle_test.go`
   - `internal/gitrepo/fixtures_test.go`
+  - `internal/gitrepo/gitrepo.go`
   - `internal/gitrepo/snapshot.go`
   - `internal/gitrepo/push.go`
   - `internal/gitrepo/gogit.go`

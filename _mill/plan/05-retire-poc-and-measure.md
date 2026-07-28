@@ -74,13 +74,14 @@ The performance card is a genuine decision point, not a formality. `hasUnpushed`
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/weftgit.go`
   - `internal/websterengine/gitwrap.go`
+  - `internal/websterengine/integration.go`
   - `internal/websterengine/runlevel.go`
   - `internal/fabriccli/spawn.go`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Verification-only card, no diff. Confirm that no consumer of `internal/gitrepo` required an edit across batches 1–5. The consumers are `boardengine/sync.go`, `fabricengine/{fabric,weftgit}.go`, and `websterengine/{gitwrap,integration,runlevel}.go`; `fabriccli/spawn.go` reaches the same checkout through a detached child process. The public surface was required to be unchanged, so a caller needing an edit means the boundary was drawn wrong and must be raised rather than patched at the call site. Confirm these packages' own test suites pass with the migrated `gitrepo` underneath them by running the module-wide integration suite once — this is the first point where the cross-package effect of swapping the git foundation is observable.
+- **Requirements:** Verification-only card, no diff. Confirm that no consumer of `internal/gitrepo` required an edit across batches 1–5. The consumers are `boardengine/sync.go`, `fabricengine/{fabric,weftgit}.go`, and `websterengine/{gitwrap,integration,runlevel}.go`; `fabriccli/spawn.go` reaches the same checkout through a detached child process. The public surface was required to be unchanged, so a caller needing an edit means the boundary was drawn wrong and must be raised rather than patched at the call site. Give `websterengine/integration.go` the closest reading: it is the integration bisect, and it is the one consumer that drives `CurrentBranch` → `CheckoutDetached` → `RestoreBranch` as a single flow — the flow that motivated keeping the checkout pair together on the CLI, and whose first call is the one method batch 3 rewrote from scratch rather than lifted. Confirm these packages' own test suites pass with the migrated `gitrepo` underneath them by running the module-wide integration suite once — this is the first point where the cross-package effect of swapping the git foundation is observable.
 - **Commit:** none
 
 ## Batch Tests
