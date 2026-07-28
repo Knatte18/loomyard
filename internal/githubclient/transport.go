@@ -39,10 +39,11 @@ func (rt *authRT) base() http.RoundTripper {
 // GITHUB_TOKEN) is never invalidated and replayed -- environment variables
 // outrank the cache by rule, so re-resolution is guaranteed to reproduce the
 // identical value and the replay would be a guaranteed-identical second
-// failure -- so the 401 is returned immediately, with an error naming the
-// rejected environment variable. Otherwise the cache is invalidated and the
-// request is replayed exactly once with a freshly resolved token; a second
-// consecutive 401 is returned to the caller unchanged, never a loop.
+// failure -- so the 401 response is discarded and an error naming the
+// rejected environment variable is returned instead. Otherwise the cache is
+// invalidated and the request is replayed exactly once with a freshly
+// resolved token; a second consecutive 401 is returned to the caller
+// unchanged, never a loop.
 func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	tok, source, err := resolveToken()
 	if err != nil {
@@ -58,7 +59,16 @@ func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	if source.isEnvSource() {
-		return resp, fmt.Errorf("githubclient: GitHub rejected the token from %s (401)", source.envName())
+		// RoundTrip's contract (net/http.RoundTripper) forbids returning a
+		// non-nil error alongside a response it obtained: "RoundTrip must
+		// return err == nil if it obtained a response... A non-nil err
+		// should be reserved for failure to obtain a response." Every real
+		// caller reaches this transport through an http.Client, which
+		// discards the response whenever RoundTrip returns a non-nil error
+		// anyway, so closing the body and returning (nil, err) is
+		// behavior-preserving while staying contract-compliant.
+		resp.Body.Close()
+		return nil, fmt.Errorf("githubclient: GitHub rejected the token from %s (401)", source.envName())
 	}
 
 	// The rejected token was cache- or gh-CLI-sourced: invalidate it so the
