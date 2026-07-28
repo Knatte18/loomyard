@@ -56,7 +56,9 @@ batches:
     start_sha: 088827d386eb59f0a48506e65719cde62fe66f9d
     commit_sha: 1f96a076d9b528041c33d69e3b7ed9379c830287
   - name: pattern-junction-flip
-    state: pending
+    state: running
+    implementer_session: 345dfd54-bcc9-47ae-8f82-f39532f70afa
+    start_sha: 9db6f989ad21c25b0076b6f17b131d23d615b0ab
   - name: pattern-package
     state: pending
   - name: prompt-wiring
