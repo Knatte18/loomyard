@@ -11,10 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/storer"
-
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -156,122 +152,55 @@ func (r *Repo) PushCoalesced() error {
 // hasUnpushed reports whether HEAD is ahead of its upstream. When no
 // upstream is configured yet it returns true, so the first push — which
 // establishes the upstream tracking branch — still happens rather than
-// being skipped as "nothing to do". Every failure — a failed handle open,
-// and any go-git failure after a successful open — also returns (true, nil),
-// matching the CLI's "any non-zero rev-list exit means true" posture,
-// inverted relative to gitnativepoc's poc (which returned (false, err) on a
-// walk failure): hasUnpushed can never itself surface an error, since
-// PushCoalesced calls it immediately after a CLI push that may have just
-// written new packs, and a (false, err) shape here would turn PushCoalesced
-// from "attempt the push anyway" into a hard failure at
-// boardengine/sync.go and fabricengine/weftgit.go. The CLI's own third
-// outcome — a spawn failure, returned as (false, err) — has no go-git
-// analogue: there is no process to fail to spawn, so that branch simply
-// disappears rather than being ported.
+// being skipped as "nothing to do". A spawn failure returns (false, err);
+// any other non-zero rev-list exit (no upstream, an upstream configured but
+// never fetched, or any other rev-list failure) folds into (true, nil), so
+// the caller still attempts the push.
 //
-// `@{u}` is unusable here: go-git's revision parser recognizes the syntax
-// but ResolveRevision never implements the resulting AtUpstream case, so the
-// upstream ref is resolved manually from branch config instead. Once
-// resolved, HEAD's hash is compared against the upstream ref's hash directly
-// first — the overwhelmingly common nothing-to-push case, a single
-// comparison and no walk at all — before falling back to a full ancestry
-// walk for the diverged/rebased case a plain hash comparison cannot
-// classify. The upstream's full ancestor set (not merely its tip) is walked
-// and passed as NewCommitPreorderIter's seenExternal map for the HEAD walk:
-// seeding only the tip would wrongly report HEAD as ahead whenever HEAD is
-// strictly behind upstream. Every CommitObject read behind both walks routes
-// through the fingerprint-gated lookupObjectRetrying helper — not optional
-// here, since this is one of the three methods the helper exists for: it
-// swallows failure into true and so can never surface an "object not found"
-// on its own, and PushCoalesced calls it immediately after CLI pushes that
-// write packs.
+// # Stays CLI-bound — measured, not migrated (card 21's reversal criterion)
+//
+// This method was migrated to a go-git ancestry walk in batch 4 (equal-hash
+// shortcut first, then a full walk of upstream's ancestor set seeded as
+// NewCommitPreorderIter's seenExternal for the HEAD walk) and reverted here
+// after measuring it against the CLI spawn it replaced, per the Shared
+// Decision's reversal criterion: if go-git is slower than the spawn it
+// replaces, hasUnpushed reverts to the CLI, because it is one cheap command
+// on PushCoalesced's hottest path and no principle here is worth a
+// regression there.
+//
+// Measured on a real local clone of this checkout's own history
+// (268 commits reachable from HEAD, not a handful-of-commits fixture),
+// 20 trials per case, each go-git trial against a freshly-opened handle so
+// the handle cache never masks the cost:
+//
+//   - Equal-hash shortcut (HEAD already equals upstream, the common
+//     nothing-to-push case): go-git avg 239µs (total 4.79ms/20) vs the
+//     CLI's single `rev-list --count` spawn avg 1.42ms (total 28.4ms/20) —
+//     go-git about 6x faster here, as expected with no process to spawn.
+//   - Walking path (HEAD one commit ahead of upstream, forcing the full
+//     268-commit ancestor walk with no early exit): go-git avg 20.4ms
+//     (total 408ms/20) vs the CLI avg 2.16ms (total 43.2ms/20) — go-git
+//     about 9.4x SLOWER here. This is the path PushCoalesced actually hits
+//     on every round with real unpushed work, so it is the number the
+//     reversal criterion is judged on, not the shortcut.
+//
+// The walking path measurement is what fires the reversal: `git rev-list
+// --count` is a single optimized C-level walk, while go-git's
+// NewCommitPreorderIter decodes and parses every commit object it visits in
+// Go, with no early exit across the upstream side of the walk regardless of
+// how quickly the HEAD side would otherwise terminate. hasUnpushed therefore
+// stays on the CLI, rejoining the pinned r.run list the boundary guard
+// asserts and the CLI-bound set CONSTRAINTS.md's gitrepo Client Boundary
+// Invariant names.
 func (r *Repo) hasUnpushed() (bool, error) {
-	repo, err := r.goGit()
+	stdout, _, code, err := r.run("rev-list", "--count", "@{u}..HEAD")
 	if err != nil {
+		return false, err
+	}
+	if code != 0 {
+		// No upstream configured (or some other rev-list failure); either
+		// way, treat it as unpushed so the caller still attempts the push.
 		return true, nil
 	}
-
-	r.goGitMu.RLock()
-	symbolicHead, headErr := repo.Reference(plumbing.HEAD, false)
-	r.goGitMu.RUnlock()
-	if headErr != nil || symbolicHead.Type() != plumbing.SymbolicReference {
-		// A detached HEAD or an unreadable ref has no branch to carry
-		// tracking configuration, so there is nothing to compare against —
-		// treat it the same as "no upstream configured".
-		return true, nil
-	}
-	branch := symbolicHead.Target().Short()
-
-	r.goGitMu.RLock()
-	cfg, cfgErr := repo.Config()
-	r.goGitMu.RUnlock()
-	if cfgErr != nil {
-		return true, nil
-	}
-	b, ok := cfg.Branches[branch]
-	if !ok || b.Remote == "" || b.Merge == "" {
-		return true, nil
-	}
-
-	r.goGitMu.RLock()
-	upstreamRef, upstreamErr := repo.Reference(plumbing.NewRemoteReferenceName(b.Remote, b.Merge.Short()), true)
-	r.goGitMu.RUnlock()
-	if upstreamErr != nil {
-		// Tracking is configured but the remote-tracking ref itself is
-		// missing locally (never fetched, for instance) — nothing to
-		// compare against yet, so fall back to the same "no upstream"
-		// treatment gitrepo's `@{u}..HEAD` failure path uses.
-		return true, nil
-	}
-
-	r.goGitMu.RLock()
-	head, headHashErr := repo.Head()
-	r.goGitMu.RUnlock()
-	if headHashErr != nil {
-		return true, nil
-	}
-
-	if head.Hash() == upstreamRef.Hash() {
-		return false, nil
-	}
-
-	headCommit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
-		return repo.CommitObject(head.Hash())
-	})
-	if err != nil {
-		return true, nil
-	}
-	upstreamCommit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
-		return repo.CommitObject(upstreamRef.Hash())
-	})
-	if err != nil {
-		return true, nil
-	}
-
-	// Walk the full history reachable from upstream first, so the HEAD walk
-	// below can exclude everything upstream can already reach — not just the
-	// upstream tip itself — reproducing @{u}..HEAD's set-difference rather
-	// than a single-hash exclusion.
-	reachableFromUpstream := make(map[plumbing.Hash]bool)
-	upstreamIter := object.NewCommitPreorderIter(upstreamCommit, nil, nil)
-	if err := upstreamIter.ForEach(func(c *object.Commit) error {
-		reachableFromUpstream[c.Hash] = true
-		return nil
-	}); err != nil {
-		return true, nil
-	}
-
-	// storer.ErrStop terminates the walk without ForEach reporting it as a
-	// failure (see plumbing/object/commit_walker.go) — the walk only ever
-	// needs to know whether the ahead-of-upstream set is empty, never its
-	// size, so it stops at the first commit found.
-	ahead := false
-	iter := object.NewCommitPreorderIter(headCommit, reachableFromUpstream, nil)
-	if err := iter.ForEach(func(*object.Commit) error {
-		ahead = true
-		return storer.ErrStop
-	}); err != nil {
-		return true, nil
-	}
-	return ahead, nil
+	return strings.TrimSpace(stdout) != "0", nil
 }

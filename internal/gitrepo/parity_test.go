@@ -786,29 +786,3 @@ func TestSetSnapshotSHA_MixedBackend_RepackBetweenCommitAndCanonicalization(t *t
 		t.Errorf("SnapshotSHA() after repacked abbreviated SetSnapshotSHA = %q; want %q (full canonical spelling)", got, fullSHA)
 	}
 }
-
-// TestPushCoalesced_MixedBackend_NothingToPushAfterCLIPush asserts
-// PushCoalesced's internal hasUnpushed gate correctly reports
-// nothing-to-push immediately after Push's own CLI push has landed, even
-// when the Repo's go-git handle was warmed before that push ran — pinning
-// the exported call site the plan enumerates for this read.
-func TestPushCoalesced_MixedBackend_NothingToPushAfterCLIPush(t *testing.T) {
-	container := t.TempDir()
-	bareRemote := newBareRemote(t, container)
-
-	repoPath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
-	writeFile(t, repoPath, "a.txt", "initial")
-	commitAll(t, repoPath, "init")
-
-	if _, err := repo.CurrentSHA(); err != nil {
-		t.Fatalf("CurrentSHA() (warm handle) error = %v", err)
-	}
-
-	if err := repo.Push(); err != nil {
-		t.Fatalf("Push() error = %v; want nil", err)
-	}
-
-	if err := repo.PushCoalesced(); err != nil {
-		t.Fatalf("PushCoalesced() (nothing unpushed) error = %v; want nil", err)
-	}
-}
