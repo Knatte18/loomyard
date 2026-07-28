@@ -789,15 +789,16 @@ type HostJunction struct {
 
 // HostJunctions returns the list of host junctions for a given slug.
 //
-// Currently, this returns a single-element slice containing the _lyx junction.
-// The junction record carries Name, Link, and Target fields for use by the
-// seeders in internal/fabricengine.
+// Returns two entries, _lyx first: {Name: LyxDirName, Link: HostLyxLink(slug), Target:
+// WeftLyxDirFor(slug)} followed by {Name: PatternDirName, Link: HostPatternLink(slug),
+// Target: WeftPatternDirFor(slug)}. The junction record carries Name, Link, and Target
+// fields for use by the seeders in internal/fabricengine. _lyx stays first deliberately:
+// UnwireResult.JunctionsRemoved is documented as being in this slice's order, and the
+// health check is first-unhealthy-wins, so the order is observable by callers.
 //
 // HostJunctions is Hub/slug-anchored: wiring, unwiring, and remove (which all act on a
 // named slug, not necessarily the current worktree) call this. See HostJunctionsHere
 // below for the Here-anchored, slug-free counterpart the health-check sites use instead.
-//
-// Returns a slice with exactly one entry: {Name: LyxDirName, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}.
 func (l *Layout) HostJunctions(slug string) []HostJunction {
 	return []HostJunction{
 		{
@@ -805,32 +806,42 @@ func (l *Layout) HostJunctions(slug string) []HostJunction {
 			Link:   l.HostLyxLink(slug),
 			Target: l.WeftLyxDirFor(slug),
 		},
+		{
+			Name:   PatternDirName,
+			Link:   l.HostPatternLink(slug),
+			Target: l.WeftPatternDirFor(slug),
+		},
 	}
 }
 
 // HostJunctionsHere returns the same HostJunction records as HostJunctions(slug), but
 // resolved against the current worktree rather than a named slug: each entry's Link comes
-// from the corresponding "…Here()" accessor (HostLyxLinkHere()) and each Target from the
-// un-slugged weft accessor (WeftLyxDir()), mirroring the existing HostLyxLinkHere()/
-// HostLyxLink(slug) and WeftLyxDir()/WeftLyxDirFor(slug) pairs this precedent already
-// establishes.
+// from the corresponding "…Here()" accessor (HostLyxLinkHere(), HostPatternLinkHere()) and
+// each Target from the un-slugged weft accessor (WeftLyxDir(), WeftPatternDir()), mirroring
+// the existing HostLyxLinkHere()/HostLyxLink(slug) and WeftLyxDir()/WeftLyxDirFor(slug)
+// pairs this precedent already establishes.
 //
 // It exists because HostJunctions(slug) is Hub/slug-anchored — the right shape for wiring,
 // unwiring, and remove, which always act on a named slug — while all three junction
 // health-check sites (internal/fabricengine/reconcile.go, status.go, and drift.go) have no
 // slug available and are Here-anchored instead. PairInSync(l *hubgeometry.Layout) in
 // particular takes no slug parameter at all and is documented as stateless; threading a
-// slug into it would break that contract. This batch returns exactly one entry, for _lyx,
-// matching HostJunctions's current single entry; a later batch adds the _pattern entry to
-// both in one card.
+// slug into it would break that contract.
 //
-// Returns a slice with exactly one entry: {Name: LyxDirName, Link: HostLyxLinkHere(), Target: WeftLyxDir()}.
+// Returns two entries, _lyx first, mirroring HostJunctions's order: {Name: LyxDirName,
+// Link: HostLyxLinkHere(), Target: WeftLyxDir()} followed by {Name: PatternDirName, Link:
+// HostPatternLinkHere(), Target: WeftPatternDir()}.
 func (l *Layout) HostJunctionsHere() []HostJunction {
 	return []HostJunction{
 		{
 			Name:   LyxDirName,
 			Link:   l.HostLyxLinkHere(),
 			Target: l.WeftLyxDir(),
+		},
+		{
+			Name:   PatternDirName,
+			Link:   l.HostPatternLinkHere(),
+			Target: l.WeftPatternDir(),
 		},
 	}
 }

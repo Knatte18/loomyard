@@ -593,13 +593,30 @@ func TestRefactoredMethods(t *testing.T) {
 		slug := "test-slug"
 		junctions := layout.HostJunctions(slug)
 
-		if len(junctions) != 1 {
-			t.Fatalf("HostJunctions() returned %d junctions; want 1", len(junctions))
+		if len(junctions) != 2 {
+			t.Fatalf("HostJunctions() returned %d junctions; want 2", len(junctions))
 		}
 
-		junction := junctions[0]
-		if junction.Name != "_lyx" {
-			t.Errorf("HostJunctions()[0].Name = %q; want %q", junction.Name, "_lyx")
+		lyxJunction := junctions[0]
+		if lyxJunction.Name != "_lyx" {
+			t.Errorf("HostJunctions()[0].Name = %q; want %q", lyxJunction.Name, "_lyx")
+		}
+		if lyxJunction.Link != layout.HostLyxLink(slug) {
+			t.Errorf("HostJunctions()[0].Link = %q; want %q", lyxJunction.Link, layout.HostLyxLink(slug))
+		}
+		if lyxJunction.Target != layout.WeftLyxDirFor(slug) {
+			t.Errorf("HostJunctions()[0].Target = %q; want %q", lyxJunction.Target, layout.WeftLyxDirFor(slug))
+		}
+
+		patternJunction := junctions[1]
+		if patternJunction.Name != "_pattern" {
+			t.Errorf("HostJunctions()[1].Name = %q; want %q", patternJunction.Name, "_pattern")
+		}
+		if patternJunction.Link != layout.HostPatternLink(slug) {
+			t.Errorf("HostJunctions()[1].Link = %q; want %q", patternJunction.Link, layout.HostPatternLink(slug))
+		}
+		if patternJunction.Target != layout.WeftPatternDirFor(slug) {
+			t.Errorf("HostJunctions()[1].Target = %q; want %q", patternJunction.Target, layout.WeftPatternDirFor(slug))
 		}
 	})
 }
@@ -624,21 +641,34 @@ func TestHostJunctionsHere(t *testing.T) {
 		}
 
 		junctions := layout.HostJunctionsHere()
-		if len(junctions) != 1 {
-			t.Fatalf("HostJunctionsHere() returned %d junctions; want 1", len(junctions))
+		if len(junctions) != 2 {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
 		}
 
-		junction := junctions[0]
-		wantLink := layout.HostLyxLinkHere()
-		wantTarget := layout.WeftLyxDir()
-		if junction.Name != "_lyx" {
-			t.Errorf("HostJunctionsHere()[0].Name = %q; want %q", junction.Name, "_lyx")
+		lyxJunction := junctions[0]
+		wantLyxLink := layout.HostLyxLinkHere()
+		wantLyxTarget := layout.WeftLyxDir()
+		if lyxJunction.Name != "_lyx" {
+			t.Errorf("HostJunctionsHere()[0].Name = %q; want %q", lyxJunction.Name, "_lyx")
 		}
-		if junction.Link != wantLink {
-			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", junction.Link, wantLink)
+		if lyxJunction.Link != wantLyxLink {
+			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", lyxJunction.Link, wantLyxLink)
 		}
-		if junction.Target != wantTarget {
-			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", junction.Target, wantTarget)
+		if lyxJunction.Target != wantLyxTarget {
+			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", lyxJunction.Target, wantLyxTarget)
+		}
+
+		patternJunction := junctions[1]
+		wantPatternLink := layout.HostPatternLinkHere()
+		wantPatternTarget := layout.WeftPatternDir()
+		if patternJunction.Name != "_pattern" {
+			t.Errorf("HostJunctionsHere()[1].Name = %q; want %q", patternJunction.Name, "_pattern")
+		}
+		if patternJunction.Link != wantPatternLink {
+			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", patternJunction.Link, wantPatternLink)
+		}
+		if patternJunction.Target != wantPatternTarget {
+			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", patternJunction.Target, wantPatternTarget)
 		}
 	})
 
@@ -656,18 +686,28 @@ func TestHostJunctionsHere(t *testing.T) {
 		}
 
 		junctions := layout.HostJunctionsHere()
-		if len(junctions) != 1 {
-			t.Fatalf("HostJunctionsHere() returned %d junctions; want 1", len(junctions))
+		if len(junctions) != 2 {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
 		}
 
-		junction := junctions[0]
-		wantLink := layout.HostLyxLinkHere()
-		wantTarget := layout.WeftLyxDir()
-		if junction.Link != wantLink {
-			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", junction.Link, wantLink)
+		lyxJunction := junctions[0]
+		wantLyxLink := layout.HostLyxLinkHere()
+		wantLyxTarget := layout.WeftLyxDir()
+		if lyxJunction.Link != wantLyxLink {
+			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", lyxJunction.Link, wantLyxLink)
 		}
-		if junction.Target != wantTarget {
-			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", junction.Target, wantTarget)
+		if lyxJunction.Target != wantLyxTarget {
+			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", lyxJunction.Target, wantLyxTarget)
+		}
+
+		patternJunction := junctions[1]
+		wantPatternLink := layout.HostPatternLinkHere()
+		wantPatternTarget := layout.WeftPatternDir()
+		if patternJunction.Link != wantPatternLink {
+			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", patternJunction.Link, wantPatternLink)
+		}
+		if patternJunction.Target != wantPatternTarget {
+			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", patternJunction.Target, wantPatternTarget)
 		}
 	})
 
