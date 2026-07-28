@@ -18,6 +18,8 @@ Committed to, in this order, next.
 
 1. **`PATTERN.md` — loomyard's own invariants mechanism, wired into every agent** — a from-scratch equivalent of Millhouse's `CONSTRAINTS.md`, owned by loomyard (which has no such mechanism today; the root `CONSTRAINTS.md` is Millhouse's, present only because mill develops loomyard). A weft-backed `_pattern/` folder whose invariants are injected as a pointer into every code-touching agent prompt. The **wiring** is `loom`-independent and buildable now (can run in parallel with `native-clients`); the **content migration** out of `CONSTRAINTS.md` happens only at loomyard-init-via-lyx. Also supersedes the constraints-hiding half of Someday's `host-visibility`. See [designs/pattern.md](designs/pattern.md).
 
+1. **codeintel: LSP-backed code intelligence — V1 Go-only, built for multi-language** (promoted from Someday) — gives planner/implementer/reviewer fast, deterministic "where is this defined / used" lookups so they stop grepping blindly and stop paying an LLM round per false-positive hit; also what makes plan-format-v3's symbol fields trustworthy. lyx is an LSP **client**, never a server — it drives published language-server binaries (`gopls` first). Two consumer entry points on one engine: an in-process **Go API** (webster's DAG-derivation) and a **`lyx codeintel references|definition|symbol` CLI** for agents (**no MCP** — the fixed 2–3 query surface doesn't justify it, and a CLI is one code path + engine-neutral + fits the CLI/Cobra invariant). The lifecycle is one `EnsureServer(lang, worktree)` seam with two swappable spawn strategies behind it — `native` (`gopls -remote=auto`, gopls owns supervision) and `supervised` (our own state-file/auto-spawn/staleness/detached-spawn daemon, for `ty`/OmniSharp which have no native shared-daemon). **Independent of the rest of the Planned queue** (no dependency on board / native-clients / fabric / loom) — buildable now, in parallel. V1 populates the registry for Go only but locks its format for all three planned languages, and proves the `supervised` strategy by running it against a plain `gopls` so layer 2 is validated before any C#/Python dependency exists. See [designs/codeintel-redesign.md](designs/codeintel-redesign.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next. No build order is implied between these items.
@@ -35,8 +37,6 @@ Committed to eventually — will be done — but not scheduled next. No build or
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
 
 1. **Real-Linux validation** — run the sandbox suite and validate every tmux/`/proc` assumption on a real Linux box (built and cross-compiled so far, never executed there).
-
-1. **codeintel** — full four-layer design (toolchain manager, daemon/supervisor, LSP client, language registry) exists; deprioritized until loom's first end-to-end run lands. See [designs/codeintel-redesign.md](designs/codeintel-redesign.md).
 
 1. **raddle** — codeguide's woven-in successor; parallel-regeneration design exists; deferred phase slot between Builder and Finalize. See [designs/raddle.md](designs/raddle.md).
 
