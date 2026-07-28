@@ -6,6 +6,7 @@ slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'native clients: migrate gitrepo to go-git + selfreport gh-CLI to go-github'
 task_description: |
   native clients: migrate gitrepo to go-git + selfreport gh-CLI to go-github
@@ -36,7 +37,9 @@ implementing  '2026-07-28T10:29:07Z'
 ```yaml
 batches:
   - name: gogit-handle
-    state: pending
+    state: running
+    implementer_session: 74ca48e2-6f77-4579-bbae-3304655890eb
+    start_sha: d3c8828308d1a7712dbfd57b03906a22a1853233
   - name: githubclient
     state: pending
   - name: parity-oracle
