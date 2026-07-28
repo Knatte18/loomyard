@@ -95,6 +95,20 @@ Consequence: a warp-only `Fabric.Commit` is legitimate (it completes the illusio
 - **After `native clients`.** Build fabric's clone/commit/snapshot git logic against the final go-git-based `gitrepo`, so it isn't re-validated if the CLI→library swap surfaces any subtle behavioral difference — the same reasoning that sequences `loom` after `native clients`.
 - **`Shed` follows this.**
 
+## Build order — slices, not one task, and extend-in-place
+
+`fabric` V2 is not a from-scratch rewrite and not a parallel `FabricV2` package. The Warp+Weft→V1 merger justified a parallel reference because it was a genuine architectural *union of two modules*; V2 is ~six changes layered onto `fabricengine`, whose core (two `gitrepo` instances, weft pairing, `Warp-SHA` trailer correspondence, weft-git plumbing, junction primitives, branch scheme) is reused wholesale. A parallel package would be massive duplication for no gain. **Extend `fabricengine` in place, one landable slice at a time**, with git history + green tests between slices as the reference — not a second copy of the module.
+
+Suggested slice order (none individually "enormous" — the size was always the sum):
+
+1. **Config-driven junction list** — replace the hardcoded reserved-name set (`hubgeometry.IsReservedHubName`) with a config-read list + a template new weft-backed modules append to. Small, near-mechanical, independent. `hubgeometry` keeps owning the paths; only the name set comes from config.
+2. **`Fabric.Commit` (classify+dispatch) + unified `Fabric.Diff`/`Status`** — pure API additions over the existing `Warp`/`Weft` handles, `CommitWeft`, and `ChangedFilesSince`. Independent; the atomicity / partial-failure story lands here.
+3. **Snapshot-as-trailer** — fold `refs/loomyard/snapshot/` into the `Warp-SHA` trailer mechanism; coordinate with `native clients` (which ports the ref-based snapshot to go-git first — this slice supersedes that, a minor, harmless overlap).
+4. **Clone-does-everything + subpath-in-weft + `init` dissolution** — the structural heart, after `board`. This is where **`lyx init` dissolves.** `initengine.Init` today does six things: cwd→`RelPath` anchor resolution, weft-pairing check, `WireJunctions`, `_lyx`/`_lyx/config` creation, the `.lyx/` `.gitignore` block, and `configsync.ReconcileAll`. Under V2 the topology parts (wiring, `.gitignore`, `_lyx` dirs) fold into `fabric`'s clone/worktree-add (eager wiring); the cwd-anchor mechanism is *replaced* by the weft-recorded subpath; config reconciliation stays in `configsync`/`configcli` (called once by clone, or a separate post-clone `lyx config` step). Net: `initengine`/`initcli` shrink toward deletion, with `--undo`'s teardown moving onto `fabric`'s existing `UnwireJunctions` + config revert. Optionally split 4a (subpath binding + `RelPath` positional→recorded) from 4b (fold wiring into clone/add). Develop the risky new clone path as a **coexisting entry point inside `fabricengine`** — the old clone stays until the new one is proven, then swap and delete — a local safety valve, not a module-wide fork.
+5. **Warp-rebase / remote-reconcile** — last. Detection (`SHAExists`) + correspondence re-anchor (`RevertWithWeft` nearest-older) + `PATTERN` document-driven resolution land with fabric; the full self-heal leans on raddle regeneration (Someday), so reconcile's complete form trails there. The LLM conflict-resolver sits in orchestration above fabric (finalize.md's document-driven path), never deciding weft-commit timing.
+
+The roadmap item is therefore a small campaign — 4–5 board tasks when picked up — not one atomic task. Slices 1–3 don't touch clone and could technically precede `board`, but keeping them after `board` avoids reopening the sequence set above.
+
 ## Open questions (for whoever builds this)
 
 - **Partial-failure semantics for a two-sided `Fabric.Commit`** — commit weft-first or warp-first, and the recovery/report story when the second commit fails (no cross-repo transaction exists).
