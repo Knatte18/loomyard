@@ -603,3 +603,96 @@ func TestRefactoredMethods(t *testing.T) {
 		}
 	})
 }
+
+// TestHostJunctionsHere verifies the Here-anchored, slug-free junction-detection
+// accessor: it must return the expected Name/Link/Target for both RelPath == "." and a
+// nested RelPath, and it must agree entry-for-entry with HostJunctions(slug) when the
+// layout's slug and current worktree coincide — the precondition every one of
+// fabricengine's health-check call sites relies on.
+func TestHostJunctionsHere(t *testing.T) {
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
+
+	t.Run("at root", func(t *testing.T) {
+		t.Parallel()
+
+		layout, err := hubgeometry.Resolve(hub)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v; want nil", err)
+		}
+
+		junctions := layout.HostJunctionsHere()
+		if len(junctions) != 1 {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; want 1", len(junctions))
+		}
+
+		junction := junctions[0]
+		wantLink := layout.HostLyxLinkHere()
+		wantTarget := layout.WeftLyxDir()
+		if junction.Name != "_lyx" {
+			t.Errorf("HostJunctionsHere()[0].Name = %q; want %q", junction.Name, "_lyx")
+		}
+		if junction.Link != wantLink {
+			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", junction.Link, wantLink)
+		}
+		if junction.Target != wantTarget {
+			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", junction.Target, wantTarget)
+		}
+	})
+
+	t.Run("at nested subpath", func(t *testing.T) {
+		t.Parallel()
+
+		subDir := filepath.Join(hub, "services", "api")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		layout, err := hubgeometry.Resolve(subDir)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v; want nil", err)
+		}
+
+		junctions := layout.HostJunctionsHere()
+		if len(junctions) != 1 {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; want 1", len(junctions))
+		}
+
+		junction := junctions[0]
+		wantLink := layout.HostLyxLinkHere()
+		wantTarget := layout.WeftLyxDir()
+		if junction.Link != wantLink {
+			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", junction.Link, wantLink)
+		}
+		if junction.Target != wantTarget {
+			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", junction.Target, wantTarget)
+		}
+	})
+
+	t.Run("agrees with HostJunctions when slug matches current worktree", func(t *testing.T) {
+		t.Parallel()
+
+		layout, err := hubgeometry.Resolve(hub)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v; want nil", err)
+		}
+
+		// The current worktree's own base name is the slug that makes HostJunctions(slug)
+		// resolve to the same host worktree HostJunctionsHere() is already anchored at.
+		slug := filepath.Base(layout.WorktreeRoot)
+
+		here := layout.HostJunctionsHere()
+		bySlug := layout.HostJunctions(slug)
+
+		if len(here) != len(bySlug) {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; HostJunctions(%q) returned %d", len(here), slug, len(bySlug))
+		}
+		for i := range here {
+			if here[i] != bySlug[i] {
+				t.Errorf("HostJunctionsHere()[%d] = %+v; HostJunctions(%q)[%d] = %+v", i, here[i], slug, i, bySlug[i])
+			}
+		}
+	})
+}
