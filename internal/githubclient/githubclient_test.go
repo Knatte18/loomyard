@@ -590,9 +590,8 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
 
-	// A well-behaved fake -- like the real exec.CommandContext-launched
-	// process it stands in for -- respects ctx's deadline instead of
-	// running forever.
+	// A well-behaved fake -- like the real `gh auth token` subprocess it
+	// stands in for -- respects ctx's deadline instead of running forever.
 	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
 		<-ctx.Done()
 		return "", ctx.Err()
