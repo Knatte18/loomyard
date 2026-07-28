@@ -18,9 +18,12 @@
 package gitrepo
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -29,6 +32,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
@@ -671,6 +675,396 @@ func TestHasUnpushed_Parity(t *testing.T) {
 		}
 		if !implGot {
 			t.Errorf("hasUnpushed() = %v, want true (rev-list failure of any kind folds to true, including an unresolvable HEAD)", implGot)
+		}
+	})
+}
+
+// errOracleNoCommits is the oracle's own "no commits yet" sentinel, local to
+// this package for the same package-boundary reason as this file's other
+// duplicated oracle helpers — it is never compared for identity against
+// oracle_test.go's identically-named sentinel, since the two are never used
+// in the same comparison.
+var errOracleNoCommits = errors.New("oracle: repository has no commits")
+
+// oracleCurrentSHA reimplements CurrentSHA directly on `git rev-parse HEAD`.
+// Duplicated from oracle_test.go for the same package-boundary reason as
+// oracleRemoteName above.
+func oracleCurrentSHA(t *testing.T, dir string) (string, error) {
+	t.Helper()
+
+	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "HEAD"}, dir)
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		if strings.Contains(stderr, "ambiguous argument 'HEAD'") || strings.Contains(stderr, "unknown revision") {
+			return "", errOracleNoCommits
+		}
+		return "", fmt.Errorf("oracle: git rev-parse HEAD: %s", stderr)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// oracleCurrentBranch reimplements CurrentBranch directly on
+// `git symbolic-ref --short HEAD`. Duplicated from oracle_test.go for the
+// same package-boundary reason as oracleRemoteName above.
+func oracleCurrentBranch(t *testing.T, dir string) (string, error) {
+	t.Helper()
+
+	stdout, stderr, code, err := gitexec.RunGit([]string{"symbolic-ref", "--short", "HEAD"}, dir)
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "", fmt.Errorf("oracle: git symbolic-ref --short HEAD: %s", stderr)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// oracleSHAExists reimplements SHAExists directly on
+// `git rev-parse --verify --quiet <sha>^{commit}`. Duplicated from
+// oracle_test.go for the same package-boundary reason as oracleRemoteName
+// above.
+func oracleSHAExists(t *testing.T, dir, sha string) bool {
+	t.Helper()
+
+	_, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", sha + "^{commit}"}, dir)
+	if err != nil {
+		t.Fatalf("oracle: git rev-parse --verify --quiet %s^{commit} spawn error = %v", sha, err)
+	}
+	switch code {
+	case 0:
+		return true
+	case 1:
+		return false
+	default:
+		t.Fatalf("oracle: git rev-parse --verify --quiet %s^{commit} exited %d: %s", sha, code, stderr)
+		return false
+	}
+}
+
+// oracleChangedFilesSince reimplements ChangedFilesSince directly on
+// `git diff --name-only -z --no-renames <sha>..HEAD`. Duplicated from
+// oracle_test.go for the same package-boundary reason as oracleRemoteName
+// above.
+func oracleChangedFilesSince(t *testing.T, dir, sha string) ([]string, error) {
+	t.Helper()
+
+	stdout, stderr, code, err := gitexec.RunGit([]string{"diff", "--name-only", "-z", "--no-renames", sha + "..HEAD"}, dir)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("oracle: git diff --name-only -z --no-renames %s..HEAD: %s", sha, stderr)
+	}
+
+	var files []string
+	for _, path := range strings.Split(stdout, "\x00") {
+		if path == "" {
+			continue
+		}
+		files = append(files, path)
+	}
+	return files, nil
+}
+
+// oracleSnapshotSHA reimplements SnapshotSHA's local ref read directly on
+// `git rev-parse --verify --quiet refs/loomyard/snapshot/<key>`. Duplicated
+// from oracle_test.go for the same package-boundary reason as
+// oracleRemoteName above.
+func oracleSnapshotSHA(t *testing.T, dir, key string) (string, error) {
+	t.Helper()
+
+	ref := "refs/loomyard/snapshot/" + key
+	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", ref}, dir)
+	if err != nil {
+		return "", err
+	}
+	switch code {
+	case 0:
+		return strings.TrimSpace(stdout), nil
+	case 1:
+		return "", nil
+	default:
+		return "", fmt.Errorf("oracle: git rev-parse --verify --quiet %s: %s", ref, stderr)
+	}
+}
+
+// containsString reports whether haystack contains needle, used to assert a
+// specific path is present in a ChangedFilesSince result without depending on
+// list order.
+func containsString(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// gogitParitySnapshotKey is the snapshot key newLinkedParityFixture writes
+// from the main worktree and reads back through the linked worktree (and its
+// junction), exercising SnapshotSHA's ref read across the shared common dir.
+const gogitParitySnapshotKey = "gogitparity"
+
+// linkedParityFixture holds the paths and fixed SHAs newLinkedParityFixture
+// builds: a bare remote, a main worktree, and a linked worktree on branch
+// "feature" whose upstream another clone advances past its own tip — the
+// shared-common-dir topology needed to exercise every read this batch's
+// oracle covers (plus remoteName, hasUnpushed, and isStrictDescendant)
+// against a linked worktree rather than a standalone `git init` fixture, per
+// the Shared Decision that the linked worktree is the only topology
+// production runs in.
+type linkedParityFixture struct {
+	mainDir   string
+	linkedDir string // the worktree's real path — never the junction
+	// sharedSHA is the commit before main and feature diverge, common to
+	// both worktrees' history and the value refs/loomyard/snapshot/<key> is
+	// set to from the main worktree.
+	sharedSHA string
+	// linkedSHA is the linked worktree's own HEAD commit on branch "feature",
+	// strictly ahead of sharedSHA and, after the fixture's final fetch,
+	// strictly behind the upstream another clone has advanced past it.
+	linkedSHA string
+}
+
+// newLinkedParityFixture builds the fixture linkedParityFixture describes:
+// main worktree with one commit, pushed to a bare remote with tracking; a
+// linked worktree on branch "feature" with its own commit, also pushed with
+// tracking; then a second clone advances "feature" further on the remote and
+// the linked worktree fetches (without merging) — its own branch never gains
+// a commit the upstream lacks, giving the "strictly behind" hasUnpushed
+// state the naive single-hash exclusion gets wrong.
+func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
+	t.Helper()
+
+	container := t.TempDir()
+	bare := filepath.Join(container, "remote.git")
+	lyxtest.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
+
+	mainDir := filepath.Join(container, "main")
+	if err := os.Mkdir(mainDir, 0o755); err != nil {
+		t.Fatalf("mkdir main: %v", err)
+	}
+	lyxtest.MustRun(t, mainDir, "git", "init", "-b", "main")
+	writeAndCommit(t, mainDir, "base.txt", "base", "base commit")
+	mainRepo := New(mainDir)
+	sharedSHA, err := mainRepo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (shared) error = %v", err)
+	}
+	lyxtest.MustRun(t, mainDir, "git", "remote", "add", "origin", bare)
+	lyxtest.MustRun(t, mainDir, "git", "push", "-u", "origin", "main")
+	// refs/loomyard/snapshot/* lives in the shared common dir; setting it
+	// from main and reading it back from the linked worktree is exactly the
+	// split a wrong open (PlainOpen, without EnableDotGitCommonDir) fails to
+	// see, per the probe report.
+	lyxtest.MustRun(t, mainDir, "git", "update-ref", "refs/loomyard/snapshot/"+gogitParitySnapshotKey, sharedSHA)
+
+	linkedDir := filepath.Join(container, "linked")
+	lyxtest.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
+	writeAndCommit(t, linkedDir, "feature-only.txt", "feature advances", "feature commit")
+	linkedRepo := New(linkedDir)
+	linkedSHA, err := linkedRepo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (linked) error = %v", err)
+	}
+	lyxtest.MustRun(t, linkedDir, "git", "push", "-u", "origin", "feature")
+
+	otherClone := filepath.Join(container, "other-clone")
+	lyxtest.MustRun(t, container, "git", "clone", "-b", "feature", bare, otherClone)
+	writeAndCommit(t, otherClone, "elsewhere.txt", "elsewhere advances", "elsewhere commit")
+	lyxtest.MustRun(t, otherClone, "git", "push")
+	lyxtest.MustRun(t, linkedDir, "git", "fetch", "origin")
+
+	return &linkedParityFixture{
+		mainDir:   mainDir,
+		linkedDir: linkedDir,
+		sharedSHA: sharedSHA,
+		linkedSHA: linkedSHA,
+	}
+}
+
+// runLinkedWorktreeParityChecks runs the read-side parity checks shared by
+// both a direct and a junction-reached run against the linked worktree
+// fixture: CurrentSHA, CurrentBranch (on-branch), remoteName, SnapshotSHA's
+// ref read, SHAExists, ChangedFilesSince, hasUnpushed (strictly behind), and
+// isStrictDescendant. dir is the path under test — the worktree's real path,
+// or a junction pointing at it.
+func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFixture) {
+	t.Helper()
+
+	repo := New(dir)
+
+	t.Run("CurrentSHA", func(t *testing.T) {
+		oracleGot, oracleErr := oracleCurrentSHA(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleCurrentSHA() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.CurrentSHA()
+		if implErr != nil {
+			t.Fatalf("CurrentSHA() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("CurrentSHA() parity mismatch: oracle = %q; gitrepo = %q", oracleGot, implGot)
+		}
+		if implGot != fx.linkedSHA {
+			t.Errorf("CurrentSHA() = %q, want %q", implGot, fx.linkedSHA)
+		}
+	})
+
+	t.Run("CurrentBranch_OnBranch", func(t *testing.T) {
+		oracleGot, oracleErr := oracleCurrentBranch(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleCurrentBranch() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.CurrentBranch()
+		if implErr != nil {
+			t.Fatalf("CurrentBranch() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("CurrentBranch() parity mismatch: oracle = %q; gitrepo = %q", oracleGot, implGot)
+		}
+		if implGot != "feature" {
+			t.Errorf("CurrentBranch() = %q, want %q", implGot, "feature")
+		}
+	})
+
+	t.Run("RemoteName", func(t *testing.T) {
+		oracleGot := oracleRemoteName(t, dir)
+		implGot := repo.remoteName()
+		if oracleGot != implGot {
+			t.Errorf("remoteName() parity mismatch: oracle = %q; gitrepo = %q", oracleGot, implGot)
+		}
+		if implGot != "origin" {
+			t.Errorf("remoteName() = %q, want %q", implGot, "origin")
+		}
+	})
+
+	t.Run("SnapshotSHA_CommonRef", func(t *testing.T) {
+		oracleGot, oracleErr := oracleSnapshotSHA(t, dir, gogitParitySnapshotKey)
+		if oracleErr != nil {
+			t.Fatalf("oracleSnapshotSHA() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.SnapshotSHA(gogitParitySnapshotKey)
+		if implErr != nil {
+			t.Fatalf("SnapshotSHA() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("SnapshotSHA() parity mismatch: oracle = %q; gitrepo = %q", oracleGot, implGot)
+		}
+		if implGot != fx.sharedSHA {
+			t.Errorf("SnapshotSHA() = %q, want %q (set from the OTHER worktree)", implGot, fx.sharedSHA)
+		}
+	})
+
+	t.Run("SHAExists", func(t *testing.T) {
+		oracleGot := oracleSHAExists(t, dir, fx.sharedSHA)
+		implGot := repo.SHAExists(fx.sharedSHA)
+		if oracleGot != implGot {
+			t.Errorf("SHAExists() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if !implGot {
+			t.Errorf("SHAExists(%q) (a commit made in the OTHER worktree) = %v, want true", fx.sharedSHA, implGot)
+		}
+	})
+
+	t.Run("ChangedFilesSince", func(t *testing.T) {
+		oracleFiles, oracleErr := oracleChangedFilesSince(t, dir, fx.sharedSHA)
+		if oracleErr != nil {
+			t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+		}
+		implFiles, implErr := repo.ChangedFilesSince(fx.sharedSHA)
+		if implErr != nil {
+			t.Fatalf("ChangedFilesSince() error = %v", implErr)
+		}
+
+		oracleSorted := append([]string(nil), oracleFiles...)
+		implSorted := append([]string(nil), implFiles...)
+		sort.Strings(oracleSorted)
+		sort.Strings(implSorted)
+		if len(oracleSorted) != len(implSorted) {
+			t.Fatalf("ChangedFilesSince() parity mismatch: oracle = %v; gitrepo = %v", oracleSorted, implSorted)
+		}
+		for i := range oracleSorted {
+			if oracleSorted[i] != implSorted[i] {
+				t.Errorf("ChangedFilesSince() parity mismatch: oracle = %v; gitrepo = %v", oracleSorted, implSorted)
+			}
+		}
+		if !containsString(implSorted, "feature-only.txt") {
+			t.Errorf("ChangedFilesSince() = %v, want it to contain %q", implSorted, "feature-only.txt")
+		}
+	})
+
+	t.Run("HasUnpushed_StrictlyBehind", func(t *testing.T) {
+		oracleGot, oracleErr := oracleHasUnpushed(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleHasUnpushed() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.hasUnpushed()
+		if implErr != nil {
+			t.Fatalf("hasUnpushed() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("hasUnpushed() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if implGot {
+			t.Errorf("hasUnpushed() = %v, want false (linked worktree's branch is strictly behind its upstream)", implGot)
+		}
+	})
+
+	t.Run("IsStrictDescendant", func(t *testing.T) {
+		// isStrictDescendant cannot report a problem (it swallows failure
+		// into false), so resolving fx.sharedSHA — a commit made in the
+		// OTHER (main) worktree — through the linked worktree's handle is
+		// the only way this case would notice a common-dir mishandling: it
+		// would surface as a wrong "false" answer, not an error.
+		oracleGot := oracleIsStrictDescendant(t, dir, fx.sharedSHA, fx.linkedSHA)
+		implGot := repo.isStrictDescendant(fx.sharedSHA, fx.linkedSHA)
+		if oracleGot != implGot {
+			t.Errorf("isStrictDescendant() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if !implGot {
+			t.Errorf("isStrictDescendant(%q, %q) = %v, want true", fx.sharedSHA, fx.linkedSHA, implGot)
+		}
+	})
+}
+
+// TestLinkedWorktree_Parity runs every read-side parity case this batch
+// covers a second time against the linked-worktree fixture — directly, and
+// again reached only through a junction (internal/fslink.CreateDirLink),
+// since that indirection is how lyx addresses these directories in
+// production — plus the CurrentBranch detached-HEAD case, which must run
+// last since it mutates the worktree's checked-out ref state. The standalone
+// `git init` fixtures used elsewhere in this package cannot substitute for
+// any of this: the linked worktree is the only topology production runs in.
+func TestLinkedWorktree_Parity(t *testing.T) {
+	fx := newLinkedParityFixture(t)
+	forceGoGitFinalizersOnCleanup(t)
+
+	t.Run("Direct", func(t *testing.T) {
+		runLinkedWorktreeParityChecks(t, fx.linkedDir, fx)
+	})
+
+	t.Run("ViaJunction", func(t *testing.T) {
+		junctionPath := filepath.Join(t.TempDir(), "via-junction")
+		if err := fslink.CreateDirLink(junctionPath, fx.linkedDir); err != nil {
+			t.Skipf("directory link creation unavailable on this platform: %v", err)
+		}
+		runLinkedWorktreeParityChecks(t, junctionPath, fx)
+	})
+
+	t.Run("CurrentBranch_Detached", func(t *testing.T) {
+		repo := New(fx.linkedDir)
+		lyxtest.MustRun(t, fx.linkedDir, "git", "checkout", "--detach", fx.linkedSHA)
+
+		_, oracleErr := oracleCurrentBranch(t, fx.linkedDir)
+		_, implErr := repo.CurrentBranch()
+		if (oracleErr == nil) != (implErr == nil) {
+			t.Errorf("CurrentBranch() parity mismatch on detached linked-worktree HEAD: oracle err = %v; gitrepo err = %v", oracleErr, implErr)
+		}
+		if implErr == nil {
+			t.Error("CurrentBranch() on detached linked-worktree HEAD error = nil, want non-nil")
 		}
 	})
 }
