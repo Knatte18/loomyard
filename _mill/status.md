@@ -38,7 +38,9 @@ batches:
     start_sha: 4d92ff2c3ec739ac32bb9237f689edeae32cffbf
     commit_sha: 20c472c0f807a7f2f613442645fe92bb3b3dc575
   - name: hubgeometry-pattern-surface
-    state: pending
+    state: running
+    implementer_session: ec16ed78-b26a-487f-8b3b-a64d796209bd
+    start_sha: 1cb3b30c781cc137247eb9b13d0c26da08065f89
   - name: fabric-junction-generalisation
     state: pending
   - name: weft-pathspec-tolerance
