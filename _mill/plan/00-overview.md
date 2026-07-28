@@ -3,7 +3,7 @@
 ```yaml
 task: 'PATTERN wiring: conditional constraint-injection into every agent'
 slug: pattern-wiring
-approved: false
+approved: true
 started: '20260728-093403'
 parent: main
 root: ""
