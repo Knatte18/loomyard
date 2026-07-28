@@ -71,7 +71,8 @@ Batch-local decision: both guards live in `cmd/lyx/`, alongside the repo's other
   - `internal/gitrepo/push.go`
   - `internal/gitrepo/pull.go`
   - `internal/gitrepo/reset.go`
-- **Edits:** none
+- **Edits:**
+  - `cmd/lyx/tierpurity_test.go`
 - **Creates:**
   - `cmd/lyx/gitrepoboundary_test.go`
 - **Deletes:** none
