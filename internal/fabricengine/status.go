@@ -3,9 +3,9 @@
 //
 // Status enumerates all host worktrees via hubgeometry.List, pairs each with its weft
 // sibling, reports branch, in-sync verdict, junction health, and scans the host index
-// for any _lyx or _raddle paths that have been accidentally git-tracked (host pollution).
-// A pair is InSync when weftBranch == WeftBranchName(hostBranch), and DriftReason
-// states the expected suffixed branch rather than a bare mismatch.
+// for any _lyx, _pattern, or _raddle paths that have been accidentally git-tracked
+// (host pollution). A pair is InSync when weftBranch == WeftBranchName(hostBranch),
+// and DriftReason states the expected suffixed branch rather than a bare mismatch.
 //
 // Status computes its in-sync verdict inline (branch correspondence via WeftBranchName,
 // then junction health via checkJunctionHealth, both already defined in reconcile.go)
@@ -76,9 +76,10 @@ type StatusResult struct {
 //   - Reports in-sync status: weftBranch == WeftBranchName(hostBranch) and the host
 //     _lyx junction is valid
 //   - Reports junction health (separate from the drift check) using checkJunctionHealth
-//   - Scans the host index for any _lyx or _raddle paths via git ls-files; marks
-//     _lyx entries as remediable (git rm --cached + restore junction/exclude) and
-//     _raddle entries as report-only (no junction to restore in this task)
+//   - Scans the host index for any _lyx, _pattern, or _raddle paths via git ls-files;
+//     marks _lyx and _pattern entries as remediable (git rm --cached + restore
+//     junction/exclude — both have a junction from card 15 onward) and _raddle
+//     entries as report-only (no junction to restore in this task)
 //
 // Layout l is the resolved layout for the current working directory; it provides Hub
 // and Prime fields for deriving the weft repo root and weft worktree names.
@@ -165,7 +166,8 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 			pair.InSync = true
 		}
 
-		// Scan the host index for _lyx and _raddle paths that must never be tracked there.
+		// Scan the host index for _lyx, _pattern, and _raddle paths that must never
+		// be tracked there.
 		pollution, pollErr := detectHostPollution(hostPath)
 		if pollErr != nil {
 			// Non-fatal: record the error inline and continue.
@@ -183,18 +185,26 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 	return result, nil
 }
 
-// detectHostPollution scans the host worktree index for _lyx and _raddle paths
-// that should never be tracked in the host repo.
+// detectHostPollution scans the host worktree index for _lyx, _pattern, and _raddle
+// paths that should never be tracked in the host repo.
 //
-// For each match under _lyx, the remedy is the git rm --cached command that removes
-// the file from the index without deleting it from disk, plus a reminder to restore
-// the junction/exclude entry. _raddle matches are report-only: no junction is wired
-// for _raddle in this release so no automated restore step is offered.
+// For each match under _lyx or _pattern, the remedy is the git rm --cached command
+// that removes the file from the index without deleting it from disk, plus a
+// reminder to restore the junction/exclude entry — both have a junction to restore
+// (from card 15 onward), so the same automated remedy applies to both. _raddle
+// matches are report-only: no junction is wired for _raddle in this release so no
+// automated restore step is offered.
+//
+// The two new "_pattern" uses below (the ls-files pathspec entry and the
+// strings.HasPrefix comparison) are legal under the Hub Geometry Invariant despite
+// "_pattern" being an enforced token: the invariant's own carve-out excludes
+// comparisons and git-pathspec slice literals from "path construction," which is
+// what a filepath.Join argument, a "+" operand, or a string const value are.
 func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
 	out, _, exitCode, err := gitexec.RunGit(
-		[]string{"ls-files", "--", "_lyx", "_raddle"},
+		[]string{"ls-files", "--", "_lyx", "_pattern", "_raddle"},
 		hostPath,
 	)
 	if err != nil {
@@ -218,8 +228,10 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 			continue
 		}
 
-		// Determine whether the path is under _lyx or _raddle.
-		if strings.HasPrefix(tracked, "_lyx") || tracked == "_lyx" {
+		// Determine whether the path is under _lyx, _pattern, or _raddle.
+		switch {
+		case strings.HasPrefix(tracked, "_lyx") || tracked == "_lyx",
+			strings.HasPrefix(tracked, "_pattern") || tracked == "_pattern":
 			// Offer git rm --cached as the remedy, plus a reminder to restore the
 			// junction and exclude entry so lyx topology is intact afterwards.
 			remedy := fmt.Sprintf(
@@ -230,7 +242,7 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 				Path:   tracked,
 				Remedy: remedy,
 			})
-		} else if strings.HasPrefix(tracked, "_raddle") || tracked == "_raddle" {
+		case strings.HasPrefix(tracked, "_raddle") || tracked == "_raddle":
 			// _raddle pollution is report-only: no junction is wired for _raddle yet.
 			entries = append(entries, PollutionEntry{
 				Path:       tracked,
