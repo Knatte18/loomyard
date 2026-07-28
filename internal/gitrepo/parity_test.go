@@ -565,3 +565,250 @@ func TestCurrentBranch_Parity(t *testing.T) {
 		}
 	})
 }
+
+// forcePackIndexFreeze forces repo's go-git handle to build (and freeze) its
+// internal packfile index against whatever packs exist on disk at the
+// moment of the call, by driving one object-lookup miss through the
+// exported SHAExists — the shared setup step every "hard variant"
+// mixed-backend case below builds on: a subsequent commit-then-repack
+// sequence produces a packfile-only object the frozen index predates, so a
+// later read can only resolve it correctly by going through the
+// fingerprint-gated reindex retry (see gogit.go's lookupObjectRetrying).
+func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
+	t.Helper()
+
+	if repo.SHAExists("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef") {
+		t.Fatal("SHAExists(fabricated sha) = true; want false (sanity check for the freeze helper)")
+	}
+}
+
+// TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit asserts
+// StageAndCommit's trailing r.CurrentSHA() call — a go-git ref read — sees
+// the commit its own preceding `git commit` call just wrote, even when the
+// Repo's go-git handle was warmed (opened and cached) before that commit
+// landed. This is the call-granular boundary's central mixed-backend site:
+// a stale answer here would feed a wrong SHA straight into a caller's
+// SetSnapshotSHA, recording a snapshot that points off-history.
+func TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	if _, err := repo.CurrentSHA(); err != nil {
+		t.Fatalf("CurrentSHA() (warm handle) error = %v", err)
+	}
+
+	writeFile(t, dir, "a.txt", "changed")
+	sha, committed, err := repo.StageAndCommit("commit a", []string{"a.txt"})
+	if err != nil {
+		t.Fatalf("StageAndCommit() error = %v; want nil", err)
+	}
+	if !committed {
+		t.Fatal("StageAndCommit() committed = false; want true")
+	}
+
+	want := resolveRevOrFatal(t, dir, "HEAD")
+	if sha != want {
+		t.Errorf("StageAndCommit() sha = %q; want %q (the commit its own CLI write just created)", sha, want)
+	}
+}
+
+// TestStageAllAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit is
+// TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit's counterpart
+// for StageAllAndCommit, the wildcard sibling that ends with the identical
+// r.CurrentSHA() call.
+func TestStageAllAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	if _, err := repo.CurrentSHA(); err != nil {
+		t.Fatalf("CurrentSHA() (warm handle) error = %v", err)
+	}
+
+	writeFile(t, dir, "a.txt", "changed")
+	sha, committed, err := repo.StageAllAndCommit("commit all")
+	if err != nil {
+		t.Fatalf("StageAllAndCommit() error = %v; want nil", err)
+	}
+	if !committed {
+		t.Fatal("StageAllAndCommit() committed = false; want true")
+	}
+
+	want := resolveRevOrFatal(t, dir, "HEAD")
+	if sha != want {
+		t.Errorf("StageAllAndCommit() sha = %q; want %q (the commit its own CLI write just created)", sha, want)
+	}
+}
+
+// TestSHAExists_MixedBackend_RepackBetweenCommitAndRead is the hard variant
+// of the mixed-backend interop cases: repo's go-git handle is frozen (via
+// forcePackIndexFreeze) against a pack-less on-disk state, a new commit then
+// lands, and a `git gc` repacks it BEFORE SHAExists ever reads it — the
+// packfile-only-object shape Push's own pull --rebase retry can produce in
+// production, and exactly what the fingerprint-gated reindex exists to
+// survive. Without it, SHAExists' failure-swallowing posture means this
+// would fail silently (report false forever), never loudly.
+func TestSHAExists_MixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	forcePackIndexFreeze(t, repo)
+
+	writeFile(t, dir, "b.txt", "second")
+	commitAll(t, dir, "second commit")
+	sha := resolveRevOrFatal(t, dir, "HEAD")
+
+	lyxtest.MustRun(t, dir, "git", "gc")
+
+	if !repo.SHAExists(sha) {
+		t.Errorf("SHAExists(%q) after repack = false; want true (the fingerprint-gated reindex must recover the now-packed commit)", sha)
+	}
+}
+
+// TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo pins
+// the fingerprint gate against a per-instance counter gate: repoA's go-git
+// index is frozen against the pack-less on-disk state, then a SEPARATE
+// gitrepo.New value on the identical path builds and repacks a new commit —
+// a distinct *Repo, so repoA's own call count is never touched by any of it
+// — and repoA's own SHAExists must still resolve the new, now-packed
+// commit. A per-*Repo call counter would never observe this write at all,
+// since it only ever counts repoA's own calls; the pack fingerprint is
+// shared, on-disk ground truth every *Repo addressing the same checkout can
+// observe regardless of which one performed the write. This is the case
+// that fails under a counter gate and passes under the fingerprint gate, so
+// it pins the design rather than merely restating it.
+func TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo(t *testing.T) {
+	dir, repoA := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	forcePackIndexFreeze(t, repoA)
+
+	// A genuinely separate *Repo value on the same path — repoA's own handle
+	// is never touched by anything below.
+	repoB := gitrepo.New(dir)
+	writeFile(t, dir, "b.txt", "from repoB")
+	commitAll(t, dir, "commit via repoB's path")
+	sha, err := repoB.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (repoB) error = %v", err)
+	}
+	lyxtest.MustRun(t, dir, "git", "gc")
+
+	if !repoA.SHAExists(sha) {
+		t.Errorf("repoA.SHAExists(%q) = false; want true (repoA's fingerprint-gated reindex must see a write+repack made through a separate *Repo)", sha)
+	}
+}
+
+// TestSnapshotSHA_MixedBackend_ReadsRefCLISideAdvanceWrote asserts
+// SnapshotSHA's go-git ref read sees the value SetSnapshotSHA's own
+// CLI-side advanceAndPushSnapshotRef just wrote locally, even when the
+// Repo's handle was warmed before that local ref update landed — go-git
+// never caches refs, so this pins that fact at the exported call site the
+// plan enumerates rather than leaving it untested there.
+func TestSnapshotSHA_MixedBackend_ReadsRefCLISideAdvanceWrote(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	clonePath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, clonePath, "a.txt", "initial")
+	commitAll(t, clonePath, "init")
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+	headSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	// Warm the handle before SetSnapshotSHA's own CLI-side ref advance below.
+	if _, err := repo.SnapshotSHA("warmup"); err != nil {
+		t.Fatalf("SnapshotSHA() (warm handle) error = %v", err)
+	}
+
+	if err := repo.SetSnapshotSHA("mykey", headSHA); err != nil {
+		t.Fatalf("SetSnapshotSHA() error = %v; want nil", err)
+	}
+
+	got, err := repo.SnapshotSHA("mykey")
+	if err != nil {
+		t.Fatalf("SnapshotSHA() error = %v; want nil", err)
+	}
+	if got != headSHA {
+		t.Errorf("SnapshotSHA() = %q; want %q (the ref value SetSnapshotSHA's own CLI push just wrote)", got, headSHA)
+	}
+}
+
+// TestSetSnapshotSHA_MixedBackend_RepackBetweenCommitAndCanonicalization is
+// the hard variant for SetSnapshotSHA's own `^{commit}` canonicalization:
+// the handle's pack index is frozen before a new commit lands, the commit is
+// then repacked (git gc) before SetSnapshotSHA ever resolves an abbreviated
+// spelling of it. Without the fingerprint-gated reindex, the resolution
+// would fail silently (best-effort semantics: the abbreviated spelling is
+// passed through unchanged), and the stored ref — and a later read back via
+// SnapshotSHA — would carry the abbreviated spelling instead of the full
+// canonical one.
+func TestSetSnapshotSHA_MixedBackend_RepackBetweenCommitAndCanonicalization(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	clonePath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, clonePath, "a.txt", "initial")
+	commitAll(t, clonePath, "init")
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+
+	forcePackIndexFreeze(t, repo)
+
+	writeFile(t, clonePath, "a.txt", "second")
+	commitAll(t, clonePath, "second commit")
+	fullSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	// Force the new commit into a packfile before SetSnapshotSHA's own
+	// canonicalization ever resolves it.
+	lyxtest.MustRun(t, clonePath, "git", "gc")
+
+	if err := repo.SetSnapshotSHA("mykey", fullSHA[:7]); err != nil {
+		t.Fatalf("SetSnapshotSHA(abbreviated, repacked) error = %v; want nil", err)
+	}
+
+	got, err := repo.SnapshotSHA("mykey")
+	if err != nil {
+		t.Fatalf("SnapshotSHA() error = %v; want nil", err)
+	}
+	if got != fullSHA {
+		t.Errorf("SnapshotSHA() after repacked abbreviated SetSnapshotSHA = %q; want %q (full canonical spelling)", got, fullSHA)
+	}
+}
+
+// TestPushCoalesced_MixedBackend_NothingToPushAfterCLIPush asserts
+// PushCoalesced's internal hasUnpushed gate correctly reports
+// nothing-to-push immediately after Push's own CLI push has landed, even
+// when the Repo's go-git handle was warmed before that push ran — pinning
+// the exported call site the plan enumerates for this read.
+func TestPushCoalesced_MixedBackend_NothingToPushAfterCLIPush(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	repoPath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, repoPath, "a.txt", "initial")
+	commitAll(t, repoPath, "init")
+
+	if _, err := repo.CurrentSHA(); err != nil {
+		t.Fatalf("CurrentSHA() (warm handle) error = %v", err)
+	}
+
+	if err := repo.Push(); err != nil {
+		t.Fatalf("Push() error = %v; want nil", err)
+	}
+
+	if err := repo.PushCoalesced(); err != nil {
+		t.Fatalf("PushCoalesced() (nothing unpushed) error = %v; want nil", err)
+	}
+}

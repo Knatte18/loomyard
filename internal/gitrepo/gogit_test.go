@@ -1068,3 +1068,83 @@ func TestLinkedWorktree_Parity(t *testing.T) {
 		}
 	})
 }
+
+// freezePackIndex forces repo's go-git handle to build (and freeze) its
+// internal packfile index against whatever packs exist on disk at the
+// moment of the call, by driving one object-lookup miss through SHAExists —
+// the internal-package counterpart to parity_test.go's identically-shaped
+// forcePackIndexFreeze (unreachable from here; package gitrepo_test, a
+// different Go package). Later tests use this to pin the index to a stale,
+// pre-repack view before writing and repacking new commits, so the read
+// under test can only succeed by going through the fingerprint-gated
+// reindex — see gogit.go's lookupObjectRetrying.
+func freezePackIndex(t *testing.T, repo *Repo) {
+	t.Helper()
+
+	if repo.SHAExists("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef") {
+		t.Fatal("SHAExists(fabricated sha) = true; want false (sanity check for the freeze helper)")
+	}
+}
+
+// TestIsStrictDescendant_MixedBackend_RepackBetweenCommitAndRead is the hard
+// variant of isStrictDescendant's mixed-backend coverage: the handle's pack
+// index is frozen against a pack-less on-disk state before the descendant
+// commit exists, the descendant then lands and is repacked (git gc) before
+// isStrictDescendant ever resolves it — the packfile-only-object shape
+// SetSnapshotSHA's own adoptSnapshotRef CLI fetch can produce in production,
+// and exactly what the fingerprint-gated reindex exists to survive. Without
+// it, isStrictDescendant's failure-swallowing posture means this fails
+// silently (reports false forever) rather than loudly.
+func TestIsStrictDescendant_MixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
+	dir, repo := newStandaloneRepo(t)
+	ancestorSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (ancestor) error = %v", err)
+	}
+
+	freezePackIndex(t, repo)
+
+	writeAndCommit(t, dir, "b.txt", "second", "second commit")
+	descendantSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (descendant) error = %v", err)
+	}
+
+	// Force both commits into a packfile the frozen index predates.
+	lyxtest.MustRun(t, dir, "git", "gc")
+
+	if !repo.isStrictDescendant(ancestorSHA, descendantSHA) {
+		t.Errorf("isStrictDescendant(%q, %q) after repack = false; want true (the fingerprint-gated reindex must recover the now-packed commits)", ancestorSHA, descendantSHA)
+	}
+}
+
+// TestHasUnpushed_MixedBackend_RepackBetweenCommitAndRead is the hard
+// variant of hasUnpushed's mixed-backend coverage: the handle's pack index
+// is frozen against a pack-less on-disk state before a new local commit
+// lands, the commit is then repacked (git gc) before hasUnpushed's own
+// CommitObject reads (behind the ancestor walk) ever resolve it. Without
+// the fingerprint-gated reindex, hasUnpushed's failure-swallowing posture
+// (any go-git failure folds into true) would mean a regression here could
+// not be told apart from the correct answer by error alone — asserting the
+// specific expected true pins it regardless.
+func TestHasUnpushed_MixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
+	fixture := newGogitBareRemoteFixture(t)
+	repo := New(fixture.cloneA)
+
+	freezePackIndex(t, repo)
+
+	writeAndCommit(t, fixture.cloneA, "b.txt", "more", "second")
+
+	// Force the new commit into a packfile the frozen index predates — the
+	// packfile-only-object shape Push's own pull --rebase retry can produce
+	// in production.
+	lyxtest.MustRun(t, fixture.cloneA, "git", "gc")
+
+	got, err := repo.hasUnpushed()
+	if err != nil {
+		t.Fatalf("hasUnpushed() error = %v; want nil", err)
+	}
+	if !got {
+		t.Errorf("hasUnpushed() after repack = %v; want true (ahead of upstream, recovered via the fingerprint-gated reindex)", got)
+	}
+}
