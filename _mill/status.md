@@ -50,7 +50,9 @@ batches:
     start_sha: d6b92ba9ad3c0ff2aa4a622cd6b7918eb8130589
     commit_sha: 53cf9a7b27373578b21bdc1603615c5f8c084c1a
   - name: weft-pathspec-tolerance
-    state: pending
+    state: running
+    implementer_session: d810eafd-0c80-4f1f-971a-f89852809033
+    start_sha: 088827d386eb59f0a48506e65719cde62fe66f9d
   - name: pattern-junction-flip
     state: pending
   - name: pattern-package
