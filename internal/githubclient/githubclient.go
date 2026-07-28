@@ -1,14 +1,9 @@
-// Package githubclient owns GitHub token resolution, token caching, and
-// construction of an authenticated *github.Client -- nothing else. It
-// exposes no per-operation wrapper methods: consumers call go-github's typed
-// API directly (c.Issues.Create(...), c.PullRequests.List(...)), supplying
-// owner/repo themselves. Hand-writing wrappers would reinvent a typed,
-// maintained library and create a surface that must track consumer needs
-// forever; the one thing that genuinely cannot be duplicated is non-blocking
-// credential resolution, and that is exactly what this package owns. See
-// token.go for the resolution chain, cache.go for the on-disk cache, and
-// transport.go for the authenticating RoundTripper that ties them to a
-// go-github client.
+// githubclient.go constructs the authenticated *github.Client this package
+// hands to every consumer: New and NewWithBaseURL, plus the request timeout
+// they share. See doc.go for the package's full design record -- resolution
+// chain, cache, authenticating transport, and the GitHub surface consumers
+// need.
+
 package githubclient
 
 import (
