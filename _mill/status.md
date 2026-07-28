@@ -61,7 +61,9 @@ batches:
     start_sha: 1a375a97cf9d6bc8f1660bbb744edf8c56ea3a41
     commit_sha: 12aee0e3bdcd907d176c7c8840c3127f66d5c2b4
   - name: migrate-core-reads
-    state: pending
+    state: running
+    implementer_session: fc60b44b-a6d3-4a52-9019-68eab18a4663
+    start_sha: e8d7801ada9c4d5210cc04a4fa69ed70421650c4
   - name: migrate-snapshot-push-reads
     state: pending
   - name: retire-poc-and-measure
