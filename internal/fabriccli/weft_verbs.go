@@ -164,7 +164,7 @@ Every fabric weft commit carries a trailing "Warp-SHA: <sha>" trailer naming the
 paired warp repo's current HEAD, recorded into the correspondence index immediately
 after the commit lands.
 
-Staging is scoped to the directories listed in the fabric config (default: _lyx).
+Staging is scoped to the directories listed in the fabric config (default: _lyx _pattern).
 
 Related commands:
   lyx fabric push   — commit then push in the same process

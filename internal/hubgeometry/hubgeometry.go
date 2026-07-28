@@ -49,6 +49,12 @@ const (
 	// (e.g. "loomyard" → "loomyard-HUB"). It is the single source of this literal;
 	// use HubPath(parent, name) to obtain the full path.
 	HubSuffix = "-HUB"
+
+	// PatternDirName is the directory name for the PATTERN constraint-injection surface
+	// within a worktree (i.e. <worktree>/_pattern), the durable file every agent consults
+	// for conditional constraint injection. It is the single source of this literal; use
+	// PatternDir(baseDir)/PatternFile(baseDir) to obtain the full paths.
+	PatternDirName = "_pattern"
 )
 
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
@@ -332,6 +338,30 @@ func DotEnv(baseDir string) string {
 	return filepath.Join(baseDir, dotEnvName)
 }
 
+// PatternDir returns the path to the _pattern directory within a baseDir.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout, parallel to
+// ConfigDir. The _pattern directory holds PATTERN.md, the constraint-injection surface
+// every agent consults. Per the Hub Geometry Invariant, no other package may construct
+// this path.
+//
+// Returns filepath.Join(baseDir, PatternDirName).
+func PatternDir(baseDir string) string {
+	return filepath.Join(baseDir, PatternDirName)
+}
+
+// PatternFile returns the path to the PATTERN.md file within a baseDir.
+//
+// It is a pure bootstrap helper for callers that have no resolved Layout, parallel to
+// ConfigFile. Keeping the full path — directory and filename — in this one accessor is
+// what lets internal/pattern stay a leaf that never joins the two halves itself; "PATTERN.md"
+// is deliberately not a geometry constant since only this accessor ever needs it.
+//
+// Returns filepath.Join(PatternDir(baseDir), "PATTERN.md").
+func PatternFile(baseDir string) string {
+	return filepath.Join(PatternDir(baseDir), "PATTERN.md")
+}
+
 // WeftSiblingPath returns the absolute path to the weft sibling worktree for the
 // given slug inside hub.
 //
@@ -384,15 +414,16 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 
 // IsReservedHubName reports whether name is one of the hub-level entry names
 // lyx geometry itself owns: the per-worktree lyx dir (_lyx), the raddle dir
-// (_raddle), the board passenger (_board), and the portal/launcher mirrors
-// (_portals, _launchers). A worktree slug must never claim one of these — a
-// host worktree directory named after a geometry token collides with the very
-// paths lyx composes at the hub level (e.g. a worktree named "_portals" would
-// have portal junctions created inside it). Slug validation (fabric's Add)
-// calls this so the rejection lives with the single owner of the literals.
+// (_raddle), the board passenger (_board), the portal/launcher mirrors
+// (_portals, _launchers), and the PATTERN constraint-injection surface
+// (_pattern). A worktree slug must never claim one of these — a host worktree
+// directory named after a geometry token collides with the very paths lyx
+// composes at the hub level (e.g. a worktree named "_portals" would have
+// portal junctions created inside it). Slug validation (fabric's Add) calls
+// this so the rejection lives with the single owner of the literals.
 func IsReservedHubName(name string) bool {
 	switch name {
-	case LyxDirName, "_raddle", BoardDirName, "_portals", "_launchers":
+	case LyxDirName, "_raddle", BoardDirName, "_portals", "_launchers", PatternDirName:
 		return true
 	}
 	return false
@@ -652,6 +683,30 @@ func (l *Layout) WeftLyxDirFor(slug string) string {
 	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, LyxDirName)
 }
 
+// WeftPatternDir returns the path to the _pattern directory in the current worktree's weft
+// sibling.
+//
+// The path is: <hub>/<current-worktree>-weft/<RelPath>/_pattern. This mirrors WeftLyxDir
+// exactly and is the junction target for pattern weft, with RelPath-mirroring like
+// WeftLyxDir (collapses to <weft>/_pattern at RelPath ".").
+//
+// Returns filepath.Join(WeftWorktree(), RelPath, PatternDirName).
+func (l *Layout) WeftPatternDir() string {
+	return filepath.Join(l.WeftWorktree(), l.RelPath, PatternDirName)
+}
+
+// WeftPatternDirFor returns the path to the _pattern directory within a named slug's weft
+// worktree.
+//
+// The path is: <hub>/<slug>-weft/<RelPath>/_pattern. This mirrors WeftLyxDirFor exactly
+// and pairs with HostPatternLink(slug) as the junction endpoints, matching the
+// HostLyxLink(slug)/WeftLyxDirFor(slug) precedent.
+//
+// Returns filepath.Join(WeftWorktreePath(slug), RelPath, PatternDirName).
+func (l *Layout) WeftPatternDirFor(slug string) string {
+	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, PatternDirName)
+}
+
 // WeftRaddleDir returns the path to the _raddle directory in the current worktree's weft sibling.
 //
 // Returns filepath.Join(WeftWorktree(), RelPath, "_raddle").
@@ -680,6 +735,45 @@ func (l *Layout) HostLyxLinkHere() string {
 	return filepath.Join(l.WorktreeRoot, l.RelPath, LyxDirName)
 }
 
+// HostPatternLink returns the path to the _pattern junction link in a named slug's host
+// worktree.
+//
+// The path is: <hub>/<slug>/<RelPath>/_pattern. This mirrors HostLyxLink exactly: the
+// host-side junction endpoint that points into the paired weft worktree via
+// WeftPatternDirFor(slug).
+//
+// Returns filepath.Join(WorktreePath(slug), RelPath, PatternDirName).
+func (l *Layout) HostPatternLink(slug string) string {
+	return filepath.Join(l.WorktreePath(slug), l.RelPath, PatternDirName)
+}
+
+// HostPatternLinkHere returns the path to the _pattern junction link in the current host
+// worktree.
+//
+// The path is: <hub>/<current-worktree>/<RelPath>/_pattern, derived from WorktreeRoot+RelPath,
+// not from Cwd. This mirrors HostLyxLinkHere exactly and serves as the host-side junction
+// endpoint paired with WeftPatternDir().
+//
+// Returns filepath.Join(WorktreeRoot, RelPath, PatternDirName).
+func (l *Layout) HostPatternLinkHere() string {
+	return filepath.Join(l.WorktreeRoot, l.RelPath, PatternDirName)
+}
+
+// PatternFileHere returns the path to the PATTERN.md file for the current worktree.
+//
+// It is anchored at WorktreeRoot+RelPath — not WorktreeRoot alone, and not Cwd — because
+// this is the accessor every agent calls to check whether PATTERN is active (batch 6's
+// active check): a WorktreeRoot-only anchor would miss the file entirely in any nested-hub
+// geometry (Cwd inside a subpath), silently rendering PATTERN inactive in all five agents,
+// while a bare Cwd anchor would drift from the junction endpoints above, which are all
+// WorktreeRoot+RelPath-anchored. On a Resolve-built Layout this is byte-for-byte equal to
+// PatternFile(l.Cwd), since Resolve sets RelPath = filepath.Rel(WorktreeRoot, Cwd).
+//
+// Returns PatternFile(filepath.Join(WorktreeRoot, RelPath)).
+func (l *Layout) PatternFileHere() string {
+	return PatternFile(filepath.Join(l.WorktreeRoot, l.RelPath))
+}
+
 // HostJunction represents a directory junction in the host worktree that links to a weft directory.
 //
 // It carries three fields because the two seeding operations (junction creation and
@@ -695,17 +789,59 @@ type HostJunction struct {
 
 // HostJunctions returns the list of host junctions for a given slug.
 //
-// Currently, this returns a single-element slice containing the _lyx junction.
-// The junction record carries Name, Link, and Target fields for use by the
-// seeders in internal/fabricengine.
+// Returns two entries, _lyx first: {Name: LyxDirName, Link: HostLyxLink(slug), Target:
+// WeftLyxDirFor(slug)} followed by {Name: PatternDirName, Link: HostPatternLink(slug),
+// Target: WeftPatternDirFor(slug)}. The junction record carries Name, Link, and Target
+// fields for use by the seeders in internal/fabricengine. _lyx stays first deliberately:
+// UnwireResult.JunctionsRemoved is documented as being in this slice's order, and the
+// health check is first-unhealthy-wins, so the order is observable by callers.
 //
-// Returns a slice with exactly one entry: {Name: LyxDirName, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}.
+// HostJunctions is Hub/slug-anchored: wiring, unwiring, and remove (which all act on a
+// named slug, not necessarily the current worktree) call this. See HostJunctionsHere
+// below for the Here-anchored, slug-free counterpart the health-check sites use instead.
 func (l *Layout) HostJunctions(slug string) []HostJunction {
 	return []HostJunction{
 		{
 			Name:   LyxDirName,
 			Link:   l.HostLyxLink(slug),
 			Target: l.WeftLyxDirFor(slug),
+		},
+		{
+			Name:   PatternDirName,
+			Link:   l.HostPatternLink(slug),
+			Target: l.WeftPatternDirFor(slug),
+		},
+	}
+}
+
+// HostJunctionsHere returns the same HostJunction records as HostJunctions(slug), but
+// resolved against the current worktree rather than a named slug: each entry's Link comes
+// from the corresponding "…Here()" accessor (HostLyxLinkHere(), HostPatternLinkHere()) and
+// each Target from the un-slugged weft accessor (WeftLyxDir(), WeftPatternDir()), mirroring
+// the existing HostLyxLinkHere()/HostLyxLink(slug) and WeftLyxDir()/WeftLyxDirFor(slug)
+// pairs this precedent already establishes.
+//
+// It exists because HostJunctions(slug) is Hub/slug-anchored — the right shape for wiring,
+// unwiring, and remove, which always act on a named slug — while all three junction
+// health-check sites (internal/fabricengine/reconcile.go, status.go, and drift.go) have no
+// slug available and are Here-anchored instead. PairInSync(l *hubgeometry.Layout) in
+// particular takes no slug parameter at all and is documented as stateless; threading a
+// slug into it would break that contract.
+//
+// Returns two entries, _lyx first, mirroring HostJunctions's order: {Name: LyxDirName,
+// Link: HostLyxLinkHere(), Target: WeftLyxDir()} followed by {Name: PatternDirName, Link:
+// HostPatternLinkHere(), Target: WeftPatternDir()}.
+func (l *Layout) HostJunctionsHere() []HostJunction {
+	return []HostJunction{
+		{
+			Name:   LyxDirName,
+			Link:   l.HostLyxLinkHere(),
+			Target: l.WeftLyxDir(),
+		},
+		{
+			Name:   PatternDirName,
+			Link:   l.HostPatternLinkHere(),
+			Target: l.WeftPatternDir(),
 		},
 	}
 }

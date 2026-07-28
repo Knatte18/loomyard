@@ -101,6 +101,7 @@ Example:
 				Injector:     c.injector,
 				Reed:         c.reed,
 				WorktreeRoot: c.layout.Cwd,
+				Layout:       c.layout,
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,
 				PromptsDir:   c.promptsDir,

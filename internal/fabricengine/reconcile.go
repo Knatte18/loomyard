@@ -31,8 +31,11 @@ const (
 	// its existing branch.
 	ReconcileActionWeftRecreated ReconcileAction = "weft_recreated"
 
-	// ReconcileActionJunctionRepointed means a broken or dangling host _lyx junction
-	// was re-pointed to the correct weft _lyx directory.
+	// ReconcileActionJunctionRepointed means at least one broken or dangling host
+	// junction was re-pointed to its correct weft directory. WireJunctions repairs
+	// every junction in one call, so the outcome's Detail (via
+	// junctionRepointedDetail) names all of them, not just the one that failed
+	// checkJunctionHealth.
 	ReconcileActionJunctionRepointed ReconcileAction = "junction_repointed"
 
 	// ReconcileActionRawAdopted means a host worktree created outside lyx had its weft
@@ -142,20 +145,19 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 			pairedAction := t.reconcileMissingWeft(hostLayout, hostPath, weftPath, slug, hostBranch, &pr)
 			pr.Action = pairedAction
 		} else {
-			// The weft worktree exists. Check whether the junction is healthy; if not, re-point it.
-			hostLink := hostLayout.HostLyxLinkHere()
-			weftLyxDir := hostLayout.WeftLyxDir()
-			junctionHealthy, _ := checkJunctionHealth(hostLink, weftLyxDir)
+			// The weft worktree exists. Check whether every junction is healthy; if not, re-point them.
+			junctionHealthy, _ := checkJunctionHealth(hostLayout)
 
 			if !junctionHealthy {
-				// Re-point the junction by running WireJunctions. WireJunctions is idempotent
-				// and handles both the missing-junction and the wrong-target cases.
+				// Re-point the junction(s) by running WireJunctions. WireJunctions is idempotent
+				// and handles both the missing-junction and the wrong-target cases, for every
+				// junction in one call — not just the one checkJunctionHealth found unhealthy.
 				if wireErr := WireJunctions(hostLayout, slug); wireErr != nil {
 					pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
 					pr.Action = ReconcileActionJunctionRepointed
 				} else {
 					pr.Action = ReconcileActionJunctionRepointed
-					pr.Detail = fmt.Sprintf("junction re-pointed: %s → %s", hostLink, weftLyxDir)
+					pr.Detail = junctionRepointedDetail(hostLayout)
 				}
 			} else {
 				pr.Action = ReconcileActionAlreadyHealthy
@@ -307,39 +309,63 @@ func readBranch(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// checkJunctionHealth verifies that hostLink is a junction/symlink pointing to weftLyxDir.
+// checkJunctionHealth verifies that every junction in hostLayout.HostJunctionsHere()
+// is a link resolving to its own Target, reporting the first unhealthy one found
+// (first-unhealthy-wins).
 //
-// Returns (ok, reason) where ok is true only if the junction is correctly configured.
-func checkJunctionHealth(hostLink, weftLyxDir string) (bool, string) {
-	// Check whether the host link exists at all.
-	_, err := os.Lstat(hostLink)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, "host _lyx junction missing"
+// A junction is unhealthy if its Link is missing, is not a link, or resolves
+// somewhere other than its Target. Every reason string names the junction (by
+// Name) it describes, since with more than one junction a bare "junction
+// missing" no longer tells an operator which one is broken.
+//
+// Returns (ok, reason) where ok is true only if every junction is correctly
+// configured; reason is empty in that case.
+func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
+	for _, j := range hostLayout.HostJunctionsHere() {
+		// Check whether the host link exists at all.
+		_, err := os.Lstat(j.Link)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, fmt.Sprintf("host %s junction missing", j.Name)
+			}
+			return false, fmt.Sprintf("lstat error: %v", err)
 		}
-		return false, fmt.Sprintf("lstat error: %v", err)
-	}
 
-	// Verify the path is a link (junction or symlink), not a plain directory.
-	isLink, err := fslink.IsLink(hostLink)
-	if err != nil || !isLink {
-		return false, "host _lyx is not a junction"
-	}
+		// Verify the path is a link (junction or symlink), not a plain directory.
+		isLink, err := fslink.IsLink(j.Link)
+		if err != nil || !isLink {
+			return false, fmt.Sprintf("host %s is not a junction", j.Name)
+		}
 
-	// Resolve both ends and compare canonicalized paths.
-	hostResolved, err := fslink.PointsTo(hostLink)
-	if err != nil {
-		return false, fmt.Sprintf("resolve host link: %v", err)
-	}
+		// Resolve both ends and compare canonicalized paths.
+		hostResolved, err := fslink.PointsTo(j.Link)
+		if err != nil {
+			return false, fmt.Sprintf("resolve host link: %v", err)
+		}
 
-	weftResolved, err := filepath.EvalSymlinks(filepath.Clean(weftLyxDir))
-	if err != nil {
-		return false, fmt.Sprintf("resolve weft target: %v", err)
-	}
+		weftResolved, err := filepath.EvalSymlinks(filepath.Clean(j.Target))
+		if err != nil {
+			return false, fmt.Sprintf("resolve weft target: %v", err)
+		}
 
-	if filepath.Clean(hostResolved) != filepath.Clean(weftResolved) {
-		return false, "host _lyx junction points elsewhere"
+		if filepath.Clean(hostResolved) != filepath.Clean(weftResolved) {
+			return false, fmt.Sprintf("host %s junction points elsewhere", j.Name)
+		}
 	}
 
 	return true, ""
+}
+
+// junctionRepointedDetail formats ReconcileActionJunctionRepointed's Detail
+// string, naming every junction in hostLayout.HostJunctionsHere() as
+// "Link → Target" — not just the one checkJunctionHealth found unhealthy,
+// since WireJunctions repairs (or verifies) all of them in the single call
+// that produced this outcome.
+func junctionRepointedDetail(hostLayout *hubgeometry.Layout) string {
+	junctions := hostLayout.HostJunctionsHere()
+	parts := make([]string, len(junctions))
+	for i, j := range junctions {
+		parts[i] = fmt.Sprintf("%s → %s", j.Link, j.Target)
+	}
+	return "junction re-pointed: " + strings.Join(parts, "; ")
 }

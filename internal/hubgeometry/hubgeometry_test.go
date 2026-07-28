@@ -593,13 +593,158 @@ func TestRefactoredMethods(t *testing.T) {
 		slug := "test-slug"
 		junctions := layout.HostJunctions(slug)
 
-		if len(junctions) != 1 {
-			t.Fatalf("HostJunctions() returned %d junctions; want 1", len(junctions))
+		if len(junctions) != 2 {
+			t.Fatalf("HostJunctions() returned %d junctions; want 2", len(junctions))
 		}
 
-		junction := junctions[0]
-		if junction.Name != "_lyx" {
-			t.Errorf("HostJunctions()[0].Name = %q; want %q", junction.Name, "_lyx")
+		lyxJunction := junctions[0]
+		if lyxJunction.Name != "_lyx" {
+			t.Errorf("HostJunctions()[0].Name = %q; want %q", lyxJunction.Name, "_lyx")
+		}
+		if lyxJunction.Link != layout.HostLyxLink(slug) {
+			t.Errorf("HostJunctions()[0].Link = %q; want %q", lyxJunction.Link, layout.HostLyxLink(slug))
+		}
+		if lyxJunction.Target != layout.WeftLyxDirFor(slug) {
+			t.Errorf("HostJunctions()[0].Target = %q; want %q", lyxJunction.Target, layout.WeftLyxDirFor(slug))
+		}
+
+		patternJunction := junctions[1]
+		if patternJunction.Name != "_pattern" {
+			t.Errorf("HostJunctions()[1].Name = %q; want %q", patternJunction.Name, "_pattern")
+		}
+		if patternJunction.Link != layout.HostPatternLink(slug) {
+			t.Errorf("HostJunctions()[1].Link = %q; want %q", patternJunction.Link, layout.HostPatternLink(slug))
+		}
+		if patternJunction.Target != layout.WeftPatternDirFor(slug) {
+			t.Errorf("HostJunctions()[1].Target = %q; want %q", patternJunction.Target, layout.WeftPatternDirFor(slug))
 		}
 	})
+}
+
+// TestHostJunctionsHere verifies the Here-anchored, slug-free junction-detection
+// accessor: it must return the expected Name/Link/Target for both RelPath == "." and a
+// nested RelPath, and it must agree entry-for-entry with HostJunctions(slug) when the
+// layout's slug and current worktree coincide — the precondition every one of
+// fabricengine's health-check call sites relies on.
+func TestHostJunctionsHere(t *testing.T) {
+	t.Parallel()
+
+	fix := lyxtest.CopyHostHub(t)
+	hub := fix.Hub
+
+	t.Run("at root", func(t *testing.T) {
+		t.Parallel()
+
+		layout, err := hubgeometry.Resolve(hub)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v; want nil", err)
+		}
+
+		junctions := layout.HostJunctionsHere()
+		if len(junctions) != 2 {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
+		}
+
+		lyxJunction := junctions[0]
+		wantLyxLink := layout.HostLyxLinkHere()
+		wantLyxTarget := layout.WeftLyxDir()
+		if lyxJunction.Name != "_lyx" {
+			t.Errorf("HostJunctionsHere()[0].Name = %q; want %q", lyxJunction.Name, "_lyx")
+		}
+		if lyxJunction.Link != wantLyxLink {
+			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", lyxJunction.Link, wantLyxLink)
+		}
+		if lyxJunction.Target != wantLyxTarget {
+			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", lyxJunction.Target, wantLyxTarget)
+		}
+
+		patternJunction := junctions[1]
+		wantPatternLink := layout.HostPatternLinkHere()
+		wantPatternTarget := layout.WeftPatternDir()
+		if patternJunction.Name != "_pattern" {
+			t.Errorf("HostJunctionsHere()[1].Name = %q; want %q", patternJunction.Name, "_pattern")
+		}
+		if patternJunction.Link != wantPatternLink {
+			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", patternJunction.Link, wantPatternLink)
+		}
+		if patternJunction.Target != wantPatternTarget {
+			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", patternJunction.Target, wantPatternTarget)
+		}
+	})
+
+	t.Run("at nested subpath", func(t *testing.T) {
+		t.Parallel()
+
+		subDir := filepath.Join(hub, "services", "api")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+
+		layout, err := hubgeometry.Resolve(subDir)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v; want nil", err)
+		}
+
+		junctions := layout.HostJunctionsHere()
+		if len(junctions) != 2 {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
+		}
+
+		lyxJunction := junctions[0]
+		wantLyxLink := layout.HostLyxLinkHere()
+		wantLyxTarget := layout.WeftLyxDir()
+		if lyxJunction.Link != wantLyxLink {
+			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", lyxJunction.Link, wantLyxLink)
+		}
+		if lyxJunction.Target != wantLyxTarget {
+			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", lyxJunction.Target, wantLyxTarget)
+		}
+
+		patternJunction := junctions[1]
+		wantPatternLink := layout.HostPatternLinkHere()
+		wantPatternTarget := layout.WeftPatternDir()
+		if patternJunction.Link != wantPatternLink {
+			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", patternJunction.Link, wantPatternLink)
+		}
+		if patternJunction.Target != wantPatternTarget {
+			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", patternJunction.Target, wantPatternTarget)
+		}
+	})
+
+	t.Run("agrees with HostJunctions when slug matches current worktree", func(t *testing.T) {
+		t.Parallel()
+
+		layout, err := hubgeometry.Resolve(hub)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v; want nil", err)
+		}
+
+		// The current worktree's own base name is the slug that makes HostJunctions(slug)
+		// resolve to the same host worktree HostJunctionsHere() is already anchored at.
+		slug := filepath.Base(layout.WorktreeRoot)
+
+		here := layout.HostJunctionsHere()
+		bySlug := layout.HostJunctions(slug)
+
+		if len(here) != len(bySlug) {
+			t.Fatalf("HostJunctionsHere() returned %d junctions; HostJunctions(%q) returned %d", len(here), slug, len(bySlug))
+		}
+		for i := range here {
+			if here[i] != bySlug[i] {
+				t.Errorf("HostJunctionsHere()[%d] = %+v; HostJunctions(%q)[%d] = %+v", i, here[i], slug, i, bySlug[i])
+			}
+		}
+	})
+}
+
+// TestIsReservedHubName_Pattern pins _pattern into the reserved-name set alongside
+// _lyx, _raddle, _board, _portals, and _launchers (see geometry_test.go's
+// TestIsReservedHubName for the full table): a worktree slug must never claim the
+// PATTERN constraint-injection surface's directory name.
+func TestIsReservedHubName_Pattern(t *testing.T) {
+	t.Parallel()
+
+	if got := hubgeometry.IsReservedHubName("_pattern"); !got {
+		t.Errorf("IsReservedHubName(%q) = %v; want true", "_pattern", got)
+	}
 }

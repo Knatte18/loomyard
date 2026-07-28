@@ -15,7 +15,7 @@ Why loomyard needs its own: **lyx initialized in any repo must be able to carry 
 
 ## Shape: a weft-backed `_pattern/` folder, not a single file
 
-PATTERN is a **directory**, reached from the warp worktree through a `_pattern` junction into `weft` — a sibling of `_lyx` and `_raddle`, already anticipated in [fabric-unified-view.md](fabric-unified-view.md) and [finalize.md](finalize.md). The directory holds:
+PATTERN is a **directory**, reached from the warp worktree through a `_pattern` junction into `weft` — already anticipated in [fabric-unified-view.md](fabric-unified-view.md) and [finalize.md](finalize.md). It is `_lyx`'s first sibling junction, not a third peer alongside an already-junctioned `_raddle`: `_raddle` carries no junction of its own today, so `_pattern` is the *second* junction `hubgeometry` declares, not one of three. The directory holds:
 
 - **`_pattern/PATTERN.md`** — the index: short two-line entries, one per invariant (the constraint stated in a line, plus a pointer to its detail doc). Never long-form prose inline.
 - **`_pattern/<topic>/…`** — a detail submap: one per-topic doc per invariant carrying the full rule / rationale / enforcement. This is the same short-index-plus-linked-detail structure already proven for raddle's `Overview.md` → module docs, and named as the shared pattern in [board-weft-storage.md](board-weft-storage.md).
@@ -28,7 +28,7 @@ The problem the wiring solves: an agent lyx spawns (implementer, reviewer, plann
 
 The mechanism, reusing what already exists:
 
-- **A conditional `stencil` marker** — call it `{{.PatternDirective}}` — placed in every **code-touching** template (implementer, reviewer, planner, webster fork, burler round). Not in discussion / judge templates, which do not write or review code. (Note: the `<NN>`-style angle-bracket placeholders already in templates are literal text, not stencil syntax; stencil substitutes `{{.X}}` markers.)
+- **A conditional `stencil` marker** — `{{.pattern_directive}}` — placed in every **code-touching** template (implementer, reviewer, planner, webster fork, burler round). Not in discussion / judge templates, which do not write or review code. (Note: the `<NN>`-style angle-bracket placeholders already in templates are literal text, not stencil syntax; stencil substitutes `{{.X}}` markers.)
 - **Go computes the marker value at prompt-assembly time.** A cheap active-check — does `_pattern/PATTERN.md` exist? — decides:
   - **active** → the value is a short directive, e.g. *"Before writing or reviewing any code, read `_pattern/PATTERN.md` and follow every constraint listed there."*
   - **inactive** → empty.
@@ -40,25 +40,26 @@ A single shared helper in the prompt-assembly path returns the directive-or-empt
 
 `stencil.Fill` carries one load-bearing guarantee: **every top-level `{{.X}}` marker must resolve to a non-empty value** — it treats an absent or whitespace-only value as an unfilled marker and fails (`unfilledTopLevelMarkers` in `internal/stencil/stencil.go`). A conditional PATTERN directive that is **empty when inactive** violates that invariant head-on.
 
-So the wiring requires a small, real `stencil` extension: a notion of an **optional marker** — one explicitly allowed to be empty, exempt from the non-empty guarantee. PATTERN is the first genuinely-conditional token in the system and is what motivates it. (The alternative — giving the inactive marker a benign non-empty value like a lone space or a hidden comment — is a hack that pollutes the rendered prompt; prefer the explicit optional-marker concept.)
+So the wiring requires a small, real `stencil` extension: a notion of an **optional marker** — one explicitly allowed to be empty, exempt from the non-empty guarantee. PATTERN is **not** the first conditional token in the system: `websterengine`'s `rename_mechanic` predates it, sitting inside a `{{if .rename_mechanic}}` block in `fork-template.md`, in production before this wiring landed. The optional-marker extension is a deliberate design choice, not a forced one — it puts optionality in Go, where it is testable per call site, and it keeps the "no conditionals in templates" banner rule uniform across every other prompt template, rather than existing because `{{if}}` could not have worked. (The alternative — giving the inactive marker a benign non-empty value like a lone space or a hidden comment — is a hack that pollutes the rendered prompt; prefer the explicit optional-marker concept.)
 
 ## Junction wiring and activation
 
-The `_pattern` junction is `fabric`'s responsibility, exactly like `_lyx` / `_raddle` (junction creation is core, already-shipped `fabric` — not the Someday `fabric-unified-view` work, which only *mentions* `_pattern`).
+The split is narrower than "`fabric`'s responsibility": `internal/hubgeometry` declares the `_pattern` junction record and owns every `_pattern` path literal (the Hub Geometry Invariant); `internal/fabricengine`'s `seedLyxJunction` (called from `WireJunctions`) materialises the weft-side target and creates the junction itself; `internal/initengine`'s `Init` is the caller that actually wires it for a fresh worktree. `fabric add` explicitly does **not** wire the host junction — its own code states the junction is wired by `lyx init` via `WireJunctions`, not by `add` (junction creation is core, already-shipped `fabricengine` — not the Someday `fabric-unified-view` work, which only *mentions* `_pattern`).
 
 Activation is by **file existence, not junction presence**:
 
-- `fabric` **always** creates the `_pattern/` directory in `weft` (possibly empty) and the junction — simplest, and a junction needs its target to exist to resolve.
+- `initengine.Init`, via `fabricengine.WireJunctions` → `seedLyxJunction`, materialises the `_pattern/` directory in `weft` (possibly empty) and the junction on every fresh `lyx init` — simplest, and a junction needs its target to exist to resolve. No other `WireJunctions` caller (`fabricengine/checkout.go`, `fabricengine/reconcile.go`) materialises a weft directory itself; they only repair or verify an existing junction.
 - PATTERN is **active** iff `_pattern/PATTERN.md` is present. A repo with no invariants yet (no `PATTERN.md`) simply has an empty `_pattern/`, the Go active-check returns false, and the directive marker renders empty everywhere. No special "PATTERN not configured" branch anywhere — the file's presence is the whole switch.
+- Activation also requires `_pattern` to be listed in `fabric`'s own weft pathspec, or PATTERN content written under `_pattern/` never leaves the machine (weft never commits it). A worktree initialised before this pathspec widened keeps its narrower pathspec and must be widened by hand — the wiring does not retroactively repair an already-initialised worktree's weft commit scope.
 
 ## Scope boundary — wiring now, content migration only at init
 
 **In scope now (buildable, `loom`-independent):**
 
-- the `{{.PatternDirective}}` marker in the code-touching templates,
+- the `{{.pattern_directive}}` marker in the code-touching templates,
 - the `stencil` optional-marker extension,
 - the Go active-check + shared directive helper,
-- `fabric` creating the `_pattern/` weft dir + junction.
+- `hubgeometry` declaring the `_pattern` junction record, `fabricengine`'s `seedLyxJunction` materialising the weft dir + junction, and `initengine.Init` calling it.
 
 **Explicitly NOT now — deferred to loomyard-init-via-lyx (the dogfooding transition):**
 
@@ -68,11 +69,13 @@ The wiring built now is inert in this repo until an actual `_pattern/PATTERN.md`
 
 ## Open questions
 
-- **Exact template set.** Enumerate precisely which templates are "code-touching" and get the marker (implementer / reviewer / planner / webster-fork / burler-round are the candidates); confirm discussion / judge are correctly excluded.
-- **Home of the active-check helper.** Which package owns the shared "directive-or-empty" function — `stencil` itself, `fabric` (it owns the junction), or the prompt-assembly layer in each engine.
-- **Directive wording.** Final text of the injected line; whether it varies by role (a reviewer vs an implementer).
-- **Detail-submap layout.** Whether `_pattern/<topic>/` has a fixed structure or is free-form per invariant.
-- **Optional-marker surface in `stencil`.** How an optional marker is declared — a naming convention, a separate values set, or an explicit allow-list passed to `Fill`.
+Four of the five questions this section originally posed are settled by the wiring task; one is not, and stays open rather than being silently dropped:
+
+- **Exact template set — settled.** Five templates carry the marker: builder's implementer prompt, burler's round prompt, webster's fork prompt, webster's Master prompt, and loom's plan prompt — the last two admitted by explicit clauses (a context-inheritance root whose in-session forks write code; the author of typed file-op instructions a later code-writing agent executes near-verbatim), not by the naive "reviewer/planner" guess this section originally listed. Discussion is excluded: it emits a decision record the Plan producer re-derives from, so a constraint miss there still has a gate after it.
+- **Home of the active-check helper — settled.** `internal/pattern`, a new leaf package — not `stencil` (which stays generic, no PATTERN-specific knowledge) and not `fabric` (which owns the junction, not the prompt-assembly-time check).
+- **Directive wording — settled.** Three role variants, as literal Go constants (`RoleImplementer`, `RoleReviewFix`, `RoleOrchestrator`), each an imperative checklist under its own `##` heading rather than a single sentence — the role varies the wording precisely because a reviewer's job (judge, then fix) differs from an implementer's (write) and from an orchestrator's (fork only, never edit).
+- **Optional-marker surface in `stencil` — settled.** An explicit allow-list passed as `FillOptional`'s third parameter (`optional []string`), not a naming convention: the caller declares which markers are optional for that specific fill, so the same template can be filled once with a marker required and once with it optional depending on the call site.
+- **Detail-submap layout — still open.** Whether `_pattern/<topic>/` has a fixed structure or is free-form per invariant. This is a question about PATTERN's own *content*, not its wiring, and belongs to the content migration this task explicitly defers to loomyard-init-via-lyx (see Scope boundary above) — nothing in the wiring batches settles it.
 
 ## Related
 
@@ -81,7 +84,7 @@ The wiring built now is inert in this repo until an actual `_pattern/PATTERN.md`
 - [host-visibility.md](host-visibility.md) — its `CONSTRAINTS.md`-equivalent half is superseded by PATTERN-in-weft.
 - [finalize.md](finalize.md) — merge-back forwards `_pattern` (like `_raddle`) via a narrowed weft pathspec; PATTERN content is genuinely hand/LLM-authored, so it is the weft-side document-driven conflict path's main real case.
 - [fabric-unified-view.md](fabric-unified-view.md) — where `_pattern` is listed among the weft junctions; note this is a *Someday* API-unification item, **not** a dependency — PATTERN needs only base `fabric` junction creation.
-- `internal/stencil` — the template-fill leaf the `{{.PatternDirective}}` marker rides on; the optional-marker extension lands here.
-- `internal/fabricengine` — owns `_pattern` junction creation, alongside `_lyx` / `_raddle`.
+- `internal/stencil` — the template-fill leaf the `{{.pattern_directive}}` marker rides on; the optional-marker extension lands here.
+- `internal/fabricengine` — materialises the `_pattern` junction (via `seedLyxJunction`), alongside `_lyx`; `_raddle` carries no junction today.
 - [raddle.md](raddle.md) — `_pattern`'s neighbor in `weft`; its `Overview.md` → module-docs shape is PATTERN's index-plus-detail precedent.
 - Root `CONSTRAINTS.md` + `CLAUDE.md` — the Millhouse mechanism PATTERN mirrors and (only at dogfooding) replaces.

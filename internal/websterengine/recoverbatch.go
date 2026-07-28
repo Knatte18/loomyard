@@ -213,7 +213,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.WorktreeRoot, deps.Config.SelfFixCap)
+	prompt, err := RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.Layout, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}

@@ -38,11 +38,11 @@ func TestWeftGeometryMethods(t *testing.T) {
 			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:    filepath.Join("/h", "feat-weft", "_lyx"),
-			wantWeftLyxDirFor: filepath.Join("/h", "x-weft", "_lyx"),
-			wantWeftRaddleDir: filepath.Join("/h", "feat-weft", "_raddle"),
-			wantHostLyxLink:   filepath.Join("/h", "x", "_lyx"),
-			wantHostLyxLinkHere: filepath.Join("/h", "feat", "_lyx"),
+			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "_lyx"),
+			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "_lyx"),
+			wantWeftRaddleDir:    filepath.Join("/h", "feat-weft", "_raddle"),
+			wantHostLyxLink:      filepath.Join("/h", "x", "_lyx"),
+			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "_lyx"),
 		},
 		{
 			name:                 "/h /h/main feat sub case",
@@ -53,11 +53,11 @@ func TestWeftGeometryMethods(t *testing.T) {
 			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:    filepath.Join("/h", "feat-weft", "sub", "_lyx"),
-			wantWeftLyxDirFor: filepath.Join("/h", "x-weft", "sub", "_lyx"),
-			wantWeftRaddleDir: filepath.Join("/h", "feat-weft", "sub", "_raddle"),
-			wantHostLyxLink:   filepath.Join("/h", "x", "sub", "_lyx"),
-			wantHostLyxLinkHere: filepath.Join("/h", "feat", "sub", "_lyx"),
+			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub", "_lyx"),
+			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "sub", "_lyx"),
+			wantWeftRaddleDir:    filepath.Join("/h", "feat-weft", "sub", "_raddle"),
+			wantHostLyxLink:      filepath.Join("/h", "x", "sub", "_lyx"),
+			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "sub", "_lyx"),
 		},
 		{
 			name:                 "/h /h/main feat sub/dir case",
@@ -68,11 +68,11 @@ func TestWeftGeometryMethods(t *testing.T) {
 			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "y-weft"),
-			wantWeftLyxDir:    filepath.Join("/h", "feat-weft", "sub/dir", "_lyx"),
-			wantWeftLyxDirFor: filepath.Join("/h", "y-weft", "sub/dir", "_lyx"),
-			wantWeftRaddleDir: filepath.Join("/h", "feat-weft", "sub/dir", "_raddle"),
-			wantHostLyxLink:   filepath.Join("/h", "y", "sub/dir", "_lyx"),
-			wantHostLyxLinkHere: filepath.Join("/h", "feat", "sub/dir", "_lyx"),
+			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub/dir", "_lyx"),
+			wantWeftLyxDirFor:    filepath.Join("/h", "y-weft", "sub/dir", "_lyx"),
+			wantWeftRaddleDir:    filepath.Join("/h", "feat-weft", "sub/dir", "_raddle"),
+			wantHostLyxLink:      filepath.Join("/h", "y", "sub/dir", "_lyx"),
+			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "sub/dir", "_lyx"),
 		},
 	}
 
@@ -207,8 +207,9 @@ func TestWeftGeometryAtMainWorktree(t *testing.T) {
 	}
 }
 
-// TestHostJunctions verifies that HostJunctions(slug) returns exactly one entry with
-// the correct Name, Link, and Target fields, and that no entry's Name equals _raddle.
+// TestHostJunctions verifies that HostJunctions(slug) returns exactly two entries, _lyx
+// first then _pattern, with the correct Name, Link, and Target fields for each, at
+// RelPath == "." and at a nested RelPath, and that no entry's Name equals _raddle.
 func TestHostJunctions(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -218,7 +219,7 @@ func TestHostJunctions(t *testing.T) {
 		relPath string
 		// Expected junction values
 		wantJunctionCount int
-		wantName          string
+		wantNames         []string
 	}{
 		{
 			name:              "prime-derived layout, root case",
@@ -226,8 +227,8 @@ func TestHostJunctions(t *testing.T) {
 			prime:             "/h/main",
 			slug:              "feat",
 			relPath:           ".",
-			wantJunctionCount: 1,
-			wantName:          "_lyx",
+			wantJunctionCount: 2,
+			wantNames:         []string{"_lyx", "_pattern"},
 		},
 		{
 			name:              "non-prime worktree layout, root case",
@@ -235,8 +236,8 @@ func TestHostJunctions(t *testing.T) {
 			prime:             "/h/main",
 			slug:              "other",
 			relPath:           ".",
-			wantJunctionCount: 1,
-			wantName:          "_lyx",
+			wantJunctionCount: 2,
+			wantNames:         []string{"_lyx", "_pattern"},
 		},
 		{
 			name:              "subpath case",
@@ -244,8 +245,8 @@ func TestHostJunctions(t *testing.T) {
 			prime:             "/h/main",
 			slug:              "feat",
 			relPath:           "sub",
-			wantJunctionCount: 1,
-			wantName:          "_lyx",
+			wantJunctionCount: 2,
+			wantNames:         []string{"_lyx", "_pattern"},
 		},
 	}
 
@@ -263,28 +264,35 @@ func TestHostJunctions(t *testing.T) {
 
 			// Verify count
 			if len(junctions) != tt.wantJunctionCount {
-				t.Errorf("HostJunctions(%q) returned %d entries; want %d", tt.slug, len(junctions), tt.wantJunctionCount)
+				t.Fatalf("HostJunctions(%q) returned %d entries; want %d", tt.slug, len(junctions), tt.wantJunctionCount)
 			}
 
-			// Verify the single entry
-			if len(junctions) > 0 {
-				j := junctions[0]
+			// Verify the _lyx entry (index 0)
+			lyxJunction := junctions[0]
+			if lyxJunction.Name != tt.wantNames[0] {
+				t.Errorf("HostJunctions(%q)[0].Name = %q; want %q", tt.slug, lyxJunction.Name, tt.wantNames[0])
+			}
+			wantLyxLink := layout.HostLyxLink(tt.slug)
+			if lyxJunction.Link != wantLyxLink {
+				t.Errorf("HostJunctions(%q)[0].Link = %q; want %q", tt.slug, lyxJunction.Link, wantLyxLink)
+			}
+			wantLyxTarget := layout.WeftLyxDirFor(tt.slug)
+			if lyxJunction.Target != wantLyxTarget {
+				t.Errorf("HostJunctions(%q)[0].Target = %q; want %q", tt.slug, lyxJunction.Target, wantLyxTarget)
+			}
 
-				if j.Name != tt.wantName {
-					t.Errorf("HostJunctions(%q)[0].Name = %q; want %q", tt.slug, j.Name, tt.wantName)
-				}
-
-				// Verify Link matches HostLyxLink(slug)
-				wantLink := layout.HostLyxLink(tt.slug)
-				if j.Link != wantLink {
-					t.Errorf("HostJunctions(%q)[0].Link = %q; want %q", tt.slug, j.Link, wantLink)
-				}
-
-				// Verify Target matches WeftLyxDirFor(slug)
-				wantTarget := layout.WeftLyxDirFor(tt.slug)
-				if j.Target != wantTarget {
-					t.Errorf("HostJunctions(%q)[0].Target = %q; want %q", tt.slug, j.Target, wantTarget)
-				}
+			// Verify the _pattern entry (index 1)
+			patternJunction := junctions[1]
+			if patternJunction.Name != tt.wantNames[1] {
+				t.Errorf("HostJunctions(%q)[1].Name = %q; want %q", tt.slug, patternJunction.Name, tt.wantNames[1])
+			}
+			wantPatternLink := layout.HostPatternLink(tt.slug)
+			if patternJunction.Link != wantPatternLink {
+				t.Errorf("HostJunctions(%q)[1].Link = %q; want %q", tt.slug, patternJunction.Link, wantPatternLink)
+			}
+			wantPatternTarget := layout.WeftPatternDirFor(tt.slug)
+			if patternJunction.Target != wantPatternTarget {
+				t.Errorf("HostJunctions(%q)[1].Target = %q; want %q", tt.slug, patternJunction.Target, wantPatternTarget)
 			}
 		})
 	}
