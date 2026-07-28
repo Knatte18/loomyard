@@ -25,11 +25,13 @@ PATTERN is that carrier: a weft-resident `_pattern/` directory whose index file 
 - Plumbing the computed directive into those five prompt-assembly sites.
 - New `hubgeometry` geometry surface for `_pattern`: `PatternDirName`, `PatternDir(baseDir)`, `PatternFile(baseDir)`, `PatternFileHere()`, `HostPatternLink(slug)`, `HostPatternLinkHere()`, `WeftPatternDir()`, `WeftPatternDirFor(slug)`; `_pattern` added to `IsReservedHubName`, to `HostJunctions()`, and to the enforcement test's geometry-token list.
 - Generalising `fabricengine`'s unwire path from its hardcoded single-`_lyx` shape (`unseedLyxJunction`, `UnwireResult.JunctionRemoved`) to a per-junction shape, since `_pattern` is the first second junction.
-- Generalising `fabricengine/reconcile.go`'s junction health check from its `_lyx`-only form to the same per-junction loop.
+- Generalising the junction **health check** from its `_lyx`-only form to a per-junction loop at all three of its sites — `fabricengine/reconcile.go:146`, `fabricengine/status.go:148`, `fabricengine/drift.go:73` — plus `checkJunctionHealth`'s hardcoded reason strings.
+- Generalising `fabricengine`'s `removeHostJunction` (`weftwiring.go:124`) so `lyx fabric remove` tears down every junction, not only `_lyx`.
 - Materialising a junction's weft-side target inside `seedLyxJunction` itself, so every `WireJunctions` caller — not just `Init` — leaves a resolvable junction behind.
 - Extending `fabricengine/status.go`'s host-pollution scan to `_pattern`.
-- Adding `_pattern` to fabric's default weft `pathspec`, so PATTERN content is actually committed and pushed.
+- Adding `_pattern` to fabric's default weft `pathspec`, so PATTERN content is actually committed and pushed — **and** making `CommitWeft` tolerate a pathspec entry that currently matches nothing, without which the widened default silently stops every weft commit.
 - `initengine.Init` creating the `_pattern/` directory through the junction, exactly as it does for `_lyx`; `initengine.undo` leaving weft `_pattern/` content untouched.
+- Pinned CLI output-shape changes in `internal/initcli` for the now-plural junction set.
 - Docs in the same commit: `CONSTRAINTS.md` (new Pattern Leaf Invariant; `_pattern` added to the Hub Geometry Invariant's token list), `docs/overview.md` module table, and `manifest/designs/pattern.md` corrections.
 
 **Out:**
@@ -97,6 +99,7 @@ PATTERN is that carrier: a weft-resident `_pattern/` directory whose index file 
   - [ ] If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your review instead of silently picking one.
   ```
 
+- **The pointer stays the relative `_pattern/PATTERN.md`, deliberately.** The Go-side active-check is Layout-anchored (`WorktreeRoot+RelPath`, per call-site-plumbing) while the text the agent reads is a bare relative path resolved against the agent pane's own cwd (`layout.Cwd`). Those two anchors can differ in a nested hub. The relative form is kept anyway, because it matches the existing prompt idiom throughout these templates — they already say `_lyx/plan/`, `00-overview.md` and similar without interpolating absolute paths, and an agent running anywhere but its own worktree cwd would find those broken too. Interpolating the resolved absolute path would make the directive marker's value vary per worktree, which defeats the fixed-string tests and buys robustness against a case no other prompt guards. Pinned by a test asserting the literal pointer.
 - **The directive is never gated on target type.** The burler round's target is often prose rather than code, but it is injected there all the same. Loomyard has no mechanism for classifying a target as code-vs-prose, and a file-extension heuristic would be new, fragile logic whose misclassification silently removes the constraints. A prose target carrying a pointer to the invariants is mild noise, not harm — and invariants can govern prose (this repo's own one-line-per-paragraph markdown rule is exactly such a constraint).
 - The directive **injects a pointer, never the constraints inline** — the agent reads the file itself, so prompt size is constant regardless of how large PATTERN grows.
 - **Rejected — one role-invariant sentence:** simpler, but demonstrably weaker as an instruction, and cannot express the review-fix round's blocking obligation.
@@ -148,12 +151,51 @@ PATTERN is that carrier: a weft-resident `_pattern/` directory whose index file 
 - **Rejected — add the junction but leave `UnwireResult` single-bool:** smaller diff, but knowingly leaves the unwire path wrong for the second junction, against the code's own written instruction.
 - **Rejected — a count (`JunctionsRemoved int`):** loses the identity the operator needs.
 
-### reconcile-health-check
+### junction-health-check
 
-- **Decision:** generalise `fabricengine`'s junction health check in the same commit. `reconcile.go:146-148` today checks only `hostLayout.HostLyxLinkHere()` against `hostLayout.WeftLyxDir()`; it becomes a loop over `l.HostJunctions(slug)`, unhealthy if *any* junction is missing or mis-pointed.
-- **Rationale:** without this, a missing or mis-pointed `_pattern` junction makes `reconcile` report `ReconcileActionAlreadyHealthy` and never repair it — a repair path that reports success while leaving the fault in place. `WireJunctions` is already idempotent and already handles both the missing and wrong-target cases for every junction, so the repair action itself needs no change; only the detection does.
+- **Decision:** generalise the junction health check at **all three** of its sites, in the same commit — it is not reconcile-only:
+  - `reconcile.go:146-148` — `HostLyxLinkHere()` vs `WeftLyxDir()`, gating repair.
+  - `status.go:148-150` — the same pair, feeding `PairStatus.JunctionHealthy` / `JunctionReason` and folded into the in-sync verdict.
+  - `drift.go:73-94` — the same pair again, open-coded rather than calling `checkJunctionHealth`, consumed by loom's preflight.
+  Each becomes a loop over `l.HostJunctions(slug)`: unhealthy if **any** junction is missing, not a link, or mis-pointed.
+- **`PairStatus` keeps its shape.** `JunctionHealthy bool` and `JunctionReason string` stay singular — first-unhealthy-wins, with the reason string naming *which* junction. No CLI output-shape change for `status`, and the information an operator needs is in the reason.
+- **`checkJunctionHealth`'s reason strings are parameterised by junction name.** They hardcode `"host _lyx junction missing"` and `"host _lyx is not a junction"` (`reconcile.go:318`, `:326`) today; they become `"host <name> junction missing"` / `"host <name> is not a junction"`. **`drift.go:92` deliberately duplicates the second string verbatim** so that status, reconcile and `PairInSync` describe the same fault identically — its own comment says so — so both sites must be changed together or that alignment silently breaks.
+- **Rationale:** without this, a missing or mis-pointed `_pattern` junction makes `reconcile` report `ReconcileActionAlreadyHealthy`, `status` report the pair in-sync, and loom's preflight pass — three separate paths reporting success while the fault stands. `WireJunctions` is already idempotent and already repairs every junction, so only detection is blind.
 - **Note:** `ReconcileActionJunctionRepointed`'s `Detail` string names a single `hostLink → weftLyxDir` pair today and must be widened to name whichever junctions were repaired.
-- **Rejected — defer with an explicit statement:** shipping a second junction alongside a health check that structurally cannot see it is the kind of half-wiring the Hub Geometry Invariant exists to prevent.
+- **Rejected — making `PairStatus` per-junction:** richer, but breaks the output shape for every consumer to say something the reason string already conveys.
+- **Rejected — leaving `status`/`drift` `_lyx`-only:** shipping a second junction alongside three health checks that structurally cannot see it is the kind of half-wiring the Hub Geometry Invariant exists to prevent.
+
+### remove-tears-down-every-junction
+
+- **Decision:** generalise `fabricengine.removeHostJunction` (`weftwiring.go:124-129`) from its `HostLyxLink(slug)`-only form to a loop over `l.HostJunctions(slug)`.
+- **Rationale:** `remove.go:91` calls it as step (5) of `lyx fabric remove`, and the step's own doc comment (`remove.go:38-39`) explains exactly why it exists: *"fslink.RemoveLinksIn only scans immediate children and misses nested `_lyx` at `RelPath != "."`; this catches subpath junctions."* Leaving it `_lyx`-only reintroduces precisely the bug that comment documents, for `_pattern`: at `RelPath != "."` the root-level safety net at step (6) never sees the `_pattern` junction, and `remove` deletes a host worktree with a live junction still inside it.
+- **Rejected — exempting `remove`:** the exemption would be invisible in the code and would resurface as a stale-junction bug.
+
+### weft-pathspec-tolerance
+
+- **Decision:** `fabricengine.CommitWeft` filters the pathspec down to entries that currently match something before staging, so an entry matching nothing is skipped rather than failing the whole `git add`. This lands in **`internal/fabricengine/weftgit.go`, deliberately not in `internal/gitrepo`** — keeping `gitrepo` untouched is what preserves this task's parallel-safety with the concurrent `native-clients` task.
+- **Rationale — this is the most dangerous consequence of the widened default, and it is not hypothetical.** `git add -- _lyx _pattern` fails *in its entirety* when `_pattern` matches nothing; `gitrepo.StageAndCommit` surfaces that, and `CommitWeft` (`weftgit.go:276-284`) deliberately swallows `"did not match any files"` into `("", false, nil)` — **no error**. So the moment the default pathspec widens, every weft commit in a worktree without PATTERN content stops happening, silently, taking `_lyx` down with it.
+- **Materialisation does not rescue this.** Git tracks files, not directories: an existing-but-empty `weft/_pattern/` still matches no pathspec. And an empty `_pattern/` is the **normal, expected state for this entire task**, since content migration is explicitly out of scope. Without this tolerance the wiring would break weft committing in every worktree it touched — the widened pathspec and the tolerance must land together or neither should land.
+- **Rejected — one `git add` per pathspec entry with per-path tolerance:** same effect, more git invocations, and it moves the tolerance decision into a loop rather than stating it once.
+- **Rejected — widening the pathspec dynamically only once `PATTERN.md` exists:** makes the committed pathspec depend on filesystem state at run time; fragile and hard to reason about when it misbehaves.
+
+### pre-existing-host-pattern-directory
+
+- **Decision:** a real (non-junction) `_pattern/` directory already present in the host repo continues to be **refused**, never adopted or moved. What changes is the message: `seedLyxJunction`'s error (`junction.go:113-117`) is reworded to name the actual remedy, and the remedy is documented in fabric's module doc and the affected `Short`/`Long`.
+- **Rationale:** PATTERN content is described throughout as the host repo's hand-authored invariants, which makes "create `_pattern/` in the repo and start writing" the natural operator mistake. Today that produces *"host repo already contains a real `_pattern` at …; it predates weft — migrate via the hub-creator"* and hard-fails `lyx init`, `lyx fabric checkout` **and** `lyx fabric reconcile` for that worktree, pointing at a tool that does not address this case. The remedy to state: move the content into the weft `_pattern/` directory (or remove the host directory) and re-run `lyx init`, which then creates the junction.
+- **Rejected — auto-migrating the host directory into weft:** convenient, but fabric never moves or deletes user content; `seedLyxJunction`'s refusal is a deliberate host-pristine guard and this task must not be the one that erodes it.
+- **Rejected — leaving the wording as-is:** the operator hits a hard failure whose stated remedy does not apply to their situation.
+
+### result-shapes
+
+- **Decision:** pin the CLI-observable shapes now, since three of them change.
+  - `fabricengine.UnwireResult.JunctionRemoved bool` → **`JunctionsRemoved []string`** (already decided under unwire-generalisation).
+  - `initengine.UndoResult.LyxJunction string` → **`JunctionsRemoved []string`**, emitted by `internal/initcli` under the JSON key **`junctions_removed`**, replacing `lyx_junction` (`initcli.go:120`). `WeftContent` is unchanged and continues to describe `_lyx` only, per undo-leaves-pattern-content.
+  - `initengine.InitResult` gains **`PatternDir string`** alongside `LyxDir string`, carrying the same `"created"` / `"exists"` vocabulary, so `lyx init` reports what it actually did.
+- **Change sites named explicitly:** `internal/initcli/initcli.go:120` (the emitted key) and `internal/initcli/initcli_test.go:74` (which pins it).
+- **This is a breaking change to `lyx init --undo`'s JSON output.** Accepted: the key would otherwise have to be repeated per junction, and it under-reports today. The CLI/Cobra Invariant makes the corresponding help text a review obligation.
+- **Rejected — keeping `lyx_junction` and adding `pattern_junction`:** non-breaking, but does not scale to a third junction and duplicates a concept that is now genuinely a list.
+- **Rejected — leaving the shape alone:** under-reports what undo did, on a command whose whole purpose is reporting what it undid.
 
 ### weft-target-materialisation
 
@@ -227,11 +269,15 @@ PATTERN is that carrier: a weft-resident `_pattern/` directory whose index file 
 
 The unwire side is asymmetric and is the actual work: `unseedLyxJunction` (`junction.go:191`) hardcodes the single `_lyx` junction, and `UnwireResult.JunctionRemoved` is a single bool to match; on a junction error it returns a zero result (`junction.go:163`), which becomes inaccurate once one junction may already have been removed. `unseedGitExclude` (line 254) already iterates correctly.
 
-`reconcile.go:146-148` health-checks `hostLayout.HostLyxLinkHere()` against `hostLayout.WeftLyxDir()` only, then repairs via the already-generic `WireJunctions` — so detection is `_lyx`-only while repair is not.
+**The junction health check is open-coded in three places, all `_lyx`-only.** `checkJunctionHealth(hostLink, weftLyxDir)` lives at `reconcile.go:313` and is called from `reconcile.go:148` (gating repair) and `status.go:150` (feeding `PairStatus.JunctionHealthy`/`JunctionReason` and the in-sync verdict). `drift.go:73-94` does not call it at all — it re-implements the same lstat/IsLink sequence inline for loom's preflight, and `drift.go:92` **deliberately repeats the literal `"host _lyx is not a junction"`** so status, reconcile and `PairInSync` describe that fault identically (its own comment says so). Repair, by contrast, goes through the already-generic `WireJunctions` — so detection is narrower than repair at all three sites.
+
+`removeHostJunction` (`weftwiring.go:124-129`) is `HostLyxLink(slug)`-only and is called as step (5) of `Remove` (`remove.go:91`). Step (6) is `fslink.RemoveLinksIn(target)`, a **root-level-only** safety net — which is exactly why step (5) exists, per `remove.go:38-39`.
 
 `status.go:199` scans the host index with `git ls-files -- _lyx _raddle`; `_lyx` matches offer an automated restore, `_raddle` matches are report-only *because* no junction exists for it. Once `_pattern` has a junction, its pollution should be treated like `_lyx` (restorable), not like `_raddle`.
 
 `template.yaml:2` is fabric's config template and carries `pathspec: _lyx  # directory path(s) relative to worktree root, whitespace-separated`. This is the single place the default weft-staging pathspec is declared.
+
+**`CommitWeft`'s no-match tolerance is whole-pathspec, not per-entry.** `weftgit.go:276-284` catches `"did not match any files"` from `gitrepo.StageAndCommit` and converts it to `("", false, nil)` — a silent no-op, by design, for "nothing of ours to stage". With a single-entry pathspec that is correct. With `_lyx _pattern` it is a trap: `git add` fails as a unit when *any* entry matches nothing, so an empty `_pattern` suppresses the `_lyx` commit too, and the swallow hides it. Git tracks files, not directories, so a materialised-but-empty `weft/_pattern/` still matches nothing.
 
 ### `internal/initengine` — the actual junction caller
 
@@ -266,7 +312,7 @@ There is **no shared prompt-assembly layer**; each engine builds its own `map[st
 From `CONSTRAINTS.md`, in force for this task:
 
 - **Hub Geometry Invariant.** `_pattern` becomes a geometry token owned solely by `internal/hubgeometry`. No other package may use the literal in a path-construction context (a `filepath.Join` argument, a `+` operand, or a string `const` value). Machine-enforced by `internal/hubgeometry/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) on every `go test`; the token must be added to that test's list in the same commit as the accessors. Geometry is structural, never config- or env-overridable — there is no "pattern dir name" config key.
-- **CLI / Cobra Invariant.** This task adds no new CLI module and no new subcommand, so the `Command()`/`RunCLI` seam is untouched. But the observable behaviour of `lyx init`, `lyx init --undo`, `lyx fabric reconcile` and `lyx fabric status` all change — init creates a second junction and a `_pattern/` directory, undo removes a second junction while deliberately preserving `_pattern` content, reconcile repairs a second junction, status reports a new pollution class — so every affected `Short`/`Long` must be re-read and updated. Help accuracy is a review-blocking obligation. `UndoResult` and `UnwireResult` are CLI-observable output shapes, so their JSON envelopes change too. Errors stay on the `internal/output` envelope.
+- **CLI / Cobra Invariant.** This task adds no new CLI module and no new subcommand, so the `Command()`/`RunCLI` seam is untouched. But the observable behaviour of `lyx init`, `lyx init --undo`, `lyx fabric reconcile`, `lyx fabric status` and `lyx fabric remove` all change — init creates a second junction and a `_pattern/` directory, undo removes a second junction while deliberately preserving `_pattern` content, reconcile and status detect and repair a second junction, remove tears one down — so every affected `Short`/`Long` must be re-read and updated. Help accuracy is a review-blocking obligation, and the reworded host-pristine error for a pre-existing `_pattern/` directory is part of it. `lyx init --undo`'s JSON output changes shape (`lyx_junction` → `junctions_removed`), which is a breaking output change and must be called out in the help text. Errors stay on the `internal/output` envelope.
 - **lyxtest Leaf Invariant.** `internal/lyxtest` must not gain a PATTERN helper (see the testing decision below); it stays a leaf importing only stdlib and `internal/hubgeometry`.
 - **Documentation Lifecycle.** This task adds a module (`internal/pattern`) and changes observable CLI behaviour, so `docs/overview.md`'s module table and `CONSTRAINTS.md` update **in the same commit**. `manifest/designs/pattern.md` is corrected in the same commit too (see below). `manifest/roadmap.md` moves only if the PATTERN item is completed or added — the wiring landing is a roadmap-relevant event for the Planned `PATTERN.md` item.
 
@@ -335,10 +381,16 @@ New package, new test file, using `t.TempDir()` per the fixture decision. Scenar
 - Idempotency: wiring twice is a no-op; unwiring an already-unwired worktree is the legitimate no-op case, not an error, and reports an empty `JunctionsRemoved`.
 - The existing refusal behaviours still hold **per junction**: a real (non-link) directory at either host path is refused; a dangling or wrong-target link is re-pointed.
 - **Materialisation:** `WireJunctions` called with no weft-side `_pattern/` present creates it, so the junction resolves immediately. Then a second `WireJunctions` on the same worktree succeeds rather than erroring at `junction.go:83` — the checkout/reconcile path that is broken today.
-- **Reconcile health check:** a healthy `_lyx` with a missing or mis-pointed `_pattern` reports unhealthy and is repaired — **not** `ReconcileActionAlreadyHealthy`. This is the regression guard for the `_lyx`-only detection.
+- **Health check, one case per site — all three must be covered separately, since `drift.go` does not share `checkJunctionHealth`'s code path:**
+  - `reconcile`: healthy `_lyx` + missing or mis-pointed `_pattern` ⇒ repaired, **not** `ReconcileActionAlreadyHealthy`.
+  - `status`: the same state ⇒ `JunctionHealthy` false, `JunctionReason` naming `_pattern`, and the pair not reported in-sync.
+  - `drift`: the same state ⇒ drifted, with the reason string matching `checkJunctionHealth`'s wording for that fault (the alignment `drift.go:92` exists to preserve).
+- **`remove`:** a worktree with both junctions wired at `RelPath != "."` — after `Remove`, no junction survives. At `RelPath == "."` the root-level safety net masks the bug, so the nested case is the one that matters.
+- **Weft-pathspec tolerance — the regression guard for the whole task:** with `pathspec: _lyx _pattern` and **no files under `_pattern`** (an existing but empty directory, and separately a wholly absent one), a `_lyx` change still commits. Without this test the failure is invisible: `CommitWeft` returns no error either way, so only asserting that the commit actually happened catches it.
 - Partial state: `_lyx` wired but `_pattern` not yet (the upgrade path for a worktree initialised before this change) — wiring must complete without error.
 - `status.go`'s pollution scan reports a tracked `_pattern/` path and offers the same restore remedy as `_lyx`.
-- Existing tests that assert a one-element `HostJunctions` or a single-bool `UnwireResult` will fail and must be updated, not deleted: `junction_repoint_test.go`, `reconcile_stale_registration_test.go`, and the `initengine` undo tests are the likely sites.
+- A pre-existing **real** `_pattern/` directory in the host repo is refused, with the reworded error naming the remedy.
+- Existing tests that assert a one-element `HostJunctions` or a single-bool `UnwireResult` will fail and must be **updated, not deleted**. Certain breakages, verified: `internal/hubgeometry/weft_test.go:212-290` (`wantJunctionCount: 1`, and index-`[0]` access into the slice) and `internal/hubgeometry/hubgeometry_test.go:590-602` (`want 1`). Likely further sites: `fabricengine/junction_repoint_test.go`, `fabricengine/reconcile_stale_registration_test.go`, and the `initengine` undo tests.
 
 ### `internal/initengine`
 
@@ -347,6 +399,12 @@ New package, new test file, using `t.TempDir()` per the fixture decision. Scenar
 - `Init --undo` removes both junctions and both exclude entries, and `UndoResult` names both.
 - **`Init --undo` leaves weft `_pattern/` content in place** while clearing `_lyx` — seed a `PATTERN.md`, run undo, assert the file survives and that no deletion of it was committed. This is the destructive-behaviour guard; it must exist.
 - An `Init` on a worktree wired before this change adds `_pattern` without disturbing `_lyx`.
+- `InitResult.PatternDir` reports `"created"` on first run and `"exists"` on the second.
+
+### `internal/initcli`
+
+- `lyx init --undo` emits `junctions_removed` as a list naming both junctions; the `lyx_junction` key is gone. `initcli_test.go:74` is updated, not deleted.
+- `lyx init` reports the `_pattern` directory status.
 
 ### Weft persistence
 
@@ -393,3 +451,12 @@ Each of `builderengine`, `burlerengine`, `websterengine` and `loomengine` has a 
 - **Q:** The burler round both reviews *and* fixes, so a reviewer-only checklist omits the obligation not to write a violation in part B. **A:** Give burler a single combined variant. This collapses the role set to `RoleImplementer` and `RoleReviewFix` — a pure reviewer variant would have had no user, since burler is the only reviewing template in the set.
 - **Q:** Should the directive be gated on whether burler's target is code rather than prose? **A:** No. Loomyard has no target-type classification, a file-extension heuristic would be new fragile logic whose misclassification silently drops the constraints, and invariants can govern prose anyway.
 - **Q:** Should burler's round prompt be split into separate review and fixer templates, with the round pointed at the fixer file when it reaches part B? **A:** Good idea, deferred — filed as [issue #105](https://github.com/Knatte18/loomyard/issues/105). The real argument for it is contamination (part B's "fix everything you found" sits in context during part A and can suppress findings), and webster's `Read this file and follow it exactly: <path>` fork idiom is the in-repo precedent. But it restructures burler's prompt architecture independently of PATTERN, so folding it in would couple two unrelated changes. The combined `RoleReviewFix` variant divides cleanly along that seam later.
+
+### Review round 2 (2026-07-28)
+
+- **Q:** The junction health check is `_lyx`-only in two more places round 1 never named — `status.go:148` and `drift.go:73`. Extend, or document the exemption? **A:** Extend all three, and parameterise `checkJunctionHealth`'s hardcoded reason strings by junction name. `PairStatus` keeps its singular `JunctionHealthy`/`JunctionReason` shape — first-unhealthy-wins, reason names which — so `status`'s output shape does not change. Note `drift.go` re-implements the check inline rather than calling `checkJunctionHealth`, and duplicates one reason string verbatim on purpose, so the two must move together.
+- **Q:** `lyx fabric remove` calls an `_lyx`-only `removeHostJunction`, leaving a nested `_pattern` junction behind. **A:** Generalise it. The step's own comment (`remove.go:38-39`) exists precisely because the root-level safety net misses nested junctions at `RelPath != "."`; leaving it narrow reintroduces the documented bug for `_pattern`.
+- **Q:** With `pathspec: _lyx _pattern` and nothing under `_pattern`, `git add` fails as a unit and `CommitWeft` swallows it — so `_lyx` silently stops committing too. **A:** Make `CommitWeft` filter the pathspec to entries that match something, in `fabricengine/weftgit.go` and **not** in `internal/gitrepo` (which would forfeit parallel-safety with `native-clients`). This is not an edge case: git tracks files rather than directories, so a materialised-but-empty `_pattern/` matches nothing, and an empty `_pattern/` is the normal state for this whole task since content migration is out of scope. The widened pathspec and this tolerance must land together or neither should land.
+- **Q:** An operator who hand-creates `_pattern/` in the host repo hits `seedLyxJunction`'s host-pristine refusal, which hard-fails init, checkout and reconcile and points at the hub-creator, which does not address it. **A:** Keep refusing — fabric never moves or deletes user content — but reword the error to name the real remedy (move the content into weft, or remove the host directory, then re-run `lyx init`) and document it.
+- **Q:** What are the concrete result shapes? **A:** `UndoResult.LyxJunction string` → `JunctionsRemoved []string`, emitted as `junctions_removed` and replacing `lyx_junction` at `initcli.go:120` (with `initcli_test.go:74` updated); `InitResult` gains `PatternDir string`. Breaking change to `lyx init --undo`'s JSON, accepted — the alternative repeats the key per junction and does not scale.
+- **Q:** The directive's pointer is the relative `_pattern/PATTERN.md`, but the active-check resolves `WorktreeRoot+RelPath`; the agent's cwd is `layout.Cwd`, so the anchors can disagree in a nested hub. **A:** Keep the relative pointer deliberately. It matches the existing prompt idiom (`_lyx/plan/`, `00-overview.md`), and interpolating an absolute path would make the marker value vary per worktree, defeating the fixed-string tests to guard a case no other prompt guards.
