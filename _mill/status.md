@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-gogit-handle
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r4  '2026-07-28T10:06:50Z'
 plan-fix-r5  '2026-07-28T10:22:03Z'
 planned  '2026-07-28T10:22:16Z'
 implementing  '2026-07-28T10:29:07Z'
+approved-gogit-handle  '2026-07-28T11:24:47Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-07-28T10:29:07Z'
 ```yaml
 batches:
   - name: gogit-handle
-    state: running
+    state: approved
     implementer_session: 74ca48e2-6f77-4579-bbae-3304655890eb
     start_sha: d3c8828308d1a7712dbfd57b03906a22a1853233
+    commit_sha: a29a5ead4d4a6ed370559c25928c5fa613d3014d
   - name: githubclient
     state: pending
   - name: parity-oracle
