@@ -55,6 +55,7 @@ Batch-local decision: both guards live in `cmd/lyx/`, alongside the repo's other
   - `tools/sandbox/pathresolve_guard_test.go`
 - **Edits:**
   - `cmd/lyx/tierpurity_test.go`
+  - `internal/githubclient/githubclient_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
