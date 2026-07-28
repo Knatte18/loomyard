@@ -5,13 +5,16 @@
 package gitrepo
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
-	"strings"
 	"sync"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/utils/merkletrie"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -59,15 +62,12 @@ type Repo struct {
 
 	// goGitMu guards goGitRepo, goGitOK, and lastPackFingerprint, and is the
 	// single lock every go-git-backed call on this Repo coordinates through —
-	// see gogit.go. No migrated read calls goGit yet in this batch (that
-	// starts in batch 3), so golangci-lint's default (untagged) build sees no
-	// production caller for any of these four fields; each carries a trailing
-	// nolint for that reason, matching gitnativepoc/read.go's identical
-	// hasUnpushed precedent — gogit_test.go's integration-tagged coverage is
-	// the only caller until then.
-	goGitMu sync.RWMutex //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+	// see gogit.go. CurrentSHA, SHAExists, CurrentBranch, and
+	// ChangedFilesSince are its first production callers (batch 3); batch 4
+	// migrates the rest of the package's local reads onto it.
+	goGitMu sync.RWMutex
 	// goGitRepo is the cached go-git handle, valid only when goGitOK is true.
-	goGitRepo *git.Repository //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+	goGitRepo *git.Repository
 	// goGitOK records that goGitRepo was populated by a *successful* open.
 	// Deliberately not a sync.Once: only a successful open may be cached, so a
 	// Repo constructed (via New) before the checkout exists at its path can
@@ -75,11 +75,11 @@ type Repo struct {
 	// New's documented no-I/O, cannot-fail contract says nothing about the
 	// checkout existing yet, and a permanently-cached failure would break
 	// that.
-	goGitOK bool //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+	goGitOK bool
 	// lastPackFingerprint is the pack fingerprint recorded at the go-git
 	// handle's last index (re)build, read and written only inside the
 	// fingerprint-gated lookup helper's write-locked sequence — see gogit.go.
-	lastPackFingerprint string //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+	lastPackFingerprint string
 }
 
 // New returns a Repo wrapping the git checkout at path. New performs no
@@ -101,25 +101,32 @@ func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) 
 // CurrentSHA returns the SHA of the checkout's current HEAD commit. It
 // returns ErrNoCommits (checkable via errors.Is) when the repository has no
 // commits yet — an unborn HEAD is not a genuine failure, just an empty
-// history — and a plain error, including git's stderr, for any other
-// non-zero git exit or spawn failure.
+// history — and a plain wrapped error for any other failure, including a
+// failed handle open. Unborn-HEAD detection is now typed
+// (plumbing.ErrReferenceNotFound, from go-git's Head), not message-matched
+// against git's English stderr as it was before this method migrated to
+// go-git — a real robustness gain, since it no longer depends on git's
+// locale (see the package doc's locale paragraph). This is a Head() ref
+// read, not an object lookup, so it does not route through the
+// fingerprint-gated lookup helper: go-git never caches refs, so there is
+// nothing on disk for the gate to protect here — every call reads fresh.
 func (r *Repo) CurrentSHA() (string, error) {
-	stdout, stderr, code, err := r.run("rev-parse", "HEAD")
+	repo, err := r.goGit()
 	if err != nil {
-		// A spawn failure (git not found, etc.) is not something CurrentSHA
-		// can interpret further; surface it unchanged.
 		return "", err
 	}
-	if code != 0 {
-		// An unborn HEAD reports as a non-zero exit with one of these two
-		// stderr shapes depending on git version; treat both as ErrNoCommits
-		// rather than a generic failure so callers can errors.Is() against it.
-		if strings.Contains(stderr, "ambiguous argument 'HEAD'") || strings.Contains(stderr, "unknown revision") {
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	head, err := repo.Head()
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
 			return "", ErrNoCommits
 		}
-		return "", fmt.Errorf("gitrepo: rev-parse HEAD: %s", stderr)
+		return "", fmt.Errorf("gitrepo: resolve HEAD: %w", err)
 	}
-	return strings.TrimSpace(stdout), nil
+	return head.Hash().String(), nil
 }
 
 // StageAndCommit stages exactly the given files (never a wildcard/`add -A`
@@ -249,35 +256,98 @@ func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err er
 }
 
 // SHAExists reports whether sha names a commit reachable in this Repo. A
-// git failure (spawn error or non-zero exit — a missing/garbage SHA is a
-// non-zero exit here) is swallowed into false rather than surfaced as an
-// error: callers treat "false" as a staleness signal ("when in doubt,
-// rebuild") regardless of whether the SHA was simply absent or the check
-// itself failed, so distinguishing the two would buy nothing. A non-hex sha
-// is folded into the same false for the same reason, without spawning git.
+// git failure (a failed handle open, or any other go-git error) is
+// swallowed into false rather than surfaced as an error: callers treat
+// "false" as a staleness signal ("when in doubt, rebuild") regardless of
+// whether the SHA was simply absent or the check itself failed, so
+// distinguishing the two would buy nothing. A non-hex sha is folded into
+// the same false for the same reason, without ever opening the handle. The
+// lookup peels to a commit exactly like the CLI's `^{commit}` suffix did: a
+// tree or blob sha reports false, never true — see commitByHash.
 func (r *Repo) SHAExists(sha string) bool {
 	if !validSHA(sha) {
 		return false
 	}
-	_, _, code, err := r.run("rev-parse", "--verify", "--quiet", sha+"^{commit}")
-	return err == nil && code == 0
+
+	repo, err := r.goGit()
+	if err != nil {
+		return false
+	}
+
+	_, err = lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return commitByHash(repo, sha)
+	})
+	return err == nil
+}
+
+// commitByHash resolves sha — already validated by validSHA as a plain
+// abbreviated-or-full hex object name — to its commit object, peeling
+// exactly like `git rev-parse <sha>^{commit}`: a tree or blob hash reports
+// plumbing.ErrObjectNotFound, never a successful non-commit result.
+//
+// A full-length hash is decoded directly and looked up via CommitObject,
+// which surfaces the storer's own plumbing.ErrObjectNotFound on a miss —
+// the exact signal lookupObjectRetrying's fingerprint gate reacts to.
+// Repository.ResolveRevision cannot be used for that path: on any miss
+// (object absent, or present but not a commit) it always translates the
+// storer's plumbing.ErrObjectNotFound into its own
+// plumbing.ErrReferenceNotFound, which would make the fingerprint gate
+// structurally unreachable from here. ResolveRevision is used only as an
+// abbreviated-hash prefix-expansion fallback, translating its not-found
+// back into plumbing.ErrObjectNotFound for the same reason.
+func commitByHash(repo *git.Repository, sha string) (*object.Commit, error) {
+	if len(sha) == hex.EncodedLen(len(plumbing.ZeroHash)) {
+		return repo.CommitObject(plumbing.NewHash(sha))
+	}
+
+	hash, err := repo.ResolveRevision(plumbing.Revision(sha))
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return nil, plumbing.ErrObjectNotFound
+		}
+		return nil, err
+	}
+	return repo.CommitObject(*hash)
 }
 
 // CurrentBranch returns the short name of the branch HEAD currently points
 // at (e.g. "main"), used by the integration bisect to capture the branch it
 // must restore to BEFORE detaching HEAD for a candidate checkout. It returns
-// a wrapped error when HEAD is detached (or on any other git failure) rather
+// a wrapped error when HEAD is detached (or on any other failure) rather
 // than an empty string, since a caller that failed to capture a branch name
 // has no safe ref to hand RestoreBranch afterwards.
+//
+// This reads plumbing.HEAD unresolved (Repository.Reference with resolved =
+// false), never Repository.Head, which resolves HEAD and would therefore
+// succeed even on a detached HEAD — precisely the one shape this method
+// must reject. Because the read is unresolved it also returns the branch
+// name on an unborn HEAD (no commits yet), matching
+// `git symbolic-ref --short HEAD`, which exits 0 and prints the name even
+// before the first commit; that is intentional, not a missed edge case, so
+// no existence check is added here. The read touches no object, so it does
+// not route through the fingerprint-gated lookup helper — the read lock is
+// taken explicitly instead, held for the whole call, per goGit's contract.
+//
+// This method touches exactly one unresolved reference, so it passes even
+// on a handle broken in every other way; it must never be used as a smoke
+// test for the migration.
 func (r *Repo) CurrentBranch() (string, error) {
-	stdout, stderr, code, err := r.run("symbolic-ref", "--short", "HEAD")
+	repo, err := r.goGit()
 	if err != nil {
 		return "", err
 	}
-	if code != 0 {
-		return "", fmt.Errorf("gitrepo: symbolic-ref --short HEAD: %s", stderr)
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	head, err := repo.Reference(plumbing.HEAD, false)
+	if err != nil {
+		return "", fmt.Errorf("gitrepo: read HEAD reference: %w", err)
 	}
-	return strings.TrimSpace(stdout), nil
+	if head.Type() != plumbing.SymbolicReference {
+		return "", fmt.Errorf("gitrepo: HEAD is detached at %s, not on a branch", head.Hash())
+	}
+	return head.Target().Short(), nil
 }
 
 // CheckoutDetached moves HEAD to sha without updating any branch ref,
@@ -321,32 +391,88 @@ func (r *Repo) RestoreBranch(ref string) error {
 // SHA-to-SHA determinism. A missing or invalid sha is a genuine failure
 // here (unlike SHAExists' bool-swallowing posture): callers are expected to
 // check SHAExists first and treat a missing SHA as staleness. A non-hex sha
-// returns ErrInvalidSHA (checkable via errors.Is) without spawning git.
+// returns ErrInvalidSHA (checkable via errors.Is) without ever opening the
+// handle.
+//
+// The diff is computed via object.DiffTree, never Tree.Diff or
+// DiffTreeWithOptions with DefaultDiffTreeOptions: both of those perform
+// rename detection by default (since go-git v5.1.0), which would fold a
+// rename into a single entry and lose the old path — exactly what the CLI
+// path's --no-renames flag existed to prevent. A non-ASCII path comes back
+// as the verbatim on-disk bytes; go-git's tree entries carry no C-quoting
+// layer to strip, unlike the CLI's -z output. The returned order is not
+// contractual — this describes a set of changed paths, not a sequence, and
+// no consumer indexes into the result positionally.
+//
+// Both the sha and HEAD tree lookups route through the fingerprint-gated
+// lookup helper; the HEAD ref read itself does not, since it touches no
+// object.
 func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	if !validSHA(sha) {
 		return nil, ErrInvalidSHA
 	}
-	// -z terminates each path with NUL and disables core.quotePath's C-style
-	// escaping, so a non-ASCII filename comes back verbatim instead of as a
-	// quoted "\303\245"-style string that matches nothing on disk.
-	// --no-renames keeps a rename reported as both its old path (deleted) and
-	// its new path (added); git's default rename detection would fold the pair
-	// into one entry and --name-only would then drop the old path, leaving a
-	// per-file-state consumer with stale state for it forever.
-	stdout, stderr, code, err := r.run("diff", "--name-only", "-z", "--no-renames", sha+"..HEAD")
+
+	repo, err := r.goGit()
 	if err != nil {
 		return nil, err
 	}
-	if code != 0 {
-		return nil, fmt.Errorf("gitrepo: git diff --name-only %s..HEAD: %s", sha, stderr)
+
+	fromTree, err := lookupObjectRetrying(r, repo, func() (*object.Tree, error) {
+		return treeForRev(repo, sha)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: resolve tree for %s: %w", sha, err)
+	}
+
+	r.goGitMu.RLock()
+	head, err := repo.Head()
+	r.goGitMu.RUnlock()
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: resolve HEAD: %w", err)
+	}
+
+	headTree, err := lookupObjectRetrying(r, repo, func() (*object.Tree, error) {
+		return treeForRev(repo, head.Hash().String())
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: resolve tree for HEAD: %w", err)
+	}
+
+	changes, err := object.DiffTree(fromTree, headTree)
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: diff trees: %w", err)
 	}
 
 	var files []string
-	for _, path := range strings.Split(stdout, "\x00") {
-		if path == "" {
-			continue
+	for _, change := range changes {
+		action, err := change.Action()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: classify change: %w", err)
 		}
-		files = append(files, path)
+		switch action {
+		case merkletrie.Delete:
+			files = append(files, change.From.Name)
+		default:
+			// Insert and Modify both carry the current path on the To side;
+			// DiffTree never reports renames (see above), so Modify's From
+			// and To names are always identical.
+			files = append(files, change.To.Name)
+		}
 	}
 	return files, nil
+}
+
+// treeForRev resolves rev — a full-length commit hash, either the
+// caller-supplied sha (already validSHA-checked) or HEAD's own hash string,
+// which Hash.String always renders full-length — to its commit's tree via
+// commitByHash, so a miss surfaces as the storer's own
+// plumbing.ErrObjectNotFound rather than ResolveRevision's translated
+// plumbing.ErrReferenceNotFound. See commitByHash's doc for why that
+// distinction is what keeps the fingerprint gate reachable.
+func treeForRev(repo *git.Repository, rev string) (*object.Tree, error) {
+	commit, err := commitByHash(repo, rev)
+	if err != nil {
+		return nil, err
+	}
+	return commit.Tree()
 }
