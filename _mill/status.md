@@ -67,5 +67,7 @@ batches:
     implementer_session: eb9e97c9-59b3-4ec9-aaa4-44042f51a984
     start_sha: 34cd61266611263c68c609a80417e2807c1ec2a3
   - name: prompt-wiring
-    state: pending
+    state: running
+    implementer_session: 3eabb6b3-4b49-4cb0-af7b-41fce493d689
+    start_sha: 07b80ec0478960e198f10dfde2607112074f13fd
 ```
