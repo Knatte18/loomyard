@@ -6,12 +6,9 @@
 // under a non-"." RelPath, where that safety net (which scans only the
 // worktree root's immediate children) cannot see it. At RelPath == "." the
 // safety net masks the bug entirely, which is why this file drives the
-// nested case specifically. HostJunctions returns exactly one entry (_lyx)
-// today, so this is a behaviour-preservation guard for the generalised
-// machinery rather than a regression discriminator against the old
-// _lyx-hardcoded form (the two are identical for one junction, by this
-// batch's own design) — it becomes a true discriminator once batch 5 adds a
-// second, non-_lyx junction whose nested removal has no _lyx-shaped
+// nested case specifically. From card 15 onward HostJunctions returns two
+// entries (_lyx and _pattern), so this is now a true discriminator against
+// the old _lyx-hardcoded form: _pattern's nested removal has no _lyx-shaped
 // shortcut to fall back on.
 //
 // Package fabricengine_test to reuse newFabricFixture from
@@ -65,16 +62,23 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("WireJunctions(nested): %v", err)
 	}
 
-	nestedLink := nestedLayout.HostLyxLink(slug)
-	if isLink, err := fslink.IsLink(nestedLink); err != nil || !isLink {
-		t.Fatalf("setup: nested junction %s not wired: isLink=%v err=%v", nestedLink, isLink, err)
+	nestedLyxLink := nestedLayout.HostLyxLink(slug)
+	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
+		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
+	}
+	nestedPatternLink := nestedLayout.HostPatternLink(slug)
+	if isLink, err := fslink.IsLink(nestedPatternLink); err != nil || !isLink {
+		t.Fatalf("setup: nested _pattern junction %s not wired: isLink=%v err=%v", nestedPatternLink, isLink, err)
 	}
 
 	if _, err := topology.Remove(nestedLayout, slug, true); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	if _, statErr := os.Lstat(nestedLink); !os.IsNotExist(statErr) {
-		t.Errorf("nested junction %s still exists after Remove", nestedLink)
+	if _, statErr := os.Lstat(nestedLyxLink); !os.IsNotExist(statErr) {
+		t.Errorf("nested _lyx junction %s still exists after Remove", nestedLyxLink)
+	}
+	if _, statErr := os.Lstat(nestedPatternLink); !os.IsNotExist(statErr) {
+		t.Errorf("nested _pattern junction %s still exists after Remove", nestedPatternLink)
 	}
 }

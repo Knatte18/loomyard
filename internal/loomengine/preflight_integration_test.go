@@ -311,11 +311,24 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 // TestPreflight_JunctionBroken asserts that all three of PairInSync's
 // junction-drift shapes — missing, not-a-link, and points-elsewhere —
 // classify as junction (card 12's substring-match fix: a prefix match only
-// ever caught the missing shape), and that the seed stat, which now resolves
-// through a broken _lyx one way or another, is classified seed-unreadable
-// (never seed-missing) because check 3 already failed in every shape.
+// ever caught the missing shape). Each drift shape is exercised against BOTH
+// junctions (_lyx and _pattern, from card 15 onward) so the classification is
+// proven to hold for the second, non-_lyx junction too — not just the one
+// PairInSync's underlying loop was originally written and tested against.
+//
+// The seed-check expectation differs by junction, and deliberately so:
+// status.json lives under _lyx (l.LoomStatusFile() is _lyx-anchored), so a
+// broken _lyx junction also makes the seed stat fail — classified
+// seed-unreadable (never seed-missing) because check 3 already failed. A
+// broken _pattern junction, by contrast, leaves the seed fully readable
+// through the still-healthy _lyx junction: check 3 still fails and still
+// classifies as CheckJunction (never CheckWeftSync), but no seed failure is
+// added at all, since check 4's stat of l.LoomStatusFile() succeeds either
+// way. This asymmetry is exactly what "check3BlocksSeed" is named for: it
+// only changes check 4's classification of a stat failure that already
+// happened, it does not itself cause one.
 func TestPreflight_JunctionBroken(t *testing.T) {
-	tests := []struct {
+	shapes := []struct {
 		name    string
 		corrupt func(t *testing.T, hostLink string)
 	}{
@@ -344,7 +357,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 				if err := fslink.Remove(hostLink); err != nil {
 					t.Fatalf("remove host junction %s: %v", hostLink, err)
 				}
-				wrongTarget := filepath.Join(filepath.Dir(hostLink), "not-the-weft-lyx-dir")
+				wrongTarget := filepath.Join(filepath.Dir(hostLink), "not-the-weft-junction-dir")
 				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 					t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
 				}
@@ -355,21 +368,109 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			f, slug := setupPreflightFixture(t)
-			hostLink := f.Layout.HostLyxLink(slug)
-			tt.corrupt(t, hostLink)
-
-			report, err := checkResolved(f.Layout)
-			if err != nil {
-				t.Fatalf("checkResolved: %v", err)
-			}
-			assertCheckSet(t, report, CheckJunction, CheckSeedUnreadable)
-		})
+	junctions := []struct {
+		name       string
+		linkFor    func(f lyxtest.PairedFixture, slug string) string
+		wantChecks []CheckID // in addition to CheckJunction, which every case wants
+	}{
+		{
+			name:       "Lyx",
+			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return f.Layout.HostLyxLink(slug) },
+			wantChecks: []CheckID{CheckSeedUnreadable},
+		},
+		{
+			name:       "Pattern",
+			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return f.Layout.HostPatternLink(slug) },
+			wantChecks: nil,
+		},
 	}
+
+	for _, j := range junctions {
+		for _, tt := range shapes {
+			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				f, slug := setupPreflightFixture(t)
+				hostLink := j.linkFor(f, slug)
+				tt.corrupt(t, hostLink)
+
+				report, err := checkResolved(f.Layout)
+				if err != nil {
+					t.Fatalf("checkResolved: %v", err)
+				}
+				want := append([]CheckID{CheckJunction}, j.wantChecks...)
+				assertCheckSet(t, report, want...)
+			})
+		}
+	}
+}
+
+// TestPreflight_LegacyWorktreeUpgrade covers the upgrade consequence every
+// worktree wired before card 15 meets: _lyx is fully healthy, but _pattern was
+// never wired at all (simulated here by removing it from an otherwise-healthy
+// fixture, rather than corrupting it — the fixture never had it, full stop).
+// Preflight must classify this as CheckJunction, never CheckWeftSync, and
+// blocks the run (report.OK == false) — but does NOT also fail the seed
+// check, since status.json lives under the still-healthy _lyx junction (see
+// TestPreflight_JunctionBroken's doc comment for the same asymmetry). A
+// single Reconcile repairs it (adds the missing junction and materialises its
+// weft-side target) rather than reporting already-healthy; and a fresh
+// Preflight afterward reports OK — the "one lyx init or one lyx fabric
+// reconcile" remedy this batch documents.
+func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
+	t.Parallel()
+
+	f, slug := setupPreflightFixture(t)
+
+	// Simulate the pre-upgrade state: this worktree's _pattern junction was
+	// never wired, even though _lyx is fully healthy — the "existing worktree,
+	// new lyx binary" shape, not a corruption.
+	patternLink := f.Layout.HostPatternLink(slug)
+	if err := fslink.Remove(patternLink); err != nil {
+		t.Fatalf("remove _pattern junction to simulate a legacy (pre-upgrade) worktree: %v", err)
+	}
+
+	report, err := checkResolved(f.Layout)
+	if err != nil {
+		t.Fatalf("checkResolved: %v", err)
+	}
+	assertCheckSet(t, report, CheckJunction)
+
+	// One Reconcile call repairs the missing junction: it must report
+	// JunctionRepointed (the repair happened), never AlreadyHealthy.
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	result, err := topology.Reconcile(f.Layout)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	var found bool
+	for _, pair := range result.Pairs {
+		if pair.HostWorktree != filepath.ToSlash(f.Layout.WorktreeRoot) {
+			continue
+		}
+		found = true
+		if pair.Action != fabricengine.ReconcileActionJunctionRepointed {
+			t.Errorf("Reconcile Action = %q; want %q", pair.Action, fabricengine.ReconcileActionJunctionRepointed)
+		}
+		if pair.Error != "" {
+			t.Errorf("Reconcile Error = %q; want empty", pair.Error)
+		}
+	}
+	if !found {
+		t.Fatalf("Reconcile result has no pair for host worktree %s: %+v", f.Layout.WorktreeRoot, result.Pairs)
+	}
+
+	// The junction now resolves.
+	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
+		t.Fatalf("_pattern junction %s not restored by Reconcile: isLink=%v err=%v", patternLink, isLink, err)
+	}
+
+	// A fresh Preflight now reports OK: the remedy this batch documents.
+	report, err = checkResolved(f.Layout)
+	if err != nil {
+		t.Fatalf("checkResolved after Reconcile: %v", err)
+	}
+	assertCheckSet(t, report)
 }
 
 // TestPreflight_SeedMissing asserts that a genuinely absent seed — junction

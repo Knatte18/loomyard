@@ -2,11 +2,13 @@
 
 // junction_pattern_integration_test.go covers the per-junction generalisation
 // this batch makes to seedLyxJunction, unseedLyxJunction, checkJunctionHealth,
-// and PairInSync's inline junction check. Every case here runs against
-// HostJunctions' current single _lyx entry, so the whole file is a regression
-// suite proving the generalised machinery behaves identically to the old
-// _lyx-only code for one junction — the precondition a later batch's flip to
-// two junctions depends on.
+// and PairInSync's inline junction check. From card 15 onward, HostJunctions
+// returns two entries (_lyx and _pattern), so this file's cases now exercise
+// a genuinely two-junction world: every generalisation from batch 3 — health
+// check (per-site: reconcile, status, drift), per-junction refusal/repoint,
+// unwire/remove looping, and wiring idempotency (including the legacy
+// single-junction-to-two upgrade path) — is proven against a real second,
+// non-_lyx junction, not merely a loop of length one.
 //
 // Package fabricengine_test to reuse the external-test-package fixture idiom
 // of lifecycle_differential_test.go; shares the single TestMain in
@@ -163,9 +165,10 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 // TestUnwireJunctions_ReportsAndClearsEveryJunction is card 8's base-case
 // regression guard: wiring then unwiring reports every junction Name in
 // UnwireResult.JunctionsRemoved and removes every corresponding line from
-// .git/info/exclude. HostJunctions returns exactly one entry today, so this
-// runs against that single _lyx junction — the precondition batch 5's second
-// junction depends on this machinery already handling correctly.
+// .git/info/exclude. From card 15 onward HostJunctions returns two entries
+// (_lyx and _pattern), so this now runs against a genuinely two-junction
+// world — the precondition batch 5's second junction depends on this
+// machinery already handling correctly.
 func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	t.Parallel()
 
@@ -183,25 +186,35 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if lines := readExcludeLines(t, l, slug); !containsLine(lines, hubgeometry.LyxDirName) {
 		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", hubgeometry.LyxDirName, lines)
 	}
+	if lines := readExcludeLines(t, l, slug); !containsLine(lines, hubgeometry.PatternDirName) {
+		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", hubgeometry.PatternDirName, lines)
+	}
 
 	result, err := fabricengine.UnwireJunctions(l, slug)
 	if err != nil {
 		t.Fatalf("UnwireJunctions: %v", err)
 	}
 
-	if want := []string{hubgeometry.LyxDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+	if want := []string{hubgeometry.LyxDirName, hubgeometry.PatternDirName}; !slices.Equal(result.JunctionsRemoved, want) {
 		t.Errorf("JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 	}
 	if !result.ExcludeChanged {
 		t.Error("ExcludeChanged = false; want true")
 	}
 
-	link := l.HostLyxLink(slug)
-	if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
-		t.Errorf("junction %s still exists after UnwireJunctions", link)
+	lyxLink := l.HostLyxLink(slug)
+	if _, statErr := os.Lstat(lyxLink); !os.IsNotExist(statErr) {
+		t.Errorf("junction %s still exists after UnwireJunctions", lyxLink)
+	}
+	patternLink := l.HostPatternLink(slug)
+	if _, statErr := os.Lstat(patternLink); !os.IsNotExist(statErr) {
+		t.Errorf("junction %s still exists after UnwireJunctions", patternLink)
 	}
 	if lines := readExcludeLines(t, l, slug); containsLine(lines, hubgeometry.LyxDirName) {
 		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", hubgeometry.LyxDirName, lines)
+	}
+	if lines := readExcludeLines(t, l, slug); containsLine(lines, hubgeometry.PatternDirName) {
+		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", hubgeometry.PatternDirName, lines)
 	}
 }
 
@@ -302,12 +315,17 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 // TestPairInSync_JunctionDriftShapes is card 11's regression guard: each of
 // PairInSync's three junction-drift shapes — missing, not-a-link, and
 // points-elsewhere — produces reason wording naming the junction, aligned
-// with checkJunctionHealth's wording (card 10) for the same shape.
+// with checkJunctionHealth's wording (card 10) for the same shape. From card
+// 15 onward, each drift shape is exercised against BOTH junctions (_lyx and
+// _pattern), proving PairInSync's HostJunctionsHere() loop — drift.go does
+// not share checkJunctionHealth's code path, so this is not redundant with
+// reconcile.go's or status.go's own coverage — reports the correct wording
+// for the second, non-_lyx junction too.
 func TestPairInSync_JunctionDriftShapes(t *testing.T) {
-	tests := []struct {
+	shapes := []struct {
 		name       string
 		corrupt    func(t *testing.T, link, target string)
-		wantReason string
+		wantReason func(dirName string) string
 	}{
 		{
 			name: "Missing",
@@ -316,7 +334,9 @@ func TestPairInSync_JunctionDriftShapes(t *testing.T) {
 					t.Fatalf("remove junction: %v", err)
 				}
 			},
-			wantReason: fmt.Sprintf("host %s junction missing", hubgeometry.LyxDirName),
+			wantReason: func(dirName string) string {
+				return fmt.Sprintf("host %s junction missing", dirName)
+			},
 		},
 		{
 			name: "NotALink",
@@ -328,7 +348,9 @@ func TestPairInSync_JunctionDriftShapes(t *testing.T) {
 					t.Fatalf("mkdir real dir in junction's place: %v", err)
 				}
 			},
-			wantReason: fmt.Sprintf("host %s is not a junction", hubgeometry.LyxDirName),
+			wantReason: func(dirName string) string {
+				return fmt.Sprintf("host %s is not a junction", dirName)
+			},
 		},
 		{
 			name: "PointsElsewhere",
@@ -344,40 +366,245 @@ func TestPairInSync_JunctionDriftShapes(t *testing.T) {
 					t.Fatalf("seed wrong-target junction: %v", err)
 				}
 			},
-			wantReason: fmt.Sprintf("host %s junction points elsewhere", hubgeometry.LyxDirName),
+			wantReason: func(dirName string) string {
+				return fmt.Sprintf("host %s junction points elsewhere", dirName)
+			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	junctions := []struct {
+		name      string
+		dirName   string
+		linkFor   func(l *hubgeometry.Layout) string
+		targetFor func(l *hubgeometry.Layout) string
+	}{
+		{
+			name:      "Lyx",
+			dirName:   hubgeometry.LyxDirName,
+			linkFor:   func(l *hubgeometry.Layout) string { return l.HostLyxLinkHere() },
+			targetFor: func(l *hubgeometry.Layout) string { return l.WeftLyxDir() },
+		},
+		{
+			name:      "Pattern",
+			dirName:   hubgeometry.PatternDirName,
+			linkFor:   func(l *hubgeometry.Layout) string { return l.HostPatternLinkHere() },
+			targetFor: func(l *hubgeometry.Layout) string { return l.WeftPatternDir() },
+		},
+	}
 
-			fixture := lyxtest.CopyPairedLocal(t)
-			lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-				"fabric": fabricengine.ConfigTemplate(),
+	for _, j := range junctions {
+		for _, tt := range shapes {
+			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				fixture := lyxtest.CopyPairedLocal(t)
+				lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+					"fabric": fabricengine.ConfigTemplate(),
+				})
+				lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+
+				l := fixture.Layout
+				slug := filepath.Base(fixture.Hub)
+				if err := fabricengine.WireJunctions(l, slug); err != nil {
+					t.Fatalf("WireJunctions: %v", err)
+				}
+
+				link := j.linkFor(l)
+				target := j.targetFor(l)
+				tt.corrupt(t, link, target)
+
+				ok, reason, err := fabricengine.PairInSync(l)
+				if err != nil {
+					t.Fatalf("PairInSync: %v", err)
+				}
+				if ok {
+					t.Errorf("PairInSync = true; want false (%s)", tt.name)
+				}
+				wantReason := tt.wantReason(j.dirName)
+				if reason != wantReason {
+					t.Errorf("PairInSync reason = %q; want %q", reason, wantReason)
+				}
 			})
-			lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+		}
+	}
+}
 
-			l := fixture.Layout
-			slug := filepath.Base(fixture.Hub)
-			if err := fabricengine.WireJunctions(l, slug); err != nil {
-				t.Fatalf("WireJunctions: %v", err)
-			}
+// TestReconcile_RepairsPatternOnlyDrift is the reconcile.go site of card 19's
+// per-site health-check coverage: with _lyx healthy and _pattern missing,
+// Reconcile must repair (ReconcileActionJunctionRepointed) rather than report
+// ReconcileActionAlreadyHealthy. reconcile.go does not share drift.go's
+// PairInSync code path (see checkJunctionHealth), so this is not redundant
+// with TestPairInSync_JunctionDriftShapes above.
+func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
+	t.Parallel()
 
-			link := l.HostLyxLinkHere()
-			target := l.WeftLyxDir()
-			tt.corrupt(t, link, target)
+	const slug = "reconcile-pattern-only-drift"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	if err := fabricengine.WireJunctions(l, slug); err != nil {
+		t.Fatalf("WireJunctions: %v", err)
+	}
 
-			ok, reason, err := fabricengine.PairInSync(l)
-			if err != nil {
-				t.Fatalf("PairInSync: %v", err)
-			}
-			if ok {
-				t.Errorf("PairInSync = true; want false (%s)", tt.name)
-			}
-			if reason != tt.wantReason {
-				t.Errorf("PairInSync reason = %q; want %q", reason, tt.wantReason)
-			}
-		})
+	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	if err != nil {
+		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+	}
+
+	// _lyx stays healthy; only _pattern goes missing.
+	patternLink := hostLayout.HostPatternLinkHere()
+	if err := fslink.Remove(patternLink); err != nil {
+		t.Fatalf("remove _pattern junction: %v", err)
+	}
+
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	weftPath := l.WeftWorktreePath(slug)
+	var found bool
+	for _, pair := range result.Pairs {
+		if pair.WeftWorktree != filepath.ToSlash(weftPath) {
+			continue
+		}
+		found = true
+		if pair.Action != fabricengine.ReconcileActionJunctionRepointed {
+			t.Errorf("Action = %q; want %q (not %q)", pair.Action, fabricengine.ReconcileActionJunctionRepointed, fabricengine.ReconcileActionAlreadyHealthy)
+		}
+		if pair.Error != "" {
+			t.Errorf("Error = %q; want empty", pair.Error)
+		}
+	}
+	if !found {
+		t.Fatalf("Reconcile result has no pair for weft path %s: %+v", weftPath, result.Pairs)
+	}
+
+	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
+		t.Errorf("_pattern junction %s not repaired by Reconcile: isLink=%v err=%v", patternLink, isLink, err)
+	}
+}
+
+// TestStatus_ReportsPatternJunctionUnhealthy is the status.go site of card
+// 19's per-site health-check coverage: with _lyx healthy and _pattern
+// mis-pointed, Status must report JunctionHealthy false, a JunctionReason
+// naming _pattern, and the pair not in sync. status.go computes its verdict
+// inline (see status.go's own doc comment) rather than sharing drift.go's
+// PairInSync, so this is not redundant with TestPairInSync_JunctionDriftShapes.
+func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
+	t.Parallel()
+
+	const slug = "status-pattern-unhealthy"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	if err := fabricengine.WireJunctions(l, slug); err != nil {
+		t.Fatalf("WireJunctions: %v", err)
+	}
+
+	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	if err != nil {
+		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+	}
+
+	// _lyx stays healthy; only _pattern is re-pointed at an unrelated directory.
+	patternLink := hostLayout.HostPatternLinkHere()
+	if err := fslink.Remove(patternLink); err != nil {
+		t.Fatalf("remove _pattern junction: %v", err)
+	}
+	wrongTarget := filepath.Join(fixture.Hub, "not-the-weft-pattern-dir")
+	if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
+		t.Fatalf("mkdir wrong target: %v", err)
+	}
+	if err := fslink.CreateDirLink(patternLink, wrongTarget); err != nil {
+		t.Fatalf("seed wrong-target junction: %v", err)
+	}
+
+	result, err := topology.Status(l)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+
+	hostPath := l.WorktreePath(slug)
+	var found bool
+	for _, pair := range result.Pairs {
+		if pair.HostWorktree != filepath.ToSlash(hostPath) {
+			continue
+		}
+		found = true
+		if pair.JunctionHealthy {
+			t.Error("JunctionHealthy = true; want false")
+		}
+		if !strings.Contains(pair.JunctionReason, hubgeometry.PatternDirName) {
+			t.Errorf("JunctionReason = %q; want it to name %q", pair.JunctionReason, hubgeometry.PatternDirName)
+		}
+		if pair.InSync {
+			t.Error("InSync = true; want false")
+		}
+	}
+	if !found {
+		t.Fatalf("Status result has no pair for host path %s: %+v", hostPath, result.Pairs)
+	}
+}
+
+// TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth is the wiring-idempotency
+// upgrade path: a worktree with _lyx already wired and _pattern not yet wired
+// at all (the shape every pre-card-15 worktree is in) completes a
+// WireJunctions call without error and adds only the missing _pattern
+// junction — it must not error, and it must not need to touch the
+// already-healthy _lyx junction to succeed.
+func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
+	t.Parallel()
+
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"fabric": fabricengine.ConfigTemplate(),
+	})
+
+	l := fixture.Layout
+	slug := filepath.Base(fixture.Hub)
+
+	// Wire both junctions once, then simulate the legacy pre-upgrade state by
+	// removing _pattern only — _lyx is fully healthy, _pattern was never wired.
+	if err := fabricengine.WireJunctions(l, slug); err != nil {
+		t.Fatalf("WireJunctions (initial): %v", err)
+	}
+	patternLink := l.HostPatternLink(slug)
+	if err := fslink.Remove(patternLink); err != nil {
+		t.Fatalf("remove _pattern junction to simulate legacy worktree: %v", err)
+	}
+
+	lyxLink := l.HostLyxLink(slug)
+	lyxResolvedBefore, err := fslink.PointsTo(lyxLink)
+	if err != nil {
+		t.Fatalf("PointsTo(%s) before upgrade: %v", lyxLink, err)
+	}
+
+	// The upgrade call: must complete without error and wire only the missing
+	// _pattern junction.
+	if err := fabricengine.WireJunctions(l, slug); err != nil {
+		t.Fatalf("WireJunctions (upgrade): %v", err)
+	}
+
+	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
+		t.Fatalf("_pattern junction %s not wired by upgrade call: isLink=%v err=%v", patternLink, isLink, err)
+	}
+	lyxResolvedAfter, err := fslink.PointsTo(lyxLink)
+	if err != nil {
+		t.Fatalf("PointsTo(%s) after upgrade: %v", lyxLink, err)
+	}
+	if lyxResolvedBefore != lyxResolvedAfter {
+		t.Errorf("_lyx junction target changed across upgrade call: before=%s after=%s", lyxResolvedBefore, lyxResolvedAfter)
+	}
+
+	// Wiring twice (the already-upgraded worktree) is a no-op.
+	if err := fabricengine.WireJunctions(l, slug); err != nil {
+		t.Fatalf("WireJunctions (idempotent re-run): %v", err)
 	}
 }
