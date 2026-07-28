@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-stencil-optional
 slug: pattern-wiring
 branch: pattern-wiring
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-07-28T10:11:47Z'
 plan-fix-r3  '2026-07-28T10:22:02Z'
 planned  '2026-07-28T10:22:12Z'
 implementing  '2026-07-28T10:29:12Z'
+approved-stencil-optional  '2026-07-28T10:34:18Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-07-28T10:29:12Z'
 ```yaml
 batches:
   - name: stencil-optional
-    state: running
+    state: approved
     implementer_session: 1797c1af-2f7b-4a1e-abb7-8d08fdeef1c4
     start_sha: 4d92ff2c3ec739ac32bb9237f689edeae32cffbf
+    commit_sha: 20c472c0f807a7f2f613442645fe92bb3b3dc575
   - name: hubgeometry-pattern-surface
     state: pending
   - name: fabric-junction-generalisation
