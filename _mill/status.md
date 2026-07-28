@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: pattern-wiring
 branch: pattern-wiring
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-reviewing  '2026-07-28T17:55:18Z'
 holistic-fixing  '2026-07-28T17:59:21Z'
 holistic-reviewing  '2026-07-28T18:02:00Z'
 holistic-approved  '2026-07-28T18:06:03Z'
+done  '2026-07-28T18:07:49Z'
 ```
 
 ## Batches
