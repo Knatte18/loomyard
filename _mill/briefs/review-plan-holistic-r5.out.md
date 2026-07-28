@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: native clients: migrate gitrepo to go-git + selfreport gh-CLI to go-github — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnetmax
+reviewed_file: plan/
+date: 2026-07-28
+```
+
+## Findings
+
+### [NIT] Fingerprint helper routed to reads that touch no object
+**Location:** Batch 3 card 10 (CurrentSHA); Batch 4 cards 15 and 17 (SnapshotSHA's ref read; SetSnapshotSHA's adopted-ref read)
+**Issue:** These three requirements say to "route the object lookup through the batch-1 helper," but each site is `Head()`/`Reference()` only (per gitnativepoc's lifted shape) — a ref-storage read that never touches the pack-object store the fingerprint gate exists to protect. `.scratch/gogit-worktree-probe-report.md` says so directly: "Refs are never cached: Head(), Reference() and the snapshot ref read go to disk on every call." There is no object lookup at these three sites to route through anything; CurrentBranch (card 12) and remoteName (card 14) are correctly given the opposite instruction for the identical reason.
+**Fix:** Drop or reword the routing instruction on cards 10/15/17 to match cards 12/14's framing (no helper needed; ref reads are never stale), reserving the fingerprint-gated helper for sites that actually resolve a commit/tree/blob (SHAExists, ChangedFilesSince, isStrictDescendant, hasUnpushed, SetSnapshotSHA's `^{commit}` canonicalization).
+
+## Verdict
+
+APPROVE
+Exceptionally well-grounded plan (verified DAG, pinned method lists, and doc-rewrite claims against actual source); one harmless NIT on helper routing.
+MILL_REVIEW_END

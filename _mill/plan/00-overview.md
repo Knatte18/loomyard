@@ -3,7 +3,7 @@
 ```yaml
 task: 'native clients: migrate gitrepo to go-git + selfreport gh-CLI to go-github'
 slug: native-clients-migration
-approved: false
+approved: true
 started: '20260728-090000'
 parent: main
 root: ""
@@ -84,6 +84,7 @@ The DAG has two independent roots. Batches 1–5 are the gitrepo migration and r
 ### Decision: every object lookup goes through the fingerprint-gated helper
 
 - **Decision:** no migrated read calls the storer directly. All object lookups route through the shared helper from batch 1, which on an `object not found` compares a pack fingerprint — the sorted `(name, size)` list of `*.idx` files in the common dir's `objects/pack` — against the one recorded at the last index build, reindexes and retries once only if it differs, and otherwise returns the not-found as truth.
+- **Scope, stated precisely because the distinction is load-bearing:** this covers reads that resolve a **commit, tree, or blob** — `SHAExists`, `ChangedFilesSince`, `isStrictDescendant`, `hasUnpushed`, and `SetSnapshotSHA`'s `^{commit}` canonicalization. It does **not** cover ref reads. `CurrentSHA`'s `Head()`, `CurrentBranch`'s and `remoteName`'s unresolved `Reference()`, and both snapshot ref reads go to disk on every call — go-git never caches refs — so there is nothing there for the gate to protect. Those still hold the read lock; they just have no lookup to route.
 - **Rationale:** go-git's object index is built once and never refreshed, so an object living only in a packfile written after the handle indexed reads as absent while `Head()` returns that very SHA. The gate must be on-disk state rather than a per-`Repo` call counter, because one physical checkout is addressed concurrently by several live `Repo` values and by a separate OS process. Routing *every* read through the helper is what makes the remedy reachable at all: `SHAExists`, `isStrictDescendant` and `hasUnpushed` swallow failure into `false`/`false`/`true`, so an error never escapes them and a trigger placed anywhere else would be structurally unreachable from exactly the methods most likely to hit it.
 - **Applies to:** batches 1, 3, 4.
 
