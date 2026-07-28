@@ -72,6 +72,7 @@ Clause (d) is also why `plan-template.md` gets `RoleImplementer` rather than a v
   - `internal/websterengine/recoverbatch.go`
   - `internal/webstercli/beginbatch.go`
   - `internal/websterengine/template_test.go`
+  - `internal/websterengine/beginbatch_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
