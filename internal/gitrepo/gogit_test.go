@@ -9,11 +9,14 @@
 // package. It is reached by the existing TestMain in testmain_test.go
 // automatically, since one TestMain covers both packages of a test binary.
 //
-// This file builds its own minimal fixtures rather than reusing
-// fixtures_test.go's linkedWorktreeFixture: that type lives in package
-// gitrepo_test, a different Go package from this file's package gitrepo,
-// and is structurally unreachable from here despite living in the same
-// directory.
+// This file builds its own minimal linked-worktree fixtures rather than a
+// package gitrepo_test one: package gitrepo_test is a different Go package
+// from this file's package gitrepo, and a gitrepo_test-declared type would be
+// structurally unreachable from here despite living in the same directory.
+// An earlier gitrepo_test fixture (fixtures_test.go's linkedWorktreeFixture)
+// was deleted as dead code once every linked-worktree parity case — exported
+// and unexported alike — ended up covered here instead; see
+// 01-gogit-handle.md card 3's Round 2 fix note.
 
 package gitrepo
 
@@ -84,8 +87,8 @@ func newStandaloneRepo(t *testing.T) (dir string, repo *Repo) {
 }
 
 // gogitLinkedFixture is this file's own minimal linked-worktree fixture,
-// built independently from fixtures_test.go's identically-shaped
-// linkedWorktreeFixture (package gitrepo_test, unreachable from here). It
+// built independently because an equivalent package gitrepo_test fixture
+// would be unreachable from here (see this file's header comment). It
 // gives main and linked different branches and different HEAD commits, and
 // records a ref set from main so the linked worktree's handle can be
 // asserted to see it — refs/loomyard/snapshot/*-style refs live in the
@@ -369,7 +372,7 @@ func TestGoGit_OpenHandleDoesNotBlockWorktreeRemove(t *testing.T) {
 // function rather than imported, because that one lives in package
 // gitrepo_test (a different Go package, structurally unreachable from this
 // file's package gitrepo) — the same package-boundary reason this file
-// builds its own fixtures instead of reusing fixtures_test.go's.
+// builds its own linked-worktree fixtures rather than a gitrepo_test one.
 func oracleRemoteName(t *testing.T, dir string) string {
 	t.Helper()
 
