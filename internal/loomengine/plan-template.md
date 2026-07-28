@@ -1,15 +1,19 @@
 <!-- This is the loom Plan producer's autonomous prompt. It is filled by
      composePlanPrompt (plan.go) via internal/stencil and handed to shuttle as
      the plan agent's entire instruction set. Every marker below is a
-     top-level {{.X}} substitution; stencil.Fill requires all three non-empty
-     and there are no {{if}}/{{range}} conditionals anywhere in this file (a
-     required marker inside a conditional branch would render silently blank
-     when present-but-empty — see internal/stencil/stencil.go). -->
+     top-level {{.X}} substitution; stencil.Fill requires the three original
+     ones non-empty and there are no {{if}}/{{range}} conditionals anywhere
+     in this file (a required marker inside a conditional branch would
+     render silently blank when present-but-empty — see
+     internal/stencil/stencil.go). pattern_directive is the fourth marker,
+     and the one optional one: it is filled via stencil.FillOptional and
+     renders as nothing when PATTERN is inactive. -->
 
 # Plan — read the decision record, write a plan-format-v3 flat-card plan
 
 You are the Plan producer: a single autonomous agent that reads the decision record and writes a plan-format-v3 flat-card plan. You never interview, never ask, and have no review logic of your own.
 
+{{.pattern_directive}}
 ## Step 1 — Read the decision record
 
 Read `{{.decision_record_path}}`. This is your **sole** input — never read the support log or the board. If the file is missing or empty, STOP and report that rather than inventing scope.
