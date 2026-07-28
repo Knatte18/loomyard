@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-guards
+phase: approved-docs-and-invariants
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-migrate-core-reads  '2026-07-28T17:27:40Z'
 approved-migrate-snapshot-push-reads  '2026-07-28T17:42:58Z'
 approved-retire-poc-and-measure  '2026-07-28T18:06:27Z'
 approved-guards  '2026-07-28T18:17:50Z'
+approved-docs-and-invariants  '2026-07-28T18:39:00Z'
 ```
 
 ## Batches
@@ -85,7 +86,8 @@ batches:
     start_sha: 66a86fdf7cdd3ebc01dd0f225f5e0750741876f5
     commit_sha: e41647a09e9678165d4c22cf39ccb0279ead3ab3
   - name: docs-and-invariants
-    state: running
+    state: approved
     implementer_session: 6405fdce-bb27-411b-afd9-3e98fe3be5e0
     start_sha: 89b8a22b3b14b9edf3b9b9ace914baa977cdeb59
+    commit_sha: b383d07bc00130355f2119e237b554268e7295d5
 ```
