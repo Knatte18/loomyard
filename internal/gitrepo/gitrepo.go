@@ -106,7 +106,10 @@ func (r *Repo) CurrentSHA() (string, error) {
 // `--` (in the add, the staged-change check, and the commit alike), so an
 // entry starting with ':' is treated as a magic signature (and a file
 // literally named that way cannot be staged as-is) — callers pass plain
-// relative paths and must not rely on magic.
+// relative paths and must not rely on magic. When files contains any magic
+// entry, the `add` step passes `-f`: see hasPathspecMagic's call site for
+// why a plain add otherwise refuses outright, and why -f here does not
+// weaken the exclusion the magic entry itself provides.
 func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed bool, err error) {
 	// An empty list stages nothing, so there is never anything of the
 	// caller's to commit; return the documented no-op signal before any git
@@ -116,7 +119,29 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 		return "", false, nil
 	}
 
-	addArgs := append([]string{"add", "--"}, files...)
+	addArgs := []string{"add", "--"}
+	if hasPathspecMagic(files) {
+		// -f: recent git refuses `git add` outright — "The following paths
+		// are ignored by one of your .gitignore files" — the moment ANY
+		// listed pathspec entry names a path matched by .gitignore/exclude,
+		// even when that entry is a ":(exclude)..." entry whose entire
+		// purpose is to keep the path OUT of what gets staged, never to add
+		// it. This fires for real here: fabricengine.seedWeftArtifactExcludes
+		// seeds the weft repo's .git/info/exclude with the same machine-local
+		// artifact patterns (pause flags, *.lock, prompts/) that callers like
+		// buildercli's and webstercli's weftCommit also name in ":(exclude)"
+		// pathspec entries as defense-in-depth (see CONSTRAINTS.md's Weft Git
+		// Invariant, "Cross-module exclusions") — so a plain `git add`
+		// refuses outright before ever reaching the positive entries. -f
+		// suppresses only that pre-check; exclude-magic pathspec entries
+		// still keep the excluded path out of the index exactly as before
+		// (confirmed: `git add -f -- x ":(exclude)x/ignored-path"` stages x
+		// but never ignored-path) — -f does not defeat exclude magic, it only
+		// stops git from refusing to look past an ignored path named inside
+		// pathspec magic.
+		addArgs = []string{"add", "-f", "--"}
+	}
+	addArgs = append(addArgs, files...)
 	_, stderr, code, err := r.run(addArgs...)
 	if err != nil {
 		return "", false, err
@@ -161,6 +186,19 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 		return "", false, err
 	}
 	return sha, true, nil
+}
+
+// hasPathspecMagic reports whether files contains at least one git pathspec
+// magic entry — a leading ':' (long form ":(exclude)..." or shorthand
+// "!"/"^"), as opposed to a plain relative path. StageAndCommit uses this to
+// decide whether the `git add` call needs `-f`; see its call site.
+func hasPathspecMagic(files []string) bool {
+	for _, f := range files {
+		if strings.HasPrefix(f, ":") {
+			return true
+		}
+	}
+	return false
 }
 
 // StageAllAndCommit stages every working-tree change via `git add -A` and
