@@ -1,5 +1,3 @@
-//go:build windows
-
 // githubclient_test.go is the hermetic, table-driven test suite for the
 // whole package: the token resolution chain (token.go), the on-disk cache
 // (cache.go/cache_windows.go), and the authenticating RoundTripper
@@ -7,9 +5,17 @@
 // t.Setenv and reaches the `gh auth token` shell-out only through its
 // injected seam, so the suite runs correctly on a machine with no `gh`
 // installed and no GitHub credentials, and never touches the operator's
-// real credential file. The Windows ACL assertion below is why this file
-// carries a platform build tag -- per the Test Tier Purity Invariant, a
-// platform-only constraint still counts as untagged Tier 1.
+// real credential file. This file carries no build tag -- it is untagged
+// Tier 1, spawning no process and needing no git fixture, so
+// `go test -race -count=1 ./internal/githubclient/...` runs every case here
+// on any platform. The one genuinely Windows-only piece --
+// TestWriteCachedToken_CreatesFileWithRestrictivePermissions and its
+// assertOwnerOnlyDACL helper, which import golang.org/x/sys/windows to
+// assert the cache file's security descriptor directly -- lives in
+// githubclient_windows_test.go behind `//go:build windows`, mirroring this
+// package's cache.go/cache_windows.go/cache_other.go split. Both files share
+// the helpers declared below (setCacheDir, seedCacheFile,
+// withFakeGHAuthToken, capturedRequest, newScriptedServer).
 
 package githubclient
 
@@ -28,19 +34,21 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unsafe"
-
-	"golang.org/x/sys/windows"
 )
 
-// setCacheDir redirects the token cache to dir by setting LOCALAPPDATA,
-// the only environment variable cacheDir consults on Windows. Every test in
-// this file calls this (directly or via seedCacheFile) before touching
-// anything else, so the operator's real credential file is never read or
-// written.
+// setCacheDir redirects the token cache to dir by setting every environment
+// variable cacheDir consults, on either branch of its runtime.GOOS check:
+// LOCALAPPDATA on Windows, XDG_CONFIG_HOME everywhere else. Setting both
+// unconditionally (rather than branching on runtime.GOOS here too) means
+// this helper redirects cacheDir correctly regardless of which platform the
+// suite is actually running on, since cacheDir itself ignores whichever
+// variable its own branch does not consult. Every test in this file calls
+// this (directly or via seedCacheFile) before touching anything else, so the
+// operator's real credential file is never read or written.
 func setCacheDir(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("LOCALAPPDATA", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
 }
 
 // seedCacheFile writes a cache file with the given token and resolved-at
@@ -280,77 +288,6 @@ func TestReadCachedToken_MalformedFileIsMiss(t *testing.T) {
 				t.Errorf("readCachedToken() = (%q, true); want a miss for content %q", tok, tt.content)
 			}
 		})
-	}
-}
-
-// TestWriteCachedToken_CreatesFileWithRestrictivePermissions asserts the
-// hardening this file requires directly against the Windows security
-// descriptor, rather than inferring it from os.Stat's reported mode bits --
-// which, on Windows, reflect only the read-only attribute and would report
-// the same value regardless of whether hardenCacheFile's os.Chmod call or
-// its DACL step ran at all.
-func TestWriteCachedToken_CreatesFileWithRestrictivePermissions(t *testing.T) {
-	dir := t.TempDir()
-	setCacheDir(t, dir)
-
-	writeCachedToken("a-token")
-
-	resolvedDir, ok := cacheDir()
-	if !ok {
-		t.Fatal("cacheDir() ok = false")
-	}
-	path := filepath.Join(resolvedDir, credentialFileName)
-
-	// os.Stat's synthesized Mode() on Windows reflects only the read-only
-	// attribute bit, not the 0600 os.Chmod call hardenCacheFile makes --
-	// Windows has no Unix permission bits to report, which is exactly why
-	// the DACL assertion below, not this stat, is the real check.
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("Stat(%s): %v", path, err)
-	}
-
-	assertOwnerOnlyDACL(t, path)
-}
-
-// assertOwnerOnlyDACL reads path's security descriptor via
-// golang.org/x/sys/windows and asserts its DACL grants access to exactly one
-// trustee: the file's own owner. This is the direct ACL assertion card 26
-// requires, as distinct from an inference drawn from mode bits.
-func assertOwnerOnlyDACL(t *testing.T, path string) {
-	t.Helper()
-
-	descriptor, err := windows.GetNamedSecurityInfo(
-		path,
-		windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.OWNER_SECURITY_INFORMATION,
-	)
-	if err != nil {
-		t.Fatalf("GetNamedSecurityInfo(%s): %v", path, err)
-	}
-
-	dacl, _, err := descriptor.DACL()
-	if err != nil {
-		t.Fatalf("descriptor.DACL(): %v", err)
-	}
-	owner, _, err := descriptor.Owner()
-	if err != nil {
-		t.Fatalf("descriptor.Owner(): %v", err)
-	}
-
-	if dacl.AceCount != 1 {
-		t.Fatalf("cache file DACL has %d ACEs; want exactly 1 (owner-only, breaking inheritance)", dacl.AceCount)
-	}
-
-	var ace *windows.ACCESS_ALLOWED_ACE
-	if err := windows.GetAce(dacl, 0, &ace); err != nil {
-		t.Fatalf("GetAce(dacl, 0): %v", err)
-	}
-	// The ACE's SID is stored inline immediately after its fixed fields;
-	// this is the same address-of-trailing-field pattern golang.org/x/sys's
-	// own tests use to read it back out.
-	aceSid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
-	if !owner.Equals(aceSid) {
-		t.Errorf("cache file DACL's sole ACE grants access to a SID other than the file's owner")
 	}
 }
 
