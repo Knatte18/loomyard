@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -99,7 +100,11 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, err
 	}
 
-	prompt, err := composePrompt(&p)
+	// RoleReviewFix, not a reviewer-only role: the template states in as
+	// many words that the agent has two jobs in order in one session, and
+	// part B is fixing what part A found.
+	directive := pattern.Directive(e.layout, pattern.RoleReviewFix)
+	prompt, err := composePrompt(&p, directive)
 	if err != nil {
 		return Result{}, err
 	}

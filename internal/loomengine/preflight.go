@@ -122,11 +122,25 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 			return Report{}, err
 		}
 		if !ok {
+			// PairInSync's junction reasons are a consumed string format: all
+			// three now read "host <name> junction …" or "host <name> is not a
+			// junction" (fabricengine's junction-name parameterisation), so a
+			// prefix match on "junction" no longer catches any of them — only
+			// a substring match does. Any future reword of those reasons must
+			// keep the substring "junction" in them, or this classification
+			// silently reverts to CheckWeftSync.
+			//
+			// Order matters: the "host on " case is checked first so the
+			// branch-mismatch reason ("host on <a>, weft on <b> (want <c>)")
+			// is classified before the broader Contains check runs — relying
+			// on that ordering is the safer arrangement, even though the
+			// branch-mismatch reason's content alone never contains
+			// "junction" either way.
 			var check CheckID
 			switch {
 			case strings.HasPrefix(reason, "host on "):
 				check = CheckWeftSync
-			case strings.HasPrefix(reason, "junction"):
+			case strings.Contains(reason, "junction"):
 				check = CheckJunction
 				check3BlocksSeed = true
 			default:

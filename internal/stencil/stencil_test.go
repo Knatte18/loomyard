@@ -1,7 +1,8 @@
-// stencil_test.go is the black-box, table-driven contract test for stencil.Fill: the
-// happy path, the unfilled-top-level-marker guard (including sorting/dedup), the
-// incremental branch-internal guard, conditional sections, the leading-comment strip,
-// and the no-HTML-escaping / idempotence guarantees.
+// stencil_test.go is the black-box, table-driven contract test for stencil.Fill and
+// stencil.FillOptional: the happy path, the unfilled-top-level-marker guard (including
+// sorting/dedup), the incremental branch-internal guard, conditional sections, the
+// leading-comment strip, the no-HTML-escaping / idempotence guarantees, and
+// FillOptional's optional-marker exemption from both guards.
 
 package stencil_test
 
@@ -384,4 +385,225 @@ func TestFill_NoHTMLEscaping(t *testing.T) {
 	if string(got) != want {
 		t.Errorf("Fill() = %q; want %q (no HTML escaping)", string(got), want)
 	}
+}
+
+// TestFillOptional_AbsentRendersNothing covers a marker listed as optional and absent
+// from values rendering as nothing with no error, instead of tripping the
+// unfilled-top-level-marker guard.
+func TestFillOptional_AbsentRendersNothing(t *testing.T) {
+	got, err := stencil.FillOptional(
+		[]byte("Head: {{.Head}}\nExtra: {{.Extra}}"),
+		map[string]string{"Head": "present"},
+		[]string{"Extra"},
+	)
+	if err != nil {
+		t.Fatalf("FillOptional() unexpected error: %v", err)
+	}
+	want := "Head: present\nExtra: "
+	if string(got) != want {
+		t.Errorf("FillOptional() = %q; want %q", string(got), want)
+	}
+}
+
+// TestFillOptional_PresentButEmptyRendersNothing covers a marker listed as optional and
+// present in values as "" rendering as nothing with no error.
+func TestFillOptional_PresentButEmptyRendersNothing(t *testing.T) {
+	got, err := stencil.FillOptional(
+		[]byte("Extra: {{.Extra}}"),
+		map[string]string{"Extra": ""},
+		[]string{"Extra"},
+	)
+	if err != nil {
+		t.Fatalf("FillOptional() unexpected error: %v", err)
+	}
+	want := "Extra: "
+	if string(got) != want {
+		t.Errorf("FillOptional() = %q; want %q", string(got), want)
+	}
+}
+
+// TestFillOptional_WhitespaceOnlyNormalisesToEmpty covers a marker listed as optional
+// and present in values as whitespace-only rendering as nothing, not as its whitespace
+// verbatim — the same TrimSpace-based "empty" definition unfilledTopLevelMarkers uses
+// must also govern what FillOptional seeds before execution.
+func TestFillOptional_WhitespaceOnlyNormalisesToEmpty(t *testing.T) {
+	got, err := stencil.FillOptional(
+		[]byte("Extra: [{{.Extra}}]"),
+		map[string]string{"Extra": "   "},
+		[]string{"Extra"},
+	)
+	if err != nil {
+		t.Fatalf("FillOptional() unexpected error: %v", err)
+	}
+	want := "Extra: []"
+	if string(got) != want {
+		t.Errorf("FillOptional() = %q; want %q (whitespace-only optional value must normalise to empty)", string(got), want)
+	}
+}
+
+// TestFillOptional_PresentAndNonEmptyRendersValue covers a marker listed as optional but
+// present and non-empty rendering its actual value, confirming the optional exemption
+// only changes behaviour for absent/empty values, not for a value that is genuinely set.
+func TestFillOptional_PresentAndNonEmptyRendersValue(t *testing.T) {
+	got, err := stencil.FillOptional(
+		[]byte("Extra: {{.Extra}}"),
+		map[string]string{"Extra": "filled-in"},
+		[]string{"Extra"},
+	)
+	if err != nil {
+		t.Fatalf("FillOptional() unexpected error: %v", err)
+	}
+	want := "Extra: filled-in"
+	if string(got) != want {
+		t.Errorf("FillOptional() = %q; want %q", string(got), want)
+	}
+}
+
+// TestFillOptional_NonOptionalEmptyMarkerStillErrors covers a template with only a
+// non-optional empty marker: the existing unfilled-top-level-marker error must still
+// fire, confirming FillOptional(t, v, nil-equivalent-for-that-name) behaves exactly like
+// Fill for names not listed as optional.
+func TestFillOptional_NonOptionalEmptyMarkerStillErrors(t *testing.T) {
+	_, err := stencil.FillOptional(
+		[]byte("Fasit: {{.Fasit}}"),
+		map[string]string{"Fasit": ""},
+		[]string{"SomeOtherName"},
+	)
+	if err == nil {
+		t.Fatal("FillOptional() got nil error; want the unfilled top-level marker error for the non-optional Fasit")
+	}
+	if !strings.Contains(err.Error(), "Fasit") {
+		t.Errorf("FillOptional() error = %q; want it to name Fasit", err.Error())
+	}
+}
+
+// TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired covers a template
+// with one optional-and-empty marker plus one required-and-empty marker: the error must
+// name only the required one, confirming the optional exemption removes a name from the
+// offenders list rather than merely suppressing the whole error.
+func TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired(t *testing.T) {
+	_, err := stencil.FillOptional(
+		[]byte("Fasit: {{.Fasit}}\nExtra: {{.Extra}}"),
+		map[string]string{"Fasit": "", "Extra": ""},
+		[]string{"Extra"},
+	)
+	if err == nil {
+		t.Fatal("FillOptional() got nil error; want the unfilled top-level marker error for the non-optional Fasit")
+	}
+	wantMsg := "stencil: unfilled top-level marker(s): Fasit"
+	if err.Error() != wantMsg {
+		t.Errorf("FillOptional() error = %q; want %q (Extra must not appear, it is optional)", err.Error(), wantMsg)
+	}
+}
+
+// TestFillOptional_ByteIdenticalToFillOnSameInput covers Fill(t, v) and
+// FillOptional(t, v, nil) producing byte-identical output on the happy path and
+// byte-identical error text on the error path, confirming Fill is genuinely defined as
+// FillOptional(t, v, nil) rather than a parallel implementation that could drift.
+func TestFillOptional_ByteIdenticalToFillOnSameInput(t *testing.T) {
+	t.Run("happy_path", func(t *testing.T) {
+		template := []byte("Fasit: {{.Fasit}}\nTarget: {{.Target}}\n")
+		values := map[string]string{"Fasit": "foo", "Target": "bar"}
+
+		fillGot, fillErr := stencil.Fill(template, values)
+		optGot, optErr := stencil.FillOptional(template, values, nil)
+		if fillErr != nil || optErr != nil {
+			t.Fatalf("unexpected errors: Fill() = %v, FillOptional() = %v", fillErr, optErr)
+		}
+		if string(fillGot) != string(optGot) {
+			t.Errorf("Fill() = %q; FillOptional(t, v, nil) = %q; want byte-identical", string(fillGot), string(optGot))
+		}
+	})
+
+	t.Run("error_path", func(t *testing.T) {
+		template := []byte("Fasit: {{.Fasit}}\n")
+		values := map[string]string{}
+
+		_, fillErr := stencil.Fill(template, values)
+		_, optErr := stencil.FillOptional(template, values, nil)
+		if fillErr == nil || optErr == nil {
+			t.Fatalf("Fill() and FillOptional() must both error; got Fill() = %v, FillOptional() = %v", fillErr, optErr)
+		}
+		if fillErr.Error() != optErr.Error() {
+			t.Errorf("Fill() error = %q; FillOptional(t, v, nil) error = %q; want byte-identical", fillErr.Error(), optErr.Error())
+		}
+	})
+}
+
+// TestFillOptional_OptionalNameAbsentFromTemplateIsNoOp covers an optional name listed
+// but never referenced anywhere in the template: rendering succeeds unaffected, since
+// there is no marker for the exemption to apply to.
+func TestFillOptional_OptionalNameAbsentFromTemplateIsNoOp(t *testing.T) {
+	got, err := stencil.FillOptional(
+		[]byte("Fasit: {{.Fasit}}"),
+		map[string]string{"Fasit": "value"},
+		[]string{"NeverMentioned"},
+	)
+	if err != nil {
+		t.Fatalf("FillOptional() unexpected error: %v", err)
+	}
+	want := "Fasit: value"
+	if string(got) != want {
+		t.Errorf("FillOptional() = %q; want %q", string(got), want)
+	}
+}
+
+// TestFillOptional_CallerValuesMapNotMutated covers the caller's values map being left
+// untouched after a call whose optional-seeding step would otherwise need to add or
+// overwrite an entry, confirming FillOptional operates on a private copy.
+func TestFillOptional_CallerValuesMapNotMutated(t *testing.T) {
+	values := map[string]string{"Fasit": "value"}
+
+	_, err := stencil.FillOptional(
+		[]byte("Fasit: {{.Fasit}}\nExtra: {{.Extra}}"),
+		values,
+		[]string{"Extra"},
+	)
+	if err != nil {
+		t.Fatalf("FillOptional() unexpected error: %v", err)
+	}
+	if _, exists := values["Extra"]; exists {
+		t.Errorf("FillOptional() mutated the caller's values map by adding %q", "Extra")
+	}
+	if len(values) != 1 {
+		t.Errorf("FillOptional() mutated the caller's values map; got %d entries, want 1", len(values))
+	}
+}
+
+// TestFillOptional_RepeatedCallsProduceIdenticalOutput covers repeated FillOptional
+// calls with the same inputs producing byte-identical output and identical error text,
+// mirroring Fill's own idempotence guarantee.
+func TestFillOptional_RepeatedCallsProduceIdenticalOutput(t *testing.T) {
+	t.Run("output_stable_across_calls", func(t *testing.T) {
+		template := []byte("Head: {{.Head}}\nExtra: {{.Extra}}")
+		values := map[string]string{"Head": "value"}
+		optional := []string{"Extra"}
+
+		first, err := stencil.FillOptional(template, values, optional)
+		if err != nil {
+			t.Fatalf("FillOptional() unexpected error on first call: %v", err)
+		}
+		second, err := stencil.FillOptional(template, values, optional)
+		if err != nil {
+			t.Fatalf("FillOptional() unexpected error on second call: %v", err)
+		}
+		if string(first) != string(second) {
+			t.Errorf("FillOptional() not idempotent: first = %q, second = %q", string(first), string(second))
+		}
+	})
+
+	t.Run("error_text_stable_across_calls", func(t *testing.T) {
+		template := []byte("Fasit: {{.Fasit}}\nExtra: {{.Extra}}")
+		values := map[string]string{}
+		optional := []string{"Extra"}
+
+		_, firstErr := stencil.FillOptional(template, values, optional)
+		_, secondErr := stencil.FillOptional(template, values, optional)
+		if firstErr == nil || secondErr == nil {
+			t.Fatalf("FillOptional() got nil error(s); want unfilled-marker errors on both calls")
+		}
+		if firstErr.Error() != secondErr.Error() {
+			t.Errorf("FillOptional() error message not stable: first = %q, second = %q", firstErr.Error(), secondErr.Error())
+		}
+	})
 }

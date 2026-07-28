@@ -36,7 +36,7 @@ func TestRunInit_Smoke(t *testing.T) {
 	if ok, _ := result["ok"].(bool); !ok {
 		t.Error("ok flag is not true")
 	}
-	for _, key := range []string{"lyx_dir", "gitignore", "modules"} {
+	for _, key := range []string{"lyx_dir", "pattern_dir", "gitignore", "modules"} {
 		if _, present := result[key]; !present {
 			t.Errorf("result missing %q key; output: %s", key, buf.String())
 		}
@@ -71,7 +71,7 @@ func TestRunInit_UndoFlagDispatch(t *testing.T) {
 	if ok, _ := result["ok"].(bool); !ok {
 		t.Errorf("ok flag is not true; output: %s", buf2.String())
 	}
-	for _, key := range []string{"lyx_junction", "weft_content", "git_exclude", "gitignore"} {
+	for _, key := range []string{"junctions_removed", "weft_content", "git_exclude", "gitignore"} {
 		if _, present := result[key]; !present {
 			t.Errorf("result missing %q key; output: %s", key, buf2.String())
 		}

@@ -13,6 +13,7 @@ package initengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -112,8 +113,8 @@ func TestUndo_HappyPath(t *testing.T) {
 		t.Fatalf("Undo() = %v; want nil", err)
 	}
 
-	if result.LyxJunction != "removed" {
-		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "removed")
+	if want := []string{hubgeometry.LyxDirName, hubgeometry.PatternDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+		t.Errorf("result.JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 	}
 	if result.WeftContent != "cleared" {
 		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "cleared")
@@ -125,10 +126,14 @@ func TestUndo_HappyPath(t *testing.T) {
 		t.Errorf("result.Gitignore = %q; want %q", result.Gitignore, "reverted")
 	}
 
-	// Host junction is gone.
-	hostLink := f.Layout.HostLyxLinkHere()
-	if _, statErr := os.Lstat(hostLink); !os.IsNotExist(statErr) {
-		t.Errorf("host junction %s still exists after Undo", hostLink)
+	// Both host junctions are gone.
+	hostLyxLink := f.Layout.HostLyxLinkHere()
+	if _, statErr := os.Lstat(hostLyxLink); !os.IsNotExist(statErr) {
+		t.Errorf("host _lyx junction %s still exists after Undo", hostLyxLink)
+	}
+	hostPatternLink := f.Layout.HostPatternLinkHere()
+	if _, statErr := os.Lstat(hostPatternLink); !os.IsNotExist(statErr) {
+		t.Errorf("host _pattern junction %s still exists after Undo", hostPatternLink)
 	}
 
 	// Weft-side _lyx directory is gone.
@@ -158,10 +163,62 @@ func TestUndo_HappyPath(t *testing.T) {
 		t.Errorf(".gitignore still contains the .lyx/ entry: %q", gitignoreContent)
 	}
 
-	// The .git/info/exclude line is gone.
+	// The .git/info/exclude lines for both junctions are gone.
 	excludeContent := readExcludeContent(t, f.Layout, filepath.Base(f.Layout.WorktreeRoot))
 	if excludeContainsLine(excludeContent, hubgeometry.LyxDirName) {
 		t.Errorf(".git/info/exclude still contains %q line after Undo", hubgeometry.LyxDirName)
+	}
+	if excludeContainsLine(excludeContent, hubgeometry.PatternDirName) {
+		t.Errorf(".git/info/exclude still contains %q line after Undo", hubgeometry.PatternDirName)
+	}
+}
+
+// TestUndo_PreservesPatternContent verifies the deliberate asymmetry between
+// _lyx and _pattern that Undo's godoc documents: weft _lyx content is cleared
+// (committed and pushed), but weft _pattern content — the host repo's own
+// hand-authored invariants — is left untouched on disk, and no deletion of it
+// is ever committed.
+func TestUndo_PreservesPatternContent(t *testing.T) {
+	f := lyxtest.CopyPairedLocal(t)
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	if _, err := Init(f.Layout.WorktreeRoot); err != nil {
+		t.Fatalf("Init() = %v; want nil", err)
+	}
+
+	// Seed a PATTERN.md under the weft _pattern directory, mirroring the
+	// host repo's own hand-authored constraint content.
+	weftPatternDir := f.Layout.WeftPatternDir()
+	patternFile := filepath.Join(weftPatternDir, "PATTERN.md")
+	if err := os.WriteFile(patternFile, []byte("# constraints\n"), 0o644); err != nil {
+		t.Fatalf("seed PATTERN.md: %v", err)
+	}
+	lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "add", "--", hubgeometry.PatternDirName)
+	lyxtest.MustRun(t, f.Layout.WeftWorktree(), "git", "commit", "-m", "seed PATTERN.md")
+
+	result, err := Undo(f.Layout.WorktreeRoot)
+	if err != nil {
+		t.Fatalf("Undo() = %v; want nil", err)
+	}
+
+	if want := []string{hubgeometry.LyxDirName, hubgeometry.PatternDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+		t.Errorf("result.JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
+	}
+
+	// PATTERN.md survives on disk, untouched.
+	content := mustReadFile(t, patternFile)
+	if content != "# constraints\n" {
+		t.Errorf("PATTERN.md content changed after Undo: %q", content)
+	}
+
+	// No deletion of it was committed: the _pattern pathspec is clean in the
+	// weft worktree (nothing staged or committed against it by Undo).
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--", hubgeometry.PatternDirName}, f.Layout.WeftWorktree())
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git status in weft worktree failed: %v (exit %d)", err, exitCode)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Errorf("weft worktree _pattern pathspec not clean after Undo: %q", stdout)
 	}
 }
 
@@ -187,8 +244,8 @@ func TestUndo_NeverInitialized(t *testing.T) {
 		t.Fatalf("Undo() = %v; want nil", err)
 	}
 
-	if result.LyxJunction != "not_present" {
-		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
+	if len(result.JunctionsRemoved) != 0 {
+		t.Errorf("result.JunctionsRemoved = %v; want empty", result.JunctionsRemoved)
 	}
 	if result.WeftContent != "not_present" {
 		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "not_present")
@@ -256,8 +313,8 @@ func TestUndo_Idempotent(t *testing.T) {
 		t.Fatalf("second Undo() = %v; want nil", err)
 	}
 
-	if result.LyxJunction != "not_present" {
-		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
+	if len(result.JunctionsRemoved) != 0 {
+		t.Errorf("result.JunctionsRemoved = %v; want empty", result.JunctionsRemoved)
 	}
 	if result.WeftContent != "not_present" {
 		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "not_present")
@@ -409,8 +466,9 @@ func TestUndo_PartialRecovery(t *testing.T) {
 			t.Fatalf("Init() = %v; want nil", err)
 		}
 
-		// Simulate a crash between removing the junction and clearing weft
-		// content: remove only the host junction, leaving weft content in place.
+		// Simulate a crash between removing the _lyx junction and clearing weft
+		// content: remove only the host _lyx junction, leaving the _pattern
+		// junction and weft content in place.
 		hostLink := f.Layout.HostLyxLinkHere()
 		if err := fslink.Remove(hostLink); err != nil {
 			t.Fatalf("remove host junction: %v", err)
@@ -421,8 +479,10 @@ func TestUndo_PartialRecovery(t *testing.T) {
 			t.Fatalf("recovery Undo() = %v; want nil", err)
 		}
 
-		if result.LyxJunction != "not_present" {
-			t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
+		// _lyx was already removed by the simulated crash, so only _pattern is
+		// actually removed by this recovery Undo call.
+		if want := []string{hubgeometry.PatternDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+			t.Errorf("result.JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 		}
 		if result.WeftContent != "cleared" {
 			t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "cleared")
@@ -454,14 +514,18 @@ func TestUndo_PartialRecovery(t *testing.T) {
 		// step 4 of Undo would do) but do not push, simulating a prior Undo
 		// run that committed locally but failed to push. Undo's step 3
 		// (junction removal) always runs before step 4, so a run that reached
-		// step 4 necessarily already removed the host junction too; mirror
+		// step 4 necessarily already removed BOTH host junctions too; mirror
 		// that here so the full Undo call below sees an already-clean
 		// junction step (no-op) rather than a corrupted one (the weft-side
 		// unwiring guard validates the weft-side target still exists before
 		// touching the link, which the deletion below removes).
-		hostLink := f.Layout.HostLyxLinkHere()
-		if err := fslink.Remove(hostLink); err != nil {
-			t.Fatalf("remove host junction: %v", err)
+		hostLyxLink := f.Layout.HostLyxLinkHere()
+		if err := fslink.Remove(hostLyxLink); err != nil {
+			t.Fatalf("remove host _lyx junction: %v", err)
+		}
+		hostPatternLink := f.Layout.HostPatternLinkHere()
+		if err := fslink.Remove(hostPatternLink); err != nil {
+			t.Fatalf("remove host _pattern junction: %v", err)
 		}
 		weftLyxDir := f.Layout.WeftLyxDir()
 		if err := os.RemoveAll(weftLyxDir); err != nil {

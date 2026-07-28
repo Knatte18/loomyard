@@ -1,8 +1,14 @@
-// prompt.go composes the burler round prompt: it builds the nine marker
-// values the embedded template (template.go) requires and fills it via
-// internal/stencil. composePrompt is called only after (*Profile).validate
-// has run, so every path field it reads is already a cleaned absolute path
-// and p.clusterLenses (when ClusterFan was set) is already resolved.
+// prompt.go composes the burler round prompt: it builds the nine required
+// marker values the embedded template (template.go) requires, plus the
+// optional pattern_directive marker, and fills it via internal/stencil.
+// composePrompt is called only after (*Profile).validate has run, so every
+// path field it reads is already a cleaned absolute path and
+// p.clusterLenses (when ClusterFan was set) is already resolved.
+// composePrompt itself does no filesystem access beyond the directory
+// check formatFileSet already performs on each Target/Fasit path — it
+// takes patternDirective as a plain string parameter rather than a
+// *hubgeometry.Layout, so it never gains geometry awareness of its own;
+// the caller (Engine.Run) computes the directive.
 
 package burlerengine
 
@@ -15,10 +21,15 @@ import (
 )
 
 // composePrompt builds the burler round prompt for p by composing each of
-// the template's nine top-level marker values (path lists, fix-scope rules,
-// tool-use rules, the prior-rounds block, the cluster-rules block) and
-// filling reviewPromptTemplate with them via stencil.Fill.
-func composePrompt(p *Profile) (string, error) {
+// the template's nine required top-level marker values (path lists,
+// fix-scope rules, tool-use rules, the prior-rounds block, the
+// cluster-rules block), plus patternDirective under the optional
+// pattern_directive marker, and filling reviewPromptTemplate with them via
+// stencil.FillOptional. patternDirective is not gated on whether the
+// round's target is code or prose: loomyard has no target-type
+// classification, and a file-extension heuristic would be new fragile
+// logic whose misclassification would silently drop the constraints.
+func composePrompt(p *Profile, patternDirective string) (string, error) {
 	values := map[string]string{
 		"target":            formatFileSet(p.Target),
 		"fasit":             formatFileSet(p.Fasit),
@@ -29,9 +40,10 @@ func composePrompt(p *Profile) (string, error) {
 		"cluster_rules":     clusterRulesBlock(p),
 		"review_path":       p.ReviewPath,
 		"fixer_report_path": p.FixerReportPath,
+		"pattern_directive": patternDirective,
 	}
 
-	rendered, err := stencil.Fill(reviewPromptTemplate, values)
+	rendered, err := stencil.FillOptional(reviewPromptTemplate, values, []string{"pattern_directive"})
 	if err != nil {
 		return "", fmt.Errorf("burler: compose prompt: %w", err)
 	}

@@ -30,6 +30,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -270,6 +271,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		Injector:     injector,
 		Reed:         reed,
 		WorktreeRoot: worktree,
+		Layout:       &hubgeometry.Layout{Cwd: worktree, WorktreeRoot: worktree, RelPath: "."},
 		WebsterDir:   t.TempDir(),
 		ReportsDir:   t.TempDir(),
 		PromptsDir:   promptsDir,

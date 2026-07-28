@@ -7,7 +7,7 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 `internal/hubgeometry` owns all cwd, worktree-root, and geometry resolution.
 
 - All cwd / worktree-root queries go through `hubgeometry.Getwd()` / `Resolve()`. Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/hubgeometry` and `cmd/lyx/main.go`.
-- Geometry tokens — `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_lyx` — are owned solely by `internal/hubgeometry`. No other package may use them in a path-construction context (a `filepath.Join` arg, a `+` operand, or a string `const`). Whole-token match; production files only; comparisons and git-pathspec slice literals are not path construction and stay allowed.
+- Geometry tokens — `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_lyx`, `_pattern` — are owned solely by `internal/hubgeometry`. No other package may use them in a path-construction context (a `filepath.Join` arg, a `+` operand, or a string `const`). Whole-token match; production files only; comparisons and git-pathspec slice literals are not path construction and stay allowed.
 - `_lyx`, its `config/` subdir, and any `<module>.yaml` resolve through `hubgeometry.LyxDirName` / `ConfigDir(base)` / `ConfigFile(base, module)` — **in test code too** (a config-layout migration once broke a hardcoded test fixture).
 - Geometry is structural, never config/env-overridable (the board dir is `--board-path` flag > `hubgeometry.BoardDir(l.Hub)`, not a config key).
 - **Enforced by** `internal/hubgeometry/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) on every `go test`. API and helpers: godoc for `internal/hubgeometry`.
@@ -47,6 +47,12 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 
 - `codeintelcli` → `codeintelengine` is the only allowed direction; the reverse import (`codeintelengine` → `codeintelcli`, or `codeintelengine` → any other feature package) is never allowed.
 - **Enforced by** `internal/codeintelengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
+
+## Pattern Leaf Invariant
+
+`internal/pattern` production code imports only stdlib and `internal/hubgeometry` — never `builderengine`, `websterengine`, `burlerengine`, `loomengine`, or any other feature package — so every one of those four consumers can import it without cycles; the reverse import (`pattern` → any feature package) is never allowed.
+
+- **Enforced by** `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
 ## CLI / Cobra Invariant
 

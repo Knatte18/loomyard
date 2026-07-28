@@ -33,6 +33,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
@@ -469,13 +470,14 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	}
 
 	values := map[string]string{
-		"batch_file":    batchFilePath,
-		"batch_name":    batchName,
-		"report_path":   reportPath,
-		"self_fix_cap":  fmt.Sprintf("%d", deps.Config.SelfFixCap),
-		"worktree_root": deps.WorktreeRoot,
+		"batch_file":        batchFilePath,
+		"batch_name":        batchName,
+		"report_path":       reportPath,
+		"self_fix_cap":      fmt.Sprintf("%d", deps.Config.SelfFixCap),
+		"worktree_root":     deps.WorktreeRoot,
+		"pattern_directive": pattern.Directive(deps.Layout, pattern.RoleImplementer),
 	}
-	prompt, err := stencil.Fill(ImplementerTemplate(), values)
+	prompt, err := stencil.FillOptional(ImplementerTemplate(), values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("builder: fill implementer template: %w", err)
 	}

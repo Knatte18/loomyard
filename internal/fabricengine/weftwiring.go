@@ -21,6 +21,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -116,17 +117,52 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions
 	return nil
 }
 
-// removeHostJunction removes the host _lyx junction at the given link path.
+// removeHostJunction removes every host junction for slug — every entry in
+// l.HostJunctions(slug) — via fslink.Remove. It is a thin wrapper over
+// removeJunctionRecords, which owns the actual best-effort loop; the split
+// exists purely so the loop's continue-past-failure contract is directly
+// testable against a synthetic junction slice, since l.HostJunctions always
+// returns exactly one entry today and cannot itself produce the
+// multi-junction scenario the contract is about (mirroring
+// unseedLyxJunction/unseedJunctionRecords in junction.go).
 //
-// Uses fslink.Remove to delete the junction/symlink only (idempotent).
-// Returns nil if the junction does not exist (idempotent).
-// Returns an error if removal fails for reasons other than not-exist.
+// Returns nil if every junction is already absent (idempotent). See
+// removeJunctionRecords for the error case.
 func removeHostJunction(l *hubgeometry.Layout, slug string) error {
-	link := l.HostLyxLink(slug)
-	if err := fslink.Remove(link); err != nil {
-		return fmt.Errorf("remove host junction %s: %w", link, err)
+	return removeJunctionRecords(l.HostJunctions(slug))
+}
+
+// removeJunctionRecords removes each junction in junctions via fslink.Remove.
+//
+// It is best-effort and deliberately continues past a per-junction failure,
+// accumulating every error via errors.Join rather than aborting on the first —
+// the opposite of unseedJunctionRecords' abort-on-first-junction-error rule in
+// junction.go, and deliberately so. A future reader must not "fix" one loop to
+// match the other; they intentionally disagree. Remove's call site is
+// `_ = removeHostJunction(l, slug)`, discarding the return value exactly as the
+// adjacent removePortal and removeLaunchers calls in the same teardown do, so
+// aborting on the first junction's failure would silently leave every later
+// junction in place — defeating the whole point of this step.
+//
+// This step exists because Remove's later link-cleanup step,
+// fslink.RemoveLinksIn(target), scans only the immediate children of the
+// worktree root and misses a nested junction whenever RelPath != "." — the
+// reason step (5) of Remove removes junctions explicitly, before that safety
+// net runs. Leaving this _lyx-only would reintroduce exactly that documented
+// bug for every junction after the first.
+//
+// Returns nil if junctions is empty or every entry is already absent
+// (idempotent). Returns a joined error naming every junction whose removal
+// failed; a non-nil error does NOT mean no junction was removed — the loop
+// still attempted (and may have succeeded for) every other junction.
+func removeJunctionRecords(junctions []hubgeometry.HostJunction) error {
+	var errs []error
+	for _, j := range junctions {
+		if err := fslink.Remove(j.Link); err != nil {
+			errs = append(errs, fmt.Errorf("remove host junction %s: %w", j.Link, err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // removeWeftWorktree tears down the weft worktree, optionally its branch (an

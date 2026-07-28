@@ -221,7 +221,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// tokens. Only internal/hubgeometry is permitted to use these in path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
-		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_raddle", "_lyx":
+		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_raddle", "_lyx", "_pattern":
 			return true
 		}
 		return false

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -62,9 +63,13 @@ type Injector interface {
 // choreography into Master's pane; Reed is the live reed query surface the
 // prior-recovery-strand reclaim consults (a dead-but-live recovery record a
 // fork batch is about to overwrite); WorktreeRoot is the host repo checkout
-// BeginBatch captures HeadSHA from; WebsterDir, ReportsDir, and PromptsDir
-// are the hubgeometry-resolved _lyx/webster, _lyx/webster/reports, and
-// _lyx/webster/prompts directories.
+// BeginBatch captures HeadSHA from; Layout is the resolved Layout
+// RenderForkPrompt uses for both {{.worktree_root}} (filled from
+// Layout.Cwd) and the PATTERN active check, so the two anchors are always
+// derived from the one Layout the caller resolved rather than from two
+// independently-passed values that could disagree; WebsterDir, ReportsDir,
+// and PromptsDir are the hubgeometry-resolved _lyx/webster,
+// _lyx/webster/reports, and _lyx/webster/prompts directories.
 type BeginDeps struct {
 	Plan         *planparser.Plan
 	Batches      []batcher.Batch
@@ -75,6 +80,7 @@ type BeginDeps struct {
 	Injector     Injector
 	Reed         shuttleengine.ReedOps
 	WorktreeRoot string
+	Layout       *hubgeometry.Layout
 	WebsterDir   string
 	ReportsDir   string
 	PromptsDir   string
@@ -209,7 +215,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.WorktreeRoot, deps.Config.SelfFixCap)
+	prompt, err := RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.Layout, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}

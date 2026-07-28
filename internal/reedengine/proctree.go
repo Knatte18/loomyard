@@ -118,7 +118,16 @@ func matchSocketCmdlines(procs []ProcCmdline, binary, socket string) []int {
 // "__warm__" helper alive, holding the hub's .lyx/logs directory forever
 // (found live in the fabric-cutover review, round fable-r1).
 func tmuxProcessName(binary string) string {
-	name := filepath.Base(binary)
+	// binary names a Windows path (this function derives a Windows
+	// process-table Name), so the base-name split must recognize '\' even
+	// when this code runs on a non-Windows test host: path/filepath.Base is
+	// GOOS-native and would leave a "C:\...\tmux.exe"-shaped input untouched
+	// on Linux, which is exactly what proctree.go's own package doc promises
+	// never happens ("None of these functions touch the OS").
+	name := binary
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
 	if !strings.HasSuffix(strings.ToLower(name), ".exe") {
 		name += ".exe"
 	}

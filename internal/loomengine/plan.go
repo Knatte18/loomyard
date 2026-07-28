@@ -27,25 +27,31 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
 // composePlanPrompt builds the Plan producer's prompt by composing the
-// template's three top-level marker values (the decision record path, the
-// plan directory the agent writes into, and the overview file path it must
-// write last) and filling planTemplate with them via stencil.Fill. Unlike
-// composePrompt, there is no mode-specific branch to compose: the Plan
-// producer is autonomous-only, so plan-template.md carries a single,
-// unconditional instruction set.
-func composePlanPrompt(decisionRecordPath, planDir, overviewPath string) ([]byte, error) {
+// template's three required top-level marker values (the decision record
+// path, the plan directory the agent writes into, and the overview file
+// path it must write last), plus patternDirective under the optional
+// pattern_directive marker, and filling planTemplate with them via
+// stencil.FillOptional. Unlike composePrompt, there is no mode-specific
+// branch to compose: the Plan producer is autonomous-only, so
+// plan-template.md carries a single, unconditional instruction set.
+// composePlanPrompt stays a pure string function — patternDirective is
+// computed one level up, in PlanSpec, which already holds the Layout this
+// function has no need for.
+func composePlanPrompt(decisionRecordPath, planDir, overviewPath, patternDirective string) ([]byte, error) {
 	values := map[string]string{
 		"decision_record_path": decisionRecordPath,
 		"plan_dir":             planDir,
 		"overview_path":        overviewPath,
+		"pattern_directive":    patternDirective,
 	}
 
-	rendered, err := stencil.Fill(planTemplate, values)
+	rendered, err := stencil.FillOptional(planTemplate, values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose plan prompt: %w", err)
 	}
@@ -84,7 +90,14 @@ func PlanSpec(layout *hubgeometry.Layout, cfg Config, reg modelspec.Registry) (s
 	planDir := layout.PlanDir()
 	overviewPath := layout.PlanOverview()
 
-	prompt, err := composePlanPrompt(decisionRecordPath, planDir, overviewPath)
+	// RoleImplementer: the Plan producer authors the typed file-op
+	// instructions (Edits:/Creates:/Moves:/Requirements:) a later
+	// code-writing agent executes near-verbatim, so it is the last
+	// authoring point before code — an invariant missed here is carried
+	// into every card that inherits it, unlike the Discussion producer,
+	// which this task deliberately excludes.
+	directive := pattern.Directive(layout, pattern.RoleImplementer)
+	prompt, err := composePlanPrompt(decisionRecordPath, planDir, overviewPath, directive)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}

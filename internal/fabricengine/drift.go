@@ -1,10 +1,10 @@
 // drift.go implements the stateless pair-in-sync check for fabric topology.
 //
 // PairInSync derives the weft sibling deterministically and checks that the weft
-// worktree is on WeftBranchName(hostBranch), and that the host _lyx junction is
-// valid and points to the weft _lyx directory. It is stateless, consulting no
-// registry: fabric's correspondence check compares the weft branch against
-// WeftBranchName(hostBranch).
+// worktree is on WeftBranchName(hostBranch), and that every host junction
+// (l.HostJunctionsHere()) is valid and points to its own weft directory. It is
+// stateless, consulting no registry: fabric's correspondence check compares the
+// weft branch against WeftBranchName(hostBranch).
 //
 // PairInSync and HostClean (hostclean.go) are wired into the loom preflight
 // via internal/loomengine.
@@ -27,7 +27,8 @@ import (
 // A pair is considered in sync when:
 //   - The weft worktree is on WeftBranchName(hostBranch) (via rev-parse --abbrev-ref HEAD
 //     on both worktrees)
-//   - The host _lyx junction exists and points to the correct weft _lyx directory
+//   - Every host junction in l.HostJunctionsHere() exists and points to its own
+//     weft directory
 //
 // The weft sibling is derived deterministically as <worktree-base>-weft (via paths geometry).
 // No registry or status.md is consulted; PairInSync is stateless.
@@ -70,44 +71,48 @@ func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 		return false, fmt.Sprintf("host on %s, weft on %s (want %s)", hostBranch, weftBranch, expectedWeftBranch), nil
 	}
 
-	// Verify the host _lyx junction is valid and points to the correct weft target.
-	hostLink := l.HostLyxLinkHere()
-	weftTarget := l.WeftLyxDir()
-
-	// Distinguish a missing _lyx entry from an existing one that is not a
-	// link: fslink.IsLink reports (false, nil) for both shapes, and the loom
-	// preflight consumes these reason strings — a real directory sitting
-	// where the junction belongs must not masquerade as merely missing.
-	if _, lstatErr := os.Lstat(hostLink); lstatErr != nil {
-		if os.IsNotExist(lstatErr) {
-			return false, "junction missing", nil
+	// Verify every host junction is valid and points to its correct weft
+	// target — l.HostJunctionsHere(), the same Here-anchored, slug-free
+	// accessor checkJunctionHealth loops in reconcile.go. PairInSync's
+	// signature is unchanged and it stays stateless and slug-free, which is
+	// exactly why it loops HostJunctionsHere() rather than HostJunctions(slug).
+	for _, j := range l.HostJunctionsHere() {
+		// Distinguish a missing junction entry from an existing one that is not
+		// a link: fslink.IsLink reports (false, nil) for both shapes, and the
+		// loom preflight consumes these reason strings — a real directory
+		// sitting where the junction belongs must not masquerade as merely
+		// missing.
+		if _, lstatErr := os.Lstat(j.Link); lstatErr != nil {
+			if os.IsNotExist(lstatErr) {
+				return false, fmt.Sprintf("host %s junction missing", j.Name), nil
+			}
+			return false, "", fmt.Errorf("check host junction: %w", lstatErr)
 		}
-		return false, "", fmt.Errorf("check host junction: %w", lstatErr)
-	}
-	isLink, err := fslink.IsLink(hostLink)
-	if err != nil {
-		return false, "", fmt.Errorf("check host junction: %w", err)
-	}
-	if !isLink {
-		// Same wording as checkJunctionHealth for this drift shape, so
-		// status/reconcile and PairInSync describe it identically.
-		return false, "host _lyx is not a junction", nil
-	}
+		isLink, err := fslink.IsLink(j.Link)
+		if err != nil {
+			return false, "", fmt.Errorf("check host junction: %w", err)
+		}
+		if !isLink {
+			// Same wording as checkJunctionHealth for this drift shape, so
+			// status/reconcile and PairInSync describe it identically.
+			return false, fmt.Sprintf("host %s is not a junction", j.Name), nil
+		}
 
-	// Resolve the junction and verify it points to the correct target.
-	linkTarget, err := fslink.PointsTo(hostLink)
-	if err != nil {
-		return false, "", fmt.Errorf("resolve host junction: %w", err)
-	}
+		// Resolve the junction and verify it points to the correct target.
+		linkTarget, err := fslink.PointsTo(j.Link)
+		if err != nil {
+			return false, "", fmt.Errorf("resolve host junction: %w", err)
+		}
 
-	// Resolve weft target for comparison.
-	weftTargetResolved, err := filepath.EvalSymlinks(weftTarget)
-	if err != nil {
-		return false, "", fmt.Errorf("resolve weft target: %w", err)
-	}
+		// Resolve weft target for comparison.
+		weftTargetResolved, err := filepath.EvalSymlinks(j.Target)
+		if err != nil {
+			return false, "", fmt.Errorf("resolve weft target: %w", err)
+		}
 
-	if linkTarget != weftTargetResolved {
-		return false, "junction points elsewhere", nil
+		if linkTarget != weftTargetResolved {
+			return false, fmt.Sprintf("host %s junction points elsewhere", j.Name), nil
+		}
 	}
 
 	return true, "", nil

@@ -5,7 +5,10 @@
      top-level {{.X}} substitution; stencil.Fill requires all nine non-empty
      and there are no {{if}}/{{range}} conditionals anywhere in this file
      (a required marker inside a conditional branch would render silently
-     blank when present-but-empty — see internal/stencil/stencil.go). -->
+     blank when present-but-empty — see internal/stencil/stencil.go).
+     pattern_directive is the tenth marker, and the one optional one: it is
+     filled via stencil.FillOptional and renders as nothing when PATTERN is
+     inactive. -->
 
 # Burler round — review, then fix
 
@@ -16,6 +19,7 @@ You are a burler: a single agent doing ONE review+fix round over an artifact. Yo
 
 Do the two jobs in that order, in full, without skipping ahead.
 
+{{.pattern_directive}}
 ## What to review (the target)
 
 {{.target}}
