@@ -134,8 +134,10 @@ const (
 
 // masterTemplateMarkerValues returns a values map with every one of
 // MasterTemplate's seven required top-level markers set to a non-empty
-// placeholder, so a test can fill the template cleanly or delete one key at
-// a time to prove stencil.Fill's per-marker error.
+// placeholder, plus pattern_directive — the one optional marker, filled via
+// stencil.FillOptional — set to a placeholder too, so a test can fill the
+// template cleanly or delete one key at a time to prove
+// stencil.FillOptional's per-marker error.
 func masterTemplateMarkerValues() map[string]string {
 	return map[string]string{
 		"batch_index":             "01 — json-flag — add the --json flag",
@@ -145,6 +147,7 @@ func masterTemplateMarkerValues() map[string]string {
 		"integration_prompt_path": "/lyx/webster/prompts/integration.md",
 		"self_fix_cap":            "2",
 		"poll_wait_s":             "480",
+		"pattern_directive":       "## Constraints — do this before you fork anything\n\n- Read _pattern/PATTERN.md.",
 	}
 }
 
@@ -371,13 +374,17 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "never end your turn")
 }
 
-// TestMasterTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
-// every one of MasterTemplate's six required markers is supplied, and fails
-// — naming the marker — when any single one is absent.
+// TestMasterTemplate_FillsWithAllMarkers asserts stencil.FillOptional
+// succeeds when every one of MasterTemplate's seven required markers plus
+// the optional pattern_directive marker is supplied, and fails — naming the
+// marker — when any single REQUIRED one is absent. pattern_directive is
+// deliberately excluded from this deletion sweep: it is the one optional
+// marker (see the template's own banner comment), so deleting it must not
+// error.
 func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(websterengine.MasterTemplate(), masterTemplateMarkerValues()); err != nil {
-			t.Fatalf("stencil.Fill() = %v; want nil", err)
+		if _, err := stencil.FillOptional(websterengine.MasterTemplate(), masterTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
 	})
 
@@ -385,15 +392,56 @@ func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := masterTemplateMarkerValues()
 			delete(values, marker)
-			_, err := stencil.Fill(websterengine.MasterTemplate(), values)
+			_, err := stencil.FillOptional(websterengine.MasterTemplate(), values, []string{"pattern_directive"})
 			if err == nil {
-				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
+				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
 			}
 			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
+				t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
 			}
 		})
 	}
+}
+
+// TestMasterTemplate_PatternDirectiveOptional asserts pattern_directive
+// behaves as an optional marker: an empty value renders cleanly with no
+// leftover `{{`, no orphan `## Constraints` heading, and no stray
+// blank-line block where the directive would have sat, and a non-empty
+// value places the directive block ahead of the first work instruction
+// ("## Orientation").
+func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
+	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
+		values := masterTemplateMarkerValues()
+		values["pattern_directive"] = ""
+		got, err := stencil.FillOptional(websterengine.MasterTemplate(), values, []string{"pattern_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		if strings.Contains(text, "{{") {
+			t.Errorf("rendered output contains leftover {{: %q", text)
+		}
+		if strings.Contains(text, "## Constraints") {
+			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
+		}
+		if strings.Contains(text, "\n\n\n\n") {
+			t.Errorf("rendered output contains a stray blank-line block: %q", text)
+		}
+	})
+
+	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
+		values := masterTemplateMarkerValues()
+		got, err := stencil.FillOptional(websterengine.MasterTemplate(), values, []string{"pattern_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		directiveIdx := strings.Index(text, values["pattern_directive"])
+		workIdx := strings.Index(text, "## Orientation")
+		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
+			t.Errorf("pattern_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
+		}
+	})
 }
 
 // TestForkTemplate_PinsReportSchemaKeys asserts the embedded fork template's

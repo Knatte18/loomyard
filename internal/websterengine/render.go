@@ -303,8 +303,19 @@ const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 // write beyond its two contract files is a parent-write audit violation);
 // selfFixCap and pollWaitS are the config knobs Master's prompt states as
 // tuning knobs for its forks and its recover-batch re-polling,
-// respectively.
-func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int) ([]byte, error) {
+// respectively. l is the resolved Layout the caller's own PATTERN active
+// check runs against — RenderMasterPrompt had neither a root nor a Layout
+// parameter before this.
+//
+// pattern_directive is injected via pattern.Directive(l,
+// pattern.RoleOrchestrator) — RoleOrchestrator, not RoleImplementer: this
+// template states in as many words that Master never edits code, so an
+// implementer-worded directive would be one Master cannot carry out; Master
+// qualifies on the context-inheritance clause instead, since its forks are
+// in-session and thin precisely because they inherit everything Master has
+// read. It is filled through stencil.FillOptional, so it renders as nothing
+// when PATTERN is inactive.
+func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *hubgeometry.Layout) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath
@@ -318,8 +329,9 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 		"integration_prompt_path": integrationPrompt,
 		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
 		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
+		"pattern_directive":       pattern.Directive(l, pattern.RoleOrchestrator),
 	}
-	prompt, err := stencil.Fill(MasterTemplate(), values)
+	prompt, err := stencil.FillOptional(MasterTemplate(), values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill master template: %w", err)
 	}
