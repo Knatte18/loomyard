@@ -17,6 +17,7 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -70,5 +71,59 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	// link-exists branch could not resolve a still-missing target.
 	if err := fabricengine.WireJunctions(l, slug); err != nil {
 		t.Fatalf("second WireJunctions = %v; want nil (self-repair path)", err)
+	}
+}
+
+// TestWireJunctions_RefusesRealHostDirectory is card 7's regression guard: a
+// real, non-link directory sitting at the host junction path is still
+// refused — fabric never moves or deletes user content — and the returned
+// error names both the offending path and the re-run-`lyx init` remedy this
+// card's reworded message introduces, replacing the old "migrate via the
+// hub-creator" clause that pointed at a tool that does not address this case.
+func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
+	t.Parallel()
+
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"fabric": fabricengine.ConfigTemplate(),
+	})
+
+	l := fixture.Layout
+	slug := filepath.Base(fixture.Hub)
+	link := l.HostLyxLink(slug)
+
+	// Seed a real, non-link directory at the host junction path — the
+	// "created _lyx by hand" mistake this card's message must guide an
+	// operator away from (and, per the batch scope, the same mistake an
+	// operator makes hand-authoring _pattern content).
+	if err := os.MkdirAll(link, 0o755); err != nil {
+		t.Fatalf("mkdir real host dir %s: %v", link, err)
+	}
+	marker := filepath.Join(link, "marker.txt")
+	if err := os.WriteFile(marker, []byte("real content"), 0o644); err != nil {
+		t.Fatalf("write marker file: %v", err)
+	}
+
+	err := fabricengine.WireJunctions(l, slug)
+	if err == nil {
+		t.Fatal("WireJunctions = nil; want error refusing a real host directory")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, link) {
+		t.Errorf("error %q does not name the offending path %q", msg, link)
+	}
+	if !strings.Contains(msg, "lyx init") {
+		t.Errorf("error %q does not name the re-run-`lyx init` remedy", msg)
+	}
+
+	// The real directory and its content must be untouched: fabric never
+	// deletes or moves user content on this guard's account.
+	content, readErr := os.ReadFile(marker)
+	if readErr != nil {
+		t.Fatalf("read marker after refused WireJunctions: %v", readErr)
+	}
+	if string(content) != "real content" {
+		t.Errorf("marker content changed: %q", string(content))
 	}
 }
