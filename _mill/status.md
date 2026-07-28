@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: pattern-wiring
 branch: pattern-wiring
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-28T07:03:31Z'
+discussion-fix-r6  '2026-07-28T09:18:37Z'
+discussed  '2026-07-28T09:18:37Z'
 ```
