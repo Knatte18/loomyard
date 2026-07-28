@@ -27,6 +27,7 @@ var allowedSpawners = map[string]string{
 	"cmd/lyx/hermeticenv_test.go":             "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
 	"tools/sandbox/pathresolve_guard_test.go": "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
 	"cmd/lyx/ghguard_test.go":                 "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
+	"cmd/lyx/gitrepoboundary_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
 }
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
