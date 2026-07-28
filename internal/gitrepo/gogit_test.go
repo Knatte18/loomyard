@@ -358,3 +358,319 @@ func TestGoGit_OpenHandleDoesNotBlockWorktreeRemove(t *testing.T) {
 	// had already dropped.
 	runtime.KeepAlive(handle)
 }
+
+// oracleRemoteName reimplements remoteName directly on `git symbolic-ref` and
+// `git config --get branch.<name>.remote`, falling back to "origin" on any
+// failure at either step. Duplicated from oracle_test.go's identically-named
+// function rather than imported, because that one lives in package
+// gitrepo_test (a different Go package, structurally unreachable from this
+// file's package gitrepo) — the same package-boundary reason this file
+// builds its own fixtures instead of reusing fixtures_test.go's.
+func oracleRemoteName(t *testing.T, dir string) string {
+	t.Helper()
+
+	stdout, _, code, err := gitexec.RunGit([]string{"symbolic-ref", "--short", "HEAD"}, dir)
+	if err != nil || code != 0 {
+		return "origin"
+	}
+	branch := strings.TrimSpace(stdout)
+
+	stdout, _, code, err = gitexec.RunGit([]string{"config", "--get", "branch." + branch + ".remote"}, dir)
+	if err != nil || code != 0 {
+		return "origin"
+	}
+	remote := strings.TrimSpace(stdout)
+	if remote == "" {
+		return "origin"
+	}
+	return remote
+}
+
+// oracleHasUnpushed reimplements hasUnpushed directly on
+// `git rev-list --count @{u}..HEAD`: any non-zero exit — for whatever reason,
+// no upstream configured, an upstream configured but never fetched, or HEAD
+// itself unresolvable — means true, exactly matching push.go's documented
+// behaviour. Duplicated from oracle_test.go for the same package-boundary
+// reason as oracleRemoteName above.
+func oracleHasUnpushed(t *testing.T, dir string) (bool, error) {
+	t.Helper()
+
+	stdout, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, dir)
+	if err != nil {
+		return false, err
+	}
+	if code != 0 {
+		return true, nil
+	}
+	return strings.TrimSpace(stdout) != "0", nil
+}
+
+// oracleIsStrictDescendant reimplements isStrictDescendant directly on
+// `git merge-base --is-ancestor` plus an explicit equality check. Duplicated
+// from oracle_test.go for the same package-boundary reason as
+// oracleRemoteName above.
+func oracleIsStrictDescendant(t *testing.T, dir, ancestor, descendant string) bool {
+	t.Helper()
+
+	if ancestor == descendant {
+		return false
+	}
+	_, _, code, err := gitexec.RunGit([]string{"merge-base", "--is-ancestor", ancestor, descendant}, dir)
+	return err == nil && code == 0
+}
+
+// gogitBareRemoteFixture holds the paths a newGogitBareRemoteFixture builds:
+// the bare remote itself plus two clones, both already tracking main, for
+// @{u} and hasUnpushed parity cases. Distinct from (and structurally
+// unreachable from) gitnativepoc/harness_test.go's identically-shaped
+// bareRemoteFixture and any external-package equivalent, for the same
+// package-boundary reason as this file's other fixtures.
+type gogitBareRemoteFixture struct {
+	bare, cloneA, cloneB string
+}
+
+// newGogitBareRemoteFixture builds a bare remote repository plus two clones,
+// both checked out on main with upstream tracking already established
+// (clones, unlike a fresh `git init` + `git remote add`, carry tracking from
+// the clone itself).
+func newGogitBareRemoteFixture(t *testing.T) gogitBareRemoteFixture {
+	t.Helper()
+
+	container := t.TempDir()
+	bare := filepath.Join(container, "remote.git")
+	lyxtest.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
+
+	seed := filepath.Join(container, "seed")
+	lyxtest.MustRun(t, container, "git", "init", "-b", "main", seed)
+	writeAndCommit(t, seed, "a.txt", "initial", "init")
+	lyxtest.MustRun(t, seed, "git", "remote", "add", "origin", bare)
+	lyxtest.MustRun(t, seed, "git", "push", "-u", "origin", "main")
+
+	cloneA := filepath.Join(container, "cloneA")
+	lyxtest.MustRun(t, container, "git", "clone", "-b", "main", bare, cloneA)
+	cloneB := filepath.Join(container, "cloneB")
+	lyxtest.MustRun(t, container, "git", "clone", "-b", "main", bare, cloneB)
+
+	return gogitBareRemoteFixture{bare: bare, cloneA: cloneA, cloneB: cloneB}
+}
+
+// TestRemoteName_Parity covers remoteName's two paths: the "origin" fallback
+// when no branch.<name>.remote is configured, and the configured-remote path
+// once it is — asserted directly against a git fixture (via the oracle)
+// rather than any gitrepo public method, since remoteName is unexported on
+// both sides and has no public gitrepo oracle counterpart.
+func TestRemoteName_Parity(t *testing.T) {
+	t.Run("OriginFallback", func(t *testing.T) {
+		dir, repo := newStandaloneRepo(t)
+
+		oracleGot := oracleRemoteName(t, dir)
+		implGot := repo.remoteName()
+		if oracleGot != implGot {
+			t.Errorf("remoteName() parity mismatch: oracle = %q; gitrepo = %q", oracleGot, implGot)
+		}
+		if implGot != "origin" {
+			t.Errorf("remoteName() = %q, want %q", implGot, "origin")
+		}
+	})
+
+	t.Run("ConfiguredRemote", func(t *testing.T) {
+		// Track a remote deliberately not named "origin" so this subtest
+		// actually exercises the branch.<name>.remote config lookup rather
+		// than coincidentally matching the fallback value.
+		container := t.TempDir()
+		bare := filepath.Join(container, "upstream.git")
+		lyxtest.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
+
+		dir, repo := newStandaloneRepo(t)
+		lyxtest.MustRun(t, dir, "git", "remote", "add", "upstream", bare)
+		lyxtest.MustRun(t, dir, "git", "push", "-u", "upstream", "main")
+
+		oracleGot := oracleRemoteName(t, dir)
+		implGot := repo.remoteName()
+		if oracleGot != implGot {
+			t.Errorf("remoteName() parity mismatch: oracle = %q; gitrepo = %q", oracleGot, implGot)
+		}
+		if implGot != "upstream" {
+			t.Errorf("remoteName() = %q, want %q (configured tracked remote)", implGot, "upstream")
+		}
+	})
+}
+
+// TestIsStrictDescendant_Parity covers isStrictDescendant across an ancestor
+// commit (true), the same commit compared against itself (false — strict),
+// and an unrelated orphan-branch commit sharing no history at all (false),
+// asserted against both the oracle and the unexported method directly.
+func TestIsStrictDescendant_Parity(t *testing.T) {
+	dir, repo := newStandaloneRepo(t)
+	ancestorSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (ancestor) error = %v", err)
+	}
+
+	writeAndCommit(t, dir, "b.txt", "second", "second commit")
+	descendantSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (descendant) error = %v", err)
+	}
+
+	// An orphan branch shares no commit history with main at all, giving a
+	// genuinely unrelated commit rather than merely an object missing from
+	// the object store.
+	lyxtest.MustRun(t, dir, "git", "checkout", "--orphan", "unrelated-branch")
+	lyxtest.MustRun(t, dir, "git", "rm", "-rf", "--cached", ".")
+	writeAndCommit(t, dir, "c.txt", "unrelated", "unrelated root")
+	unrelatedSHA, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() (unrelated) error = %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		ancestor   string
+		descendant string
+		want       bool
+	}{
+		{"Ancestor", ancestorSHA, descendantSHA, true},
+		{"Equal", descendantSHA, descendantSHA, false},
+		{"Unrelated", unrelatedSHA, descendantSHA, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oracleGot := oracleIsStrictDescendant(t, dir, tt.ancestor, tt.descendant)
+			if oracleGot != tt.want {
+				t.Errorf("oracle isStrictDescendant(%q, %q) = %v, want %v", tt.ancestor, tt.descendant, oracleGot, tt.want)
+			}
+			implGot := repo.isStrictDescendant(tt.ancestor, tt.descendant)
+			if implGot != tt.want {
+				t.Errorf("isStrictDescendant(%q, %q) = %v, want %v", tt.ancestor, tt.descendant, implGot, tt.want)
+			}
+		})
+	}
+}
+
+// TestHasUnpushed_Parity covers hasUnpushed across five states, asserted
+// against both the CLI oracle and the unexported method directly. Three are
+// carried over from gitnativepoc/read_test.go's TestHasUnpushed
+// (AheadOfUpstream, Behind, NoUpstreamConfigured); two are new and have never
+// been compared against a live CLI oracle before: ConfiguredButNeverFetched
+// (upstream tracking is configured but the remote-tracking ref was never
+// created by a fetch) and FailureSwallowing (HEAD itself cannot resolve at
+// all — an unborn HEAD with no upstream — pinning that the CLI's "any
+// non-zero rev-list exit means true" contract holds even here, the exact
+// shape a naive go-git port checking Head() first would get wrong by
+// returning (false, err) instead).
+func TestHasUnpushed_Parity(t *testing.T) {
+	t.Run("AheadOfUpstream", func(t *testing.T) {
+		fixture := newGogitBareRemoteFixture(t)
+		writeAndCommit(t, fixture.cloneA, "b.txt", "more", "second")
+		repo := New(fixture.cloneA)
+
+		oracleGot, oracleErr := oracleHasUnpushed(t, fixture.cloneA)
+		if oracleErr != nil {
+			t.Fatalf("oracleHasUnpushed() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.hasUnpushed()
+		if implErr != nil {
+			t.Fatalf("hasUnpushed() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("hasUnpushed() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if !implGot {
+			t.Errorf("hasUnpushed() = %v, want true (ahead of upstream)", implGot)
+		}
+	})
+
+	t.Run("Behind", func(t *testing.T) {
+		fixture := newGogitBareRemoteFixture(t)
+
+		// CloneB pushes a new commit to the shared remote, then CloneA fetches
+		// (without merging) so CloneA's upstream-tracking ref advances past
+		// CloneA's own branch tip; CloneA's own branch never gains a commit
+		// upstream lacks, so there is nothing to push.
+		writeAndCommit(t, fixture.cloneB, "b.txt", "b's change", "b advances main")
+		lyxtest.MustRun(t, fixture.cloneB, "git", "push")
+		lyxtest.MustRun(t, fixture.cloneA, "git", "fetch")
+		repo := New(fixture.cloneA)
+
+		oracleGot, oracleErr := oracleHasUnpushed(t, fixture.cloneA)
+		if oracleErr != nil {
+			t.Fatalf("oracleHasUnpushed() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.hasUnpushed()
+		if implErr != nil {
+			t.Fatalf("hasUnpushed() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("hasUnpushed() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if implGot {
+			t.Errorf("hasUnpushed() = %v, want false (behind upstream, nothing to push)", implGot)
+		}
+	})
+
+	t.Run("NoUpstreamConfigured", func(t *testing.T) {
+		dir, repo := newStandaloneRepo(t)
+
+		oracleGot, oracleErr := oracleHasUnpushed(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleHasUnpushed() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.hasUnpushed()
+		if implErr != nil {
+			t.Fatalf("hasUnpushed() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("hasUnpushed() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if !implGot {
+			t.Errorf("hasUnpushed() = %v, want true (no upstream configured)", implGot)
+		}
+	})
+
+	t.Run("ConfiguredButNeverFetched", func(t *testing.T) {
+		dir, repo := newStandaloneRepo(t)
+		// Configure upstream tracking by hand, without ever fetching from the
+		// (nonexistent) remote — refs/remotes/origin/main is never created,
+		// so @{u} cannot resolve even though the config entries exist.
+		lyxtest.MustRun(t, dir, "git", "remote", "add", "origin", "https://example.invalid/never-fetched.git")
+		lyxtest.MustRun(t, dir, "git", "config", "branch.main.remote", "origin")
+		lyxtest.MustRun(t, dir, "git", "config", "branch.main.merge", "refs/heads/main")
+
+		oracleGot, oracleErr := oracleHasUnpushed(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleHasUnpushed() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.hasUnpushed()
+		if implErr != nil {
+			t.Fatalf("hasUnpushed() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("hasUnpushed() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if !implGot {
+			t.Errorf("hasUnpushed() = %v, want true (upstream configured but never fetched)", implGot)
+		}
+	})
+
+	t.Run("FailureSwallowing_UnbornHEAD_NoUpstream", func(t *testing.T) {
+		dir := t.TempDir()
+		lyxtest.MustRun(t, dir, "git", "init", "-b", "main")
+		repo := New(dir)
+
+		oracleGot, oracleErr := oracleHasUnpushed(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleHasUnpushed() error = %v", oracleErr)
+		}
+		implGot, implErr := repo.hasUnpushed()
+		if implErr != nil {
+			t.Fatalf("hasUnpushed() error = %v", implErr)
+		}
+		if oracleGot != implGot {
+			t.Errorf("hasUnpushed() parity mismatch: oracle = %v; gitrepo = %v", oracleGot, implGot)
+		}
+		if !implGot {
+			t.Errorf("hasUnpushed() = %v, want true (rev-list failure of any kind folds to true, including an unresolvable HEAD)", implGot)
+		}
+	})
+}
