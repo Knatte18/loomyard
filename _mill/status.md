@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-docs-and-invariants  '2026-07-28T18:39:00Z'
 holistic-reviewing  '2026-07-28T18:39:18Z'
 holistic-fixing  '2026-07-28T18:44:20Z'
 holistic-reviewing  '2026-07-28T18:47:40Z'
+holistic-fixing  '2026-07-28T18:52:57Z'
 ```
 
 ## Batches
