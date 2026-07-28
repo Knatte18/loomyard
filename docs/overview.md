@@ -94,7 +94,9 @@ The test: **would this state mean anything on a different machine?** Orchestrati
 
 Each host worktree has a sibling weft worktree. Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree:
 - `<host>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction)
-- `<host>/_raddle` → `<hub>/<slug>-weft/_raddle` (raddle junction)
+- `<host>/_pattern` → `<hub>/<slug>-weft/_pattern` (PATTERN constraint-injection junction)
+
+No `_raddle` junction is wired in this release — `internal/fabricengine/status.go`'s host-pollution scan is explicit that no junction exists for `_raddle` yet, and `hubgeometry.HostJunctions` has never returned one; a prior version of this list incorrectly claimed one, which this entry corrects.
 
 Junctions are listed in `.git/info/exclude` per worktree and are never committed to `.gitignore`. From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
