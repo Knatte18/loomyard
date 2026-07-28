@@ -52,6 +52,7 @@ Clause (d) is also why `plan-template.md` gets `RoleImplementer` rather than a v
   - `internal/burlerengine/prompt.go`
   - `internal/burlerengine/engine.go`
   - `internal/burlerengine/template_test.go`
+  - `internal/burlerengine/prompt_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
