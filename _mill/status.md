@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -28,4 +28,29 @@ plan-review-r4  '2026-07-28T10:06:50Z'
 plan-fix-r4  '2026-07-28T10:06:50Z'
 plan-fix-r5  '2026-07-28T10:22:03Z'
 planned  '2026-07-28T10:22:16Z'
+implementing  '2026-07-28T10:29:07Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: gogit-handle
+    state: pending
+  - name: githubclient
+    state: pending
+  - name: parity-oracle
+    state: pending
+  - name: selfreport-transport
+    state: pending
+  - name: migrate-core-reads
+    state: pending
+  - name: migrate-snapshot-push-reads
+    state: pending
+  - name: retire-poc-and-measure
+    state: pending
+  - name: guards
+    state: pending
+  - name: docs-and-invariants
+    state: pending
 ```
