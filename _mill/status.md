@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-stencil-optional
+phase: approved-hubgeometry-pattern-surface
 slug: pattern-wiring
 branch: pattern-wiring
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-07-28T10:22:02Z'
 planned  '2026-07-28T10:22:12Z'
 implementing  '2026-07-28T10:29:12Z'
 approved-stencil-optional  '2026-07-28T10:34:18Z'
+approved-hubgeometry-pattern-surface  '2026-07-28T10:46:34Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     start_sha: 4d92ff2c3ec739ac32bb9237f689edeae32cffbf
     commit_sha: 20c472c0f807a7f2f613442645fe92bb3b3dc575
   - name: hubgeometry-pattern-surface
-    state: running
+    state: approved
     implementer_session: ec16ed78-b26a-487f-8b3b-a64d796209bd
     start_sha: 1cb3b30c781cc137247eb9b13d0c26da08065f89
+    commit_sha: 3481e9c74d44ae87345c443b5bed785eda2e098e
   - name: fabric-junction-generalisation
     state: pending
   - name: weft-pathspec-tolerance
