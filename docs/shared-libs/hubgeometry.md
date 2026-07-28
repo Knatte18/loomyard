@@ -25,6 +25,7 @@ These three constants are the single source of the geometry tokens for the whole
 - **`WeftSuffix`** (`"-weft"`) — suffix appended to a host-worktree slug to form its weft sibling directory name (e.g. `"feat"` → `"feat-weft"`). Use `WeftSiblingPath` / `WeftRepoRoot` / `WeftWorktreePath` rather than constructing the path from this constant directly.
 - **`BoardDirName`** (`"_board"`) — name of the board data directory inside the hub (i.e. `<hub>/_board`). Use `BoardDir(hub)` to obtain the full path.
 - **`HubSuffix`** (`"-HUB"`) — suffix appended to a repo name to form its hub container directory (e.g. `"loomyard"` → `"loomyard-HUB"`). Use `HubPath(parent, name)` to obtain the full path.
+- **`PatternDirName`** (`"_pattern"`) — directory name for the PATTERN constraint-injection surface within a worktree (i.e. `<worktree>/_pattern`). Use `PatternDir(baseDir)` / `PatternFile(baseDir)` to obtain the full paths; the filename `"PATTERN.md"` is deliberately not a geometry constant, since only those two accessors ever need it.
 
 ### Functions
 
@@ -75,6 +76,13 @@ These functions resolve configuration file paths. They take a `baseDir` (the dir
 - **`ConfigFile(baseDir, module string) string`** — Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")`. The path to a specific module's configuration file (e.g., `_lyx/config/board.yaml`).
 - **`DotEnv(baseDir string) string`** — Returns `filepath.Join(baseDir, ".env")`. The path to the environment variable overrides file.
 
+### Pattern path helpers
+
+These functions resolve the PATTERN constraint-injection surface's paths. Like the config path helpers above, they take a `baseDir` parameter, not a `Layout`, and are the only place `internal/pattern` (and every agent) may obtain a `_pattern` path — per the Hub Geometry Invariant, no consumer joins `PatternDirName` and `"PATTERN.md"` itself.
+
+- **`PatternDir(baseDir string) string`** — Returns `filepath.Join(baseDir, PatternDirName)`. The `_pattern` directory holding `PATTERN.md`.
+- **`PatternFile(baseDir string) string`** — Returns `filepath.Join(PatternDir(baseDir), "PATTERN.md")`. The path to the PATTERN surface file itself.
+
 ### Geometry bootstrap functions
 
 These pure functions construct geometry paths without requiring a resolved `Layout`. They are the correct way for early-stage callers (pre-init, pre-layout, bootstrap code) to form geometry paths. They consume the geometry constants above — no caller needs to repeat the raw suffix strings.
@@ -101,6 +109,21 @@ These pure functions construct geometry paths without requiring a resolved `Layo
 - **`MenuLauncherRel() string`** — `filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(Prime, RelPath))`. The relative path from the menu launcher directory to the Prime worktree's subpath for menu spawning.
 - **`PrimeName() string`** — `filepath.Base(Prime)`. The Prime worktree's directory name (stable, used in paths like `ide-menu.cmd`).
 
+### Pattern junction methods (Layout)
+
+These four methods mirror their `_lyx` counterparts exactly (`WeftLyxDir`/`WeftLyxDirFor`/`HostLyxLink`/`HostLyxLinkHere`), substituting `PatternDirName` for `LyxDirName`. They are the junction endpoints for the `_pattern` weft/host pair.
+
+- **`WeftPatternDir() string`** — `filepath.Join(WeftWorktree(), RelPath, PatternDirName)`. The `_pattern` directory in the current worktree's weft sibling; the junction target for `WeftPatternDir`/`HostPatternLinkHere`.
+- **`WeftPatternDirFor(slug string) string`** — `filepath.Join(WeftWorktreePath(slug), RelPath, PatternDirName)`. The `_pattern` directory within a named slug's weft worktree; pairs with `HostPatternLink(slug)`.
+- **`HostPatternLink(slug string) string`** — `filepath.Join(WorktreePath(slug), RelPath, PatternDirName)`. The `_pattern` junction link in a named slug's host worktree.
+- **`HostPatternLinkHere() string`** — `filepath.Join(WorktreeRoot, RelPath, PatternDirName)`. The `_pattern` junction link in the current host worktree, derived from `WorktreeRoot`+`RelPath` (not `Cwd`).
+- **`PatternFileHere() string`** — `PatternFile(filepath.Join(WorktreeRoot, RelPath))`. The path to `PATTERN.md` for the current worktree; every agent's active check. Anchored at `WorktreeRoot`+`RelPath` rather than `WorktreeRoot` alone (would miss the file in nested-hub geometry) or `Cwd` (would drift from the junction endpoints above). On a `Resolve`-built `Layout` this equals `PatternFile(Cwd)`, since `Resolve` sets `RelPath = filepath.Rel(WorktreeRoot, Cwd)`.
+
+### Junction detection methods (Layout)
+
+- **`HostJunctions(slug string) []HostJunction`** — the list of host junctions for a named slug: two entries, `_lyx` first (`{Name: LyxDirName, Link: HostLyxLink(slug), Target: WeftLyxDirFor(slug)}`) then `_pattern` (`{Name: PatternDirName, Link: HostPatternLink(slug), Target: WeftPatternDirFor(slug)}`). `Hub`/slug-anchored: used by wiring, unwiring, and `remove`.
+- **`HostJunctionsHere() []HostJunction`** — the same two junction records, resolved against the current worktree instead of a slug: `_lyx`'s `Link` comes from `HostLyxLinkHere()` and `Target` from `WeftLyxDir()`; `_pattern`'s `Link` comes from `HostPatternLinkHere()` and `Target` from `WeftPatternDir()`. Used by the three junction health-check sites (`internal/fabricengine/reconcile.go`, `status.go`, `drift.go`), which have no slug available — `PairInSync` in particular takes no slug parameter at all and is documented stateless.
+
 ## Design principles
 
 **Geometry-only.** `hubgeometry` computes *where* things are, never *mutates* them. Worktree creation/removal, junction setup, and config scaffolding stay in the domain modules. `hubgeometry` is the dumb geometry resolver so they can be smart about state transitions.
@@ -119,7 +142,7 @@ These pure functions construct geometry paths without requiring a resolved `Layo
 
 **`TestEnforcement` (cwd/root primitives ban):** Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/hubgeometry` and `cmd/lyx/main.go`. The scan uses a substring check on the raw file bytes and fails the build if either token appears in any non-test `.go` file outside the allowlist.
 
-**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, and `_lyx` may not appear as string literals in a **path-construction context** in any production file outside `internal/hubgeometry`. Path-construction contexts are:
+**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The geometry path tokens `_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_lyx`, and `_pattern` may not appear as string literals in a **path-construction context** in any production file outside `internal/hubgeometry`. Path-construction contexts are:
 
 - An argument to a `filepath.Join(...)` call.
 - An operand of a binary `+` (`token.ADD`) expression.

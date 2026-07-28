@@ -5,6 +5,7 @@
 package loomengine
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,6 +96,86 @@ func TestPlanSpec_PromptFilled(t *testing.T) {
 	if strings.Contains(spec.Prompt, "{{") {
 		t.Error("PlanSpec(...).Prompt contains a leftover \"{{\" marker; want every marker filled")
 	}
+}
+
+// TestPlanSpec_PatternDirectiveOptional proves pattern_directive behaves as
+// an optional marker driven all the way through PlanSpec: an empty
+// directive (the common case — PATTERN inactive) renders with no leftover
+// "{{", no orphan "## Constraints" heading, and no stray blank-line block,
+// while a non-empty directive (PATTERN active) appears ahead of "## Step
+// 1". The two cases deliberately use DIFFERENT Layout fixtures. Every other
+// test in this file builds its Layout from a path that never exists on
+// disk (filepath.Join("home", "user", "repo")), which is fine for pure
+// string-shape assertions — but pattern.Directive performs a real
+// os.Stat on _pattern/PATTERN.md, so reusing that fake Layout here would
+// always render the directive empty and the non-empty case's placement
+// assertion would pass vacuously, proving nothing. The non-empty case
+// instead builds its Layout on a t.TempDir() with a real _pattern/PATTERN.md
+// seeded on disk. This is the one test in this file that touches the
+// filesystem — cards 24 through 27 inject pattern_directive directly as a
+// stencil value and never stat anything, since their templates are
+// exercised through stencil.FillOptional rather than through a
+// Layout-taking entry point; PlanSpec is Layout-taking, so this test is
+// the one place in the whole batch that must actually exercise
+// pattern.Directive's own os.Stat. t.TempDir() is not a banned token under
+// the Test Tier Purity Invariant, so this file stays untagged.
+func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
+	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
+
+	t.Run("empty pattern_directive (PATTERN inactive) renders cleanly", func(t *testing.T) {
+		// filepath.Join("home", "user", "repo") never exists on disk, so
+		// pattern.Directive's os.Stat always resolves "not exist" here —
+		// PATTERN is inactive by construction.
+		layout := &hubgeometry.Layout{WorktreeRoot: filepath.Join("home", "user", "repo")}
+
+		reg, err := modelspec.LoadRegistry(t.TempDir())
+		if err != nil {
+			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+		}
+		spec, err := PlanSpec(layout, cfg, reg)
+		if err != nil {
+			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
+		}
+
+		prompt := spec.Prompt
+		if strings.Contains(prompt, "{{") {
+			t.Errorf("PlanSpec(...).Prompt contains a leftover {{: %q", prompt)
+		}
+		if strings.Contains(prompt, "## Constraints") {
+			t.Errorf("PlanSpec(...).Prompt contains an orphan ## Constraints heading: %q", prompt)
+		}
+		if strings.Contains(prompt, "\n\n\n\n") {
+			t.Errorf("PlanSpec(...).Prompt contains a stray blank-line block: %q", prompt)
+		}
+	})
+
+	t.Run("non-empty pattern_directive (PATTERN active) precedes Step 1", func(t *testing.T) {
+		worktreeRoot := t.TempDir()
+		patternDir := filepath.Join(worktreeRoot, "_pattern")
+		if err := os.MkdirAll(patternDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+		}
+		if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
+		}
+		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+
+		reg, err := modelspec.LoadRegistry(t.TempDir())
+		if err != nil {
+			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+		}
+		spec, err := PlanSpec(layout, cfg, reg)
+		if err != nil {
+			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
+		}
+
+		prompt := spec.Prompt
+		directiveIdx := strings.Index(prompt, "## Constraints")
+		stepIdx := strings.Index(prompt, "## Step 1")
+		if directiveIdx == -1 || stepIdx == -1 || directiveIdx >= stepIdx {
+			t.Errorf("pattern_directive (idx %d) does not precede ## Step 1 (idx %d) in prompt: %q", directiveIdx, stepIdx, prompt)
+		}
+	})
 }
 
 // TestPlanSpec_PromptStatesCardCriteria verifies the rendered prompt

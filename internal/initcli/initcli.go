@@ -33,24 +33,30 @@ import (
 func Command() *cobra.Command {
 	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "scaffold _lyx/config/ in the current directory (or reverse it with --undo)",
+		Short: "wire the _lyx and _pattern junctions and scaffold _lyx/config/ (or reverse it with --undo)",
 		Long: `init activates the lyx topology for the current worktree.
 
-It wires cwd-keyed fabric junctions, creates _lyx/ and _lyx/config/ directories,
-maintains the managed .gitignore block for .lyx/, and reconciles all module
-config files against their templates (idempotent: existing user edits are
-preserved). A weft pairing must already exist (run 'lyx fabric add' or
-'lyx fabric clone' first).
+It wires both cwd-keyed fabric junctions (_lyx and _pattern), creates the
+_lyx/, _lyx/config/, and _pattern/ directories, maintains the managed
+.gitignore block for .lyx/, and reconciles all module config files against
+their templates (idempotent: existing user edits are preserved). A weft
+pairing must already exist (run 'lyx fabric add' or 'lyx fabric clone' first).
 
-Pass --undo to reverse a previous init: this removes the host _lyx junction,
-clears the weft-side _lyx content (committing and pushing the deletion),
-and reverts the managed .gitignore block and the .git/info/exclude entry
-that init added. --undo is safe to run on a directory that was never
-initialized (a clean no-op) and is mainly useful for test/sandbox cleanup.
+Pass --undo to reverse a previous init: this removes both host junctions and
+clears the weft-side _lyx content, committing and pushing that deletion.
+Weft _pattern content is deliberately preserved — it is the host repo's own
+hand-authored invariants, not lyx's runtime state — and is never cleared,
+committed, or pushed by --undo. --undo also reverts the managed .gitignore
+block and the .git/info/exclude entries that init added. --undo is safe to
+run on a directory that was never initialized (a clean no-op) and is mainly
+useful for test/sandbox cleanup.
+
+Breaking change: --undo's JSON output now reports "junctions_removed" (a
+list of junction names) in place of the old singular "lyx_junction" key.
 
   lyx init --undo`,
 	}
-	initCmd.Flags().Bool("undo", false, "reverse a previous init: remove the _lyx junction, weft-side content, and the .gitignore/.git-exclude entries it added")
+	initCmd.Flags().Bool("undo", false, "reverse a previous init: remove every host junction, weft-side content, and the .gitignore/.git-exclude entries it added")
 	initCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
 		undo, _ := initCmd.Flags().GetBool("undo")
 		if undo {
@@ -95,16 +101,20 @@ func runInit(out io.Writer, args []string) int {
 	}
 
 	return output.Ok(out, map[string]any{
-		"lyx_dir":   result.LyxDir,
-		"gitignore": result.Gitignore,
-		"modules":   modules,
+		"lyx_dir":     result.LyxDir,
+		"pattern_dir": result.PatternDir,
+		"gitignore":   result.Gitignore,
+		"modules":     modules,
 	})
 }
 
 // runUndo is the package-private handler for `lyx init --undo`.
 //
 // It resolves cwd and delegates the actual reversal to initengine.Undo, then
-// formats the result as the JSON output envelope.
+// formats the result as the JSON output envelope. The emitted "junctions_removed"
+// key carries the JunctionsRemoved slice — a breaking change from the prior
+// singular "lyx_junction" key, since a slice is the only shape that scales to
+// more than one junction.
 func runUndo(out io.Writer, args []string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -117,9 +127,9 @@ func runUndo(out io.Writer, args []string) int {
 	}
 
 	return output.Ok(out, map[string]any{
-		"lyx_junction": result.LyxJunction,
-		"weft_content": result.WeftContent,
-		"git_exclude":  result.GitExclude,
-		"gitignore":    result.Gitignore,
+		"junctions_removed": result.JunctionsRemoved,
+		"weft_content":      result.WeftContent,
+		"git_exclude":       result.GitExclude,
+		"gitignore":         result.Gitignore,
 	})
 }

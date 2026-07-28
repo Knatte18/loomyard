@@ -27,6 +27,8 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
@@ -91,10 +93,21 @@ const noSharedDecisions = "none"
 // digest, ALREADY rendered by the caller as a one-line summary — read from
 // state.json's BatchState.Digest, never re-distilled here against a HEAD
 // that may have since moved; an empty prevDigest renders the literal
-// sentinel "none (first batch)" instead of a blank field. reportPath and
-// worktreeRoot are the fork's own OutputFiles target and host checkout, and
-// selfFixCap is the config knob bounding the fork's in-session self-fix
-// attempts.
+// sentinel "none (first batch)" instead of a blank field. reportPath is the
+// fork's own OutputFiles target; l is the resolved Layout this batch's
+// worktree runs in — the single source of both {{.worktree_root}} and the
+// PATTERN active check, so the two anchors can never disagree the way two
+// independently-passed strings could. selfFixCap is the config knob
+// bounding the fork's in-session self-fix attempts.
+//
+// {{.worktree_root}} is filled from l.Cwd, NOT l.WorktreeRoot: every caller
+// of this function assigns l.Cwd to the Layout field this parameter
+// replaced, so filling from WorktreeRoot instead would silently change what
+// the fork prompt calls its worktree root at any RelPath != "." — the exact
+// geometry this plumbing exists for. On a Resolve-built Layout the two are
+// byte-identical at RelPath == ".", but that holds because both are
+// Cwd-equivalent there, not because the fields are interchangeable in
+// general.
 //
 // Per the fork-prompt-plan-level-context Shared Decision, this function
 // ALWAYS injects plan's plan-level "## Shared Decisions" body
@@ -103,8 +116,10 @@ const noSharedDecisions = "none"
 // batch contains at least one card with a non-empty Moves field — every
 // other batch's rendered value for that marker is the empty string, which
 // the fork template's own conditional section (card 28) is responsible for
-// rendering as nothing.
-func RenderForkPrompt(plan *planparser.Plan, batch batcher.Batch, prevDigest string, reportPath, worktreeRoot string, selfFixCap int) ([]byte, error) {
+// rendering as nothing. pattern_directive is injected via
+// pattern.Directive(l, pattern.RoleImplementer) and filled through
+// stencil.FillOptional, so it renders as nothing when PATTERN is inactive.
+func RenderForkPrompt(plan *planparser.Plan, batch batcher.Batch, prevDigest string, reportPath string, l *hubgeometry.Layout, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -121,15 +136,16 @@ func RenderForkPrompt(plan *planparser.Plan, batch batcher.Batch, prevDigest str
 	}
 
 	values := map[string]string{
-		"cards":            renderBatchCards(batch.Cards),
-		"report_path":      reportPath,
-		"self_fix_cap":     fmt.Sprintf("%d", selfFixCap),
-		"worktree_root":    worktreeRoot,
-		"prev_digest":      digestLine,
-		"shared_decisions": sharedDecisions,
-		"rename_mechanic":  renameMechanic,
+		"cards":             renderBatchCards(batch.Cards),
+		"report_path":       reportPath,
+		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
+		"worktree_root":     l.Cwd,
+		"prev_digest":       digestLine,
+		"shared_decisions":  sharedDecisions,
+		"rename_mechanic":   renameMechanic,
+		"pattern_directive": pattern.Directive(l, pattern.RoleImplementer),
 	}
-	prompt, err := stencil.Fill(ForkTemplate(), values)
+	prompt, err := stencil.FillOptional(ForkTemplate(), values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill fork template: %w", err)
 	}
@@ -287,8 +303,19 @@ const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 // write beyond its two contract files is a parent-write audit violation);
 // selfFixCap and pollWaitS are the config knobs Master's prompt states as
 // tuning knobs for its forks and its recover-batch re-polling,
-// respectively.
-func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int) ([]byte, error) {
+// respectively. l is the resolved Layout the caller's own PATTERN active
+// check runs against — RenderMasterPrompt had neither a root nor a Layout
+// parameter before this.
+//
+// pattern_directive is injected via pattern.Directive(l,
+// pattern.RoleOrchestrator) — RoleOrchestrator, not RoleImplementer: this
+// template states in as many words that Master never edits code, so an
+// implementer-worded directive would be one Master cannot carry out; Master
+// qualifies on the context-inheritance clause instead, since its forks are
+// in-session and thin precisely because they inherit everything Master has
+// read. It is filled through stencil.FillOptional, so it renders as nothing
+// when PATTERN is inactive.
+func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *hubgeometry.Layout) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath
@@ -302,8 +329,9 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 		"integration_prompt_path": integrationPrompt,
 		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
 		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
+		"pattern_directive":       pattern.Directive(l, pattern.RoleOrchestrator),
 	}
-	prompt, err := stencil.Fill(MasterTemplate(), values)
+	prompt, err := stencil.FillOptional(MasterTemplate(), values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill master template: %w", err)
 	}
