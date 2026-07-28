@@ -17,13 +17,44 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
+
+// readExcludeLines resolves and reads the host worktree's .git/info/exclude
+// file, mirroring the resolution logic seedGitExclude/unseedGitExclude use
+// (git rev-parse --git-path info/exclude, joined with the worktree path if
+// relative) so this test observes the same path the production code writes.
+func readExcludeLines(t *testing.T, l *hubgeometry.Layout, slug string) []string {
+	t.Helper()
+
+	worktreePath := l.WorktreePath(slug)
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git rev-parse --git-path info/exclude failed: %v (exit %d)", err, exitCode)
+	}
+
+	excludePath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(worktreePath, excludePath)
+	}
+
+	content, err := os.ReadFile(excludePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatalf("read exclude file: %v", err)
+	}
+	return strings.Split(string(content), "\n")
+}
 
 // TestWireJunctions_MaterialisesMissingWeftTarget is card 6's regression
 // guard: seedLyxJunction must create the weft-side target directory when it
@@ -126,4 +157,86 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 	if string(content) != "real content" {
 		t.Errorf("marker content changed: %q", string(content))
 	}
+}
+
+// TestUnwireJunctions_ReportsAndClearsEveryJunction is card 8's base-case
+// regression guard: wiring then unwiring reports every junction Name in
+// UnwireResult.JunctionsRemoved and removes every corresponding line from
+// .git/info/exclude. HostJunctions returns exactly one entry today, so this
+// runs against that single _lyx junction — the precondition batch 5's second
+// junction depends on this machinery already handling correctly.
+func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
+	t.Parallel()
+
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"fabric": fabricengine.ConfigTemplate(),
+	})
+
+	l := fixture.Layout
+	slug := filepath.Base(fixture.Hub)
+
+	if err := fabricengine.WireJunctions(l, slug); err != nil {
+		t.Fatalf("WireJunctions: %v", err)
+	}
+	if lines := readExcludeLines(t, l, slug); !containsLine(lines, hubgeometry.LyxDirName) {
+		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", hubgeometry.LyxDirName, lines)
+	}
+
+	result, err := fabricengine.UnwireJunctions(l, slug)
+	if err != nil {
+		t.Fatalf("UnwireJunctions: %v", err)
+	}
+
+	if want := []string{hubgeometry.LyxDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+		t.Errorf("JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
+	}
+	if !result.ExcludeChanged {
+		t.Error("ExcludeChanged = false; want true")
+	}
+
+	link := l.HostLyxLink(slug)
+	if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
+		t.Errorf("junction %s still exists after UnwireJunctions", link)
+	}
+	if lines := readExcludeLines(t, l, slug); containsLine(lines, hubgeometry.LyxDirName) {
+		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", hubgeometry.LyxDirName, lines)
+	}
+}
+
+// TestUnwireJunctions_AlreadyUnwiredIsNoOp asserts that unwiring a worktree
+// whose junctions were never wired (or already unwired) is a legitimate
+// no-op: an empty JunctionsRemoved and a nil error, never an error.
+func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"fabric": fabricengine.ConfigTemplate(),
+	})
+
+	l := fixture.Layout
+	slug := filepath.Base(fixture.Hub)
+
+	result, err := fabricengine.UnwireJunctions(l, slug)
+	if err != nil {
+		t.Fatalf("UnwireJunctions on never-wired worktree = %v; want nil", err)
+	}
+	if len(result.JunctionsRemoved) != 0 {
+		t.Errorf("JunctionsRemoved = %v; want empty", result.JunctionsRemoved)
+	}
+	if result.ExcludeChanged {
+		t.Error("ExcludeChanged = true; want false")
+	}
+}
+
+// containsLine reports whether lines contains name as a trimmed, line-exact
+// match, mirroring the comparison seedGitExclude/unseedGitExclude use.
+func containsLine(lines []string, name string) bool {
+	for _, line := range lines {
+		if strings.TrimSpace(line) == name {
+			return true
+		}
+	}
+	return false
 }

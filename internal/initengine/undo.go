@@ -1,10 +1,10 @@
 // undo.go implements the core logic for lyx init --undo — the reversal of Init.
 //
-// Undo reverses exactly what Init wires: the host _lyx junction, the
-// weft-side _lyx content, the managed .gitignore block, and the
-// .git/info/exclude entry. Each step independently no-ops if its own target
-// is already absent, and a junction inconsistency aborts the whole run before
-// any weft-content or .gitignore step runs (see fabricengine.UnwireJunctions).
+// Undo reverses exactly what Init wires: every host junction, the weft-side
+// _lyx content, the managed .gitignore block, and the .git/info/exclude
+// entries. Each step independently no-ops if its own target is already absent,
+// and a junction inconsistency aborts the whole run before any weft-content or
+// .gitignore step runs (see fabricengine.UnwireJunctions).
 
 package initengine
 
@@ -19,10 +19,13 @@ import (
 
 // UndoResult summarizes what Undo changed.
 type UndoResult struct {
-	LyxJunction string // "removed" or "not_present"
-	WeftContent string // "cleared" or "not_present"
-	GitExclude  string // "reverted" or "unchanged"
-	Gitignore   string // "reverted" or "unchanged"
+	// JunctionsRemoved lists the Name of each host junction that was actually
+	// present and removed, carrying fabricengine.UnwireResult.JunctionsRemoved
+	// through unchanged. Empty when no junction was wired.
+	JunctionsRemoved []string
+	WeftContent      string // "cleared" or "not_present"
+	GitExclude       string // "reverted" or "unchanged"
+	Gitignore        string // "reverted" or "unchanged"
 }
 
 // Undo reverses Init's scaffolding in this order:
@@ -30,8 +33,8 @@ type UndoResult struct {
 //     Init there is no "no weft pairing" pre-gate — each step below
 //     independently no-ops when its own target is absent).
 //  2. Derive slug from the worktree root (identical to Init).
-//  3. Unwire the host junction and its .git/info/exclude entry via
-//     fabricengine.UnwireJunctions. Any error here aborts immediately: no
+//  3. Unwire every host junction and their shared .git/info/exclude entries
+//     via fabricengine.UnwireJunctions. Any error here aborts immediately: no
 //     weft-content clearing or .gitignore revert runs.
 //  4. Clear weft-side _lyx content, if any weft worktree exists at all, then
 //     unconditionally commit and push that deletion through fabricengine.
@@ -113,10 +116,7 @@ func Undo(cwd string) (UndoResult, error) {
 		result.Gitignore = "unchanged"
 	}
 
-	result.LyxJunction = "not_present"
-	if junctionResult.JunctionRemoved {
-		result.LyxJunction = "removed"
-	}
+	result.JunctionsRemoved = junctionResult.JunctionsRemoved
 	result.GitExclude = "unchanged"
 	if junctionResult.ExcludeChanged {
 		result.GitExclude = "reverted"

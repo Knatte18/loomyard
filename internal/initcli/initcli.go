@@ -42,15 +42,18 @@ config files against their templates (idempotent: existing user edits are
 preserved). A weft pairing must already exist (run 'lyx fabric add' or
 'lyx fabric clone' first).
 
-Pass --undo to reverse a previous init: this removes the host _lyx junction,
+Pass --undo to reverse a previous init: this removes every host junction,
 clears the weft-side _lyx content (committing and pushing the deletion),
-and reverts the managed .gitignore block and the .git/info/exclude entry
+and reverts the managed .gitignore block and the .git/info/exclude entries
 that init added. --undo is safe to run on a directory that was never
 initialized (a clean no-op) and is mainly useful for test/sandbox cleanup.
 
+Breaking change: --undo's JSON output now reports "junctions_removed" (a
+list of junction names) in place of the old singular "lyx_junction" key.
+
   lyx init --undo`,
 	}
-	initCmd.Flags().Bool("undo", false, "reverse a previous init: remove the _lyx junction, weft-side content, and the .gitignore/.git-exclude entries it added")
+	initCmd.Flags().Bool("undo", false, "reverse a previous init: remove every host junction, weft-side content, and the .gitignore/.git-exclude entries it added")
 	initCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
 		undo, _ := initCmd.Flags().GetBool("undo")
 		if undo {
@@ -104,7 +107,10 @@ func runInit(out io.Writer, args []string) int {
 // runUndo is the package-private handler for `lyx init --undo`.
 //
 // It resolves cwd and delegates the actual reversal to initengine.Undo, then
-// formats the result as the JSON output envelope.
+// formats the result as the JSON output envelope. The emitted "junctions_removed"
+// key carries the JunctionsRemoved slice — a breaking change from the prior
+// singular "lyx_junction" key, since a slice is the only shape that scales to
+// more than one junction.
 func runUndo(out io.Writer, args []string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -117,9 +123,9 @@ func runUndo(out io.Writer, args []string) int {
 	}
 
 	return output.Ok(out, map[string]any{
-		"lyx_junction": result.LyxJunction,
-		"weft_content": result.WeftContent,
-		"git_exclude":  result.GitExclude,
-		"gitignore":    result.Gitignore,
+		"junctions_removed": result.JunctionsRemoved,
+		"weft_content":      result.WeftContent,
+		"git_exclude":       result.GitExclude,
+		"gitignore":         result.Gitignore,
 	})
 }

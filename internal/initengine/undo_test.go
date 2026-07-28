@@ -13,6 +13,7 @@ package initengine
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -112,8 +113,8 @@ func TestUndo_HappyPath(t *testing.T) {
 		t.Fatalf("Undo() = %v; want nil", err)
 	}
 
-	if result.LyxJunction != "removed" {
-		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "removed")
+	if want := []string{hubgeometry.LyxDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+		t.Errorf("result.JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 	}
 	if result.WeftContent != "cleared" {
 		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "cleared")
@@ -187,8 +188,8 @@ func TestUndo_NeverInitialized(t *testing.T) {
 		t.Fatalf("Undo() = %v; want nil", err)
 	}
 
-	if result.LyxJunction != "not_present" {
-		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
+	if len(result.JunctionsRemoved) != 0 {
+		t.Errorf("result.JunctionsRemoved = %v; want empty", result.JunctionsRemoved)
 	}
 	if result.WeftContent != "not_present" {
 		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "not_present")
@@ -256,8 +257,8 @@ func TestUndo_Idempotent(t *testing.T) {
 		t.Fatalf("second Undo() = %v; want nil", err)
 	}
 
-	if result.LyxJunction != "not_present" {
-		t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
+	if len(result.JunctionsRemoved) != 0 {
+		t.Errorf("result.JunctionsRemoved = %v; want empty", result.JunctionsRemoved)
 	}
 	if result.WeftContent != "not_present" {
 		t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "not_present")
@@ -421,8 +422,8 @@ func TestUndo_PartialRecovery(t *testing.T) {
 			t.Fatalf("recovery Undo() = %v; want nil", err)
 		}
 
-		if result.LyxJunction != "not_present" {
-			t.Errorf("result.LyxJunction = %q; want %q", result.LyxJunction, "not_present")
+		if len(result.JunctionsRemoved) != 0 {
+			t.Errorf("result.JunctionsRemoved = %v; want empty (junction already removed by the simulated crash)", result.JunctionsRemoved)
 		}
 		if result.WeftContent != "cleared" {
 			t.Errorf("result.WeftContent = %q; want %q", result.WeftContent, "cleared")
