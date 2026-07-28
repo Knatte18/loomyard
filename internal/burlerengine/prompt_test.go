@@ -51,7 +51,7 @@ func newComposableProfile(t *testing.T) Profile {
 func TestComposePrompt_FillsAllMarkers(t *testing.T) {
 	p := newComposableProfile(t)
 
-	got, err := composePrompt(&p)
+	got, err := composePrompt(&p, "")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -70,7 +70,7 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		p := newComposableProfile(t)
 		p.FixScope = FixScopeSource
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -82,7 +82,7 @@ func TestComposePrompt_FixScope(t *testing.T) {
 		p := newComposableProfile(t)
 		p.FixScope = FixScopeOverlay
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -98,7 +98,7 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 		p := newComposableProfile(t)
 		p.ToolUse = true
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -110,7 +110,7 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 		p := newComposableProfile(t)
 		p.ToolUse = false
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -126,7 +126,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 	t.Run("first round", func(t *testing.T) {
 		p := newComposableProfile(t)
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -138,7 +138,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 		p.PriorReviews = []string{filepath.Join(t.TempDir(), "prior-review.md")}
 		p.PriorFixerReports = []string{filepath.Join(t.TempDir(), "prior-fixer-report.md")}
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -154,7 +154,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 func TestComposePrompt_DirectoryAnnotation(t *testing.T) {
 	p := newComposableProfile(t)
 
-	got, err := composePrompt(&p)
+	got, err := composePrompt(&p, "")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -183,7 +183,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 	t.Run("non-cluster", func(t *testing.T) {
 		p := newComposableProfile(t)
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
@@ -199,7 +199,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			{Name: "security", Text: "pay extra attention to security"},
 		}
 
-		got, err := composePrompt(&p)
+		got, err := composePrompt(&p, "")
 		if err != nil {
 			t.Fatalf("composePrompt() = %v; want nil error", err)
 		}
