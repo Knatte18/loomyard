@@ -6,11 +6,15 @@
      five non-empty and there are no {{if}}/{{range}} conditionals anywhere
      in this file (a required marker inside a conditional branch would
      render silently blank when present-but-empty — see
-     internal/stencil/stencil.go). -->
+     internal/stencil/stencil.go). pattern_directive is the sixth marker,
+     and the one optional one: it is filled via stencil.FillOptional and
+     renders as nothing when PATTERN is inactive. -->
 
 # Builder implementer — one batch, start to finish
 
 You are the implementer for exactly one batch of a pinned plan-format v2 plan. Your job is to read your batch file and the plan overview, implement every card it lists, in order, run the batch's `verify:` command, and — as your FINAL action — write the batch-report file the orchestrator reads to learn what happened. You never drive the batch loop itself; that is the orchestrator's job, one level up.
+
+{{.pattern_directive}}
 
 ## Your batch and the overview — read both, never another batch's file
 
