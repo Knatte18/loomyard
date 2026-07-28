@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
+
+	"github.com/go-git/go-git/v5"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -45,8 +48,33 @@ func validSHA(sha string) bool {
 // cross-process push serialization is handled separately by the coalescing
 // pusher's single-pusher lock, and in-process callers must serialize their
 // own writes.
+//
+// goGitMu, goGitRepo, and goGitOK back the lazily-opened, cached go-git
+// handle described in gogit.go's goGit. See gogit.go's godoc for the full
+// locking discipline every go-git-backed method (this batch and every batch
+// that migrates a read onto go-git) must follow.
 type Repo struct {
 	path string
+
+	// goGitMu guards goGitRepo and goGitOK, and is the single lock every
+	// go-git-backed call on this Repo coordinates through — see gogit.go. No
+	// migrated read calls goGit yet in this batch (that starts in batch 3),
+	// so golangci-lint's default (untagged) build sees no production caller
+	// for either field; each carries a trailing nolint for that reason,
+	// matching gitnativepoc/read.go's identical hasUnpushed precedent —
+	// gogit_test.go's integration-tagged coverage is the only caller until
+	// then.
+	goGitMu sync.RWMutex //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+	// goGitRepo is the cached go-git handle, valid only when goGitOK is true.
+	goGitRepo *git.Repository //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+	// goGitOK records that goGitRepo was populated by a *successful* open.
+	// Deliberately not a sync.Once: only a successful open may be cached, so a
+	// Repo constructed (via New) before the checkout exists at its path can
+	// still succeed on a later call once the checkout has been created —
+	// New's documented no-I/O, cannot-fail contract says nothing about the
+	// checkout existing yet, and a permanently-cached failure would break
+	// that.
+	goGitOK bool //nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
 }
 
 // New returns a Repo wrapping the git checkout at path. New performs no
