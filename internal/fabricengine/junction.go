@@ -22,8 +22,17 @@ import (
 // current worktree, keyed by slug.
 //
 // For each junction in l.HostJunctions(slug), WireJunctions:
+//   - Materialises the junction's weft-side target via os.MkdirAll
 //   - Creates the directory junction via fslink.CreateDirLink (idempotent via fslink.IsLink/PointsTo)
 //   - Appends the junction Name to the host worktree's .git/info/exclude (line-exact idempotent)
+//
+// Materialising the weft-side target is what lets every WireJunctions caller leave
+// a resolvable junction behind: initengine/init.go, fabricengine/checkout.go, and
+// fabricengine/reconcile.go all call WireJunctions, but of the three only Init
+// materialises the weft directory itself. Before this, fslink.CreateDirLink would
+// happily create a link to a nonexistent target (a raw reparse point on Windows, a
+// dangling symlink elsewhere), leaving checkout's and reconcile's junctions
+// dangling until some other path created the target.
 //
 // The two operations are sequenced such that if either fails, the junction may be
 // left partially wired; the caller is responsible for rollback if needed. The
@@ -57,6 +66,16 @@ func WireJunctions(l *hubgeometry.Layout, slug string) error {
 // It iterates over the junctions returned by l.HostJunctions(slug), applying the same
 // create-or-verify-or-re-point logic per junction using each record's Link and Target.
 //
+// Before any check runs, each iteration materialises its junction's weft-side
+// target via os.MkdirAll — deliberately the first statement of the loop, ahead
+// of the os.Lstat(link) call below and both fslink.CreateDirLink call sites.
+// fslink.CreateDirLink happily creates a link to a nonexistent target (a raw
+// reparse point on Windows, a dangling symlink elsewhere), so a junction a prior
+// checkout or reconcile left dangling would otherwise hit the link-exists
+// branch's filepath.EvalSymlinks(target) failure below — the hard "weft
+// directory does not exist" error — on every subsequent WireJunctions call.
+// Materialising the target first gives that worktree a self-repair path instead.
+//
 // For each junction, if the path already exists:
 //   - A link resolving to the correct target is left alone (idempotent).
 //   - A link that dangles or resolves to the wrong target is re-pointed —
@@ -74,6 +93,12 @@ func seedLyxJunction(l *hubgeometry.Layout, slug string) error {
 	for _, j := range junctions {
 		link := j.Link
 		target := j.Target
+
+		// Materialise the weft-side target first, before any of the checks
+		// below run — see the godoc above for why placement matters.
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			return fmt.Errorf("materialise weft target %s: %w", target, err)
+		}
 
 		_, err := os.Lstat(link)
 		if err == nil {
