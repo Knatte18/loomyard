@@ -25,7 +25,7 @@ batches:
     name: hubgeometry-pattern-surface
     file: 02-hubgeometry-pattern-surface.md
     depends-on: [1]
-    verify: go test ./internal/hubgeometry/... ./cmd/lyx/...
+    verify: go test -tags integration ./internal/hubgeometry/... ./cmd/lyx/...
   - number: 3
     name: fabric-junction-generalisation
     file: 03-fabric-junction-generalisation.md
@@ -45,7 +45,7 @@ batches:
     name: pattern-package
     file: 06-pattern-package.md
     depends-on: [5]
-    verify: go test ./internal/pattern/... ./internal/hubgeometry/... ./cmd/lyx/...
+    verify: go test -tags integration ./internal/pattern/... ./internal/hubgeometry/... ./cmd/lyx/...
   - number: 7
     name: prompt-wiring
     file: 07-prompt-wiring.md

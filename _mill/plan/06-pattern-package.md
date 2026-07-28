@@ -5,7 +5,7 @@ task: 'PATTERN wiring: conditional constraint-injection into every agent'
 batch: pattern-package
 number: 6
 cards: 3
-verify: go test ./internal/pattern/... ./internal/hubgeometry/... ./cmd/lyx/...
+verify: go test -tags integration ./internal/pattern/... ./internal/hubgeometry/... ./cmd/lyx/...
 depends-on: [5]
 ```
 
@@ -62,4 +62,8 @@ The external interface batch 7 consumes is `pattern.Directive(l *hubgeometry.Lay
 
 ## Batch Tests
 
-`verify: go test ./internal/pattern/... ./internal/hubgeometry/... ./cmd/lyx/...` needs no `-tags integration`: this batch creates no integration-tagged file, and keeping the entire `internal/pattern` suite in Tier 1 is a deliberate design property rather than an accident — the package is a leaf over `os.Stat` and `t.TempDir()`, so it spawns nothing, copies no fixture tree, and needs no `TestMain` calling `lyxtest.HermeticGitEnv()`. `internal/hubgeometry` is in scope because card 21 is the first real consumer of `PatternFileHere()` and would surface any mistake in that accessor's `WorktreeRoot`+`RelPath` anchoring. `./cmd/lyx/...` is in scope for two guards this batch could trip: `tierpurity_test.go`, which fails on a raw-substring match if either new untagged test file so much as mentions `exec.Command` or `lyxtest.Copy` in a comment, and `hermeticenv_test.go`, which would demand a `TestMain` the moment a file in the new package contained a git-spawning token. Both are satisfied by construction here, and running them is what proves it.
+`verify: go test -tags integration ./internal/pattern/... ./internal/hubgeometry/... ./cmd/lyx/...` covers the two files this batch creates plus its two consumer checks.
+
+Note the distinction the tag flag does **not** make: this batch creates **no** integration-tagged file, and keeping the entire `internal/pattern` suite in Tier 1 is a deliberate design property rather than an accident — the package is a leaf over `os.Stat` and `t.TempDir()`, so it spawns nothing, copies no fixture tree, and needs no `TestMain` calling `lyxtest.HermeticGitEnv()`. Both new files run under a plain `go test` and must keep doing so. `-tags integration` is present for the *other* two path patterns in the command: `internal/hubgeometry` and `cmd/lyx` each already contain integration-tagged test files that a plain run would exclude from the build, which would quietly narrow this batch's stated scope to less than it claims. Go's tags are additive, so the tagged run is a strict superset and `internal/pattern`'s Tier 1 status is unaffected by it.
+
+`internal/hubgeometry` is in scope because card 21 is the first real consumer of `PatternFileHere()` and would surface any mistake in that accessor's `WorktreeRoot`+`RelPath` anchoring. `./cmd/lyx/...` is in scope for two guards this batch could trip: `tierpurity_test.go`, which fails on a raw-substring match if either new untagged test file so much as mentions `exec.Command` or `lyxtest.Copy` in a comment, and `hermeticenv_test.go`, which would demand a `TestMain` the moment a file in the new package contained a git-spawning token. Both are satisfied by construction here, and running them is what proves it.

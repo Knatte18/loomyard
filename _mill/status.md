@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: pattern-wiring
 branch: pattern-wiring
 plan: _mill/plan
@@ -18,4 +18,6 @@ discussing  '2026-07-28T07:03:31Z'
 discussion-fix-r6  '2026-07-28T09:18:37Z'
 discussed  '2026-07-28T09:18:37Z'
 planning  '2026-07-28T09:42:20Z'
+plan-review-r1  '2026-07-28T09:56:26Z'
+plan-fix-r1  '2026-07-28T09:56:26Z'
 ```

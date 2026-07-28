@@ -5,7 +5,7 @@ task: 'PATTERN wiring: conditional constraint-injection into every agent'
 batch: hubgeometry-pattern-surface
 number: 2
 cards: 3
-verify: go test ./internal/hubgeometry/... ./cmd/lyx/...
+verify: go test -tags integration ./internal/hubgeometry/... ./cmd/lyx/...
 depends-on: [1]
 ```
 
@@ -62,4 +62,10 @@ The external interfaces later batches consume: `PatternFileHere()` (batch 6's ac
 
 ## Batch Tests
 
-`verify: go test ./internal/hubgeometry/... ./cmd/lyx/...` covers the two test files this batch edits (`internal/hubgeometry/hubgeometry_test.go`, `internal/hubgeometry/enforcement_test.go`) and the one it creates (`internal/hubgeometry/pattern_test.go`). `./cmd/lyx/...` is in scope deliberately rather than by habit: card 5 changes what `TestEnforcement_GeometryLiterals` bans repo-wide, and `cmd/lyx` holds the three cross-cutting guards this plan can trip — `tierpurity_test.go`, `hermeticenv_test.go` and `sandbox_coverage_test.go` — so a new untagged test file with a banned token would otherwise not surface until a later batch. No file in this batch spawns a process or copies a fixture tree; `internal/hubgeometry/pattern_test.go` is pure join arithmetic and stays untagged.
+`verify: go test -tags integration ./internal/hubgeometry/... ./cmd/lyx/...` covers the two test files this batch edits (`internal/hubgeometry/hubgeometry_test.go`, `internal/hubgeometry/enforcement_test.go`) and the one it creates (`internal/hubgeometry/pattern_test.go`).
+
+**`-tags integration` is mandatory here and is easy to get wrong**, because nothing this batch *creates* is integration-tagged. The reason is what it *edits*: `internal/hubgeometry/hubgeometry_test.go` already begins with `//go:build integration`, so under a plain `go test` that file is excluded from the build entirely and card 4's new `HostJunctionsHere()` assertions and card 5's new `IsReservedHubName("_pattern")` assertion would never compile, let alone run. The failure would be invisible — a green verify over code that was never built — and would not surface until batch 5's wider tagged run, three batches later, entangled with the two-junction flip's much larger diff. `cmd/lyx`'s guards do not compensate: `tierpurity_test.go` and `hermeticenv_test.go` text-scan file bytes and never compile them. Go's build tags are additive, so the tagged run still exercises the untagged tier in these packages.
+
+The new assertions stay in `hubgeometry_test.go` beside their existing `HostLyxLinkHere`/`HostJunctions` siblings rather than being relocated into the untagged file, because batch 5's card 15 must edit that same file anyway and splitting one accessor's coverage across two files by build tag would be worse than the tag itself.
+
+`./cmd/lyx/...` is in scope deliberately rather than by habit: card 5 changes what `TestEnforcement_GeometryLiterals` bans repo-wide, and `cmd/lyx` holds the three cross-cutting guards this plan can trip — `tierpurity_test.go`, `hermeticenv_test.go` and `sandbox_coverage_test.go` — so a new untagged test file with a banned token would otherwise not surface until a later batch. No file this batch creates spawns a process or copies a fixture tree; `internal/hubgeometry/pattern_test.go` is pure join arithmetic and stays untagged.
