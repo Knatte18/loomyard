@@ -14,13 +14,15 @@
 // that shells out to git and returns raw output. gitrepo used to route every
 // method through it via a single unexported run helper; it no longer does.
 // The read surface — CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch,
-// remoteName, hasUnpushed, isStrictDescendant, SnapshotSHA's ref read, and
+// remoteName, isStrictDescendant, SnapshotSHA's ref read, and
 // SetSnapshotSHA's two inline local reads — resolves state entirely through
 // go-git's own object and ref access (see gogit.go), bypassing run and
 // gitexec.RunGit completely. Everything that authenticates to a remote or
 // mutates the working tree stays CLI-bound through run: StageAndCommit,
 // StageAllAndCommit, Push, PushCoalesced, Pull, ResetHard, CheckoutDetached,
-// RestoreBranch, SetSnapshotSHA's push, and SnapshotSHA's fetch. See
+// RestoreBranch, SetSnapshotSHA's push, SnapshotSHA's fetch, and hasUnpushed
+// (measured and reverted from a go-git ancestry walk; see hasUnpushed's own
+// godoc in push.go for the reversal criterion). See
 // CONSTRAINTS.md's gitrepo Client Boundary Invariant for the enforced,
 // exhaustive version of this split and the review obligation any new CLI
 // call inside this package carries. gitexec itself stays a zero-dependency
