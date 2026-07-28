@@ -145,9 +145,7 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 
 		// Determine junction health independently of the drift verdict so callers
 		// can distinguish "branches match but junction is broken" from full in-sync.
-		hostLink := hostLayout.HostLyxLinkHere()
-		weftLyxDir := hostLayout.WeftLyxDir()
-		junctionHealthy, junctionReason := checkJunctionHealth(hostLink, weftLyxDir)
+		junctionHealthy, junctionReason := checkJunctionHealth(hostLayout)
 		pair.JunctionHealthy = junctionHealthy
 		pair.JunctionReason = junctionReason
 
