@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: pattern-wiring
 branch: pattern-wiring
 plan: _mill/plan
@@ -24,4 +24,25 @@ plan-review-r2  '2026-07-28T10:11:47Z'
 plan-fix-r2  '2026-07-28T10:11:47Z'
 plan-fix-r3  '2026-07-28T10:22:02Z'
 planned  '2026-07-28T10:22:12Z'
+implementing  '2026-07-28T10:29:12Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: stencil-optional
+    state: pending
+  - name: hubgeometry-pattern-surface
+    state: pending
+  - name: fabric-junction-generalisation
+    state: pending
+  - name: weft-pathspec-tolerance
+    state: pending
+  - name: pattern-junction-flip
+    state: pending
+  - name: pattern-package
+    state: pending
+  - name: prompt-wiring
+    state: pending
 ```
