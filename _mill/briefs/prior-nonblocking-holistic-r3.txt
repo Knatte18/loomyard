@@ -1,0 +1,1 @@
+- Batch 1's linked-worktree+junction fixture (card 3) is dead code - never called anywhere: internal/gitrepo/fixtures_test.go had three unused symbols never called by any test; fixed in round 2 by deleting the dead fixture file (gogit_test.go's own fixture already covers the same parity cases).
