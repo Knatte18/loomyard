@@ -49,7 +49,9 @@ batches:
     start_sha: 390de36275247311965761a37c6e8731f35bb73e
     commit_sha: 1b29d86f5cf93ecaa7610c7edafe963fad91ca74
   - name: parity-oracle
-    state: pending
+    state: running
+    implementer_session: 0c8bd158-ad12-41b6-912b-e7d937547b91
+    start_sha: 6d03d2c41cf0170636bebc8f3b5f7600db65e865
   - name: selfreport-transport
     state: pending
   - name: migrate-core-reads
