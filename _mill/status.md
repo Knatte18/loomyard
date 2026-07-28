@@ -55,7 +55,9 @@ batches:
     start_sha: 6d03d2c41cf0170636bebc8f3b5f7600db65e865
     commit_sha: 7b9df6499f3120cf6da1733089b696e77e9d39ff
   - name: selfreport-transport
-    state: pending
+    state: running
+    implementer_session: 2b7eda9e-202c-4f70-ab23-704e3220099a
+    start_sha: 1a375a97cf9d6bc8f1660bbb744edf8c56ea3a41
   - name: migrate-core-reads
     state: pending
   - name: migrate-snapshot-push-reads
