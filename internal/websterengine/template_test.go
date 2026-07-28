@@ -23,10 +23,21 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// testLayout returns a *hubgeometry.Layout anchored at a fixed, non-existent
+// "/worktree" path — every RenderForkPrompt test in this file that does not
+// itself exercise pattern_directive uses this fixture, since
+// pattern.Directive's os.Stat on a path that never exists on disk always
+// resolves PATTERN inactive, matching every one of these tests' pre-existing
+// expectation of an empty pattern_directive.
+func testLayout() *hubgeometry.Layout {
+	return &hubgeometry.Layout{Cwd: "/worktree", WorktreeRoot: "/worktree", RelPath: "."}
+}
 
 // requireContains fails the test, naming the missing needle, if text does
 // not contain it. Mirrors builderengine/template_test.go's helper of the
@@ -144,16 +155,19 @@ func masterTemplateMarkerValues() map[string]string {
 // inside the template's own {{if .rename_mechanic}} block — present (so the
 // condition itself evaluates cleanly under stencil's missingkey=error) but
 // empty (so the branch is not taken), exactly RenderForkPrompt's own
-// non-Moves-batch behavior.
+// non-Moves-batch behavior. pattern_directive is the one top-level OPTIONAL
+// marker (filled via stencil.FillOptional, distinct from rename_mechanic's
+// branch-internal mechanism) and is set to a non-empty placeholder here too.
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"cards":            "### Card 2 — list-tests\n\n**What:** add tests\n**Context:** none\n**Edits:**\n- `list_test.go`\n**Creates:** none\n**Deletes:** none\n**Moves:** none",
-		"report_path":      "/webster/reports/02-list-tests.yaml",
-		"self_fix_cap":     "2",
-		"worktree_root":    "/worktree",
-		"prev_digest":      "01-json-flag: done head_sha=abc123",
-		"shared_decisions": "none",
-		"rename_mechanic":  "",
+		"cards":             "### Card 2 — list-tests\n\n**What:** add tests\n**Context:** none\n**Edits:**\n- `list_test.go`\n**Creates:** none\n**Deletes:** none\n**Moves:** none",
+		"report_path":       "/webster/reports/02-list-tests.yaml",
+		"self_fix_cap":      "2",
+		"worktree_root":     "/worktree",
+		"prev_digest":       "01-json-flag: done head_sha=abc123",
+		"shared_decisions":  "none",
+		"rename_mechanic":   "",
+		"pattern_directive": "## Constraints — do this before you write any code\n\n- Read _pattern/PATTERN.md.",
 	}
 }
 
@@ -412,15 +426,21 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	requireNotContains(t, text, "tests: green")
 }
 
-// TestForkTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
-// every one of ForkTemplate's six required markers is supplied, and fails —
-// naming the marker — when any single one is absent. rename_mechanic is
-// deliberately excluded: it is a branch-internal marker, never required at
-// the top level (see TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch).
+// TestForkTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds
+// when every one of ForkTemplate's six required markers plus the optional
+// pattern_directive marker is supplied, and fails — naming the marker —
+// when any single REQUIRED one is absent. rename_mechanic and
+// pattern_directive are both excluded from this deletion sweep, via two
+// different mechanisms: rename_mechanic is a branch-internal marker, never
+// required at the top level (see
+// TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch);
+// pattern_directive is the one top-level OPTIONAL marker, exempted via
+// stencil.FillOptional's optional list, so deleting it must not error
+// either.
 func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(websterengine.ForkTemplate(), forkTemplateMarkerValues()); err != nil {
-			t.Fatalf("stencil.Fill() = %v; want nil", err)
+		if _, err := stencil.FillOptional(websterengine.ForkTemplate(), forkTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
 	})
 
@@ -428,15 +448,83 @@ func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := forkTemplateMarkerValues()
 			delete(values, marker)
-			_, err := stencil.Fill(websterengine.ForkTemplate(), values)
+			_, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
 			if err == nil {
-				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
+				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
 			}
 			if !strings.Contains(err.Error(), marker) {
-				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
+				t.Errorf("stencil.FillOptional() error = %q; want it to name marker %q", err.Error(), marker)
 			}
 		})
 	}
+}
+
+// TestForkTemplate_PatternDirectiveOptional asserts pattern_directive
+// behaves as an optional marker: an empty value renders cleanly with no
+// leftover `{{`, no orphan `## Constraints` heading, and no stray
+// blank-line block where the directive would have sat, and a non-empty
+// value places the directive block ahead of the first work instruction
+// ("## You are the IMPLEMENTER"). A third case pins this file's own extra
+// requirement: an empty pattern_directive together with an empty
+// rename_mechanic renders with neither an orphan `## Constraints` heading
+// nor an orphan `## Rename mechanic` heading.
+func TestForkTemplate_PatternDirectiveOptional(t *testing.T) {
+	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
+		values := forkTemplateMarkerValues()
+		values["pattern_directive"] = ""
+		got, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		if strings.Contains(text, "{{") {
+			t.Errorf("rendered output contains leftover {{: %q", text)
+		}
+		if strings.Contains(text, "## Constraints") {
+			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
+		}
+		// Scope the stray-blank-line check to the region immediately
+		// preceding the first work heading — the pattern_directive
+		// insertion point — rather than the whole document: this file's
+		// own pre-existing {{if .rename_mechanic}} block (unrelated to
+		// pattern_directive) collapses to a wider gap of its own when
+		// rename_mechanic is empty, which is not this test's concern.
+		beforeHeading := text[:strings.Index(text, "## You are the IMPLEMENTER")]
+		if strings.HasSuffix(beforeHeading, "\n\n\n\n") {
+			t.Errorf("rendered output contains a stray blank-line block ahead of the first work heading: %q", beforeHeading)
+		}
+	})
+
+	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
+		values := forkTemplateMarkerValues()
+		got, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		directiveIdx := strings.Index(text, values["pattern_directive"])
+		workIdx := strings.Index(text, "## You are the IMPLEMENTER")
+		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
+			t.Errorf("pattern_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
+		}
+	})
+
+	t.Run("empty pattern_directive and empty rename_mechanic together leave neither heading orphaned", func(t *testing.T) {
+		values := forkTemplateMarkerValues()
+		values["pattern_directive"] = ""
+		values["rename_mechanic"] = ""
+		got, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
+		if err != nil {
+			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
+		}
+		text := string(got)
+		if strings.Contains(text, "## Constraints") {
+			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
+		}
+		if strings.Contains(text, "## Rename mechanic") {
+			t.Errorf("rendered output contains an orphan ## Rename mechanic heading: %q", text)
+		}
+	})
 }
 
 // TestTemplates_NoV2TokensRemain asserts neither embedded template carries
@@ -481,7 +569,7 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	}}
 
 	t.Run("empty prevDigest renders the first-batch sentinel", func(t *testing.T) {
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-seam-extensions.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-seam-extensions.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -495,7 +583,7 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 		// prevDigest; what this case actually proves is that the supplied
 		// digest line itself reaches the rendered prompt verbatim.
 		digest := "01-seam-extensions: done head_sha=abc123"
-		got, err := websterengine.RenderForkPrompt(plan, batch, digest, "/reports/02-webster-foundation.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, digest, "/reports/02-webster-foundation.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -519,7 +607,7 @@ func TestRenderForkPrompt_RendersWhatProseOverIntent(t *testing.T) {
 			Intent: "create r3a.md marker",
 			What:   "Create `r3a.md` containing the single line `OK-A` and commit it.",
 		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -533,7 +621,7 @@ func TestRenderForkPrompt_RendersWhatProseOverIntent(t *testing.T) {
 		batch := batcher.Batch{Cards: []planparser.Card{{
 			Number: 1, Slug: "alpha", Title: "alpha", Intent: "create r3a.md marker",
 		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -556,7 +644,7 @@ func TestRenderForkPrompt_RendersPinnedCommitSubject(t *testing.T) {
 			Number: 1, Slug: "alpha", Title: "alpha", Intent: "add the flag",
 			Commit: "1: json-flag",
 		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -575,7 +663,7 @@ func TestRenderForkPrompt_RendersPinnedCommitSubject(t *testing.T) {
 		batch := batcher.Batch{Cards: []planparser.Card{{
 			Number: 1, Slug: "alpha", Title: "alpha", Intent: "add the flag",
 		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -600,7 +688,7 @@ func TestRenderForkPrompt_InjectsSharedDecisionsAlways(t *testing.T) {
 
 	t.Run("non-empty SharedDecisions passes through verbatim", func(t *testing.T) {
 		plan := testPlan("### Decision: json-envelope-reuse\n\n- **Decision:** reuse output.Ok.", "")
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -609,7 +697,7 @@ func TestRenderForkPrompt_InjectsSharedDecisionsAlways(t *testing.T) {
 
 	t.Run("empty SharedDecisions renders the none sentinel", func(t *testing.T) {
 		plan := testPlan("", "")
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -634,7 +722,7 @@ func TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch(t *testi
 			{Number: 4, Slug: "helptree-rename", Title: "helptree-rename", Intent: "rename the row mapper",
 				Moves: []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}},
 		}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/04-helptree-rename.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/04-helptree-rename.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -645,7 +733,7 @@ func TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch(t *testi
 		batch := batcher.Batch{Cards: []planparser.Card{
 			{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"},
 		}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", "/worktree", 2)
+		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
