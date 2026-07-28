@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gogit-handle
+phase: approved-githubclient
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r5  '2026-07-28T10:22:03Z'
 planned  '2026-07-28T10:22:16Z'
 implementing  '2026-07-28T10:29:07Z'
 approved-gogit-handle  '2026-07-28T11:24:47Z'
+approved-githubclient  '2026-07-28T11:55:44Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     start_sha: d3c8828308d1a7712dbfd57b03906a22a1853233
     commit_sha: a29a5ead4d4a6ed370559c25928c5fa613d3014d
   - name: githubclient
-    state: running
+    state: approved
     implementer_session: a7f0765e-de94-4bb2-8acf-10053a2c131e
     start_sha: 390de36275247311965761a37c6e8731f35bb73e
+    commit_sha: 1b29d86f5cf93ecaa7610c7edafe963fad91ca74
   - name: parity-oracle
     state: pending
   - name: selfreport-transport
