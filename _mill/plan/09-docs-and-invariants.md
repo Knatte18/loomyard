@@ -55,6 +55,7 @@ Four doc sites are actively **false** after this task rather than merely incompl
   - `internal/githubclient/githubclient.go`
   - `internal/githubclient/token.go`
   - `internal/githubclient/cache.go`
+  - `internal/githubclient/cache_windows.go`
   - `internal/githubclient/transport.go`
 - **Edits:**
   - `internal/selfreportengine/selfreport.go`

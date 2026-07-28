@@ -137,6 +137,8 @@ The DAG has two independent roots. Batches 1–5 are the gitrepo migration and r
 
 ## All Files Touched
 
+_This list is the union of every card's `Creates:` and `Edits:` paths, by the format's own definition. **Deleted paths are deliberately absent**, the same way Move source paths are: `internal/gitnativepoc/`'s eight files (card 22) and `manifest/designs/native-clients-migration.md` (card 45) are dropped by this plan and appear only in their cards' `Deletes:` fields._
+
 - `CONSTRAINTS.md`
 - `README.md`
 - `cmd/lyx/ghguard_test.go`
@@ -146,6 +148,8 @@ The DAG has two independent roots. Batches 1–5 are the gitrepo migration and r
 - `go.mod`
 - `go.sum`
 - `internal/githubclient/cache.go`
+- `internal/githubclient/cache_other.go`
+- `internal/githubclient/cache_windows.go`
 - `internal/githubclient/doc.go`
 - `internal/githubclient/githubclient.go`
 - `internal/githubclient/githubclient_test.go`
