@@ -15,6 +15,7 @@
 package fabricengine_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -239,4 +240,87 @@ func containsLine(lines []string, name string) bool {
 		}
 	}
 	return false
+}
+
+// TestPairInSync_JunctionDriftShapes is card 11's regression guard: each of
+// PairInSync's three junction-drift shapes — missing, not-a-link, and
+// points-elsewhere — produces reason wording naming the junction, aligned
+// with checkJunctionHealth's wording (card 10) for the same shape.
+func TestPairInSync_JunctionDriftShapes(t *testing.T) {
+	tests := []struct {
+		name       string
+		corrupt    func(t *testing.T, link, target string)
+		wantReason string
+	}{
+		{
+			name: "Missing",
+			corrupt: func(t *testing.T, link, target string) {
+				if err := fslink.Remove(link); err != nil {
+					t.Fatalf("remove junction: %v", err)
+				}
+			},
+			wantReason: fmt.Sprintf("host %s junction missing", hubgeometry.LyxDirName),
+		},
+		{
+			name: "NotALink",
+			corrupt: func(t *testing.T, link, target string) {
+				if err := fslink.Remove(link); err != nil {
+					t.Fatalf("remove junction: %v", err)
+				}
+				if err := os.Mkdir(link, 0o755); err != nil {
+					t.Fatalf("mkdir real dir in junction's place: %v", err)
+				}
+			},
+			wantReason: fmt.Sprintf("host %s is not a junction", hubgeometry.LyxDirName),
+		},
+		{
+			name: "PointsElsewhere",
+			corrupt: func(t *testing.T, link, target string) {
+				if err := fslink.Remove(link); err != nil {
+					t.Fatalf("remove junction: %v", err)
+				}
+				wrongTarget := filepath.Join(filepath.Dir(target), "not-the-weft-target")
+				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
+					t.Fatalf("mkdir wrong target: %v", err)
+				}
+				if err := fslink.CreateDirLink(link, wrongTarget); err != nil {
+					t.Fatalf("seed wrong-target junction: %v", err)
+				}
+			},
+			wantReason: fmt.Sprintf("host %s junction points elsewhere", hubgeometry.LyxDirName),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixture := lyxtest.CopyPairedLocal(t)
+			lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+				"fabric": fabricengine.ConfigTemplate(),
+			})
+			lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+
+			l := fixture.Layout
+			slug := filepath.Base(fixture.Hub)
+			if err := fabricengine.WireJunctions(l, slug); err != nil {
+				t.Fatalf("WireJunctions: %v", err)
+			}
+
+			link := l.HostLyxLinkHere()
+			target := l.WeftLyxDir()
+			tt.corrupt(t, link, target)
+
+			ok, reason, err := fabricengine.PairInSync(l)
+			if err != nil {
+				t.Fatalf("PairInSync: %v", err)
+			}
+			if ok {
+				t.Errorf("PairInSync = true; want false (%s)", tt.name)
+			}
+			if reason != tt.wantReason {
+				t.Errorf("PairInSync reason = %q; want %q", reason, tt.wantReason)
+			}
+		})
+	}
 }
