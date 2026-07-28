@@ -85,5 +85,7 @@ batches:
     start_sha: 66a86fdf7cdd3ebc01dd0f225f5e0750741876f5
     commit_sha: e41647a09e9678165d4c22cf39ccb0279ead3ab3
   - name: docs-and-invariants
-    state: pending
+    state: running
+    implementer_session: 6405fdce-bb27-411b-afd9-3e98fe3be5e0
+    start_sha: 89b8a22b3b14b9edf3b9b9ace914baa977cdeb59
 ```
