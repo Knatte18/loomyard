@@ -73,7 +73,9 @@ batches:
     start_sha: adf482014639e31016d429d4d40b2e788c5f4ba3
     commit_sha: 80485d3caaf866f94e41f56b58ac931a302b6034
   - name: retire-poc-and-measure
-    state: pending
+    state: running
+    implementer_session: c7e928a5-cc21-4bb2-a390-a1442b6baeee
+    start_sha: ca4b69386f0a45d34ef49d4cc253834ad43cd5f7
   - name: guards
     state: pending
   - name: docs-and-invariants
