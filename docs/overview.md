@@ -145,6 +145,7 @@ github.com/Knatte18/loomyard/
 ├── internal/output/              shared JSON output
 ├── internal/modelspec/           model-spec parser + models.yaml registry leaf
 ├── internal/tokenvocab/          shared token vocabulary (repo, hub) + Render compose over stencil, a leaf
+├── internal/pattern/             PATTERN active check + role directive leaf, consumed by builder/webster/burler/loom
 └── internal/shell/               provider-invariant pane-shell mechanics leaf (pwsh + posix)
 ```
 
@@ -184,7 +185,7 @@ The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) la
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that scaffolds the shared `_lyx/` config dir for every module.
 
-The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`) — defined in [shared-libs/README.md](shared-libs/README.md).
+The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_pattern/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (builder implementer, webster fork/Master, burler review+fix, loom plan).
 
 ## Execution stack (orchestration layers)
 

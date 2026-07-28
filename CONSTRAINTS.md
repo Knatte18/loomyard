@@ -48,6 +48,12 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 - `codeintelcli` → `codeintelengine` is the only allowed direction; the reverse import (`codeintelengine` → `codeintelcli`, or `codeintelengine` → any other feature package) is never allowed.
 - **Enforced by** `internal/codeintelengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
+## Pattern Leaf Invariant
+
+`internal/pattern` production code imports only stdlib and `internal/hubgeometry` — never `builderengine`, `websterengine`, `burlerengine`, `loomengine`, or any other feature package — so every one of those four consumers can import it without cycles; the reverse import (`pattern` → any feature package) is never allowed.
+
+- **Enforced by** `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
+
 ## CLI / Cobra Invariant
 
 Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/main.go`.
