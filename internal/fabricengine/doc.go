@@ -23,4 +23,14 @@
 // fabric never calls gitrepo's `StageAllAndCommit` (board's opt-in wildcard-stage
 // exception, per gitrepo's doc.go) — all staging is explicit-list
 // `StageAndCommit`, scoped to a configured pathspec.
+//
+// The default weft-staging pathspec (template.yaml's `pathspec:` key) is `_lyx _pattern`, so a `PATTERN.md` written through the `_pattern` junction is staged and committed alongside `_lyx` by the same `CommitWeft` call, rather than being inert content nothing ever pushes.
+//
+// Two consequences of that default living only in the config template, never enforced or reconciled onto an existing worktree, are worth stating plainly rather than leaving an operator to discover them by surprise.
+//
+// First, existing worktrees never pick this up: `configsync.ReconcileAll` -> `yamlengine.Reconcile` keeps a `pathspec:` key that is already present in a worktree's `fabric.yaml` and adds no key when one already exists, so every already-initialised worktree stays on `pathspec: _lyx` forever and never persists `_pattern` content, no matter how many times `lyx init` or `lyx config` reconcile is re-run — an operator must widen an existing worktree's `fabric.yaml` by hand.
+//
+// Second, no detection or warning surface is in scope: nothing, neither `lyx fabric status` nor `lyx init`, reports a narrow pathspec, so an existing worktree stays silently inert until an operator notices and edits the file themselves. That gap is accepted here rather than papered over — a "your pathspec predates PATTERN" warning would be a new diagnostic class in `fabric status`, and PATTERN has no content to persist in this repo yet — so this comment is what puts the gap in writing instead.
+//
+// This is a deliberate asymmetry with the junction side (see internal/hubgeometry and fabricengine's own junction wiring): a junction self-heals on the next `lyx init`/reconcile and reports loudly until it does, because `WireJunctions` owns junction state outright, whereas `pathspec` is an operator-editable config value that `configsync` must never silently overwrite.
 package fabricengine

@@ -3,7 +3,9 @@
 // weftgit_pathspec_integration_test.go — integration coverage for
 // weftPathspecFilter, the pre-stage filter CommitWeft runs immediately
 // before f.Weft.StageAndCommit: one test per predicate clause, against real
-// git. Package fabricengine (internal), reusing index_integration_test.go's
+// git, plus (added by card 14) the batch's own regression assertion that the
+// widened default pathspec and this filter belong together. Package
+// fabricengine (internal), reusing index_integration_test.go's
 // newPlainWarpRepo/newFabric fixture helpers and syncweft_integration_test.go's
 // writeWeftConfigContent, since both files share this package.
 
@@ -17,6 +19,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
+	"gopkg.in/yaml.v3"
 )
 
 // lsFilesWeft returns `git ls-files`'s raw output for weftPath — the
@@ -223,4 +227,97 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	if postSHA != preSHA {
 		t.Errorf("weft HEAD changed from %q to %q; want unchanged (no commit should have been made)", preSHA, postSHA)
 	}
+}
+
+// resolvedDefaultPathspecDirs resolves the fabric config template's REAL
+// default pathspec and splits it via Config.Dirs -- not a hand-written
+// literal — so the regression test below exercises whatever the template
+// actually declares today, catching a future default change too.
+func resolvedDefaultPathspecDirs(t *testing.T) []string {
+	t.Helper()
+
+	resolved, err := yamlengine.Resolve([]byte(ConfigTemplate()), nil)
+	if err != nil {
+		t.Fatalf("yamlengine.Resolve(ConfigTemplate()): %v", err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
+		t.Fatalf("yaml.Unmarshal resolved config template: %v", err)
+	}
+	return cfg.Dirs()
+}
+
+// TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern is
+// this batch's single most important regression assertion, proving card 13
+// (the pathspec-tolerance filter) and card 14 (the widened default
+// pathspec) belong together in one batch: with the real, resolved default
+// pathspec — "_lyx _pattern" — and NO files under "_pattern" at all, a
+// genuine "_lyx" change still commits. Without weftPathspecFilter, this is
+// exactly the silent regression the batch scope describes: `git add --
+// _lyx _pattern` fails in its entirety the moment `_pattern` matches
+// nothing, and CommitWeft's own pre-existing "did not match any files"
+// tolerance swallows that into ("", false, nil) with no error — so the
+// only way to catch it is asserting the commit actually happened, not
+// checking for an error. Covers both shapes an empty "_pattern" can take —
+// wholly absent and present-but-empty — since git tracks files, not
+// directories, and a materialised-but-empty "_pattern/" is the normal,
+// expected state for this whole task while content migration stays out of
+// scope.
+func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t *testing.T) {
+	dirs := resolvedDefaultPathspecDirs(t)
+	if len(dirs) != 2 || dirs[0] != "_lyx" || dirs[1] != "_pattern" {
+		t.Fatalf("resolved default pathspec dirs = %v; want [_lyx _pattern]", dirs)
+	}
+
+	t.Run("PatternDirWhollyAbsent", func(t *testing.T) {
+		t.Parallel()
+
+		warpPath := newPlainWarpRepo(t)
+		weftFixture := lyxtest.CopyWeft(t)
+		f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+		if _, err := os.Stat(filepath.Join(weftFixture.WeftPath, "_pattern")); !os.IsNotExist(err) {
+			t.Fatalf("precondition: _pattern must not exist in this fixture; Stat err = %v", err)
+		}
+
+		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _pattern wholly absent")
+
+		sha, committed, err := f.CommitWeft(dirs, DefaultCommitMessage, SyncOptions{})
+		if err != nil {
+			t.Fatalf("CommitWeft() error = %v; want nil", err)
+		}
+		if !committed {
+			t.Fatalf("CommitWeft() committed = false; want true (the _lyx change must still commit)")
+		}
+		if sha == "" {
+			t.Errorf("CommitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
+		}
+	})
+
+	t.Run("PatternDirExistsButEmpty", func(t *testing.T) {
+		t.Parallel()
+
+		warpPath := newPlainWarpRepo(t)
+		weftFixture := lyxtest.CopyWeft(t)
+		f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+		// git tracks files, not directories: a materialised-but-empty
+		// "_pattern/" still has nothing for a pathspec to match.
+		if err := os.MkdirAll(filepath.Join(weftFixture.WeftPath, "_pattern"), 0o755); err != nil {
+			t.Fatalf("MkdirAll _pattern: %v", err)
+		}
+
+		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _pattern present but empty")
+
+		sha, committed, err := f.CommitWeft(dirs, DefaultCommitMessage, SyncOptions{})
+		if err != nil {
+			t.Fatalf("CommitWeft() error = %v; want nil", err)
+		}
+		if !committed {
+			t.Fatalf("CommitWeft() committed = false; want true (the _lyx change must still commit)")
+		}
+		if sha == "" {
+			t.Errorf("CommitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
+		}
+	})
 }

@@ -6,6 +6,7 @@
 package fabricengine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -63,9 +64,14 @@ func TestConfigTemplate_ResolvesToEmptyBranchPrefix(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_PathspecResolvesToLyx asserts that the template's
-// pathspec default resolves to "_lyx" regardless of environment.
-func TestConfigTemplate_PathspecResolvesToLyx(t *testing.T) {
+// TestConfigTemplate_PathspecResolvesToLyxAndPattern asserts that the
+// template's pathspec default resolves to "_lyx" and "_pattern", in that
+// order, regardless of environment. The resolved value is whitespace-split
+// (mirroring Config.Dirs, the consumer that actually splits it) rather than
+// compared as one whole string, since the value is whitespace-split at the
+// consumer -- a splitting bug there would otherwise be silent and would
+// simply drop "_pattern".
+func TestConfigTemplate_PathspecResolvesToLyxAndPattern(t *testing.T) {
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)
 	if err != nil {
@@ -81,7 +87,19 @@ func TestConfigTemplate_PathspecResolvesToLyx(t *testing.T) {
 	if !ok {
 		t.Fatalf("resolved template missing key pathspec")
 	}
-	if pathspec != "_lyx" {
-		t.Errorf("resolved[pathspec] = %q; want %q", pathspec, "_lyx")
+	pathspecStr, ok := pathspec.(string)
+	if !ok {
+		t.Fatalf("resolved[pathspec] = %#v; want a string", pathspec)
+	}
+	got2 := strings.Fields(pathspecStr)
+	want := []string{"_lyx", "_pattern"}
+	if len(got2) != len(want) {
+		t.Fatalf("resolved[pathspec] whitespace-split = %v; want %v", got2, want)
+	}
+	for i := range want {
+		if got2[i] != want[i] {
+			t.Errorf("resolved[pathspec] whitespace-split = %v; want %v", got2, want)
+			break
+		}
 	}
 }
