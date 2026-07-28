@@ -79,7 +79,9 @@ batches:
     start_sha: ca4b69386f0a45d34ef49d4cc253834ad43cd5f7
     commit_sha: 3d6d552efbd98a97cb0f6db03267240cdfc25eb5
   - name: guards
-    state: pending
+    state: running
+    implementer_session: bf1edee4-1194-4de4-a9cd-36ba6155237d
+    start_sha: 66a86fdf7cdd3ebc01dd0f225f5e0750741876f5
   - name: docs-and-invariants
     state: pending
 ```
