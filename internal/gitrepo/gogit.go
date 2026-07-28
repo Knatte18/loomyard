@@ -96,12 +96,10 @@ import (
 // here, rather than only in the plan, precisely so a future implementer
 // reads it before writing the next migrated call site.
 //
-// Exercised by gogit_test.go; no migrated read calls goGit yet in this batch
-// (that starts in batch 3), so golangci-lint's default (untagged) build sees
-// no caller, matching gitnativepoc/read.go's identical hasUnpushed
-// precedent.
-//
-//nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+// Exercised by gogit_test.go and, as of batch 3, called from every migrated
+// read in this package: gitrepo.go's CurrentSHA, SHAExists, CurrentBranch,
+// and ChangedFilesSince, and snapshot.go's remoteName, SnapshotSHA,
+// isStrictDescendant, and SetSnapshotSHA all route through this accessor.
 func (r *Repo) goGit() (*git.Repository, error) {
 	r.goGitMu.Lock()
 	defer r.goGitMu.Unlock()
@@ -173,12 +171,10 @@ func (r *Repo) goGit() (*git.Repository, error) {
 // packfiles fresh and this window does not exist at all — but it is not
 // eliminated, only bounded to one stale read per repack race.
 //
-// Exercised by gogit_test.go's concurrency and reindex-retry coverage; no
-// migrated read calls it yet in this batch (that starts in batch 3), so
-// golangci-lint's default (untagged) build sees no caller, matching
-// gitnativepoc/read.go's identical hasUnpushed precedent.
-//
-//nolint:unused // only exercised by the //go:build integration-tagged gogit_test.go
+// Exercised by gogit_test.go's concurrency and reindex-retry coverage and,
+// as of batch 3, called from every migrated object lookup in this package:
+// gitrepo.go's SHAExists and ChangedFilesSince, and snapshot.go's
+// isStrictDescendant and SetSnapshotSHA's ^{commit} canonicalization.
 func lookupObjectRetrying[T any](r *Repo, repo *git.Repository, lookup func() (T, error)) (T, error) {
 	r.goGitMu.Lock()
 	defer r.goGitMu.Unlock()
@@ -226,11 +222,8 @@ func lookupObjectRetrying[T any](r *Repo, repo *git.Repository, lookup func() (T
 // fingerprint rather than an error, since that is a normal, valid state, not
 // a failure to read the pack directory.
 //
-// Called only from lookupObjectRetrying, which is itself only reachable from
-// gogit_test.go's integration-tagged coverage in this batch — see that
-// function's doc.
-//
-//nolint:unused // only exercised (transitively) by the //go:build integration-tagged gogit_test.go
+// Called only from lookupObjectRetrying — see that function's doc for the
+// production call sites that reach this transitively.
 func packFingerprint(storer *filesystem.Storage) (string, error) {
 	entries, err := storer.Filesystem().ReadDir("objects/pack")
 	if err != nil {
