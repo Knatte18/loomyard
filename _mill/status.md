@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -24,4 +24,6 @@ plan-review-r2  '2026-07-28T09:38:25Z'
 plan-fix-r2  '2026-07-28T09:38:25Z'
 plan-review-r3  '2026-07-28T09:53:42Z'
 plan-fix-r3  '2026-07-28T09:53:42Z'
+plan-review-r4  '2026-07-28T10:06:50Z'
+plan-fix-r4  '2026-07-28T10:06:50Z'
 ```
