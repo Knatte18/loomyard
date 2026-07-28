@@ -32,7 +32,9 @@ implementing  '2026-07-28T10:29:12Z'
 ```yaml
 batches:
   - name: stencil-optional
-    state: pending
+    state: running
+    implementer_session: 1797c1af-2f7b-4a1e-abb7-8d08fdeef1c4
+    start_sha: 4d92ff2c3ec739ac32bb9237f689edeae32cffbf
   - name: hubgeometry-pattern-surface
     state: pending
   - name: fabric-junction-generalisation
