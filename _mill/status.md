@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-invariants
+phase: holistic-reviewing
 slug: native-clients-migration
 branch: native-clients-migration
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-migrate-snapshot-push-reads  '2026-07-28T17:42:58Z'
 approved-retire-poc-and-measure  '2026-07-28T18:06:27Z'
 approved-guards  '2026-07-28T18:17:50Z'
 approved-docs-and-invariants  '2026-07-28T18:39:00Z'
+holistic-reviewing  '2026-07-28T18:39:18Z'
 ```
 
 ## Batches
