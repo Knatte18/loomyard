@@ -1,13 +1,21 @@
 //go:build integration
 
-// fixtures_test.go builds the linked-worktree and junction test fixtures
-// gogit_test.go's handle-open coverage needs: a shared-common-dir topology no
-// standalone `git init` repo can produce, and the one this checkout, and
-// every fabricengine worktree, actually runs in — see
-// .scratch/gogit-worktree-probe-report.md. This file only adds fixture
-// builders; the existing fixtures in gitrepo_test.go (newRepo, writeFile,
-// commitAll, runGit, firstCommitSHA, ...) are untouched and reused directly,
-// since both files share package gitrepo_test.
+// fixtures_test.go builds the linked-worktree and junction test fixtures the
+// package gitrepo_test parity/oracle coverage of later batches (batches 2-4)
+// needs: a shared-common-dir topology no standalone `git init` repo can
+// produce, and the one this checkout, and every fabricengine worktree,
+// actually runs in — see .scratch/gogit-worktree-probe-report.md. This file
+// only adds fixture builders; the existing fixtures in gitrepo_test.go
+// (newRepo, writeFile, commitAll, runGit, firstCommitSHA, ...) are untouched
+// and reused directly, since both files share package gitrepo_test.
+//
+// Note this file's builders are unreachable from gogit_test.go's coverage in
+// this same batch: gogit_test.go is package gitrepo (the internal package,
+// needed to reach Repo's unexported goGit/lookupObjectRetrying), a
+// structurally different Go package from this file's package gitrepo_test,
+// even though both live in this directory and compile into one test binary.
+// gogit_test.go therefore builds its own equivalent, smaller fixture rather
+// than importing these.
 
 package gitrepo_test
 
@@ -30,6 +38,13 @@ import (
 // per-worktree — exactly the split that a wrong open (git.PlainOpen without
 // EnableDotGitCommonDir) surfaces as a wrong value rather than a clean
 // error, per the probe report.
+//
+// Not yet used within this batch — its first caller lands with batch 2's
+// parity/oracle test files; golangci-lint's default (untagged) build sees no
+// caller either way, matching gitnativepoc/read.go's identical hasUnpushed
+// precedent.
+//
+//nolint:unused // first exercised by batch 2's parity/oracle test files; only reachable under the //go:build integration tag either way
 type linkedWorktreeFixture struct {
 	// mainDir/mainRepo is the primary worktree, left on branch "main".
 	mainDir  string
@@ -58,6 +73,10 @@ type linkedWorktreeFixture struct {
 // its own separate commit — so the two worktrees end up on different
 // branches at different HEAD commits, never coincidentally equal. Both
 // worktrees are reachable directly at their own filesystem path.
+//
+// Not yet used within this batch — see linkedWorktreeFixture's doc.
+//
+//nolint:unused // first exercised by batch 2's parity/oracle test files; only reachable under the //go:build integration tag either way
 func newLinkedWorktreeFixture(t *testing.T) *linkedWorktreeFixture {
 	t.Helper()
 
@@ -118,6 +137,10 @@ func newLinkedWorktreeFixture(t *testing.T) *linkedWorktreeFixture {
 // reach fabricengine's worktrees in production. It skips the calling test
 // cleanly (t.Skipf) when link creation is unavailable on this platform,
 // rather than failing: link creation itself is not under test here.
+//
+// Not yet used within this batch — see linkedWorktreeFixture's doc.
+//
+//nolint:unused // first exercised by batch 2's parity/oracle test files; only reachable under the //go:build integration tag either way
 func newLinkedWorktreeFixtureViaJunction(t *testing.T) *linkedWorktreeFixture {
 	t.Helper()
 
