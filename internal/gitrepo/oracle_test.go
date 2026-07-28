@@ -177,24 +177,6 @@ func oracleRemoteName(t *testing.T, dir string) string {
 	return remote
 }
 
-// oracleHasUnpushed reimplements hasUnpushed directly on
-// `git rev-list --count @{u}..HEAD`: any non-zero exit — no upstream
-// configured, or any other rev-list failure — means true, exactly matching
-// push.go's documented behaviour, so the first push of a branch still
-// happens rather than being skipped as nothing-to-do.
-func oracleHasUnpushed(t *testing.T, dir string) (bool, error) {
-	t.Helper()
-
-	stdout, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, dir)
-	if err != nil {
-		return false, err
-	}
-	if code != 0 {
-		return true, nil
-	}
-	return strings.TrimSpace(stdout) != "0", nil
-}
-
 // oracleIsStrictDescendant reimplements isStrictDescendant directly on
 // `git merge-base --is-ancestor` plus an explicit equality check, since
 // merge-base --is-ancestor alone would report a commit compared against
