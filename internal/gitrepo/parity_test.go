@@ -15,8 +15,10 @@ package gitrepo_test
 import (
 	"errors"
 	"sort"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -95,15 +97,6 @@ func commitFile(t *testing.T, dir, name, content, message string) {
 	lyxtest.MustRun(t, dir, "git", "commit", "-m", message)
 }
 
-// createBranch creates and checks out a new branch named name, another
-// repo-shaping helper for cases that need a real (non-default) branch name —
-// e.g. an orphan branch or a second branch to detach from.
-func createBranch(t *testing.T, dir, name string) {
-	t.Helper()
-
-	lyxtest.MustRun(t, dir, "git", "checkout", "-b", name)
-}
-
 // writeSnapshotRef sets refs/loomyard/snapshot/<key> to sha directly via
 // `git update-ref`, bypassing SetSnapshotSHA — used to seed a snapshot ref a
 // parity case then reads back through both the oracle and SnapshotSHA.
@@ -111,15 +104,6 @@ func writeSnapshotRef(t *testing.T, dir, key, sha string) {
 	t.Helper()
 
 	lyxtest.MustRun(t, dir, "git", "update-ref", "refs/loomyard/snapshot/"+key, sha)
-}
-
-// addRemote adds a remote named name pointing at url via `git remote add` —
-// used by remoteName parity cases that need a real, non-"origin" configured
-// remote.
-func addRemote(t *testing.T, dir, name, url string) {
-	t.Helper()
-
-	lyxtest.MustRun(t, dir, "git", "remote", "add", name, url)
 }
 
 // assertParitySHA fails the test unless oracle and impl — the SHAs returned
@@ -198,4 +182,386 @@ func assertParityErrPresence(t *testing.T, oracleErr, implErr error) {
 	if (oracleErr == nil) != (implErr == nil) {
 		t.Errorf("error presence parity mismatch: oracle err = %v; gitrepo err = %v", oracleErr, implErr)
 	}
+}
+
+// assertParityString fails the test unless oracle and impl are identical
+// strings — the general string-equality comparison CurrentBranch's parity
+// cases use. assertParitySHA exists separately for the SHA-shaped case so its
+// failure message names the value it is actually comparing.
+func assertParityString(t *testing.T, oracle, impl string) {
+	t.Helper()
+
+	if oracle != impl {
+		t.Errorf("string parity mismatch: oracle (CLI) = %q; gitrepo = %q", oracle, impl)
+	}
+}
+
+// resolveRevOrFatal resolves rev to its object SHA via `git rev-parse`,
+// failing the test outright on any failure — used by fixtures that need a
+// tree or blob SHA (HEAD^{tree}, HEAD:<path>) rather than a commit SHA, which
+// no fixture builder in this package hands back directly.
+func resolveRevOrFatal(t *testing.T, dir, rev string) string {
+	t.Helper()
+
+	stdout, stderr, code, err := runGit(t, dir, "rev-parse", rev)
+	if err != nil {
+		t.Fatalf("git rev-parse %s error = %v", rev, err)
+	}
+	if code != 0 {
+		t.Fatalf("git rev-parse %s exited %d: %s", rev, code, stderr)
+	}
+	return strings.TrimSpace(stdout)
+}
+
+// TestCurrentSHA_Parity_CommittedRepo asserts the oracle and gitrepo's
+// CurrentSHA agree on an ordinary committed repo — trivially true in this
+// batch, since gitrepo.CurrentSHA is still CLI-backed; the value of this case
+// is established now, before batch 3 flips it onto go-git.
+func TestCurrentSHA_Parity_CommittedRepo(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	oracleSHA, oracleErr := oracleCurrentSHA(t, dir)
+	if oracleErr != nil {
+		t.Fatalf("oracleCurrentSHA() error = %v", oracleErr)
+	}
+	implSHA, implErr := repo.CurrentSHA()
+	if implErr != nil {
+		t.Fatalf("CurrentSHA() error = %v", implErr)
+	}
+
+	assertParitySHA(t, oracleSHA, implSHA)
+}
+
+// TestCurrentSHA_Parity_UnbornHEAD asserts the oracle and gitrepo's
+// CurrentSHA agree on an unborn HEAD: both map git's ambiguous-HEAD stderr
+// shape to their own sentinel (errOracleNoCommits and gitrepo.ErrNoCommits
+// respectively), so the cross-target class comparison — never a raw string
+// comparison, since the two sides never produce byte-identical errors — is
+// what proves agreement.
+func TestCurrentSHA_Parity_UnbornHEAD(t *testing.T) {
+	dir := newEmptyRepoFixture(t)
+
+	_, oracleErr := oracleCurrentSHA(t, dir)
+	_, implErr := gitrepo.New(dir).CurrentSHA()
+
+	assertParityErrClass(t, oracleErr, errOracleNoCommits, implErr, gitrepo.ErrNoCommits)
+	if !errors.Is(oracleErr, errOracleNoCommits) {
+		t.Errorf("oracleCurrentSHA() on unborn HEAD error = %v, want errOracleNoCommits", oracleErr)
+	}
+	if !errors.Is(implErr, gitrepo.ErrNoCommits) {
+		t.Errorf("CurrentSHA() on unborn HEAD error = %v, want gitrepo.ErrNoCommits", implErr)
+	}
+}
+
+// TestSHAExists_Parity_CommittedSHA asserts the oracle and gitrepo's
+// SHAExists agree that a real, committed SHA exists.
+func TestSHAExists_Parity_CommittedSHA(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	sha, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	assertParityBool(t, oracleSHAExists(t, dir, sha), repo.SHAExists(sha))
+}
+
+// TestSHAExists_Parity_MissingAndNonHexSHA asserts the oracle and gitrepo
+// agree that a well-formed-but-absent SHA, and a non-hex string, both fold
+// into false without either side treating the lookup itself as a failure
+// worth surfacing.
+func TestSHAExists_Parity_MissingAndNonHexSHA(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	tests := []struct {
+		name string
+		sha  string
+	}{
+		{"MissingSHA", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"},
+		{"NonHexSHA", "not-a-sha!!"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertParityBool(t, oracleSHAExists(t, dir, tt.sha), repo.SHAExists(tt.sha))
+		})
+	}
+}
+
+// TestSHAExists_Parity_TreeOrBlobSHA asserts the oracle and gitrepo agree
+// that a tree or blob SHA — a real, valid-hex object name, just not a commit
+// — is false, never true: the `^{commit}` peel is what makes this so, and it
+// is exactly what the missing/non-hex cases above cannot distinguish, since
+// neither of those SHAs resolves to any object at all.
+func TestSHAExists_Parity_TreeOrBlobSHA(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	tests := []struct {
+		name string
+		rev  string
+	}{
+		{"TreeSHA", "HEAD^{tree}"},
+		{"BlobSHA", "HEAD:a.txt"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sha := resolveRevOrFatal(t, dir, tt.rev)
+			assertParityBool(t, oracleSHAExists(t, dir, sha), repo.SHAExists(sha))
+		})
+	}
+}
+
+// TestChangedFilesSince_Parity_NonASCIIPath asserts the oracle and gitrepo
+// both return a non-ASCII filename verbatim — the on-disk literal, never
+// core.quotePath's C-quoted escape form — and agree with each other.
+func TestChangedFilesSince_Parity_NonASCIIPath(t *testing.T) {
+	dir, filename := newNonASCIIFixture(t)
+	since := firstCommitSHA(t, dir)
+
+	oracleFiles, oracleErr := oracleChangedFilesSince(t, dir, since)
+	if oracleErr != nil {
+		t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+	}
+	if !containsPath(oracleFiles, filename) {
+		t.Fatalf("oracleChangedFilesSince() = %v, want it to contain verbatim %q", oracleFiles, filename)
+	}
+
+	implFiles, implErr := gitrepo.New(dir).ChangedFilesSince(since)
+	if implErr != nil {
+		t.Fatalf("ChangedFilesSince() error = %v", implErr)
+	}
+	if !containsPath(implFiles, filename) {
+		t.Fatalf("ChangedFilesSince() = %v, want it to contain verbatim %q", implFiles, filename)
+	}
+
+	assertParityFileList(t, oracleFiles, implFiles)
+}
+
+// TestChangedFilesSince_Parity_Rename asserts the oracle and gitrepo both
+// report a pure rename as its old path (deleted) and new path (added)
+// separately, never folded into one entry, and agree with each other.
+func TestChangedFilesSince_Parity_Rename(t *testing.T) {
+	dir, oldName, newName := newRenameFixture(t)
+	since := firstCommitSHA(t, dir)
+
+	oracleFiles, oracleErr := oracleChangedFilesSince(t, dir, since)
+	if oracleErr != nil {
+		t.Fatalf("oracleChangedFilesSince() error = %v", oracleErr)
+	}
+	implFiles, implErr := gitrepo.New(dir).ChangedFilesSince(since)
+	if implErr != nil {
+		t.Fatalf("ChangedFilesSince() error = %v", implErr)
+	}
+
+	for _, files := range [][]string{oracleFiles, implFiles} {
+		if !containsPath(files, oldName) {
+			t.Errorf("ChangedFilesSince() = %v, want it to contain the deleted old path %q", files, oldName)
+		}
+		if !containsPath(files, newName) {
+			t.Errorf("ChangedFilesSince() = %v, want it to contain the added new path %q", files, newName)
+		}
+	}
+	assertParityFileList(t, oracleFiles, implFiles)
+}
+
+// TestChangedFilesSince_Parity_NonHexSHA asserts the oracle and gitrepo agree
+// on error class for a non-hex sha: each side returns its own
+// ErrInvalidSHA-class sentinel before either ever resolves or diffs anything.
+func TestChangedFilesSince_Parity_NonHexSHA(t *testing.T) {
+	dir, _ := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+
+	_, implErr := gitrepo.New(dir).ChangedFilesSince("not-a-sha!!")
+	if !errors.Is(implErr, gitrepo.ErrInvalidSHA) {
+		t.Errorf("ChangedFilesSince(non-hex) error = %v, want gitrepo.ErrInvalidSHA", implErr)
+	}
+}
+
+// containsPath reports whether haystack contains needle, used to assert a
+// specific path is present in a ChangedFilesSince result without depending on
+// list order.
+func containsPath(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSnapshotSHA_Parity_SetRef asserts the oracle and gitrepo agree on the
+// SHA recorded under a snapshot ref that has been set.
+func TestSnapshotSHA_Parity_SetRef(t *testing.T) {
+	dir, key := newSnapshotRefFixture(t)
+
+	oracleSHA, oracleErr := oracleSnapshotSHA(t, dir, key)
+	if oracleErr != nil {
+		t.Fatalf("oracleSnapshotSHA(%q) error = %v", key, oracleErr)
+	}
+	implSHA, implErr := gitrepo.New(dir).SnapshotSHA(key)
+	if implErr != nil {
+		t.Fatalf("SnapshotSHA(%q) error = %v", key, implErr)
+	}
+
+	assertParitySHA(t, oracleSHA, implSHA)
+}
+
+// TestSnapshotSHA_Parity_AbsentRef asserts a key with no ref ever set reads
+// as ("", nil) on both the oracle and gitrepo — a verified-absent ref is a
+// normal state, not a failure.
+func TestSnapshotSHA_Parity_AbsentRef(t *testing.T) {
+	dir, _ := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+	const key = "never-set"
+
+	oracleSHA, oracleErr := oracleSnapshotSHA(t, dir, key)
+	if oracleErr != nil {
+		t.Fatalf("oracleSnapshotSHA(%q) error = %v", key, oracleErr)
+	}
+	if oracleSHA != "" {
+		t.Fatalf("oracleSnapshotSHA(%q) = %q, want \"\"", key, oracleSHA)
+	}
+
+	implSHA, implErr := gitrepo.New(dir).SnapshotSHA(key)
+	if implErr != nil {
+		t.Fatalf("SnapshotSHA(%q) error = %v", key, implErr)
+	}
+	if implSHA != "" {
+		t.Fatalf("SnapshotSHA(%q) = %q, want \"\"", key, implSHA)
+	}
+
+	assertParitySHA(t, oracleSHA, implSHA)
+}
+
+// TestSnapshotSHA_Parity_InvalidKey asserts an invalid key returns gitrepo's
+// own ErrInvalidSnapshotKey without ever touching a ref — the oracle has no
+// key-validation layer of its own (that check exists only in production code
+// as a pre-git guard), so this case asserts gitrepo's contract directly
+// rather than an oracle comparison.
+func TestSnapshotSHA_Parity_InvalidKey(t *testing.T) {
+	dir, _ := newRepo(t)
+	writeFile(t, dir, "a.txt", "initial")
+	commitAll(t, dir, "init")
+	// "key..bad" passes the character-class check but is rejected by the
+	// separate ".." shape check, exercising that specific rule.
+	const key = "key..bad"
+
+	_, implErr := gitrepo.New(dir).SnapshotSHA(key)
+	if !errors.Is(implErr, gitrepo.ErrInvalidSnapshotKey) {
+		t.Errorf("SnapshotSHA(%q) error = %v, want gitrepo.ErrInvalidSnapshotKey", key, implErr)
+	}
+}
+
+// TestSnapshotSHA_Parity_UnreadableStore asserts the third leg of
+// SnapshotSHA's three-way distinction: a checkout that cannot be read at all
+// (here, a plain directory that is not a git repository) surfaces as an
+// error on both the oracle and gitrepo, rather than folding into the
+// verified-absent ("", nil) case — folding the two together would tell a
+// miswired read-only consumer "no snapshot" forever instead of surfacing the
+// real problem.
+func TestSnapshotSHA_Parity_UnreadableStore(t *testing.T) {
+	dir := t.TempDir() // deliberately never `git init`-ed
+	const key = "somekey"
+
+	_, oracleErr := oracleSnapshotSHA(t, dir, key)
+	if oracleErr == nil {
+		t.Fatal("oracleSnapshotSHA() on a non-repository path error = nil, want non-nil")
+	}
+	_, implErr := gitrepo.New(dir).SnapshotSHA(key)
+	if implErr == nil {
+		t.Fatal("SnapshotSHA() on a non-repository path error = nil, want non-nil")
+	}
+}
+
+// TestCurrentBranch_Parity covers CurrentBranch across all four HEAD states
+// the method can encounter: an ordinary branch, a detached HEAD (must be an
+// error, never an empty string — a caller with no captured branch has no
+// safe ref to hand RestoreBranch), an unborn HEAD (symbolic-ref succeeds and
+// prints the branch name even with no commit yet), and an orphan branch.
+func TestCurrentBranch_Parity(t *testing.T) {
+	t.Run("OnBranch", func(t *testing.T) {
+		dir, repo := newRepo(t)
+		writeFile(t, dir, "a.txt", "initial")
+		commitAll(t, dir, "init")
+
+		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleCurrentBranch() error = %v", oracleErr)
+		}
+		implBranch, implErr := repo.CurrentBranch()
+		if implErr != nil {
+			t.Fatalf("CurrentBranch() error = %v", implErr)
+		}
+		assertParityString(t, oracleBranch, implBranch)
+		if implBranch != "main" {
+			t.Errorf("CurrentBranch() = %q, want %q", implBranch, "main")
+		}
+	})
+
+	t.Run("Detached", func(t *testing.T) {
+		dir, repo := newRepo(t)
+		writeFile(t, dir, "a.txt", "initial")
+		commitAll(t, dir, "init")
+		sha, err := repo.CurrentSHA()
+		if err != nil {
+			t.Fatalf("CurrentSHA() error = %v", err)
+		}
+		lyxtest.MustRun(t, dir, "git", "checkout", "--detach", sha)
+
+		_, oracleErr := oracleCurrentBranch(t, dir)
+		_, implErr := repo.CurrentBranch()
+		assertParityErrPresence(t, oracleErr, implErr)
+		if implErr == nil {
+			t.Error("CurrentBranch() on detached HEAD error = nil, want non-nil")
+		}
+	})
+
+	t.Run("UnbornHEAD", func(t *testing.T) {
+		dir := newEmptyRepoFixture(t)
+
+		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleCurrentBranch() on unborn HEAD error = %v, want nil", oracleErr)
+		}
+		implBranch, implErr := gitrepo.New(dir).CurrentBranch()
+		if implErr != nil {
+			t.Fatalf("CurrentBranch() on unborn HEAD error = %v, want nil", implErr)
+		}
+		assertParityString(t, oracleBranch, implBranch)
+		if implBranch != "main" {
+			t.Errorf("CurrentBranch() on unborn HEAD = %q, want %q", implBranch, "main")
+		}
+	})
+
+	t.Run("Orphan", func(t *testing.T) {
+		dir, _ := newRepo(t)
+		writeFile(t, dir, "a.txt", "initial")
+		commitAll(t, dir, "init")
+
+		lyxtest.MustRun(t, dir, "git", "checkout", "--orphan", "orphan-branch")
+		lyxtest.MustRun(t, dir, "git", "rm", "-rf", "--cached", ".")
+		commitFile(t, dir, "orphan.txt", "unrelated root", "orphan root")
+
+		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
+		if oracleErr != nil {
+			t.Fatalf("oracleCurrentBranch() on orphan branch error = %v, want nil", oracleErr)
+		}
+		implBranch, implErr := gitrepo.New(dir).CurrentBranch()
+		if implErr != nil {
+			t.Fatalf("CurrentBranch() on orphan branch error = %v, want nil", implErr)
+		}
+		assertParityString(t, oracleBranch, implBranch)
+		if implBranch != "orphan-branch" {
+			t.Errorf("CurrentBranch() on orphan branch = %q, want %q", implBranch, "orphan-branch")
+		}
+	})
 }
