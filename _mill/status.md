@@ -62,7 +62,9 @@ batches:
     start_sha: 9db6f989ad21c25b0076b6f17b131d23d615b0ab
     commit_sha: 92255e890fb19cb232c633483186cf701cae3bd3
   - name: pattern-package
-    state: pending
+    state: running
+    implementer_session: eb9e97c9-59b3-4ec9-aaa4-44042f51a984
+    start_sha: 34cd61266611263c68c609a80417e2807c1ec2a3
   - name: prompt-wiring
     state: pending
 ```
