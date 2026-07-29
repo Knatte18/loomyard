@@ -203,7 +203,24 @@ separately from recomputing it), and removes an entire class of bug
   detached and outlives this call; the only thing that ever terminates it
   is its own idle timeout (gopls's own `-listen.timeout`, unconfigured
   here, defaulting per gopls itself) or a future restart's stale-socket
-  cleanup finding it already dead.
+  cleanup finding it already dead. **Also record a known limitation in
+  that same doc comment**: `daemonStale` only checks PID liveness and
+  protocol version, not whether the daemon actually answers a dial — a
+  process that is alive but hung or never finished binding its listen
+  socket is never classified stale, so every caller's dial-then-finalize
+  keeps failing against a state that keeps reading "healthy," and no
+  caller ever restarts it; the bounded retry in step (2)/(3) still
+  returns `ErrServerSpawnTimeout` per call rather than hanging, but a
+  fresh call later hits the identical wedged daemon and times out again,
+  indefinitely, until the process dies on its own or an operator
+  intervenes. This is accepted as a known gap rather than fixed with a
+  dial-failure-triggers-restart heuristic, because that heuristic risks
+  misclassifying a daemon that is merely slow to bind on first spawn (the
+  exact case step (6)'s own 10-attempt/50ms retry already exists to
+  tolerate) as wedged, and getting that distinction right needs empirical
+  grounding this task has no reason to invest in — `supervised` has no
+  live V1 dispatch path, so this limitation affects no production
+  caller yet.
 - **Commit:** `feat(codeintelengine): implement ensureSupervised with spawn-race lock and staleness-triggered restart`
 
 ### Card 25: Tests — staleness/restart/retry-exhaustion (fake) and the plain-`gopls` proof (integration)
@@ -211,6 +228,7 @@ separately from recomputing it), and removes an entire class of bug
 - **Context:**
   - `internal/codeintelengine/ensureserver.go`
   - `internal/codeintelengine/daemonstate.go`
+  - `internal/codeintelengine/errors.go`
   - `internal/codeintelengine/lspclient_test.go`
   - `internal/codeintelengine/refs_integration_test.go`
 - **Edits:**

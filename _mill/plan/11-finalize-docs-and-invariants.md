@@ -73,7 +73,11 @@ codeintel module-table entry repeats the "references-only" framing.
   that `ensureSupervised` is fully built and proven (its own integration
   test against a plain `gopls`) but has no live V1 dispatch path — no
   registry entry requests it yet — so a future `ty`/OmniSharp adapter is
-  what will first reach it through `ensureServer`. **(3) A new "Go
+  what will first reach it through `ensureServer`. Also carry forward
+  `ensureSupervised`'s own known-limitation note (batch 6, card 24) that
+  a live-but-wedged daemon (never classified stale, since staleness only
+  checks PID liveness and protocol version) is not recovered from — a
+  future consumer's first fix, not this task's. **(3) A new "Go
   toolchain manager" section**: `$PATH` is never consulted for Go;
   `resolveGoToolchain` installs a pinned `gopls` version
   (`registry.go`'s `builtins()["go"].PinnedVersion`) into

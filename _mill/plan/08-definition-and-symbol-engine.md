@@ -211,6 +211,8 @@ context.Context, opts Options) ([]Reference, error)` (new file
 - **Context:**
   - `internal/codeintelengine/refs_test.go`
   - `internal/codeintelengine/lspclient_test.go`
+  - `internal/codeintelengine/symbol.go`
+  - `internal/codeintelengine/errors.go`
 - **Edits:** none
 - **Creates:**
   - `internal/codeintelengine/symbol_test.go`
