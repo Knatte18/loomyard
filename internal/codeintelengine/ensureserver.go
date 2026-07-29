@@ -11,6 +11,7 @@ package codeintelengine
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -52,4 +53,43 @@ const (
 func ensureServer(ctx context.Context, lang string, entry Entry, targetDir, worktreeRoot string, timeout time.Duration) (*lspClient, connKind, error) {
 	client, err := ensureNative(ctx, lang, entry, targetDir, timeout)
 	return client, connKindNative, err
+}
+
+// finalizeConnection runs the initialize-then-probe-then-kill-on-failure
+// sequence every EnsureServer strategy performs once it has *a* connection,
+// regardless of how that connection was obtained (a fresh spawn for
+// native, a fresh spawn or a reused dial for supervised). Factoring this
+// out is what makes the sequence independently unit-testable against the
+// package's existing fake-transport harness, without needing a real
+// subprocess.
+//
+// finalizeConnection performs no restart/retry of its own: an initialize
+// or probe failure is reported once and the connection is torn down once
+// via client.kill() — never a second spawn attempt. Callers that need
+// restart-on-failure semantics (none exist for native; supervised decides
+// to restart based on its own state-file staleness check, before ever
+// calling finalizeConnection) implement that above this function, not
+// inside it.
+func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, timeout time.Duration) error {
+	initCtx, initCancel := context.WithTimeout(ctx, timeout)
+	defer initCancel()
+	if err := client.initialize(initCtx, rootURI); err != nil {
+		client.kill()
+		return err
+	}
+
+	// A successful initialize handshake alone is not sufficient proof of
+	// health (see probe.go's own doc comment) — probe exercises the
+	// connection end-to-end before it is handed back to the caller.
+	if err := probe(ctx, client, timeout); err != nil {
+		client.kill()
+		// Wrap (rather than return verbatim) so a probe failure is
+		// distinguishable in logs from an initialize failure without
+		// needing errors.Is gymnastics; %w still preserves the chain, so
+		// errors.Is(err, ErrServerTimeoutSentinel) keeps matching when the
+		// underlying cause is a timeout.
+		return fmt.Errorf("codeintelengine: probe failed: %w", err)
+	}
+
+	return nil
 }
