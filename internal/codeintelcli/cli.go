@@ -5,10 +5,11 @@
 // result and typed error gets mapped to the internal/output JSON envelope.
 
 // Package codeintelcli wires internal/codeintelengine into the lyx cobra tree as the
-// "codeintel" module, exposing three verbs — "refs" (every reference to a symbol or
-// position), "definition" (a symbol or position's definition), and "symbol" (a
-// workspace/symbol name search) — across the languages internal/codeintelengine
-// supports.
+// "codeintel" module, exposing four verbs — "refs" (every reference to a symbol or
+// position), "definition" (a symbol or position's definition), "symbol" (a
+// workspace/symbol name search), and "assert-no-callers" (a CI-shaped gate: fail if
+// a symbol has any caller outside its declaration and an allowed list) — across the
+// languages internal/codeintelengine supports.
 //
 // # The exit-code contract
 //
@@ -64,6 +65,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(refsCommand())
 	cmd.AddCommand(definitionCommand())
 	cmd.AddCommand(symbolCommand())
+	cmd.AddCommand(assertNoCallersCommand())
 	return cmd
 }
 
@@ -413,6 +415,187 @@ matches into an ambiguity failure. Example:
 // independently unit-testable without a live language server.
 func symbolQuery(arg string) codeintelengine.Query {
 	return codeintelengine.Query{Symbol: arg}
+}
+
+// assertNoCallersCommand builds the "assert-no-callers" subcommand: a CI-shaped
+// gate, not a lookup verb. It resolves the same symbol|file:line:col argument
+// refs/definition accept, then fails (exit 1) if any reference to it survives
+// after excluding its own declaration site and every --except path. Intended
+// for a mill batch's "verify:" step, so a plan's Deletes:/Moves: safety claim
+// becomes a deterministic CI check instead of a reviewer's manual judgment call.
+func assertNoCallersCommand() *cobra.Command {
+	var targetDir string
+	var lang string
+	var timeout time.Duration
+	var except []string
+
+	cmd := &cobra.Command{
+		Use:   "assert-no-callers <symbol|file:line:col>",
+		Short: "fail if a symbol has any caller outside its declaration and --except paths",
+		Long: `assert-no-callers finds every reference to a symbol name or an explicit
+source position (the same resolution refs/definition use), then fails if any
+reference remains once its own declaration site and every --except path are
+excluded.
+
+Intended for a mill batch's "verify:" step: mechanically confirm a Deletes: or
+Moves: batch's target symbol truly has no remaining external callers before
+the batch is approved, turning a review-discipline judgment call into a
+deterministic CI gate.
+
+The single positional argument is either a symbol name (resolved via
+workspace/symbol) or an explicit "file:line:col" position, exactly as for
+refs/definition. --except may be repeated; each is a file path (relative to
+--target-dir, or absolute) allowed to keep referencing the symbol without
+failing the check — typically the symbol's own sanctioned wrapper.
+
+Exit 0: no unexpected callers remain; the envelope carries an empty "callers"
+list. Exit 1: either one or more unexpected callers were found (the envelope
+carries "violation":true and the "callers" list), or the lookup itself failed
+(not found, server error) — the "violation" field is the only way to tell
+these two exit-1 cases apart. Exit 2: the symbol name was ambiguous (more than
+one workspace/symbol candidate) — the envelope carries "candidates", exactly
+as refs/definition already report ambiguity.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+
+			// hubgeometry.Getwd() is the only permitted os.Getwd call outside
+			// cmd/lyx/main.go; it anchors both the default target directory and
+			// the overlay-base resolution below.
+			cwd, err := hubgeometry.Getwd()
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
+			dir := targetDir
+			if dir == "" {
+				dir = cwd
+			}
+
+			registry := codeintelengine.BuiltinRegistry()
+			var worktreeRoot string
+			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
+				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
+				if loadErr != nil {
+					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
+					return nil
+				}
+				registry = loaded
+				worktreeRoot = layout.WorktreeRoot
+			}
+
+			query, err := parseQuery(args[0])
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
+			baseOpts := codeintelengine.Options{
+				Registry:     registry,
+				TargetDir:    dir,
+				WorktreeRoot: worktreeRoot,
+				Lang:         lang,
+				Timeout:      timeout,
+			}
+
+			// Resolve the declaration site(s) to exclude via Definition,
+			// regardless of whether query is a bare symbol name or an explicit
+			// position: Definition's Reference results are always in LSP's
+			// UTF-16-column coordinate system (same as References's own
+			// results below), so declRefs and refs stay directly comparable.
+			// Building a Reference straight from a caller-supplied Position
+			// instead would be wrong whenever query.Pos is set — Position's
+			// Character is a 1-based byte column, which only coincides with
+			// Reference's 1-based UTF-16 column on a pure-ASCII line; on any
+			// other line the declaration would silently fail to match and be
+			// misreported as an unexpected caller.
+			defOpts := baseOpts
+			defOpts.Query = query
+			declRefs, defErr := codeintelengine.Definition(ctx, defOpts)
+			if defErr != nil {
+				emitAmbiguousOrError(ctx, out, defErr)
+				return nil
+			}
+
+			refOpts := baseOpts
+			refOpts.Query = query
+			refs, refErr := codeintelengine.References(ctx, refOpts)
+			if refErr != nil {
+				emitAmbiguousOrError(ctx, out, refErr)
+				return nil
+			}
+
+			exceptAbs := make(map[string]bool, len(except))
+			for _, e := range except {
+				p := e
+				if !filepath.IsAbs(p) {
+					p = filepath.Join(dir, p)
+				}
+				exceptAbs[filepath.Clean(p)] = true
+			}
+
+			violations := filterUnexpectedCallers(refs, declRefs, exceptAbs)
+			if len(violations) == 0 {
+				clihelp.SetExit(ctx, output.Ok(out, map[string]any{"callers": []map[string]any{}}))
+				return nil
+			}
+
+			output.Ok(out, map[string]any{"violation": true, "callers": referenceFields(violations)})
+			clihelp.SetExit(ctx, 1)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&targetDir, "target-dir", "", "project directory to detect the language in and root the server at (default: cwd)")
+	cmd.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
+	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references/definition)")
+	cmd.Flags().StringArrayVar(&except, "except", nil, "file path allowed to reference the symbol without failing the check (repeatable)")
+
+	return cmd
+}
+
+// emitAmbiguousOrError maps a References/Definition error to the envelope,
+// identically to emitLookupResult's own error branch: *ErrAmbiguousSymbol
+// becomes exit 2 with candidates, everything else becomes exit 1 via
+// output.Err. It returns false in both cases (there is never a "handled but
+// continue" outcome) — the bool return exists only so a call site can use it
+// as a single-expression early-return guard without repeating the two-branch
+// body inline.
+func emitAmbiguousOrError(ctx context.Context, out io.Writer, err error) bool {
+	var ambiguous *codeintelengine.ErrAmbiguousSymbol
+	if errors.As(err, &ambiguous) {
+		output.Ok(out, map[string]any{"candidates": ambiguous.Candidates})
+		clihelp.SetExit(ctx, 2)
+		return false
+	}
+	clihelp.SetExit(ctx, output.Err(out, err.Error()))
+	return false
+}
+
+// filterUnexpectedCallers returns every entry in refs that is neither one of
+// declRefs (compared by exact file+line+character — both refs and declRefs
+// come from codeintelengine's Reference type, so this is a same-coordinate-
+// system comparison, never a byte-column-vs-UTF-16 mismatch) nor whose File
+// is a key in exceptAbs (already filepath.Clean'd, absolute paths).
+func filterUnexpectedCallers(refs []codeintelengine.Reference, declRefs []codeintelengine.Reference, exceptAbs map[string]bool) []codeintelengine.Reference {
+	declSet := make(map[codeintelengine.Reference]bool, len(declRefs))
+	for _, d := range declRefs {
+		declSet[d] = true
+	}
+
+	var violations []codeintelengine.Reference
+	for _, r := range refs {
+		if declSet[r] {
+			continue
+		}
+		if exceptAbs[filepath.Clean(r.File)] {
+			continue
+		}
+		violations = append(violations, r)
+	}
+	return violations
 }
 
 // symbolMatchFields converts each codeintelengine.SymbolMatch into the
