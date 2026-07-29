@@ -5,8 +5,8 @@
 // result and typed error gets mapped to the internal/output JSON envelope.
 
 // Package codeintelcli wires internal/codeintelengine into the lyx cobra tree as the
-// "codeintel" module, currently exposing a single "refs" verb that looks up every
-// reference to a symbol name or an explicit source position across the languages
+// "codeintel" module, exposing "refs", "definition", and "symbol" verbs that look up
+// references, definitions, and workspace symbols respectively, across the languages
 // internal/codeintelengine supports.
 package codeintelcli
 
@@ -29,7 +29,8 @@ import (
 )
 
 // Command returns the cobra command tree for the codeintel module: a parent
-// "codeintel" group command and its "refs" subcommand.
+// "codeintel" group command and its "refs", "definition", and "symbol"
+// subcommands.
 //
 // The parent carries RunE: clihelp.GroupRunE so a bare "lyx codeintel" lists
 // subcommands and an unknown subcommand emits a JSON error, matching every other
@@ -37,11 +38,13 @@ import (
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "codeintel",
-		Short: "code intelligence lookups (references) across supported languages",
+		Short: "code intelligence lookups (references, definitions, symbol search) across supported languages",
 		RunE:  clihelp.GroupRunE,
 	}
 
 	cmd.AddCommand(refsCommand())
+	cmd.AddCommand(definitionCommand())
+	cmd.AddCommand(symbolCommand())
 	return cmd
 }
 
@@ -99,6 +102,7 @@ The single positional argument is either:
 			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := codeintelengine.BuiltinRegistry()
+			var worktreeRoot string
 			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
 				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
 				if loadErr != nil {
@@ -106,14 +110,16 @@ The single positional argument is either:
 					return nil
 				}
 				registry = loaded
+				worktreeRoot = layout.WorktreeRoot
 			}
 
 			opts := codeintelengine.Options{
-				Registry:  registry,
-				TargetDir: dir,
-				Lang:      lang,
-				Query:     query,
-				Timeout:   timeout,
+				Registry:     registry,
+				TargetDir:    dir,
+				WorktreeRoot: worktreeRoot,
+				Lang:         lang,
+				Query:        query,
+				Timeout:      timeout,
 			}
 
 			results, err := codeintelengine.References(ctx, opts)
@@ -127,6 +133,202 @@ The single positional argument is either:
 	refs.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references)")
 
 	return refs
+}
+
+// definitionCommand builds the "definition" subcommand: structurally
+// identical to refsCommand (same flags, cwd/registry-resolution preamble,
+// and parseQuery call), differing only in which codeintelengine entry point
+// it calls (Definition instead of References) and the JSON key its results
+// are reported under ("definitions").
+func definitionCommand() *cobra.Command {
+	var targetDir string
+	var lang string
+	var timeout time.Duration
+
+	definition := &cobra.Command{
+		Use:   "definition <symbol|file:line:col>",
+		Short: "show the definition of a symbol or source position",
+		Long: `definition shows the definition of a symbol name or an explicit source
+position, using the LSP "textDocument/definition" request against the
+language server detected for --target-dir (or --lang, to override
+detection).
+
+The single positional argument is either:
+  - a symbol name, resolved via the language server's workspace/symbol search:
+      lyx codeintel definition MyFunction
+  - an explicit "file:line:col" position (1-based line and column), bypassing
+    name resolution entirely:
+      lyx codeintel definition internal/foo/bar.go:42:8`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+
+			// hubgeometry.Getwd() is the only permitted os.Getwd call outside
+			// cmd/lyx/main.go; it anchors both the default target directory and
+			// the overlay-base resolution below.
+			cwd, err := hubgeometry.Getwd()
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
+			dir := targetDir
+			if dir == "" {
+				dir = cwd
+			}
+
+			query, err := parseQuery(args[0])
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
+			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
+			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
+			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
+			// silently miss every overlay, exactly as internal/buildercli/cli.go
+			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
+			// to the pinned built-in registry rather than failing the lookup.
+			registry := codeintelengine.BuiltinRegistry()
+			var worktreeRoot string
+			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
+				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
+				if loadErr != nil {
+					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
+					return nil
+				}
+				registry = loaded
+				worktreeRoot = layout.WorktreeRoot
+			}
+
+			opts := codeintelengine.Options{
+				Registry:     registry,
+				TargetDir:    dir,
+				WorktreeRoot: worktreeRoot,
+				Lang:         lang,
+				Query:        query,
+				Timeout:      timeout,
+			}
+
+			results, err := codeintelengine.Definition(ctx, opts)
+			emitLookupResult(ctx, out, "definitions", results, err)
+			return nil
+		},
+	}
+
+	definition.Flags().StringVar(&targetDir, "target-dir", "", "project directory to detect the language in and root the server at (default: cwd)")
+	definition.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
+	definition.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, definition)")
+
+	return definition
+}
+
+// symbolCommand builds the "symbol" subcommand: it shares refsCommand's
+// flags and cwd/registry-resolution preamble, but — unlike refs/definition —
+// never calls parseQuery. Per the plan's symbol-semantics decision, the
+// positional argument is always a plain workspace/symbol search string,
+// never position-parsed, even when it happens to look like "file:line:col".
+func symbolCommand() *cobra.Command {
+	var targetDir string
+	var lang string
+	var timeout time.Duration
+
+	symbol := &cobra.Command{
+		Use:   "symbol <query>",
+		Short: "search workspace symbols by name",
+		Long: `symbol searches workspace symbols by name, using the LSP
+"workspace/symbol" request against the language server detected for
+--target-dir (or --lang, to override detection).
+
+Unlike refs/definition, the positional argument is always treated as a
+literal search string — even one that happens to look like "file:line:col" —
+never position-parsed:
+    lyx codeintel symbol MyFunction`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+
+			// hubgeometry.Getwd() is the only permitted os.Getwd call outside
+			// cmd/lyx/main.go; it anchors both the default target directory and
+			// the overlay-base resolution below.
+			cwd, err := hubgeometry.Getwd()
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
+			dir := targetDir
+			if dir == "" {
+				dir = cwd
+			}
+
+			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
+			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
+			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
+			// silently miss every overlay, exactly as internal/buildercli/cli.go
+			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
+			// to the pinned built-in registry rather than failing the lookup.
+			registry := codeintelengine.BuiltinRegistry()
+			var worktreeRoot string
+			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
+				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
+				if loadErr != nil {
+					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
+					return nil
+				}
+				registry = loaded
+				worktreeRoot = layout.WorktreeRoot
+			}
+
+			opts := codeintelengine.Options{
+				Registry:     registry,
+				TargetDir:    dir,
+				WorktreeRoot: worktreeRoot,
+				Lang:         lang,
+				Query:        codeintelengine.Query{Symbol: args[0]},
+				Timeout:      timeout,
+			}
+
+			results, err := codeintelengine.Symbol(ctx, opts)
+			if err != nil {
+				// Symbol never returns *ErrAmbiguousSymbol (per symbol-semantics,
+				// it has no ambiguous state), so emitLookupResult's ambiguity
+				// branch does not apply here — this is the simple, uniform
+				// error-mapping shape refsCommand used before card 33's retrofit.
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+
+			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"symbols": symbolMatchFields(results)}))
+			return nil
+		},
+	}
+
+	symbol.Flags().StringVar(&targetDir, "target-dir", "", "project directory to detect the language in and root the server at (default: cwd)")
+	symbol.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
+	symbol.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for the workspace/symbol request phase")
+
+	return symbol
+}
+
+// symbolMatchFields converts each codeintelengine.SymbolMatch into the
+// {name,kind,file,line,character} map shape the JSON envelope emits,
+// mirroring referenceFields's exact shape/style for Symbol's richer result
+// type.
+func symbolMatchFields(matches []codeintelengine.SymbolMatch) []map[string]any {
+	fields := make([]map[string]any, len(matches))
+	for i, m := range matches {
+		fields[i] = map[string]any{
+			"name":      m.Name,
+			"kind":      m.Kind,
+			"file":      m.File,
+			"line":      m.Line,
+			"character": m.Character,
+		}
+	}
+	return fields
 }
 
 // emitLookupResult maps the result of a References/Definition call to the
