@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: burler-prompt-split
 branch: burler-prompt-split
 plan: _mill/plan
@@ -24,6 +24,8 @@ implementing  '2026-07-29T20:19:51Z'
 approved-split-round-prompt  '2026-07-29T20:29:31Z'
 holistic-reviewing  '2026-07-29T20:29:52Z'
 holistic-fixing  '2026-07-29T20:32:59Z'
+nits-fixed-holistic  '2026-07-29T20:35:58Z'
+holistic-approved  '2026-07-29T20:36:10Z'
 ```
 
 ## Batches
