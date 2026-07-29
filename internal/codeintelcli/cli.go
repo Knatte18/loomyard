@@ -11,6 +11,8 @@
 package codeintelcli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -115,15 +117,7 @@ The single positional argument is either:
 			}
 
 			results, err := codeintelengine.References(ctx, opts)
-			if err != nil {
-				// Every engine typed error surfaces via its Error() text; no error
-				// needs a distinct exit code, so this mapping stays uniform (any
-				// engine error -> output.Err, exit 1) per the batch's Requirements.
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-
-			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"references": referenceFields(results)}))
+			emitLookupResult(ctx, out, "references", results, err)
 			return nil
 		},
 	}
@@ -133,6 +127,40 @@ The single positional argument is either:
 	refs.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references)")
 
 	return refs
+}
+
+// emitLookupResult maps the result of a References/Definition call to the
+// internal/output JSON envelope, implementing the plan's 0/1/2 exit-code
+// contract: a nil error emits {resultsField: [...]} and exit 0; an
+// *codeintelengine.ErrAmbiguousSymbol emits {"candidates": [...]} with exit 2
+// (found, but the caller must disambiguate — distinct from both success and
+// failure); every other non-nil error falls through to output.Err's plain
+// error-string envelope and hardcoded exit 1, which already serves as the
+// design's "not found" contract value (ErrSymbolNotFound included) with no
+// special-casing needed. resultsField is the caller-supplied JSON key
+// ("references" for refs, "definitions" for definition) so this one helper
+// serves both verbs, which differ only in that key name.
+func emitLookupResult(ctx context.Context, out io.Writer, resultsField string, results []codeintelengine.Reference, err error) {
+	if err != nil {
+		var ambiguous *codeintelengine.ErrAmbiguousSymbol
+		if errors.As(err, &ambiguous) {
+			// output.Ok always returns 0, which SetExit would treat as a no-op
+			// anyway; the exit code must be forced to 2 via a separate
+			// clihelp.SetExit call, exactly as the plan's exit-code-contract
+			// decision specifies.
+			output.Ok(out, map[string]any{"candidates": ambiguous.Candidates})
+			clihelp.SetExit(ctx, 2)
+			return
+		}
+
+		// No other engine error type gets special-cased: ErrSymbolNotFound and
+		// everything else fall through to output.Err's hardcoded exit 1, which
+		// is already the design's "not found" contract value.
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return
+	}
+
+	clihelp.SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results)}))
 }
 
 // referenceFields converts each codeintelengine.Reference into the
