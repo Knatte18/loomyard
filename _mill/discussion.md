@@ -1,0 +1,150 @@
+# Discussion: prowler: installable Claude Code plugin (Go), hosted in LoomYard
+
+```yaml
+task: 'prowler: installable Claude Code plugin (Go), hosted in LoomYard'
+slug: prowler
+status: discussing
+parent: main
+```
+
+## Problem
+
+Millhouse's `weblens` skill fetches web pages that Claude Code's built-in `WebFetch` cannot read — bot-blocked sites, paywalls, JS-rendered content, Reddit — by driving a real headless browser (Puppeteer/headless Chrome) plus Mozilla Readability extraction. It is a TypeScript/npm stack (`puppeteer-core`, `@mozilla/readability`, `linkedom`) that pulls in thousands of `node_modules` files, and it is used across **all** of the operator's Claude Code sessions today, not scoped to one repo.
+
+**Why now:** the operator wants a Go-native replacement with the same cross-session reach, shipped fast. The lever is a proper, installable Claude Code plugin — not a repo-scoped project skill — so it keeps weblens' any-repo/any-session reach after install. Its source is to live in the **LoomYard** repo (explicit, repeated operator decision — *not* Millhouse), sourced from LoomYard's own repo instead of Millhouse's plugin repo.
+
+## Scope
+
+**In:**
+
+- A new Claude Code plugin **`prowler`** whose source lives in the LoomYard repo at `plugins/prowler/1.0.0/`.
+- A root **`.claude-plugin/marketplace.json`** in LoomYard (marketplace name `loomyard`) listing `prowler` as its first plugin — this makes LoomYard installable via `/plugin marketplace add` + `/plugin install prowler`.
+- The plugin's own `.claude-plugin/plugin.json`, a `prowler` skill (`SKILL.md` + `INDEX.md`), a `settings.json` permissions block, a wrapper `run.sh` (and Windows counterpart), and the Go source for the fetch binary.
+- A **separate nested Go module** (`plugins/prowler/1.0.0/go.mod`, module path `github.com/Knatte18/loomyard/plugins/prowler`) containing the fetcher: static-first fetch → Readability extraction → headless-Chrome fallback → body-text fallback, plus the Reddit `.json` special-case, multi-URL support, and cross-platform Chrome discovery.
+- **Build-on-first-run**: the wrapper builds the Go binary into the plugin dir on first use if absent, under a lock, and reuses it thereafter.
+- A `plugins/prowler/README.md` and Apache-2.0 `LICENSE` metadata.
+
+**Out:**
+
+- **Not** a `lyx` Cobra CLI module. No `internal/prowlerengine`/`internal/prowlercli`, no Cobra registration, no `Short`/`Long`, no help-tree/drift/registration/longlist tests, no `docs/overview.md` module-table entry, no `manifest/designs/prowler.md`. A future `lyx prowler` is a **separate, later, optional** task and must not be conflated with this one.
+- No changes to LoomYard's `go.mod`/`go.sum` or the `internal/`/`cmd/` tree — prowler's deps stay isolated in the nested module.
+- No changes to Millhouse's repo of any kind.
+- No bundling of a Chrome/Chromium binary — a local browser remains a run-time prerequisite (same as weblens today; not a TypeScript-specific problem).
+- No committed compiled binaries (LoomYard's `.gitignore` bans committing binaries; prowler honors this via build-on-first-run).
+
+## Decisions
+
+### plugin-placement-and-marketplace
+
+- Decision: prowler's plugin source lives at `plugins/prowler/1.0.0/` under LoomYard's repo root, with a new root `.claude-plugin/marketplace.json` (marketplace name `loomyard`, owner Knatte18) listing `prowler` v1.0.0 as its sole plugin (extensible later). Mirrors Millhouse's own `plugins/<name>/<version>/` layout and its marketplace shape.
+- Rationale: `plugins/` does not collide with the lyx Go module's root layout (`cmd/`, `internal/`, `manifest/`, `docs/`). The `<version>/` subdir matches Millhouse convention and leaves room for future versions. The root marketplace manifest is the mechanism that gives prowler cross-session reach (`/plugin marketplace add <loomyard-repo>` → `/plugin install prowler`).
+- Rejected: a flat `plugins/prowler/` with no version subdir (diverges from Millhouse convention for no gain); a project-scoped `.claude/skills/prowler/` (auto-active only in LoomYard-rooted sessions — does **not** replace weblens' reach, the operator explicitly rejected this).
+
+### separate-nested-go-module
+
+- Decision: prowler's Go code is a **separate nested Go module** at `plugins/prowler/1.0.0/go.mod`, module path `github.com/Knatte18/loomyard/plugins/prowler`, `go 1.26`. It is NOT part of the main lyx module.
+- Rationale: isolates the browser-automation dependency stack (chromedp, go-readability, goquery) from lyx's `go.mod`/`go.sum`. A nested module (a dir with its own `go.mod`) is automatically excluded from the parent module's `go build ./...`, `go test ./...`, and the CONSTRAINTS enforcement tests that walk "the module root via `go env GOMOD`". This mechanically satisfies "prowler is NOT a lyx module" — none of the CLI/Cobra, Hub Geometry, Tier Purity, or Hermetic Git invariants apply to it, because it is invisible to the sweeps that enforce them.
+- Rejected: placing the code under `internal/` in the main module (pulls chromedp/readability into lyx's dependency graph and under every enforcement sweep; contradicts the task's explicit "not a lyx module for now").
+
+### build-on-first-run
+
+- Decision: the wrapper script (`run.sh` / Windows counterpart) runs the prebuilt binary at `${CLAUDE_PLUGIN_ROOT}/bin/prowler[.exe]` if it exists; otherwise it `go build`s the nested module into that path **under a lockfile**, then runs it. If `go` is not on PATH, it exits non-zero with a clear message ("prowler: Go toolchain not found — install Go or add it to PATH"). A fresh plugin version installs into a fresh dir, so the binary auto-rebuilds on version bump.
+- Rationale: LoomYard's `.gitignore` bans committing compiled binaries ("built with go build, never committed"). Build-on-first-run honors that norm while giving a compiled binary at run time. The operator's machines (Linux + Windows) are Go dev boxes, so the toolchain is present. The lock prevents parallel sessions from racing the same build. This deliberately trades the proposal's "no toolchain at run time" wish for the repo's no-committed-binaries invariant — accepted by the operator.
+- Rejected: committing per-platform binaries (violates the `.gitignore` norm, ~15–30 MB each in git, must rebuild+recommit on every change); `go run` at run time (still needs the toolchain, slower per-invocation, no persistent artifact); an OS-cache dir keyed by source hash (more moving parts than needed — a fresh version dir already forces a rebuild).
+
+### full-weblens-parity
+
+- Decision: v1 replicates weblens' behavior fully. Fetch pipeline per URL: (1) if the URL is Reddit, hit the `.json` endpoint and format post + top ~20 comments (or a subreddit listing); on non-JSON response fall through; (2) static `http.Get` with a real-browser User-Agent + headers; strip `<script>/<style>/<noscript>`; run Readability; (3) if Readability yields usable text (≥100 chars) return it; (4) else strip `script/style/noscript/nav/header/footer` and return body text if >100 chars; (5) else fall back to headless Chrome via chromedp (same nav, re-run Readability, then body-text fallback); (6) else return `# <url>\n\nCould not extract readable content`. Multi-URL input, results joined with `\n\n---\n\n`.
+- Rationale: drop-in replacement — the operator relies on all of these paths today (Reddit especially, since Reddit hard-blocks HTML but leaves `.json` open).
+- Rejected: dropping the Reddit special-case (loses clean Reddit fetches); browser-only (slower, heavier, loses the fast static path).
+
+### output-to-unique-scratch-file
+
+- Decision: the binary writes the extracted markdown to a **uniquely-named file it creates itself** via `os.CreateTemp` in `.scratch/` (relative to cwd, created if absent), with filename pattern `prowler-<descriptive-slug>-<random>.md`. The `<descriptive-slug>` is derived from the fetched target (first URL's host + leading path segment, lowercased, non-alphanumerics collapsed to hyphens, truncated to ~40 chars); the `<random>` component is supplied by `os.CreateTemp`'s `*` placeholder. The binary prints **only** the created file's absolute path to stdout (single line). The skill captures that path (`path=$(run.sh <urls>)`) and reads the file.
+- Rationale: multiple agents in parallel — and the **same** agent across multiple prowler subcommand invocations — must never write to or read the same file. Letting the binary create the file with `os.CreateTemp` guarantees OS-level uniqueness even for same-PID, same-instant concurrent calls; no caller-side filename logic can. The descriptive slug makes a `.scratch/` listing human-readable at a glance; the random suffix guarantees collision-freedom. Printing the path (not the content) to stdout keeps large pages out of the transcript and lets the skill read the file deterministically.
+- Rejected: caller-computed filenames from PID+timestamp (collide for same-agent, same-instant calls); a single fixed `.scratch/prowler-output.md` (parallel/repeat calls clobber each other); stdout-only content (bloats the transcript, the operator chose a file in Q5).
+
+### dependency-stack
+
+- Decision: nested-module deps are `github.com/chromedp/chromedp` (headless Chrome over the DevTools protocol, pure Go — replaces puppeteer-core), `github.com/go-shiori/go-readability` (a Go port of Mozilla Readability; its `Article.TextContent`/`.Title` cover the primary extraction directly — replaces `@mozilla/readability`), and `github.com/PuerkitoBio/goquery` (jQuery-like DOM traversal over stdlib `net/html`, for the strip-and-extract body-text fallback — replaces `linkedom`; go-readability pulls goquery in transitively regardless). Reddit `.json` and static fetch use stdlib `net/http` + `encoding/json`. No linkedom analog is otherwise needed.
+- Rationale: this is the minimal Go stack that matches every weblens code path. go-readability giving `TextContent` directly removes most of the manual DOM-to-text work weblens did with linkedom; goquery covers only the fallback path (remove `script/style/noscript/nav/header/footer`, take body text).
+- Rejected: stdlib `net/html` only, dropping goquery (goquery arrives transitively via go-readability anyway, and hand-rolling the traversal is more verbose for no dependency saving); a different browser driver (chromedp is the pure-Go DevTools client that matches Puppeteer's capability class — real browser fingerprint + JS execution, which is what defeats bot-blocking).
+
+### chrome-discovery-and-failure-behavior
+
+- Decision: discover the Chrome/Chromium executable via `CHROME_PATH` env first, then a platform candidate list mirroring weblens (`C:/Program Files/Google/Chrome/Application/chrome.exe`, `C:/Program Files (x86)/...`, `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, `/usr/bin/google-chrome`, `/usr/bin/chromium-browser`). Timeouts mirror weblens: ~30 s page-load nav, ~60 s overall. Same browser UA/headers as weblens. If Chrome is not found, the browser fallback is **skipped** (degrade to whatever static extraction produced, with a note) — never a hard failure of the whole run. Per-URL fetch errors are captured inline as `# Error fetching <url>\n\n<detail>`, not fatal to sibling URLs.
+- Rationale: exact parity with weblens' resilient degrade-don't-die behavior; a missing browser or one bad URL should not sink a multi-URL batch.
+- Rejected: hard-failing when Chrome is missing (regresses on weblens' graceful degradation); tuning the timeout/header values (no reason to diverge from a known-good baseline).
+
+### skill-contract
+
+- Decision: the `prowler` skill mirrors weblens' contract — `argument-hint: "<url> [url2...] [question]"`; guidance to use it only when built-in `WebFetch` fails or returns unusable content; steps: run the wrapper, capture the printed output-file path, read that file, answer the user's question (or give a 3–5 sentence per-source summary if none), and **never** dump raw fetched content to the user. `settings.json` permissions allow `Skill(prowler:*)` and the `bash`/binary invocation.
+- Rationale: preserves the operator's existing weblens muscle memory and keeps transcripts clean.
+- Rejected: a divergent invocation surface (needless retraining for a drop-in replacement).
+
+## Technical context
+
+Reference implementation (behavior to match) — Millhouse weblens, source at `/home/knatte/Code/millhouse/wts/millhouse/plugins/weblens/` and installed cache at `~/.claude/plugins/cache/millhouse/weblens/1.0.0/`:
+
+- `scripts/fetch-worker.mjs` — the full fetch pipeline: `HEADERS` (browser UA), `REDDIT_RE`/`isRedditUrl`/`toRedditJsonUrl`/`fetchReddit`/`formatRedditPost`/`formatRedditSubreddit` (Reddit `.json` path, top-20 comments), `htmlToText` (whitespace normalization), `findChromeExecutable` (candidate list), `fetchWithBrowser` (puppeteer launch args `--no-sandbox --disable-gpu --disable-dev-shm-usage`, `networkidle0`, 30 s timeout), `fetchPage` (static→readability→bodytext→browser cascade, ≥100-char thresholds), `run` (multi-URL, `\n\n---\n\n` join).
+- `scripts/fetch.mjs` — Windows CA-bundle export (re-exec worker with `NODE_EXTRA_CA_CERTS`). Go equivalent: rely on the system cert pool / `crypto/x509` — Go on Windows reads the system root store natively, so weblens' PowerShell CA-export workaround is **not needed** in Go. Note this in the plan; do not port the CA-bundle code.
+- `scripts/run.sh` — PATH-repair wrapper. prowler's `run.sh` instead does the build-on-first-run + run.
+- `skills/weblens/SKILL.md`, `skills/INDEX.md`, `settings.json`, `.claude-plugin/plugin.json` — shape templates for prowler's equivalents.
+
+Millhouse marketplace shape (template for LoomYard's root manifest): `/home/knatte/Code/millhouse/wts/millhouse/.claude-plugin/marketplace.json` — `$schema`, `name`, `version`, `description`, `owner`, `plugins[]` with `name`/`description`/`version`/`author`/`source: ./plugins/<name>`/`category`.
+
+LoomYard specifics:
+
+- Repo root: `/home/knatte/Code/loomyard/wts/prowler` (this task worktree; branch `prowler`, parent `main`). No existing `plugins/` dir or root `.claude-plugin/` — both are new. `.claude/` exists (agents only).
+- `.gitignore` bans committed binaries (`/lyx`, `lyx.exe`) and ignores `**/.scratch/`, `.vscode/settings.json`, and mill-managed paths. Add prowler build artifacts (`plugins/prowler/1.0.0/bin/`) to `.gitignore` in the same commit.
+- Go 1.26 on PATH (`go1.26.0 linux/amd64`); chromedp/go-readability/goquery are **not** currently in any go.sum — they enter only the nested module.
+- Nested-module caveat: because the module lives under the parent repo, confirm the plan adds `plugins/prowler/1.0.0/bin/` (and any `go` build cache scratch) to `.gitignore`, and that the nested `go.mod`/`go.sum` **are** committed (they are source, not artifacts).
+
+Cross-platform note: prowler must run on both Linux and Windows (the operator uses both). `run.sh` handles POSIX; a Windows wrapper (`run.ps1` or `run.cmd`) is needed for the build-on-first-run + invoke path there. `os.CreateTemp`, chromedp, and Chrome discovery are already cross-platform.
+
+## Constraints
+
+From `CONSTRAINTS.md` (all **inapplicable by construction** because prowler is a separate nested module, invisible to the parent module's `go test`/enforcement sweeps — but stated so the plan does not accidentally trip them by placing code in the main module):
+
+- **CLI/Cobra Invariant** — does not apply: prowler is not a Cobra module and adds no `cmd/lyx` command. Do not register anything in `newRoot()`.
+- **Hub Geometry Invariant** — does not apply: prowler constructs no `_lyx`/geometry paths; it writes only to cwd `.scratch/`. Keep it that way (no `hubgeometry` import, no geometry tokens).
+- **Test Tier Purity / Hermetic Git / Sandbox Coverage Invariants** — do not apply: the nested module is outside the parent's test sweep and registers no lyx module.
+- **Documentation Lifecycle** — prowler is not a lyx module, so no `manifest/designs/` doc and no `docs/overview.md` module-table entry. Plugin docs live in `plugins/prowler/README.md`.
+
+Discovered constraint: **no committed binaries** (LoomYard `.gitignore` norm) — enforced here by build-on-first-run + gitignoring `plugins/prowler/1.0.0/bin/`.
+
+New cross-cutting invariant? **No** — prowler is self-contained and imported by nothing in lyx, so nothing in `CONSTRAINTS.md` needs a new entry for this task.
+
+## Testing
+
+Nested-module Go tests (`plugins/prowler/1.0.0/`), runnable via `go test ./...` from inside that module dir:
+
+- **URL classification & Reddit transforms (TDD candidates, pure functions):** `isRedditUrl` (www/old/plain reddit hosts, non-reddit), `toRedditJsonUrl` (trailing-slash handling), `formatRedditPost` (title/subreddit/score/comments, missing-post nil, selftext vs link), `formatRedditSubreddit` (listing, empty). Table-driven, no network.
+- **HTML→text normalization (TDD candidate):** the `htmlToText` equivalent — whitespace collapse, blank-line collapse, script/style stripping — over fixed HTML fixtures.
+- **Extraction cascade decision logic:** given a stubbed fetch result, assert the correct branch is taken (readability-usable vs <100-char → fallback vs body-text vs browser). Inject the HTTP fetch and browser fetch behind an interface so the cascade is testable without network/Chrome.
+- **Chrome discovery ordering:** `CHROME_PATH` wins; candidate list order; nil when none exist. Use a temp dir + fake executables + env override.
+- **Output-file naming:** descriptive-slug derivation from a URL (host+path slug, truncation, non-alnum→hyphen), and that `os.CreateTemp` produces distinct paths across concurrent calls; assert the binary prints the created path and the file contains the markdown.
+- **Multi-URL join:** results joined with `\n\n---\n\n`; per-URL error captured inline without aborting siblings.
+
+Integration / manual (require network + a local Chrome, so gated or manual — not part of the fast unit run):
+
+- End-to-end static fetch of a known-readable page.
+- Browser fallback against a JS-rendered or bot-blocked page (needs Chrome; `CHROME_PATH` set).
+- Reddit `.json` fetch against a live post.
+- Build-on-first-run: from a clean `bin/`, the wrapper builds and then runs; second run reuses; concurrent invocations don't corrupt the binary (lock).
+
+The plan should keep the network/Chrome-dependent tests behind a build tag or a manual checklist, and the pure-function/cascade tests in the always-run set.
+
+## Q&A log
+
+- **Q:** Plugin directory placement in LoomYard? **A:** `plugins/prowler/1.0.0/` + root `.claude-plugin/marketplace.json` (marketplace `loomyard`), mirroring Millhouse.
+- **Q:** Go module boundary? **A:** Separate nested Go module (`plugins/prowler/1.0.0/go.mod`), isolated from lyx's module — explicitly confirmed ("Egen go-modul, ja").
+- **Q:** Binary distribution? **A:** Build-on-first-run (wrapper builds into the plugin `bin/` under a lock if absent), honoring LoomYard's no-committed-binaries norm; Go toolchain required at run time (operator's machines have it).
+- **Q:** Feature parity with weblens? **A:** Full parity, including the Reddit `.json` special-case (Reddit blocks HTML but leaves `.json` open → clean post + top-20 comments).
+- **Q:** Skill contract & output? **A:** Mirror weblens' skill; write to an own scratch file, read it, answer/summarize, never dump raw content.
+- **Q:** Build-on-first-run mechanics? **A:** Build into `${CLAUDE_PLUGIN_ROOT}/bin/`, lockfile to prevent races, clear error if `go` missing, auto-rebuild on version bump.
+- **Q:** Output filename — parallel agents *and* the same agent across multiple subcommands must not collide? **A:** The binary creates the file itself via `os.CreateTemp` in `.scratch/`, pattern `prowler-<descriptive-slug>-<random>.md` — descriptive slug from the fetched URL for at-a-glance readability, random suffix + OS-level temp creation for guaranteed uniqueness; binary prints the path, skill reads it.
+- **Q:** Dependency stack? **A:** chromedp + go-shiori/go-readability + PuerkitoBio/goquery; Reddit/static via stdlib `net/http`+`encoding/json`. (Operator delegated the choice.)
+- **Q:** Timeouts / headers / Chrome-not-found? **A:** Mirror weblens exactly — same UA/headers, 30 s nav / 60 s overall, degrade to static-only if Chrome missing, per-URL errors inline.
+- **Q:** Docs & metadata? **A:** Plugin README + marketplace.json only; no `docs/overview.md`/`manifest`/`CONSTRAINTS` churn (prowler is not a lyx module). Marketplace `loomyard`, plugin `prowler` v1.0.0, author Knatte18, Apache-2.0.
+- **Q:** Windows CA-bundle port (weblens `fetch.mjs`)? **A:** Not needed in Go — Go reads the Windows system root store natively; skip the PowerShell CA-export workaround.
