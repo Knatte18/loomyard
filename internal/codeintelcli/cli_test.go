@@ -443,3 +443,108 @@ func TestRunCLI_Refs_TwoArgsIsBatchMode(t *testing.T) {
 		}
 	}
 }
+
+// TestBatchRunner_WorstOutcomeWinsExitCode tests runBatch directly rather
+// than through a live language server: a small table-driven lookupOne
+// closure maps each input symbol string to a fixed (batchStatus,
+// map[string]any) pair, so this test needs no engine call or subprocess at
+// all. It table-drives one sub-test per possible "worst status present"
+// combination, asserting both the resulting exit code (via
+// clihelp.NewExitContext's exitState.Code(), mirroring
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo's pattern above) and that
+// "results" has one entry per input symbol with the expected "status".
+func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
+	t.Parallel()
+
+	outcomes := map[string]struct {
+		status batchStatus
+		fields map[string]any
+	}{
+		"a": {statusFound, map[string]any{"references": []any{}}},
+		"b": {statusNotFound, nil},
+		"c": {statusAmbiguous, map[string]any{"candidates": []string{"x"}}},
+		"d": {statusError, map[string]any{"error": "boom"}},
+	}
+	lookupOne := func(symbol string) (batchStatus, map[string]any) {
+		o := outcomes[symbol]
+		return o.status, o.fields
+	}
+
+	tests := []struct {
+		name       string
+		symbols    []string
+		wantCode   int
+		wantStatus []string
+	}{
+		{"all_found", []string{"a"}, 0, []string{"found"}},
+		{"found_and_not_found", []string{"a", "b"}, 1, []string{"found", "not_found"}},
+		{"found_not_found_ambiguous", []string{"a", "b", "c"}, 2, []string{"found", "not_found", "ambiguous"}},
+		{"found_not_found_ambiguous_error", []string{"a", "b", "c", "d"}, 3, []string{"found", "not_found", "ambiguous", "error"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			ctx, es := clihelp.NewExitContext(context.Background())
+
+			runBatch(ctx, &out, tt.symbols, lookupOne)
+
+			if es.Code() != tt.wantCode {
+				t.Errorf("es.Code() = %d; want %d", es.Code(), tt.wantCode)
+			}
+
+			var env map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+				t.Fatalf("runBatch output is not valid JSON: %v; got: %q", err, out.String())
+			}
+
+			results, ok := env["results"].([]any)
+			if !ok {
+				t.Fatalf("envelope %v missing []any \"results\" field", env)
+			}
+			if len(results) != len(tt.wantStatus) {
+				t.Fatalf("len(results) = %d; want %d", len(results), len(tt.wantStatus))
+			}
+			for i, r := range results {
+				entry, ok := r.(map[string]any)
+				if !ok {
+					t.Fatalf("results[%d] = %v; want a JSON object", i, r)
+				}
+				if status, _ := entry["status"].(string); status != tt.wantStatus[i] {
+					t.Errorf("results[%d][\"status\"] = %q; want %q", i, status, tt.wantStatus[i])
+				}
+			}
+		})
+	}
+}
+
+// TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous pins the
+// regression classifySymbolError exists to prevent: a future edit that
+// makes classifySymbolError reuse classifyLookupError's ambiguity branch by
+// mistake. Two matches is exactly the multi-candidate case that *would* be
+// "ambiguous" for refs/definition (via classifyLookupError), but per
+// symbol-semantics symbol has no ambiguous status at all — every match is
+// just part of the found result set.
+func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	status, fields := classifySymbolError(nil, []codeintelengine.SymbolMatch{{Name: "Foo"}, {Name: "FooBar"}})
+
+	if status != statusFound {
+		t.Errorf("classifySymbolError(nil, <2 matches>) status = %q; want %q", status, statusFound)
+	}
+
+	symbols, ok := fields["symbols"].([]map[string]any)
+	if !ok {
+		t.Fatalf("fields %v missing []map[string]any \"symbols\" field", fields)
+	}
+	if len(symbols) != 2 {
+		t.Fatalf("len(symbols) = %d; want 2", len(symbols))
+	}
+	wantNames := []string{"Foo", "FooBar"}
+	for i, s := range symbols {
+		if name, _ := s["name"].(string); name != wantNames[i] {
+			t.Errorf("symbols[%d][\"name\"] = %q; want %q", i, name, wantNames[i])
+		}
+	}
+}
