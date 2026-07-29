@@ -155,3 +155,26 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 		})
 	}
 }
+
+// TestAdd_RejectsPathspecJunctionNameSlug asserts that Add refuses a slug
+// equal to a current pathspec junction name that is NOT one of
+// hubgeometry.HubReservedNames()'s hub-structural tokens — proving the
+// config-driven arm of IsReservedHubName's union, not only the hub-structural
+// arm TestAdd_RejectsReservedHubNameSlug already covers. "_extra" here is
+// reserved only because it is in this Topology's configured pathspec.
+// Validation runs before any git op, so this stays untagged Tier-1.
+func TestAdd_RejectsPathspecJunctionNameSlug(t *testing.T) {
+	topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern _extra"})
+	layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+
+	_, err := topology.Add(layout, "_extra", fabricengine.AddOptions{})
+	if err == nil {
+		t.Fatalf("Add(%q) error = nil; want invalid-slug error", "_extra")
+	}
+	if !strings.Contains(err.Error(), "invalid slug") {
+		t.Errorf("Add(%q) error = %v; want error containing %q", "_extra", err, "invalid slug")
+	}
+	if !strings.Contains(err.Error(), "reserved for lyx hub geometry") {
+		t.Errorf("Add(%q) error = %v; want error containing %q", "_extra", err, "reserved for lyx hub geometry")
+	}
+}
