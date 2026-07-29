@@ -53,6 +53,8 @@ Committed to eventually — will be done — but not scheduled next. No build or
 
 1. **board: curation/triage automation** — the GitHub-issue-intake and periodic-triage workflow originally scoped in `designs/board-weft-storage.md`'s Curation flow section, deferred out of `board: move storage to weft:main`: an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via `promote-note` (which already ships as a plain mechanical CLI primitive — this item is the automation layer on top, not the primitive itself). See [designs/curation-triage.md](designs/curation-triage.md).
 
+1. **codeintel-backed plan symbol fields** — `plan-format-v3.md` deliberately deferred its `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending "a working, planner-side-verified `codeintel`"; both that and the loom Planner producer have since shipped (see Done below), unblocking the idea but not yet scoping it. Two integration shapes exist, not yet chosen between: a small prompt-only change to `plan-template.md`'s Step 2 (point the Planner at `lyx codeintel refs`/the new `lyx codeintel assert-no-callers` instead of grepping for a card's file-op fields, for cards that touch an *existing* symbol only), or the fuller original schema fields themselves, cross-checked by `internal/planparser`. Also the named prerequisite for the `webster: parallel card execution` item's parked DAG scheduler. See [designs/codeintel-plan-symbol-fields.md](designs/codeintel-plan-symbol-fields.md).
+
 ## Done
 
 1. **fabric** — unified host↔weft git-coordination module replacing warp/weft; cut over and old modules deleted.

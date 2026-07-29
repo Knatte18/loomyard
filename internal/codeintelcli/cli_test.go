@@ -734,3 +734,134 @@ func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 		}
 	}
 }
+
+// TestRunCLI_AssertNoCallers_NoLanguageError verifies that "assert-no-callers
+// <symbol> --target-dir <empty dir>" fails through the same ErrNoLanguage
+// path TestRunCLI_Refs_NoLanguageError exercises for "refs" —
+// assertNoCallersCommand shares the identical cwd/registry-resolution
+// preamble, and the very first engine call (Definition) never launches a
+// language server against an empty temp dir.
+func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
+	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// codeintelengine.BuiltinRegistry() deterministically, independent of
+	// whatever git repo or servers.yaml the test happens to run inside.
+	t.Chdir(t.TempDir())
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"assert-no-callers", "MySymbol", "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(assert-no-callers MySymbol --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("RunCLI output has %d lines; want exactly 1. output:\n%s", len(lines), out.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, lines[0])
+	}
+
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(assert-no-callers MySymbol --target-dir <empty>) ok = true; want false")
+	}
+	if env["violation"] != nil {
+		t.Errorf(`RunCLI(assert-no-callers MySymbol --target-dir <empty>) envelope carries "violation"; want absent for a lookup failure, not a real violation`)
+	}
+
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(assert-no-callers MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_AssertNoCallers_RequiresExactlyOneArg verifies Args:
+// cobra.ExactArgs(1) rejects both zero and two-or-more arguments —
+// assert-no-callers has no batch mode (refs/definition/symbol's 2+-arg
+// switch to batch mode does not apply here), so a second positional argument
+// must be a hard usage error, not silently ignored or reinterpreted.
+func TestRunCLI_AssertNoCallers_RequiresExactlyOneArg(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"bare", []string{"assert-no-callers"}},
+		{"two_args", []string{"assert-no-callers", "Foo", "Bar"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := RunCLI(&out, tt.args)
+
+			if exitCode == 0 {
+				t.Errorf("RunCLI(%v) = 0; want non-zero exit for wrong arg count", tt.args)
+			}
+		})
+	}
+}
+
+// TestFilterUnexpectedCallers covers the pure filtering logic
+// assertNoCallersCommand's RunE delegates to, entirely offline: no language
+// server, no cobra plumbing — just the File+Line+Character set arithmetic
+// that decides which References results are genuine violations.
+func TestFilterUnexpectedCallers(t *testing.T) {
+	t.Parallel()
+
+	decl := codeintelengine.Reference{File: "/repo/pkg/foo.go", Line: 10, Character: 6}
+	wrapper := codeintelengine.Reference{File: "/repo/pkg/wrapper.go", Line: 20, Character: 3}
+	caller := codeintelengine.Reference{File: "/repo/other/bar.go", Line: 5, Character: 12}
+
+	tests := []struct {
+		name      string
+		refs      []codeintelengine.Reference
+		declRefs  []codeintelengine.Reference
+		exceptAbs map[string]bool
+		want      []codeintelengine.Reference
+	}{
+		{
+			name:     "declaration_only_is_clean",
+			refs:     []codeintelengine.Reference{decl},
+			declRefs: []codeintelengine.Reference{decl},
+			want:     nil,
+		},
+		{
+			name:      "except_path_is_excluded",
+			refs:      []codeintelengine.Reference{decl, wrapper},
+			declRefs:  []codeintelengine.Reference{decl},
+			exceptAbs: map[string]bool{"/repo/pkg/wrapper.go": true},
+			want:      nil,
+		},
+		{
+			name:     "unexpected_caller_survives",
+			refs:     []codeintelengine.Reference{decl, wrapper, caller},
+			declRefs: []codeintelengine.Reference{decl},
+			exceptAbs: map[string]bool{
+				"/repo/pkg/wrapper.go": true,
+			},
+			want: []codeintelengine.Reference{caller},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := filterUnexpectedCallers(tt.refs, tt.declRefs, tt.exceptAbs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("filterUnexpectedCallers() = %v; want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("filterUnexpectedCallers()[%d] = %v; want %v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
