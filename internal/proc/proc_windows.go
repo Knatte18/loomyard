@@ -9,6 +9,7 @@
 package proc
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -33,4 +34,21 @@ func Detach(cmd *exec.Cmd) {
 		HideWindow:    true,
 		CreationFlags: createNoWindow | createNewProcessGroup,
 	}
+}
+
+// IsAlive reports whether the process identified by pid is currently alive.
+// On Windows, os.Process.Signal does not reliably support a signal-0
+// liveness probe, but os.FindProcess itself calls OpenProcess and fails
+// when pid does not exist — so the existence of a successful FindProcess
+// call is itself the liveness signal here (no Signal call needed or
+// reliable).
+//
+// A false positive is possible only in the narrow window of pid being
+// reused by an unrelated process after the original one exited. This is
+// acceptable for a staleness check that is not the sole gate: the
+// protocol-version half of daemonStale, and the probe step downstream, both
+// catch what a stale-but-PID-reused daemon would miss.
+func IsAlive(pid int) bool {
+	_, err := os.FindProcess(pid)
+	return err == nil
 }
