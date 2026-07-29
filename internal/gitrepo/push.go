@@ -152,7 +152,46 @@ func (r *Repo) PushCoalesced() error {
 // hasUnpushed reports whether HEAD is ahead of its upstream. When no
 // upstream is configured yet it returns true, so the first push — which
 // establishes the upstream tracking branch — still happens rather than
-// being skipped as "nothing to do".
+// being skipped as "nothing to do". A spawn failure returns (false, err);
+// any other non-zero rev-list exit (no upstream, an upstream configured but
+// never fetched, or any other rev-list failure) folds into (true, nil), so
+// the caller still attempts the push.
+//
+// # Stays CLI-bound — measured, not migrated (card 21's reversal criterion)
+//
+// This method was migrated to a go-git ancestry walk in batch 4 (equal-hash
+// shortcut first, then a full walk of upstream's ancestor set seeded as
+// NewCommitPreorderIter's seenExternal for the HEAD walk) and reverted here
+// after measuring it against the CLI spawn it replaced, per the Shared
+// Decision's reversal criterion: if go-git is slower than the spawn it
+// replaces, hasUnpushed reverts to the CLI, because it is one cheap command
+// on PushCoalesced's hottest path and no principle here is worth a
+// regression there.
+//
+// Measured on a real local clone of this checkout's own history
+// (268 commits reachable from HEAD, not a handful-of-commits fixture),
+// 20 trials per case, each go-git trial against a freshly-opened handle so
+// the handle cache never masks the cost:
+//
+//   - Equal-hash shortcut (HEAD already equals upstream, the common
+//     nothing-to-push case): go-git avg 239µs (total 4.79ms/20) vs the
+//     CLI's single `rev-list --count` spawn avg 1.42ms (total 28.4ms/20) —
+//     go-git about 6x faster here, as expected with no process to spawn.
+//   - Walking path (HEAD one commit ahead of upstream, forcing the full
+//     268-commit ancestor walk with no early exit): go-git avg 20.4ms
+//     (total 408ms/20) vs the CLI avg 2.16ms (total 43.2ms/20) — go-git
+//     about 9.4x SLOWER here. This is the path PushCoalesced actually hits
+//     on every round with real unpushed work, so it is the number the
+//     reversal criterion is judged on, not the shortcut.
+//
+// The walking path measurement is what fires the reversal: `git rev-list
+// --count` is a single optimized C-level walk, while go-git's
+// NewCommitPreorderIter decodes and parses every commit object it visits in
+// Go, with no early exit across the upstream side of the walk regardless of
+// how quickly the HEAD side would otherwise terminate. hasUnpushed therefore
+// stays on the CLI, rejoining the pinned r.run list the boundary guard
+// asserts and the CLI-bound set CONSTRAINTS.md's gitrepo Client Boundary
+// Invariant names.
 func (r *Repo) hasUnpushed() (bool, error) {
 	stdout, _, code, err := r.run("rev-list", "--count", "@{u}..HEAD")
 	if err != nil {

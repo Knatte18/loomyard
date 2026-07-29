@@ -151,6 +151,22 @@ webster's execution unit is the batchifier-derived batch, not the raw plan card.
 - Batching is selected by `internal/batcher`'s name-keyed registry plus the `batcher:` webster.yaml config key (default `identity`) — no plan-supplied batching exists and no batch grouping is expressed in the plan format itself.
 - **Enforced by** review obligation.
 
+## GitHub Auth Invariant
+
+All GitHub authentication goes through `internal/githubclient`; no other production package shells out to `gh`.
+
+- **Statement.** Token resolution, token caching, and construction of an authenticated `*github.Client` live solely in `internal/githubclient`. No other production (non-test) package invokes `gh` — directly via `exec.Command`/`exec.CommandContext` or indirectly via a bare `LookPath("gh")` — or otherwise builds its own GitHub credential path.
+- **Leaf property.** `internal/githubclient`'s production imports are allowlisted to stdlib, `go-github`, `golang.org/x/sys`, and `internal/proc`. `internal/proc` is on that list because the `gh auth token` fallback shell-out needs `proc.HideWindow` to suppress a console window on Windows, and `internal/proc` is itself stdlib-only — allowlisting it does not widen the leaf's real dependency surface or weaken the leaf property.
+- **Enforced by** `cmd/lyx/ghguard_test.go` (`TestGHGuard_NoShellOutOutsideGithubclient`, the shell-out half) and `internal/githubclient/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`, the leaf-import half).
+
+## gitrepo Client Boundary Invariant
+
+`internal/gitrepo` splits local-vs-remote by client: go-git owns local object and ref access, `gitexec` owns anything that authenticates to a remote or mutates the working tree.
+
+- **Statement.** go-git handles reads that resolve state already on disk — commit/tree/blob lookups and ref reads. `gitexec` stays the only path to the git CLI, used for `StageAndCommit`, `StageAllAndCommit`, `Push`, `PushCoalesced`, `Pull`, `ResetHard`, `CheckoutDetached`, `RestoreBranch`, `SetSnapshotSHA`'s push, `SnapshotSHA`'s fetch, and `hasUnpushed` (measured and reverted from a go-git ancestry walk per this entry's own reversal criterion) — the CLI-bound set named exhaustively here, not just in the package doc, because this entry is what a reviewer checks a new call against. Any new `gitexec` call added inside `internal/gitrepo` must come with an updated entry here justifying it in the same commit; widening the CLI-bound set without editing this list is itself a violation.
+- **Known blind spot.** The guard's method-set check is set-equality on method names, so it cannot see a new `r.run` call added inside a method that is already on the pinned list (e.g. a third, illegitimate call slipped into `SnapshotSHA`, which legitimately mixes a migrated read with a CLI-bound fetch). The per-call review obligation stands for those already-pinned methods — the guard narrows what a reviewer must check by hand, it does not replace the check.
+- **Enforced by** `cmd/lyx/gitrepoboundary_test.go` (`TestGitrepoBoundary_PinnedRunCallSites`).
+
 ## Documentation Lifecycle
 
 Which docs are kept vs deleted (mechanical per-module docs vs durable design docs): see [docs/overview.md#documentation-lifecycle](docs/overview.md#documentation-lifecycle).

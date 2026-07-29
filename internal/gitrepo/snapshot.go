@@ -11,6 +11,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 // ErrInvalidSnapshotKey is returned by SnapshotSHA and SetSnapshotSHA when key
@@ -48,31 +52,49 @@ func snapshotRef(key string) string {
 }
 
 // remoteName resolves the remote that the current branch is configured to
-// track (via git symbolic-ref and branch.<name>.remote), falling back to
-// "origin" when no such configuration exists — matching the assumption
-// throughout gitrepo that every real consumer's repo has a conventional
-// single "origin" remote unless it has explicitly set up branch tracking.
-// When that assumption is violated (only remote named differently, no
-// tracking), the fallback names a nonexistent remote: SnapshotSHA's
-// best-effort fetch then degrades silently to the local ref while
-// SetSnapshotSHA's push fails loudly — see the package doc's snapshot
-// remote model for why that asymmetry is acceptable.
+// track (via HEAD's unresolved symbolic reference and branch.<name>.remote
+// config), falling back to "origin" when no such configuration exists —
+// matching the assumption throughout gitrepo that every real consumer's repo
+// has a conventional single "origin" remote unless it has explicitly set up
+// branch tracking. When that assumption is violated (only remote named
+// differently, no tracking), the fallback names a nonexistent remote:
+// SnapshotSHA's best-effort fetch then degrades silently to the local ref
+// while SetSnapshotSHA's push fails loudly — see the package doc's snapshot
+// remote model for why that asymmetry is acceptable. A failed handle open
+// also degrades into the same "origin" fallback, since this method returns a
+// bare string with nowhere to put an error; SetSnapshotSHA's explicit handle
+// probe (see its doc) is what makes an open failure loud at the one call
+// site where that silence is not acceptable.
+//
+// This reads plumbing.HEAD unresolved and the repository's config — neither
+// is an object lookup, so neither routes through the fingerprint-gated
+// lookup helper; the read lock is taken explicitly instead, held for the
+// whole call, per goGit's contract, since this (like CurrentBranch) reads an
+// unresolved reference rather than an object.
 func (r *Repo) remoteName() string {
-	stdout, _, code, err := r.run("symbolic-ref", "--short", "HEAD")
-	if err != nil || code != 0 {
+	repo, err := r.goGit()
+	if err != nil {
 		return "origin"
 	}
-	branch := strings.TrimSpace(stdout)
 
-	stdout, _, code, err = r.run("config", "--get", "branch."+branch+".remote")
-	if err != nil || code != 0 {
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	head, err := repo.Reference(plumbing.HEAD, false)
+	if err != nil || head.Type() != plumbing.SymbolicReference {
 		return "origin"
 	}
-	remote := strings.TrimSpace(stdout)
-	if remote == "" {
+	branch := head.Target().Short()
+
+	cfg, err := repo.Config()
+	if err != nil {
 		return "origin"
 	}
-	return remote
+	b, ok := cfg.Branches[branch]
+	if !ok || b.Remote == "" {
+		return "origin"
+	}
+	return b.Remote
 }
 
 // SnapshotSHA returns the SHA currently recorded for key under
@@ -97,24 +119,30 @@ func (r *Repo) SnapshotSHA(key string) (string, error) {
 	// local ref.
 	r.run("fetch", remote, "+refs/loomyard/snapshot/*:refs/loomyard/snapshot/*")
 
-	ref := snapshotRef(key)
-	stdout, stderr, code, err := r.run("rev-parse", "--verify", "--quiet", ref)
+	repo, err := r.goGit()
 	if err != nil {
 		return "", err
 	}
-	switch code {
-	case 0:
-		return strings.TrimSpace(stdout), nil
-	case 1:
-		// `--verify --quiet` reports a missing ref as exit 1 with no output;
-		// the ref does not exist yet — absent is a normal state, not a failure.
-		return "", nil
-	default:
-		// Any other exit (128: not a git repository, corrupt ref store) is a
-		// genuine failure — folding it into "absent" would let a miswired
+
+	ref := snapshotRef(key)
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	gitRef, err := repo.Reference(plumbing.ReferenceName(ref), true)
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			// A missing ref is `--verify --quiet`'s exit-1 shape on the CLI
+			// side: the ref does not exist yet — absent is a normal state,
+			// not a failure.
+			return "", nil
+		}
+		// Any other failure (e.g. not a git repository, corrupt ref store) is
+		// a genuine failure — folding it into "absent" would let a miswired
 		// read-only consumer reprocess from scratch forever with no signal.
-		return "", fmt.Errorf("gitrepo: git rev-parse --verify %s: %s", ref, stderr)
+		return "", fmt.Errorf("gitrepo: resolve %s: %w", ref, err)
 	}
+	return gitRef.Hash().String(), nil
 }
 
 // snapshotPushMaxAttempts bounds the adopt-on-conflict retry loop in
@@ -152,7 +180,16 @@ const snapshotPushMaxAttempts = 8
 // spelling. A non-hex sha returns
 // ErrInvalidSHA (checkable via errors.Is) without spawning git — an
 // option-shaped value must never reach update-ref, where e.g. "-d" would
-// delete the ref instead of setting it.
+// delete the ref instead of setting it. SetSnapshotSHA stays CLI-bound for
+// its own push and (on a rejected push) its adopt fetch — go-git never
+// invokes a git credential helper — but probes its go-git handle explicitly
+// before any of that runs: remoteName and isStrictDescendant both swallow a
+// failed handle open into a default value ("origin" and false respectively),
+// since neither has an error return of its own to report it through, so
+// without this probe a broken handle would let the adopt-on-conflict loop
+// below run against those fabricated defaults and return nil — a silent
+// no-op on a ref-mutating method. This probe is the guaranteed-loud surface
+// for the whole package's open failures.
 func (r *Repo) SetSnapshotSHA(key, sha string) error {
 	if !validSnapshotKey(key) {
 		return ErrInvalidSnapshotKey
@@ -161,14 +198,27 @@ func (r *Repo) SetSnapshotSHA(key, sha string) error {
 		return ErrInvalidSHA
 	}
 
+	repo, err := r.goGit()
+	if err != nil {
+		return err
+	}
+
 	// Canonicalize sha to its full spelling when it resolves locally, so the
 	// adopt-on-conflict ancestry comparison below compares commits rather than
 	// spellings — an abbreviated sha would otherwise compare unequal to the
-	// same commit's full form and cost a redundant retry round-trip. A sha
-	// that does not resolve is passed through unchanged for update-ref to
-	// reject with git's own error.
-	if full, _, code, err := r.run("rev-parse", "--verify", "--quiet", sha+"^{commit}"); err == nil && code == 0 {
-		sha = strings.TrimSpace(full)
+	// same commit's full form and cost a redundant retry round-trip. This is
+	// exactly the shape that hits a packfile-only object after this method's
+	// own CLI-side push or adopt fetch, so it routes through the
+	// fingerprint-gated lookup helper like every other commit resolution in
+	// the package. A sha that still does not resolve is passed through
+	// unchanged for update-ref to reject with git's own error — go-git's
+	// ResolveRevision-based resolution returns an error rather than a
+	// message-bearing zero value on a miss, so that failure is swallowed
+	// here, preserving the CLI path's best-effort semantics exactly.
+	if commit, cErr := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return commitByHash(repo, sha)
+	}); cErr == nil {
+		sha = commit.Hash.String()
 	}
 
 	ref := snapshotRef(key)
@@ -187,14 +237,27 @@ func (r *Repo) SetSnapshotSHA(key, sha string) error {
 			return err
 		}
 
-		adopted, _, code, err := r.run("rev-parse", "--verify", "--quiet", ref)
-		if err != nil {
-			return err
+		// Byte-identical to SnapshotSHA's ref read (card 15): a plain
+		// Reference() call, never routed through the fingerprint-gated
+		// lookup helper, since go-git never caches refs and reads this ref
+		// fresh off disk every time.
+		r.goGitMu.RLock()
+		adoptedRef, refErr := repo.Reference(plumbing.ReferenceName(ref), true)
+		var adopted string
+		if refErr == nil {
+			adopted = adoptedRef.Hash().String()
 		}
+		r.goGitMu.RUnlock()
+
 		// If the adopted value is not a strict ancestor of sha, another writer
 		// genuinely processed at least as far as us: the monotonic line says
-		// their value is the correct one to keep, so stop with it adopted.
-		if code != 0 || !r.isStrictDescendant(strings.TrimSpace(adopted), sha) {
+		// their value is the correct one to keep, so stop with it adopted. A
+		// ref that still fails to resolve here (refErr != nil) is treated the
+		// same as "not a strict ancestor" — adoptSnapshotRef above already
+		// either fetched it successfully or returned its own error, so a
+		// resolution failure at this point mirrors the CLI path's original
+		// single `code != 0` branch rather than distinguishing a cause.
+		if adopted == "" || !r.isStrictDescendant(adopted, sha) {
 			return nil
 		}
 		// Otherwise sha strictly descends from the adopted value — we lost only
@@ -246,13 +309,56 @@ func (r *Repo) adoptSnapshotRef(remote, ref string) error {
 
 // isStrictDescendant reports whether descendant is a commit strictly ahead
 // of ancestor along one line of history: ancestor is reachable from
-// descendant and the two are not the same commit. Any git failure (e.g. an
-// object missing locally) reports false, which callers treat as "not
-// provably ahead — do not retry".
+// descendant and the two are not the same commit. Any failure — a failed
+// handle open, either endpoint failing to resolve even after a
+// fingerprint-gated reindex retry, or the walk itself failing — reports
+// false, which callers treat as "not provably ahead — do not retry".
+//
+// Both endpoints are resolved via commitByHash routed through the
+// fingerprint-gated lookup helper, not ResolveRevision or a direct storer
+// call: this method is the named victim of the silent-drop path
+// SetSnapshotSHA's adopt-on-conflict loop exists to prevent —
+// adoptSnapshotRef's CLI-side fetch can land the adopted commit only in a
+// packfile go-git's already-cached index predates, and without the gate this
+// method would report false forever instead of reindexing once and finding
+// it. The walk that follows is not itself routed through the helper — it
+// reads further commits directly off the handle already-loaded index,
+// exactly like ChangedFilesSince's DiffTree call after its own two gated
+// tree lookups.
 func (r *Repo) isStrictDescendant(ancestor, descendant string) bool {
 	if ancestor == descendant {
 		return false
 	}
-	_, _, code, err := r.run("merge-base", "--is-ancestor", ancestor, descendant)
-	return err == nil && code == 0
+
+	repo, err := r.goGit()
+	if err != nil {
+		return false
+	}
+
+	descCommit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return commitByHash(repo, descendant)
+	})
+	if err != nil {
+		return false
+	}
+	ancestorCommit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return commitByHash(repo, ancestor)
+	})
+	if err != nil {
+		return false
+	}
+
+	found := false
+	iter := object.NewCommitPreorderIter(descCommit, nil, nil)
+	err = iter.ForEach(func(c *object.Commit) error {
+		if c.Hash == ancestorCommit.Hash {
+			found = true
+			return storer.ErrStop
+		}
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	return found
 }
