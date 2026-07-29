@@ -61,5 +61,7 @@ batches:
     start_sha: 7038b2f9fd995919b19b2df6271332c53073a69e
     commit_sha: e916bfbbdb746023b1d7c92f1a03be10eee1383a
   - name: proofs-and-docs
-    state: pending
+    state: running
+    implementer_session: ef43bc03-bb6d-4920-a3c8-24c4b8518704
+    start_sha: ca97bb4c1660efff85ae2e7f90173e406cea5354
 ```
