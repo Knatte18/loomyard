@@ -348,6 +348,131 @@ func TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult(t *testing.T
 	}
 }
 
+// TestLSPClient_DefinitionParsesMultipleWireShapes drives
+// textDocument/definition against a fake server scripted to respond with
+// each of the three LSP-legal response shapes for this method (bare
+// Location, Location[], LocationLink[]) plus a null response, asserting
+// client.definition (and therefore parseDefinitionResult) parses each
+// shape correctly.
+func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
+	tests := []struct {
+		name     string
+		response any
+		want     []lspLocation
+	}{
+		{
+			name: "BareLocationObject",
+			response: map[string]any{
+				"uri": "file:///tmp/example/foo.go",
+				"range": map[string]any{
+					"start": map[string]any{"line": 4, "character": 6},
+					"end":   map[string]any{"line": 4, "character": 9},
+				},
+			},
+			want: []lspLocation{
+				{
+					URI:   "file:///tmp/example/foo.go",
+					Range: lspRange{Start: lspPosition{Line: 4, Character: 6}, End: lspPosition{Line: 4, Character: 9}},
+				},
+			},
+		},
+		{
+			name: "LocationArrayTwoElements",
+			response: []map[string]any{
+				{
+					"uri": "file:///tmp/example/foo.go",
+					"range": map[string]any{
+						"start": map[string]any{"line": 4, "character": 6},
+						"end":   map[string]any{"line": 4, "character": 9},
+					},
+				},
+				{
+					"uri": "file:///tmp/example/bar.go",
+					"range": map[string]any{
+						"start": map[string]any{"line": 10, "character": 2},
+						"end":   map[string]any{"line": 10, "character": 5},
+					},
+				},
+			},
+			want: []lspLocation{
+				{
+					URI:   "file:///tmp/example/foo.go",
+					Range: lspRange{Start: lspPosition{Line: 4, Character: 6}, End: lspPosition{Line: 4, Character: 9}},
+				},
+				{
+					URI:   "file:///tmp/example/bar.go",
+					Range: lspRange{Start: lspPosition{Line: 10, Character: 2}, End: lspPosition{Line: 10, Character: 5}},
+				},
+			},
+		},
+		{
+			name: "LocationLinkArray",
+			response: []map[string]any{
+				{
+					"targetUri": "file:///tmp/example/baz.go",
+					"targetSelectionRange": map[string]any{
+						"start": map[string]any{"line": 1, "character": 2},
+						"end":   map[string]any{"line": 1, "character": 5},
+					},
+				},
+			},
+			want: []lspLocation{
+				{
+					URI:   "file:///tmp/example/baz.go",
+					Range: lspRange{Start: lspPosition{Line: 1, Character: 2}, End: lspPosition{Line: 1, Character: 5}},
+				},
+			},
+		},
+		{
+			name:     "NullResponse",
+			response: nil,
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientTransport, serverTransport := newPipeTransportPair()
+			defer clientTransport.Close()
+			defer serverTransport.Close()
+
+			client := newLSPClientFromRW(clientTransport)
+			server := newFakeServer(serverTransport)
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				req, ok := server.readMessage(t)
+				if !ok {
+					return
+				}
+				if req.Method != "textDocument/definition" {
+					t.Errorf("fakeServer: got request method %q; want %q", req.Method, "textDocument/definition")
+					return
+				}
+				server.respond(t, req.ID, tt.response)
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			got, err := client.definition(ctx, "file:///tmp/example/foo.go", lspPosition{Line: 4, Character: 6})
+			if err != nil {
+				t.Fatalf("definition() returned unexpected error: %v", err)
+			}
+			<-done
+
+			if len(got) != len(tt.want) {
+				t.Fatalf("definition() returned %d locations; want %d", len(got), len(tt.want))
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("definition()[%d] = %+v; want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 // TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext asserts that a
 // context whose deadline has already passed causes call() (exercised here
 // via references()) to return ErrServerTimeout without ever blocking on a
