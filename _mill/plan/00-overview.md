@@ -3,7 +3,7 @@
 ```yaml
 task: 'board: move storage to weft:main'
 slug: board
-approved: false
+approved: true
 started: 2026-07-29T06:42:36Z
 parent: main
 root: ""
