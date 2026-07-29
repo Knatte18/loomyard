@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: 'approved-docs: CONSTRAINTS, overview, README, manifest, sandbox suites'
+phase: holistic-reviewing
 slug: board
 branch: board
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-boardengine: dual-store facade (notes.json, promote-note, single README
 approved-boardcli: notes CLI surface + promote-note command  '2026-07-29T09:44:13Z'
 approved-cmd/lyx: board git-import guard + drift/help-tree/registration coverage  '2026-07-29T09:48:49Z'
 approved-docs: CONSTRAINTS, overview, README, manifest, sandbox suites  '2026-07-29T09:56:14Z'
+holistic-reviewing  '2026-07-29T09:56:29Z'
 ```
 
 ## Batches
