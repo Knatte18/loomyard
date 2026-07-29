@@ -34,6 +34,7 @@ This batch adds the cross-platform `proc.KillPID(pid int) error` primitive item 
   - `internal/proc/proc_linux.go`
   - `internal/proc/proc_windows.go`
   - `internal/proc/isalive_test.go`
+  - `internal/codeintelengine/supervised_test.go`
 - **Edits:** none
 - **Creates:**
   - `internal/proc/killpid_test.go`
