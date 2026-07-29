@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-registry-and-state-foundations
+phase: approved-lspclient-dial-transport
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-fix-r6  '2026-07-29T09:19:03Z'
 planned  '2026-07-29T09:20:21Z'
 implementing  '2026-07-29T09:22:02Z'
 approved-registry-and-state-foundations  '2026-07-29T09:26:22Z'
+approved-lspclient-dial-transport  '2026-07-29T09:29:21Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     start_sha: 4608d6d1bd3d5e98e31859b86131d731a683ad16
     commit_sha: fdd7e6d15a9e2ceb2f05c2f7fdae1fc48161695f
   - name: lspclient-dial-transport
-    state: running
+    state: approved
     implementer_session: ae2c3163-14da-4a75-8177-de1cf45088c2
     start_sha: ce0561b5c312999abf694758ada30a9d1ec988ac
+    commit_sha: e77cdb85fd41782cb897d3add6d8c34cfc3014ed
   - name: toolchain-manager
     state: pending
   - name: daemon-state-and-locking
