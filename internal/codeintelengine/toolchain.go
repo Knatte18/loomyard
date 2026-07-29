@@ -15,8 +15,14 @@
 package codeintelengine
 
 import (
+	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // goToolchainCacheDir returns the machine-global cache directory a pinned
@@ -46,4 +52,82 @@ func goToolchainInstallLock() string {
 	// ignored here.
 	dir, _ := os.UserCacheDir()
 	return filepath.Join(dir, "lyx", "tools", "go", "install.lock")
+}
+
+// toolchainInstaller installs the Go toolchain binary for version into
+// destDir. It is the seam resolveGoToolchain calls through instead of
+// invoking `go install` directly, so unit tests can substitute a fake that
+// never spawns a real subprocess (see installGoToolchain below).
+type toolchainInstaller func(ctx context.Context, version, destDir string) error
+
+// installGoToolchain is the production toolchainInstaller resolveGoToolchain
+// calls. Tests overwrite this package-level var with a fake and restore the
+// original (runGoInstall) via t.Cleanup, mirroring lspclient.go's
+// newLSPClient/newLSPClientFromRW test-seam convention.
+var installGoToolchain toolchainInstaller = runGoInstall
+
+// runGoInstall installs the pinned gopls version into destDir by running
+// `go install golang.org/x/tools/gopls@<version>` with GOBIN set to destDir
+// via the subprocess's environment, so the built binary lands directly in
+// the toolchain cache directory rather than the default $GOPATH/bin.
+func runGoInstall(ctx context.Context, version, destDir string) error {
+	target := fmt.Sprintf("golang.org/x/tools/gopls@%s", version)
+	cmd := exec.CommandContext(ctx, "go", "install", target)
+	// Append GOBIN rather than replacing the environment outright, so the
+	// subprocess still inherits GOPATH/GOCACHE/GOPROXY/etc. from this
+	// process's own environment; a later GOBIN entry wins over any earlier
+	// one Go's os/exec passes through unchanged.
+	cmd.Env = append(os.Environ(), "GOBIN="+destDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("codeintelengine: go install %s: %w: %s", target, err, out)
+	}
+	return nil
+}
+
+// resolveGoToolchain resolves the on-disk path to the pinned gopls binary
+// for pinnedVersion, installing it into the toolchain cache on a cold cache.
+//
+// The fast path (binary already present) takes no lock at all — the common
+// case must not pay a lock round trip. On a cold cache it acquires the
+// blocking, per-language install lock (goToolchainInstallLock), double-checks
+// the binary's presence again now that the lock is held (a second caller
+// that was waiting may find the first lock holder already finished the
+// install), and only then calls installGoToolchain. There is no "loser
+// reconnects to a live server" shortcut here, unlike EnsureServer's daemon
+// strategies: an install either finished before this call reached the lock,
+// or this call must wait for one to finish before it exits.
+func resolveGoToolchain(ctx context.Context, pinnedVersion string) (string, error) {
+	cacheDir := goToolchainCacheDir(pinnedVersion)
+	binName := "gopls"
+	if runtime.GOOS == "windows" {
+		binName = "gopls.exe"
+	}
+	binPath := filepath.Join(cacheDir, binName)
+
+	// Fast path: no lock taken. Most calls hit an already-installed pinned
+	// version, and a lock round trip on every one of those would be pure
+	// overhead.
+	if _, err := os.Stat(binPath); err == nil {
+		return binPath, nil
+	}
+
+	fileLock, err := lock.AcquireWriteLock(goToolchainInstallLock())
+	if err != nil {
+		return "", fmt.Errorf("codeintelengine: acquire go toolchain install lock: %w", err)
+	}
+	defer fileLock.Release()
+
+	// Double-check: whoever held the lock first may have finished installing
+	// this exact pinned version while this call was blocked waiting for it.
+	if _, err := os.Stat(binPath); err == nil {
+		return binPath, nil
+	}
+
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", fmt.Errorf("codeintelengine: create go toolchain cache dir %s: %w", cacheDir, err)
+	}
+	if err := installGoToolchain(ctx, pinnedVersion, cacheDir); err != nil {
+		return "", fmt.Errorf("codeintelengine: install go toolchain %s: %w", pinnedVersion, err)
+	}
+	return binPath, nil
 }

@@ -43,9 +43,10 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 
 ## Codeintelengine Leaf Invariant
 
-`internal/codeintelengine` production code imports only stdlib, `internal/hubgeometry`, and `gopkg.in/yaml.v3` — no `internal/output`, no `cobra`, no `internal/*cli` package — so the engine stays a cycle-free leaf importable by builder/webster later, exactly like `internal/modelspec`'s leaf excludes `output`. The engine returns typed Go errors and typed result values (`(T, error)`) and never touches `io.Writer`, exit codes, or the `output.Ok`/`output.Err` envelope; `internal/codeintelcli` is the sole layer that maps engine errors/results into that envelope.
+`internal/codeintelengine` production code imports only stdlib, `internal/hubgeometry`, `internal/lock`, and `gopkg.in/yaml.v3` — no `internal/output`, no `cobra`, no `internal/*cli` package — so the engine stays a cycle-free leaf importable by builder/webster later, exactly like `internal/modelspec`'s leaf excludes `output`. The engine returns typed Go errors and typed result values (`(T, error)`) and never touches `io.Writer`, exit codes, or the `output.Ok`/`output.Err` envelope; `internal/codeintelcli` is the sole layer that maps engine errors/results into that envelope.
 
 - `codeintelcli` → `codeintelengine` is the only allowed direction; the reverse import (`codeintelengine` → `codeintelcli`, or `codeintelengine` → any other feature package) is never allowed.
+- `internal/lock` fences the toolchain-install race (the Go toolchain manager's `resolveGoToolchain`) and the daemon spawn-race (the supervised-strategy daemon state file) — both genuinely cross-process coordination problems the leaf needs to solve itself, and `internal/lock` is already the repo's one primitive for exactly that, so allowlisting it is reuse rather than a new dependency class.
 - **Enforced by** `internal/codeintelengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
 ## Pattern Leaf Invariant
