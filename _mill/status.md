@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: board
 branch: board
 plan: _mill/plan
@@ -30,4 +30,23 @@ plan-review-r5  '2026-07-29T08:40:22Z'
 plan-fix-r5  '2026-07-29T08:40:22Z'
 plan-fix-r6  '2026-07-29T08:50:41Z'
 planned  '2026-07-29T08:51:06Z'
+implementing  '2026-07-29T09:11:13Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: 'fabricengine: CommitWeftAt primitive'
+    state: pending
+  - name: 'fabricengine+fabriccli: _board as second weft worktree'
+    state: pending
+  - name: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
+    state: pending
+  - name: 'boardcli: notes CLI surface + promote-note command'
+    state: pending
+  - name: 'cmd/lyx: board git-import guard + drift/help-tree/registration coverage'
+    state: pending
+  - name: 'docs: CONSTRAINTS, overview, README, manifest, sandbox suites'
+    state: pending
 ```
