@@ -1,16 +1,18 @@
 //go:build integration
 
 // supervised_integration_test.go is the central "prove supervised against a
-// plain gopls" deliverable: it drives ensureSupervised directly (never
-// through ensureServer's dispatch, which has no live path to it in V1 per
-// the "EnsureServer has exactly one live dispatch arm" Shared Decision)
-// against a real, held-open gopls daemon, proving the spawn-race lock,
-// state-file recording, dial-or-reconnect, and staleness-triggered-restart
-// behavior end to end before any language that actually needs the strategy
-// exists. //go:build integration-tagged and therefore excluded from the
-// plain `go test` verify (the Test Tier Purity Invariant); it is run
-// separately with `-tags integration` on a machine with gopls installed,
-// alongside refs_integration_test.go and
+// plain gopls" deliverable: it drives ensureSupervised directly against a
+// real, held-open gopls daemon, proving the spawn-race lock, state-file
+// recording, dial-or-reconnect, and staleness-triggered-restart behavior end
+// to end at the strategy-internals level, independent of whichever entry
+// point dispatches to it. Since the engine-supervised-flip batch,
+// ensureServer now dispatches Go to ensureSupervised as its live V1
+// strategy — TestEnsureServer_Integration_SupervisedDispatch in
+// ensureserver_integration_test.go additionally proves that dispatch path
+// end to end through ensureServer itself. //go:build integration-tagged
+// and therefore excluded from the plain `go test` verify (the Test Tier
+// Purity Invariant); it is run separately with `-tags integration` on a
+// machine with gopls installed, alongside refs_integration_test.go and
 // ensureserver_integration_test.go.
 
 package codeintelengine

@@ -34,6 +34,22 @@ func IsAlive(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
+// KillPID force-kills the process identified by pid, with no graceful
+// handshake — it sends SIGKILL via os.Process.Kill(). It is distinct from
+// lspClient.kill(), which kills a spawned *exec.Cmd this process itself
+// started; KillPID instead has only a PID recovered from the daemon state
+// file, with no *exec.Cmd handle to it. As such it accepts the same
+// PID-reuse risk daemonStale's proc.IsAlive check already trusts (see
+// daemonstate.go): there is no identity/cmdline guard confirming pid still
+// refers to the daemon that recorded it.
+func KillPID(pid int) error {
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return process.Kill()
+}
+
 // Detach configures the command to run in a new session and survive parent exit.
 // On Linux, Setsid is the equivalent of Windows CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW:
 // it places the child in a new session with its own process group and no controlling terminal,

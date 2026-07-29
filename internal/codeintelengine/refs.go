@@ -32,14 +32,27 @@ type Reference struct {
 	Character int
 }
 
-// Query is exactly one of two forms: Symbol (a name to resolve via
-// workspace/symbol) or Pos (an explicit file:line:col position, bypassing
-// name resolution entirely). Callers must set exactly one; References does
-// not validate that both are unset or both are set, since Pos != nil is
-// itself the discriminant it checks. Pos.File, when set, must be an
-// absolute path — References turns it into a file:// URI directly, the
-// same way it derives rootURI from TargetDir.
+// InFileQuery names a bare symbol by name within exactly one file, resolved
+// via an exhaustive textDocument/documentSymbol search of that file rather
+// than workspace/symbol's project-wide, potentially fuzzy name search. File
+// must be an absolute path, exactly like Position.File and Pos.File below.
+type InFileQuery struct {
+	File string
+	Name string
+}
+
+// Query is exactly one of three forms: InFile (a symbol name resolved
+// exhaustively within one named file via textDocument/documentSymbol), Pos
+// (an explicit file:line:col position, bypassing name resolution entirely),
+// or Symbol (a name to resolve project-wide via workspace/symbol). Callers
+// must set exactly one; References does not validate that only one of the
+// three is set, since resolvePosition's own precedence check — InFile
+// first, then Pos, then Symbol — is itself the discriminant it uses. Pos.File
+// and InFile.File, when set, must be absolute paths — References turns them
+// into file:// URIs directly, the same way it derives rootURI from
+// TargetDir.
 type Query struct {
+	InFile *InFileQuery
 	Symbol string
 	Pos    *Position
 }
@@ -47,16 +60,16 @@ type Query struct {
 // Options configures one References call: Registry supplies the language
 // servers to choose from, TargetDir is the project root to detect the
 // language in and root the launched server at, WorktreeRoot is the
-// worktree root EnsureServer's supervised strategy would anchor its daemon
-// singleton at; unused by every strategy actually reachable in V1 (native
-// never reads it), but threaded through now so a future language selecting
-// supervised needs no signature change. The CLI layer populates it from a
-// resolved hubgeometry.Layout.WorktreeRoot when available, empty
-// otherwise. Lang optionally overrides detection, Query selects the symbol
-// or position to look up, and Timeout bounds every individual LSP request
-// (initialize, the resolver call, and references) — not the call as a
-// whole, so a slow-but-eventually-fed server only fails the specific phase
-// that stalls.
+// worktree root EnsureServer's supervised strategy anchors its daemon
+// singleton (state file, spawn lock, socket) at — Go's registry entry
+// dispatches to supervised as its live V1 strategy, so this field is read
+// on every Go lookup, not merely threaded through unused. The CLI layer
+// populates it from a resolved hubgeometry.Layout.WorktreeRoot when
+// available, empty otherwise. Lang optionally overrides detection, Query
+// selects the symbol or position to look up, and Timeout bounds every
+// individual LSP request (initialize, the resolver call, and references) —
+// not the call as a whole, so a slow-but-eventually-fed server only fails
+// the specific phase that stalls.
 type Options struct {
 	Registry     Registry
 	TargetDir    string
@@ -209,20 +222,61 @@ func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context,
 }
 
 // resolvePosition returns the file:// URI and LSP wire position
-// textDocument/references should query. When opts.Query.Pos is set, it is
-// converted directly via toLSPPosition. Otherwise resolvePosition resolves
-// opts.Query.Symbol via workspace/symbol: zero candidates is
-// ErrSymbolNotFound, more than one is ErrAmbiguousSymbol (each candidate
-// formatted as file:line:col), and exactly one candidate's own location is
-// used as-is — its Range.Start is already the 0-based-line/UTF-16-character
-// LSP position the wire format needs, so no round trip through the
-// byte-column Position type happens on this path (that round trip would
-// misconvert the offset on any line with a multi-byte rune before the
-// symbol, exactly the hazard toLSPPosition exists to avoid on the
-// Query.Pos path). A server that does not advertise
+// textDocument/references should query, checking opts.Query's three forms in
+// a fixed precedence — InFile first, then Pos, then Symbol — even though
+// callers are expected to set only one.
+//
+// When opts.Query.InFile is set, resolvePosition gates on
+// client.supportsDocumentSymbol() (ErrResolverUnsupported if unadvertised),
+// then issues textDocument/documentSymbol for InFile.File and searches the
+// result recursively (collectInFileMatches) for every symbol whose Name
+// exactly equals InFile.Name: zero matches is ErrSymbolNotFound, more than
+// one is ErrAmbiguousSymbol (each candidate formatted as file:line:col from
+// its SelectionRange), and exactly one match's SelectionRange.Start is used
+// as-is as the LSP position — no fuzzy matching, no column math, mirroring
+// the no-round-trip discipline described below for the Symbol path.
+//
+// When opts.Query.Pos is set, it is converted directly via toLSPPosition.
+//
+// Otherwise resolvePosition resolves opts.Query.Symbol via workspace/symbol:
+// zero candidates is ErrSymbolNotFound, more than one is ErrAmbiguousSymbol
+// (each candidate formatted as file:line:col), and exactly one candidate's
+// own location is used as-is — its Range.Start is already the
+// 0-based-line/UTF-16-character LSP position the wire format needs, so no
+// round trip through the byte-column Position type happens on this path
+// (that round trip would misconvert the offset on any line with a
+// multi-byte rune before the symbol, exactly the hazard toLSPPosition exists
+// to avoid on the Query.Pos path). A server that does not advertise
 // workspaceSymbolProvider yields ErrResolverUnsupported rather than
 // attempting the call.
 func resolvePosition(ctx context.Context, client *lspClient, opts Options, lang string, entry Entry) (fileURI string, pos lspPosition, err error) {
+	if opts.Query.InFile != nil {
+		if !client.supportsDocumentSymbol() {
+			return "", lspPosition{}, &ErrResolverUnsupported{Language: lang, Server: entry.Command[0]}
+		}
+
+		symCtx, symCancel := context.WithTimeout(ctx, opts.Timeout)
+		defer symCancel()
+		symbols, err := client.documentSymbol(symCtx, "file://"+opts.Query.InFile.File)
+		if err != nil {
+			return "", lspPosition{}, err
+		}
+
+		matches := collectInFileMatches(symbols, opts.Query.InFile.Name)
+		switch len(matches) {
+		case 0:
+			return "", lspPosition{}, &ErrSymbolNotFound{Symbol: opts.Query.InFile.Name, TargetDir: opts.TargetDir}
+		case 1:
+			return "file://" + opts.Query.InFile.File, matches[0].SelectionRange.Start, nil
+		default:
+			formatted := make([]string, len(matches))
+			for i, m := range matches {
+				formatted[i] = formatLocation(lspLocation{URI: "file://" + opts.Query.InFile.File, Range: m.SelectionRange})
+			}
+			return "", lspPosition{}, &ErrAmbiguousSymbol{Symbol: opts.Query.InFile.Name, Candidates: formatted}
+		}
+	}
+
 	if opts.Query.Pos != nil {
 		lspPos, err := toLSPPosition(*opts.Query.Pos)
 		if err != nil {
@@ -255,6 +309,25 @@ func resolvePosition(ctx context.Context, client *lspClient, opts Options, lang 
 		}
 		return "", lspPosition{}, &ErrAmbiguousSymbol{Symbol: opts.Query.Symbol, Candidates: formatted}
 	}
+}
+
+// collectInFileMatches recursively searches syms — a
+// textDocument/documentSymbol result, descending into every node's Children
+// — for symbols whose Name exactly equals name, and returns every match
+// found in encounter order. It is factored out of resolvePosition's InFile
+// branch as a pure, transport-free helper specifically so the recursive
+// exact-name collection is unit-testable without a fake LSP server. No fuzzy
+// matching happens here: a name that differs by case, substring, or any
+// other transformation is never collected.
+func collectInFileMatches(syms []lspDocumentSymbol, name string) []lspDocumentSymbol {
+	var matches []lspDocumentSymbol
+	for _, sym := range syms {
+		if sym.Name == name {
+			matches = append(matches, sym)
+		}
+		matches = append(matches, collectInFileMatches(sym.Children, name)...)
+	}
+	return matches
 }
 
 // toSortedReferences maps raw LSP locations to the public Reference type

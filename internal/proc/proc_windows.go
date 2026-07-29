@@ -68,3 +68,19 @@ func IsAlive(pid int) bool {
 	_, err := os.FindProcess(pid)
 	return err == nil
 }
+
+// KillPID force-kills the process identified by pid, with no graceful
+// handshake — os.Process.Kill() calls TerminateProcess on Windows. It is
+// distinct from lspClient.kill(), which kills a spawned *exec.Cmd this
+// process itself started; KillPID instead has only a PID recovered from the
+// daemon state file, with no *exec.Cmd handle to it. As such it accepts the
+// same PID-reuse risk daemonStale's proc.IsAlive check already trusts (see
+// daemonstate.go): there is no identity/cmdline guard confirming pid still
+// refers to the daemon that recorded it.
+func KillPID(pid int) error {
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return process.Kill()
+}

@@ -77,6 +77,7 @@ func refsCommand() *cobra.Command {
 	var targetDir string
 	var lang string
 	var timeout time.Duration
+	var inFile string
 
 	refs := &cobra.Command{
 		Use:   "refs <symbol|file:line:col>",
@@ -92,6 +93,13 @@ The single positional argument is either:
     name resolution entirely:
       lyx codeintel refs internal/foo/bar.go:42:8
 
+--in-file <path> resolves each positional argument as a bare symbol name
+within exactly that one file, via an exhaustive textDocument/documentSymbol
+search rather than a project-wide workspace/symbol search — the positional
+is always treated as a bare name, never position-parsed, even if it happens
+to look like "file:line:col":
+    lyx codeintel refs --in-file internal/foo/bar.go MyFunc
+
 Passing 2 or more positional arguments switches to batch mode: each argument
 is looked up independently and the results are reported as one array, rather
 than the single-symbol envelope above:
@@ -99,11 +107,16 @@ than the single-symbol envelope above:
 The process exit code is set to the worst status present across the batch
 (0 < 1 < 2 < 3). Example:
     lyx codeintel refs Foo Bar Baz
+--in-file composes with batch mode too, resolving every positional against
+the same file:
+    lyx codeintel refs --in-file internal/foo/bar.go Open Close
 
 The result set is complete and semantically resolved by the language server
 (including calls reached only through an interface, which no amount of
 grepping can prove) — a caller does not need to cross-check it with grep or
-re-verify individual candidates.`,
+re-verify individual candidates. A successful single-arg lookup carries a
+machine-readable "resolution":"complete" field as this trust marker; batch
+mode carries the same field on each per-entry "found" result.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -123,6 +136,12 @@ re-verify individual candidates.`,
 				dir = cwd
 			}
 
+			// worktreeRoot is resolved before registry loading below so both
+			// derive independently from the same cwd/dir inputs — see
+			// resolveWorktreeRoot's doc comment for why it never leaves
+			// WorktreeRoot empty outside a hub.
+			worktreeRoot := resolveWorktreeRoot(cwd, dir)
+
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
@@ -130,7 +149,6 @@ re-verify individual candidates.`,
 			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := codeintelengine.BuiltinRegistry()
-			var worktreeRoot string
 			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
 				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
 				if loadErr != nil {
@@ -138,24 +156,29 @@ re-verify individual candidates.`,
 					return nil
 				}
 				registry = loaded
-				worktreeRoot = layout.WorktreeRoot
+			}
+
+			// buildQuery is the one seam both the single-arg and batch-mode
+			// paths below call to turn a positional argument into a Query:
+			// --in-file routes every argument through inFileQuery instead of
+			// parseQuery, so a positional is always a bare name against that
+			// one file, never position-parsed — even when --in-file is
+			// combined with batch mode.
+			buildQuery := func(arg string) (codeintelengine.Query, error) {
+				if inFile != "" {
+					return inFileQuery(inFile, arg)
+				}
+				return parseQuery(arg)
 			}
 
 			if len(args) == 1 {
-				query, err := parseQuery(args[0])
+				query, err := buildQuery(args[0])
 				if err != nil {
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
 
-				opts := codeintelengine.Options{
-					Registry:     registry,
-					TargetDir:    dir,
-					WorktreeRoot: worktreeRoot,
-					Lang:         lang,
-					Query:        query,
-					Timeout:      timeout,
-				}
+				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
 
 				results, err := codeintelengine.References(ctx, opts)
 				emitLookupResult(ctx, out, "references", results, err)
@@ -163,11 +186,11 @@ re-verify individual candidates.`,
 			}
 
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				query, err := parseQuery(symbol)
+				query, err := buildQuery(symbol)
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := codeintelengine.References(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: query, Timeout: timeout})
+				results, err := codeintelengine.References(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
 				return classifyLookupError(err, "references", results)
 			})
 			return nil
@@ -177,6 +200,7 @@ re-verify individual candidates.`,
 	refs.Flags().StringVar(&targetDir, "target-dir", "", "project directory to detect the language in and root the server at (default: cwd)")
 	refs.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	refs.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references)")
+	refs.Flags().StringVar(&inFile, "in-file", "", "resolve each positional argument as a bare symbol name within this one file, instead of a project-wide workspace/symbol search")
 
 	return refs
 }
@@ -190,6 +214,7 @@ func definitionCommand() *cobra.Command {
 	var targetDir string
 	var lang string
 	var timeout time.Duration
+	var inFile string
 
 	definition := &cobra.Command{
 		Use:   "definition <symbol|file:line:col>",
@@ -206,6 +231,13 @@ The single positional argument is either:
     name resolution entirely:
       lyx codeintel definition internal/foo/bar.go:42:8
 
+--in-file <path> resolves each positional argument as a bare symbol name
+within exactly that one file, via an exhaustive textDocument/documentSymbol
+search rather than a project-wide workspace/symbol search — the positional
+is always treated as a bare name, never position-parsed, even if it happens
+to look like "file:line:col":
+    lyx codeintel definition --in-file internal/foo/bar.go MyFunc
+
 Passing 2 or more positional arguments switches to batch mode: each argument
 is looked up independently and the results are reported as one array, rather
 than the single-symbol envelope above:
@@ -214,9 +246,14 @@ The process exit code is set to the worst status present across the batch
 (0 < 1 < 2 < 3). definition has no other shape difference from refs in batch
 mode. Example:
     lyx codeintel definition Foo Bar Baz
+--in-file composes with batch mode too, resolving every positional against
+the same file:
+    lyx codeintel definition --in-file internal/foo/bar.go Open Close
 
 The result is semantically resolved by the language server, not text-matched
-— a caller does not need to cross-check it with grep.`,
+— a caller does not need to cross-check it with grep. A successful single-arg
+lookup carries a machine-readable "resolution":"complete" field as this trust
+marker; batch mode carries the same field on each per-entry "found" result.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -236,6 +273,12 @@ The result is semantically resolved by the language server, not text-matched
 				dir = cwd
 			}
 
+			// worktreeRoot is resolved before registry loading below so both
+			// derive independently from the same cwd/dir inputs — see
+			// resolveWorktreeRoot's doc comment for why it never leaves
+			// WorktreeRoot empty outside a hub.
+			worktreeRoot := resolveWorktreeRoot(cwd, dir)
+
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
@@ -243,7 +286,6 @@ The result is semantically resolved by the language server, not text-matched
 			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := codeintelengine.BuiltinRegistry()
-			var worktreeRoot string
 			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
 				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
 				if loadErr != nil {
@@ -251,24 +293,29 @@ The result is semantically resolved by the language server, not text-matched
 					return nil
 				}
 				registry = loaded
-				worktreeRoot = layout.WorktreeRoot
+			}
+
+			// buildQuery is the one seam both the single-arg and batch-mode
+			// paths below call to turn a positional argument into a Query:
+			// --in-file routes every argument through inFileQuery instead of
+			// parseQuery, so a positional is always a bare name against that
+			// one file, never position-parsed — even when --in-file is
+			// combined with batch mode.
+			buildQuery := func(arg string) (codeintelengine.Query, error) {
+				if inFile != "" {
+					return inFileQuery(inFile, arg)
+				}
+				return parseQuery(arg)
 			}
 
 			if len(args) == 1 {
-				query, err := parseQuery(args[0])
+				query, err := buildQuery(args[0])
 				if err != nil {
 					clihelp.SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
 
-				opts := codeintelengine.Options{
-					Registry:     registry,
-					TargetDir:    dir,
-					WorktreeRoot: worktreeRoot,
-					Lang:         lang,
-					Query:        query,
-					Timeout:      timeout,
-				}
+				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
 
 				results, err := codeintelengine.Definition(ctx, opts)
 				emitLookupResult(ctx, out, "definitions", results, err)
@@ -276,11 +323,11 @@ The result is semantically resolved by the language server, not text-matched
 			}
 
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				query, err := parseQuery(symbol)
+				query, err := buildQuery(symbol)
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := codeintelengine.Definition(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: query, Timeout: timeout})
+				results, err := codeintelengine.Definition(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
 				return classifyLookupError(err, "definitions", results)
 			})
 			return nil
@@ -290,6 +337,7 @@ The result is semantically resolved by the language server, not text-matched
 	definition.Flags().StringVar(&targetDir, "target-dir", "", "project directory to detect the language in and root the server at (default: cwd)")
 	definition.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	definition.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, definition)")
+	definition.Flags().StringVar(&inFile, "in-file", "", "resolve each positional argument as a bare symbol name within this one file, instead of a project-wide workspace/symbol search")
 
 	return definition
 }
@@ -343,6 +391,12 @@ matches into an ambiguity failure. Example:
 				dir = cwd
 			}
 
+			// worktreeRoot is resolved before registry loading below so both
+			// derive independently from the same cwd/dir inputs — see
+			// resolveWorktreeRoot's doc comment for why it never leaves
+			// WorktreeRoot empty outside a hub.
+			worktreeRoot := resolveWorktreeRoot(cwd, dir)
+
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
@@ -350,7 +404,6 @@ matches into an ambiguity failure. Example:
 			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := codeintelengine.BuiltinRegistry()
-			var worktreeRoot string
 			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
 				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
 				if loadErr != nil {
@@ -358,18 +411,10 @@ matches into an ambiguity failure. Example:
 					return nil
 				}
 				registry = loaded
-				worktreeRoot = layout.WorktreeRoot
 			}
 
 			if len(args) == 1 {
-				opts := codeintelengine.Options{
-					Registry:     registry,
-					TargetDir:    dir,
-					WorktreeRoot: worktreeRoot,
-					Lang:         lang,
-					Query:        symbolQuery(args[0]),
-					Timeout:      timeout,
-				}
+				opts := buildOptions(registry, dir, worktreeRoot, lang, symbolQuery(args[0]), timeout)
 
 				results, err := codeintelengine.Symbol(ctx, opts)
 				if err != nil {
@@ -392,7 +437,7 @@ matches into an ambiguity failure. Example:
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				results, err := codeintelengine.Symbol(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: codeintelengine.Query{Symbol: symbol}, Timeout: timeout})
+				results, err := codeintelengine.Symbol(ctx, buildOptions(registry, dir, worktreeRoot, lang, codeintelengine.Query{Symbol: symbol}, timeout))
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -404,6 +449,58 @@ matches into an ambiguity failure. Example:
 	symbol.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for the workspace/symbol request phase")
 
 	return symbol
+}
+
+// resolveWorktreeRoot resolves the codeintelengine.Options.WorktreeRoot value
+// a lookup rooted at targetDir should carry, given the process's cwd. Inside
+// a lyx hub (hubgeometry.Resolve(cwd) succeeds), it is the resolved
+// layout.WorktreeRoot — the git repository root — exactly as every verb
+// already used before this helper existed. Outside a hub (the supported
+// degrade-to-BuiltinRegistry path), it falls back to the absolute form of
+// targetDir rather than leaving WorktreeRoot empty: see the plan's
+// "Supervised daemon anchoring outside a lyx hub" Shared Decision — once a
+// language flips to the supervised strategy, an empty WorktreeRoot would
+// resolve EnsureServer's daemon state/lock/socket files at a cwd-relative
+// ".lyx/codeintel/<lang>/" path, littering/colliding across cwds for the
+// same --target-dir. filepath.Abs falls back to targetDir itself on error
+// (an Abs failure here means the process's own cwd is unresolvable, an
+// already-degraded environment), so this helper never returns an empty
+// string. It is a separate named function, rather than inlined into each
+// verb's RunE, specifically so the outside-a-hub fallback is independently
+// unit-testable without a live daemon.
+func resolveWorktreeRoot(cwd, targetDir string) string {
+	if layout, err := hubgeometry.Resolve(cwd); err == nil {
+		return layout.WorktreeRoot
+	}
+
+	abs, err := filepath.Abs(targetDir)
+	if err != nil {
+		return targetDir
+	}
+	return abs
+}
+
+// buildOptions constructs a codeintelengine.Options value from its component
+// parts. It is the single call site every refs/definition/symbol RunE
+// (single-arg and batch-mode alike) goes through: before this helper
+// existed, each verb's batch-mode closure built its own Options{...} literal
+// by hand, and three of the six literals (the batch closures) silently
+// omitted WorktreeRoot while their single-arg sibling set it — a latent
+// drift that only mattered once a language's daemon strategy flips to
+// supervised (native never reads WorktreeRoot). Collapsing every
+// construction site through this one function makes that omission
+// structurally impossible: a batch closure can no longer forget a field its
+// single-arg sibling sets, since both now call the same function with the
+// same locals.
+func buildOptions(registry codeintelengine.Registry, targetDir, worktreeRoot, lang string, query codeintelengine.Query, timeout time.Duration) codeintelengine.Options {
+	return codeintelengine.Options{
+		Registry:     registry,
+		TargetDir:    targetDir,
+		WorktreeRoot: worktreeRoot,
+		Lang:         lang,
+		Query:        query,
+		Timeout:      timeout,
+	}
 }
 
 // symbolQuery builds a codeintelengine.Query for the "symbol" verb's single
@@ -647,7 +744,10 @@ func emitLookupResult(ctx context.Context, out io.Writer, resultsField string, r
 		return
 	}
 
-	clihelp.SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results)}))
+	// "resolution":"complete" is the machine-readable trust marker a caller
+	// can key on to skip a redundant grep/re-verify pass: the language server
+	// already resolved the query exhaustively, unlike a text-matched result.
+	clihelp.SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}))
 }
 
 // referenceFields converts each codeintelengine.Reference into the
@@ -684,6 +784,29 @@ func parseQuery(arg string) (codeintelengine.Query, error) {
 	pos.File = absFile
 
 	return codeintelengine.Query{Pos: &pos}, nil
+}
+
+// inFileQuery converts a "--in-file" positional argument into a
+// codeintelengine.Query carrying InFile: name is always treated as a bare
+// symbol name to search for exhaustively within inFilePath, never
+// position-parsed — even when name happens to have a "file:line:col" shape —
+// mirroring parseQuery's role for the flag-less form and symbolQuery's
+// never-position-parsed discipline. This is a separate named function,
+// rather than an inline literal at each of refsCommand/definitionCommand's
+// two call sites, specifically so the "--in-file" query-construction
+// contract is independently unit-testable without a live language server.
+func inFileQuery(inFilePath, name string) (codeintelengine.Query, error) {
+	// codeintelengine.InFileQuery.File must be an absolute path — References
+	// turns it into a file:// URI directly, with no further resolution — so a
+	// relative --in-file path is resolved against the process cwd here,
+	// exactly like parseQuery resolves Pos.File: the CLI layer, not the
+	// engine, owns path interpretation.
+	absFile, err := filepath.Abs(inFilePath)
+	if err != nil {
+		return codeintelengine.Query{}, fmt.Errorf("resolve absolute path for %s: %w", inFilePath, err)
+	}
+
+	return codeintelengine.Query{InFile: &codeintelengine.InFileQuery{File: absFile, Name: name}}, nil
 }
 
 // parsePosition reports whether arg has the "file:line:col" shape — a path
@@ -759,7 +882,10 @@ var statusRank = map[batchStatus]int{
 // since none of them mean "confirmed absent."
 func classifyLookupError(err error, resultsField string, results []codeintelengine.Reference) (batchStatus, map[string]any) {
 	if err == nil {
-		return statusFound, map[string]any{resultsField: referenceFields(results)}
+		// Mirror emitLookupResult's single-arg "resolution":"complete" marker
+		// per batch entry, so a batch-mode caller gets the same trust signal
+		// on each "found" result the single-arg envelope carries.
+		return statusFound, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}
 	}
 
 	var ambiguous *codeintelengine.ErrAmbiguousSymbol

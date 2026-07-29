@@ -18,7 +18,9 @@ package codeintelengine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +30,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // spawnAndHoldSubprocess starts a child process that blocks for several
@@ -119,26 +122,30 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 // spawn lock is never contended at all — the "wedged daemon" scenario the
 // function's own doc comment names: a recorded state that reads healthy
 // (alive PID, current protocol version) but whose address is never actually
-// dialable. Unlike
+// dialable. This sub-test now drives the wedged-daemon re-dial-under-lock
+// escalation (card 11): step 1's dial fails against the non-stale state, the
+// uncontended lock is acquired immediately, and the escalation's own
+// re-dial-under-lock retry (~500ms worst case) is what actually consumes
+// this test's 300ms deadline — the deadline guard placed immediately after
+// that retry is what returns ErrServerSpawnTimeout here, before ever
+// attempting proc.KillPID against the held fixture PID. Unlike
 // TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout (which
 // pre-holds the lock so every retry falls into the "lock not acquired"
-// branch, step 2), this sub-test never touches the lock itself, so every
-// retry instead falls into step 3 ("acquired the lock, but state already
-// healthy") — the branch that previously had no deadline check at all and
-// would spin step1->step3 forever without ever returning.
+// branch, step 2), this sub-test never touches the lock itself, so it
+// reaches the escalation branch on its very first iteration.
 func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
 	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
 	statePath := layout.CodeintelDaemonStateFile(lang)
+	lockPath := layout.CodeintelDaemonLock(lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	// Record a state that reads as healthy (a confirmed-alive PID, the
 	// current protocol version) but whose recorded address nothing is
 	// listening on, so every dial-and-finalize attempt in step 1 fails —
-	// and the lock is left free, so every retry's step 2 acquires it
-	// immediately and lands on step 3's re-check, not step 2's
-	// !acquired branch.
+	// and the lock is left free, so the escalation acquires it immediately
+	// rather than falling into step 2's !acquired branch.
 	pid := spawnAndHoldSubprocess(t)
 	if err := writeDaemonState(statePath, daemonState{
 		PID:             pid,
@@ -167,6 +174,187 @@ func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrSer
 	// at all and would spin indefinitely rather than return here.
 	if elapsed > 5*time.Second {
 		t.Errorf("ensureSupervised() took %s to return after a %s timeout; want it bounded by the timeout, not hanging", elapsed, timeout)
+	}
+
+	// The deadline-timeout return inside the escalation must release the
+	// spawn lock before returning, exactly like every other return path —
+	// a follow-up TryAcquireWriteLock succeeding proves it did.
+	freshLock, acquired, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("lock.TryAcquireWriteLock() after ensureSupervised() timeout failed: %v", err)
+	}
+	if !acquired {
+		t.Error("lock.TryAcquireWriteLock() after ensureSupervised()'s deadline-timeout return acquired = false; want true (lock released)")
+	} else {
+		_ = freshLock.Release()
+	}
+
+	// The deadline guard fires before proc.KillPID is ever attempted, so the
+	// held fixture PID must still be alive.
+	if !proc.IsAlive(pid) {
+		t.Error("ensureSupervised()'s deadline-timeout escalation killed the held fixture PID; want the deadline guard to fire first, before any KillPID")
+	}
+}
+
+// TestEnsureSupervised_WedgedEscalationReuseReleasesLock asserts the
+// wedged-daemon escalation's reuse-success return path (card 11): step 1's
+// dial-then-finalizeConnection fails against a non-stale state (the fake
+// server answers the first accepted connection's initialize but fails its
+// workspace/symbol probe), triggering the escalation, which acquires the
+// uncontended spawn lock and re-dials the same recorded address under the
+// lock — this time succeeding (the fake server answers the second accepted
+// connection's initialize and probe both successfully), so ensureSupervised
+// must reuse that connection rather than concluding the daemon is wedged.
+// This proves both that the reuse-success path frees the spawn lock and
+// that it never calls proc.KillPID against the held fixture PID.
+func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Mirrors lspclient_test.go's own unix-socket skip: this is a
+		// scoping choice (TCP is covered elsewhere via newLSPClientDial's
+		// address-form flexibility), not an oversight.
+		t.Skip("unix sockets not exercised on windows here")
+	}
+
+	worktreeRoot := t.TempDir()
+	const lang = "go"
+	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	statePath := layout.CodeintelDaemonStateFile(lang)
+	lockPath := layout.CodeintelDaemonLock(lang)
+	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
+
+	// A non-stale state (alive PID, current protocol version) naming the
+	// socket the fake server below binds — should the escalation ever
+	// wrongly take the wedged branch, proc.KillPID would hit this held
+	// fixture PID, never the test process itself.
+	pid := spawnAndHoldSubprocess(t)
+	if err := writeDaemonState(statePath, daemonState{
+		PID:             pid,
+		Address:         "unix;" + socketPath,
+		ProtocolVersion: supervisedProtocolVersion,
+		StartedAt:       time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("writeDaemonState() failed: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(%s) failed: %v", filepath.Dir(socketPath), err)
+	}
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("net.Listen(unix, %s) failed: %v", socketPath, err)
+	}
+	defer listener.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		// First accepted connection: this is step 1's dial-then-
+		// finalizeConnection attempt. Answer initialize, then fail the
+		// follow-up workspace/symbol probe with an LSP error response, so
+		// finalizeConnection fails and ensureSupervised escalates.
+		conn1, err := listener.Accept()
+		if err != nil {
+			t.Errorf("listener.Accept() (1st conn) failed: %v", err)
+			return
+		}
+		server1 := newFakeServer(conn1)
+		req, ok := server1.readMessage(t)
+		if !ok {
+			conn1.Close()
+			return
+		}
+		if req.Method != "initialize" {
+			t.Errorf("fakeServer (1st conn): got request method %q; want %q", req.Method, "initialize")
+			conn1.Close()
+			return
+		}
+		if !server1.respond(t, req.ID, map[string]any{"capabilities": map[string]any{}}) {
+			conn1.Close()
+			return
+		}
+		server1.readMessage(t) // initialized notification
+		probeReq, ok := server1.readMessage(t)
+		if !ok {
+			conn1.Close()
+			return
+		}
+		if probeReq.Method != "workspace/symbol" {
+			t.Errorf("fakeServer (1st conn): got request method %q; want %q", probeReq.Method, "workspace/symbol")
+			conn1.Close()
+			return
+		}
+		server1.writeMessage(t, map[string]any{
+			"jsonrpc": "2.0",
+			"id":      json.RawMessage(probeReq.ID),
+			"error":   map[string]any{"code": -32603, "message": "boom"},
+		})
+		conn1.Close()
+
+		// Second accepted connection: the escalation's own under-lock
+		// re-dial. Answer both initialize and the probe successfully, so
+		// reconnectUnderLock reports healthy and ensureSupervised reuses
+		// this connection instead of killing and respawning.
+		conn2, err := listener.Accept()
+		if err != nil {
+			t.Errorf("listener.Accept() (2nd conn) failed: %v", err)
+			return
+		}
+		defer conn2.Close()
+		server2 := newFakeServer(conn2)
+		req2, ok := server2.readMessage(t)
+		if !ok {
+			return
+		}
+		if req2.Method != "initialize" {
+			t.Errorf("fakeServer (2nd conn): got request method %q; want %q", req2.Method, "initialize")
+			return
+		}
+		if !server2.respond(t, req2.ID, map[string]any{"capabilities": map[string]any{}}) {
+			return
+		}
+		server2.readMessage(t) // initialized notification
+		probeReq2, ok := server2.readMessage(t)
+		if !ok {
+			return
+		}
+		if probeReq2.Method != "workspace/symbol" {
+			t.Errorf("fakeServer (2nd conn): got request method %q; want %q", probeReq2.Method, "workspace/symbol")
+			return
+		}
+		server2.respond(t, probeReq2.ID, []map[string]any{})
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// command is never reached: the escalation reuses the second
+	// connection, so no respawn is ever attempted.
+	client, err := ensureSupervised(ctx, []string{"lyx-codeintel-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, 5*time.Second)
+	<-done
+	if err != nil {
+		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("ensureSupervised() returned a nil client with a nil error")
+	}
+	// kill() only tears down this test's own dialed connection to the fake
+	// server above; it has no bearing on the held fixture PID.
+	defer client.kill()
+
+	if !proc.IsAlive(pid) {
+		t.Error("ensureSupervised()'s reuse-success escalation killed the held fixture PID; want it left alive (the daemon was never actually wedged)")
+	}
+
+	// The reuse-success return path must release the spawn lock before
+	// returning, exactly like every other return path.
+	freshLock, acquired, err := lock.TryAcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("lock.TryAcquireWriteLock() after ensureSupervised()'s reuse-success return failed: %v", err)
+	}
+	if !acquired {
+		t.Error("lock.TryAcquireWriteLock() after ensureSupervised()'s reuse-success return acquired = false; want true (lock released)")
+	} else {
+		_ = freshLock.Release()
 	}
 }
 

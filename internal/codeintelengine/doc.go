@@ -35,16 +35,16 @@
 //
 // # The generalized LSP client
 //
-// The LSP client (lspclient.go) speaks exactly seven methods over stdio
+// The LSP client (lspclient.go) speaks exactly eight methods over stdio
 // JSON-RPC framing (Content-Length-prefixed messages): initialize,
 // initialized, textDocument/references, textDocument/definition,
-// workspace/symbol, shutdown, exit. No callHierarchy, no implementation —
-// the spike's call-hierarchy recommendation (build it on
-// TypesInfo.Uses/Defs, never syntactic *ast.CallExpr pattern-matching) does
-// not translate to a language-agnostic LSP client at all, since LSP callers
-// must accept whatever callHierarchy/incomingCalls a given server
-// implements; that generalization is explicitly deferred (see Scope
-// boundaries below).
+// textDocument/documentSymbol, workspace/symbol, shutdown, exit. No
+// callHierarchy, no implementation — the spike's call-hierarchy
+// recommendation (build it on TypesInfo.Uses/Defs, never syntactic
+// *ast.CallExpr pattern-matching) does not translate to a language-agnostic
+// LSP client at all, since LSP callers must accept whatever
+// callHierarchy/incomingCalls a given server implements; that
+// generalization is explicitly deferred (see Scope boundaries below).
 //
 // Every request phase — initialize, the workspace/symbol resolver call, and
 // textDocument/references or textDocument/definition — is bounded by its
@@ -70,6 +70,19 @@
 // path immediately with ErrResolverUnsupported rather than attempting the
 // call and getting an empty or undefined result. An explicit file:line:col
 // position bypasses this resolver entirely.
+//
+// A second, narrower resolve mode (--in-file, Query.InFile) exists
+// alongside workspace/symbol for the case a caller already knows which file
+// a symbol lives in: resolvePosition issues textDocument/documentSymbol for
+// that one file instead and searches its hierarchical result exhaustively
+// (collectInFileMatches, descending into every symbol's Children) for exact
+// name matches. Unlike workspace/symbol, this resolver does no fuzzy or
+// project-wide matching — it is scoped to exactly the one named file — and
+// gates on the server advertising documentSymbolProvider rather than
+// workspaceSymbolProvider, failing with ErrResolverUnsupported the same way
+// when it does not. The zero/one/many candidate mapping to
+// ErrSymbolNotFound/success/ErrAmbiguousSymbol otherwise mirrors
+// workspace/symbol's exactly.
 //
 // Position conversion (position.go) is the one place caller-facing 1-based
 // line/byte-column positions (file:line:col as parsed from a CLI argument)
@@ -135,21 +148,20 @@
 // Two strategies implement the seam: ensureNative (native, Go's production
 // path — spawn gopls -remote=auto, a disposable local proxy subprocess;
 // gopls itself dedups and owns the real shared daemon behind it, kept warm
-// via an explicit -remote.listen.timeout override — see nativeDaemonIdleTimeout
+// via an explicit -remote.listen.timeout override — see daemonIdleTimeout
 // in ensureserver.go — sized for an agent's own reasoning gaps between
 // calls, not gopls's 1-minute human-editing-rhythm default) and
 // ensureSupervised (supervised — lyx owns a state file, an advisory
 // spawn-race lock, a deterministic socket path, and detached-spawn/restart
-// logic for a language server with no shared-daemon mode of its own, e.g. a
-// future ty/OmniSharp adapter). ensureServer's own dispatch has exactly one
-// live arm in V1: it always calls ensureNative, since no V1 registry entry
-// (only Go's, which is native) ever requests supervised. ensureSupervised is
-// nonetheless fully built, unit-tested, and integration-tested — its own
-// dedicated integration test drives it directly against a plain gopls,
-// proving the state-file, probe, and kill-and-restart behavior work before
-// any language that actually needs it exists. A future ty/OmniSharp adapter
-// is what will first reach ensureSupervised through ensureServer's dispatch,
-// once a registry entry requests it.
+// logic for a language server with no shared-daemon mode of its own).
+// ensureServer dispatches Go to ensureSupervised as its live V1 strategy: it
+// resolves the toolchain once, then attempts supervised, falling back to
+// ensureNative on any supervised error (a toolchain-resolution failure
+// itself never reaches the fallback, since it is returned before
+// ensureSupervised is ever attempted). ensureNative remains fully built,
+// unit-tested, and integration-tested as this fallback — its own dedicated
+// integration test still drives it directly, proving the -remote=auto
+// proxy path independently of the supervised dispatch above it.
 //
 // Connection teardown differs by connKind, and getting this wrong is a
 // protocol-correctness bug, not a style choice:
@@ -171,14 +183,12 @@
 //     the real server subprocess it directly owns, since it never went
 //     through ensureServer at all.
 //
-// Known limitation, carried forward from ensureSupervised's own doc comment:
-// daemonStale only checks PID liveness and protocol version, not whether the
-// daemon actually answers a dial. A daemon that is live but wedged is never
-// classified stale, so every caller's dial-then-finalize keeps failing
-// against a state that keeps reading "healthy," and no caller ever restarts
-// it. This is an accepted gap, not a bug fixed here — supervised has no live
-// V1 dispatch path, so it affects no production caller yet; recovering from
-// it is a future consumer's problem, not this task's.
+// A wedged daemon — live but hung, or never finished binding its listen
+// socket, neither of which daemonStale's PID-plus-protocol-version check
+// alone detects — no longer strands every caller indefinitely: see
+// ensureSupervised's own doc comment for the re-dial-under-lock-then-
+// one-restart escalation that recovers it, now that Go's registry entry
+// dispatches here as a live V1 caller.
 //
 // # Go toolchain manager
 //

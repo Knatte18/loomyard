@@ -13,8 +13,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -513,6 +515,190 @@ func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
 				if status, _ := entry["status"].(string); status != tt.wantStatus[i] {
 					t.Errorf("results[%d][\"status\"] = %q; want %q", i, status, tt.wantStatus[i])
 				}
+			}
+		})
+	}
+}
+
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker proves the
+// success branch of emitLookupResult (a nil err) adds the machine-readable
+// "resolution":"complete" trust marker alongside the results field, while
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo's table above proves the
+// ambiguous and not-found branches do NOT carry it — the marker is
+// meaningful only for a confirmed, complete result set.
+func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ctx, es := clihelp.NewExitContext(context.Background())
+
+	emitLookupResult(ctx, &out, "references", []codeintelengine.Reference{{File: "a.go", Line: 1, Character: 2}}, nil)
+
+	if es.Code() != 0 {
+		t.Errorf("es.Code() = %d; want 0", es.Code())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("emitLookupResult output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	if resolution, _ := env["resolution"].(string); resolution != "complete" {
+		t.Errorf("envelope %v missing \"resolution\":\"complete\"; got %q", env, resolution)
+	}
+}
+
+// TestClassifyLookupError_FoundCarriesResolutionCompleteMarker mirrors
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker for batch
+// mode's classifier: classifyLookupError's statusFound branch must carry the
+// same "resolution":"complete" field, one per batch entry, while its
+// statusAmbiguous/statusNotFound/statusError branches leave it out.
+func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) {
+	t.Parallel()
+
+	status, fields := classifyLookupError(nil, "references", []codeintelengine.Reference{{File: "a.go", Line: 1, Character: 2}})
+
+	if status != statusFound {
+		t.Errorf("classifyLookupError(nil, ...) status = %q; want %q", status, statusFound)
+	}
+	if resolution, _ := fields["resolution"].(string); resolution != "complete" {
+		t.Errorf("classifyLookupError(nil, ...) fields = %v; missing \"resolution\":\"complete\"", fields)
+	}
+
+	ambiguousStatus, ambiguousFields := classifyLookupError(&codeintelengine.ErrAmbiguousSymbol{Symbol: "Foo", Candidates: []string{"a.go:1:1"}}, "references", nil)
+	if ambiguousStatus != statusAmbiguous {
+		t.Fatalf("classifyLookupError(ambiguous, ...) status = %q; want %q", ambiguousStatus, statusAmbiguous)
+	}
+	if _, ok := ambiguousFields["resolution"]; ok {
+		t.Errorf("classifyLookupError(ambiguous, ...) fields = %v; want no \"resolution\" field", ambiguousFields)
+	}
+}
+
+// TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir proves the
+// "Supervised daemon anchoring outside a lyx hub" Shared Decision's fallback:
+// from a fresh t.TempDir() with no _lyx (outside any lyx hub, and — being a
+// t.TempDir() — never inside a git repository either, so
+// hubgeometry.Resolve fails), resolveWorktreeRoot must return the absolute
+// form of targetDir, never an empty string.
+func TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir(t *testing.T) {
+	cwd := t.TempDir()
+	targetDir := t.TempDir()
+
+	got := resolveWorktreeRoot(cwd, targetDir)
+
+	if got == "" {
+		t.Fatalf("resolveWorktreeRoot(%q, %q) = \"\"; want a non-empty absolute path", cwd, targetDir)
+	}
+	wantAbs, err := filepath.Abs(targetDir)
+	if err != nil {
+		t.Fatalf("filepath.Abs(%q) error = %v", targetDir, err)
+	}
+	if got != wantAbs {
+		t.Errorf("resolveWorktreeRoot(%q, %q) = %q; want %q", cwd, targetDir, got, wantAbs)
+	}
+}
+
+// TestBuildOptions_ThreadsEveryFieldFromItsArguments pins buildOptions's
+// field-threading contract: every argument lands in the identically-named
+// Options field, WorktreeRoot included and non-empty. This does not (and
+// cannot) prove a specific call site passes the right worktreeRoot local —
+// that regression is guarded structurally by the DRY collapse of the six
+// construction sites onto this one function, not by this tautological
+// self-check — but it does pin the shape/wiring contract every call site
+// relies on.
+func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
+	t.Parallel()
+
+	registry := codeintelengine.BuiltinRegistry()
+	query := codeintelengine.Query{Symbol: "Foo"}
+
+	got := buildOptions(registry, "/target", "/worktree/root", "go", query, 5*time.Second)
+
+	if got.TargetDir != "/target" {
+		t.Errorf("buildOptions(...).TargetDir = %q; want %q", got.TargetDir, "/target")
+	}
+	if got.WorktreeRoot != "/worktree/root" {
+		t.Errorf("buildOptions(...).WorktreeRoot = %q; want %q", got.WorktreeRoot, "/worktree/root")
+	}
+	if got.Lang != "go" {
+		t.Errorf("buildOptions(...).Lang = %q; want %q", got.Lang, "go")
+	}
+	if got.Query != query {
+		t.Errorf("buildOptions(...).Query = %+v; want %+v", got.Query, query)
+	}
+	if got.Timeout != 5*time.Second {
+		t.Errorf("buildOptions(...).Timeout = %v; want %v", got.Timeout, 5*time.Second)
+	}
+}
+
+// TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName proves
+// inFileQuery's core contract: the returned Query carries InFile (absolute
+// File, bare Name) and never Pos — even when name itself happens to have a
+// "file:line:col" shape, mirroring symbolQuery's never-position-parsed
+// discipline for the flag-less "symbol" verb.
+func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testing.T) {
+	t.Parallel()
+
+	const name = "foo.go:1:1"
+
+	query, err := inFileQuery("internal/foo/bar.go", name)
+	if err != nil {
+		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "internal/foo/bar.go", name, err)
+	}
+
+	if query.Pos != nil {
+		t.Errorf("inFileQuery(...).Pos = %+v; want nil — the name must never be position-parsed", query.Pos)
+	}
+	if query.InFile == nil {
+		t.Fatalf("inFileQuery(...).InFile = nil; want a populated *InFileQuery")
+	}
+	if query.InFile.Name != name {
+		t.Errorf("inFileQuery(...).InFile.Name = %q; want %q", query.InFile.Name, name)
+	}
+	if !filepath.IsAbs(query.InFile.File) {
+		t.Errorf("inFileQuery(...).InFile.File = %q; want an absolute path", query.InFile.File)
+	}
+}
+
+// TestInFileQuery_ResolvesRelativePathToAbsolute proves a relative --in-file
+// path is resolved against the process cwd, exactly like parseQuery resolves
+// a relative "file:line:col" argument's file component.
+func TestInFileQuery_ResolvesRelativePathToAbsolute(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	query, err := inFileQuery("relative/bar.go", "MyFunc")
+	if err != nil {
+		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "relative/bar.go", "MyFunc", err)
+	}
+
+	want := filepath.Join(cwd, "relative/bar.go")
+	if query.InFile == nil || query.InFile.File != want {
+		t.Errorf("inFileQuery(...).InFile.File = %+v; want %q", query.InFile, want)
+	}
+}
+
+// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol proves --in-file
+// is registered on refs and definition but deliberately absent from symbol:
+// per the plan, symbol has no --in-file variant at all.
+func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cmd     *cobra.Command
+		wantHas bool
+	}{
+		{"refs", refsCommand(), true},
+		{"definition", definitionCommand(), true},
+		{"symbol", symbolCommand(), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasFlag := tt.cmd.Flags().Lookup("in-file") != nil
+			if hasFlag != tt.wantHas {
+				t.Errorf("%s command has --in-file registered = %v; want %v", tt.name, hasFlag, tt.wantHas)
 			}
 		})
 	}

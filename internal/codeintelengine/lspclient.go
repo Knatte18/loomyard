@@ -65,14 +65,34 @@ type symbolInformation struct {
 	Location lspLocation `json:"location"`
 }
 
+// lspDocumentSymbol is the LSP wire shape for one textDocument/documentSymbol
+// result: gopls (and the LSP spec's preferred shape) returns this
+// hierarchical DocumentSymbol[] form, where a type's methods and a
+// namespace's members nest under it via Children, rather than the flat
+// SymbolInformation[] alternative the spec also allows — parsing the
+// hierarchical shape is sufficient for this engine's needs, so the flat
+// alternative is deliberately not handled. Range spans the whole symbol
+// (e.g. a function's entire body); SelectionRange spans just the
+// identifier itself, which is what refs.go's InFile resolve branch uses as
+// the reported position.
+type lspDocumentSymbol struct {
+	Name           string              `json:"name"`
+	Kind           int                 `json:"kind"`
+	Range          lspRange            `json:"range"`
+	SelectionRange lspRange            `json:"selectionRange"`
+	Children       []lspDocumentSymbol `json:"children"`
+}
+
 // capabilities is the narrow slice of the server's initialize response this
-// client retains: whether workspace/symbol name resolution is supported.
-// The LSP spec allows workspaceSymbolProvider to be either a bare bool or an
-// options object; UnmarshalJSON below normalizes both to a Supported bool
-// so refs.go's supportsWorkspaceSymbol() check never has to care which
-// shape a given server sent.
+// client retains: whether workspace/symbol name resolution and
+// textDocument/documentSymbol are supported. The LSP spec allows both
+// capability fields to be either a bare bool or an options object;
+// UnmarshalJSON below normalizes both shapes to a Supported bool so
+// refs.go's supportsWorkspaceSymbol()/supportsDocumentSymbol() checks never
+// have to care which shape a given server sent.
 type capabilities struct {
 	WorkspaceSymbolProvider capabilityFlag `json:"workspaceSymbolProvider"`
+	DocumentSymbolProvider  capabilityFlag `json:"documentSymbolProvider"`
 }
 
 // capabilityFlag normalizes an LSP capability field that servers may report
@@ -411,6 +431,13 @@ func (c *lspClient) supportsWorkspaceSymbol() bool {
 	return c.caps.WorkspaceSymbolProvider.Supported
 }
 
+// supportsDocumentSymbol reports whether the server's initialize response
+// advertised documentSymbolProvider. It is only meaningful after a
+// successful initialize call.
+func (c *lspClient) supportsDocumentSymbol() bool {
+	return c.caps.DocumentSymbolProvider.Supported
+}
+
 // references issues one textDocument/references request (with
 // includeDeclaration: true, so the declaration site is included alongside
 // call sites) and returns the raw location list.
@@ -523,6 +550,28 @@ func (c *lspClient) workspaceSymbol(ctx context.Context, query string) ([]symbol
 	sort.Slice(symbols, func(i, j int) bool {
 		return formatLocation(symbols[i].Location) < formatLocation(symbols[j].Location)
 	})
+	return symbols, nil
+}
+
+// documentSymbol issues one textDocument/documentSymbol request and returns
+// the server's hierarchical DocumentSymbol[] result unchanged (children
+// still nested under their parent). gopls returns this hierarchical shape,
+// not the LSP spec's alternative flat SymbolInformation[] shape; parsing
+// only the hierarchical shape is a deliberate scope choice (see
+// lspDocumentSymbol's doc comment), not an oversight of the spec's other
+// legal response shape.
+func (c *lspClient) documentSymbol(ctx context.Context, fileURI string) ([]lspDocumentSymbol, error) {
+	raw, err := c.call(ctx, "documentSymbol", "textDocument/documentSymbol", map[string]any{
+		"textDocument": map[string]any{"uri": fileURI},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var symbols []lspDocumentSymbol
+	if err := json.Unmarshal(raw, &symbols); err != nil {
+		return nil, fmt.Errorf("unmarshal textDocument/documentSymbol result: %w", err)
+	}
 	return symbols, nil
 }
 
