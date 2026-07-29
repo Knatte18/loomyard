@@ -3,7 +3,7 @@
 ```yaml
 task: "Give codeintel a persistent, session-long daemon"
 slug: "codeintel-daemon-persistence"
-approved: false
+approved: true
 started: "20260729-154426"
 parent: "codeintel-v1"
 root: ""
