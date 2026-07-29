@@ -210,6 +210,45 @@ func supervisedArgv(command []string, socketPath string) []string {
 // wait matters just as much as the first.
 const spawnRacePollInterval = 100 * time.Millisecond
 
+// reconnectUnderLock implements the "re-dial-under-lock, reuse-or-restart"
+// decision at the heart of ensureSupervised's wedged-daemon escalation: once
+// step 1's initial dial-or-finalize attempt has failed against a state that
+// read as healthy, this is what decides whether the daemon is merely
+// unreachable for a moment (another caller already respawned, or the same
+// daemon recovered on its own) or genuinely wedged. It is a pure helper —
+// dial and finalize are injected function values, and it performs no
+// proc.KillPID, spawn, or state I/O of its own — so this decision is
+// unit-testable with fakes and no real process, kept separate from
+// ensureSupervised, which alone owns the escalation's side effects.
+//
+// It runs the same bounded 10x50ms dial retry the spawner's own step 6 uses
+// against address, and on a successful dial runs finalize. A successful
+// fresh dial+finalize returns (client, true, nil): the daemon was not
+// actually wedged, and the caller must not kill it. A failed retry or a
+// failed finalize returns (nil, false, nil): the daemon is genuinely
+// wedged, and the caller must proc.KillPID + respawn. This function does
+// not itself enforce ensureSupervised's overall deadline — its own retry is
+// already inherently bounded (~500ms worst case), and the caller applies
+// its own deadline check immediately after this function returns, exactly
+// as it already does around the spawner's step 6 dial retry.
+func reconnectUnderLock(ctx context.Context, network, address string, dial func(ctx context.Context, network, address string) (*lspClient, error), finalize func(ctx context.Context, client *lspClient) error) (client *lspClient, healthy bool, err error) {
+	var dialErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		client, dialErr = dial(ctx, network, address)
+		if dialErr == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if dialErr != nil {
+		return nil, false, nil
+	}
+	if finalizeErr := finalize(ctx, client); finalizeErr != nil {
+		return nil, false, nil
+	}
+	return client, true, nil
+}
+
 // ensureSupervised implements the supervised EnsureServer strategy: dial (or
 // spawn, race-fenced by a worktree-scoped advisory lock) a lyx-owned,
 // detached daemon process running command with "serve
@@ -229,12 +268,17 @@ const spawnRacePollInterval = 100 * time.Millisecond
 // blocking indefinitely — the "bounded retry, not indefinite blocking" the
 // concurrency-locking decision requires.
 //
-// The daemon this function spawns is never killed by its caller: its
-// process is intentionally detached (proc.DetachBreakaway) and outlives
-// this call. The only things that ever terminate it are its own idle
-// timeout — set explicitly via supervisedArgv's -listen.timeout=<
-// daemonIdleTimeout> flag, not left to gopls's own default — or a future
-// restart's stale-socket cleanup finding it already dead.
+// The daemon this function spawns is intentionally detached
+// (proc.DetachBreakaway) and outlives a normal call — this function does
+// not kill a daemon just because the call that reused or spawned it is
+// ending. A wedged daemon is the one exception: this function's own
+// wedged-daemon escalation (below) force-kills it via proc.KillPID once a
+// fresh re-dial under the spawn lock confirms it no longer answers at all,
+// then respawns in its place. Otherwise the daemon ends on its own: its own
+// idle timeout — set explicitly via supervisedArgv's
+// -listen.timeout=<daemonIdleTimeout> flag, not left to gopls's own
+// default — or a future restart's stale-socket cleanup finding it already
+// dead.
 //
 // Known limitation: daemonStale only checks PID liveness and protocol
 // version, not whether the daemon actually answers a dial. A process that
@@ -279,6 +323,16 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 			// into the retry logic below.
 			return nil, fmt.Errorf("codeintelengine: ensureSupervised read daemon state for %q: %w", lang, err)
 		}
+		// escalating distinguishes two very different reasons for reaching
+		// the lock below: a non-stale state whose dial-or-finalize just
+		// failed (the wedged-daemon scenario this function's own doc
+		// comment names, handled by the escalation branch after the lock is
+		// acquired) versus an absent/stale state (the ordinary spawn-race
+		// path, step 3 below). Conflating the two would make the ordinary
+		// path's ordinary re-check-and-spin (step 3) the thing that handles
+		// a wedged daemon too, which just spins step1->step3 forever
+		// against the same non-stale-but-undialable state.
+		escalating := false
 		if found && !daemonStale(state) {
 			if network, address, ok := strings.Cut(state.Address, ";"); ok {
 				if client, dialErr := newLSPClientDial(ctx, network, address); dialErr == nil {
@@ -286,16 +340,20 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 						return client, nil
 					}
 					// Initialize/probe failed against a state that read as
-					// healthy; fall through to the lock/spawn path below
-					// rather than retrying the same dead end.
+					// healthy; escalate under the lock below rather than
+					// retrying the same dead end.
+					escalating = true
+				} else {
+					escalating = true
 				}
 			}
 		}
 
-		// Step 2: the dial/finalize above failed, or the state was
-		// absent/stale — try to become the spawner. gofrs/flock opens the
-		// lock file with O_CREATE but never creates missing parent
-		// directories, so a worktree's very first supervised call (before
+		// Step 2: the dial/finalize above failed against a non-stale state
+		// (escalating), or the state was absent/stale — either way, try to
+		// become the lock holder. gofrs/flock opens the lock file with
+		// O_CREATE but never creates missing parent directories, so a
+		// worktree's very first supervised call (before
 		// .lyx/codeintel/<lang>/ exists at all) must create it here first,
 		// matching this package's own MkdirAll-before-lock precedent
 		// (goToolchainInstallLock in toolchain.go).
@@ -307,10 +365,10 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 			return nil, fmt.Errorf("codeintelengine: ensureSupervised acquire spawn lock for %q: %w", lang, err)
 		}
 		if !acquired {
-			// Someone else is spawning or restarting; re-check state after a
-			// short bounded interval rather than blocking on the lock, so
-			// this call keeps re-evaluating whether the state has become
-			// healthy meanwhile.
+			// Someone else is spawning, restarting, or running this same
+			// escalation; re-check state after a short bounded interval
+			// rather than blocking on the lock, so this call keeps
+			// re-evaluating whether the state has become healthy meanwhile.
 			if time.Now().After(deadline) {
 				return nil, &ErrServerSpawnTimeout{Lang: lang}
 			}
@@ -318,34 +376,109 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 			continue
 		}
 
-		// Step 3: double-check under the lock — another process may have
-		// spawned a fresh daemon while this call was waiting for the lock.
-		state, found, err = readDaemonState(statePath)
-		if err != nil {
-			fileLock.Release()
-			return nil, fmt.Errorf("codeintelengine: ensureSupervised re-read daemon state for %q: %w", lang, err)
-		}
-		if found && !daemonStale(state) {
-			fileLock.Release()
-			// Same deadline guard as step 2's !acquired branch above: without
-			// it, an uncontended lock combined with a state that always
-			// reads healthy but never actually dials (the "wedged daemon"
-			// scenario this function's own doc comment names) spins
-			// step1->step3 forever with no bound, contradicting the "whole
-			// call is bounded by deadline" guarantee documented above.
+		if escalating {
+			// Wedged-daemon escalation: re-read the state under the lock —
+			// another caller may have already respawned, or the same
+			// daemon may have recovered, while this call waited for the
+			// lock — and re-dial whatever address is currently recorded,
+			// with the same bounded retry the spawner's own step 6 uses,
+			// before concluding the daemon is genuinely wedged rather than
+			// merely racing another caller.
+			escalationState, escalationFound, err := readDaemonState(statePath)
+			if err != nil {
+				fileLock.Release()
+				return nil, fmt.Errorf("codeintelengine: ensureSupervised re-read daemon state during wedged-daemon escalation for %q: %w", lang, err)
+			}
+
+			var reconnected *lspClient
+			healthy := false
+			if escalationFound {
+				if network, address, ok := strings.Cut(escalationState.Address, ";"); ok {
+					reconnected, healthy, err = reconnectUnderLock(ctx, network, address, newLSPClientDial, func(ctx context.Context, client *lspClient) error {
+						return finalizeConnection(ctx, client, rootURI, timeout)
+					})
+					if err != nil {
+						fileLock.Release()
+						return nil, fmt.Errorf("codeintelengine: ensureSupervised re-dial under lock for %q: %w", lang, err)
+					}
+				}
+			}
+			if healthy {
+				// The fresh under-lock dial+finalize succeeded: another
+				// caller already respawned, or this same daemon recovered,
+				// between the failed dial in step 1 and acquiring the lock
+				// here. Reuse the connection — the daemon was never
+				// actually wedged, so killing it would be wrong.
+				fileLock.Release()
+				return reconnected, nil
+			}
+
+			// Same deadline guard step 2's !acquired branch above already
+			// applies: reconnectUnderLock's own retry is inherently bounded
+			// (~500ms worst case), but a caller whose deadline expires
+			// during that retry must still get ErrServerSpawnTimeout here,
+			// before ever attempting proc.KillPID/respawn below — otherwise
+			// a caller racing a deadline this short could fall through to
+			// respawn and fail at cmd.Start() with a spawn error instead of
+			// the documented timeout.
 			if time.Now().After(deadline) {
+				fileLock.Release()
 				return nil, &ErrServerSpawnTimeout{Lang: lang}
 			}
-			// The winner writes the state file and releases the lock
-			// *before* its own dial-retry loop (step 6 below) confirms the
-			// daemon has actually finished binding its listen socket. A
-			// loser reaching here immediately after the winner's release
-			// would otherwise land back on step 1 dialing a socket that
-			// isn't bound yet, repeatedly, with no backoff anywhere in this
-			// specific path — a tight spin for the duration of the bind
-			// window. This sleep is what prevents that.
-			time.Sleep(spawnRacePollInterval)
-			continue
+
+			// The fresh under-lock dial+finalize also failed (or there was
+			// no recorded state left to re-dial at all): the daemon is
+			// genuinely wedged, not merely racing another caller or slow to
+			// bind. proc.KillPID is best-effort — if the daemon already
+			// died on its own between the failed re-dial and this call,
+			// KillPID returns a non-nil error (e.g. ESRCH/ErrProcessDone);
+			// that is exactly the outcome the respawn below already handles
+			// correctly, so it is logged, not returned or treated as this
+			// call's own failure.
+			if escalationFound {
+				if err := proc.KillPID(escalationState.PID); err != nil {
+					fmt.Fprintf(os.Stderr, "codeintelengine: kill wedged supervised daemon pid %d for %q: %v\n", escalationState.PID, lang, err)
+				}
+			}
+			// Fall through to step 4 below to respawn — the lock acquired
+			// above is still held, so the respawn proceeds directly without
+			// releasing and re-acquiring it.
+		} else {
+			// Step 3: double-check under the lock — another process may
+			// have spawned a fresh daemon while this call was waiting for
+			// the lock.
+			state, found, err = readDaemonState(statePath)
+			if err != nil {
+				fileLock.Release()
+				return nil, fmt.Errorf("codeintelengine: ensureSupervised re-read daemon state for %q: %w", lang, err)
+			}
+			if found && !daemonStale(state) {
+				fileLock.Release()
+				// Same deadline guard as step 2's !acquired branch above:
+				// without it, an uncontended lock combined with a state
+				// that always reads healthy but never actually dials would
+				// spin step1->step3 forever with no bound (this exact
+				// scenario is now instead caught by step 1's escalating
+				// branch above, but the guard stays here too since step 3
+				// is reachable whenever step 1 found an absent/stale state
+				// that a racing caller then filled in), contradicting the
+				// "whole call is bounded by deadline" guarantee documented
+				// above.
+				if time.Now().After(deadline) {
+					return nil, &ErrServerSpawnTimeout{Lang: lang}
+				}
+				// The winner writes the state file and releases the lock
+				// *before* its own dial-retry loop (step 6 below) confirms
+				// the daemon has actually finished binding its listen
+				// socket. A loser reaching here immediately after the
+				// winner's release would otherwise land back on step 1
+				// dialing a socket that isn't bound yet, repeatedly, with
+				// no backoff anywhere in this specific path — a tight spin
+				// for the duration of the bind window. This sleep is what
+				// prevents that.
+				time.Sleep(spawnRacePollInterval)
+				continue
+			}
 		}
 
 		// Step 4: this call is the winner. Stale-socket cleanup runs

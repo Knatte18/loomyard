@@ -1,14 +1,15 @@
 // ensureserver_test.go covers finalizeConnection, the shared
-// initialize+probe+kill-on-failure sequence ensureserver.go defines.
-// Untagged and offline: every case here builds a client over
-// newLSPClientFromRW + newPipeTransportPair/fakeServer, the same
-// fake-transport harness lspclient_test.go already establishes for this
-// package, reusable with no import since it's the same package. This is
-// also the natural home for every future ensureServer-adjacent unit test
-// batch 6 adds — the dispatcher itself needs no dedicated test today, since
-// it has one unconditional branch, nothing to assert beyond what
-// ensureNative's own tests already cover transitively via the integration
-// test.
+// initialize+probe+kill-on-failure sequence ensureserver.go defines, plus
+// the argv-shape and wedged-daemon-escalation decision helpers
+// (nativeArgv/supervisedArgv, reconnectUnderLock) that are unit-testable
+// without spawning anything. Untagged and offline: every case here builds a
+// client over newLSPClientFromRW + newPipeTransportPair/fakeServer, the
+// same fake-transport harness lspclient_test.go already establishes for
+// this package, reusable with no import since it's the same package, or
+// drives a pure decision helper with injected fakes. This file is not
+// file-allowlisted in cmd/lyx/tierpurity_test.go's allowedSpawners map, so
+// it must never spawn a real process — any test needing a real subprocess
+// belongs in supervised_test.go or a //go:build integration file instead.
 
 package codeintelengine
 
@@ -236,5 +237,88 @@ func TestSupervisedArgv_IncludesServeListenAndIdleTimeout(t *testing.T) {
 	}
 	if !hasTimeoutFlag {
 		t.Errorf("supervisedArgv() = %v; want it to contain %q", argv, wantTimeoutFlag)
+	}
+}
+
+// TestReconnectUnderLock_ReuseOrRestart drives reconnectUnderLock's pure
+// dial-then-finalize decision against injected fakes, covering every case
+// ensureSupervised's wedged-daemon escalation depends on to decide whether
+// to reuse a connection or restart the daemon: (a) another caller already
+// respawned while this call waited for the lock, (b) the same daemon
+// recovered on its own, and (c) the daemon is genuinely wedged (dial keeps
+// failing, or dial succeeds but finalize fails). (a) and (b) are
+// indistinguishable from reconnectUnderLock's own perspective — both are
+// "the fresh under-lock dial+finalize succeeded" — so they exercise the
+// same code path; they are kept as separate named cases here because
+// ensureSupervised's own doc comment and this test's card distinguish them
+// as two different real-world causes of the same outcome. No real dial,
+// finalize, spawn, or kill happens anywhere in this test — reconnectUnderLock
+// is a pure helper, per its own doc comment.
+func TestReconnectUnderLock_ReuseOrRestart(t *testing.T) {
+	fakeClient := &lspClient{}
+	fakeDialErr := errors.New("dial refused")
+	fakeFinalizeErr := errors.New("initialize failed")
+
+	tests := []struct {
+		name        string
+		dial        func(ctx context.Context, network, address string) (*lspClient, error)
+		finalize    func(ctx context.Context, client *lspClient) error
+		wantClient  *lspClient
+		wantHealthy bool
+	}{
+		{
+			name: "AnotherCallerAlreadyRespawned",
+			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+				return fakeClient, nil
+			},
+			finalize:    func(ctx context.Context, client *lspClient) error { return nil },
+			wantClient:  fakeClient,
+			wantHealthy: true,
+		},
+		{
+			name: "SameDaemonRecovered",
+			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+				return fakeClient, nil
+			},
+			finalize:    func(ctx context.Context, client *lspClient) error { return nil },
+			wantClient:  fakeClient,
+			wantHealthy: true,
+		},
+		{
+			name: "GenuinelyWedged_DialAlwaysFails",
+			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+				return nil, fakeDialErr
+			},
+			finalize: func(ctx context.Context, client *lspClient) error {
+				t.Fatal("finalize called despite every dial attempt failing")
+				return nil
+			},
+			wantClient:  nil,
+			wantHealthy: false,
+		},
+		{
+			name: "GenuinelyWedged_DialSucceedsFinalizeFails",
+			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+				return fakeClient, nil
+			},
+			finalize:    func(ctx context.Context, client *lspClient) error { return fakeFinalizeErr },
+			wantClient:  nil,
+			wantHealthy: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, healthy, err := reconnectUnderLock(context.Background(), "unix", "/tmp/example.sock", tt.dial, tt.finalize)
+			if err != nil {
+				t.Fatalf("reconnectUnderLock() returned unexpected error: %v", err)
+			}
+			if healthy != tt.wantHealthy {
+				t.Errorf("reconnectUnderLock() healthy = %v; want %v", healthy, tt.wantHealthy)
+			}
+			if client != tt.wantClient {
+				t.Errorf("reconnectUnderLock() client = %v; want %v", client, tt.wantClient)
+			}
+		})
 	}
 }
