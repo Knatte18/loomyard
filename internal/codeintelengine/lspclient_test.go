@@ -24,6 +24,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -367,5 +370,81 @@ func TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext(t *testing.T) {
 	}
 	if !errors.Is(err, ErrServerTimeoutSentinel) {
 		t.Errorf("references() with an expired context err = %v; want errors.Is(err, ErrServerTimeoutSentinel)", err)
+	}
+}
+
+// TestLSPClient_DialTransport_InitializeOverUnixSocket proves the dial
+// transport (newLSPClientDial) is not a new protocol implementation, only a
+// new way to obtain the io.ReadWriteCloser newLSPClientFromRW already knows
+// how to drive: it runs the exact same initialize-handshake script
+// TestLSPClient_InitializeCapturesCapabilities uses, but over a real
+// net.Listen("unix", ...) socket instead of an in-process io.Pipe.
+func TestLSPClient_DialTransport_InitializeOverUnixSocket(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows supports AF_UNIX too, but this repo's CI convention
+		// elsewhere skips platform-specific socket tests rather than adding
+		// a second listener code path; this is a scoping choice, not an
+		// oversight. TCP is covered by the address-form flexibility of
+		// newLSPClientDial itself (it passes network/address through
+		// verbatim with no Unix-specific handling).
+		t.Skip("unix sockets not exercised on windows here; TCP is covered by the address-form flexibility of newLSPClientDial itself")
+	}
+
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("net.Listen(unix, %s) failed: %v", socketPath, err)
+	}
+	defer listener.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := listener.Accept()
+		if err != nil {
+			t.Errorf("listener.Accept() failed: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		server := newFakeServer(conn)
+		req, ok := server.readMessage(t)
+		if !ok {
+			return
+		}
+		if req.Method != "initialize" {
+			t.Errorf("fakeServer: got request method %q; want %q", req.Method, "initialize")
+			return
+		}
+		if !server.respond(t, req.ID, map[string]any{
+			"capabilities": map[string]any{
+				"workspaceSymbolProvider": true,
+			},
+		}) {
+			return
+		}
+		// initialized is a notification (no id); read and discard it so the
+		// connection doesn't leave an unread message behind.
+		server.readMessage(t)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := newLSPClientDial(ctx, "unix", socketPath)
+	if err != nil {
+		t.Fatalf("newLSPClientDial() returned unexpected error: %v", err)
+	}
+	// kill() rather than close(): the fake-server goroutine above answers
+	// only the initialize handshake and exits, so a graceful close() would
+	// block on an unanswered shutdown request until its own 5s timeout.
+	defer client.kill()
+
+	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+		t.Fatalf("initialize() returned unexpected error: %v", err)
+	}
+	<-done
+
+	if !client.supportsWorkspaceSymbol() {
+		t.Error("supportsWorkspaceSymbol() = false; want true (server advertised workspaceSymbolProvider)")
 	}
 }
