@@ -49,7 +49,9 @@ implementing  '2026-07-29T18:00:12Z'
 ```yaml
 batches:
   - name: hubgeometry-inject-names
-    state: pending
+    state: running
+    implementer_session: 7395fdbd-6fbb-4988-a743-0ad636a458d3
+    start_sha: 7ac6fbd4b434ff5ec8bb8209c986342f779f918d
   - name: fabricengine-wiring
     state: pending
   - name: proofs-and-docs
