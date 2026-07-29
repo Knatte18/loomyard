@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-junction-config
 branch: fabric-junction-config
 plan: _mill/plan
@@ -41,4 +41,17 @@ plan-fix-r9  '2026-07-29T17:48:02Z'
 plan-review-r10  '2026-07-29T17:59:13Z'
 plan-fix-r10  '2026-07-29T17:59:13Z'
 planned  '2026-07-29T17:59:29Z'
+implementing  '2026-07-29T18:00:12Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: hubgeometry-inject-names
+    state: pending
+  - name: fabricengine-wiring
+    state: pending
+  - name: proofs-and-docs
+    state: pending
 ```
