@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: 'approved-fabricengine: CommitWeftAt primitive'
 slug: board
 branch: board
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r5  '2026-07-29T08:40:22Z'
 plan-fix-r6  '2026-07-29T08:50:41Z'
 planned  '2026-07-29T08:51:06Z'
 implementing  '2026-07-29T09:11:13Z'
+approved-fabricengine: CommitWeftAt primitive  '2026-07-29T09:15:05Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ implementing  '2026-07-29T09:11:13Z'
 ```yaml
 batches:
   - name: 'fabricengine: CommitWeftAt primitive'
-    state: running
+    state: approved
     implementer_session: f585cd92-97ef-4e51-b6ad-34aae76967eb
     start_sha: c84c4a6f909d70796b960870bc491db6e1e9d48f
+    commit_sha: 85115fefcf360e13a7e4fd1de73730aeaaec2cbb
   - name: 'fabricengine+fabriccli: _board as second weft worktree'
     state: pending
   - name: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
