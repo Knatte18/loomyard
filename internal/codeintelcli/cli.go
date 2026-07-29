@@ -285,8 +285,17 @@ func symbolCommand() *cobra.Command {
 Unlike refs/definition, the positional argument is always treated as a
 literal search string — even one that happens to look like "file:line:col" —
 never position-parsed:
-    lyx codeintel symbol MyFunction`,
-		Args: cobra.ExactArgs(1),
+    lyx codeintel symbol MyFunction
+
+Passing 2 or more positional arguments switches to batch mode: each argument
+is looked up independently and the results are reported as one array, rather
+than the single-symbol envelope above:
+    {"ok":true,"results":[{"symbol":...,"status":"found"|"not_found"|"error",...}, ...]}
+Unlike refs/definition, symbol's status set is only three-way — there is no
+"ambiguous" status and no exit code 2, since symbol never collapses multiple
+matches into an ambiguity failure. Example:
+    lyx codeintel symbol Foo Bar Baz`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
@@ -323,26 +332,40 @@ never position-parsed:
 				worktreeRoot = layout.WorktreeRoot
 			}
 
-			opts := codeintelengine.Options{
-				Registry:     registry,
-				TargetDir:    dir,
-				WorktreeRoot: worktreeRoot,
-				Lang:         lang,
-				Query:        symbolQuery(args[0]),
-				Timeout:      timeout,
-			}
+			if len(args) == 1 {
+				opts := codeintelengine.Options{
+					Registry:     registry,
+					TargetDir:    dir,
+					WorktreeRoot: worktreeRoot,
+					Lang:         lang,
+					Query:        symbolQuery(args[0]),
+					Timeout:      timeout,
+				}
 
-			results, err := codeintelengine.Symbol(ctx, opts)
-			if err != nil {
-				// Symbol never returns *ErrAmbiguousSymbol (per symbol-semantics,
-				// it has no ambiguous state), so emitLookupResult's ambiguity
-				// branch does not apply here — this is the simple, uniform
-				// error-mapping shape refsCommand used before card 33's retrofit.
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				results, err := codeintelengine.Symbol(ctx, opts)
+				if err != nil {
+					// Symbol never returns *ErrAmbiguousSymbol (per symbol-semantics,
+					// it has no ambiguous state), so emitLookupResult's ambiguity
+					// branch does not apply here — this is the simple, uniform
+					// error-mapping shape refsCommand used before card 33's retrofit.
+					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					return nil
+				}
+
+				clihelp.SetExit(ctx, output.Ok(out, map[string]any{"symbols": symbolMatchFields(results)}))
 				return nil
 			}
 
-			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"symbols": symbolMatchFields(results)}))
+			// Every batch entry is built directly from the raw arg string as
+			// Query.Symbol, exactly like the single-arg path above — symbol's
+			// batch mode never calls parseQuery/position-parsing either, so
+			// "lyx codeintel symbol foo.go:1:1 bar.go:2:2" treats both
+			// arguments as literal search strings, not positions, consistent
+			// across both arg-count shapes.
+			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
+				results, err := codeintelengine.Symbol(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: codeintelengine.Query{Symbol: symbol}, Timeout: timeout})
+				return classifySymbolError(err, results)
+			})
 			return nil
 		},
 	}
