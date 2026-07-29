@@ -56,7 +56,9 @@ batches:
     start_sha: a49e710fa819f5aa7455b4d877b5236cc0d4cceb
     commit_sha: 2d815f07999c52c4854c2920e3a84dd08127cd1b
   - name: 'boardcli: notes CLI surface + promote-note command'
-    state: pending
+    state: running
+    implementer_session: ebff4b01-8ad5-4a7b-9011-0866f310b9e2
+    start_sha: 3187f5e998f3398fbc0156e927df3845232e5b62
   - name: 'cmd/lyx: board git-import guard + drift/help-tree/registration coverage'
     state: pending
   - name: 'docs: CONSTRAINTS, overview, README, manifest, sandbox suites'
