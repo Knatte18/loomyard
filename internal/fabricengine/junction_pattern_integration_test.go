@@ -68,9 +68,6 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	t.Parallel()
 
 	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -83,7 +80,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 		t.Fatalf("remove weft target %s: %v", target, err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions with missing weft target: %v", err)
 	}
 
@@ -103,7 +100,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	// A second WireJunctions on the same worktree must succeed: this is the
 	// checkout/reconcile path that hard-errored before this card, because the
 	// link-exists branch could not resolve a still-missing target.
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("second WireJunctions = %v; want nil (self-repair path)", err)
 	}
 }
@@ -138,7 +135,7 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 		t.Fatalf("write marker file: %v", err)
 	}
 
-	err := fabricengine.WireJunctions(l, slug)
+	err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"})
 	if err == nil {
 		t.Fatal("WireJunctions = nil; want error refusing a real host directory")
 	}
@@ -180,7 +177,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
 
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 	if lines := readExcludeLines(t, l, slug); !containsLine(lines, hubgeometry.LyxDirName) {
@@ -190,7 +187,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", hubgeometry.PatternDirName, lines)
 	}
 
-	result, err := fabricengine.UnwireJunctions(l, slug)
+	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_pattern"})
 	if err != nil {
 		t.Fatalf("UnwireJunctions: %v", err)
 	}
@@ -232,7 +229,7 @@ func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
 
-	result, err := fabricengine.UnwireJunctions(l, slug)
+	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_pattern"})
 	if err != nil {
 		t.Fatalf("UnwireJunctions on never-wired worktree = %v; want nil", err)
 	}
@@ -405,7 +402,7 @@ func TestPairInSync_JunctionDriftShapes(t *testing.T) {
 
 				l := fixture.Layout
 				slug := filepath.Base(fixture.Hub)
-				if err := fabricengine.WireJunctions(l, slug); err != nil {
+				if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 					t.Fatalf("WireJunctions: %v", err)
 				}
 
@@ -445,7 +442,7 @@ func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -504,7 +501,7 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -572,7 +569,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 
 	// Wire both junctions once, then simulate the legacy pre-upgrade state by
 	// removing _pattern only — _lyx is fully healthy, _pattern was never wired.
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions (initial): %v", err)
 	}
 	patternLink := l.HostPatternLink(slug)
@@ -588,7 +585,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 
 	// The upgrade call: must complete without error and wire only the missing
 	// _pattern junction.
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions (upgrade): %v", err)
 	}
 
@@ -604,7 +601,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	}
 
 	// Wiring twice (the already-upgraded worktree) is a no-op.
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions (idempotent re-run): %v", err)
 	}
 }

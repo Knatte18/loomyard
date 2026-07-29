@@ -152,7 +152,17 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 				// Re-point the junction(s) by running WireJunctions. WireJunctions is idempotent
 				// and handles both the missing-junction and the wrong-target cases, for every
 				// junction in one call — not just the one checkJunctionHealth found unhealthy.
-				if wireErr := WireJunctions(hostLayout, slug); wireErr != nil {
+				// Source the wired name-set from THIS pair's own weft base — the
+				// same per-pair base checkJunctionHealth just consulted — never
+				// from the acting worktree's t.cfg: Reconcile iterates many
+				// pairs, each of which may carry its own pathspec, and using the
+				// wrong worktree's name-set here could loop Reconcile forever
+				// against the per-pair health check.
+				names, namesErr := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+				if namesErr != nil {
+					pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
+					pr.Action = ReconcileActionJunctionRepointed
+				} else if wireErr := WireJunctions(hostLayout, slug, names); wireErr != nil {
 					pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
 					pr.Action = ReconcileActionJunctionRepointed
 				} else {

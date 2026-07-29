@@ -38,7 +38,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
-	if err := fabricengine.WireJunctions(f.Layout, slug); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
