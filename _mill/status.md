@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-commit-api
 branch: fabric-commit-api
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-29T19:02:04Z'
+discussed  '2026-07-29T20:39:22Z'
 ```
