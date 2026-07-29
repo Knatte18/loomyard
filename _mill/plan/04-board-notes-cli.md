@@ -5,7 +5,7 @@ task: 'board: move storage to weft:main'
 batch: 'boardcli: notes CLI surface + promote-note command'
 number: 4
 cards: 5
-verify: go test ./internal/boardcli/...
+verify: go test ./internal/boardcli/... && go test -tags integration ./internal/boardcli/...
 depends-on: [3]
 ```
 

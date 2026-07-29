@@ -5,7 +5,7 @@ task: 'board: move storage to weft:main'
 batch: 'fabricengine: CommitWeftAt primitive'
 number: 1
 cards: 3
-verify: go test ./internal/fabricengine/...
+verify: go test ./internal/fabricengine/... && go test -tags integration ./internal/fabricengine/...
 depends-on: []
 ```
 

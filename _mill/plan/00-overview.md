@@ -22,27 +22,27 @@ batches:
     name: 'fabricengine: CommitWeftAt primitive'
     file: 01-commit-weft-at.md
     depends-on: []
-    verify: go test ./internal/fabricengine/...
+    verify: go test ./internal/fabricengine/... && go test -tags integration ./internal/fabricengine/...
   - number: 2
     name: 'fabricengine+fabriccli: _board as second weft worktree'
     file: 02-board-weft-topology.md
     depends-on: []
-    verify: go test ./internal/fabricengine/... ./internal/fabriccli/...
+    verify: go test ./internal/fabricengine/... ./internal/fabriccli/... && go test -tags integration ./internal/fabricengine/... ./internal/fabriccli/...
   - number: 3
     name: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
     file: 03-board-dual-store-facade.md
     depends-on: [1]
-    verify: go test ./internal/boardengine/...
+    verify: go test ./internal/boardengine/... && go test -tags integration ./internal/boardengine/...
   - number: 4
     name: 'boardcli: notes CLI surface + promote-note command'
     file: 04-board-notes-cli.md
     depends-on: [3]
-    verify: go test ./internal/boardcli/...
+    verify: go test ./internal/boardcli/... && go test -tags integration ./internal/boardcli/...
   - number: 5
     name: 'cmd/lyx: board git-import guard + drift/help-tree/registration coverage'
     file: 05-cmd-lyx-board-guards.md
     depends-on: [2, 4]
-    verify: go test ./cmd/lyx/...
+    verify: go test ./cmd/lyx/... ./internal/fabriccli/... && go test -tags integration ./cmd/lyx/... ./internal/fabriccli/...
   - number: 6
     name: 'docs: CONSTRAINTS, overview, README, manifest, sandbox suites'
     file: 06-board-weft-docs.md
@@ -122,6 +122,7 @@ union._
 - `internal/fabriccli/clone.go`
 - `internal/fabriccli/fabric.go`
 - `internal/fabricengine/boardweft.go`
+- `internal/fabricengine/cleanup.go`
 - `internal/fabricengine/clone.go`
 - `internal/fabricengine/clone_adopt_test.go`
 - `internal/fabricengine/clone_test.go`
@@ -130,6 +131,10 @@ union._
 - `internal/fabricengine/weftgit.go`
 - `internal/gitrepo/doc.go`
 - `manifest/designs/curation-triage.md`
+- `manifest/designs/fabric-unified-view.md`
+- `manifest/designs/host-visibility.md`
+- `manifest/designs/pattern.md`
+- `manifest/designs/raddle.md`
 - `manifest/roadmap.md`
 - `tools/sandbox/SANDBOX-CORE-SUITE.md`
 - `tools/sandbox/SANDBOX-FABRIC-SUITE.md`

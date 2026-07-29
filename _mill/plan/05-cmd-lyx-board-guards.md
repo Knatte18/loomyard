@@ -5,7 +5,7 @@ task: 'board: move storage to weft:main'
 batch: 'cmd/lyx: board git-import guard + drift/help-tree/registration coverage'
 number: 5
 cards: 3
-verify: go test ./cmd/lyx/...
+verify: go test ./cmd/lyx/... ./internal/fabriccli/... && go test -tags integration ./cmd/lyx/... ./internal/fabriccli/...
 depends-on: [2, 4]
 ```
 
@@ -60,4 +60,4 @@ This batch closes the machine-checked gap `_mill/discussion.md`'s "Machine-check
 
 ## Batch Tests
 
-`go test ./cmd/lyx/... ./internal/fabriccli/...`. Card 25 is the load-bearing addition: it is the only mechanical enforcement that `internal/boardengine`'s git-routing swap (batch 3, Card 13) does not regress back to a raw `gitrepo`/`gitexec` call in some future change. Card 26 keeps `helptree_test.go` in sync with the CLI surface batch 4 added. Card 27 locks in the argument-count contract batch 2 changed.
+`go test ./cmd/lyx/... ./internal/fabriccli/...` plus a second `-tags integration` pass over the same two package paths (Card 27's new test lives in `internal/fabriccli/cli_test.go`, which is `//go:build integration`-tagged and invisible to the plain, untagged run). Card 25 is the load-bearing addition: it is the only mechanical enforcement that `internal/boardengine`'s git-routing swap (batch 3, Card 13) does not regress back to a raw `gitrepo`/`gitexec` call in some future change. Card 26 keeps `helptree_test.go` in sync with the CLI surface batch 4 added. Card 27 locks in the argument-count contract batch 2 changed.

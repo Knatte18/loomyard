@@ -5,7 +5,7 @@ task: 'board: move storage to weft:main'
 batch: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
 number: 3
 cards: 10
-verify: go test ./internal/boardengine/...
+verify: go test ./internal/boardengine/... && go test -tags integration ./internal/boardengine/...
 depends-on: [1]
 ```
 
@@ -93,6 +93,7 @@ Config/render/sync/board changes land together in one batch rather than split ac
 
 - **Context:**
   - `internal/boardengine/task.go`
+  - `internal/boardengine/store.go`
 - **Edits:**
   - `internal/boardengine/board.go`
 - **Creates:** none
