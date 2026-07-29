@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"sort"
@@ -215,6 +216,28 @@ func newLSPClientFromRW(rwc io.ReadWriteCloser) *lspClient {
 	}
 	go c.readLoop()
 	return c
+}
+
+// newLSPClientDial dials network/address (a Unix socket path or a TCP
+// address) and wraps the resulting connection with newLSPClientFromRW —
+// net.Conn already satisfies io.ReadWriteCloser, so the dial-transport mode
+// needs no framing, readLoop, or protocol code of its own; it reuses every
+// piece of newLSPClientFromRW's already-tested behavior unchanged. This is
+// the supervised-strategy constructor: it dials an already-running,
+// externally-owned language server process rather than spawning one, so
+// unlike newLSPClient the returned client's cmd field is nil — close()'s
+// `if c.cmd != nil { c.cmd.Wait() }` branch is already a no-op for a dialed
+// client, since close() guards on c.cmd == nil correctly. network/address
+// are passed through verbatim to net.Dialer.DialContext; this function has
+// no opinion on Unix-vs-TCP, the caller decides based on the daemon's
+// recorded state-file address.
+func newLSPClientDial(ctx context.Context, network, address string) (*lspClient, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, fmt.Errorf("codeintelengine: dial lsp server at %s %s: %w", network, address, err)
+	}
+	return newLSPClientFromRW(conn), nil
 }
 
 // writeMessage marshals v and frames it with the LSP Content-Length header,
