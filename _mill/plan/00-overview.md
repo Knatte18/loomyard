@@ -3,7 +3,7 @@
 ```yaml
 task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
 slug: codeintel-v1
-approved: false
+approved: true
 started: '20260729-064218'
 parent: main
 root: ""
