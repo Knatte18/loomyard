@@ -118,7 +118,7 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions
 }
 
 // removeHostJunction removes every host junction for slug — every entry in
-// l.HostJunctions(slug) — via fslink.Remove. It is a thin wrapper over
+// l.HostJunctions(slug, names) — via fslink.Remove. It is a thin wrapper over
 // removeJunctionRecords, which owns the actual best-effort loop; the split
 // exists purely so the loop's continue-past-failure contract is directly
 // testable against a synthetic junction slice, since l.HostJunctions always
@@ -126,10 +126,16 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions
 // multi-junction scenario the contract is about (mirroring
 // unseedLyxJunction/unseedJunctionRecords in junction.go).
 //
+// names is caller-supplied; removeHostJunction loads no config itself. Its
+// caller (Remove) sources names from the removed slug's own weft base,
+// best-effort — see Remove's godoc for why an unreadable config there yields
+// names == nil rather than a hard failure, and the residual risk that
+// accepts for a nested (RelPath != ".") junction.
+//
 // Returns nil if every junction is already absent (idempotent). See
 // removeJunctionRecords for the error case.
-func removeHostJunction(l *hubgeometry.Layout, slug string) error {
-	return removeJunctionRecords(l.HostJunctions(slug))
+func removeHostJunction(l *hubgeometry.Layout, slug string, names []string) error {
+	return removeJunctionRecords(l.HostJunctions(slug, names))
 }
 
 // removeJunctionRecords removes each junction in junctions via fslink.Remove.
@@ -149,7 +155,10 @@ func removeHostJunction(l *hubgeometry.Layout, slug string) error {
 // worktree root and misses a nested junction whenever RelPath != "." — the
 // reason step (5) of Remove removes junctions explicitly, before that safety
 // net runs. Leaving this _lyx-only would reintroduce exactly that documented
-// bug for every junction after the first.
+// bug for every junction after the first. Remove's call site is
+// `_ = removeHostJunction(l, slug, names)`, discarding the return value
+// exactly as the adjacent removePortal and removeLaunchers calls in the same
+// teardown do.
 //
 // Returns nil if junctions is empty or every entry is already absent
 // (idempotent). Returns a joined error naming every junction whose removal
