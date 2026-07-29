@@ -62,7 +62,9 @@ batches:
     start_sha: 3187f5e998f3398fbc0156e927df3845232e5b62
     commit_sha: 37b7b31620a6c93d13f0867077ed6ce8feba1a09
   - name: 'cmd/lyx: board git-import guard + drift/help-tree/registration coverage'
-    state: pending
+    state: running
+    implementer_session: ea5c9e41-95b7-47ff-9d5f-463a72a5e83f
+    start_sha: 6c1053ed0800ce95f8c45db47f48e2daf33be4f9
   - name: 'docs: CONSTRAINTS, overview, README, manifest, sandbox suites'
     state: pending
 ```
