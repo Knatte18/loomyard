@@ -7,6 +7,7 @@ package fabricengine
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -35,8 +36,10 @@ type RemoveResult struct {
 //  2. Locate the target and check if it exists: error if not found.
 //  3. Host dirty gate (if !force): check host worktree for uncommitted changes; reject if any found.
 //  4. Weft dirty gate (if !force): check weft worktree for uncommitted changes; reject if any found.
-//  5. Explicitly remove host _lyx junction via removeHostJunction (fslink.RemoveLinksIn only scans
-//     immediate children and misses nested _lyx at RelPath != "."; this catches subpath junctions).
+//  5. Explicitly remove host junctions via removeHostJunction (fslink.RemoveLinksIn only scans
+//     immediate children and misses a nested junction at RelPath != "."; this catches subpath
+//     junctions). names is sourced best-effort from the removed slug's own weft base — never
+//     t.cfg — and left nil on a load failure rather than hard-failing the teardown.
 //  6. Link cleanup: call fslink.RemoveLinksIn as root-level safety net for remaining links.
 //  7. Git remove: run `git worktree remove [--force] <target>` on host.
 //  8. Fallback: if git remove fails, use os.RemoveAll and optionally git worktree prune.
@@ -87,8 +90,22 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 		}
 	}
 
-	// (5) Explicitly remove host _lyx junction (catches nested junctions that fslink.RemoveLinksIn misses)
-	_ = removeHostJunction(l, slug)
+	// (5) Explicitly remove host junctions (catches nested junctions that
+	// fslink.RemoveLinksIn misses). Source names from the REMOVED slug's own
+	// weft base, not t.cfg — the slug being torn down may differ from the
+	// acting worktree and carry its own pathspec. This is deliberately
+	// best-effort: Remove is a teardown and must not hard-fail when the
+	// target pair's config is absent or unreadable (a pair is often removed
+	// *because* it is broken). On a load error, names stays nil, so
+	// removeHostJunction removes nothing here; a nested (RelPath != ".")
+	// junction may then leak past step 6's root-level-only safety net — the
+	// accepted teardown-robustness trade-off (never hard-fail a teardown;
+	// never guess a wiring set).
+	names, namesErr := junctionNames(filepath.Join(l.WeftWorktreePath(slug), l.RelPath))
+	if namesErr != nil {
+		names = nil
+	}
+	_ = removeHostJunction(l, slug, names)
 
 	// (6) Link cleanup (root-level safety net)
 	linksRemoved, err := fslink.RemoveLinksIn(target)

@@ -591,7 +591,7 @@ func TestRefactoredMethods(t *testing.T) {
 		t.Parallel()
 
 		slug := "test-slug"
-		junctions := layout.HostJunctions(slug)
+		junctions := layout.HostJunctions(slug, []string{"_lyx", "_pattern"})
 
 		if len(junctions) != 2 {
 			t.Fatalf("HostJunctions() returned %d junctions; want 2", len(junctions))
@@ -640,7 +640,7 @@ func TestHostJunctionsHere(t *testing.T) {
 			t.Fatalf("Resolve() error = %v; want nil", err)
 		}
 
-		junctions := layout.HostJunctionsHere()
+		junctions := layout.HostJunctionsHere([]string{"_lyx", "_pattern"})
 		if len(junctions) != 2 {
 			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
 		}
@@ -685,7 +685,7 @@ func TestHostJunctionsHere(t *testing.T) {
 			t.Fatalf("Resolve() error = %v; want nil", err)
 		}
 
-		junctions := layout.HostJunctionsHere()
+		junctions := layout.HostJunctionsHere([]string{"_lyx", "_pattern"})
 		if len(junctions) != 2 {
 			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
 		}
@@ -722,9 +722,10 @@ func TestHostJunctionsHere(t *testing.T) {
 		// The current worktree's own base name is the slug that makes HostJunctions(slug)
 		// resolve to the same host worktree HostJunctionsHere() is already anchored at.
 		slug := filepath.Base(layout.WorktreeRoot)
+		names := []string{"_lyx", "_pattern"}
 
-		here := layout.HostJunctionsHere()
-		bySlug := layout.HostJunctions(slug)
+		here := layout.HostJunctionsHere(names)
+		bySlug := layout.HostJunctions(slug, names)
 
 		if len(here) != len(bySlug) {
 			t.Fatalf("HostJunctionsHere() returned %d junctions; HostJunctions(%q) returned %d", len(here), slug, len(bySlug))
@@ -733,6 +734,47 @@ func TestHostJunctionsHere(t *testing.T) {
 			if here[i] != bySlug[i] {
 				t.Errorf("HostJunctionsHere()[%d] = %+v; HostJunctions(%q)[%d] = %+v", i, here[i], slug, i, bySlug[i])
 			}
+		}
+	})
+
+	t.Run("names ordering regressions", func(t *testing.T) {
+		t.Parallel()
+
+		layout, err := hubgeometry.Resolve(hub)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v; want nil", err)
+		}
+
+		regressionTests := []struct {
+			name  string
+			names []string
+		}{
+			{name: "empty names yields zero records", names: []string{}},
+			{name: "3-name slice yields three records in input order", names: []string{"_lyx", "_pattern", "_extra"}},
+			{name: "reversed 2-name slice preserves given order, no forced sort", names: []string{"_pattern", "_lyx"}},
+		}
+
+		for _, rt := range regressionTests {
+			t.Run(rt.name, func(t *testing.T) {
+				junctions := layout.HostJunctionsHere(rt.names)
+				if len(junctions) != len(rt.names) {
+					t.Fatalf("HostJunctionsHere(%v) returned %d entries; want %d", rt.names, len(junctions), len(rt.names))
+				}
+				for i, wantName := range rt.names {
+					got := junctions[i]
+					if got.Name != wantName {
+						t.Errorf("HostJunctionsHere(%v)[%d].Name = %q; want %q", rt.names, i, got.Name, wantName)
+					}
+					wantLink := filepath.Join(layout.WorktreeRoot, layout.RelPath, wantName)
+					if got.Link != wantLink {
+						t.Errorf("HostJunctionsHere(%v)[%d].Link = %q; want %q", rt.names, i, got.Link, wantLink)
+					}
+					wantTarget := filepath.Join(layout.WeftWorktree(), layout.RelPath, wantName)
+					if got.Target != wantTarget {
+						t.Errorf("HostJunctionsHere(%v)[%d].Target = %q; want %q", rt.names, i, got.Target, wantTarget)
+					}
+				}
+			})
 		}
 	})
 }
@@ -744,7 +786,7 @@ func TestHostJunctionsHere(t *testing.T) {
 func TestIsReservedHubName_Pattern(t *testing.T) {
 	t.Parallel()
 
-	if got := hubgeometry.IsReservedHubName("_pattern"); !got {
-		t.Errorf("IsReservedHubName(%q) = %v; want true", "_pattern", got)
+	if got := hubgeometry.IsReservedHubName("_pattern", []string{"_lyx", "_pattern"}); !got {
+		t.Errorf("IsReservedHubName(%q, %v) = %v; want true", "_pattern", []string{"_lyx", "_pattern"}, got)
 	}
 }

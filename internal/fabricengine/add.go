@@ -48,7 +48,9 @@ type AddResult struct {
 //  0. Slug validation: slug must be non-empty, a single path component (no '/'
 //     or '\'), must not end in the weft suffix (reserved for weft worktrees),
 //     and must not name a reserved hub-level geometry entry
-//     (hubgeometry.IsReservedHubName: _lyx, _raddle, _board, _portals, _launchers).
+//     (hubgeometry.IsReservedHubName: hubgeometry's own hub-structural set
+//     _raddle/_board/_portals/_launchers UNION the acting worktree's own
+//     fabric.yaml pathspec junction names, e.g. _lyx/_pattern by default).
 //  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
 //  2. Branch name: hostBranch := t.cfg.BranchPrefix + slug; weftBranch := WeftBranchName(hostBranch)
 //  3. Branch-exists check: hostBranch must not already exist in host.
@@ -108,15 +110,22 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, hubgeometry.WeftSuffix)
 	}
 
-	// A slug naming a reserved hub-level geometry entry (_lyx, _raddle, _board,
-	// _portals, _launchers) would create a host worktree directory colliding
+	// A slug naming a reserved hub-level geometry entry — hubgeometry's own
+	// hub-structural set (_raddle, _board, _portals, _launchers) UNION the
+	// acting worktree's own fabric.yaml pathspec junction names (_lyx,
+	// _pattern by default) — would create a host worktree directory colliding
 	// with the paths lyx composes at the hub level — e.g. a worktree named
 	// "_portals" on a fresh hub would later have portal junctions created
-	// inside it, and a hub-level "_lyx" worktree shadows the config-dir token
-	// every module resolves. Some of these are blocked incidentally by the
-	// step-4 directory-exists check on mature hubs; rejecting them here makes
-	// the guard unconditional and the error honest.
-	if hubgeometry.IsReservedHubName(slug) {
+	// inside it, and a "_lyx" worktree shadows the config-dir token every
+	// module resolves. Some of these are blocked incidentally by the step-4
+	// directory-exists check on mature hubs; rejecting them here makes the
+	// guard unconditional and the error honest. The RAW, unfiltered
+	// t.cfg.Dirs() is used (not the junctionNames helper's wiring-guard
+	// filter): the reserved union must include every pathspec junction name,
+	// so appending a name to pathspec also reserves it as a slug. The new
+	// slug's own config does not exist yet at add time, so this reads the
+	// acting worktree's already-loaded config, not the new slug's.
+	if hubgeometry.IsReservedHubName(slug, t.cfg.Dirs()) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
 	}
 

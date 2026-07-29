@@ -412,19 +412,47 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 	return s, true
 }
 
+// HubReservedNames returns the hub-structural reserved name-set that
+// hubgeometry alone owns: the raddle dir (_raddle, reserved ahead of
+// wiring as a known-future junction name), the board passenger (_board),
+// and the portal/launcher mirrors (_portals, _launchers). This is the sole
+// source of that set — both IsReservedHubName (below) and fabricengine's
+// wiring-guard filter (which keeps a config-supplied junction name from
+// colliding with a hub-structural path) consume it, so the two call sites
+// can never drift apart into two independently-maintained lists.
+//
+// It deliberately excludes LyxDirName and PatternDirName: those two are
+// config-migrated junction names, no longer hardcoded here, and are folded
+// into the reserved set by IsReservedHubName's junctionNames parameter
+// instead.
+func HubReservedNames() []string {
+	return []string{BoardDirName, "_portals", "_launchers", "_raddle"}
+}
+
 // IsReservedHubName reports whether name is one of the hub-level entry names
-// lyx geometry itself owns: the per-worktree lyx dir (_lyx), the raddle dir
-// (_raddle), the board passenger (_board), the portal/launcher mirrors
-// (_portals, _launchers), and the PATTERN constraint-injection surface
-// (_pattern). A worktree slug must never claim one of these — a host worktree
-// directory named after a geometry token collides with the very paths lyx
-// composes at the hub level (e.g. a worktree named "_portals" would have
-// portal junctions created inside it). Slug validation (fabric's Add) calls
-// this so the rejection lives with the single owner of the literals.
-func IsReservedHubName(name string) bool {
-	switch name {
-	case LyxDirName, "_raddle", BoardDirName, "_portals", "_launchers", PatternDirName:
-		return true
+// a worktree slug must never claim: hubgeometry's own hub-structural tokens
+// (HubReservedNames — the per-worktree geometry lyx composes at the hub
+// level, e.g. a worktree named "_portals" would have portal junctions
+// created inside it) UNION the caller-supplied junctionNames, the
+// weft-backed junction name-set injected from fabric config (pathspec) for
+// the worktree being validated. hubgeometry stays config-blind: the
+// junction/weft-backed portion of the reserved set is never hardcoded here,
+// it is passed in by the caller. Over the default junctionNames =
+// ["_lyx","_pattern"], the union reproduces exactly today's six reserved
+// names (_lyx, _pattern, _board, _portals, _launchers, _raddle). Slug
+// validation (fabric's Add) calls this so the hub-structural rejection
+// lives with the single owner of those literals while the junction-name
+// rejection reflects the caller's actual configured pathspec.
+func IsReservedHubName(name string, junctionNames []string) bool {
+	for _, reserved := range HubReservedNames() {
+		if name == reserved {
+			return true
+		}
+	}
+	for _, junctionName := range junctionNames {
+		if name == junctionName {
+			return true
+		}
 	}
 	return false
 }
@@ -818,61 +846,59 @@ type HostJunction struct {
 	Target string // Target is the weft-side path the junction points to
 }
 
-// HostJunctions returns the list of host junctions for a given slug.
+// HostJunctions returns the list of host junctions for a given slug, one record per
+// name in names, in names's own order (no forced sort). Order now follows the injected
+// names slice: the default pathspec ("_lyx _pattern") keeps _lyx first as a property of
+// that default value, not an enforced invariant here.
 //
-// Returns two entries, _lyx first: {Name: LyxDirName, Link: HostLyxLink(slug), Target:
-// WeftLyxDirFor(slug)} followed by {Name: PatternDirName, Link: HostPatternLink(slug),
-// Target: WeftPatternDirFor(slug)}. The junction record carries Name, Link, and Target
-// fields for use by the seeders in internal/fabricengine. _lyx stays first deliberately:
-// UnwireResult.JunctionsRemoved is documented as being in this slice's order, and the
-// health check is first-unhealthy-wins, so the order is observable by callers.
+// For each name in names, the returned record is {Name: name, Link:
+// filepath.Join(WorktreePath(slug), RelPath, name), Target:
+// filepath.Join(WeftWorktreePath(slug), RelPath, name)} — this generic form reproduces
+// today's per-name accessors (HostLyxLink/WeftLyxDirFor, HostPatternLink/WeftPatternDirFor)
+// exactly for name == LyxDirName / PatternDirName. An empty names slice yields no records.
+// The junction record carries Name, Link, and Target fields for use by the seeders in
+// internal/fabricengine.
 //
 // HostJunctions is Hub/slug-anchored: wiring, unwiring, and remove (which all act on a
 // named slug, not necessarily the current worktree) call this. See HostJunctionsHere
 // below for the Here-anchored, slug-free counterpart the health-check sites use instead.
-func (l *Layout) HostJunctions(slug string) []HostJunction {
-	return []HostJunction{
-		{
-			Name:   LyxDirName,
-			Link:   l.HostLyxLink(slug),
-			Target: l.WeftLyxDirFor(slug),
-		},
-		{
-			Name:   PatternDirName,
-			Link:   l.HostPatternLink(slug),
-			Target: l.WeftPatternDirFor(slug),
-		},
+func (l *Layout) HostJunctions(slug string, names []string) []HostJunction {
+	junctions := make([]HostJunction, 0, len(names))
+	for _, name := range names {
+		junctions = append(junctions, HostJunction{
+			Name:   name,
+			Link:   filepath.Join(l.WorktreePath(slug), l.RelPath, name),
+			Target: filepath.Join(l.WeftWorktreePath(slug), l.RelPath, name),
+		})
 	}
+	return junctions
 }
 
-// HostJunctionsHere returns the same HostJunction records as HostJunctions(slug), but
-// resolved against the current worktree rather than a named slug: each entry's Link comes
-// from the corresponding "…Here()" accessor (HostLyxLinkHere(), HostPatternLinkHere()) and
-// each Target from the un-slugged weft accessor (WeftLyxDir(), WeftPatternDir()), mirroring
-// the existing HostLyxLinkHere()/HostLyxLink(slug) and WeftLyxDir()/WeftLyxDirFor(slug)
-// pairs this precedent already establishes.
+// HostJunctionsHere returns the same HostJunction records as HostJunctions(slug, names),
+// but resolved against the current worktree rather than a named slug: each entry's Link is
+// built from WorktreeRoot (the "…Here()" anchor) and each Target from the un-slugged weft
+// base (WeftWorktree()), mirroring the existing HostLyxLinkHere()/HostLyxLink(slug) and
+// WeftLyxDir()/WeftLyxDirFor(slug) pairs this precedent already establishes.
 //
-// It exists because HostJunctions(slug) is Hub/slug-anchored — the right shape for wiring,
-// unwiring, and remove, which always act on a named slug — while all three junction
+// It exists because HostJunctions(slug, names) is Hub/slug-anchored — the right shape for
+// wiring, unwiring, and remove, which always act on a named slug — while all three junction
 // health-check sites (internal/fabricengine/reconcile.go, status.go, and drift.go) have no
 // slug available and are Here-anchored instead. PairInSync(l *hubgeometry.Layout) in
 // particular takes no slug parameter at all and is documented as stateless; threading a
 // slug into it would break that contract.
 //
-// Returns two entries, _lyx first, mirroring HostJunctions's order: {Name: LyxDirName,
-// Link: HostLyxLinkHere(), Target: WeftLyxDir()} followed by {Name: PatternDirName, Link:
-// HostPatternLinkHere(), Target: WeftPatternDir()}.
-func (l *Layout) HostJunctionsHere() []HostJunction {
-	return []HostJunction{
-		{
-			Name:   LyxDirName,
-			Link:   l.HostLyxLinkHere(),
-			Target: l.WeftLyxDir(),
-		},
-		{
-			Name:   PatternDirName,
-			Link:   l.HostPatternLinkHere(),
-			Target: l.WeftPatternDir(),
-		},
+// For each name in names, the returned record is {Name: name, Link:
+// filepath.Join(WorktreeRoot, RelPath, name), Target: filepath.Join(WeftWorktree(), RelPath,
+// name)}, in names's own order (no forced sort), mirroring HostJunctions's ordering. An
+// empty names slice yields no records.
+func (l *Layout) HostJunctionsHere(names []string) []HostJunction {
+	junctions := make([]HostJunction, 0, len(names))
+	for _, name := range names {
+		junctions = append(junctions, HostJunction{
+			Name:   name,
+			Link:   filepath.Join(l.WorktreeRoot, l.RelPath, name),
+			Target: filepath.Join(l.WeftWorktree(), l.RelPath, name),
+		})
 	}
+	return junctions
 }

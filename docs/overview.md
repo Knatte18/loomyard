@@ -37,7 +37,7 @@ The `internal/hubgeometry` package is the sole owner of cwd and worktree-root ge
 - `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/lyx/main.go`.
 - `Resolve(cwd)` → `Layout` — one-stop geometry: cwd, repo root (from `git rev-parse --show-toplevel`), Hub, relative path, and Prime worktree.
 
-The `Layout` type provides geometry methods: `LyxDir()`, `LoomStatusFile()`, `LoomStatusLock()`, `DiscussionDir()`, `DiscussionDecisionRecord()`, `DiscussionSupportLog()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftRaddleDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug)`.
+The `Layout` type provides geometry methods: `LyxDir()`, `LoomStatusFile()`, `LoomStatusLock()`, `DiscussionDir()`, `DiscussionDecisionRecord()`, `DiscussionSupportLog()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftRaddleDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug, names)`.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/hubgeometry` and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by `internal/hubgeometry/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
 
@@ -92,11 +92,13 @@ The test: **would this state mean anything on a different machine?** Orchestrati
 
 ### Junction model
 
-Each host worktree has a sibling weft worktree. Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree:
+Each host worktree has a sibling weft worktree. Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree. The wired junction set is not hardcoded: it is the pair's own `fabric.yaml` `pathspec` list, filtered against `hubgeometry.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers`, `_raddle` — that can never be a per-worktree junction). `hubgeometry` itself stays config-blind; it only builds the junction records for whatever name-set `fabricengine` passes it. Over the default `pathspec: _lyx _pattern`, this produces the two concrete junctions this repo ships with today:
 - `<host>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction)
 - `<host>/_pattern` → `<hub>/<slug>-weft/_pattern` (PATTERN constraint-injection junction)
 
-No `_raddle` junction is wired in this release — `internal/fabricengine/status.go`'s host-pollution scan is explicit that no junction exists for `_raddle` yet, and `hubgeometry.HostJunctions` has never returned one; a prior version of this list incorrectly claimed one, which this entry corrects.
+A future weft-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`hubgeometry` code change needed.
+
+No `_raddle` junction is wired in this release — `internal/fabricengine/status.go`'s host-pollution scan is explicit that no junction exists for `_raddle` yet, `_raddle` is reserved-only via `hubgeometry.HubReservedNames()` rather than present in `pathspec`, and `hubgeometry.HostJunctions` has never returned one; a prior version of this list incorrectly claimed one, which this entry corrects.
 
 Junctions are listed in `.git/info/exclude` per worktree and are never committed to `.gitignore`. From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
