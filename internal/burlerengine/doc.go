@@ -36,7 +36,12 @@
 // (layout.DotLyxDir(), machine-local, never committed — distinct from the
 // weft-synced _lyx), then hands the shuttle only the orchestrator, which
 // names their absolute paths so the agent reads each step's rules when it
-// reaches that step.
+// reaches that step. Run never prunes these per-round directories itself —
+// they accumulate under .lyx/burler across rounds in a long-lived worktree.
+// This is accepted machine-local litter, not a leak: .lyx is never
+// weft-synced, so it carries no cross-machine cost, and whatever clears a
+// worktree's .lyx tree wholesale (a future perch cleanup step, or manual
+// deletion) removes it along with everything else machine-local there.
 //
 // Every recorded finding is fixed in B, all severities including LOW and
 // NIT: severity affects how a finding is reported, never whether it gets
