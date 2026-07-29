@@ -24,6 +24,7 @@ Batch-local decisions: proof tests seed the fabric config on the WEFT side (`lyx
   - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/drift.go`
+  - `internal/fabricengine/template.go`
   - `internal/hubgeometry/hubgeometry.go`
 - **Edits:** none
 - **Creates:**
