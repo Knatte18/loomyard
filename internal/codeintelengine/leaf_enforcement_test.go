@@ -1,11 +1,11 @@
 // leaf_enforcement_test.go enforces the Codeintelengine Leaf Invariant:
 // production code in internal/codeintelengine imports ONLY the standard
-// library, internal/hubgeometry, internal/lock, and gopkg.in/yaml.v3 — never
-// internal/output, cobra, or any internal/*cli package. Like modelspec's and
-// tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
-// import outside the allowed set fails the test, so a future stray
-// dependency (including batch 2's LSP subprocess client, which must stay
-// stdlib-only) is caught with no list maintenance required.
+// library, internal/hubgeometry, internal/lock, internal/proc, and
+// gopkg.in/yaml.v3 — never internal/output, cobra, or any internal/*cli
+// package. Like modelspec's and tokenvocab's leaf_enforcement_test.go, this
+// check is an ALLOWLIST: any import outside the allowed set fails the test,
+// so a future stray dependency (including batch 2's LSP subprocess client,
+// which must stay stdlib-only) is caught with no list maintenance required.
 
 package codeintelengine
 
@@ -24,6 +24,7 @@ import (
 var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/hubgeometry": true,
 	"github.com/Knatte18/loomyard/internal/lock":        true,
+	"github.com/Knatte18/loomyard/internal/proc":        true,
 	"gopkg.in/yaml.v3": true,
 }
 
