@@ -3,10 +3,12 @@
 // and the generalized LSP client (lspclient.go) together: given a target
 // directory and a query (a symbol name or an explicit file:line:col
 // position), it launches the right language server, resolves the query to
-// a position if needed, and returns the reference list. This is the only
-// file in the package that imports no other codeintelengine file's
-// internals beyond what's already exported at package scope — it is the
-// external interface the CLI layer (internal/codeintelcli, batch 3) calls.
+// a position if needed, and returns the reference list. It also defines the
+// shared lookup pipeline (acquireConnection, teardownConnection, lookup)
+// that References wraps and that a later batch's Definition wraps too —
+// both differ only in which single LSP call they make once a position is
+// resolved. This is the external interface the CLI layer
+// (internal/codeintelcli, batch 3) calls.
 
 package codeintelengine
 
@@ -15,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -45,70 +46,146 @@ type Query struct {
 
 // Options configures one References call: Registry supplies the language
 // servers to choose from, TargetDir is the project root to detect the
-// language in and root the launched server at, Lang optionally overrides
-// detection, Query selects the symbol or position to look up, and Timeout
-// bounds every individual LSP request (initialize, the resolver call, and
-// references) — not the call as a whole, so a slow-but-eventually-fed
-// server only fails the specific phase that stalls.
+// language in and root the launched server at, WorktreeRoot is the
+// worktree root EnsureServer's supervised strategy would anchor its daemon
+// singleton at; unused by every strategy actually reachable in V1 (native
+// never reads it), but threaded through now so a future language selecting
+// supervised needs no signature change. The CLI layer populates it from a
+// resolved hubgeometry.Layout.WorktreeRoot when available, empty
+// otherwise. Lang optionally overrides detection, Query selects the symbol
+// or position to look up, and Timeout bounds every individual LSP request
+// (initialize, the resolver call, and references) — not the call as a
+// whole, so a slow-but-eventually-fed server only fails the specific phase
+// that stalls.
 type Options struct {
-	Registry  Registry
-	TargetDir string
-	Lang      string
-	Query     Query
-	Timeout   time.Duration
+	Registry     Registry
+	TargetDir    string
+	WorktreeRoot string
+	Lang         string
+	Query        Query
+	Timeout      time.Duration
 }
 
 // References resolves opts.Query against the language server for
 // opts.TargetDir and returns every reference to it, sorted by
-// file:line:character.
-//
-// The steps: (1) detect the language and its registry Entry; (2) launch
-// the language server named by the entry's Command; (3) initialize it
-// rooted at TargetDir; (4) resolve the query to an LSP position —
-// Query.Pos converted directly if set, otherwise a workspace/symbol lookup
-// for Query.Symbol; (5) issue textDocument/references at that position;
-// (6) map and sort the results. Every LSP phase is bounded by a fresh
-// context.WithTimeout(ctx, opts.Timeout) deadline; a phase that times out
-// returns ErrServerTimeout and tears the server down with kill()
-// (hard-kill, since a server that is already unresponsive could re-block
-// on the graceful shutdown handshake) rather than close().
+// file:line:character. It is a two-line wrapper over the shared lookup
+// pipeline, passing client.references as the one LSP call the pipeline
+// should make once a position is resolved — see lookup's own doc comment
+// for the full step-by-step behavior.
 func References(ctx context.Context, opts Options) ([]Reference, error) {
-	lang, entry, err := DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
-	if err != nil {
-		return nil, err
+	return lookup(ctx, opts, func(ctx context.Context, client *lspClient, fileURI string, pos lspPosition) ([]lspLocation, error) {
+		return client.references(ctx, fileURI, pos)
+	})
+}
+
+// acquireConnection obtains a ready-to-use *lspClient for lang/entry,
+// alongside the connKind teardownConnection needs to tear it down
+// correctly. When entry.HasNativeDaemon is true, this delegates entirely to
+// ensureServer, which resolves the toolchain, spawns or dials, and hands
+// back an already-initialized connection. Otherwise it runs the legacy
+// cold-spawn-per-call sequence every non-Go language still uses today:
+// newLSPClient followed by a manual initialize, both owned and torn down by
+// this call alone (ensureServer is never invoked for this branch).
+func acquireConnection(ctx context.Context, lang string, entry Entry, opts Options) (*lspClient, connKind, error) {
+	if entry.HasNativeDaemon {
+		return ensureServer(ctx, lang, entry, opts.TargetDir, opts.WorktreeRoot, opts.Timeout)
 	}
 
 	client, err := newLSPClient(entry.Command)
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, &ErrServerNotFound{Language: lang, InstallHint: entry.InstallHint}
+			return nil, connKindLegacy, &ErrServerNotFound{Language: lang, InstallHint: entry.InstallHint}
 		}
-		return nil, fmt.Errorf("codeintelengine: start language server for %q: %w", lang, err)
+		return nil, connKindLegacy, fmt.Errorf("codeintelengine: start language server for %q: %w", lang, err)
 	}
 
-	timedOut := false
-	defer func() {
+	rootURI, err := rootURIFor(opts.TargetDir)
+	if err != nil {
+		client.kill()
+		return nil, connKindLegacy, err
+	}
+
+	initCtx, initCancel := context.WithTimeout(ctx, opts.Timeout)
+	defer initCancel()
+	if err := client.initialize(initCtx, rootURI); err != nil {
+		// Mirror the existing timedOut-branching teardown logic exactly,
+		// just localized to this one failure instead of spanning the whole
+		// call: a timed-out server could re-block on the graceful shutdown
+		// handshake close() sends, so a stalled initialize is hard-killed
+		// instead.
+		if errors.Is(err, ErrServerTimeoutSentinel) {
+			client.kill()
+		} else {
+			client.close()
+		}
+		return nil, connKindLegacy, err
+	}
+
+	return client, connKindLegacy, nil
+}
+
+// teardownConnection tears down client per the rule its connKind demands —
+// the two EnsureServer strategies wrap fundamentally different process
+// lifetimes and must not be torn down the same way (see the plan's connKind
+// teardown Shared Decision).
+func teardownConnection(client *lspClient, kind connKind, timedOut bool) {
+	switch kind {
+	case connKindSupervised:
+		// A supervised connection is a dial into a daemon lyx spawned to
+		// outlive this call. Never run the LSP shutdown handshake or kill
+		// it — the daemon is meant to keep serving other callers, and this
+		// process's exit reclaims the dialed socket's fd on its own.
+		return
+	default:
+		// connKindNative and connKindLegacy share identical teardown: both
+		// wrap a connection this call owns outright (native's disposable
+		// proxy subprocess, or the legacy path's own directly-spawned
+		// server), so hard-killing on a timeout and gracefully closing
+		// otherwise is safe for both.
 		if timedOut {
 			client.kill()
 		} else {
 			client.close()
 		}
-	}()
-
-	absTargetDir, err := filepath.Abs(opts.TargetDir)
-	if err != nil {
-		return nil, fmt.Errorf("codeintelengine: resolve absolute path for %s: %w", opts.TargetDir, err)
 	}
-	rootURI := "file://" + absTargetDir
+}
 
-	initCtx, initCancel := context.WithTimeout(ctx, opts.Timeout)
-	defer initCancel()
-	if err := client.initialize(initCtx, rootURI); err != nil {
-		if errors.Is(err, ErrServerTimeoutSentinel) {
-			timedOut = true
-		}
+// lookup is the shared pipeline every public lookup entry point (References
+// here; Definition, batch 8) runs: detect the language, acquire a
+// connection, resolve the query to a position, issue exactly one LSP call
+// at that position, and convert the results. lspCall is the one step that
+// varies between callers — everything else is identical regardless of which
+// LSP method is ultimately invoked.
+//
+// The steps: (1) detect the language and its registry Entry; (2) acquire a
+// connection via acquireConnection; (3) resolve the query to an LSP
+// position — Query.Pos converted directly if set, otherwise a
+// workspace/symbol lookup for Query.Symbol; (4) issue lspCall at that
+// position; (5) map and sort the results. Every LSP phase from step (3)
+// onward is bounded by a fresh context.WithTimeout(ctx, opts.Timeout)
+// deadline; a phase that times out returns ErrServerTimeout and tears the
+// connection down via teardownConnection's timedOut branch rather than its
+// normal-completion branch.
+func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context, client *lspClient, fileURI string, pos lspPosition) ([]lspLocation, error)) ([]Reference, error) {
+	lang, entry, err := DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
+	if err != nil {
 		return nil, err
 	}
+
+	client, kind, err := acquireConnection(ctx, lang, entry, opts)
+	if err != nil {
+		// No deferred teardown needed here: acquireConnection already tears
+		// down any partial connection itself on its own error path.
+		return nil, err
+	}
+
+	// timedOut is captured by reference via the closure below, since
+	// resolvePosition/lspCall may still set it to true after the defer is
+	// registered.
+	timedOut := false
+	defer func() {
+		teardownConnection(client, kind, timedOut)
+	}()
 
 	fileURI, lspPos, err := resolvePosition(ctx, client, opts, lang, entry)
 	if err != nil {
@@ -118,9 +195,9 @@ func References(ctx context.Context, opts Options) ([]Reference, error) {
 		return nil, err
 	}
 
-	refsCtx, refsCancel := context.WithTimeout(ctx, opts.Timeout)
-	defer refsCancel()
-	locations, err := client.references(refsCtx, fileURI, lspPos)
+	callCtx, callCancel := context.WithTimeout(ctx, opts.Timeout)
+	defer callCancel()
+	locations, err := lspCall(callCtx, client, fileURI, lspPos)
 	if err != nil {
 		if errors.Is(err, ErrServerTimeoutSentinel) {
 			timedOut = true

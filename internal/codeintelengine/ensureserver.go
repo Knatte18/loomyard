@@ -42,6 +42,11 @@ const (
 	// callers, and the graceful-shutdown handshake close() sends would be a
 	// needless (and potentially harmful) RPC round trip against it.
 	connKindSupervised
+	// connKindLegacy marks the legacy path's kind — never produced by
+	// ensureServer itself (that function is only ever called when
+	// entry.HasNativeDaemon is true); acquireConnection returns this
+	// directly for the false case without calling ensureServer.
+	connKindLegacy
 )
 
 // ensureServer resolves entry's language server connection and returns it
