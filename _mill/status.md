@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-documentsymbol-infile
+phase: approved-cli-resolution-buildoptions-infile
 slug: codeintel-daemon-persistence
 branch: codeintel-daemon-persistence
 plan: _mill/plan
@@ -36,6 +36,7 @@ planned  '2026-07-29T18:00:19Z'
 implementing  '2026-07-29T18:01:14Z'
 approved-proc-killpid  '2026-07-29T18:04:27Z'
 approved-engine-documentsymbol-infile  '2026-07-29T18:10:23Z'
+approved-cli-resolution-buildoptions-infile  '2026-07-29T18:17:28Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     start_sha: 75ce7cdcb45dd6f4cf32b98524761ca1a3f1ecba
     commit_sha: 7998f2feb60496868edf107eb9da66d2d82dd9fb
   - name: cli-resolution-buildoptions-infile
-    state: running
+    state: approved
     implementer_session: 5b31419b-f7e7-4c8f-af32-cdf1a2b9a46c
     start_sha: a80dbda39a01e50ac9878b265e7765dd0ec8745c
+    commit_sha: fa779d695108ab7607456c9bbe3f86cd633e9c32
   - name: engine-supervised-flip
     state: pending
   - name: engine-integration-tests
