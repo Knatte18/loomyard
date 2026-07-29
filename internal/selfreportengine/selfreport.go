@@ -1,142 +1,124 @@
-// selfreport.go contains the gh-CLI executor, argument builder, and CreateIssue
-// domain function for the selfreportengine package. It holds everything from the
+// selfreport.go contains the go-github client seam and CreateIssue domain
+// function for the selfreportengine package. It holds everything from the
 // selfreport module that does not belong to the cobra command layer:
-// the RunGH seam, realRunGH, buildCreateArgs, lastNonEmptyLine, and CreateIssue.
+// the NewGitHubClient seam and CreateIssue.
 
 // Package selfreportengine provides the domain kernel for filing GitHub issues
-// via the gh CLI. It exposes CreateIssue as the single entry point and RunGH
-// as a swappable seam for testing, keeping all implementation details
-// (targetRepo, buildCreateArgs, lastNonEmptyLine, realRunGH) unexported.
+// via githubclient's authenticated go-github client. It exposes CreateIssue as
+// the single entry point and NewGitHubClient as a swappable factory seam for
+// testing, keeping targetRepo unexported.
 package selfreportengine
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
-	"os/exec"
-	"strconv"
 	"strings"
+	"time"
 
-	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/google/go-github/v75/github"
+
+	"github.com/Knatte18/loomyard/internal/githubclient"
 )
 
-// targetRepo is the hardcoded GitHub repository that all issues are filed against.
-// It is a constant so that tests can verify the exact --repo argument without any
-// config-file or environment-variable indirection.
+// targetRepo is the hardcoded "owner/repo" GitHub repository that all issues
+// are filed against. It is a constant so that tests can verify the exact
+// owner and repo arguments passed to Issues.Create without any config-file or
+// environment-variable indirection. githubclient resolves neither owner nor
+// repo itself -- CreateIssue splits this constant and passes both as
+// parameters.
 const targetRepo = "Knatte18/loomyard"
 
-// RunGH is the seam through which all gh invocations flow.
-// Tests replace it with a fake that records the argv and returns caller-specified
-// values, so no real gh binary or network is needed during unit testing.
-var RunGH = realRunGH
+// createIssueTimeout bounds CreateIssue's whole call to Issues.Create,
+// including a 401-triggered credential re-resolution and replay performed
+// internally by githubclient's transport. It matches the 30s budget
+// githubclient.New's returned client already carries on its underlying
+// http.Client, so CreateIssue never relies solely on a caller-supplied
+// context.Background() to keep an autonomous run from hanging.
+const createIssueTimeout = 30 * time.Second
 
-// realRunGH executes the gh CLI with the supplied argument slice and returns the
-// captured stdout, stderr, exit code, and any non-exit-code error.
-//
-// It first calls exec.LookPath("gh") to confirm the binary is on PATH; when gh
-// is not found it returns the LookPath error immediately so that CreateIssue can
-// distinguish a missing binary from a generic exec failure via errors.Is.
-// Otherwise it runs gh, captures stdout/stderr into buffers, suppresses a console
-// window on Windows via proc.HideWindow, and extracts the exit code from
-// *exec.ExitError so that a non-zero gh exit is not surfaced as a Go error.
-func realRunGH(args []string) (stdout, stderr string, exitCode int, err error) {
-	// Confirm the binary is on PATH before attempting to run it; the LookPath
-	// error is structurally distinct from a runtime exec failure and lets callers
-	// use errors.Is(err, exec.ErrNotFound) to generate a clearer message.
-	if _, lookErr := exec.LookPath("gh"); lookErr != nil {
-		return "", "", -1, lookErr
-	}
-
-	cmd := exec.Command("gh", args...)
-
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-
-	// Suppress the console window on Windows; no-op on other platforms.
-	proc.HideWindow(cmd)
-
-	runErr := cmd.Run()
-
-	// Extract the exit code from *exec.ExitError; a non-zero exit is not a
-	// Go error for this function — only genuine exec failures propagate as err.
-	exitCode = 0
-	if exitErr, ok := runErr.(*exec.ExitError); ok {
-		exitCode = exitErr.ExitCode()
-	} else if runErr != nil {
-		// A non-ExitError failure (e.g. IO error) propagates with exit code -1
-		// to distinguish it from a normal non-zero exit.
-		return "", "", -1, runErr
-	}
-
-	return outBuf.String(), errBuf.String(), exitCode, nil
-}
-
-// buildCreateArgs assembles the gh argument list for creating an issue on the
-// target repository. The body argument is included only when non-nil, and each
-// label in labels gets its own --label flag pair, preserving multi-label order.
-func buildCreateArgs(title string, body *string, labels []string) []string {
-	args := []string{"issue", "create", "--repo", targetRepo, "--title", title}
-	if body != nil {
-		args = append(args, "--body", *body)
-	}
-	for _, l := range labels {
-		args = append(args, "--label", l)
-	}
-	return args
-}
+// NewGitHubClient is the seam through which CreateIssue obtains an
+// authenticated *github.Client. Tests replace it with a closure that returns
+// a real go-github client pointed at an httptest server, so no test ever
+// reaches real token resolution or the real GitHub API.
+var NewGitHubClient = githubclient.New
 
 // CreateIssue files a GitHub issue with the given title, optional body, and
-// labels via the gh CLI. It returns the issue URL and parsed issue number on
-// success. When the number cannot be parsed from the URL path segment, it returns
-// (url, 0, nil) — a zero number signals cli.go to omit the "number" field from
-// the JSON envelope.
+// labels via go-github's typed Issues.Create call against the hardcoded
+// targetRepo. It returns the issue's HTML URL and issue number on success.
 //
-// Error handling distinguishes three cases:
-//   - gh binary not on PATH: errors.Is(err, exec.ErrNotFound) → "gh not found on PATH"
-//   - generic exec failure: non-ExitError err → "failed to run gh"
-//   - gh reported non-zero exit: exitCode != 0 → "gh issue create failed: <stderr>"
+// Error handling distinguishes three cases, carried over in spirit from the
+// gh-CLI transport this replaces:
+//   - the token cannot be resolved (formerly: gh binary not on PATH) --
+//     surfaces as errors.Is(err, githubclient.ErrTokenUnresolvable), reached
+//     either through NewGitHubClient itself or through the first request's
+//     401 handling
+//   - a transport or network failure (formerly: generic exec failure) --
+//     any other error Issues.Create returns that is not an *github.ErrorResponse
+//   - GitHub rejected the request with a non-2xx response (formerly: non-zero
+//     gh exit) -- an *github.ErrorResponse, whose Message is surfaced directly
+//
+// These three remain distinguishable because a network failure and an API
+// rejection call for different operator action: one is worth retrying, the
+// other names a rejected request that will not succeed on retry alone.
+//
+// The returned number is 0 only when go-github's Issue.Number itself comes
+// back nil. In practice a successful (2xx) response from Issues.Create always
+// carries a typed issue number, so this is a defensive fallback rather than
+// an expected parse outcome the way it was under the old URL-suffix parse --
+// callers must not read a live "issue number omitted" case into it.
 func CreateIssue(title string, body *string, labels []string) (url string, number int, err error) {
-	stdout, stderr, exitCode, runErr := RunGH(buildCreateArgs(title, body, labels))
-	if runErr != nil {
-		// Distinguish a missing gh binary from a generic exec failure so the
-		// error message guides the user toward installing gh vs. investigating
-		// a runtime problem.
-		if errors.Is(runErr, exec.ErrNotFound) {
-			return "", 0, fmt.Errorf("gh not found on PATH: %w", runErr)
+	client, err := NewGitHubClient()
+	if err != nil {
+		// A factory failure is the same operator-facing case as an
+		// unresolvable token: there is no authenticated client to even
+		// attempt the request with, so surface it the same way rather than
+		// risking a nil-client panic below.
+		return "", 0, fmt.Errorf("github client unavailable: %w", err)
+	}
+
+	owner, repo, ok := strings.Cut(targetRepo, "/")
+	if !ok {
+		// Unreachable given targetRepo's fixed "owner/repo" literal; kept as
+		// a defensive guard so a future edit to the constant fails loudly
+		// instead of silently filing against a malformed repo path.
+		return "", 0, fmt.Errorf("selfreportengine: targetRepo %q is not \"owner/repo\" shaped", targetRepo)
+	}
+
+	// Bound the whole call, including a possible 401 re-resolution and
+	// replay performed internally by githubclient's transport, so a stalled
+	// connection can never hang an autonomous lyx run indefinitely.
+	ctx, cancel := context.WithTimeout(context.Background(), createIssueTimeout)
+	defer cancel()
+
+	req := &github.IssueRequest{Title: &title}
+	if body != nil {
+		req.Body = body
+	}
+	if len(labels) > 0 {
+		req.Labels = &labels
+	}
+
+	issue, _, createErr := client.Issues.Create(ctx, owner, repo, req)
+	if createErr != nil {
+		// A token that could not be resolved (env, cache, and gh CLI all
+		// exhausted) surfaces distinctly from a generic network problem so
+		// the operator knows to fix credentials rather than investigate
+		// connectivity.
+		if errors.Is(createErr, githubclient.ErrTokenUnresolvable) {
+			return "", 0, fmt.Errorf("github token not resolvable: %w", createErr)
 		}
-		return "", 0, fmt.Errorf("failed to run gh: %w", runErr)
-	}
-	if exitCode != 0 {
-		return "", 0, fmt.Errorf("gh issue create failed: %s", strings.TrimSpace(stderr))
-	}
 
-	// Take the last non-empty trimmed line of stdout as the issue URL; gh prints
-	// the URL on the last line of successful output.
-	url = lastNonEmptyLine(stdout)
-
-	// Parse the trailing path segment as the issue number; if it is not an integer
-	// (e.g. the URL format changed or stdout was unexpected), return 0 so the caller
-	// omits "number" from the JSON envelope rather than surfacing a spurious error.
-	segments := strings.Split(url, "/")
-	if len(segments) > 0 {
-		if n, parseErr := strconv.Atoi(segments[len(segments)-1]); parseErr == nil {
-			number = n
+		// A non-2xx GitHub response decodes into *github.ErrorResponse;
+		// surfacing its Message directly is the closest equivalent to the
+		// old "gh issue create failed: <stderr>" text.
+		var ghErr *github.ErrorResponse
+		if errors.As(createErr, &ghErr) {
+			return "", 0, fmt.Errorf("github issue create failed: %s", strings.TrimSpace(ghErr.Message))
 		}
+
+		return "", 0, fmt.Errorf("failed to reach GitHub: %w", createErr)
 	}
 
-	return url, number, nil
-}
-
-// lastNonEmptyLine returns the last non-empty trimmed line from s.
-// It is used to extract the issue URL from gh's stdout, which may contain
-// trailing newlines or blank lines after the URL.
-func lastNonEmptyLine(s string) string {
-	lines := strings.Split(s, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if t := strings.TrimSpace(lines[i]); t != "" {
-			return t
-		}
-	}
-	return ""
+	return issue.GetHTMLURL(), issue.GetNumber(), nil
 }

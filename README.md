@@ -62,7 +62,7 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
 - **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the proof-of-concept it was built from — `muxpoc` proved the risky parts, then was deleted once `reed` shipped.)
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
-- **selfreport** — file bugs/enhancements against the repo via `gh`.
+- **selfreport** — file bugs/enhancements against the repo via go-github, authenticated through `internal/githubclient` (`gh` is a fallback token source, not the transport).
 - **builder** — an LLM orchestrator over Go verbs: drives a pinned implementation plan batch by batch, spawning each batch's implementer as its own tmux strand.
 - **webster** — a fork-based sibling of `builder` with its own plan format and report contract: one long-lived Master session reads the flat card-list plan (plan-format v3, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch. `builder` stays frozen in-tree as the plan-format-v2 consumer.
 - **perch** — a generic profile-driven review-gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK`, standalone or as loom's gate between phases.
@@ -106,7 +106,7 @@ The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, ex
 
 - [Claude Code](https://claude.ai/code)
 - Go 1.26+
-- `gh` CLI authenticated (`gh auth login`)
+- A resolvable GitHub token for `selfreport`: set `GH_TOKEN` or `GITHUB_TOKEN`, or have the `gh` CLI installed and authenticated (`gh auth login`) as a fallback token source — `gh` is not required when either environment variable is set
 - Git 2.35+ (for `git worktree`)
 - tmux (for the orchestration layers; on Windows via psmux)
 

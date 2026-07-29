@@ -6,8 +6,8 @@
 
 // Package selfreportcli provides the cobra command tree for filing LoomYard bugs
 // and enhancements as GitHub issues directly from lyx.exe. The module is
-// reachable as `lyx selfreport create` and delegates the actual gh invocation to
-// the selfreportengine domain package.
+// reachable as `lyx selfreport create` and delegates the actual GitHub API call
+// to the selfreportengine domain package.
 package selfreportcli
 
 import (
@@ -29,13 +29,14 @@ var stdin io.Reader = os.Stdin
 //
 // The parent command has no PersistentPreRunE and no persistent flags because
 // selfreport requires no shared setup — the only verb is "create", which is fully
-// self-contained and talks to a hardcoded external service (gh CLI +
-// Knatte18/loomyard). Per-verb flags are declared as local flags on the "create"
-// subcommand; body and label resolution happens inside that subcommand's RunE.
+// self-contained and talks to a hardcoded external service (the GitHub REST API,
+// via go-github, against Knatte18/loomyard). Per-verb flags are declared as local
+// flags on the "create" subcommand; body and label resolution happens inside that
+// subcommand's RunE.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "selfreport",
-		Short: "self-report a LoomYard bug or enhancement to lyx's own repo via gh",
+		Short: "self-report a LoomYard bug or enhancement to lyx's own repo on GitHub",
 	}
 
 	// createCmd is declared as a named variable so that its RunE closure can
@@ -45,9 +46,12 @@ func Command() *cobra.Command {
 	var createCmd *cobra.Command
 	createCmd = &cobra.Command{
 		Use:   "create <title>",
-		Short: "file a self-report issue on the LoomYard repository via gh",
-		Long: `create files a new issue on the Knatte18/loomyard GitHub repository via the gh CLI.
-The gh CLI must be installed and authenticated before running this command.
+		Short: "file a self-report issue on the LoomYard repository via the GitHub API",
+		Long: `create files a new issue on the Knatte18/loomyard GitHub repository via the GitHub REST API.
+A GitHub token must be resolvable before running this command: set GH_TOKEN or
+GITHUB_TOKEN, or have the gh CLI installed and authenticated as a fallback token
+source -- the gh CLI is not the transport itself and is only ever shelled out to
+for a token when both environment variables are unset.
 
 Examples:
 
@@ -92,9 +96,10 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 	title := args[0]
 
 	// Resolve the body pointer. nil means --body was not supplied, which causes
-	// buildCreateArgs to omit the --body flag entirely so gh uses its default
-	// (no body). Using Changed() rather than comparing to "" correctly handles
-	// --body "" as an explicit empty body vs. the flag not being set at all.
+	// CreateIssue to omit the request's "body" field entirely so GitHub applies
+	// its own default (no body). Using Changed() rather than comparing to ""
+	// correctly handles --body "" as an explicit empty body vs. the flag not
+	// being set at all.
 	var body *string
 	if cmd.Flags().Changed("body") {
 		bodyStr, _ := cmd.Flags().GetString("body")
@@ -126,7 +131,9 @@ func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 	}
 
 	// Build the success envelope: url is always included; number is included
-	// only when the gh output URL's trailing path segment parsed as an integer.
+	// only when CreateIssue's typed response carried a non-zero issue number
+	// (see CreateIssue's godoc: this is now a defensive gate, not an expected
+	// omission -- a successful response always carries one in practice).
 	fields := map[string]any{"url": url}
 	if number != 0 {
 		fields["number"] = number
