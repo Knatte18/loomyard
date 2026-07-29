@@ -449,3 +449,82 @@ func (b *Board) ListNotesFull() ([]Task, error) {
 
 	return store.ListTasksFull(), nil
 }
+
+// taskToUpsertFields builds an upsert field map from an existing Task's
+// fields, explicitly — NOT a JSON round-trip of the whole Task, since the
+// struct's id field is not in upsertAllowedKeys and would be rejected as an
+// unknown field if included. Used by PromoteNote to hand a note's content to
+// the tasks store's UpsertTask as a fresh upsert payload.
+func taskToUpsertFields(t Task) map[string]any {
+	fields := map[string]any{
+		"slug":       t.Slug,
+		"title":      t.Title,
+		"depends_on": t.DependsOn,
+		"isolated":   t.Isolated,
+		"deferred":   t.Deferred,
+		"brief":      t.Brief,
+		"body":       t.Body,
+	}
+	if t.Status != nil {
+		fields["status"] = *t.Status
+	}
+	if t.ShortName != "" {
+		fields["short_name"] = t.ShortName
+	}
+	return fields
+}
+
+// PromoteNote moves the note identified by idOrSlug from notes.json into
+// tasks.json: it upserts the note's content into the tasks store, saves it,
+// then removes the entry from the notes store and saves that too. Built
+// directly on boardCriticalSection (not writeOp, which only saves one store)
+// because PromoteNote must save both stores, in this order.
+//
+// Save ordering is the crash-safety contract this method exists to uphold:
+// tasksStore.Save() happens FIRST, notesStore.Save() SECOND. A crash between
+// the two saves leaves the entry present in BOTH files — recoverable, never
+// silently lost. A retry after such a crash is a plain idempotent call:
+// notesStore.GetTask still finds the note (removal never ran), and
+// tasksStore.UpsertTask finds the slug already present and takes the
+// ApplyPatch in-place-update branch (not NewTask), converging to the same
+// result; notesStore.RemoveTask then completes on the retry.
+//
+// A note whose depends_on still names a notes.json-only, not-yet-promoted
+// slug is rejected by tasksStore.UpsertTask's own validateWrite
+// dangling-dependency check with no new code needed here — this is intended
+// behavior (promote dependencies first), not a gap.
+func (b *Board) PromoteNote(idOrSlug any) (Task, error) {
+	result, err := b.boardCriticalSection(func(tasksStore, notesStore *Store) (any, error) {
+		note, found := notesStore.GetTask(idOrSlug)
+		if !found {
+			return nil, fmt.Errorf("note not found: %v", idOrSlug)
+		}
+
+		// UpsertTask is called DIRECTLY (bypassing checkCrossStoreSlugAvailable
+		// and Board.UpsertTask entirely): this is the one legitimate path where
+		// the slug is expected to be transiently present in both stores, both
+		// on a genuine first call (it exists in notesStore and is about to be
+		// added to tasksStore) and on a crash-recovery retry (it may already
+		// exist in both).
+		upserted, err := tasksStore.UpsertTask(taskToUpsertFields(note))
+		if err != nil {
+			return nil, err
+		}
+		if err := tasksStore.Save(); err != nil {
+			return nil, fmt.Errorf("save tasks store: %w", err)
+		}
+
+		if err := notesStore.RemoveTask(note.Slug); err != nil {
+			return nil, err
+		}
+		if err := notesStore.Save(); err != nil {
+			return nil, fmt.Errorf("save notes store: %w", err)
+		}
+
+		return upserted, nil
+	})
+	if err != nil {
+		return Task{}, err
+	}
+	return result.(Task), nil
+}
