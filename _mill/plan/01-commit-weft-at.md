@@ -24,6 +24,7 @@ This batch adds the one new git-commit primitive board's detached sync process n
 - **Context:**
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/gitrepo/gitrepo.go`
 - **Edits:**
   - `internal/fabricengine/weftgit.go`
 - **Creates:** none

@@ -97,6 +97,7 @@ union._
 - `cmd/lyx/exitcode_test.go`
 - `cmd/lyx/helptree_test.go`
 - `cmd/lyx/main_integration_test.go`
+- `cmd/lyx/tierpurity_test.go`
 - `docs/overview.md`
 - `internal/boardcli/cli.go`
 - `internal/boardcli/cli_test.go`
