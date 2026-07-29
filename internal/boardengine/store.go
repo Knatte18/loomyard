@@ -240,6 +240,7 @@ var upsertAllowedKeys = map[string]bool{
 	"brief":      true,
 	"body":       true,
 	"status":     true,
+	"short_name": true,
 }
 
 // validateUpsertFields rejects any key in fields that is not in upsertAllowedKeys.
