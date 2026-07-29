@@ -59,7 +59,9 @@ batches:
     start_sha: a80dbda39a01e50ac9878b265e7765dd0ec8745c
     commit_sha: fa779d695108ab7607456c9bbe3f86cd633e9c32
   - name: engine-supervised-flip
-    state: pending
+    state: running
+    implementer_session: bc840343-623b-4d3b-b159-19cba5c37305
+    start_sha: d4225b801a140b439ef7be2e22cbb7991e7c812c
   - name: engine-integration-tests
     state: pending
 ```
