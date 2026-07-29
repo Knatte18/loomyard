@@ -127,10 +127,11 @@ func (e *ErrResolverUnsupported) Is(target error) bool {
 var ErrServerTimeoutSentinel = errors.New("codeintelengine: language server timed out")
 
 // ErrServerTimeout reports that the language server subprocess failed to
-// respond to Phase within Timeout. Phase is one of "initialize",
-// "references", or "workspace/symbol" — the three request phases the engine
-// bounds with a context deadline (see the plan's deadline-with-hard-kill
-// Shared Decision).
+// respond to Phase within Timeout. Phase names the request the engine was
+// waiting on when the deadline expired — e.g. "initialize", "references",
+// "definition", "workspace/symbol", or "documentSymbol" — every request
+// phase the engine bounds with a context deadline (see the plan's
+// deadline-with-hard-kill Shared Decision).
 type ErrServerTimeout struct {
 	Phase   string
 	Timeout string
