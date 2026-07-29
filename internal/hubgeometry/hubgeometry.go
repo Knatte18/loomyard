@@ -412,19 +412,47 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 	return s, true
 }
 
+// HubReservedNames returns the hub-structural reserved name-set that
+// hubgeometry alone owns: the raddle dir (_raddle, reserved ahead of
+// wiring as a known-future junction name), the board passenger (_board),
+// and the portal/launcher mirrors (_portals, _launchers). This is the sole
+// source of that set — both IsReservedHubName (below) and fabricengine's
+// wiring-guard filter (which keeps a config-supplied junction name from
+// colliding with a hub-structural path) consume it, so the two call sites
+// can never drift apart into two independently-maintained lists.
+//
+// It deliberately excludes LyxDirName and PatternDirName: those two are
+// config-migrated junction names, no longer hardcoded here, and are folded
+// into the reserved set by IsReservedHubName's junctionNames parameter
+// instead.
+func HubReservedNames() []string {
+	return []string{BoardDirName, "_portals", "_launchers", "_raddle"}
+}
+
 // IsReservedHubName reports whether name is one of the hub-level entry names
-// lyx geometry itself owns: the per-worktree lyx dir (_lyx), the raddle dir
-// (_raddle), the board passenger (_board), the portal/launcher mirrors
-// (_portals, _launchers), and the PATTERN constraint-injection surface
-// (_pattern). A worktree slug must never claim one of these — a host worktree
-// directory named after a geometry token collides with the very paths lyx
-// composes at the hub level (e.g. a worktree named "_portals" would have
-// portal junctions created inside it). Slug validation (fabric's Add) calls
-// this so the rejection lives with the single owner of the literals.
-func IsReservedHubName(name string) bool {
-	switch name {
-	case LyxDirName, "_raddle", BoardDirName, "_portals", "_launchers", PatternDirName:
-		return true
+// a worktree slug must never claim: hubgeometry's own hub-structural tokens
+// (HubReservedNames — the per-worktree geometry lyx composes at the hub
+// level, e.g. a worktree named "_portals" would have portal junctions
+// created inside it) UNION the caller-supplied junctionNames, the
+// weft-backed junction name-set injected from fabric config (pathspec) for
+// the worktree being validated. hubgeometry stays config-blind: the
+// junction/weft-backed portion of the reserved set is never hardcoded here,
+// it is passed in by the caller. Over the default junctionNames =
+// ["_lyx","_pattern"], the union reproduces exactly today's six reserved
+// names (_lyx, _pattern, _board, _portals, _launchers, _raddle). Slug
+// validation (fabric's Add) calls this so the hub-structural rejection
+// lives with the single owner of those literals while the junction-name
+// rejection reflects the caller's actual configured pathspec.
+func IsReservedHubName(name string, junctionNames []string) bool {
+	for _, reserved := range HubReservedNames() {
+		if name == reserved {
+			return true
+		}
+	}
+	for _, junctionName := range junctionNames {
+		if name == junctionName {
+			return true
+		}
 	}
 	return false
 }
