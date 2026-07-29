@@ -108,7 +108,24 @@ codeintel module-table entry repeats the "references-only" framing.
   deliberately does not share `resolvePosition`'s ambiguity-collapsing
   behavior, with a one-line pointer to `symbol.go`'s own doc comment for
   the full rationale rather than duplicating `symbol-semantics`'s
-  reasoning here.
+  reasoning here. **(7) Two more stale claims elsewhere in the file, of
+  the identical "this doc still describes the pre-this-task shape" kind
+  items (1)-(6) already fix, caught on a full re-read rather than left
+  for a future task to discover:** "The generalized LSP client" section
+  currently states the client "speaks exactly six methods over stdio
+  JSON-RPC framing... initialize, initialized, textDocument/references,
+  workspace/symbol, shutdown, exit" — false the moment batch 8 adds
+  `textDocument/definition`; update the count and the list to seven
+  methods. "The typed error vocabulary" section currently states
+  "`internal/codeintelcli` maps every one of these... uniformly to
+  `output.Err(err.Error())` with exit 1 — no error needs a distinct exit
+  code, since the message text alone is the actionable signal" — false
+  the moment batch 9 gives `ErrAmbiguousSymbol` exit code 2; rewrite this
+  sentence to state that `ErrAmbiguousSymbol` is the one exception,
+  mapped to `output.Ok` with a `candidates` field and exit 2, precisely
+  because "ambiguous" is not an error the way the other five sentinels
+  are — every other typed error still maps uniformly to `output.Err`/exit
+  1 as this sentence originally said.
 - **Commit:** `docs(codeintelengine): rewrite package doc for EnsureServer, the toolchain manager, and the daemon lifecycle`
 
 ### Card 44: Rewrite `internal/codeintelcli`'s package doc

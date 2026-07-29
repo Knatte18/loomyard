@@ -188,6 +188,7 @@ wiring end to end.
   - `internal/codeintelengine/refs_integration_test.go`
   - `internal/codeintelengine/toolchain_integration_test.go`
   - `internal/codeintelengine/ensureserver.go`
+  - `internal/codeintelengine/registry.go`
 - **Edits:** none
 - **Creates:**
   - `internal/codeintelengine/ensureserver_integration_test.go`

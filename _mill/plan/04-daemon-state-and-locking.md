@@ -6,7 +6,7 @@ batch: daemon-state-and-locking
 number: 4
 cards: 5
 verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
-depends-on: [1, 2]
+depends-on: [2]
 ```
 
 ## Batch Scope
@@ -19,7 +19,15 @@ spawn/reconnect machinery got it there. This is also where
 `internal/proc` joins the Codeintelengine Leaf Invariant allowlist (see
 the overview's "`internal/proc` is also added..." Shared Decision),
 because the state file's PID-liveness half of its staleness check needs
-a new cross-platform `proc.IsAlive` primitive.
+a new cross-platform `proc.IsAlive` primitive. **`depends-on: [2]` is
+about that shared-file edit, not about any code this batch calls**:
+neither `daemonstate.go` (plain caller-supplied `path string` arguments,
+no `hubgeometry.Layout` call) nor `probe.go` consumes batch 1's
+`hubgeometry` accessor or batch 2's `internal/lock` import — the
+dependency exists solely because card 13 edits the same
+`CONSTRAINTS.md`/`leaf_enforcement_test.go` pair batch 2's card 6 just
+edited, and sequencing avoids two batches editing that map literal in
+parallel.
 
 **Scope boundary, stated explicitly because `_mill/discussion.md`'s
 Testing section groups it differently:** the worktree-scoped

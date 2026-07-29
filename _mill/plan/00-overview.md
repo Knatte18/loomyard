@@ -36,7 +36,7 @@ batches:
   - number: 4
     name: daemon-state-and-locking
     file: 04-daemon-state-and-locking.md
-    depends-on: [1, 2]
+    depends-on: [2]
     verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
   - number: 5
     name: ensure-server-native
@@ -81,13 +81,24 @@ dial-transport mode) touch disjoint files and share no dependency, so they
 run in parallel. Batch 2 (the Go toolchain manager) needs batch 1's
 `PinnedVersion` field and is where `internal/lock` first enters
 `codeintelengine` (the `CONSTRAINTS.md` leaf-invariant amendment lands
-there). Batch 4 (the daemon state file, the worktree-scoped spawn-race
-lock, and the strategy-shared probe helper) needs both batch 1's
-`hubgeometry` accessor and batch 2's now-allowlisted `internal/lock`
-import. Batches 5 and 6 build the two `EnsureServer` strategies on top of
-batch 4's shared machinery — `native` (batch 5) needs the toolchain
-manager (batch 2); `supervised` (batch 6) needs the dial-transport mode
-(batch 3) and is sequenced after `native` (batch 5) only because both
+there). Batch 4 (the daemon state file, read/written by plain
+caller-supplied paths with no `hubgeometry`/`internal/lock` call of its
+own, plus the strategy-shared `probe` helper) depends on batch 2 alone —
+not for anything batch 4's own code consumes, but because batch 4's card
+13 makes a *second* edit to the same `CONSTRAINTS.md`/
+`leaf_enforcement_test.go` pair batch 2's card 6 just edited (allowlisting
+`internal/proc` there, right after card 6 allowlists `internal/lock`);
+sequencing batch 4 after batch 2 avoids two batches editing the same map
+literal in parallel with no coordination. (Batch 1's `hubgeometry`
+accessor and batch 2's `internal/lock` are both real dependencies of
+*batch 6*, not batch 4 — batch 6 reaches batch 1 transitively via
+batch 4→batch 2→batch 1, so no separate direct edge is needed.) Batches 5
+and 6 build the two `EnsureServer` strategies on top of batch 4's shared
+machinery — `native` (batch 5) needs the toolchain manager (batch 2);
+`supervised` (batch 6) needs the dial-transport mode (batch 3), the
+`hubgeometry` accessor (batch 1, transitively), and `internal/lock`
+(batch 2, transitively) for its own spawn-race lock and state-file
+resolution — and is sequenced after `native` (batch 5) only because both
 edit `internal/codeintelengine/ensureserver.go` and `supervised` is the
 one adding the second dispatch arm to a file `native` first creates —
 not because either strategy depends on the other's runtime behavior.

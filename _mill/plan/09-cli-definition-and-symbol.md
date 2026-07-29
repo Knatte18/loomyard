@@ -69,11 +69,18 @@ top of what this batch establishes.
   clihelp.SetExit(ctx, output.Ok(out, map[string]any{"references":
   referenceFields(results)}))` block with `results, err :=
   codeintelengine.References(ctx, opts); emitLookupResult(ctx, out,
-  "references", results, err); return nil`. `refsCommand`'s `Long`
-  doc-comment example prose is unaffected — no CLI surface change, only
-  the exit code on an ambiguous bare-symbol query changes from `1` to
-  `2`, with the response body's shape also changing from an error-string
-  message to `{"ok":true,"candidates":[...]}` on that one path.
+  "references", results, err); return nil`. Remove the inline comment
+  directly above that old block, "Every engine typed error surfaces via
+  its Error() text; no error needs a distinct exit code, so this mapping
+  stays uniform (any engine error -> output.Err, exit 1) per the batch's
+  Requirements" — it becomes false the instant this card lands
+  (`ErrAmbiguousSymbol` now gets exit 2), and `emitLookupResult`'s own
+  doc comment is where that distinction now belongs. `refsCommand`'s
+  `Long` doc-comment example prose is unaffected — no CLI surface change,
+  only the exit code on an ambiguous bare-symbol query changes from `1`
+  to `2`, with the response body's shape also changing from an
+  error-string message to `{"ok":true,"candidates":[...]}` on that one
+  path.
 - **Commit:** `feat(codeintelcli): add the 0/1/2 exit-code contract via emitLookupResult, retrofit refs`
 
 ### Card 34: `definition` verb

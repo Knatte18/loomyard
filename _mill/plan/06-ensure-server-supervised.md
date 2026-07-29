@@ -159,8 +159,20 @@ separately from recomputing it), and removes an entire class of bug
   `deadline`, return `&ErrServerSpawnTimeout{Lang: lang}` (card 23). (3)
   Once the lock is acquired, **double-check**: re-run `readDaemonState`;
   if it is now healthy (another process spawned a fresh daemon while this
-  one was waiting for the lock), `lock.Release()` and loop back to step
-  (1) without spawning. (4) Otherwise this call is the winner:
+  one was waiting for the lock), `lock.Release()`, **sleep the same short
+  bounded interval as step (2) (100ms)**, and loop back to step (1)
+  without spawning. This sleep matters even though the lock and state are
+  both already healthy: the winner writes the state file (step 5) and
+  releases the lock *before* its own dial-retry loop (step 6) confirms
+  the daemon has actually finished binding its listen socket, so a loser
+  reaching step (3) immediately after the winner's release can otherwise
+  win the free lock, see healthy state, release, and land back on step
+  (1) — dialing a socket that isn't bound yet — repeatedly with no
+  backoff anywhere in that specific path, a tight spin for the duration
+  of the daemon's bind window. Step (2)'s sleep only covers the
+  "lock not acquired" branch; this one covers the "acquired, but nothing
+  to do" branch, which is exactly as capable of spinning. (4) Otherwise
+  this call is the winner:
   `os.Remove(socketPath)` (ignore a not-exist error — this is the
   stale-socket cleanup the round-5 NOTE requires, and it runs
   unconditionally before every spawn, first-ever or restart, since a
