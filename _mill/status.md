@@ -82,7 +82,9 @@ batches:
     start_sha: 11a21b66fa2c51724f6dde64ac82ce3320df61c2
     commit_sha: 87eee1adeb7174f0e007d2ab23b654198c5ed4c9
   - name: definition-and-symbol-engine
-    state: pending
+    state: running
+    implementer_session: 851e087b-b42c-4515-af00-438e91eed23d
+    start_sha: 1d9ba4316abd16e65809c45cc6d923fc39c3f259
   - name: cli-definition-and-symbol
     state: pending
   - name: batch-mode-cli
