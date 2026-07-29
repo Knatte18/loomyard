@@ -5,9 +5,28 @@
 // result and typed error gets mapped to the internal/output JSON envelope.
 
 // Package codeintelcli wires internal/codeintelengine into the lyx cobra tree as the
-// "codeintel" module, exposing "refs", "definition", and "symbol" verbs that look up
-// references, definitions, and workspace symbols respectively, across the languages
-// internal/codeintelengine supports.
+// "codeintel" module, exposing three verbs — "refs" (every reference to a symbol or
+// position), "definition" (a symbol or position's definition), and "symbol" (a
+// workspace/symbol name search) — across the languages internal/codeintelengine
+// supports.
+//
+// # The exit-code contract
+//
+// Every verb's single-argument call exits 0 (found), 1 (not found, or any other
+// engine error), or 2 (ambiguous — the response body still carries "ok":true with a
+// "candidates" field, since multiple valid answers is not a process error, just a
+// result the caller must disambiguate). symbol never produces "ambiguous"/exit 2 in
+// either shape: returning several workspace/symbol candidates is its ordinary
+// successful answer, not an error state needing disambiguation, so its single-arg
+// call only ever exits 0 or 1.
+//
+// A call with 2 or more positional arguments switches to batch mode instead of the
+// single-symbol shape above: it returns one JSON entry per symbol under a top-level
+// "results" array, each entry carrying a 4th per-entry status — "found", "not_found",
+// "ambiguous" (refs/definition only), or "error" (a genuine infrastructure failure,
+// distinct from a confirmed-absent "not_found") — and the process exit code is set to
+// the worst status present across the whole batch, ranked found(0) < not_found(1) <
+// ambiguous(2) < error(3).
 package codeintelcli
 
 import (
