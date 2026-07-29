@@ -522,15 +522,37 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		// runs in) so the daemon survives this process's exit — it is meant
 		// to outlive this one call by design.
 		proc.DetachBreakaway(cmd)
-		// Surface the daemon's own diagnostics rather than discarding them,
-		// matching newLSPClient's existing convention.
-		cmd.Stderr = os.Stderr
+		// Surface the daemon's own diagnostics to a log file beside the
+		// state file — never to this process's own os.Stderr. os.Stderr
+		// would wire the detached daemon's stderr fd to whatever
+		// pipe/terminal this one call happened to inherit, which can close
+		// (or itself die, taking a pipe reader with it — e.g. a caller
+		// piped through "| head" and the reader exits) long before the
+		// daemon is meant to. The daemon's next write to that now-reader-
+		// less pipe then raises SIGPIPE and kills it, silently defeating
+		// the entire point of DetachBreakaway above: the daemon dies with
+		// (or because of) a caller it was explicitly detached from. A
+		// stable log file the daemon's own duplicated fd owns
+		// independently is what actually decouples its lifetime from the
+		// caller's.
+		logPath := filepath.Join(filepath.Dir(statePath), "daemon.log")
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			fileLock.Release()
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised open daemon log %s: %w", logPath, err)
+		}
+		cmd.Stderr = logFile
 		if err := cmd.Start(); err != nil {
+			logFile.Close()
 			// A spawn that fails to even start is not a race-losable
 			// condition worth looping on.
 			fileLock.Release()
 			return nil, fmt.Errorf("codeintelengine: ensureSupervised spawn daemon for %q: %w", lang, err)
 		}
+		// cmd.Start() gave the child its own duplicated copy of logFile's
+		// fd; this process's handle must not be held open for the rest of
+		// this call's (or the daemon's) lifetime.
+		logFile.Close()
 
 		// Step 5: write the state file *before* releasing the lock, so a
 		// losing caller that acquires the lock immediately after release

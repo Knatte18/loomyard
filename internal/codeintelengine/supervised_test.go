@@ -420,3 +420,57 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 		t.Errorf("state.Address = %q; want %q (the deterministic socket path, successfully rebound after cleanup)", state.Address, want)
 	}
 }
+
+// TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr is the regression
+// test for the fd-leak this task fixed: a DetachBreakaway'd daemon whose
+// Stderr is wired to the spawning process's own os.Stderr inherits that
+// process's fds, including any pipe it happens to be part of. A reader on
+// the other end of that pipe exiting before the daemon does (e.g. a caller
+// piped through "| head") leaves the daemon holding a write end nobody
+// reads — the daemon's next stderr write raises SIGPIPE and kills it,
+// silently defeating DetachBreakaway's entire point (reproduced live: a
+// spawn behind "2>&1 | tail -5" hung until "tail" was killed, at which
+// point the daemon itself crashed on its next log line). Proving the
+// daemon's diagnostics land in its own log file — never in this test
+// process's os.Stderr — is what a caller-fd-independence regression test
+// can assert deterministically; SIGPIPE-on-a-dead-reader is not something
+// this suite reproduces directly.
+func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip(builtins()["go"].InstallHint)
+	}
+
+	worktreeRoot := t.TempDir()
+	const lang = "go"
+	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	statePath := layout.CodeintelDaemonStateFile(lang)
+	logPath := filepath.Join(filepath.Dir(statePath), "daemon.log")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second)
+	if err != nil {
+		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("ensureSupervised() returned a nil client with a nil error")
+	}
+	t.Cleanup(func() {
+		if state, found, _ := readDaemonState(statePath); found {
+			if p, err := os.FindProcess(state.PID); err == nil {
+				_ = p.Kill()
+			}
+		}
+	})
+
+	info, err := os.Stat(logPath)
+	if err != nil {
+		t.Fatalf("os.Stat(%s) failed: %v; want the daemon's own log file to exist beside its state file", logPath, err)
+	}
+	if info.Size() == 0 {
+		// gopls always logs at least its own "listening on" banner on
+		// startup — an empty file means nothing was ever routed there,
+		// exactly the symptom of stderr going to the wrong fd instead.
+		t.Errorf("daemon log file %s is empty; want gopls's startup diagnostics to have been written to it", logPath)
+	}
+}
