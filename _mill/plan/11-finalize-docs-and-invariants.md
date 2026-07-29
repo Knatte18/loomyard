@@ -244,17 +244,38 @@ codeintel module-table entry repeats the "references-only" framing.
   not run (in particular the integration tier, which needs a real
   network-installed `gopls`) is not a suite that passed, and this card's
   whole purpose is closing that gap before the task is considered done.
+  **No `verify:` in this plan re-checks the integration tier
+  mechanically** — every batch that adds a `//go:build integration` file
+  excludes it from that batch's own `verify:`, so this card's manual run
+  is the only place the integration suite is exercised at all before
+  Handoff. This card's final report to the operator MUST include an
+  explicit, named recommendation — not a buried aside — to set
+  `pipeline.done_gate: "go build ./... && go vet ./... && go test
+  -count=1 ./..."` in `mill-config.yaml` for a repo-wide mechanical
+  re-check at every future task's Handoff (this exact recommendation is
+  precedented: the `native-clients-migration` plan's own final batch on
+  this branch's history made the identical suggestion for the identical
+  reason). **This card does not make that `mill-config.yaml` edit
+  itself** — `done_gate` is a hub-wide, hardlinked-across-worktrees
+  setting, and setting it (even to a `-tags integration`-free command)
+  from inside this one task's plan would silently change every other
+  concurrent or future task's Handoff gate in this hub, including tasks
+  with no relationship to `gopls`/codeintel and no guarantee their
+  worktree even has network access for `go test`'s own toolchain needs —
+  a genuine risk to unrelated work this task has no visibility into,
+  not merely an out-of-scope nicety. That is an operator decision to
+  make deliberately and hub-wide, not a side effect of one task's plan.
 - **Commit:** none
 
 ## Batch Tests
 
 `verify:` runs `go build ./... && go vet ./...` — deliberately the
 cheapest possible mechanical gate, since this batch's real verification
-is card 47's manual, explicit whole-repo run (including the
-integration tier no automated per-batch `verify:` in this plan ever
-exercises). Consider setting `pipeline.done_gate` in `mill-config.yaml`
-to `go build ./... && go vet ./... && go test -count=1 ./...` for this
-repo generally: every batch in this plan scopes its own `verify:` to the
-one or two packages it touches, so nothing catches a regression in an
-unrelated package until this batch's card 47 runs at the very end.
+is card 47's manual, explicit whole-repo run (including the integration
+tier no automated per-batch `verify:` in this plan ever exercises — see
+card 47's `pipeline.done_gate` recommendation and why this plan does not
+make that hub-wide config edit itself). Every batch in this plan scopes
+its own `verify:` to the one or two packages it touches, so nothing
+mechanically catches a regression in an unrelated package until this
+batch's card 47 runs at the very end.
 </content>

@@ -1,0 +1,37 @@
+MILL_REVIEW_BEGIN
+# Review: codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetmax
+reviewed_file: plan/
+date: 2026-07-29
+```
+
+## Findings
+
+### [BLOCKING] Context: omits the file defining a referenced identifier (several cards)
+**Location:** Batch 2 Card 9; Batch 5 Cards 20, 21; Batch 8 Card 29; Batch 9 Card 37
+**Issue:** Requirements name a function/field whose home file is absent from that card's own `Context:`/`Edits:`. Card 9 uses `builtins()["go"].PinnedVersion` (`registry.go` not listed). Card 20 whitebox-asserts `client.closed` and Card 29 calls `client.definition` — both need `lspclient.go`, listed in neither. Card 21 calls `ensureNative` without `ensureserver.go` in Context. Card 37 calls `clihelp.NewExitContext(...)`/`exitState.Code()` — verified via grep that no `internal/clihelp` file is ever in `Context:` anywhere in this 11-batch plan, even though the API is genuinely new to this package's visible code (confirmed against the current `cli.go`/`cli_test.go`, neither of which uses it today).
+**Fix:** Add the missing file to each card's `Context:` — `registry.go` (card 9), `lspclient.go` (cards 20, 29), `ensureserver.go` (card 21), and the `internal/clihelp` file defining `NewExitContext`/`exitState` (card 37).
+
+### [NIT] New Entry fields not reflected in the seeded servers.yaml template
+**Location:** Batch 1 Card 1 (and Batch 11's doc cards)
+**Issue:** `template.yaml`/`ConfigTemplate()` (the operator-facing servers.yaml seed) is not updated to show `pinned_version`/`has_native_daemon` on the `go:` block. Since `LoadRegistry` whole-replaces an entry (never field-merges), an operator who copies today's `go:` example into a real `servers.yaml` override — unaware these two new keys exist — silently regresses Go from the new native `EnsureServer` daemon path back to legacy per-call spawn, with no warning anywhere.
+**Fix:** Add `pinned_version: v0.23.0` / `has_native_daemon: true` to `template.yaml`'s `go:` block, or explicitly call out the whole-entry-replace/new-field interaction in `doc.go`'s rewrite (card 43).
+
+### [NIT] Batch 2's leaf-invariant allowlist edit lands one card after the import it permits
+**Location:** Batch 2, Cards 6–7
+**Issue:** Card 6 adds the `internal/lock` import to `toolchain.go` (via `lock.AcquireWriteLock`); Card 7, the *next* card, is what widens `leaf_enforcement_test.go`'s `allowedImports` to permit it. Batch 4 gets the analogous ordering right for `internal/proc` (Card 13 widens the allowlist *before* Card 14 introduces the import) — Batch 2's order is the reverse, an inconsistency between two instances of the same operation in the same plan.
+**Fix:** Swap Card 6/7's order (or fold the allowlist edit into Card 6's own commit) to match Batch 4's safer precedent.
+
+### [NIT] No `verify:` in the plan ever exercises the integration tier
+**Location:** Batches 2, 4, 5, 6 (integration test files); Batch 11 Card 47
+**Issue:** Every batch that adds a `//go:build integration` file explicitly excludes it from that batch's `verify:`. The only place the whole integration suite actually runs is Card 47, a "Commit: none" manual step — not a mechanically re-checkable gate. Batch 11's own scope note already names this exact gap ("nothing catches a regression in an unrelated package until this batch's card 47 runs") without committing to a concrete fix beyond a "consider" suggestion.
+**Fix:** Land a CI workflow (or the suggested `pipeline.done_gate` change) that actually runs `-tags integration`, rather than relying solely on a manually-executed final-card report.
+
+## Verdict
+
+REQUEST_CHANGES
+One BLOCKING Context-completeness gap recurs across five cards; three NITs on template docs, batch-internal ordering, and integration-test reachability.
+MILL_REVIEW_END

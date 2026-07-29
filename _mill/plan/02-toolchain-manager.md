@@ -15,10 +15,13 @@ Adds the Go toolchain manager: resolve-or-install a pinned `gopls` binary
 into a codeintel-owned, machine-global cache directory, fenced by its own
 per-language install lock so two worktrees racing a cold install don't
 duplicate the work. This is the batch where `internal/codeintelengine`
-first imports `internal/lock`, so it is also where the
-`CONSTRAINTS.md` Codeintelengine Leaf Invariant amendment and the
-Sandbox Suite Coverage backport land — both in the same commit as the
-import that needs them, per the Documentation Lifecycle.
+first imports `internal/lock`, so it is also where the `CONSTRAINTS.md`
+Codeintelengine Leaf Invariant amendment lands — in card 6's own commit,
+the same one that introduces the import, per the Documentation Lifecycle
+(a card whose commit imports a not-yet-allowlisted package would fail
+`TestLeafInvariant_AllowlistOnly` in isolation). Card 7 separately backports
+an unrelated, pre-existing Sandbox Suite Coverage documentation gap while
+`CONSTRAINTS.md` is already being touched.
 
 The external interface batch 5's `ensureNative` consumes:
 `resolveGoToolchain(ctx context.Context, pinnedVersion string) (binPath
@@ -66,16 +69,37 @@ mirrors this package's existing test-seam convention
   platform-specific logic to get wrong.
 - **Commit:** `feat(codeintelengine): add Go toolchain cache-dir and install-lock path helpers`
 
-### Card 6: `resolveGoToolchain` — pinned-version resolve/install with double-checked locking
+### Card 6: `resolveGoToolchain` — pinned-version resolve/install with double-checked locking, allowlist `internal/lock`
 
 - **Context:**
   - `internal/lock/lock.go`
 - **Edits:**
   - `internal/codeintelengine/toolchain.go`
+  - `CONSTRAINTS.md`
+  - `internal/codeintelengine/leaf_enforcement_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add
+- **Requirements:** **Land the `internal/lock` leaf-invariant allowlist
+  amendment in this same card/commit**, not a card later — this is the
+  card that actually introduces the `internal/lock` import into
+  `toolchain.go` (via `lock.AcquireWriteLock`, below), and a card whose
+  own commit imports a not-yet-allowlisted package would fail
+  `TestLeafInvariant_AllowlistOnly` in isolation (batch 4's analogous
+  `internal/proc` amendment, card 13, already gets this ordering right —
+  allowlist *before* the introducing import — this card matches it). In
+  `internal/codeintelengine/leaf_enforcement_test.go`, add
+  `"github.com/Knatte18/loomyard/internal/lock": true,` to the
+  `allowedImports` map (alongside the existing `hubgeometry` and
+  `yaml.v3` entries). In `CONSTRAINTS.md`'s "Codeintelengine Leaf
+  Invariant" section, update the opening statement's import list from
+  "stdlib, `internal/hubgeometry`, and `gopkg.in/yaml.v3`" to add
+  `internal/lock`, and add a bullet explaining why: `internal/lock`
+  fences the toolchain-install race (this batch) and the daemon
+  spawn-race (batch 4) — both genuinely cross-process coordination
+  problems the leaf needs to solve itself, and `internal/lock` is
+  already the repo's one primitive for exactly that, so allowlisting it
+  is reuse rather than a new dependency class. Add
   `type toolchainInstaller func(ctx context.Context, version, destDir
   string) error` and a package-level var
   `var installGoToolchain toolchainInstaller = runGoInstall` (the
@@ -106,32 +130,18 @@ mirrors this package's existing test-seam convention
   (see `refs.go`). This function does not touch `entry.Command` at all —
   batch 5's `ensureNative` is the one that substitutes the resolved
   `binPath` for `entry.Command[0]`.
-- **Commit:** `feat(codeintelengine): add resolveGoToolchain with double-checked install locking`
+- **Commit:** `feat(codeintelengine): add resolveGoToolchain with double-checked install locking; allowlist internal/lock`
 
-### Card 7: CONSTRAINTS.md — Codeintelengine Leaf Invariant amendment + Sandbox Suite Coverage backport
+### Card 7: CONSTRAINTS.md — Sandbox Suite Coverage backport
 
 - **Context:**
   - `cmd/lyx/sandbox_coverage_test.go`
 - **Edits:**
   - `CONSTRAINTS.md`
-  - `internal/codeintelengine/leaf_enforcement_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Two edits. **(1) Codeintelengine Leaf Invariant:**
-  in `internal/codeintelengine/leaf_enforcement_test.go`, add
-  `"github.com/Knatte18/loomyard/internal/lock": true,` to the
-  `allowedImports` map (alongside the existing `hubgeometry` and
-  `yaml.v3` entries). In `CONSTRAINTS.md`'s "Codeintelengine Leaf
-  Invariant" section, update the opening statement's import list from
-  "stdlib, `internal/hubgeometry`, and `gopkg.in/yaml.v3`" to add
-  `internal/lock`, and add a bullet explaining why: `internal/lock`
-  fences the toolchain-install race (this batch) and the daemon
-  spawn-race (batch 4) — both genuinely cross-process coordination
-  problems the leaf needs to solve itself, and `internal/lock` is
-  already the repo's one primitive for exactly that, so allowlisting it
-  is reuse rather than a new dependency class. **(2) Sandbox Suite
-  Coverage backport:** `cmd/lyx/sandbox_coverage_test.go`'s live
+- **Requirements:** `cmd/lyx/sandbox_coverage_test.go`'s live
   `excludedModules` map already carries a `"codeintel"` entry with the
   reason `"requires an external language-server binary
   (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build
@@ -141,9 +151,9 @@ mirrors this package's existing test-seam convention
   `codeintel`, reusing that exact reason text verbatim (do not
   paraphrase — the point is the doc and the test agree word-for-word).
   This is pre-existing drift unrelated to this task's own scope, folded
-  in here only because `CONSTRAINTS.md` is already being touched in this
-  same commit for the Leaf Invariant amendment.
-- **Commit:** `docs(constraints): allowlist internal/lock for codeintelengine; backport sandbox coverage note`
+  into this batch only because `CONSTRAINTS.md` is already being touched
+  by card 6's Leaf Invariant amendment.
+- **Commit:** `docs(constraints): backport the codeintel sandbox-coverage exclusion note`
 
 ### Card 8: Unit tests for resolveGoToolchain (mocked installer)
 
@@ -190,6 +200,7 @@ mirrors this package's existing test-seam convention
 - **Context:**
   - `internal/codeintelengine/toolchain.go`
   - `internal/codeintelengine/refs_integration_test.go`
+  - `internal/codeintelengine/registry.go`
 - **Edits:**
   - `cmd/lyx/hermeticenv_test.go`
 - **Creates:**
@@ -237,7 +248,7 @@ mirrors this package's existing test-seam convention
 `hermeticenv_test.go`'s allowlist, and that guard's own test must stay
 green. No `-tags integration`, so card 9's own new test does not run in
 this gate — it is exercised manually/in CI's integration tier alongside
-`refs_integration_test.go`, per the Test Tier Purity Invariant). Card 7's
-`CONSTRAINTS.md`/`leaf_enforcement_test.go` edit is verified by the same
-`go test` run, since `TestLeafInvariant_AllowlistOnly` runs untagged.
+`refs_integration_test.go`, per the Test Tier Purity Invariant. Card 6's
+`leaf_enforcement_test.go` edit is verified by the same `go test` run,
+since `TestLeafInvariant_AllowlistOnly` runs untagged.
 </content>

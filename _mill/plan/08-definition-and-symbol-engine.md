@@ -75,6 +75,7 @@ context.Context, opts Options) ([]Reference, error)` (new file
 
 - **Context:**
   - `internal/codeintelengine/refs.go`
+  - `internal/codeintelengine/lspclient.go`
 - **Creates:**
   - `internal/codeintelengine/definition.go`
 - **Edits:** none

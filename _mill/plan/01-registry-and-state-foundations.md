@@ -34,6 +34,7 @@ string` and `Entry.HasNativeDaemon bool` (both yaml-tagged, on
   - `internal/codeintelengine/detect.go`
 - **Edits:**
   - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/template.yaml`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -57,7 +58,18 @@ string` and `Entry.HasNativeDaemon bool` (both yaml-tagged, on
   `LoadRegistry` whole-entry-replace overlay semantics are unaffected by
   this change (a `servers.yaml` override for a language that omits the
   two new keys still decodes correctly, yaml.v3 leaves unset struct
-  fields at their zero values on decode).
+  fields at their zero values on decode). **Update the seeded
+  `template.yaml`'s `go:` block to add `pinned_version: v0.23.0` and
+  `has_native_daemon: true`**, matching `builtins()`'s new values
+  exactly. This is not cosmetic: `LoadRegistry` whole-replaces an entry
+  on override, never field-merges, so an operator who copies today's
+  `go:` example block into a real `servers.yaml` override — unaware
+  these two new keys exist — would otherwise silently regress Go from
+  the new `native` `EnsureServer` daemon path back to legacy
+  cold-spawn-per-call, with no warning anywhere. Keeping the seed
+  current is what prevents that footgun, not just documents it.
+  `ConfigTemplate()` in `template.go` needs no edit — it only embeds
+  `template.yaml` verbatim via `//go:embed`.
 - **Commit:** `feat(codeintelengine): add PinnedVersion/HasNativeDaemon to registry Entry`
 
 ### Card 2: Extend registry_test.go coverage for the new fields

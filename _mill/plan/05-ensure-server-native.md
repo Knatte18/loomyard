@@ -153,6 +153,7 @@ wiring end to end.
 
 - **Context:**
   - `internal/codeintelengine/lspclient_test.go`
+  - `internal/codeintelengine/lspclient.go`
   - `internal/codeintelengine/ensureserver.go`
 - **Edits:** none
 - **Creates:**
@@ -186,6 +187,7 @@ wiring end to end.
 - **Context:**
   - `internal/codeintelengine/refs_integration_test.go`
   - `internal/codeintelengine/toolchain_integration_test.go`
+  - `internal/codeintelengine/ensureserver.go`
 - **Edits:** none
 - **Creates:**
   - `internal/codeintelengine/ensureserver_integration_test.go`

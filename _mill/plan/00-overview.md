@@ -311,6 +311,7 @@ once the whole feature set (batch mode included) actually exists — see
 - `internal/codeintelengine/supervised_test.go`
 - `internal/codeintelengine/symbol.go`
 - `internal/codeintelengine/symbol_test.go`
+- `internal/codeintelengine/template.yaml`
 - `internal/codeintelengine/toolchain.go`
 - `internal/codeintelengine/toolchain_integration_test.go`
 - `internal/codeintelengine/toolchain_test.go`
