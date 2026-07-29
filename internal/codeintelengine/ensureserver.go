@@ -291,6 +291,15 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		}
 		if found && !daemonStale(state) {
 			fileLock.Release()
+			// Same deadline guard as step 2's !acquired branch above: without
+			// it, an uncontended lock combined with a state that always
+			// reads healthy but never actually dials (the "wedged daemon"
+			// scenario this function's own doc comment names) spins
+			// step1->step3 forever with no bound, contradicting the "whole
+			// call is bounded by deadline" guarantee documented above.
+			if time.Now().After(deadline) {
+				return nil, &ErrServerSpawnTimeout{Lang: lang}
+			}
 			// The winner writes the state file and releases the lock
 			// *before* its own dial-retry loop (step 6 below) confirms the
 			// daemon has actually finished binding its listen socket. A

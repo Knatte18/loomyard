@@ -114,6 +114,62 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 	}
 }
 
+// TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout
+// asserts that ensureSupervised is still bounded by its deadline when the
+// spawn lock is never contended at all — the "wedged daemon" scenario the
+// function's own doc comment names: a recorded state that reads healthy
+// (alive PID, current protocol version) but whose address is never actually
+// dialable. Unlike
+// TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout (which
+// pre-holds the lock so every retry falls into the "lock not acquired"
+// branch, step 2), this sub-test never touches the lock itself, so every
+// retry instead falls into step 3 ("acquired the lock, but state already
+// healthy") — the branch that previously had no deadline check at all and
+// would spin step1->step3 forever without ever returning.
+func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout(t *testing.T) {
+	worktreeRoot := t.TempDir()
+	const lang = "go"
+	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	statePath := layout.CodeintelDaemonStateFile(lang)
+	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
+
+	// Record a state that reads as healthy (a confirmed-alive PID, the
+	// current protocol version) but whose recorded address nothing is
+	// listening on, so every dial-and-finalize attempt in step 1 fails —
+	// and the lock is left free, so every retry's step 2 acquires it
+	// immediately and lands on step 3's re-check, not step 2's
+	// !acquired branch.
+	pid := spawnAndHoldSubprocess(t)
+	if err := writeDaemonState(statePath, daemonState{
+		PID:             pid,
+		Address:         "unix;" + socketPath,
+		ProtocolVersion: supervisedProtocolVersion,
+		StartedAt:       time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("writeDaemonState() failed: %v", err)
+	}
+
+	const timeout = 300 * time.Millisecond
+	start := time.Now()
+	// command is never reached: this call always finds a healthy-reading
+	// but undialable state, so it must exhaust its retry budget without
+	// ever attempting to spawn anything.
+	_, err := ensureSupervised(context.Background(), []string{"lyx-codeintel-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, timeout)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("ensureSupervised() with an uncontended lock and an undialable healthy state returned nil error; want ErrServerSpawnTimeout")
+	}
+	if !errors.Is(err, ErrServerSpawnTimeoutSentinel) {
+		t.Errorf("ensureSupervised() err = %v; want errors.Is(err, ErrServerSpawnTimeoutSentinel)", err)
+	}
+	// Generous upper bound: before the fix, this path had no deadline check
+	// at all and would spin indefinitely rather than return here.
+	if elapsed > 5*time.Second {
+		t.Errorf("ensureSupervised() took %s to return after a %s timeout; want it bounded by the timeout, not hanging", elapsed, timeout)
+	}
+}
+
 // TestEnsureSupervised_StaleSocketCleanupAllowsRebind asserts that a
 // leftover non-socket regular file at the deterministic socketPath (e.g.
 // left behind by a daemon that crashed without cleaning up after itself)
