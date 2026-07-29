@@ -44,7 +44,9 @@ batches:
     start_sha: c84c4a6f909d70796b960870bc491db6e1e9d48f
     commit_sha: 85115fefcf360e13a7e4fd1de73730aeaaec2cbb
   - name: 'fabricengine+fabriccli: _board as second weft worktree'
-    state: pending
+    state: running
+    implementer_session: a6fa497d-4b95-4297-a377-0a1cb65193bc
+    start_sha: 372a747660a516777f87fbbb7eec2705ca3bbe69
   - name: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
     state: pending
   - name: 'boardcli: notes CLI surface + promote-note command'
