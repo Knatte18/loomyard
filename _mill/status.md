@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -48,6 +48,7 @@ holistic-reviewing  '2026-07-29T11:11:41Z'
 holistic-fixing  '2026-07-29T11:15:40Z'
 holistic-reviewing  '2026-07-29T11:20:45Z'
 holistic-approved  '2026-07-29T13:23:50Z'
+done  '2026-07-29T13:24:15Z'
 ```
 
 ## Batches
