@@ -41,3 +41,14 @@ func IsAlive(pid int) bool {
 func Detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
+
+// DetachBreakaway configures the command like Detach, additionally surviving
+// a Windows Job Object with kill-on-close closing. On Linux there is no Job
+// Object concept, and Setsid-based Detach already gives the process the
+// survive-parent-exit property CREATE_BREAKAWAY_FROM_JOB provides on
+// Windows, so this is a trivial alias for Detach — it exists purely so the
+// cross-platform call site that invokes it unconditionally compiles on every
+// OS this repo targets.
+func DetachBreakaway(cmd *exec.Cmd) {
+	Detach(cmd)
+}
