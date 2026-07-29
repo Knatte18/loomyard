@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: burler-prompt-split
 branch: burler-prompt-split
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-07-29T19:19:46Z'
 discussed  '2026-07-29T19:19:46Z'
 planning  '2026-07-29T19:31:18Z'
 plan-fix-r1  '2026-07-29T19:46:45Z'
+planned  '2026-07-29T19:47:01Z'
 ```
