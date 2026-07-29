@@ -41,7 +41,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	}
 	configPath := hubgeometry.ConfigFile(cwd, "board")
 	// Write a template-complete board config. path: is no longer a template key
-	// (the board data dir is paths-owned), so only home/sidebar/proposal_prefix remain.
+	// (the board data dir is paths-owned), so only readme/design_prefix remain.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
@@ -86,7 +86,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	}
 	configPath := hubgeometry.ConfigFile(cwd, "board")
 	// Write a template-complete board config. path: is no longer a template key
-	// (the board data dir is paths-owned), so only home/sidebar/proposal_prefix remain.
+	// (the board data dir is paths-owned), so only readme/design_prefix remain.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
