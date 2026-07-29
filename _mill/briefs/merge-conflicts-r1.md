@@ -1,0 +1,658 @@
+# Conflict Resolution Brief
+
+Your sole job is to resolve git conflict markers in the listed files, stage each resolved file, and report success. Do NOT commit. Do NOT run `git merge --continue` — the SKILL does that after receiving `{"status":"success"}`.
+
+## Task intent
+
+These excerpts describe what THIS branch is trying to accomplish. When the merge introduces a parent-side change that conflicts with this branch's intent, the resolution preserves THIS branch's intent. In particular: if a file appears under a batch's `Deletes:` list and the merge introduces a modified version of that file from the parent, the resolution is to delete the file (your branch's intent overrides). Stage the deletion with `git -C /home/knatte/Code/loomyard/wts/codeintel-v1 rm <file>`.
+
+### From discussion.md
+
+# Discussion: codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)
+
+```yaml
+task: codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)
+slug: codeintel-v1
+status: discussing
+parent: main
+```
+
+## Problem
+
+Webster forks, the planner, and reviewers currently discover "what does this symbol touch" via Grep/Glob plus manual reading — imprecise (false positives from name collisions, silent misses) and expensive (every false-positive costs a full LLM round-trip). `manifest/designs/codeintel-redesign.md` (promoted to Planned 2026-07) settles the shape of a fix: an `EnsureServer(lang, worktreeRoot) -> LSPConn` daemon-lifecycle seam with two swappable spawn strategies (`native` for servers with their own shared-daemon mode, `supervised` for ones without), a toolchain manager that pins and installs server binaries deterministically, and a locked language-registry format across three planned languages (Go/Python/C#) — all consumed through one `lyx codeintel <verb>` CLI plus an in-process Go API, no MCP. This task builds V1 against that design.
+
+**Why now:** codeintel is what makes plan-format-v3's `creates-symbols`/`edits-symbols`/`reads-symbols` fields trustworthy enough to write into a plan card at all — without it they degrade to guesses. It has no dependency on the rest of the Planned queue, so it is buildable now, in parallel.
+
+**Important correction to the design doc:** the design doc's own "current state" framing is stale. It describes the shipped `internal/codeintelengine` as "single-language (Go), daemon-free" — but what is actually on disk already speaks LSP generically and has real, working registry entries for five languages (Go, Python, C#, TypeScript, Rust), via a generalized stdio JSON-RPC client (`lspclient.go`), marker-based detection (`detect.go`), and a typed error vocabulary (`errors.go`). What's genuinely missing relative to the design doc is: no `EnsureServer`/daemon (every call cold-spawns and tears the server down), no toolchain manager (binaries must already be on `$PATH`), no `PinnedVersion`/`HasNativeDaemon` registry fields, only one CLI verb (`refs`, which conflates name-resolution with the references call), and no distinct 0/1/2 exit-code contract. This task's real diff is smaller than "build codeintel from scratch" — it's "add the daemon/toolchain/registry-field/exit-code/verb layer on top of a working multi-language LSP client."
+
+## Scope
+
+**In:**
+- `EnsureServer(lang, worktreeRoot) -> LSPConn`, both spawn strategies coded (`native` and `supervised`), selected by the registry's `HasNativeDaemon` field.
+- `native` wired for Go (`gopls -remote=auto`) as the production path.
+- `supervised` built and proven against a **plain** `gopls` (state-file + probe + restart) — not `-remote=auto` — so the strategy nobody's production language uses in V1 is still exercised against a real server before any non-Go dependency exists.
+- A toolchain manager for Go: resolve/install a pinned `gopls` version into a codeintel-owned cache dir, ignoring `$PATH` entirely for Go.
+- `Registry`/`Entry` gains `PinnedVersion` and `HasNativeDaemon` fields (yaml-tagged, `LoadRegistry`'s existing whole-entry-replace overlay semantics apply unchanged). Populated for Go only; Python/C#/TypeScript/Rust entries keep their current `Markers`/`Match`/`Command`/`InstallHint` shape with the two new fields left zero-valued.
+- CLI: keep `refs` (unchanged name), add `definition` (new: wires `textDocument/definition`, not implemented anywhere today, sharing `resolvePosition` with `refs`) and `symbol` (new: its own engine entry point calling `workspace/symbol` directly, returning every candidate as success — not a wrapper around `resolvePosition`, see `symbol-semantics`). All three route through `EnsureServer` internally.
+- The 0/1/2 exit-code contract (found/not-found/ambiguous) for the bare-symbol-name resolution path, reconciled with the `internal/output` JSON-envelope invariant (see Decisions).
+- Batch mode: `lyx codeintel refs|definition|symbol Foo Bar Baz` — multiple symbols in one call, all three verbs (see `batch-mode-cli`).
+- Concurrency safety for `EnsureServer` (two `lyx` invocations racing to spawn the same worktree's daemon).
+- Package-doc rewrites for `internal/codeintelengine` and `internal/codeintelcli` (both currently describe the pre-`EnsureServer` shape — stale the moment this lands).
+
+**Out (explicitly deferred, not V1):**
+- `ty` (Python) and OmniSharp (C#) adapters — registry entries + protocol-quirk hooks against the now-proven machinery, once a concrete second consumer exists.
+- Consumer wiring (planner/webster/reviewer prompt injection telling agents when they may call `lyx codeintel`) — its own later integration slice.
+- Any lyx-config `reconcile`/materialize wiring for `servers.yaml` beyond what already exists (`ConfigTemplate()`); codeintel is not added to the reconcile seed-only module list in this task.
+- Fabric/snapshot integration (`codeintel-go`/`codeintel-py`/`codeintel-cs` keys) — the design doc is explicit that V1's interactive queries need no snapshot machinery.
+- `callHierarchy`/implementation LSP methods — only `references`, `definition`, and the `workspace/symbol` resolver.
+- Toolchain-manager coverage for Python/C#/TypeScript/Rust — those languages keep today's "already on `$PATH`" story; only Go gets a managed toolchain in V1.
+- Windows optimization — detached-spawn correctness is in scope (see Decisions), but perf/spawn-cost tuning on Windows is not; Linux is the deployment target.
+- **Known stale doc for a later task, not this one:** `docs/reference/plan-format-v3.md`'s "Deferred / forward-compat" section says the symbol fields wait on codeintel "which is deprioritized (see the roadmap's Someday list)" — stale since codeintel was promoted to Planned (`manifest/roadmap.md` line ~18). Flagged by discussion-review round 2; fixing it belongs to whichever task lands consumer wiring (out of scope here), not this one.
+
+## Decisions
+
+### registry-scope
+
+- Decision: keep all five existing registry entries structurally unchanged; add `PinnedVersion string` and `HasNativeDaemon bool` (yaml-tagged) to `Entry`, populated only for `go`. The other four entries get the new fields at their zero values, which `EnsureServer` must treat as a third, implicit "no daemon strategy" mode — cold-spawn-per-call, i.e. exactly today's shipped behavior — so Python/C#/TypeScript/Rust keep working unregressed.
+- Rationale: user confirmed "the five [languages] should be supported eventually, but only Go in v1" — the registry format must stay open for all five without breaking the four not yet getting daemon support.
+- Rejected: dropping TypeScript/Rust from the registry to match the design doc's "three planned languages" framing literally — this would delete working, shipped functionality for no benefit.
+
+### cli-verb-naming
+
+- Decision: keep the `refs` verb name unchanged (do not rename to `references`). Add `definition` and `symbol` as new sibling verbs: `lyx codeintel refs|definition|symbol <query>`.
+- Rationale: the design doc's `references|definition|symbol` prose is illustrative naming, not a literal CLI contract. `refs` already ships and works; renaming it is a breaking change with no functional upside (no live consumer depends on the doc's exact spelling — consumer wiring is explicitly deferred past V1) and `refs` is shorter to type in an agent prompt or by hand.
+- Rejected: renaming to `references` to match the doc's prose exactly; keeping `refs` as a compatibility alias alongside a new `references` verb (unnecessary — no compatibility burden exists yet).
+
+### exit-code-contract-vs-envelope
+
+- Decision: all three outcomes stay on the `internal/output` JSON envelope — no bare plain-text output anywhere. Exactly-one-candidate uses `output.Ok` (already exit 0). Zero-candidates uses `output.Err` (already exit 1) — this is a real error case, and its default exit code happens to already match the design doc's contract. Ambiguous (>1 candidate) uses `output.Ok` with a `candidates` field (`ok:true` — multiple valid answers is not a process error) but the CLI layer overrides the process exit code to 2 via a direct `clihelp.SetExit(ctx, 2)` call after emitting, rather than relying on `output.Ok`'s hardcoded 0 return value.
+- Rationale: reconciles the design doc's 0/1/2 exit-code contract with `CONSTRAINTS.md`'s CLI/Cobra Invariant ("Errors are JSON... No bare plain-text error paths") with a minimal diff — only the ambiguous path needs a manual exit-code override; found/not-found fall out of the existing `output.Ok`/`output.Err` behavior for free. Verified `output.Ok`/`output.Err` (`internal/output/output.go`) return hardcoded 0/1 respectively, and `clihelp.SetExit(ctx, code)` (`internal/clihelp/exec.go`) accepts an arbitrary int independent of what produced it, so this composition is directly supported by existing code with no new plumbing.
+- Rejected: mapping ambiguous to `output.Err` too (message lists candidates as text) — technically simpler but destroys the exit-code contract's whole point, since a caller could no longer distinguish "not found" from "ambiguous" without parsing the error string.
+
+### toolchain-manager-authority
+
+- Decision: for Go, the toolchain manager owns `gopls` end-to-end — checks the pinned version in a codeintel-owned cache dir, installs deterministically via `go install golang.org/x/tools/gopls@<pinned>` if absent, and **always** uses that cached binary. `$PATH` is never consulted for Go. `ErrServerNotFound` becomes unreachable for Go (replaced by a toolchain-install-failure error path) but remains the live error for Python/C#/TypeScript/Rust, which have no toolchain manager in V1.
+- **Cache-dir root:** `filepath.Join(os.UserCacheDir(), "lyx", "tools", lang, version)`. `os.UserCacheDir()` is a Go stdlib call (no new dependency) that already resolves the OS-appropriate convention — `$XDG_CACHE_HOME` or `~/.cache` on Linux, `%LocalAppData%` on Windows (this repo has no Darwin build target per `internal/proc`'s Linux/Windows-only split, so macOS's `~/Library/Caches` case is moot here). This is **legitimately outside the Hub Geometry Invariant's scope**: the invariant governs paths *within* a worktree/hub (`_lyx`, `.lyx`, and the other geometry tokens); a toolchain cache is deliberately machine-global and shared across every worktree/hub on the machine (the entire point of pinning-and-caching is to install `gopls@<version>` once, not once per worktree), so it is a separate directory tree with no geometry-token overlap, analogous to Go's own build cache or `pip`'s cache directory.
+- **Registry/argv composition for Go's `native` path:** the registry's `go` entry keeps `Command: ["gopls"]` unchanged (a bare, `$PATH`-relative name) for shape-consistency with the other four languages, but `EnsureServer`'s toolchain-manager step resolves the pinned binary's absolute cached path and uses that resolved path as `argv[0]` in place of `entry.Command[0]` — `entry.Command` is never executed literally for Go. `EnsureServer` then appends `-remote=auto` to build the full native-strategy argv (the registry's `Command` slice for Go carries no LSP-mode flags of its own; `-remote=auto` is `EnsureServer`'s own addition for the `native` strategy specifically, not part of the registry entry). Python/C#/TypeScript/Rust are unaffected — they have no toolchain manager in V1, so their `entry.Command[0]` continues to mean exactly what it means today: a literal `$PATH` lookup.
+- **Cross-worktree install concurrency:** the cache is machine-global, but `concurrency-locking`'s `internal/lock` usage is worktree-scoped (fences `EnsureServer`'s daemon-spawn race, not this). Two `lyx` processes in two different worktrees cold-starting Go's toolchain install at the same time would otherwise race on the same cache path. Fix: the toolchain-install step takes its own `internal/lock` file *inside the cache dir itself* — `filepath.Join(os.UserCacheDir(), "lyx", "tools", lang, "install.lock")`, one per language (not one global lock, so a future Python/C# install doesn't contend with a concurrent Go install) — via the **blocking** `AcquireWriteLock` (not `TryAcquireWriteLock`; unlike the daemon-spawn race there is no "loser reconnects to the winner's live server" shortcut here, a second installer must simply wait for the first to finish). After acquiring, re-check whether the pinned version is now present (double-checked: the process that was waiting may find the version already installed by whoever held the lock first) before invoking `go install`.
+- Rationale: matches the design doc's "same input produces the same output across machines and over time" framing for layer 1 — an operator's stray `$PATH` gopls at a different version would silently defeat that guarantee if it were consulted first. `os.UserCacheDir()` was chosen over a hand-rolled path because it is the idiomatic stdlib answer with zero platform-specific logic to get wrong or test. The install-lock reuses `internal/lock` (already being pulled into `codeintelengine`'s leaf allowlist per `concurrency-locking` — no additional dependency cost) rather than inventing a second locking mechanism.
+- Rejected: toolchain manager as a fallback only when `$PATH` lookup fails — respects an operator's existing install but reintroduces version drift, which is exactly what pinning exists to prevent. Also rejected: hand-rolling the cache-dir path per-OS instead of using `os.UserCacheDir()` — pure duplication of what stdlib already does correctly. Also rejected: relying on `go install`'s own atomic-rename-into-place behavior as sufficient — it prevents a corrupted binary but not two processes wastefully racing to build/download the same thing simultaneously, which the install-lock avoids.
+
+### definition-semantics
+
+- Decision: `definition` takes the same `Query` shape as `refs` (bare symbol name → `workspace/symbol` resolve, or explicit `file:line:col`, sharing the existing `resolvePosition` helper) but issues `textDocument/definition` instead of `textDocument/references` at the resolved position.
+- Rationale: matches how `refs.go` already separates query resolution from the LSP call made afterward — `definition` differs from `refs` only in which LSP method it calls once a position is in hand, not in how it accepts input.
+- Rejected: restricting `definition` to explicit `file:line:col` only (no bare-name resolution) — adds an inconsistent input contract between verbs for no clear benefit.
+
+### ensure-server-call-site
+
+- Decision: `EnsureServer` is called internally, at the top of `References`/`Definition`/`Symbol` (or their shared entry point). Callers (CLI, Go API) keep calling the same public functions they call today; lifecycle stays fully hidden. `refs.go`'s current "spawn a fresh client, `initialize`, do the call, `close`/`kill`" sequence is replaced by "get a warm conn via `EnsureServer`, do the call, and — critically — do NOT close the daemon-owned connection; the daemon owns its own lifetime independent of any one caller."
+- Rationale: matches the design doc's explicit statement that "CLI, Go API, and the layer-3 protocol calls all go through it and never reason about lifecycle," and requires no change to the public API shape callers already use.
+- Rejected: `EnsureServer` as a separate call callers must invoke first and thread an `LSPConn` through — more explicit, but pushes lifecycle-awareness onto every caller, contradicting the design doc's framing.
+- **The "never close the daemon-owned connection" rule is supervised/native-only** (round 5 NOTE): it does not apply to the zero-valued (no-daemon-strategy) path that Python/C#/TypeScript/Rust take in V1 (`registry-scope`) — that path never goes through `EnsureServer`'s daemon machinery at all, so its connection is fully caller-owned exactly as it is today: spawn → call → `close()`/`kill()`, unchanged. The daemon-owned-connection rule only kicks in once `EnsureServer` actually hands back a `supervised`- or `native`-sourced connection.
+
+### state-file-location-and-content
+
+- Decision: the daemon's discovery state (what a later, unrelated `lyx codeintel` invocation needs to find and reconnect to an already-running server) lives under `internal/hubgeometry`'s existing `.lyx/` (`DotLyxDir`) — "the ephemeral, machine-bound lyx state directory," already used for exactly this purpose by reed (`reed.json`/`reed.lock`) — never under the weft-tracked `_lyx/` (`LyxDir`), which is Go-committed by `internal/fabricengine` and must never carry runtime PIDs/sockets. Because the daemon must be a worktree-wide singleton per language (two invocations from different subdirectories of one worktree must share one `gopls`, not spawn two), this needs a new `WorktreeRoot`-anchored accessor on `hubgeometry.Layout` — mirroring the existing `LoomStatusFile`/`LoomStatusLock` pattern (state file + lock file pair) rather than reusing the `Cwd`-anchored `DotLyxDir()` default. State content: `{pid, address (unix socket or TCP, for supervised — stdio pipes cannot survive across separate process launches), protocol_version, started_at}`. Staleness is two-part per the design doc: PID dead, OR protocol version mismatch (forces a restart).
+- Rationale: `_lyx` being weft-tracked was flagged directly by the user as a blocker for my first proposal (which put the state file there). `.lyx`'s doc comment already names this exact use case (reed's own daemon state) as precedent. `supervised`'s daemon must survive the spawning `lyx` process exiting, so stdio cannot be the reconnection channel for it — only `native`'s `gopls -remote=auto` gets to lean on gopls's own internal IPC.
+- Rejected: reusing `_lyx/<module>/*.lock`'s existing weft-git-exclude convention (`crossModuleMachineLocalExcludes` in `internal/fabricengine/weftgit.go`) — technically would have worked with zero new code, but `.lyx` is the more correct fit (genuinely never git-relevant, vs. relying on an exclude pattern to keep a weft-tracked location clean).
+- **This state file, and `concurrency-locking`'s spawn-race lock, are `supervised`-only** (discussion-review round 4 gap: neither Decision originally said so, leaving `native`'s use of this machinery unstated). `native` writes no state file and takes no spawn-lock — it has no lyx-chosen address to record (per `native-strategy-wire-compatibility`, gopls resolves its own daemon address internally) and no PID it owns to protect from a concurrent-spawn race (gopls's own internal dedup already handles that — confirmed empirically). `native`'s `EnsureServer` path is: resolve the toolchain binary and build argv (`toolchain-manager-authority`) → spawn the subprocess via the existing stdio-spawn code (unchanged) → `initialize` → the **probe** (the one step every strategy shares, regardless of state-file/lock machinery) → use the connection if the probe passes, or return an error if it doesn't, with no restart attempt (per `native-lifecycle-and-probe-failure`). The state file, two-part staleness check, and `internal/lock` fencing are exercised solely by `supervised` — this is also why the design doc's "prove `supervised` against a plain `gopls`" framing matters: that machinery is otherwise completely untested by anything `native` does.
+
+### supervised-reconnect-transport
+
+- Decision: `supervised` spawns `gopls serve -listen=unix;<path>` directly (no `-remote` — lyx owns the lifecycle here, not gopls), where `<path>` is chosen by lyx and recorded in the state file (see `state-file-location-and-content`). `lspClient` gains a second transport mode — dial an existing Unix socket (or TCP, matching the flag's own TCP fallback) — alongside its existing spawn-and-use-stdio-pipes transport. The first `EnsureServer` caller in a worktree spawns the daemon (via the existing subprocess-spawn code, just with `-listen` instead of relying on stdio) and then dials the socket it just told the daemon to open; every later caller — this process or a fresh one — skips spawning entirely and dials the recorded socket path directly. **This dial-transport mode is `supervised`-only.** `native` does NOT use it — see the correction in `native-strategy-wire-compatibility`: `native` always respawns `gopls -remote=auto` fresh via the existing stdio-spawn path and never dials a recorded address, because gopls's auto-resolved daemon address is internal to gopls (undocumented, version-coupled), unlike `supervised`'s socket path, which lyx itself chose and can safely record.
+- Rationale: discussion-review round 1 (reviewer: opus, high effort) flagged the missing-transport gap as blocking — the state file named a socket address but nothing specified who listens on it or how a later process dials it, making the "prove `supervised` against a plain `gopls`" deliverable unbuildable as written. Investigating the fix surfaced that plain `gopls serve` already supports `-listen=<addr>` directly (`gopls help serve`'s own flag doc; also directly observed during the `native-strategy-wire-compatibility` empirical test, where the `-remote=auto`-spawned daemon was itself running as `gopls serve -listen unix;/run/user/<uid>/gopls-<hash>-daemon.<user>`) — so no lyx-owned proxy/wrapper process is needed; gopls does the socket-listening natively. Discussion-review round 2 then caught that an earlier draft of this Decision over-generalized and claimed `native` also reuses this dial-transport code — corrected above and in `native-strategy-wire-compatibility`.
+- Rejected: a lyx-owned proxy/wrapper daemon holding gopls's stdio and forwarding a separately-opened socket to it (round 1's reviewer's originally suggested fix) — works, but is strictly more code and process-lifetime complexity than dialing the socket gopls already opens itself. Also rejected (round 2 correction): `native` reusing the dial-transport code by learning gopls's auto-resolved address — see `native-strategy-wire-compatibility`.
+- **Stale socket cleanup on restart** (round 5 NOTE): a `gopls serve -listen=unix;<path>` respawn binding the same recorded path fails with `EADDRINUSE` if the old socket file is still present on disk (a Unix socket bind errors on a pre-existing path even with no live listener). On the kill-and-restart path (`state-file-location-and-content`'s staleness check firing), the respawn `os.Remove`s the old socket path first (ignoring a not-exist error) and then binds the *same* recorded path — reusing the path rather than picking a fresh one each restart keeps the state file's address field stable across restarts, so only `pid`/`protocol_version`/`started_at` need rewriting, not `address`.
+
+### detached-spawn-windows
+
+- Decision: `internal/proc.Detach` currently sets `CREATE_NEW_PROCESS_GROUP` on Windows, not `CREATE_BREAKAWAY_FROM_JOB` — the design doc explicitly requires the latter ("survives the spawning process... no `systemd`/OS-service dependency"). These are different guarantees: if `lyx` itself runs inside a Windows Job Object with kill-on-close, `CREATE_NEW_PROCESS_GROUP` alone does not save the child when the job closes — only `CREATE_BREAKAWAY_FROM_JOB` does. Add `CREATE_BREAKAWAY_FROM_JOB` to the `supervised` spawn path specifically (either a new `proc.DetachBreakaway` or a flag on the existing `Detach`, implementer's call), leaving `Detach`'s current callers/behavior untouched.
+- Rationale: matches the design doc's actual stated requirement instead of silently reusing a weaker existing guarantee; user approved "you can change `proc.Detach` if you must."
+- Rejected: reusing `Detach` as-is and treating the Job-Object edge case as out of scope — would leave `supervised`'s core "survives the spawning process" claim unverified/false on Windows under a Job Object, even though Windows isn't the optimization target.
+
+### native-strategy-wire-compatibility
+
+- Decision: `gopls -remote=auto` is a local process `lyx` spawns over stdio exactly like today, internally proxying to/spawning a shared background daemon via its own IPC invisible to lyx's client — meaning the existing stdio `lspClient` (Content-Length-framed JSON-RPC) needs zero wire-protocol changes for `native`, only the launch argv changes and `EnsureServer`'s probe/state-file logic wraps it. **`native`'s `EnsureServer` respawns `gopls -remote=auto` fresh on every single call**, via the existing subprocess-spawn-and-use-stdio-pipes code path unchanged — it never dials a recorded socket address directly (see the correction in `supervised-reconnect-transport` below: an earlier draft of this discussion incorrectly claimed native reuses `supervised`'s dial-transport code, which would require lyx to independently learn gopls's auto-resolved daemon address — that address is resolved internally by gopls's own undocumented, version-coupled algorithm, and reimplementing it in lyx would be fragile for no benefit over just re-invoking `gopls -remote=auto`, which is public, documented, stable CLI surface and is the entire reason the design doc calls `native` cheap in the first place ("gopls itself dedups... we build no supervisor for Go in production").
+- **Empirically verified during this discussion** (2026-07-29, `gopls` v0.23.0 installed via `go install golang.org/x/tools/gopls@latest` at the user's request): spawned two independent `gopls -remote=auto` client processes ~2 seconds apart from unrelated shell subprocesses (no shared state). Only one background daemon appeared (`gopls serve -listen unix;/run/user/<uid>/gopls-<hash>-daemon.<user>`, confirmed via `pgrep` showing a single `gopls serve -listen ...` process after both clients started) — the second client attached to the first's daemon rather than spawning its own. `gopls -remote=auto remote sessions` against the live daemon returned a `currentClientID` reflecting an incrementing sequence across the shared connection, confirming multiple attached clients on one daemon. The daemon self-terminated after its idle `-listen.timeout` (default 1m0s) with zero supervision — matching the design doc's "gopls itself dedups and spawns the shared instance... we build no supervisor for Go in production" claim exactly. `gopls -h`'s own flag doc for `-remote` also states this directly: "forward all commands to a remote lsp... If 'auto'... the remote address is automatically resolved based on the executing environment."
+- Rationale: this was the one open item flagged as unverifiable in this environment; the user offered to install `gopls` specifically so it could be confirmed rather than assumed. It now is.
+- Rejected: none. mill-plan should still add a regression-coverage integration test codifying this (mirroring `refs_integration_test.go`'s `exec.LookPath("gopls")`-gated skip pattern) — the manual verification here proves the assumption is safe to build on, but the shipped code needs its own automated proof, not a one-off manual check.
+
+### native-lifecycle-and-probe-failure
+
+- Decision: `native`'s per-call local `gopls -remote=auto` subprocess is torn down via the existing `close()`/`kill()` logic, unchanged from today's pre-`EnsureServer` code. This is safe specifically because a `-remote=auto` daemon multiplexes independent client sessions — confirmed empirically in `native-strategy-wire-compatibility` (two independent client processes got sequential session IDs on the shared daemon, not a merged/shared session) — so one client's `shutdown`/`exit` ends only that client's own session, never the shared daemon other clients (including a human's editor) depend on.
+- **Probe-failure recovery differs by strategy.** `supervised`: lyx owns the daemon's PID directly (it spawned it via `supervised-reconnect-transport`) — probe failure triggers the existing kill-and-restart path from `state-file-location-and-content`'s two-part staleness check. `native`: lyx never owns the shared daemon's PID — only the short-lived per-call local subprocess, which is a different process from the daemon itself — so on probe failure `EnsureServer` does **not** attempt any kill/restart for `native`; it returns an error to the caller (wrapping `ErrServerTimeout` or a new `native`-scoped unhealthy-daemon error type) since lyx has no supervisory authority over gopls's own shared daemon, consistent with the design doc's explicit "we build no supervisor for Go in production."
+- Rationale: discussion-review round 3 flagged this as a blocking gap — `ensure-server-call-site` said the caller must not close the daemon-owned connection, but `native`'s per-call subprocess isn't the daemon, and nothing stated whether/how it gets torn down or what a probe failure does when lyx has no PID to act on (`native`'s case). The multi-session daemon behavior directly observed during discussion resolves the teardown half; the ownership asymmetry (lyx owns `supervised`'s PID, never `native`'s) resolves the recovery half.
+- Rejected: none proposed; this was a genuine specification gap, not a design fork between two options.
+
+### symbol-semantics
+
+- Decision: `symbol` does **not** call `resolvePosition` — that helper's ambiguity-collapsing behavior (`ErrAmbiguousSymbol` on >1 candidate) is specific to `refs`/`definition`, which need exactly one resolved position before making a further LSP call. `symbol` gets its own engine entry point (e.g. `codeintelengine.Symbol(ctx, Options) ([]SymbolMatch, error)`) that calls `client.workspaceSymbol(ctx, query)` directly and returns every candidate as-is — no collapsing. Zero candidates → `ErrSymbolNotFound` (reused; same failure mode as today). `SymbolMatch` carries the fuller `workspace/symbol` response shape (name, kind, location), not just a bare file/line/character — more informative than `Reference`, since `symbol`'s whole job is surfacing what exists, not just where. `symbol`'s CLI argument is a plain search string only — it does not accept the `file:line:col` bypass shape `refs`/`definition` do (a position doesn't mean anything for a name search); the CLI layer skips `parseQuery`'s position-detection for this verb and passes the raw argument straight through as the search string.
+- Rationale: discussion-review round 3 verified against the actual source that `resolvePosition` (`refs.go`) returns `ErrAmbiguousSymbol` on >1 candidate and uses only the first hit on exactly 1 — incompatible with `batch-mode-cli`'s requirement that `symbol` never reports `ambiguous` and instead returns every candidate as its normal success shape. Scope's original `symbol` bullet ("exposes the existing internal `workspace/symbol` resolver as its own verb") was imprecise — corrected below.
+- Rejected: making `resolvePosition` itself configurable (a flag to skip ambiguity-collapsing) so `symbol` could reuse it — more coupling for less clarity than a small, dedicated function; `resolvePosition`'s collapsing behavior is exactly correct for its actual two callers (`refs`/`definition`) and shouldn't grow a mode switch for a third caller with fundamentally different needs.
+
+### batch-mode-cli
+
+- Decision: `lyx codeintel refs Foo Bar Baz` (via `cobra.MinimumNArgs(1)`, replacing today's `cobra.ExactArgs(1)`) returns one JSON entry per symbol in the envelope's data (`{"symbol": "Foo", "status": "found"|"not_found"|"ambiguous", "references": [...] | "candidates": [...]}`), always wrapped in `output.Ok` at the top level (`ok:true`) since a per-symbol lookup outcome is not itself a process error. The process exit code is the **worst** individual outcome across the batch, ranked 0 < 1 < 2, so a script can still branch on exit code for the common "everything found" case while the JSON carries per-symbol detail.
+- **Batch-vs-single discriminant is arg count** (round 4 NOTE): exactly 1 positional argument keeps today's legacy single-symbol envelope shape unchanged (`{"references": [...]}` etc., an engine error maps to a whole-command `output.Err`, exit 0/1/2 only) — no behavior change for the common single-symbol call. 2+ arguments switches to the per-symbol batch array shape described below, with the 4-way status set and 0–3 exit-code range. This is a deliberate shape discontinuity at the 1→2 boundary, not an oversight: it preserves exact backward compatibility for the existing shape while adding batch as additive capability, rather than making every caller (including today's single-symbol scripts) parse an array-of-one.
+- **All three verbs get the same batch treatment** (`refs`, `definition`, `symbol` — round 2 gap): `cobra.MinimumNArgs(1)` on all three, sharing the same worst-outcome-wins exit-code aggregation. Per-verb JSON field names differ by what each verb returns: `refs` → `"references": [...]` (found) / `"candidates": [...]` (ambiguous, unchanged from above); `definition` → `"definitions": [...]` (found — an array, since LSP's `textDocument/definition` response type is `Location | Location[] | LocationLink[] | null`, not guaranteed single-valued) / `"candidates": [...]` (ambiguous, same bare-name-resolution case as `refs`); `symbol` → `"symbols": [...]` (found; `symbol` does not share `resolvePosition`, see `symbol-semantics`). **`symbol` has no `ambiguous` status and no exit code 2**: `refs`/`definition` are ambiguous when the *name-resolution pre-step* yields >1 candidate before the real call ever happens, but `symbol` *is* the workspace/symbol lookup — returning several candidates is `symbol`'s ordinary successful answer, not an error state to disambiguate.
+- **A 4th per-symbol status, `error`** (round 3 gap): `found`/`not_found`/`ambiguous` don't cover a genuine engine/infra failure for one symbol in a batch (`ErrServerTimeout`, `ErrResolverUnsupported`, a toolchain-install failure) — none of those mean "confirmed absent." Batch mode gets a 4th status, `"error"`, with a `"error": "<message>"` field (the failing engine error's `.Error()` text). This status is scoped to batch mode only — **single-symbol (non-batch) calls are unchanged**: any engine error still maps to a whole-command `output.Err`, exit 1, exactly as today. Batch mode's worst-outcome-wins ranking extends to accommodate it: `found`=0 < `not_found`=1 < `ambiguous`=2 < `error`=3 (new). This deliberately extends the design doc's 0/1/2 contract, which was scoped to the single-symbol resolution path; batch mode is new work introduced by this task with its own JSON shape, not bound by that pinned range.
+- Rationale: user's call ("you figure this out") for the original `refs`-only shape; no existing lyx CLI verb takes multiple positional args (checked every `internal/*cli` package — none use `MinimumNArgs`/`ArbitraryArgs`/`RangeArgs`), so there's no local precedent to match, but nothing blocks cobra supporting it, and worst-outcome-wins is the natural generalization of the single-symbol 0/1/2 contract. Extending to `definition`/`symbol` follows the same reasoning — no principled reason to batch one verb and not the others. `error` ranks worst (not merely reusing `not_found`'s exit 1) because an infra failure gives the caller nothing usable for that symbol at all, unlike `ambiguous`, which still returns every candidate location.
+- Rejected: batch mode always exits 0 regardless of per-symbol outcomes — throws away the exit-code contract's value for the presumably more common real usage pattern (agents rarely look up exactly one symbol). Giving `symbol` a synthetic `ambiguous` status for exit-code symmetry — would misrepresent its normal success case as an error condition. Folding `error` into the existing `not_found` status/exit-1 to avoid extending the exit-code range — loses the real distinction between "confirmed absent" and "couldn't determine," which a calling agent needs to react to differently (retry vs. give up).
+
+### concurrency-locking
+
+- Decision: use the existing `internal/lock` package (`gofrs/flock`-backed, `TryAcquireWriteLock`) to fence concurrent `EnsureServer` calls racing to spawn the same worktree/language daemon — the winner spawns, writes state, and releases; losers back off and poll the state file until the winner's PID+probe succeeds (bounded retry, not indefinite blocking — see the retry-exhaustion behavior below). This requires amending `CONSTRAINTS.md`'s Codeintelengine Leaf Invariant to allowlist `internal/lock` as a permitted import alongside stdlib/`hubgeometry`/`yaml.v3`. **Finalized, not an open trade-off**: `internal/lock` is the decision; the `os.OpenFile(O_EXCL)` alternative is rejected outright (see below).
+- **Retry-exhaustion behavior:** `gofrs/flock` uses OS-level advisory locks, which the OS releases automatically the instant the holding process exits — including a crash or `kill -9`, not just a clean release. So a loser's bounded poll loop does two things on each iteration: (1) check whether the winner's state file is now healthy (PID alive + probe succeeds) — if so, connect and return; (2) otherwise attempt a non-blocking `TryAcquireWriteLock` itself — if the winner crashed mid-spawn, the lock is already free again and this loser becomes the new winner, retrying the full spawn sequence. Only if the bounded retry window fully elapses with the lock still held by a live process (a genuinely hung, not crashed, winner) does `EnsureServer` return a hard error (a new `ErrServerSpawnTimeout`-shaped type) — a winner that holds the lock indefinitely without ever producing a healthy server is a real, actionable failure worth surfacing, not silently retrying forever.
+- Rationale: `internal/lock` already exists and is exactly the primitive this needs — reinventing file locking inside `codeintelengine` would be pure duplication. Its own doc frames it as designed for cross-process coordination ("the way Loomyard is used, one short-lived process per command"), which is precisely codeintel's threat model. The retry-exhaustion design follows directly from how OS advisory locks behave on process death — no extra staleness bookkeeping is needed beyond what `flock` already gives for free, unlike a hand-rolled `O_EXCL` lock file, which would need its own PID-staleness detection to recover from a crashed holder.
+- Rejected: a bespoke stdlib-only lock via `os.OpenFile(O_EXCL)` — avoids widening `codeintelengine`'s leaf-invariant dependency surface with `gofrs/flock` (a real trade-off, noted for the record: unlike the GitHub Auth Invariant's `internal/proc` allowlist precedent, which cost nothing because `proc` is itself stdlib-only, this one does add a transitive third-party dependency for every future consumer of `codeintelengine`), but an `O_EXCL` file is not automatically released when its holder crashes — reimplementing that staleness recovery is real, avoidable complexity `internal/lock` already solves correctly. The dependency cost is accepted as the better trade.
+- **Scope note — this lock is worktree-scoped, not machine-global:** it fences `EnsureServer`'s daemon-spawn race within one worktree. The toolchain-install step (see `toolchain-manager-authority`) needs its own, separately-scoped lock — see that Decision.
+
+## Technical context
+
+**Current shipped implementation (`internal/codeintelengine`, `internal/codeintelcli`) — read in full during discussion, this is what V1 extends, not replaces:**
+- `doc.go` — package doc; describes the current (pre-`EnsureServer`) shape end to end. Must be rewritten as part of this task (see Constraints, Documentation Lifecycle).
+- `refs.go` — `References(ctx, Options) ([]Reference, error)`: today's orchestration entry point (detect → spawn → initialize → resolve → references → close/kill). This is the function `EnsureServer` gets threaded into; `resolvePosition` is the shared name-resolution helper `definition`/`symbol` should reuse.
+- `registry.go` — `Entry{Markers, Match, Command, InstallHint}` (yaml-tagged), `Registry map[string]Entry`, `builtins()` (5 languages, pinned defaults), `BuiltinRegistry()`, fixed `precedence` slice, `validateEntry`.
+- `detect.go` — `DetectLanguage`, marker-based, `--lang` override bypasses precedence.
+- `load.go` — `LoadRegistry(baseDir)`: optional `servers.yaml` overlay via `hubgeometry.ConfigFile`, whole-entry-replace semantics, absent file is not an error.
+- `lspclient.go` — generalized stdio JSON-RPC client (Content-Length framing), six methods (`initialize`, `initialized`, `textDocument/references`, `workspace/symbol`, `shutdown`, `exit`); per-phase `context.WithTimeout`, hard-kill on timeout vs. graceful close on normal completion.
+- `position.go` — 1-based file:line:col ↔ LSP's 0-based-line/UTF-16-column conversion.
+- `errors.go` — typed error vocabulary, each with a package-level sentinel for `errors.Is` (`ErrNoLanguage`, `ErrServerNotFound`, `ErrSymbolNotFound`, `ErrAmbiguousSymbol`, `ErrResolverUnsupported`, `ErrServerTimeout`).
+- `internal/codeintelcli/cli.go` — cobra tree, currently one verb (`refs`, `cobra.ExactArgs(1)`), maps every engine error uniformly to `output.Err`/exit 1. `parseQuery`/`parsePosition` parse the single positional arg into `codeintelengine.Query`. This file's package doc is also stale post-this-task and needs rewriting.
+- `refs_integration_test.go` — the live-`gopls` integration test pattern to mirror for new `EnsureServer`/toolchain/native-strategy integration tests: `t.Skip(builtins()["go"].InstallHint)` gated on `exec.LookPath("gopls")`, no `TestMain`/`HermeticGitEnv` needed (spawns `gopls`, never git).
+
+**Shared infrastructure to reuse, not reinvent:**
+- `internal/hubgeometry` — `DotLyxDir()` (Cwd-anchored `.lyx/`, machine-bound state; doc comment names reed's `reed.json`/`reed.lock` as precedent) and the `LoomStatusFile`/`LoomStatusLock` pattern (WorktreeRoot-anchored state+lock pair) to mirror for the new codeintel accessor. `ConfigFile(baseDir, "servers")` — already how `LoadRegistry` resolves `servers.yaml`; unaffected by this task's changes.
+- `internal/lock` — `TryAcquireWriteLock`/`AcquireWriteLock` (`gofrs/flock`), for `EnsureServer`'s spawn-race fencing.
+- `internal/proc` — `Detach`/`HideWindow` (`proc_linux.go`/`proc_windows.go`), the base for the `supervised` strategy's detached spawn; needs the `CREATE_BREAKAWAY_FROM_JOB` addition (see Decisions).
+- `internal/output` — `Ok`/`Err` (`output.go`), hardcoded exit 0/1 respectively; `internal/clihelp` — `SetExit(ctx, code)` accepts an arbitrary int, `Execute`, `GroupRunE`.
+- `internal/modelspec` — the registry-shape precedent `codeintelengine/registry.go`'s own doc comment says it mirrors end to end; useful reference for how a similar leaf package structures pinned defaults + overlay + embedded template.
+
+**External design references:**
+- `manifest/designs/codeintel-redesign.md` — the authoritative design; build to this doc.
+- `manifest/roadmap.md` (line ~18) — the Planned-queue entry; do not edit as part of *this discussion* (still true — `discussion.md` predates any implementation, so moving the roadmap now would be premature). **For whoever handles Handoff/merge once V1 actually lands** (round 3 NOTE, explicitly decided rather than left as a blanket "no-edit" default): move the entire `codeintel` bullet from Planned to Done outright — not a Done sub-entry alongside a still-open Planned item, unlike the repo's `loom` precedent (`loom: contracts, Preflight, Discussion producer` in Done, `loom` itself still open in Planned). The precedent doesn't apply here because the Planned bullet's own title is "V1 Go-only, built for multi-language" — i.e. the Planned item's stated scope *is* this task's V1, not a larger multi-phase item this task only partially covers. The `ty`/OmniSharp adapters were always framed (both here and in the design doc) as future work beyond the Planned item's own definition, not part of it — so nothing of the Planned bullet's stated scope remains unshipped once V1 merges.
+- `docs/reference/plan-format-v3.md` — the symbol fields this module eventually makes trustworthy (consumer wiring, out of scope here).
+- The wiki-daemon pattern (`millhouse/plugins/mill/scripts/wiki/_client.py`, outside this repo) — cited by the design doc as the lifecycle-shape model for `supervised` (state file, staleness, detached spawn); **not** its wire protocol (that daemon speaks bespoke line-delimited JSON-over-TCP; codeintel speaks real LSP).
+
+## Constraints
+
+From `CONSTRAINTS.md`:
+- **Hub Geometry Invariant** — the new worktree-anchored state/lock-file accessor must be added to `internal/hubgeometry` itself (no other package may construct `.lyx`/`_lyx` paths); enforced by `TestEnforcement_GeometryLiterals`.
+- **Codeintelengine Leaf Invariant** — currently allows only stdlib/`hubgeometry`/`yaml.v3`. This task needs it amended to add `internal/lock` (see the `concurrency-locking` Decision's flagged trade-off). `os/exec` for the toolchain manager and process spawning stays stdlib, no amendment needed there. (Round 4 NOTE, corrected: `net/http` was listed here ungrounded — every described toolchain step goes through `go install golang.org/x/tools/gopls@<pinned>`, which does its own networking internally via the `go` toolchain's own module-proxy fetch; the toolchain manager itself never makes an HTTP call, so there is no `net/http` dependency to allowlist.) Enforced by `internal/codeintelengine/leaf_enforcement_test.go`.
+- **CLI/Cobra Invariant** — `definition` and `symbol` need non-empty `Short` (and `Long` with concrete examples, matching `refs`'s existing style); both need registering under the existing `codeintel` parent in `internal/codeintelcli/cli.go` (already registered in `cmd/lyx/main.go` — the parent, not the new subcommands, so no root-level wiring change, but the pinned help-tree test sets in `cmd/lyx/*_test.go` will need updating for the two new subcommands). No bare plain-text error paths (see `exit-code-contract-vs-envelope` Decision).
+- **Test Tier Purity / Hermetic Git Test Environment Invariants** — codeintel spawns `gopls`/`go install`, never git, so no `TestMain`/`HermeticGitEnv` is needed (matches `refs_integration_test.go`'s existing precedent); new integration tests for `EnsureServer`/toolchain/native-strategy should stay build-tag-gated (`integration`) or skip-gated (`exec.LookPath`), consistent with the Test Tier Purity Invariant's "untagged files spawn nothing" rule.
+- **Documentation Lifecycle** — this task changes observable CLI behavior (new verbs, new exit codes, new flags) and introduces cross-cutting infrastructure (`EnsureServer`, toolchain manager) — `internal/codeintelengine/doc.go` and `internal/codeintelcli/cli.go`'s package docs must be rewritten in the same commit(s), and `CONSTRAINTS.md`'s Codeintelengine Leaf Invariant entry must be updated for the `internal/lock` allowlist addition, same commit as the change that needs it. Two more same-commit doc obligations, both confirmed by reading `docs/overview.md` directly (round 3 gap + a follow-on finding while verifying it):
+  - **`docs/overview.md`'s codeintel module-table entry** (line ~172) currently reads "✅ Implemented (v1 scope: references-only, no call hierarchy, no in-process Go arm)" — false the moment this task lands (adds `definition`/`symbol`, `EnsureServer`, the toolchain manager, batch mode). Update it, per `CLAUDE.md`'s own Task Completion rule ("`docs/overview.md`, if the module table or execution stack changes").
+  - **`manifest/designs/codeintel-redesign.md` must be deleted on landing**, not just left as a historical reference. `docs/overview.md`'s own "Documentation lifecycle" section (`## Documentation lifecycle`) is explicit: module-design docs under `manifest/designs/` are "mechanical per-module design drafts for planned, not-yet-built modules — deleted when their module lands; the implementation and tests become the source of truth. A module's purpose and key design rationale then live in its Go package header comment, next to the code it documents." Line 172 of `overview.md` already anticipates this for codeintel specifically ("Design doc deleted on landing per the documentation lifecycle; durable rationale lives in the `internal/codeintelengine` package documentation") — this task is what makes that true. The `internal/codeintelengine/doc.go` rewrite above must therefore not just describe the new shape, but absorb whatever of the design doc's rationale is still durable (the `EnsureServer` seam's reasoning, the two-strategy split, the exit-code contract's purpose) before the design doc itself is deleted in the same commit.
+- **Sandbox Suite Coverage** — pre-existing drift, unrelated to this task's own scope (round 3 NOTE), but cheap to fold in while `CONSTRAINTS.md` is already being touched for the Leaf Invariant amendment: `cmd/lyx/sandbox_coverage_test.go`'s live `excludedModules` map already has a `"codeintel"` entry (verified: `"requires an external language-server binary (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build integration tests, not the black-box sandbox suite"`), but `CONSTRAINTS.md`'s Sandbox Suite Coverage Allowlist bullet only documents `ide`/`selfreport`, not `codeintel`. Add the missing line (reusing the exact reason text already live in the test file) to `CONSTRAINTS.md` in the same commit as the Leaf Invariant amendment.
+
+## Testing
+
+- **Registry** (`registry_test.go`): extend existing coverage for the two new `Entry` fields — Go populated with real `PinnedVersion`/`HasNativeDaemon: true`, the other four languages left zero-valued, `validateEntry` must not require the new fields (they're optional/Go-only in V1).
+- **EnsureServer** (new): TDD candidates — strategy selection (an entry with `HasNativeDaemon: true` takes `native`; zero-valued takes neither daemon strategy, falls back to today's cold-spawn-per-call path); the two-part staleness check (PID dead → respawn; protocol version mismatch → forced restart even with a live PID); the probe (`workspace/symbol` empty query) as the final gate regardless of strategy, per the design doc's "even `gopls -remote=auto` can hand back a connection to a hung shared instance" caution.
+- **State file** (new, alongside the new `hubgeometry` accessor): read/write round-trip, staleness detection, concurrent-writer fencing via `internal/lock`, including the retry-exhaustion path (a lock held by a still-live process past the bounded retry window surfaces `ErrServerSpawnTimeout`; a lock released mid-poll because the holder crashed lets a loser become the new winner) — see `concurrency-locking`.
+- **`lspClient` dial-transport** (new, alongside `supervised-reconnect-transport`): a second transport mode (dial an existing Unix socket / TCP address) alongside the existing spawn-and-use-stdio-pipes mode. `supervised`-only (see the `native`/`supervised` correction in `native-strategy-wire-compatibility`) — needs coverage independent of `supervised`'s own end-to-end test.
+- **Toolchain manager** (new): version-pin resolution and cache-dir path logic should be unit-testable without invoking `go install` on every run (mock the installer at an interface boundary); the one real install should be a skip-gated integration test (network + `go` toolchain presence), mirroring `refs_integration_test.go`'s `t.Skip` pattern.
+- **Detached spawn** (`proc_linux_test.go`/`proc_windows_test.go`): extend for the new `CREATE_BREAKAWAY_FROM_JOB` path, platform-tagged like the existing tests.
+- **Exit-code contract** (`cli_test.go`): table-driven — found → 0, not-found → 1, ambiguous → 2, each still emitting a valid `output` envelope (assert on the JSON body, not just the exit code).
+- **Batch mode** (`cli_test.go`): multiple symbols with mixed outcomes (some found, one ambiguous, one not found) — assert per-symbol JSON detail and worst-outcome exit code aggregation, for all three verbs; `symbol` specifically needs a test confirming it never reports `ambiguous`/exit-2 even with multiple candidates for one queried name.
+- **Toolchain install-lock** (new): two concurrent `go install` attempts for the same pinned version — assert only one actually invokes `go install` (the second's double-check finds it already present after acquiring the lock).
+- **`native` wire-compatibility** (new integration test, skip-gated on `exec.LookPath("gopls")`, mirroring `refs_integration_test.go`): spawn `-remote=auto` from two independent client processes, confirm the second attaches to the first's daemon rather than spawning a second one — manually confirmed true during discussion (see the `native-strategy-wire-compatibility` Decision); this test codifies it as automated regression coverage, not first-time proof.
+- **`supervised` proof against plain `gopls`** (new integration test, skip-gated on `exec.LookPath("gopls")`): state-file write, probe, kill-and-confirm-restart, per the design doc's "V1 builds supervised and tests it against a plain gopls" requirement — this is the central proof-of-layer-2 the whole V1 scope exists to deliver.
+- **`definition`/`symbol` verbs** (`cli_test.go`): CLI seam and error-envelope tests mirroring `refs`'s existing `ce0b8ff4`-style coverage.
+- **`symbol`'s own engine entry point** (new, alongside `symbol-semantics`): unit tests confirming >1 `workspace/symbol` candidate returns all of them as success (not `ErrAmbiguousSymbol`), zero candidates returns `ErrSymbolNotFound`, and a `file:line:col`-shaped CLI argument is treated as a literal search string (not position-parsed) for this verb specifically.
+- **`native` probe-failure and teardown** (new, alongside `native-lifecycle-and-probe-failure`): a probe failure with a live PID/version must not attempt any kill/restart for `native` (assert no process-kill call happens, only an error return) versus `supervised` (assert kill-and-restart does happen) — same trigger, opposite handling, is the exact behavior worth a dedicated table-driven test to pin.
+- **Batch `error` status** (`cli_test.go`, alongside the `error`-status decision): a batch containing one `ErrServerTimeout`/`ErrResolverUnsupported` result among otherwise-clean symbols — assert `status: "error"`, the message field, and that the batch's exit code is 3 when `error` is the worst outcome present.
+
+## Q&A log
+
+- **Q:** Registry scope — keep all 5 languages, or narrow to the 3 the design doc names? **A:** All five stay; only Go gets the new `PinnedVersion`/`HasNativeDaemon` fields populated in V1 ("the five should be supported eventually, but only Go in v1").
+- **Q:** Rename `refs` to `references` to match the design doc's verb naming? **A:** No — no functional benefit was found for the rename; keep `refs`, add `definition` and `symbol` as new verbs.
+- **Q:** How to reconcile the design doc's 0/1/2 exit-code contract with the CLI/Cobra Invariant's JSON-envelope requirement? **A:** Stay on `output.Ok`/`output.Err` for all three outcomes; only the ambiguous case needs a manual `SetExit(ctx, 2)` override, since found/not-found already exit 0/1 by default.
+- **Q:** Should the Go toolchain manager override `$PATH`, or only fall back to it? **A:** Override — always use the pinned, cache-installed binary; ignore `$PATH` for Go entirely.
+- **Q:** Does `definition` need different input handling than `refs`? **A:** No — same `Query`/`resolvePosition` sharing, just a different LSP method at the resolved position.
+- **Q:** What does "state" mean for the state file, and can it live under `_lyx/`? **A:** No — `_lyx/` is weft-tracked (Go-committed), and a PID/socket/version file must never be git-visible. Use `.lyx/` (`DotLyxDir`), which already exists for exactly this purpose (reed's `reed.json`/`reed.lock` precedent), via a new WorktreeRoot-anchored accessor.
+- **Q:** Reuse `internal/proc.Detach` as-is for the `supervised` strategy's Windows spawn, or does it need changes? **A:** Needs a `CREATE_BREAKAWAY_FROM_JOB` addition — `CREATE_NEW_PROCESS_GROUP` alone doesn't survive a Windows Job Object with kill-on-close. User: "you can change `proc.Detach` if you must."
+- **Q:** Does `gopls -remote=auto` work over the existing stdio `lspClient` unmodified? **A:** Yes — user installed `gopls` mid-discussion specifically so this could be verified; confirmed empirically (two independent client processes sharing one auto-resolved daemon, self-terminating on idle timeout, zero lyx-side supervision needed).
+- **Q:** How should batch-mode CLI combine per-symbol results and the process exit code? **A:** User delegated ("you figure this out") — one JSON entry per symbol, worst-outcome-wins for the process exit code (0 < 1 < 2).
+- **Q:** [Discussion review round 1, GAP] `supervised` needs to reconnect across separate `lyx` processes, but the state file named a socket address with no owner specified — how does that socket get served? **A:** Recommended option approved directly ("All reco") — `supervised` spawns `gopls serve -listen=unix;<path>` directly (gopls's own native socket-serving flag, no lyx-owned proxy needed); `lspClient` gains a dial-transport mode. From this round onward, the user delegated auto-resolution of future gaps to the recommended option ("For alle reviews heretter").
+- **Q:** [Discussion review round 2, GAP] The machine-global toolchain cache has no concurrency fencing — two worktrees could race a `go install` on the same path. **A:** Auto-resolved (recommended option) — a per-language `internal/lock` file inside the cache dir itself (`<cache-root>/lyx/tools/<lang>/install.lock`), blocking acquire, double-checked presence after acquiring.
+- **Q:** [Discussion review round 2, GAP] `native-strategy-wire-compatibility` and `supervised-reconnect-transport` contradicted each other on whether `native` dials a recorded socket or respawns `gopls -remote=auto` per call. **A:** Auto-resolved (recommended option) — `native` always respawns per call; the dial-transport mode is `supervised`-only. The "native reuses supervised's dial-transport" claim in round 1's gap-fix was a genuine error, corrected here.
+- **Q:** [Discussion review round 2, GAP] `batch-mode-cli` only addressed `refs` — do `definition`/`symbol` also batch? **A:** Auto-resolved (recommended option) — yes, all three verbs batch identically; `definition` returns `"definitions": [...]`, `symbol` returns `"symbols": [...]` and has no `ambiguous`/exit-2 state (returning multiple candidates is `symbol`'s normal success case).
+- **Q:** [Discussion review round 3, GAP] What tears down `native`'s per-call subprocess, and what happens on a probe failure when lyx doesn't own the daemon's PID? **A:** Auto-resolved — existing `close()`/`kill()` unchanged (safe, since the shared daemon multiplexes independent sessions); probe failure on `native` returns an error with no kill/restart attempt (lyx has no supervisory authority over the shared daemon), versus `supervised`'s existing kill-and-restart (lyx owns that PID).
+- **Q:** [Discussion review round 3, GAP] Batch mode's closed found/not_found/ambiguous status set has no slot for a genuine engine/infra failure mid-batch. **A:** Auto-resolved — added a 4th status, `error` (with message field), ranked worst in the batch's exit-code aggregation (new exit 3). Single-symbol calls are unaffected.
+- **Q:** [Discussion review round 3, GAP] `symbol`'s stated implementation (reuse `resolvePosition`) contradicts `batch-mode-cli`'s requirement that `symbol` never reports ambiguous. **A:** Auto-resolved — `symbol` gets its own engine entry point calling `workspace/symbol` directly, no ambiguity-collapsing; corrected the inaccurate Scope bullet that implied resolver reuse.
+- **Q:** [Discussion review round 3, GAP] `docs/overview.md`'s codeintel module-table entry wasn't in the same-commit doc-update list. **A:** Auto-resolved — added; also surfaced (while verifying) that `manifest/designs/codeintel-redesign.md` must be deleted on landing per this repo's Documentation Lifecycle convention, with its durable rationale folded into `internal/codeintelengine/doc.go` first.
+- **Q:** [Discussion review round 4, GAP] Does `native` ever write the state file or take the spawn-lock described for `EnsureServer` generically? **A:** Auto-resolved — no. Both are `supervised`-only; `native` has no lyx-owned address or PID to protect, so it only ever does resolve-binary → spawn → initialize → probe → use-or-error, per `native-lifecycle-and-probe-failure`.
+
+
+### From _mill/plan/00-overview.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+slug: codeintel-v1
+approved: true
+started: '20260729-064218'
+parent: main
+root: ""
+verify: go vet ./...
+```
+
+### From _mill/plan/01-registry-and-state-foundations.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: registry-and-state-foundations
+number: 1
+cards: 4
+verify: go test -count=1 ./internal/codeintelengine/... ./internal/hubgeometry/...
+depends-on: []
+```
+
+
+
+- **Edits:**
+  - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/template.yaml`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/registry_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/hubgeometry/hubgeometry.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:** none
+- **Creates:**
+  - `internal/hubgeometry/codeinteldaemon_test.go`
+- **Deletes:** none
+
+### From _mill/plan/02-toolchain-manager.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: toolchain-manager
+number: 2
+cards: 5
+verify: go test -count=1 ./internal/codeintelengine/... ./cmd/lyx/...
+depends-on: [1]
+```
+
+
+
+- **Creates:**
+  - `internal/codeintelengine/toolchain.go`
+- **Edits:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/toolchain.go`
+  - `CONSTRAINTS.md`
+  - `internal/codeintelengine/leaf_enforcement_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `CONSTRAINTS.md`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/toolchain.go`
+- **Creates:**
+  - `internal/codeintelengine/toolchain_test.go`
+- **Deletes:** none
+- **Edits:**
+  - `cmd/lyx/hermeticenv_test.go`
+- **Creates:**
+  - `internal/codeintelengine/toolchain_integration_test.go`
+- **Deletes:** none
+
+### From _mill/plan/03-lspclient-dial-transport.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: lspclient-dial-transport
+number: 3
+cards: 2
+verify: go test -count=1 ./internal/codeintelengine/...
+depends-on: []
+```
+
+
+
+- **Edits:**
+  - `internal/codeintelengine/lspclient.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/lspclient_test.go`
+- **Creates:** none
+- **Deletes:** none
+
+### From _mill/plan/04-daemon-state-and-locking.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: daemon-state-and-locking
+number: 4
+cards: 5
+verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
+depends-on: [2]
+```
+
+
+
+- **Edits:**
+  - `internal/proc/proc_linux.go`
+  - `internal/proc/proc_windows.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `CONSTRAINTS.md`
+  - `internal/codeintelengine/leaf_enforcement_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Creates:**
+  - `internal/codeintelengine/daemonstate.go`
+- **Edits:** none
+- **Deletes:** none
+- **Creates:**
+  - `internal/codeintelengine/probe.go`
+- **Edits:** none
+- **Deletes:** none
+- **Edits:**
+  - `cmd/lyx/tierpurity_test.go`
+- **Creates:**
+  - `internal/codeintelengine/daemonstate_test.go`
+  - `internal/proc/isalive_test.go`
+- **Deletes:** none
+
+### From _mill/plan/05-ensure-server-native.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: ensure-server-native
+number: 5
+cards: 5
+verify: go test -count=1 ./internal/codeintelengine/...
+depends-on: [2, 4]
+```
+
+
+
+- **Creates:**
+  - `internal/codeintelengine/ensureserver.go`
+- **Edits:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/ensureserver.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/ensureserver.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:** none
+- **Creates:**
+  - `internal/codeintelengine/ensureserver_test.go`
+- **Deletes:** none
+- **Edits:** none
+- **Creates:**
+  - `internal/codeintelengine/ensureserver_integration_test.go`
+- **Deletes:** none
+
+### From _mill/plan/06-ensure-server-supervised.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: ensure-server-supervised
+number: 6
+cards: 4
+verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
+depends-on: [3, 4, 5]
+```
+
+
+
+- **Edits:**
+  - `internal/proc/proc_linux.go`
+  - `internal/proc/proc_windows.go`
+  - `internal/proc/proc_windows_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/errors.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/ensureserver.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `cmd/lyx/tierpurity_test.go`
+- **Creates:**
+  - `internal/codeintelengine/supervised_test.go`
+  - `internal/codeintelengine/supervised_integration_test.go`
+- **Deletes:** none
+
+### From _mill/plan/07-wire-ensure-server-into-refs.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: wire-ensure-server-into-refs
+number: 7
+cards: 2
+verify: go test -count=1 ./internal/codeintelengine/...
+depends-on: [5, 6]
+```
+
+
+
+- **Edits:**
+  - `internal/codeintelengine/ensureserver.go`
+  - `internal/codeintelengine/refs.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/refs_test.go`
+- **Creates:** none
+- **Deletes:** none
+
+### From _mill/plan/08-definition-and-symbol-engine.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: definition-and-symbol-engine
+number: 8
+cards: 5
+verify: go test -count=1 ./internal/codeintelengine/...
+depends-on: [7]
+```
+
+
+
+- **Edits:**
+  - `internal/codeintelengine/lspclient.go`
+- **Creates:** none
+- **Deletes:** none
+- **Creates:**
+  - `internal/codeintelengine/definition.go`
+- **Edits:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/lspclient.go`
+- **Creates:**
+  - `internal/codeintelengine/symbol.go`
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelengine/lspclient_test.go`
+- **Creates:**
+  - `internal/codeintelengine/definition_test.go`
+- **Deletes:** none
+- **Edits:** none
+- **Creates:**
+  - `internal/codeintelengine/symbol_test.go`
+- **Deletes:** none
+
+### From _mill/plan/09-cli-definition-and-symbol.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: cli-definition-and-symbol
+number: 9
+cards: 5
+verify: go test -count=1 ./internal/codeintelcli/... ./cmd/lyx/...
+depends-on: [8]
+```
+
+
+
+- **Edits:**
+  - `internal/codeintelcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `cmd/lyx/helptree_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli_test.go`
+- **Creates:** none
+- **Deletes:** none
+
+### From _mill/plan/10-batch-mode-cli.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: batch-mode-cli
+number: 10
+cards: 5
+verify: go test -count=1 ./internal/codeintelcli/...
+depends-on: [9]
+```
+
+
+
+- **Edits:**
+  - `internal/codeintelcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli_test.go`
+- **Creates:** none
+- **Deletes:** none
+
+### From _mill/plan/11-finalize-docs-and-invariants.md
+
+
+```yaml
+task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
+batch: finalize-docs-and-invariants
+number: 11
+cards: 5
+verify: go build ./... && go vet ./...
+depends-on: [10]
+```
+
+
+
+- **Edits:**
+  - `internal/codeintelengine/doc.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `internal/codeintelcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `docs/overview.md`
+- **Creates:** none
+- **Deletes:** none
+- **Edits:**
+  - `manifest/roadmap.md`
+- **Creates:** none
+- **Deletes:**
+  - `manifest/designs/codeintel-redesign.md`
+- **Edits:** none
+- **Creates:** none
+- **Deletes:** none
+
+## Conflicting files
+
+- `cmd/lyx/tierpurity_test.go`
+
+## Instructions
+
+For each file listed above:
+
+1. Read the file and locate every conflict block (`<<<<<<<`, `=======`, `>>>>>>>`).
+2. Understand both sides of the conflict — what each branch intended.
+3. Write a resolution that preserves the intent of both sides. When both sides modify **different, non-overlapping parts** of the same conflict region — for example, different columns of one table row, different keys of one object, or disjoint lines of a prose block — **combine both edits** into a single resolved structure. Do NOT pick one side wholesale just because the region overlaps syntactically; picking one side wholesale is correct only when the two changes are genuinely mutually exclusive (e.g. the same key is renamed to two different values). Worked example: if `ours` changes column A and `theirs` changes column B of the same table row, the resolution keeps both column changes in a single row — it does not discard either.
+4. Before keeping content from either side inside a conflict hunk, search the rest of the file (outside the hunk) for that same content. This judgment call is scoped narrowly — it applies only when a hunk's content might be a moved duplicate of content living elsewhere in the file; it does NOT apply to every ordinary step-3 disjoint-region combine (e.g. the column-A/column-B worked example above), which remains today's silent, high-confidence success path. Two branches:
+   - **Confident case:** if the content clearly already exists elsewhere and the surrounding context makes it unambiguous that this is the same item having been moved (not two independent, separately-intended copies) — do not re-add it in the hunk; keep only the other side's unrelated edit. Worked example: one side moves a roadmap item from `## Planned` to `## Done`, while the other side makes an unrelated edit elsewhere in the file. The resolution keeps the item only under `## Done`; it is not re-added under `## Planned`.
+   - **Ambiguous case:** if you cannot confidently tell whether this is the same moved content or a legitimate independent duplication — fall back to step 3's default (keep both) rather than guessing, and report the ambiguity via the `discarded` field (see Report section) with the description `"kept both sides of a conflict, ambiguous move-vs-duplicate"`. Worked example: a similarly-worded item appears in two different sections and you cannot tell whether it is the same item moved or a legitimate second, independently-added item. The resolution keeps both occurrences and reports the ambiguity via `discarded`.
+5. Run `git -C /home/knatte/Code/loomyard/wts/codeintel-v1 add <file>` to stage the resolved file.
+6. For modify/delete (DU) conflicts: if Task intent above lists this file under a batch's `Deletes:`, run `git -C /home/knatte/Code/loomyard/wts/codeintel-v1 rm <file>` instead of editing; that stages the intentional deletion.
+7. For UD conflicts — files this branch **modified** that the parent branch **deleted**: do not silently keep the modification. Instead:
+   a. Run `git log --diff-filter=D --oneline MERGE_HEAD -- <file>` to find the deletion commit on the parent.
+   b. Run `git show <deletion-commit>` to inspect context.
+   c. If the deletion commit message mentions a replacement file (e.g. "replaced by", "moved to", "consolidated into"), or the commit also adds a file in the same directory with overlapping content: stage the deletion — `git -C /home/knatte/Code/loomyard/wts/codeintel-v1 rm <file>`.
+   d. If detection is inconclusive: report `{"status":"stuck","stuck_type":"logic","reason":"modify/delete conflict on <file>: cannot determine if parent deletion is a replacement -- operator must decide"}` and halt. Do NOT silently keep the modification.
+
+Never use `git checkout --ours` or `git checkout --theirs` — they silently discard one side of the conflict.
+
+## Report
+
+Your last output line MUST be a bare JSON object (no code fence, no backticks):
+
+On success (nothing discarded):
+
+{"status":"success"}
+
+On success with discarded content — if you had to drop content from one side (e.g. two sides made mutually exclusive changes and only one could survive), list each dropped item:
+
+{"status":"success","discarded":["<short description of what was dropped from which side>"]}
+
+An empty or absent `discarded` field means nothing was lost. If anything was discarded, you MUST list it; an empty list when content was actually dropped is a protocol violation. `discarded` also carries the step 4 ambiguous-case entry `"kept both sides of a conflict, ambiguous move-vs-duplicate"` — even though nothing was technically dropped in that case, the field's purpose is to surface anything the operator should double-check before `git merge --continue`, which covers both a genuine drop and a kept-both ambiguity. The `mill-merge-in` frontend reads this field and surfaces any losses (or ambiguities) to the operator before continuing, rather than silently running `git merge --continue`.
+
+If you cannot resolve one or more conflicts:
+
+{"status":"stuck","stuck_type":"logic","reason":"<one-line description of what you could not resolve>"}
+
+Anything other than this JSON object on the last line is a protocol violation; the merge-in dispatcher treats that as stuck_type: logic with reason "no structured report" — your work is lost. Do not wrap the JSON in a code fence; do not add commentary after it.
+
+## Tools
+
+Available: Read, Edit, Write, Bash, Grep, Glob. Use `git -C /home/knatte/Code/loomyard/wts/codeintel-v1` for any git commands; do not `cd`. Worktree cwd is `/home/knatte/Code/loomyard/wts/codeintel-v1`.
