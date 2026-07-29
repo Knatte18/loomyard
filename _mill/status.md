@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-batch-mode-cli
+phase: approved-finalize-docs-and-invariants
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-wire-ensure-server-into-refs  '2026-07-29T10:44:36Z'
 approved-definition-and-symbol-engine  '2026-07-29T10:51:13Z'
 approved-cli-definition-and-symbol  '2026-07-29T11:00:17Z'
 approved-batch-mode-cli  '2026-07-29T11:05:18Z'
+approved-finalize-docs-and-invariants  '2026-07-29T11:11:21Z'
 ```
 
 ## Batches
@@ -100,7 +101,8 @@ batches:
     start_sha: 71489d6b1991811eb977d7d401aae13aa3b0be1c
     commit_sha: 6b330faf9aec7c1ab263c29973b2168e3e616390
   - name: finalize-docs-and-invariants
-    state: running
+    state: approved
     implementer_session: 9f6a7f2b-c0c0-43b7-b0be-1c6c4b8ad984
     start_sha: f34728b2a6e6bf5e93ca52f576ad69678799b6bb
+    commit_sha: a841903410ffbdeb1cd825f3defbc43dc616a26e
 ```
