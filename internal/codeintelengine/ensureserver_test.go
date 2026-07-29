@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -162,5 +163,44 @@ func TestFinalizeConnection_ProbeTimeoutKillsClient(t *testing.T) {
 	}
 	if !client.closed {
 		t.Error("finalizeConnection() left client.closed = false after a probe timeout; want true")
+	}
+}
+
+// TestNativeArgv_IncludesExtendedIdleTimeout asserts nativeArgv passes an
+// explicit -remote.listen.timeout overriding gopls's own 1-minute default —
+// the default is tuned for a human's edit-pause-edit rhythm, not an agent's
+// think-time gaps between codeintel calls (see nativeDaemonIdleTimeout's own
+// doc comment for the benchmark this responds to).
+func TestNativeArgv_IncludesExtendedIdleTimeout(t *testing.T) {
+	argv := nativeArgv("/path/to/gopls", nil)
+
+	wantTimeoutFlag := fmt.Sprintf("-remote.listen.timeout=%s", nativeDaemonIdleTimeout)
+	found := false
+	for _, arg := range argv {
+		if arg == wantTimeoutFlag {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("nativeArgv() = %v; want it to contain %q", argv, wantTimeoutFlag)
+	}
+	if nativeDaemonIdleTimeout <= time.Minute {
+		t.Errorf("nativeDaemonIdleTimeout = %s; want it longer than gopls's own 1-minute default, or the override is pointless", nativeDaemonIdleTimeout)
+	}
+}
+
+// TestNativeArgv_PreservesBinPathAndExtraArgs asserts nativeArgv keeps the
+// resolved binary path first and any entry.Command[1:] extra args between it
+// and the -remote flags, matching ensureNative's existing argv-composition
+// contract (toolchain-manager-authority decision).
+func TestNativeArgv_PreservesBinPathAndExtraArgs(t *testing.T) {
+	argv := nativeArgv("/path/to/gopls", []string{"-v"})
+
+	if len(argv) < 2 || argv[0] != "/path/to/gopls" || argv[1] != "-v" {
+		t.Errorf("nativeArgv() = %v; want binPath first, then extraArgs, then -remote flags", argv)
+	}
+	if argv[len(argv)-2] != "-remote=auto" {
+		t.Errorf("nativeArgv() = %v; want -remote=auto second-to-last", argv)
 	}
 }

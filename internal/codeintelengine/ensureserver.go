@@ -120,6 +120,35 @@ func rootURIFor(targetDir string) (string, error) {
 	return "file://" + absTargetDir, nil
 }
 
+// nativeDaemonIdleTimeout overrides gopls's own -remote.listen.timeout
+// default (1 minute) for the shared daemon that -remote=auto spawns behind
+// ensureNative's disposable proxy. The 1-minute default is tuned for a
+// human's edit-pause-edit rhythm, not an agent's — a coding agent's own
+// reasoning time between codeintel calls routinely exceeds a minute (a
+// benchmark run against this exact package measured 30-160s of agent think
+// time per call, dwarfing gopls's own ~0.3-1.6s query latency), so every
+// lookup in a realistic agent investigation pays a fresh cold-start rather
+// than reusing the daemon a prior call already warmed. Ten minutes is sized
+// to survive that gap without leaving an idle daemon running indefinitely
+// after the investigation ends.
+const nativeDaemonIdleTimeout = 10 * time.Minute
+
+// nativeArgv builds the gopls invocation for the native strategy: the
+// toolchain-resolved binary, any fixed extra args the registry entry
+// carries, and the -remote=auto proxy flags (including the idle-timeout
+// override above). Split out from ensureNative so the argv shape itself is
+// unit-testable without spawning a process.
+func nativeArgv(binPath string, extraArgs []string) []string {
+	// binPath (the toolchain-resolved binary), not entry.Command[0] (the
+	// literal string "gopls"), is what gets launched — extraArgs is
+	// entry.Command[1:] (empty for Go's current registry entry, but
+	// preserved for forward compatibility with a future entry that carries
+	// extra fixed args), per toolchain-manager-authority's exact
+	// argv-composition decision.
+	argv := append([]string{binPath}, extraArgs...)
+	return append(argv, "-remote=auto", fmt.Sprintf("-remote.listen.timeout=%s", nativeDaemonIdleTimeout))
+}
+
 // ensureNative implements the native EnsureServer strategy: resolve the
 // toolchain-managed gopls binary for entry.PinnedVersion, spawn it as a
 // disposable -remote=auto proxy rooted at targetDir, and finalize the
@@ -134,14 +163,7 @@ func ensureNative(ctx context.Context, lang string, entry Entry, targetDir strin
 		return nil, fmt.Errorf("codeintelengine: resolve go toolchain for %q: %w", lang, err)
 	}
 
-	// entry.Command[0] (the literal string "gopls") is never used here —
-	// only entry.Command[1:] (empty for Go's current registry entry, but
-	// preserved for forward compatibility with a future entry that carries
-	// extra fixed args) is kept, per toolchain-manager-authority's exact
-	// argv-composition decision. The toolchain-resolved binPath, not
-	// whatever "gopls" resolves to on $PATH, is what gets launched.
-	argv := append([]string{binPath}, entry.Command[1:]...)
-	argv = append(argv, "-remote=auto")
+	argv := nativeArgv(binPath, entry.Command[1:])
 
 	client, err := newLSPClient(argv)
 	if err != nil {

@@ -96,7 +96,12 @@ than the single-symbol envelope above:
     {"ok":true,"results":[{"symbol":...,"status":"found"|"not_found"|"ambiguous"|"error",...}, ...]}
 The process exit code is set to the worst status present across the batch
 (0 < 1 < 2 < 3). Example:
-    lyx codeintel refs Foo Bar Baz`,
+    lyx codeintel refs Foo Bar Baz
+
+The result set is complete and semantically resolved by the language server
+(including calls reached only through an interface, which no amount of
+grepping can prove) — a caller does not need to cross-check it with grep or
+re-verify individual candidates.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -206,7 +211,10 @@ than the single-symbol envelope above:
 The process exit code is set to the worst status present across the batch
 (0 < 1 < 2 < 3). definition has no other shape difference from refs in batch
 mode. Example:
-    lyx codeintel definition Foo Bar Baz`,
+    lyx codeintel definition Foo Bar Baz
+
+The result is semantically resolved by the language server, not text-matched
+— a caller does not need to cross-check it with grep.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
