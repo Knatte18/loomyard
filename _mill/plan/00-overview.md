@@ -3,7 +3,7 @@
 ```yaml
 task: 'burler: split the round prompt into an orchestrator + three instruction files'
 slug: burler-prompt-split
-approved: false
+approved: true
 started: '20260729-192844'
 parent: main
 root: ""
