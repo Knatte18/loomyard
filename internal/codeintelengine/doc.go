@@ -71,6 +71,19 @@
 // call and getting an empty or undefined result. An explicit file:line:col
 // position bypasses this resolver entirely.
 //
+// A second, narrower resolve mode (--in-file, Query.InFile) exists
+// alongside workspace/symbol for the case a caller already knows which file
+// a symbol lives in: resolvePosition issues textDocument/documentSymbol for
+// that one file instead and searches its hierarchical result exhaustively
+// (collectInFileMatches, descending into every symbol's Children) for exact
+// name matches. Unlike workspace/symbol, this resolver does no fuzzy or
+// project-wide matching — it is scoped to exactly the one named file — and
+// gates on the server advertising documentSymbolProvider rather than
+// workspaceSymbolProvider, failing with ErrResolverUnsupported the same way
+// when it does not. The zero/one/many candidate mapping to
+// ErrSymbolNotFound/success/ErrAmbiguousSymbol otherwise mirrors
+// workspace/symbol's exactly.
+//
 // Position conversion (position.go) is the one place caller-facing 1-based
 // line/byte-column positions (file:line:col as parsed from a CLI argument)
 // cross into LSP's wire format: 0-based line, UTF-16 code-unit column. The
