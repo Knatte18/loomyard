@@ -52,7 +52,9 @@ batches:
     start_sha: ce0561b5c312999abf694758ada30a9d1ec988ac
     commit_sha: e77cdb85fd41782cb897d3add6d8c34cfc3014ed
   - name: toolchain-manager
-    state: pending
+    state: running
+    implementer_session: 642c181e-c7c4-4417-b9a3-2495cbad37bd
+    start_sha: 93d577d1f36b3c6cf5a2f85c3514303e532ba6be
   - name: daemon-state-and-locking
     state: pending
   - name: ensure-server-native
