@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: 'approved-fabricengine: CommitWeftAt primitive'
+phase: 'approved-fabricengine+fabriccli: _board as second weft worktree'
 slug: board
 branch: board
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r6  '2026-07-29T08:50:41Z'
 planned  '2026-07-29T08:51:06Z'
 implementing  '2026-07-29T09:11:13Z'
 approved-fabricengine: CommitWeftAt primitive  '2026-07-29T09:15:05Z'
+approved-fabricengine+fabriccli: _board as second weft worktree  '2026-07-29T09:22:15Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     start_sha: c84c4a6f909d70796b960870bc491db6e1e9d48f
     commit_sha: 85115fefcf360e13a7e4fd1de73730aeaaec2cbb
   - name: 'fabricengine+fabriccli: _board as second weft worktree'
-    state: running
+    state: approved
     implementer_session: a6fa497d-4b95-4297-a377-0a1cb65193bc
     start_sha: 372a747660a516777f87fbbb7eec2705ca3bbe69
+    commit_sha: b5bbb1a6fa69b35fd31ce9c52d04a570243a82d1
   - name: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
     state: pending
   - name: 'boardcli: notes CLI surface + promote-note command'
