@@ -78,6 +78,7 @@ func refsCommand() *cobra.Command {
 	var lang string
 	var timeout time.Duration
 	var inFile string
+	var within string
 
 	refs := &cobra.Command{
 		Use:   "refs <symbol|file:line:col>",
@@ -116,7 +117,23 @@ The result set is complete and semantically resolved by the language server
 grepping can prove) — a caller does not need to cross-check it with grep or
 re-verify individual candidates. A successful single-arg lookup carries a
 machine-readable "resolution":"complete" field as this trust marker; batch
-mode carries the same field on each per-entry "found" result.`,
+mode carries the same field on each per-entry "found" result.
+
+Known limitation, and what --within is for: gopls' references for an
+interface method conservatively include every method matching that
+name+signature across every structurally-compatible interface anywhere in
+the workspace — not just calls through the specific interface value you
+queried. This is documented gopls behavior, not a bug in this wrapper, but
+it means two unrelated, identically-shaped interfaces in different packages
+(e.g. two local "type clock interface { Now() time.Time }" declarations)
+conflate their results by default. "resolution":"complete" still means
+"every result for the query as given" — it is not false — but for an
+unscoped interface-method query, "complete" can include out-of-scope noise
+a caller must still filter by hand. --within <dir> restricts the result set
+to references whose file lies within <dir> (relative to --target-dir, or
+absolute), discarding everything else, so a query already known to be
+scoped to one package comes back both complete and precise:
+    lyx codeintel refs --within internal/builderengine SomeMethod`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -181,6 +198,9 @@ mode carries the same field on each per-entry "found" result.`,
 				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
 
 				results, err := codeintelengine.References(ctx, opts)
+				if err == nil && within != "" {
+					results = filterWithin(results, within, dir)
+				}
 				emitLookupResult(ctx, out, "references", results, err)
 				return nil
 			}
@@ -191,6 +211,9 @@ mode carries the same field on each per-entry "found" result.`,
 					return statusError, map[string]any{"error": err.Error()}
 				}
 				results, err := codeintelengine.References(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
+				if err == nil && within != "" {
+					results = filterWithin(results, within, dir)
+				}
 				return classifyLookupError(err, "references", results)
 			})
 			return nil
@@ -201,6 +224,7 @@ mode carries the same field on each per-entry "found" result.`,
 	refs.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	refs.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references)")
 	refs.Flags().StringVar(&inFile, "in-file", "", "resolve each positional argument as a bare symbol name within this one file, instead of a project-wide workspace/symbol search")
+	refs.Flags().StringVar(&within, "within", "", "restrict results to references whose file lies within this directory (relative to --target-dir, or absolute) — see the interface-method conflation note above")
 
 	return refs
 }
@@ -215,6 +239,7 @@ func definitionCommand() *cobra.Command {
 	var lang string
 	var timeout time.Duration
 	var inFile string
+	var within string
 
 	definition := &cobra.Command{
 		Use:   "definition <symbol|file:line:col>",
@@ -253,7 +278,12 @@ the same file:
 The result is semantically resolved by the language server, not text-matched
 — a caller does not need to cross-check it with grep. A successful single-arg
 lookup carries a machine-readable "resolution":"complete" field as this trust
-marker; batch mode carries the same field on each per-entry "found" result.`,
+marker; batch mode carries the same field on each per-entry "found" result.
+
+--within <dir> restricts the result set to definitions whose file lies
+within <dir> (relative to --target-dir, or absolute) — see "refs --help"
+for why this exists (interface-method reference conflation across
+structurally-identical interfaces in different packages).`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -318,6 +348,9 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
 
 				results, err := codeintelengine.Definition(ctx, opts)
+				if err == nil && within != "" {
+					results = filterWithin(results, within, dir)
+				}
 				emitLookupResult(ctx, out, "definitions", results, err)
 				return nil
 			}
@@ -328,6 +361,9 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 					return statusError, map[string]any{"error": err.Error()}
 				}
 				results, err := codeintelengine.Definition(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
+				if err == nil && within != "" {
+					results = filterWithin(results, within, dir)
+				}
 				return classifyLookupError(err, "definitions", results)
 			})
 			return nil
@@ -338,6 +374,7 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 	definition.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	definition.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, definition)")
 	definition.Flags().StringVar(&inFile, "in-file", "", "resolve each positional argument as a bare symbol name within this one file, instead of a project-wide workspace/symbol search")
+	definition.Flags().StringVar(&within, "within", "", "restrict results to definitions whose file lies within this directory (relative to --target-dir, or absolute)")
 
 	return definition
 }
@@ -525,6 +562,7 @@ func assertNoCallersCommand() *cobra.Command {
 	var lang string
 	var timeout time.Duration
 	var except []string
+	var within string
 
 	cmd := &cobra.Command{
 		Use:   "assert-no-callers <symbol|file:line:col>",
@@ -551,7 +589,21 @@ carries "violation":true and the "callers" list), or the lookup itself failed
 (not found, server error) — the "violation" field is the only way to tell
 these two exit-1 cases apart. Exit 2: the symbol name was ambiguous (more than
 one workspace/symbol candidate) — the envelope carries "candidates", exactly
-as refs/definition already report ambiguity.`,
+as refs/definition already report ambiguity.
+
+Use --within <dir> when checking an interface method. gopls' references for
+an interface method conservatively include every method matching that
+name+signature across every structurally-compatible interface anywhere in
+the workspace — not just calls through the interface value you're actually
+checking. Without --within, that means checking an interface method can
+report an unrelated, structurally-identical interface elsewhere in the repo
+as a false "violation" (e.g. two unrelated local "type clock interface {
+Now() time.Time }" declarations in different packages). --within <dir>
+restricts the caller search to references whose file lies within <dir>
+(relative to --target-dir, or absolute) before --except is applied, so a
+check already known to be scoped to one package's own interface stays
+correct. This has no effect on plain functions/methods with no interface
+involved — only interface methods are at risk of this conflation.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -623,6 +675,14 @@ as refs/definition already report ambiguity.`,
 				emitAmbiguousOrError(ctx, out, refErr)
 				return nil
 			}
+			if within != "" {
+				// Scope the candidate set to the intended package before
+				// --except even runs — see the Long help's --within
+				// paragraph for why an unscoped interface-method check can
+				// otherwise report a false "violation" from an unrelated,
+				// structurally-identical interface elsewhere in the repo.
+				refs = filterWithin(refs, within, dir)
+			}
 
 			exceptAbs := make(map[string]bool, len(except))
 			for _, e := range except {
@@ -649,6 +709,7 @@ as refs/definition already report ambiguity.`,
 	cmd.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references/definition)")
 	cmd.Flags().StringArrayVar(&except, "except", nil, "file path allowed to reference the symbol without failing the check (repeatable)")
+	cmd.Flags().StringVar(&within, "within", "", "restrict the caller search to references whose file lies within this directory (relative to --target-dir, or absolute) — required for a correct check on an interface method, see above")
 
 	return cmd
 }
@@ -693,6 +754,53 @@ func filterUnexpectedCallers(refs []codeintelengine.Reference, declRefs []codein
 		violations = append(violations, r)
 	}
 	return violations
+}
+
+// filterWithin returns every entry in refs whose File lies within (or is
+// exactly) within — both compared as absolute, filepath.Clean'd paths.
+// within is resolved against baseDir first when it isn't already absolute,
+// mirroring assertNoCallersCommand's own --except path-resolution rule.
+// This is the mitigation for gopls' documented interface-method reference
+// conflation (see refs/definition/assert-no-callers' own Long help text):
+// a caller who already knows the query is scoped to one package can use
+// this to discard every cross-package hit gopls conservatively included.
+func filterWithin(refs []codeintelengine.Reference, within, baseDir string) []codeintelengine.Reference {
+	w := within
+	if !filepath.IsAbs(w) {
+		w = filepath.Join(baseDir, w)
+	}
+	// baseDir itself may still be relative here (e.g. --target-dir "."
+	// passed through verbatim, never resolved to absolute elsewhere in this
+	// file) — filepath.Abs resolves whatever remains against the process's
+	// actual working directory, the same convention parseQuery's own
+	// "file:line:col" path resolution already uses. Reference.File (what
+	// every entry in refs is compared against) is always absolute, so w
+	// must be too, or every comparison below silently fails.
+	if abs, err := filepath.Abs(w); err == nil {
+		w = abs
+	}
+	w = filepath.Clean(w)
+
+	var filtered []codeintelengine.Reference
+	for _, r := range refs {
+		if isWithinDir(w, filepath.Clean(r.File)) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+// isWithinDir reports whether target is dir itself or lies somewhere inside
+// it, computed via filepath.Rel rather than a plain string-prefix check —
+// a prefix check would wrongly accept a sibling directory whose name merely
+// starts with dir's name (e.g. dir "internal/builder" matching target
+// "internal/builderengine/poll.go").
+func isWithinDir(dir, target string) bool {
+	rel, err := filepath.Rel(dir, target)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 // symbolMatchFields converts each codeintelengine.SymbolMatch into the

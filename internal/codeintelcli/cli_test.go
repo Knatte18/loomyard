@@ -704,6 +704,75 @@ func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
 	}
 }
 
+// TestFilterWithin covers the pure --within filtering logic refs, definition,
+// and assert-no-callers all delegate to, entirely offline. It is the
+// regression test for the mitigation this repo's own codeintel-vs-grep
+// benchmark (docs/benchmarks/codeintel-vs-grep.md, Task 3) surfaced as a
+// real gap: an unscoped "lyx codeintel refs" on an interface method
+// conflates results from every structurally-identical interface anywhere in
+// the workspace, and the CI-shaped "assert-no-callers" gate can turn that
+// noise into false "violation":true reports. --within is what lets a caller
+// who already knows a query's intended package scope discard that noise.
+func TestFilterWithin(t *testing.T) {
+	t.Parallel()
+
+	inScope1 := codeintelengine.Reference{File: "/repo/internal/builderengine/poll.go", Line: 203}
+	inScope2 := codeintelengine.Reference{File: "/repo/internal/builderengine/spawn.go", Line: 10}
+	crossPackage := codeintelengine.Reference{File: "/repo/internal/websterengine/poll.go", Line: 44}
+	// A sibling directory whose name merely starts with the same prefix —
+	// proves filterWithin does not fall back to a naive string-prefix
+	// check, which would wrongly treat "internal/builder" as containing
+	// anything under "internal/builderengine" (they share no path
+	// component boundary in common beyond the literal substring).
+	prefixCollision := codeintelengine.Reference{File: "/repo/internal/buildercli/cli.go", Line: 5}
+
+	tests := []struct {
+		name     string
+		within   string
+		baseDir  string
+		refs     []codeintelengine.Reference
+		wantRefs []codeintelengine.Reference
+	}{
+		{
+			name:     "absolute_within_keeps_only_in_scope",
+			within:   "/repo/internal/builderengine",
+			baseDir:  "/anything", // unused: within is already absolute
+			refs:     []codeintelengine.Reference{inScope1, inScope2, crossPackage, prefixCollision},
+			wantRefs: []codeintelengine.Reference{inScope1, inScope2},
+		},
+		{
+			name:     "relative_within_resolves_against_baseDir",
+			within:   "internal/builderengine",
+			baseDir:  "/repo",
+			refs:     []codeintelengine.Reference{inScope1, crossPackage},
+			wantRefs: []codeintelengine.Reference{inScope1},
+		},
+		{
+			name:     "prefix_collision_directory_excluded",
+			within:   "/repo/internal/builder",
+			baseDir:  "/anything",
+			refs:     []codeintelengine.Reference{prefixCollision},
+			wantRefs: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := filterWithin(tt.refs, tt.within, tt.baseDir)
+			if len(got) != len(tt.wantRefs) {
+				t.Fatalf("filterWithin() = %v; want %v", got, tt.wantRefs)
+			}
+			for i := range got {
+				if got[i] != tt.wantRefs[i] {
+					t.Errorf("filterWithin()[%d] = %v; want %v", i, got[i], tt.wantRefs[i])
+				}
+			}
+		})
+	}
+}
+
 // TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous pins the
 // regression classifySymbolError exists to prevent: a future edit that
 // makes classifySymbolError reuse classifyLookupError's ambiguity branch by
