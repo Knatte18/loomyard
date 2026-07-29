@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-junction-config
 branch: fabric-junction-config
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-29T14:15:43Z'
+discussion-fix-r2  '2026-07-29T14:52:10Z'
+discussed  '2026-07-29T14:52:10Z'
 ```
