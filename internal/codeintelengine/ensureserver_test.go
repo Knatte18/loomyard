@@ -169,12 +169,12 @@ func TestFinalizeConnection_ProbeTimeoutKillsClient(t *testing.T) {
 // TestNativeArgv_IncludesExtendedIdleTimeout asserts nativeArgv passes an
 // explicit -remote.listen.timeout overriding gopls's own 1-minute default —
 // the default is tuned for a human's edit-pause-edit rhythm, not an agent's
-// think-time gaps between codeintel calls (see nativeDaemonIdleTimeout's own
-// doc comment for the benchmark this responds to).
+// think-time gaps between codeintel calls (see daemonIdleTimeout's own doc
+// comment for the benchmark this responds to).
 func TestNativeArgv_IncludesExtendedIdleTimeout(t *testing.T) {
 	argv := nativeArgv("/path/to/gopls", nil)
 
-	wantTimeoutFlag := fmt.Sprintf("-remote.listen.timeout=%s", nativeDaemonIdleTimeout)
+	wantTimeoutFlag := fmt.Sprintf("-remote.listen.timeout=%s", daemonIdleTimeout)
 	found := false
 	for _, arg := range argv {
 		if arg == wantTimeoutFlag {
@@ -185,8 +185,8 @@ func TestNativeArgv_IncludesExtendedIdleTimeout(t *testing.T) {
 	if !found {
 		t.Errorf("nativeArgv() = %v; want it to contain %q", argv, wantTimeoutFlag)
 	}
-	if nativeDaemonIdleTimeout <= time.Minute {
-		t.Errorf("nativeDaemonIdleTimeout = %s; want it longer than gopls's own 1-minute default, or the override is pointless", nativeDaemonIdleTimeout)
+	if daemonIdleTimeout <= time.Minute {
+		t.Errorf("daemonIdleTimeout = %s; want it longer than gopls's own 1-minute default, or the override is pointless", daemonIdleTimeout)
 	}
 }
 
@@ -202,5 +202,39 @@ func TestNativeArgv_PreservesBinPathAndExtraArgs(t *testing.T) {
 	}
 	if argv[len(argv)-2] != "-remote=auto" {
 		t.Errorf("nativeArgv() = %v; want -remote=auto second-to-last", argv)
+	}
+}
+
+// TestSupervisedArgv_IncludesServeListenAndIdleTimeout asserts
+// supervisedArgv's argv shape without spawning anything: the command as
+// given, then "serve", the unix-socket -listen flag, and the same
+// daemonIdleTimeout override nativeArgv applies, expressed as gopls's
+// serve-mode -listen.timeout flag.
+func TestSupervisedArgv_IncludesServeListenAndIdleTimeout(t *testing.T) {
+	argv := supervisedArgv([]string{"/path/to/gopls"}, "/tmp/example/daemon.sock")
+
+	wantServe := "serve"
+	wantListenFlag := "-listen=unix;/tmp/example/daemon.sock"
+	wantTimeoutFlag := fmt.Sprintf("-listen.timeout=%s", daemonIdleTimeout)
+
+	var hasServe, hasListenFlag, hasTimeoutFlag bool
+	for _, arg := range argv {
+		switch arg {
+		case wantServe:
+			hasServe = true
+		case wantListenFlag:
+			hasListenFlag = true
+		case wantTimeoutFlag:
+			hasTimeoutFlag = true
+		}
+	}
+	if !hasServe {
+		t.Errorf("supervisedArgv() = %v; want it to contain %q", argv, wantServe)
+	}
+	if !hasListenFlag {
+		t.Errorf("supervisedArgv() = %v; want it to contain %q", argv, wantListenFlag)
+	}
+	if !hasTimeoutFlag {
+		t.Errorf("supervisedArgv() = %v; want it to contain %q", argv, wantTimeoutFlag)
 	}
 }

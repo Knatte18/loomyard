@@ -120,18 +120,19 @@ func rootURIFor(targetDir string) (string, error) {
 	return "file://" + absTargetDir, nil
 }
 
-// nativeDaemonIdleTimeout overrides gopls's own -remote.listen.timeout
-// default (1 minute) for the shared daemon that -remote=auto spawns behind
-// ensureNative's disposable proxy. The 1-minute default is tuned for a
-// human's edit-pause-edit rhythm, not an agent's — a coding agent's own
-// reasoning time between codeintel calls routinely exceeds a minute (a
-// benchmark run against this exact package measured 30-160s of agent think
-// time per call, dwarfing gopls's own ~0.3-1.6s query latency), so every
-// lookup in a realistic agent investigation pays a fresh cold-start rather
-// than reusing the daemon a prior call already warmed. Ten minutes is sized
-// to survive that gap without leaving an idle daemon running indefinitely
-// after the investigation ends.
-const nativeDaemonIdleTimeout = 10 * time.Minute
+// daemonIdleTimeout overrides gopls's own idle-timeout default (1 minute,
+// via -remote.listen.timeout for the native strategy's shared daemon, or
+// -listen.timeout for the supervised strategy's directly-spawned daemon) for
+// both EnsureServer strategies. The 1-minute default is tuned for a human's
+// edit-pause-edit rhythm, not an agent's — a coding agent's own reasoning
+// time between codeintel calls routinely exceeds a minute (a benchmark run
+// against this exact package measured 30-160s of agent think time per call,
+// dwarfing gopls's own ~0.3-1.6s query latency), so every lookup in a
+// realistic agent investigation pays a fresh cold-start rather than reusing
+// the daemon a prior call already warmed. Ten minutes is sized to survive
+// that gap without leaving an idle daemon running indefinitely after the
+// investigation ends.
+const daemonIdleTimeout = 10 * time.Minute
 
 // nativeArgv builds the gopls invocation for the native strategy: the
 // toolchain-resolved binary, any fixed extra args the registry entry
@@ -146,7 +147,7 @@ func nativeArgv(binPath string, extraArgs []string) []string {
 	// extra fixed args), per toolchain-manager-authority's exact
 	// argv-composition decision.
 	argv := append([]string{binPath}, extraArgs...)
-	return append(argv, "-remote=auto", fmt.Sprintf("-remote.listen.timeout=%s", nativeDaemonIdleTimeout))
+	return append(argv, "-remote=auto", fmt.Sprintf("-remote.listen.timeout=%s", daemonIdleTimeout))
 }
 
 // ensureNative implements the native EnsureServer strategy: resolve the
@@ -188,6 +189,19 @@ func ensureNative(ctx context.Context, lang string, entry Entry, targetDir strin
 	return client, nil
 }
 
+// supervisedArgv builds the daemon invocation for the supervised strategy:
+// command as given (no toolchain resolution — the caller already resolved
+// or chose it), followed by "serve", the unix-socket -listen flag, and the
+// same daemonIdleTimeout override nativeArgv applies, expressed as gopls's
+// serve-mode -listen.timeout flag. Split out from ensureSupervised so the
+// argv shape itself is unit-testable without spawning a process, mirroring
+// nativeArgv.
+func supervisedArgv(command []string, socketPath string) []string {
+	argv := append(append([]string{}, command...), "serve")
+	argv = append(argv, fmt.Sprintf("-listen=unix;%s", socketPath))
+	return append(argv, fmt.Sprintf("-listen.timeout=%s", daemonIdleTimeout))
+}
+
 // spawnRacePollInterval is the sleep duration used at two distinct points in
 // ensureSupervised's retry loop: while waiting for someone else's spawn lock
 // to free up, and while waiting for the winner of a just-released lock to
@@ -218,9 +232,9 @@ const spawnRacePollInterval = 100 * time.Millisecond
 // The daemon this function spawns is never killed by its caller: its
 // process is intentionally detached (proc.DetachBreakaway) and outlives
 // this call. The only things that ever terminate it are its own idle
-// timeout (gopls's own -listen.timeout, left unconfigured here, defaulting
-// per gopls itself) or a future restart's stale-socket cleanup finding it
-// already dead.
+// timeout — set explicitly via supervisedArgv's -listen.timeout=<
+// daemonIdleTimeout> flag, not left to gopls's own default — or a future
+// restart's stale-socket cleanup finding it already dead.
 //
 // Known limitation: daemonStale only checks PID liveness and protocol
 // version, not whether the daemon actually answers a dial. A process that
@@ -344,7 +358,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 			return nil, fmt.Errorf("codeintelengine: ensureSupervised remove stale socket %s: %w", socketPath, err)
 		}
 
-		argv := append(append([]string{}, command...), "serve", fmt.Sprintf("-listen=unix;%s", socketPath))
+		argv := supervisedArgv(command, socketPath)
 		cmd := exec.Command(argv[0], argv[1:]...)
 		// Detach (and, on Windows, break away from any Job Object lyx itself
 		// runs in) so the daemon survives this process's exit — it is meant

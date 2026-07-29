@@ -148,7 +148,7 @@
 // Two strategies implement the seam: ensureNative (native, Go's production
 // path — spawn gopls -remote=auto, a disposable local proxy subprocess;
 // gopls itself dedups and owns the real shared daemon behind it, kept warm
-// via an explicit -remote.listen.timeout override — see nativeDaemonIdleTimeout
+// via an explicit -remote.listen.timeout override — see daemonIdleTimeout
 // in ensureserver.go — sized for an agent's own reasoning gaps between
 // calls, not gopls's 1-minute human-editing-rhythm default) and
 // ensureSupervised (supervised — lyx owns a state file, an advisory
