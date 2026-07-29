@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: reviewed
+phase: done
 slug: codeintel-trace-rename
 branch: codeintel-trace-rename
 plan: null
@@ -17,6 +17,7 @@ task_description: |
 discussing  '2026-07-29T19:52:13Z'
 implemented '2026-07-29T20:36:44Z'
 reviewed    '2026-07-29T21:10:00Z'
+done  '2026-07-29T21:15:38Z'
 ```
 
 ## Result
