@@ -94,7 +94,9 @@ batches:
     start_sha: df0cb8848e2fb0d3c9ff9ffc6f1044950cd93703
     commit_sha: 65a9f5f3993468e73ecb7433dc0e2d8bdfc4af6d
   - name: batch-mode-cli
-    state: pending
+    state: running
+    implementer_session: 1bd56d03-ebbc-4829-bc6d-243aa33b36ba
+    start_sha: 71489d6b1991811eb977d7d401aae13aa3b0be1c
   - name: finalize-docs-and-invariants
     state: pending
 ```
