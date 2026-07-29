@@ -15,8 +15,8 @@ func TestValidSnapshotKey(t *testing.T) {
 		want bool
 	}{
 		{"SimpleAlphanumeric", "raddle", true},
-		{"HyphenatedWord", "codeintel-go", true},
-		{"AnotherHyphenatedWord", "codeintel-py", true},
+		{"HyphenatedWord", "trace-go", true},
+		{"AnotherHyphenatedWord", "trace-py", true},
 		{"Empty", "", false},
 		{"ContainsSpace", "has space", false},
 		{"ContainsTilde", "bad~key", false},
@@ -27,7 +27,7 @@ func TestValidSnapshotKey(t *testing.T) {
 		{"TrailingDot", "trail.", false},
 		{"LockSuffix", "key.lock", false},
 		{"LockInMiddle", "key.lock.ok", true},
-		{"InteriorDot", "codeintel.go", true},
+		{"InteriorDot", "trace.go", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
