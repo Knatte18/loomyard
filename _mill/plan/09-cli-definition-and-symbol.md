@@ -104,8 +104,27 @@ top of what this batch establishes.
   names the single-arg field too — "definitions" is the array key for
   both shapes, this batch just doesn't have an array-of-results-per-symbol
   yet). Register it: `cmd.AddCommand(definitionCommand())` in `Command()`,
-  alongside the existing `cmd.AddCommand(refsCommand())` line.
-- **Commit:** `feat(codeintelcli): add the definition verb`
+  alongside the existing `cmd.AddCommand(refsCommand())` line. In that
+  same `Command()` function, update the parent `codeintel` command's
+  `Short` — currently "code intelligence lookups (references) across
+  supported languages", which under-describes the module the moment
+  `definition`/`symbol` exist — to something naming all three
+  capabilities (e.g. "code intelligence lookups (references,
+  definitions, symbol search) across supported languages"), per
+  CONSTRAINTS.md's CLI/Cobra Invariant help-accuracy obligation. Also
+  wire `opts.WorktreeRoot` (the `Options` field batch 7's card 26 added)
+  in every verb's `opts` construction (`refsCommand`, `definitionCommand`,
+  and `symbolCommand` in card 35): `opts.WorktreeRoot = layout.WorktreeRoot`
+  when the same `hubgeometry.Resolve(cwd)` call already made for the
+  `servers.yaml` overlay resolution succeeds, left as the zero value
+  `""` otherwise — this makes card 26's `Options.WorktreeRoot` doc
+  comment ("The CLI layer populates it from a resolved
+  `hubgeometry.Layout.WorktreeRoot` when available") actually true the
+  moment it lands, rather than a promise no card fulfills; the value has
+  no observable effect in V1 (only `supervised` reads it, and no V1
+  registry entry selects `supervised`), so this is a forward-compatibility
+  wire, not new user-visible behavior.
+- **Commit:** `feat(codeintelcli): add the definition verb, update parent Short, wire WorktreeRoot`
 
 ### Card 35: `symbol` verb
 

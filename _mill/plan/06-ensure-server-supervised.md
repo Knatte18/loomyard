@@ -4,8 +4,8 @@
 task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
 batch: ensure-server-supervised
 number: 6
-cards: 5
-verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/...
+cards: 4
+verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
 depends-on: [3, 4, 5]
 ```
 
@@ -42,17 +42,24 @@ separately from recomputing it), and removes an entire class of bug
 
 ## Cards
 
-### Card 22: `proc.DetachBreakaway` — `CREATE_BREAKAWAY_FROM_JOB` on Windows
+### Card 22: `proc.DetachBreakaway` — `CREATE_BREAKAWAY_FROM_JOB` on Windows, alias on Linux
 
-- **Context:**
-  - `internal/proc/proc_linux.go`
+- **Context:** none
 - **Edits:**
+  - `internal/proc/proc_linux.go`
   - `internal/proc/proc_windows.go`
   - `internal/proc/proc_windows_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add `const createBreakawayFromJob uint32 =
+- **Requirements:** `ensureSupervised` (card 24) calls
+  `proc.DetachBreakaway(cmd)` unconditionally from a cross-platform file
+  with no GOOS build split — every existing `proc` function
+  (`HideWindow`, `Detach`, this plan's own `IsAlive` from card 12) is
+  defined on **both** platform files for exactly this reason, so
+  `DetachBreakaway` must be too, or `go build`/`go vet` fails on
+  Linux/macOS with `undefined: proc.DetachBreakaway`. **Windows**
+  (`proc_windows.go`): add `const createBreakawayFromJob uint32 =
   0x01000000` alongside the file's existing `createNoWindow`/
   `createNewProcessGroup` consts. Add
   `func DetachBreakaway(cmd *exec.Cmd)`: sets `cmd.SysProcAttr` with
@@ -66,22 +73,56 @@ separately from recomputing it), and removes an entire class of bug
   completely untouched — this is a new function, not a modification of
   the existing one, so every current `Detach` caller's behavior is
   unaffected, matching `detached-spawn-windows`'s "leaving `Detach`'s
-  current callers/behavior untouched" requirement. Extend
-  `proc_windows_test.go` with `TestDetachBreakaway` (mirroring
-  `TestDetach`'s exact assertion shape) checking `HideWindow == true` and
+  current callers/behavior untouched" requirement. **Linux**
+  (`proc_linux.go`): add `func DetachBreakaway(cmd *exec.Cmd) {
+  Detach(cmd) }` — a trivial alias. Linux has no Job Object concept;
+  `Setsid`-based `Detach` already gives the process the
+  survive-parent-exit property `CREATE_BREAKAWAY_FROM_JOB` provides on
+  Windows, so there is nothing extra to add here — this function exists
+  purely so the cross-platform call site in `ensureserver.go` compiles
+  on every OS this repo targets. Extend `proc_windows_test.go` with
+  `TestDetachBreakaway` (mirroring `TestDetach`'s exact assertion shape)
+  checking `HideWindow == true` and
   `CreationFlags == (createNoWindow|createNewProcessGroup|createBreakawayFromJob)`,
   and `TestDetachBreakawayDoesNotAffectDetach` proving a separate `Detach`
   call on a fresh `*exec.Cmd` still produces the old, narrower flag set
   (a regression guard for the "leave `Detach` untouched" requirement).
+  No new Linux test is needed beyond the existing `TestDetachSetsSetsid`
+  in `proc_linux_test.go` — `DetachBreakaway` on Linux is a pure
+  delegation with no independent behavior to assert.
 - **Commit:** `feat(proc): add DetachBreakaway with CREATE_BREAKAWAY_FROM_JOB for Windows Job Objects`
 
-### Card 23: `ensureSupervised` — spawn-race lock, detached spawn, dial-or-restart, retry-exhaustion
+### Card 23: Add `ErrServerSpawnTimeout`
+
+- **Context:** none
+- **Edits:**
+  - `internal/codeintelengine/errors.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Add `ErrServerSpawnTimeoutSentinel` and
+  `ErrServerSpawnTimeout{Lang string}` following this file's exact
+  existing five-error pattern (sentinel var, struct, `Error() string`
+  naming `Lang`, `Is(target error) bool` comparing against the
+  sentinel). Wording: "codeintel: gave up waiting for the supervised
+  daemon for %q to become ready" — distinct phrasing from
+  `ErrServerTimeout` (which names a specific LSP request phase) since
+  this error means "a live process is holding the spawn lock and never
+  produced a healthy daemon within the deadline," not "one RPC call
+  didn't answer in time." This card lands **before** card 24
+  (`ensureSupervised`), which constructs this type, deliberately — a
+  card's own commit must compile in isolation, and `ensureSupervised`
+  references `ErrServerSpawnTimeout` from its very first draft.
+- **Commit:** `feat(codeintelengine): add ErrServerSpawnTimeout`
+
+### Card 24: `ensureSupervised` — spawn-race lock, detached spawn, dial-or-restart, retry-exhaustion
 
 - **Context:**
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/lock/lock.go`
   - `internal/proc/proc_windows.go`
   - `internal/codeintelengine/lspclient.go`
+  - `internal/codeintelengine/errors.go`
 - **Edits:**
   - `internal/codeintelengine/ensureserver.go`
 - **Creates:** none
@@ -115,17 +156,16 @@ separately from recomputing it), and removes an entire class of bug
   If not acquired (someone else is spawning or restarting), sleep a short
   bounded interval (100ms) and loop back to step (1) to re-check whether
   the state has become healthy meanwhile — if `time.Now()` has passed
-  `deadline`, return a new `ErrServerSpawnTimeout{Lang: lang}` sentinel
-  error (add it to `errors.go` following this package's existing
-  data-carrying-error-with-`Is`-sentinel pattern). (3) Once the lock is
-  acquired, **double-check**: re-run `readDaemonState`; if it is now
-  healthy (another process spawned a fresh daemon while this one was
-  waiting for the lock), `lock.Release()` and loop back to step (1)
-  without spawning. (4) Otherwise this call is the winner: `os.Remove(socketPath)`
-  (ignore a not-exist error — this is the stale-socket cleanup the round-5
-  NOTE requires, and it runs unconditionally before every spawn, first-ever
-  or restart, since a nonexistent-path removal is a harmless no-op);
-  build `argv := append(append([]string{}, command...), "serve",
+  `deadline`, return `&ErrServerSpawnTimeout{Lang: lang}` (card 23). (3)
+  Once the lock is acquired, **double-check**: re-run `readDaemonState`;
+  if it is now healthy (another process spawned a fresh daemon while this
+  one was waiting for the lock), `lock.Release()` and loop back to step
+  (1) without spawning. (4) Otherwise this call is the winner:
+  `os.Remove(socketPath)` (ignore a not-exist error — this is the
+  stale-socket cleanup the round-5 NOTE requires, and it runs
+  unconditionally before every spawn, first-ever or restart, since a
+  nonexistent-path removal is a harmless no-op); build `argv :=
+  append(append([]string{}, command...), "serve",
   fmt.Sprintf("-listen=unix;%s", socketPath))`; construct
   `cmd := exec.Command(argv[0], argv[1:]...)`, call
   `proc.DetachBreakaway(cmd)` (card 22), `cmd.Stderr = os.Stderr`
@@ -154,27 +194,6 @@ separately from recomputing it), and removes an entire class of bug
   cleanup finding it already dead.
 - **Commit:** `feat(codeintelengine): implement ensureSupervised with spawn-race lock and staleness-triggered restart`
 
-### Card 24: Add `ErrServerSpawnTimeout`
-
-- **Context:**
-  - `internal/codeintelengine/ensureserver.go`
-- **Edits:**
-  - `internal/codeintelengine/errors.go`
-- **Creates:** none
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** Add `ErrServerSpawnTimeoutSentinel` and
-  `ErrServerSpawnTimeout{Lang string}` following this file's exact
-  existing five-error pattern (sentinel var, struct, `Error() string`
-  naming `Lang`, `Is(target error) bool` comparing against the
-  sentinel). Wording: "codeintel: gave up waiting for the supervised
-  daemon for %q to become ready" — distinct phrasing from
-  `ErrServerTimeout` (which names a specific LSP request phase) since
-  this error means "a live process is holding the spawn lock and never
-  produced a healthy daemon within the deadline," not "one RPC call
-  didn't answer in time."
-- **Commit:** `feat(codeintelengine): add ErrServerSpawnTimeout`
-
 ### Card 25: Tests — staleness/restart/retry-exhaustion (fake) and the plain-`gopls` proof (integration)
 
 - **Context:**
@@ -182,7 +201,8 @@ separately from recomputing it), and removes an entire class of bug
   - `internal/codeintelengine/daemonstate.go`
   - `internal/codeintelengine/lspclient_test.go`
   - `internal/codeintelengine/refs_integration_test.go`
-- **Edits:** none
+- **Edits:**
+  - `cmd/lyx/tierpurity_test.go`
 - **Creates:**
   - `internal/codeintelengine/supervised_test.go`
   - `internal/codeintelengine/supervised_integration_test.go`
@@ -233,15 +253,26 @@ separately from recomputing it), and removes an entire class of bug
   via `daemonStale`, respawns, and the state file's PID changes while its
   `Address` (the deterministic socket path) stays the same — this last
   assertion is what proves the stale-socket-cleanup-before-rebind logic
-  (card 23, step 4) actually avoids `EADDRINUSE` on a real bind, not just
-  in a mocked scenario.
-- **Commit:** `test(codeintelengine): cover supervised staleness, retry-exhaustion, and the plain-gopls proof`
+  (card 24, step 4) actually avoids `EADDRINUSE` on a real bind, not just
+  in a mocked scenario. **`supervised_test.go`'s spawns trip the Test
+  Tier Purity Invariant** (it is untagged and both its sub-tests spawn a
+  real child process): add
+  `"internal/codeintelengine/supervised_test.go": "spawns short-lived
+  test subprocesses for the retry-exhaustion PID-liveness fixture and
+  the stale-socket-cleanup bind proof",` to `allowedSpawners` in
+  `cmd/lyx/tierpurity_test.go` — a file-level entry, mirroring card 16's
+  identical fix for `daemonstate_test.go`, and kept file-scoped for the
+  same reason (this package's other untagged tests stay genuinely
+  spawn-free and should stay covered by the guard).
+- **Commit:** `test(codeintelengine): cover supervised staleness, retry-exhaustion, and the plain-gopls proof; allowlist its spawn in tierpurity`
 
 ## Batch Tests
 
 `verify:` runs `go test -count=1 ./internal/codeintelengine/...
-./internal/proc/...`. Card 25's integration test is excluded from this
-gate (no `-tags integration`) and runs separately, alongside
+./internal/proc/... ./cmd/lyx/...` — the third package because card 25
+edits `tierpurity_test.go`'s allowlist. Card 25's integration test is
+excluded from this gate (no `-tags integration`) and runs separately,
+alongside
 `refs_integration_test.go` and batch 5's `ensureserver_integration_test.go`,
 on a machine with `gopls` installed. This batch's `verify:` is the one
 place in the whole plan where `-race` would be valuable (the spawn-race

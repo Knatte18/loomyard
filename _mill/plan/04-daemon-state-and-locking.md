@@ -5,7 +5,7 @@ task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
 batch: daemon-state-and-locking
 number: 4
 cards: 5
-verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/...
+verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
 depends-on: [1, 2]
 ```
 
@@ -179,7 +179,8 @@ error`.
   - `internal/codeintelengine/lspclient_test.go`
   - `internal/proc/proc_linux.go`
   - `internal/proc/proc_windows.go`
-- **Edits:** none
+- **Edits:**
+  - `cmd/lyx/tierpurity_test.go`
 - **Creates:**
   - `internal/codeintelengine/daemonstate_test.go`
   - `internal/proc/isalive_test.go`
@@ -194,8 +195,11 @@ error`.
   file's own spawn is allowed under the Test Tier Purity Invariant's
   existing `internal/proc` allowlist entry ("process control is the
   package's subject — its tests must spawn"). **`daemonstate_test.go`**
-  (untagged, offline, spawn-free — mirror this package's other
-  untagged-test-file header-comment convention): (1) write-then-read
+  (untagged, offline — mirror this package's other untagged-test-file
+  header-comment convention, but note in that header comment that sub-test
+  (3) below is the one exception that spawns a short-lived child process
+  for its confirmed-dead-PID fixture, mirroring `isalive_test.go`'s own
+  technique): (1) write-then-read
   round-trip via `t.TempDir()` preserves every field exactly; (2)
   `readDaemonState` on a non-existent path returns `(daemonState{},
   false, nil)`, not an error; (3) `daemonStale` returns `true` when
@@ -220,13 +224,32 @@ error`.
   fake server that never responds makes `probe` return an
   `ErrServerTimeout`-satisfying error once its short test timeout
   expires (assert via `errors.Is(err, ErrServerTimeoutSentinel)`).
-- **Commit:** `test(codeintelengine): cover daemon state file, staleness, and probe`
+  **`daemonstate_test.go`'s spawn trips the Test Tier Purity Invariant**
+  (it is an untagged file containing a raw `exec.Command` substring, and
+  `internal/codeintelengine` is not on `cmd/lyx/tierpurity_test.go`'s
+  `allowedSpawners` map): add
+  `"internal/codeintelengine/daemonstate_test.go": "spawns a short-lived
+  child process to obtain a confirmed-dead PID for the daemon-staleness
+  fixture, mirroring internal/proc's own liveness-test technique",` to
+  `allowedSpawners` — a **file-level** entry (tierpurity's allowlist map
+  supports exact file paths, unlike hermeticenv's package-only real
+  exemptions), deliberately narrow rather than allowlisting the whole
+  `internal/codeintelengine` package: every other untagged test file in
+  this package (`refs_test.go`, `registry_test.go`, `lspclient_test.go`,
+  etc.) is genuinely spawn-free and should stay covered by the guard.
+  (`internal/codeintelengine` is separately, and more broadly, allowlisted
+  on `hermeticenv_test.go`'s `allowedNonHermetic` map by batch 2's card
+  9 — that guard's mechanics require package-level granularity; this one
+  does not, so this card stays file-scoped.)
+- **Commit:** `test(codeintelengine): cover daemon state file, staleness, and probe; allowlist its spawn in tierpurity`
 
 ## Batch Tests
 
 `verify:` runs `go test -count=1 ./internal/codeintelengine/...
-./internal/proc/...` — both packages this batch touches. No integration
-tag needed anywhere in this batch: every card is pure file I/O, in-memory
-fake-server protocol testing, or a short-lived local child-process
-liveness check, none of which need a real language server.
+./internal/proc/... ./cmd/lyx/...` — the third package because card 16
+edits `tierpurity_test.go`'s allowlist, and that guard's own test must
+stay green. No integration tag needed anywhere in this batch: every card
+is pure file I/O, in-memory fake-server protocol testing, or a
+short-lived local child-process liveness check, none of which need a
+real language server.
 </content>

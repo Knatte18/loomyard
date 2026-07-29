@@ -114,6 +114,7 @@ wiring end to end.
   - `internal/codeintelengine/toolchain.go`
   - `internal/codeintelengine/lspclient.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/registry.go`
 - **Edits:**
   - `internal/codeintelengine/ensureserver.go`
 - **Creates:** none

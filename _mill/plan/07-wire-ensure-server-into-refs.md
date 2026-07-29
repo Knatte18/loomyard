@@ -37,15 +37,25 @@ batches (9, 10) never see any of this — they only call
 ### Card 26: Split `References` into connection-acquisition + teardown + the LSP calls
 
 - **Context:**
-  - `internal/codeintelengine/ensureserver.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/registry.go`
 - **Edits:**
+  - `internal/codeintelengine/ensureserver.go`
   - `internal/codeintelengine/refs.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add `WorktreeRoot string` to `Options` (after
-  `TargetDir`), documented as: "the worktree root `EnsureServer`'s
+- **Requirements:** In `ensureserver.go`, extend card 17's `connKind`
+  const block with a third value, `connKindLegacy` — the type as card 17
+  left it only has `connKindNative`/`connKindSupervised`, but
+  `acquireConnection`/`teardownConnection` (below) need a value for the
+  zero-valued/cold-spawn-per-call path, which never goes through
+  `ensureServer` at all. Give it its own doc comment: "the legacy path's
+  kind — never produced by `ensureServer` itself (that function is only
+  ever called when `entry.HasNativeDaemon` is true); `acquireConnection`
+  returns this directly for the `false` case without calling
+  `ensureServer`." In `refs.go`, add `WorktreeRoot string` to `Options`
+  (after `TargetDir`), documented as: "the worktree root `EnsureServer`'s
   `supervised` strategy would anchor its daemon singleton at; unused by
   every strategy actually reachable in V1 (`native` never reads it), but
   threaded through now so a future language selecting `supervised` needs

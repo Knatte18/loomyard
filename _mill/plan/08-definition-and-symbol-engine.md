@@ -122,35 +122,52 @@ context.Context, opts Options) ([]Reference, error)` (new file
   signature change is the only edit. In the new `symbol.go`, add
   `type SymbolMatch struct { Name string; Kind int; File string; Line
   int; Character int }` (1-based `Line`/`Character`, matching
-  `Reference`'s existing display convention) and
-  `func Symbol(ctx context.Context, opts Options) ([]SymbolMatch,
-  error)`: `DetectLanguage`; `acquireConnection` (reused from `refs.go`,
-  batch 7 — identical connection-acquisition semantics to
-  `References`/`Definition`); `defer func() { teardownConnection(client,
-  kind, timedOut) }()` with `timedOut := false` exactly as `lookup` does;
-  **do not call `resolvePosition`** — that is the whole point of
-  `symbol-semantics`'s decision, `Symbol` bypasses `resolvePosition`'s
-  ambiguity-collapsing behavior entirely, since collapsing to
-  "ambiguous" is wrong for a verb whose job *is* returning every match;
-  if `!client.supportsWorkspaceSymbol()`, return
+  `Reference`'s existing display convention). Factor the
+  post-connection candidate-handling logic into its own unexported
+  helper — mirroring `finalizeConnection`'s extraction (batch 5, card
+  18) precisely so it is independently testable against a fake
+  transport, the same reason that extraction exists —
+  `func symbolFromClient(ctx context.Context, client *lspClient, lang
+  string, entry Entry, query string, timeout time.Duration)
+  ([]SymbolMatch, error)`: **do not call `resolvePosition`** — that is
+  the whole point of `symbol-semantics`'s decision, `Symbol` bypasses
+  `resolvePosition`'s ambiguity-collapsing behavior entirely, since
+  collapsing to "ambiguous" is wrong for a verb whose job *is* returning
+  every match; if `!client.supportsWorkspaceSymbol()`, return
   `&ErrResolverUnsupported{Language: lang, Server: entry.Command[0]}`
   (same check `resolvePosition` already makes for `References`/
   `Definition`, duplicated here rather than shared, because
   `resolvePosition`'s other behavior — the position-vs-symbol branch, the
   ambiguity collapse — is exactly what `Symbol` must not inherit); call
-  `client.workspaceSymbol(symbolCtx, opts.Query.Symbol)` under its own
-  `context.WithTimeout(ctx, opts.Timeout)`, timeout-detection-and-return
+  `client.workspaceSymbol(symbolCtx, query)` under its own
+  `context.WithTimeout(ctx, timeout)`, timeout-detection-and-return
   identical to `lookup`'s pattern; zero candidates returns
-  `&ErrSymbolNotFound{Symbol: opts.Query.Symbol, TargetDir:
-  opts.TargetDir}` (the same error `resolvePosition` returns for zero
-  candidates today — reusing the existing type, not inventing a new
-  one); one-or-more candidates maps every single one into a
-  `SymbolMatch` (`Name`, `Kind` straight from the wire struct; `File` via
-  `trimFileURI(c.Location.URI)`; `Line`/`Character` via
-  `c.Location.Range.Start.Line + 1`/`c.Location.Range.Start.Character +
-  1`, the same 0-based-to-1-based promotion `toSortedReferences` already
-  applies) and returns the full slice — **never** an `ErrAmbiguousSymbol`,
-  regardless of how many candidates came back. `Symbol`'s CLI argument
+  `&ErrSymbolNotFound{Symbol: query, TargetDir: ""}` (the `TargetDir`
+  field is populated by `Symbol` itself, below, which is the only caller
+  that actually has `opts.TargetDir` in scope — `symbolFromClient` takes
+  no `Options`, only the bare values its logic needs, which is what
+  makes it callable from a test with a hand-built client and no real
+  `Options`/registry/target-dir at all); one-or-more candidates maps
+  every single one into a `SymbolMatch` (`Name`, `Kind` straight from
+  the wire struct; `File` via `trimFileURI(c.Location.URI)`;
+  `Line`/`Character` via `c.Location.Range.Start.Line + 1`/
+  `c.Location.Range.Start.Character + 1`, the same
+  0-based-to-1-based promotion `toSortedReferences` already applies) and
+  returns the full slice — **never** an `ErrAmbiguousSymbol`, regardless
+  of how many candidates came back. Add
+  `func Symbol(ctx context.Context, opts Options) ([]SymbolMatch,
+  error)` as the thin public wrapper: `DetectLanguage`; `acquireConnection`
+  (reused from `refs.go`, batch 7 — identical connection-acquisition
+  semantics to `References`/`Definition`); `defer func() {
+  teardownConnection(client, kind, timedOut) }()` with `timedOut :=
+  false` exactly as `lookup` does; call `symbolFromClient(ctx, client,
+  lang, entry, opts.Query.Symbol, opts.Timeout)`, and on an
+  `ErrSymbolNotFound` result, overwrite its `TargetDir` field with
+  `opts.TargetDir` before returning (the only place that value is
+  available) — every other error or the success slice passes through
+  unchanged; set `timedOut = true` when the result is an
+  `ErrServerTimeoutSentinel`-matching error, mirroring every other
+  connection-using function in this package. `Symbol`'s CLI argument
   handling (accepting only a plain search string, never a
   `file:line:col` bypass) is batch 9's concern, not this one —
   `opts.Query.Symbol` here is just whatever string the caller supplies.
@@ -200,17 +217,20 @@ context.Context, opts Options) ([]Reference, error)` (new file
 - **Moves:** none
 - **Requirements:** Mirror `definition_test.go`'s
   `TestDefinition_NonExistentServerBinaryYieldsErrServerNotFound`
-  pattern for `Symbol` first (same legacy-path regression proof). Then
-  add the tests that are `Symbol`-specific and are the actual point of
-  this card, using the `newPipeTransportPair`/`fakeServer` harness driven
-  directly against a hand-built client (not through `References`'s
-  full detect/acquire machinery — mirror
-  `TestLSPClient_InitializeCapturesCapabilities`'s shape, since
-  `Symbol`'s interesting behavior is entirely in how it interprets
-  `workspaceSymbol`'s result, not in connection acquisition, which is
-  already covered generically): (1) a fake server returning **two**
-  `workspace/symbol` candidates for the same query — assert `Symbol`
-  returns a two-element `[]SymbolMatch` (not an error, and specifically
+  pattern for `Symbol` first (same legacy-path regression proof — this
+  one does exercise the full `Symbol` function, since it never reaches a
+  connection at all). Then add the tests that are `Symbol`-specific and
+  are the actual point of this card, calling `symbolFromClient` directly
+  (card 30's extracted helper) against a hand-built client built over the
+  `newPipeTransportPair`/`fakeServer` harness (mirror
+  `TestLSPClient_InitializeCapturesCapabilities`'s shape) — not through
+  `Symbol`'s full `DetectLanguage`/`acquireConnection` machinery, which
+  would require a real spawn; `Symbol`'s interesting behavior is entirely
+  in how `symbolFromClient` interprets `workspaceSymbol`'s result, and
+  connection acquisition is already covered generically elsewhere: (1) a
+  fake server returning **two** `workspace/symbol` candidates for the
+  same query — assert `symbolFromClient` returns a two-element
+  `[]SymbolMatch` (not an error, and specifically
   not `ErrAmbiguousSymbol` — assert `errors.Is(err,
   ErrAmbiguousSymbolSentinel)` is `false` on this path, since a bug that
   accidentally reintroduces `resolvePosition`-style collapsing is exactly

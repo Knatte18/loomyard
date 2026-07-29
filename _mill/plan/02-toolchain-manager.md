@@ -5,7 +5,7 @@ task: 'codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)'
 batch: toolchain-manager
 number: 2
 cards: 5
-verify: go test -count=1 ./internal/codeintelengine/...
+verify: go test -count=1 ./internal/codeintelengine/... ./cmd/lyx/...
 depends-on: [1]
 ```
 
@@ -190,7 +190,8 @@ mirrors this package's existing test-seam convention
 - **Context:**
   - `internal/codeintelengine/toolchain.go`
   - `internal/codeintelengine/refs_integration_test.go`
-- **Edits:** none
+- **Edits:**
+  - `cmd/lyx/hermeticenv_test.go`
 - **Creates:**
   - `internal/codeintelengine/toolchain_integration_test.go`
 - **Deletes:** none
@@ -210,14 +211,32 @@ mirrors this package's existing test-seam convention
   (120 seconds), and assert the returned binary path exists and
   `exec.Command(binPath, "version").Run()` succeeds — proving the
   installed binary is actually a working `gopls`, not just a file that
-  happens to exist at the expected path.
-- **Commit:** `test(codeintelengine): add skip-free integration test for real gopls install`
+  happens to exist at the expected path. **This file's own
+  `exec.Command(binPath, "version")` call is a direct subprocess spawn in
+  test code**, which trips `cmd/lyx/hermeticenv_test.go`'s repo-wide
+  git-spawn-token scan (that guard scans every `*_test.go` file
+  regardless of build tag, unlike the tier-purity guard) — add
+  `"internal/codeintelengine": "spawns gopls and go install for
+  EnsureServer/toolchain-manager integration coverage, plus short-lived
+  test-only subprocesses for PID-liveness fixtures (batches 4, 6);
+  never git",` to `allowedNonHermetic` in `cmd/lyx/hermeticenv_test.go`,
+  mirroring the existing `internal/proc` entry's shape and reasoning.
+  This is a **package-level** entry (hermeticenv's file-level allowlist
+  form is reserved for excluding a guard's own test-data literals, not
+  for granting a real exemption — see that map's own doc comment), added
+  here because this is the first batch, in DAG order, to introduce a
+  codeintelengine test file containing a raw `exec.Command` substring;
+  later batches (4, 6) that add their own spawning test files rely on
+  this same entry and do not need to touch this guard again.
+- **Commit:** `test(codeintelengine): add skip-free integration test for real gopls install; allowlist the package for the hermetic-git guard`
 
 ## Batch Tests
 
-`verify:` runs `go test -count=1 ./internal/codeintelengine/...` (no
-`-tags integration`, so card 9's test does not run in this gate — it is
-exercised manually/in CI's integration tier alongside
+`verify:` runs `go test -count=1 ./internal/codeintelengine/...
+./cmd/lyx/...` — `cmd/lyx/...` because card 9 edits
+`hermeticenv_test.go`'s allowlist, and that guard's own test must stay
+green. No `-tags integration`, so card 9's own new test does not run in
+this gate — it is exercised manually/in CI's integration tier alongside
 `refs_integration_test.go`, per the Test Tier Purity Invariant). Card 7's
 `CONSTRAINTS.md`/`leaf_enforcement_test.go` edit is verified by the same
 `go test` run, since `TestLeafInvariant_AllowlistOnly` runs untagged.

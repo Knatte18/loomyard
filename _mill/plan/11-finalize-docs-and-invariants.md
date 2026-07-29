@@ -198,7 +198,13 @@ codeintel module-table entry repeats the "references-only" framing.
   entry can therefore summarize what shipped in the Planned bullet's own
   words, trimmed of the now-resolved `[designs/codeintel-redesign.md]`
   link (the target is deleted by this same card) and of forward-looking
-  language ("will be" → "is"). Delete
+  language ("will be" → "is") — **and corrected on one naming point the
+  Planned bullet gets wrong**: it describes the CLI surface as
+  `` `lyx codeintel references|definition|symbol` ``, but the shipped
+  verb (unchanged by this task, per `cli-verb-naming`) is `refs`, not
+  `references` — card 45 already makes this same correction in
+  `docs/overview.md`; apply it here too rather than carrying the stale
+  name into the permanent Done record. Delete
   `manifest/designs/codeintel-redesign.md` in the same commit — its
   durable rationale is already folded into
   `internal/codeintelengine/doc.go` (card 43) and

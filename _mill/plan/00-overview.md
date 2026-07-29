@@ -27,7 +27,7 @@ batches:
     name: toolchain-manager
     file: 02-toolchain-manager.md
     depends-on: [1]
-    verify: go test -count=1 ./internal/codeintelengine/...
+    verify: go test -count=1 ./internal/codeintelengine/... ./cmd/lyx/...
   - number: 3
     name: lspclient-dial-transport
     file: 03-lspclient-dial-transport.md
@@ -37,7 +37,7 @@ batches:
     name: daemon-state-and-locking
     file: 04-daemon-state-and-locking.md
     depends-on: [1, 2]
-    verify: go test -count=1 ./internal/codeintelengine/... ./internal/hubgeometry/...
+    verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
   - number: 5
     name: ensure-server-native
     file: 05-ensure-server-native.md
@@ -47,7 +47,7 @@ batches:
     name: ensure-server-supervised
     file: 06-ensure-server-supervised.md
     depends-on: [3, 4, 5]
-    verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/...
+    verify: go test -count=1 ./internal/codeintelengine/... ./internal/proc/... ./cmd/lyx/...
   - number: 7
     name: wire-ensure-server-into-refs
     file: 07-wire-ensure-server-into-refs.md
@@ -285,6 +285,8 @@ once the whole feature set (batch mode included) actually exists — see
 
 - `CONSTRAINTS.md`
 - `cmd/lyx/helptree_test.go`
+- `cmd/lyx/hermeticenv_test.go`
+- `cmd/lyx/tierpurity_test.go`
 - `docs/overview.md`
 - `internal/codeintelcli/cli.go`
 - `internal/codeintelcli/cli_test.go`
