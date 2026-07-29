@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: board: move storage to weft:main — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-07-29
+```
+
+## Findings
+
+### [NIT] Stale key names in a fixture comment
+**Location:** `cmd/lyx/main_integration_test.go:44` and `:89`
+**Issue:** The comment "so only home/sidebar/proposal_prefix remain" still names the pre-rename config keys even though the adjacent `boardConfig` literal on the next line was correctly updated to `readme`/`design_prefix` by Card 17.
+**Fix:** Update the comment to say "readme/design_prefix" to match the literal it describes.
+
+## Verdict
+
+APPROVE
+All six batches match their plan cards; cross-batch contracts, tests, docs, and CONSTRAINTS.md guards are consistent and complete.
+MILL_REVIEW_END
