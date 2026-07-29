@@ -101,7 +101,9 @@ The process exit code is set to the worst status present across the batch
 The result set is complete and semantically resolved by the language server
 (including calls reached only through an interface, which no amount of
 grepping can prove) — a caller does not need to cross-check it with grep or
-re-verify individual candidates.`,
+re-verify individual candidates. A successful single-arg lookup carries a
+machine-readable "resolution":"complete" field as this trust marker; batch
+mode carries the same field on each per-entry "found" result.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -214,7 +216,9 @@ mode. Example:
     lyx codeintel definition Foo Bar Baz
 
 The result is semantically resolved by the language server, not text-matched
-— a caller does not need to cross-check it with grep.`,
+— a caller does not need to cross-check it with grep. A successful single-arg
+lookup carries a machine-readable "resolution":"complete" field as this trust
+marker; batch mode carries the same field on each per-entry "found" result.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -464,7 +468,10 @@ func emitLookupResult(ctx context.Context, out io.Writer, resultsField string, r
 		return
 	}
 
-	clihelp.SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results)}))
+	// "resolution":"complete" is the machine-readable trust marker a caller
+	// can key on to skip a redundant grep/re-verify pass: the language server
+	// already resolved the query exhaustively, unlike a text-matched result.
+	clihelp.SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}))
 }
 
 // referenceFields converts each codeintelengine.Reference into the
@@ -576,7 +583,10 @@ var statusRank = map[batchStatus]int{
 // since none of them mean "confirmed absent."
 func classifyLookupError(err error, resultsField string, results []codeintelengine.Reference) (batchStatus, map[string]any) {
 	if err == nil {
-		return statusFound, map[string]any{resultsField: referenceFields(results)}
+		// Mirror emitLookupResult's single-arg "resolution":"complete" marker
+		// per batch entry, so a batch-mode caller gets the same trust signal
+		// on each "found" result the single-arg envelope carries.
+		return statusFound, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}
 	}
 
 	var ambiguous *codeintelengine.ErrAmbiguousSymbol

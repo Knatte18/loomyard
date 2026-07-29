@@ -518,6 +518,60 @@ func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
 	}
 }
 
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker proves the
+// success branch of emitLookupResult (a nil err) adds the machine-readable
+// "resolution":"complete" trust marker alongside the results field, while
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo's table above proves the
+// ambiguous and not-found branches do NOT carry it — the marker is
+// meaningful only for a confirmed, complete result set.
+func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ctx, es := clihelp.NewExitContext(context.Background())
+
+	emitLookupResult(ctx, &out, "references", []codeintelengine.Reference{{File: "a.go", Line: 1, Character: 2}}, nil)
+
+	if es.Code() != 0 {
+		t.Errorf("es.Code() = %d; want 0", es.Code())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("emitLookupResult output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	if resolution, _ := env["resolution"].(string); resolution != "complete" {
+		t.Errorf("envelope %v missing \"resolution\":\"complete\"; got %q", env, resolution)
+	}
+}
+
+// TestClassifyLookupError_FoundCarriesResolutionCompleteMarker mirrors
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker for batch
+// mode's classifier: classifyLookupError's statusFound branch must carry the
+// same "resolution":"complete" field, one per batch entry, while its
+// statusAmbiguous/statusNotFound/statusError branches leave it out.
+func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) {
+	t.Parallel()
+
+	status, fields := classifyLookupError(nil, "references", []codeintelengine.Reference{{File: "a.go", Line: 1, Character: 2}})
+
+	if status != statusFound {
+		t.Errorf("classifyLookupError(nil, ...) status = %q; want %q", status, statusFound)
+	}
+	if resolution, _ := fields["resolution"].(string); resolution != "complete" {
+		t.Errorf("classifyLookupError(nil, ...) fields = %v; missing \"resolution\":\"complete\"", fields)
+	}
+
+	ambiguousStatus, ambiguousFields := classifyLookupError(&codeintelengine.ErrAmbiguousSymbol{Symbol: "Foo", Candidates: []string{"a.go:1:1"}}, "references", nil)
+	if ambiguousStatus != statusAmbiguous {
+		t.Fatalf("classifyLookupError(ambiguous, ...) status = %q; want %q", ambiguousStatus, statusAmbiguous)
+	}
+	if _, ok := ambiguousFields["resolution"]; ok {
+		t.Errorf("classifyLookupError(ambiguous, ...) fields = %v; want no \"resolution\" field", ambiguousFields)
+	}
+}
+
 // TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous pins the
 // regression classifySymbolError exists to prevent: a future edit that
 // makes classifySymbolError reuse classifyLookupError's ambiguity branch by
