@@ -64,7 +64,7 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional host worktree; git repo root)
   ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
-  └── _board/                       (board repo; the task store)
+  └── _board/                       (weft:main worktree; the task store)
 ```
 
 ### Git ownership
@@ -78,7 +78,7 @@ The **host repo** is the project's source of truth, maintained by developers. Al
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_raddle/` | Weft worktree | Weft | Raddle documentation (the raddle nav-doc overlay) |
-| `_board/` | Hub | Board | Task board at a **configured** board-repo URL — `lyx board` accepts any URL; `ly-git-clone` defaults it to the weft repo's GitHub wiki (`<weft>.wiki.git`) |
+| `_board/` | Hub | Board | A second weft worktree, checked out on the host's own unsuffixed default branch (`weft:main` in the common case) — never a separate clone, never `<branch>-weft` |
 | Host source | Host worktree | Host | Project source code |
 
 ### Durable vs ephemeral state (`_lyx/` vs `.lyx/`)

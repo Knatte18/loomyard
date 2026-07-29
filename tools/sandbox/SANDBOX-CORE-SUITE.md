@@ -121,6 +121,8 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Covers:** board
 
+**Storage note:** `_board` is a second weft worktree checked out on the host's own unsuffixed default branch (`weft:main` in the common case), never a separate clone with its own `board-url` — the scenario below is pure CRUD and needs no awareness of that beyond this note.
+
 **Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
 
 **Durability note:** The board is durable across sessions — it starts non-empty (e.g. a `T1 "Test task from S3"` task persists from prior runs). Do not assume a fresh board. Use `lyx board list` to observe current state before adding tasks, and use `lyx board remove` to clean up any test tasks you create at session end.

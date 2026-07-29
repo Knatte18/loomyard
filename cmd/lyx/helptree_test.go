@@ -60,6 +60,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 			wantSubs: []string{
 				"upsert", "upsert-batch", "set-status", "remove", "get",
 				"list", "list-full", "merge", "set-deps", "rerender", "sync",
+				"notes", "promote-note",
 			},
 		},
 		{

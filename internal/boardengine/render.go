@@ -1,11 +1,13 @@
-// render.go — turns the task list into the wiki's output files.
+// render.go — turns the task and note lists into the wiki's output files.
 //
-// Render is a pure function: tasks in, a map of filename → content out
-// (Home.md, _Sidebar.md, and proposal-*.md for tasks with a body). No I/O — the
-// caller writes the files. The three outputs are built by renderHome,
-// renderSidebar, and renderProposals respectively. RenderToDisk drives the write
-// path and maintains a manifest sidecar (.board-rendered.json) so that renamed or
-// removed outputs are cleaned up on the next render.
+// Render is a pure function: tasks and notes in, a map of filename → content
+// out (a single README.md carrying both a "# Tasks" and a "# Manifest"
+// section, plus design-*.md for any task or note with a body). No I/O — the
+// caller writes the files. The README's two sections are built by
+// renderTasksSection and renderManifestSection; the design files are built by
+// renderDesigns. RenderToDisk drives the write path and maintains a manifest
+// sidecar (.board-rendered.json) so that renamed or removed outputs are
+// cleaned up on the next render.
 
 package boardengine
 
@@ -25,15 +27,16 @@ import (
 // adds commit churn, and it is never itself a member of the rendered file set.
 const renderManifestFile = ".board-rendered.json"
 
-// RenderToDisk renders the tasks and persists the board's readable representation.
-// It writes every rendered file atomically, then removes any file the previous render
-// produced that the current render no longer produces (covering Home/Sidebar renames
-// and ProposalPrefix changes, not just orphaned proposals), and finally updates the
-// manifest sidecar so the next render knows what to clean. render.go owns all .md
-// output; board.go owns only tasks.json. This is the single call the write path makes
+// RenderToDisk renders the tasks and notes and persists the board's readable
+// representation. It writes every rendered file atomically, then removes any
+// file the previous render produced that the current render no longer
+// produces (covering README renames and DesignPrefix changes, not just
+// orphaned design docs), and finally updates the manifest sidecar so the next
+// render knows what to clean. render.go owns all .md output; board.go owns
+// only tasks.json/notes.json. This is the single call the write path makes
 // for rendering.
-func RenderToDisk(boardPath string, tasks []Task, out Outputs) error {
-	files, err := Render(tasks, out)
+func RenderToDisk(boardPath string, tasks, notes []Task, out Outputs) error {
+	files, err := Render(tasks, notes, out)
 	if err != nil {
 		return err
 	}
@@ -93,36 +96,60 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 	_ = fsx.AtomicWriteBytes(filepath.Join(boardPath, renderManifestFile), data)
 }
 
-// Render produces the board output files from the task list.
-// Returns a map of relative filename → content: the configured home and sidebar
-// filenames, plus proposal files (using the configured prefix and slug) for every
-// task with a non-empty body.
-func Render(tasks []Task, out Outputs) (map[string]string, error) {
+// Render produces the board output files from the task and note lists.
+// Returns a map of relative filename → content: the configured README
+// filename (a "# Tasks" section built from tasks, followed by a "# Manifest"
+// section built from notes when notes is non-empty), plus design files (using
+// the configured prefix and slug) for every task or note with a non-empty
+// body.
+func Render(tasks, notes []Task, out Outputs) (map[string]string, error) {
 	ordered, err := RenderOrder(tasks)
 	if err != nil {
 		return nil, err
 	}
 
-	// Slug → task, for resolving dependency IDs in home file.
+	// Slug → task/note, for resolving dependency IDs within each section.
+	// Notes resolve dependencies against noteMap only — per discussion.md's
+	// per-store-scoped depends_on decision, a note's dependencies are always
+	// other notes, never tasks.
 	taskMap := make(map[string]Task, len(tasks))
 	for _, t := range tasks {
 		taskMap[t.Slug] = t
 	}
+	noteMap := make(map[string]Task, len(notes))
+	for _, n := range notes {
+		noteMap[n.Slug] = n
+	}
+
+	tasksSection := renderTasksSection(ordered, taskMap, out.DesignPrefix)
+	manifestSection := renderManifestSection(notes, noteMap, out.DesignPrefix)
+
+	// Concatenate Tasks/Done then Manifest, with a blank-line separator only
+	// when there is a Manifest section to separate from — a notes-free board's
+	// README must carry no dangling heading or trailing blank line.
+	readme := tasksSection
+	if manifestSection != "" {
+		readme += "\n" + manifestSection
+	}
 
 	result := map[string]string{
-		out.Home:    renderHome(ordered, taskMap, out.ProposalPrefix),
-		out.Sidebar: renderSidebar(ordered, out.ProposalPrefix),
+		out.Readme: readme,
 	}
-	for name, content := range renderProposals(tasks, out.ProposalPrefix) {
+
+	// A design-<slug>.md file applies uniformly to any entry — task or note —
+	// with a non-empty body, so union both lists before rendering designs.
+	combined := append(append([]Task{}, tasks...), notes...)
+	for name, content := range renderDesigns(combined, out.DesignPrefix) {
 		result[name] = content
 	}
 	return result, nil
 }
 
-// renderHome builds the home file: a "# Tasks" page sectioned per bucket, with a block
-// per task (heading, slug line, optional dependencies, optional brief). The proposal
-// prefix is used in task links to proposals.
-func renderHome(ordered []TaskWithLayer, taskMap map[string]Task, proposalPrefix string) string {
+// renderTasksSection builds the README's "# Tasks" section: sectioned per
+// bucket, with a block per task (heading, slug line, optional dependencies,
+// optional brief, and a [status] suffix). The design prefix is used in task
+// links to design docs.
+func renderTasksSection(ordered []TaskWithLayer, taskMap map[string]Task, designPrefix string) string {
 	lines := []string{"# Tasks", ""}
 
 	currentBucket := ""
@@ -139,10 +166,10 @@ func renderHome(ordered []TaskWithLayer, taskMap map[string]Task, proposalPrefix
 		}
 		lines = append(lines, "## "+displayTitle)
 
-		// Slug line: a proposal link if the task has a body, else a bare slug.
+		// Slug line: a design-doc link if the task has a body, else a bare slug.
 		slugLine := fmt.Sprintf("[%s]", twl.Slug)
 		if twl.Body != "" {
-			slugLine = fmt.Sprintf("[%s](%s%s.md)", twl.Slug, proposalPrefix, twl.Slug)
+			slugLine = fmt.Sprintf("[%s](%s%s.md)", twl.Slug, designPrefix, twl.Slug)
 		}
 		if twl.Status != nil {
 			switch *twl.Status {
@@ -174,45 +201,66 @@ func renderHome(ordered []TaskWithLayer, taskMap map[string]Task, proposalPrefix
 	return strings.Join(lines, "\n")
 }
 
-// renderSidebar builds the sidebar file: one line per task, grouped per bucket with a
-// blank line between groups. The proposal prefix is used in task links to proposals.
-// No trailing newline.
-func renderSidebar(ordered []TaskWithLayer, proposalPrefix string) string {
-	var lines []string
+// renderManifestSection builds the README's "# Manifest" section: a flat
+// block per note (no layer suffix — notes have no computed layer — and no
+// [status] suffix — notes are not bucket/status-tracked), sorted by ID
+// ascending. Returns "" when notes is empty so a notes-free board's README
+// carries no dangling Manifest heading.
+func renderManifestSection(notes []Task, noteMap map[string]Task, designPrefix string) string {
+	if len(notes) == 0 {
+		return ""
+	}
 
-	currentBucket := ""
-	for _, twl := range ordered {
-		if twl.Layer != currentBucket {
-			if currentBucket != "" && len(lines) > 0 {
-				lines = append(lines, "")
+	sorted := make([]Task, len(notes))
+	copy(sorted, notes)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
+
+	lines := []string{"# Manifest", ""}
+	for _, n := range sorted {
+		lines = append(lines, fmt.Sprintf("## **#%03d:** %s", n.ID, n.Title))
+
+		slugLine := fmt.Sprintf("[%s]", n.Slug)
+		if n.Body != "" {
+			slugLine = fmt.Sprintf("[%s](%s%s.md)", n.Slug, designPrefix, n.Slug)
+		}
+		lines = append(lines, slugLine)
+
+		if len(n.DependsOn) > 0 {
+			depParts := make([]string, 0, len(n.DependsOn))
+			for _, depSlug := range n.DependsOn {
+				if depNote, ok := noteMap[depSlug]; ok {
+					depParts = append(depParts, fmt.Sprintf("#%03d", depNote.ID))
+				} else {
+					depParts = append(depParts, fmt.Sprintf("#???: %s (missing)", depSlug))
+				}
 			}
-			currentBucket = twl.Layer
+			lines = append(lines, "Depends on: "+strings.Join(depParts, ", "))
 		}
 
-		extTitle := ExtendedTitle(twl.Task, twl.Layer)
-		line := "- " + extTitle
-		if twl.Body != "" {
-			line = fmt.Sprintf("- [%s](%s%s.md)", extTitle, proposalPrefix, twl.Slug)
+		if n.Brief != "" {
+			lines = append(lines, "", n.Brief)
 		}
-		lines = append(lines, line)
+
+		lines = append(lines, "") // trailing blank line after the note block
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-// renderProposals returns one proposal file entry per task with a non-empty body,
-// using the configured proposal prefix. The file content is the body verbatim.
-func renderProposals(tasks []Task, proposalPrefix string) map[string]string {
-	proposals := make(map[string]string)
-	for _, t := range tasks {
-		if t.Body != "" {
-			proposals[fmt.Sprintf("%s%s.md", proposalPrefix, t.Slug)] = t.Body
+// renderDesigns returns one design-doc file entry per task or note with a
+// non-empty body, using the configured design prefix. The file content is the
+// body verbatim.
+func renderDesigns(entries []Task, designPrefix string) map[string]string {
+	designs := make(map[string]string)
+	for _, e := range entries {
+		if e.Body != "" {
+			designs[fmt.Sprintf("%s%s.md", designPrefix, e.Slug)] = e.Body
 		}
 	}
-	return proposals
+	return designs
 }
 
-// bucketHeader is the Home.md section heading for a bucket.
+// bucketHeader is the README section heading for a bucket.
 func bucketHeader(layer string) string {
 	switch layer {
 	case "__done__":

@@ -10,7 +10,7 @@ Nothing lyx-related should be visible in the host repo's own git history — eve
 
 ## `CONSTRAINTS.md`-equivalent — superseded by `PATTERN.md`
 
-**No longer this task's concern.** The loomyard-owned `CONSTRAINTS.md`-equivalent is `PATTERN.md` (roadmap's Planned list), and `PATTERN.md` lives in `weft` (see [board-weft-storage.md](board-weft-storage.md) — "everything that isn't warp already lives in weft"). Weft is a separate repo reached through a junction into the warp worktree, so `PATTERN.md` is **already invisible to the host repo's git history** simply by living there — exactly what the junction-to-hide-a-constraints-dir idea here was for. Once `PATTERN.md` lands, this half is done by the weft architecture; nothing extra to build. This task therefore reduces to `CLAUDE.local.md` below.
+**No longer this task's concern.** The loomyard-owned `CONSTRAINTS.md`-equivalent is `PATTERN.md` (roadmap's Planned list), and `PATTERN.md` lives in `weft` (see the `internal/boardengine` package documentation — "everything that isn't warp already lives in weft"). Weft is a separate repo reached through a junction into the warp worktree, so `PATTERN.md` is **already invisible to the host repo's git history** simply by living there — exactly what the junction-to-hide-a-constraints-dir idea here was for. Once `PATTERN.md` lands, this half is done by the weft architecture; nothing extra to build. This task therefore reduces to `CLAUDE.local.md` below.
 
 ## `CLAUDE.local.md` (a single file)
 
@@ -24,7 +24,7 @@ Loads alongside `CLAUDE.md`, additive. Must physically exist in host's working t
 
 ## Related
 
-- [board-weft-storage.md](board-weft-storage.md) — establishes that `PATTERN.md` (and all non-warp content) lives in `weft`, which is what supersedes the `CONSTRAINTS.md`-equivalent half of this task.
+- The `internal/boardengine` package documentation — establishes that `PATTERN.md` (and all non-warp content) lives in `weft`, which is what supersedes the `CONSTRAINTS.md`-equivalent half of this task.
 - Planned `PATTERN.md` (see `manifest/roadmap.md`) — the loomyard-owned `CONSTRAINTS.md`-equivalent whose weft residence makes the constraints-hiding half of this task unnecessary.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — owned the junction re-pointing mechanism the now-superseded constraints-dir half would have reused (`CLAUDE.local.md` uses a symlink, not a junction).
 - [loom.md](loom.md) — the init/session-bootstrap step that would trigger the symlink fallback and `.gitignore` entry for `CLAUDE.local.md`.

@@ -91,7 +91,7 @@ Consequence: a warp-only `Fabric.Commit` is legitimate (it completes the illusio
 
 ## Dependencies and sequencing
 
-- **After `board: move storage to weft:main`.** board-weft-storage removes `board-url` and the board-clone step from `CloneHub` (board moves into `weft:main`), so this item inherits a 2-repo clone (host+weft) to restructure, not 3-repo. It also introduces prime's second weft checkout (`weft:main` for board, alongside `weft:main-weft`) and the "everything lyx-related lives in weft" pattern the subpath/junction-config binding slots into. The two share the weft-branch adopt-or-create primitive (`suffixWeftPrimaryBranch`), which board hardens for the `weft:main` case first.
+- **After `board: move storage to weft:main`.** `board: move storage to weft:main` removed `board-url` and the board-clone step from `CloneHub` (board moved into `weft:main` — see the `internal/boardengine` package documentation), so this item inherits a 2-repo clone (host+weft) to restructure, not 3-repo. It also introduced prime's second weft checkout (`weft:main` for board, alongside `weft:main-weft`) and the "everything lyx-related lives in weft" pattern the subpath/junction-config binding slots into. The two share the weft-branch adopt-or-create primitive (`suffixWeftPrimaryBranch`), which board hardened for the `weft:main` case first.
 - **After `native clients`.** Build fabric's clone/commit/snapshot git logic against the final go-git-based `gitrepo`, so it isn't re-validated if the CLI→library swap surfaces any subtle behavioral difference — the same reasoning that sequences `loom` after `native clients`.
 - **`Shed` follows this.**
 
@@ -120,7 +120,7 @@ The roadmap item is therefore a small campaign — 4–5 board tasks when picked
 
 ## Related
 
-- [board-weft-storage.md](board-weft-storage.md) — the Planned item this sequences after; removes `board-url` from clone, establishes weft-as-home and prime's two-weft-checkout shape.
+- The `internal/boardengine` package documentation — the shipped `board: move storage to weft:main` item this sequences after; removed `board-url` from clone, established weft-as-home and prime's two-weft-checkout shape.
 - [native-clients-migration.md](native-clients-migration.md) — the `gitrepo` go-git migration this builds its git logic on top of.
 - [finalize.md](finalize.md) — the document-driven, non-git-marker weft-conflict mechanism the rebase/reconcile path reuses; also the weft-side merge-back this shares primitives with.
 - [raddle.md](raddle.md) — the regenerate-don't-merge property that bounds rebase recovery; the snapshot-staleness consumer the trailer-fold serves.
