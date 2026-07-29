@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hubgeometry-inject-names
+phase: approved-fabricengine-wiring
 slug: fabric-junction-config
 branch: fabric-junction-config
 plan: _mill/plan
@@ -43,6 +43,7 @@ plan-fix-r10  '2026-07-29T17:59:13Z'
 planned  '2026-07-29T17:59:29Z'
 implementing  '2026-07-29T18:00:12Z'
 approved-hubgeometry-inject-names  '2026-07-29T18:05:44Z'
+approved-fabricengine-wiring  '2026-07-29T18:18:09Z'
 ```
 
 ## Batches
@@ -55,9 +56,10 @@ batches:
     start_sha: 7ac6fbd4b434ff5ec8bb8209c986342f779f918d
     commit_sha: a5f53a835f5f85dab75969b879f850de9b5bd5a6
   - name: fabricengine-wiring
-    state: running
+    state: approved
     implementer_session: 532f2681-24cb-40f4-b027-c789376f1bd7
     start_sha: 7038b2f9fd995919b19b2df6271332c53073a69e
+    commit_sha: e916bfbbdb746023b1d7c92f1a03be10eee1383a
   - name: proofs-and-docs
     state: pending
 ```
