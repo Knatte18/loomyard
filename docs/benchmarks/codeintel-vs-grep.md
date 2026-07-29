@@ -1,6 +1,8 @@
 # Benchmarks: codeintel (LSP) vs grep on hard symbol-resolution tasks
 
-Compares `lyx codeintel` (LSP-backed, semantic) against grep/rg-based text search on two tasks chosen specifically to be hard for text search: a Go interface-dispatch call site (no textual link between the interface method and its implementation) and a same-named-function-in-multiple-packages rename-safety check. Both tasks were run twice — once by an agent required to use `lyx codeintel`, once by an agent forbidden from using it or any other LSP tool — as two independent, fresh, general-purpose subagents per condition, with no shared context between any of the four runs and no knowledge of each other's existence. Ground truth for both tasks was verified by hand (via `lyx codeintel refs`/`assert-no-callers` plus manual code reading) before any agent was dispatched, so grading is against a fixed, independently-known-correct answer, not against either agent's own claim.
+Compares `lyx codeintel` (LSP-backed, semantic) against grep/rg-based text search on three tasks chosen specifically to be hard for text search: two Go interface-dispatch call sites (no textual link between the interface method and its implementation) of increasing difficulty, and a same-named-function-in-multiple-packages rename-safety check. Every task was run twice — once by an agent required to use `lyx codeintel`, once by an agent forbidden from using it or any other LSP tool — as two independent, fresh, general-purpose subagents per condition, with no shared context between any run and no knowledge of the other condition's existence. Ground truth for every task was verified by hand (via `lyx codeintel refs`/`assert-no-callers` plus manual code reading) before any agent was dispatched, so grading is against a fixed, independently-known-correct answer, not against either agent's own claim.
+
+Tasks 1 and 2 were run first (Round 1). Task 3 was added afterward (Round 2) specifically because Round 1's results were a fairly modest win for codeintel — both hand-picked "hard" cases turned out to have a distinctive textual anchor (a rare type name, a package-qualified function name) that let a skilled grep-based agent route around the ambiguity entirely. Task 3 was deliberately designed to remove that escape hatch: an unexported interface with a maximally generic name and method set (`clock { Now(); Sleep() }`), copy-pasted near-identically across three unrelated packages, with no package-qualification possible since it's unexported.
 
 **This is a single run (n=1 per cell), not a statistically robust study.** Treat it as a qualitative case study with real, honestly-reported numbers — not a definitive verdict on LSP vs grep in general. See also the [codeintel-plan-symbol-fields.md](../../manifest/designs/codeintel-plan-symbol-fields.md) design doc, which cites external research (ManoMano's Project Aegis benchmark, a Semble Show HN thread) reaching the same "task-dependent, not uniform" conclusion this run reaches independently.
 
@@ -12,6 +14,8 @@ Both tasks target `internal/perchengine`/`internal/hubgeometry` in this repo at 
 go build -o /tmp/lyx-bench ./cmd/lyx
 /tmp/lyx-bench codeintel refs internal/perchengine/engine.go:34:2 --target-dir .      # Task 1
 /tmp/lyx-bench codeintel assert-no-callers internal/hubgeometry/hubgeometry.go:107:6 --target-dir .  # Task 2
+/tmp/lyx-bench codeintel refs internal/builderengine/poll.go:177:2 --target-dir .    # Task 3, Now()
+/tmp/lyx-bench codeintel refs internal/builderengine/poll.go:178:2 --target-dir .    # Task 3, Sleep()
 ```
 
 Each condition was a fresh `general-purpose` subagent (Claude Sonnet 5) given only the task description and either a mandate or a prohibition on using `lyx codeintel`; neither was told the other condition existed or given any hint toward the answer. Full agent prompts are reproduced in the "Task" sections below.
@@ -50,18 +54,39 @@ Each condition was a fresh `general-purpose` subagent (Claude Sonnet 5) given on
 
 **Result:** codeintel was clearly more efficient for equally-correct final data — roughly half the tool calls, a third of the wall-clock, and ~40% fewer tokens. This is the one clean, honest win in this run, and it came from the task the grep agent could still solve well once it stopped searching for the bare name — the cost gap, not a correctness gap.
 
+## Task 3 (Round 2) — no distinctive anchor at all: `builderengine.clock`
+
+**Question:** `internal/builderengine/poll.go` declares a local, unexported interface `clock { Now() time.Time; Sleep(d time.Duration) }`. Find every real production call site *within `internal/builderengine` only* where `.Now()`/`.Sleep()` is invoked polymorphically on a value of this specific interface — excluding the concrete `realClock` implementation's own method bodies, any direct `time.Now()`/`time.Sleep()` stdlib call, and (critically) call sites belonging to two other, unrelated, structurally-identical `clock` interfaces independently declared in `internal/shuttleengine` and `internal/websterengine`.
+
+**Why this is harder than Tasks 1-2:** `clock`, `Now`, and `Sleep` are about as generic as Go identifiers get, and — unlike Task 2's `hubgeometry.Resolve` — the interface is unexported, so there is no package-qualified form to grep for at all (`clk.Now()` inside `builderengine` is textually identical to `clk.Now()` inside `shuttleengine` or `websterengine`, since all three packages independently chose the same parameter name too). No distinctive word exists anywhere in this task for either condition to search for.
+
+**Ground truth:** exactly 3 sites, all inside `PollUntilTerminal` in `poll.go`: line 203 (`clk.Now()`), line 213 (`clk.Now()`), line 216 (`clk.Sleep(pollTick)`).
+
+| Condition | Correct? | Tool calls | Tokens | Wall-clock |
+|---|---|---|---|---|
+| codeintel required | ✅ 3/3 | 6 | 35,691 | 66.5 s |
+| grep only | ✅ 3/3 | 4 | 33,737 | 36.2 s |
+
+**What actually happened, honestly — and this is the most important result in this document:** `lyx codeintel refs` on the interface method, queried from `builderengine/poll.go`, returned **~30 hits for `Now()` and ~8 for `Sleep()`**, and the large majority were not from `builderengine` at all — they were real call sites belonging to `shuttleengine`'s and `websterengine`'s own separate, unrelated `clock` interfaces (plus their `_test.go` files). This is not a bug in this repo's wrapper; it is gopls' documented behavior for references on an interface method — because Go interfaces are satisfied structurally, gopls conservatively includes every method matching that name+signature across every structurally-compatible interface in the whole workspace, not just the one actually queried. **The response still carried `"resolution":"complete"`** — the trust marker this codebase's own CLI help text and `codeintelengine/refs.go` documentation promise means "a caller does not need to cross-check it with grep or re-verify individual candidates." On this task, that promise was false: both conditions' agents had to manually filter the raw tool output by file path to recover the correct 3-item answer, which is exactly the re-verification the marker exists to make unnecessary.
+
+Grep, meanwhile, got a *free, structural* advantage here that has nothing to do with text-matching precision: a `grep` invocation naturally scopes to the directory/files you point it at, so `grep -rn ... internal/builderengine/` never saw the other two packages' identical-looking interfaces in the first place. The codeintel agent had no equivalent scoping lever — `lyx codeintel refs` has no `--only-within <dir>` flag, so it got the whole workspace's structurally-matching hits by default and had to filter after the fact.
+
+**Result:** grep-only won on all three metrics — fewer tool calls, fewer tokens, less than half the wall-clock — while both conditions still reached the fully correct answer. This is the clearest reversal in this document: the exact "no textual anchor" scenario this task was designed to make grep fail at is precisely where `codeintel`'s own workspace-wide interface-reference behavior became a liability, not an advantage.
+
 ## Combined totals
 
 | Condition | Tool calls | Tokens | Wall-clock |
 |---|---|---|---|
-| codeintel required (both tasks) | 11 | 70,991 | 117.9 s |
-| grep only (both tasks) | 12 | 93,180 | 152.8 s |
-| **Delta** | **-1 (-8%)** | **-22,189 (-24%)** | **-34.9 s (-23%)** |
+| codeintel required (all 3 tasks) | 17 | 106,682 | 184.4 s |
+| grep only (all 3 tasks) | 16 | 126,917 | 189.0 s |
+| **Delta** | **+1 (+6%, codeintel used more)** | **-20,235 (-16%)** | **-4.6 s (-2%, ≈ a wash)** |
+
+Adding Task 3 substantially narrows the Round 1 picture: codeintel's wall-clock advantage shrinks from -23% to essentially zero, and it now uses *more* tool calls in aggregate than grep, not fewer. The token advantage survives (-16%) but is smaller than Round 1 alone suggested (-24%).
 
 ## Honest takeaways
 
-- **No dramatic, universal win.** Both conditions produced fully correct final data on both tasks in this run. This matches the external research already cited in [codeintel-plan-symbol-fields.md](../../manifest/designs/codeintel-plan-symbol-fields.md): LSP-backed navigation helps, but it's task-dependent, not a uniform multiplier — and it does not help at all against a *skilled* text-search agent that avoids naive traps, only against a naive one.
-- **The real, measured effect was cost, not correctness** — a ~20-25% reduction in tokens and wall-clock for equally-correct answers, concentrated entirely in Task 2. Task 1 showed no codeintel advantage at all; grep-only was faster there.
-- **A genuine tool limitation surfaced, not papered over:** `lyx codeintel refs` on an interface method returns callers of *every* method satisfying that signature, not just calls through the interface value — a caller still has to manually verify each candidate's static type. This is worth fixing or documenting, not quietly ignoring.
-- **Self-reported summaries can drift from the underlying data even when the data is right** — the codeintel agent's "30" vs. its own correct 31-row table is a small but real reminder to check an agent's listed data, not just its stated headline number, when grading or consuming this kind of report.
-- Small sample, single run, two hand-picked tasks. A larger, repeated benchmark (matching this doc's own [board-performance.md](board-performance.md) convention of dated, repeatable measurement blocks) would be needed before treating any of these deltas as durable.
+- **No dramatic, universal win, and it got weaker, not stronger, as the tasks got harder.** All three conditions produced fully correct final data on all three tasks except one prose miscount (Task 2, data itself correct). This matches the external research already cited in [codeintel-plan-symbol-fields.md](../../manifest/designs/codeintel-plan-symbol-fields.md): LSP-backed navigation helps, but it's task-dependent, not a uniform multiplier — and a *skilled* text-search agent that avoids naive traps closes most of the gap, and on Task 3, reverses it.
+- **The most important finding is the trust-marker mismatch, not the win/loss tally.** `"resolution":"complete"` was present on Task 3's raw `refs` output even though the majority of that output was cross-package noise requiring manual re-verification — exactly the failure mode the marker exists to rule out. This is a real, actionable gap in `codeintelengine`/`codeintelcli`, not a benchmark artifact: either the marker's promise needs to be narrowed (e.g. it should mean "every result shown is a genuine reference," not "no further filtering is ever needed"), or `refs`/`assert-no-callers` need a way to scope a query to one package/directory so a caller isn't forced to filter workspace-wide interface-method noise by hand every time.
+- **Grep's directory-scoping is a real, structural advantage codeintel currently has no equivalent for.** This is worth a deliberate design response (a `--within <dir>` flag, or equivalent), not just a documentation caveat.
+- **Self-reported summaries can drift from the underlying data even when the data is right** — the codeintel agent's "30" vs. its own correct 31-row table in Task 2 is a small but real reminder to check an agent's listed data, not just its stated headline number, when grading or consuming this kind of report.
+- Small sample, single run, three hand-picked tasks. A larger, repeated benchmark (matching this doc's own [board-performance.md](board-performance.md) convention of dated, repeatable measurement blocks) would be needed before treating any of these deltas as durable.
