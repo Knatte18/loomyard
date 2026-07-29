@@ -104,6 +104,7 @@ context.Context, opts Options) ([]Reference, error)` (new file
 - **Context:**
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/position.go`
+  - `internal/codeintelengine/errors.go`
 - **Edits:**
   - `internal/codeintelengine/lspclient.go`
 - **Creates:**
@@ -179,6 +180,8 @@ context.Context, opts Options) ([]Reference, error)` (new file
 - **Context:**
   - `internal/codeintelengine/lspclient_test.go`
   - `internal/codeintelengine/refs_test.go`
+  - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/lspclient.go`
 - **Edits:**
   - `internal/codeintelengine/lspclient_test.go`
 - **Creates:**
@@ -211,8 +214,10 @@ context.Context, opts Options) ([]Reference, error)` (new file
 - **Context:**
   - `internal/codeintelengine/refs_test.go`
   - `internal/codeintelengine/lspclient_test.go`
+  - `internal/codeintelengine/lspclient.go`
   - `internal/codeintelengine/symbol.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/registry.go`
 - **Edits:** none
 - **Creates:**
   - `internal/codeintelengine/symbol_test.go`

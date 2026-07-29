@@ -39,6 +39,7 @@ batches (9, 10) never see any of this — they only call
 - **Context:**
   - `internal/codeintelengine/errors.go`
   - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/lspclient.go`
 - **Edits:**
   - `internal/codeintelengine/ensureserver.go`
   - `internal/codeintelengine/refs.go`
@@ -121,6 +122,8 @@ batches (9, 10) never see any of this — they only call
 - **Context:**
   - `internal/codeintelengine/toolchain.go`
   - `internal/codeintelengine/ensureserver.go`
+  - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/errors.go`
 - **Edits:**
   - `internal/codeintelengine/refs_test.go`
 - **Creates:** none

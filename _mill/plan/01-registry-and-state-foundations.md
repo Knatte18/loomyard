@@ -68,8 +68,6 @@ string` and `Entry.HasNativeDaemon bool` (both yaml-tagged, on
   the new `native` `EnsureServer` daemon path back to legacy
   cold-spawn-per-call, with no warning anywhere. Keeping the seed
   current is what prevents that footgun, not just documents it.
-  `ConfigTemplate()` in `template.go` needs no edit — it only embeds
-  `template.yaml` verbatim via `//go:embed`.
 - **Commit:** `feat(codeintelengine): add PinnedVersion/HasNativeDaemon to registry Entry`
 
 ### Card 2: Extend registry_test.go coverage for the new fields

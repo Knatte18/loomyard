@@ -79,6 +79,8 @@ wiring end to end.
 - **Context:**
   - `internal/codeintelengine/probe.go`
   - `internal/codeintelengine/refs.go`
+  - `internal/codeintelengine/lspclient.go`
+  - `internal/codeintelengine/errors.go`
 - **Edits:**
   - `internal/codeintelengine/ensureserver.go`
 - **Creates:** none
@@ -155,6 +157,7 @@ wiring end to end.
   - `internal/codeintelengine/lspclient_test.go`
   - `internal/codeintelengine/lspclient.go`
   - `internal/codeintelengine/ensureserver.go`
+  - `internal/codeintelengine/errors.go`
 - **Edits:** none
 - **Creates:**
   - `internal/codeintelengine/ensureserver_test.go`
@@ -212,13 +215,24 @@ wiring end to end.
   port the exact empirical procedure `_mill/discussion.md`'s
   `native-strategy-wire-compatibility` decision already ran manually —
   spawn two independent `ensureNative` calls a moment apart (each in its
-  own goroutine, `-remote=auto` under the hood), and assert via `pgrep`
-  or (portable alternative, preferred) by issuing `workspace/symbol` on
-  both connections and checking neither returns an unexpected empty
-  result that would indicate two fully independent, cold-initialized
-  servers with no shared index — the test's own doc comment should
-  state plainly that this codifies the discussion's manual verification
-  as automated regression coverage, not first-time proof (per this
+  own goroutine, `-remote=auto` under the hood), both rooted at
+  `repoRoot(t)`. Give both a concrete, deterministic pass condition
+  (portable — no `pgrep`): each connection issues `workspace/symbol` for
+  the literal query `"Resolve"` (the same well-known, unique,
+  package-level `hubgeometry.Resolve` symbol `refs_integration_test.go`'s
+  own `findFuncPosition` helper already locates for its own test); assert
+  both connections return **at least one** candidate, and that the
+  first candidate's `formatLocation` (or equivalent file:line:col string)
+  is **identical** across both connections — two connections attached to
+  the same shared daemon's index resolve the same query to the same
+  location; two independent, unconnected `gopls` instances would still
+  each resolve it correctly in isolation (so a merely-nonempty result on
+  each is not, by itself, discriminating), but only a genuinely shared
+  index guarantees this exact byte-for-byte match on every run, which is
+  what makes this assertion a real regression pin rather than a vague
+  smoke check. The test's own doc comment should state plainly that this
+  codifies the discussion's manual verification as automated regression
+  coverage, not first-time proof (per this
   decision's own "Rejected: none... the shipped code needs its own
   automated proof, not a one-off manual check").
 - **Commit:** `test(codeintelengine): add ensureNative integration coverage`

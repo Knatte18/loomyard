@@ -120,9 +120,11 @@ separately from recomputing it), and removes an entire class of bug
 - **Context:**
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/lock/lock.go`
+  - `internal/proc/proc_linux.go`
   - `internal/proc/proc_windows.go`
   - `internal/codeintelengine/lspclient.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/daemonstate.go`
 - **Edits:**
   - `internal/codeintelengine/ensureserver.go`
 - **Creates:** none
@@ -231,6 +233,7 @@ separately from recomputing it), and removes an entire class of bug
   - `internal/codeintelengine/errors.go`
   - `internal/codeintelengine/lspclient_test.go`
   - `internal/codeintelengine/refs_integration_test.go`
+  - `internal/lock/lock.go`
 - **Edits:**
   - `cmd/lyx/tierpurity_test.go`
 - **Creates:**

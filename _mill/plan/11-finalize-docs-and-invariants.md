@@ -45,6 +45,8 @@ codeintel module-table entry repeats the "references-only" framing.
   - `internal/codeintelengine/symbol.go`
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/lspclient.go`
+  - `internal/codeintelengine/errors.go`
   - `manifest/designs/codeintel-redesign.md`
 - **Edits:**
   - `internal/codeintelengine/doc.go`

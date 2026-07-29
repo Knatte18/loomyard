@@ -158,9 +158,9 @@ mirrors this package's existing test-seam convention
 ### Card 8: Unit tests for resolveGoToolchain (mocked installer)
 
 - **Context:**
-  - `internal/codeintelengine/toolchain.go`
   - `internal/lock/lock.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/codeintelengine/toolchain.go`
 - **Creates:**
   - `internal/codeintelengine/toolchain_test.go`
 - **Deletes:** none

@@ -185,6 +185,7 @@ error`.
   - `internal/codeintelengine/daemonstate.go`
   - `internal/codeintelengine/probe.go`
   - `internal/codeintelengine/lspclient_test.go`
+  - `internal/codeintelengine/errors.go`
   - `internal/proc/proc_linux.go`
   - `internal/proc/proc_windows.go`
 - **Edits:**

@@ -191,6 +191,7 @@ top-level array key.
 - **Context:**
   - `internal/codeintelcli/cli.go`
   - `internal/clihelp/exec.go`
+  - `internal/codeintelengine/symbol.go`
 - **Edits:**
   - `internal/codeintelcli/cli_test.go`
 - **Creates:** none

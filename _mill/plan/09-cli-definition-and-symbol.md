@@ -199,6 +199,7 @@ top of what this batch establishes.
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/definition.go`
   - `internal/codeintelengine/symbol.go`
+  - `internal/codeintelengine/errors.go`
   - `internal/clihelp/exec.go`
 - **Edits:**
   - `internal/codeintelcli/cli_test.go`
