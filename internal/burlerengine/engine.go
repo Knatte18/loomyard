@@ -9,6 +9,7 @@ package burlerengine
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -78,15 +79,18 @@ type Result struct {
 }
 
 // Run drives one burler round for p, tuned by opts. Sequence: validate p
-// against the engine's worktree root; compose its prompt; build the
-// shuttle Spec (Interactive/Parent/Display/KeepPane stay zero-valued —
-// rounds are autonomous by default, per the run-tuning-off-profile
-// decision); run it through the Shuttle seam; populate Result from the
-// shuttle Result; for a cluster round (p.ClusterFan != "") that reached
-// done, copy the shuttle's ForkAudit onto Result and enforce the cluster
-// audit policy (auditClusterRound) before reading the review file at all;
-// and, only when the run reached shuttleengine.OutcomeDone, read and
-// strictly parse the review file into Verdict/Findings.
+// against the engine's worktree root; compose its prompt; materialize the
+// three rendered instruction files to a fresh per-round directory under
+// .lyx (layout.DotLyxDir()) so the orchestrator prompt can name their
+// absolute paths; build the shuttle Spec (Interactive/Parent/Display/
+// KeepPane stay zero-valued — rounds are autonomous by default, per the
+// run-tuning-off-profile decision) with Prompt set to the thin
+// orchestrator only; run it through the Shuttle seam; populate Result from
+// the shuttle Result; for a cluster round (p.ClusterFan != "") that
+// reached done, copy the shuttle's ForkAudit onto Result and enforce the
+// cluster audit policy (auditClusterRound) before reading the review file
+// at all; and, only when the run reached shuttleengine.OutcomeDone, read
+// and strictly parse the review file into Verdict/Findings.
 //
 // Run returns a nil error for every non-done outcome (asking/died/timeout
 // are normal loop events a caller branches on via Result.Outcome, with an
@@ -104,9 +108,36 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	// many words that the agent has two jobs in order in one session, and
 	// part B is fixing what part A found.
 	directive := pattern.Directive(e.layout, pattern.RoleReviewFix)
-	prompt, err := composePrompt(&p, directive)
+
+	// Mint a fresh per-round directory under the machine-local .lyx tree
+	// (never the weft-synced _lyx) to hold this round's three instruction
+	// files — os.MkdirTemp guarantees a collision-free name across
+	// concurrent rounds in the same worktree.
+	burlerDir := filepath.Join(e.layout.DotLyxDir(), "burler")
+	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
+		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
+	}
+	roundDir, err := os.MkdirTemp(burlerDir, "round-")
+	if err != nil {
+		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
+	}
+
+	inst1Path := filepath.Join(roundDir, "instruction-1-explore.md")
+	inst2Path := filepath.Join(roundDir, "instruction-2-review.md")
+	inst3Path := filepath.Join(roundDir, "instruction-3-fix.md")
+
+	prompt, files, err := composePrompt(&p, directive, inst1Path, inst2Path, inst3Path)
 	if err != nil {
 		return Result{}, err
+	}
+
+	// Write every instruction file before the shuttle ever starts: a
+	// partial materialization must never leave the shuttle running against
+	// an orchestrator that names a file that does not exist.
+	for _, f := range files {
+		if err := os.WriteFile(f.Path, []byte(f.Content), 0o644); err != nil {
+			return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
+		}
 	}
 
 	spec := shuttleengine.Spec{
