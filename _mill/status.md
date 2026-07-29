@@ -65,5 +65,7 @@ batches:
     start_sha: d4225b801a140b439ef7be2e22cbb7991e7c812c
     commit_sha: ddd532f68f0051bc5661246e86fef80c60db259b
   - name: engine-integration-tests
-    state: pending
+    state: running
+    implementer_session: 09ff1550-0634-4baf-a808-9a943cddfc7c
+    start_sha: 365c3353c48b9fa3a39ec2640f7da064ed47a5bf
 ```
