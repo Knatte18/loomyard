@@ -41,7 +41,9 @@ implementing  '2026-07-29T18:01:14Z'
 ```yaml
 batches:
   - name: proc-killpid
-    state: pending
+    state: running
+    implementer_session: 5686763b-673f-471b-aa38-85c64afc74ff
+    start_sha: 0ac2de3ef2ee1ade6e8b62469eed6d283fa9f5e1
   - name: engine-documentsymbol-infile
     state: pending
   - name: cli-resolution-buildoptions-infile
