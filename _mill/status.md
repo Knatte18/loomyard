@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: replanning-hybrid-seam
+phase: plan-fix-r8
 slug: fabric-junction-config
 branch: fabric-junction-config
 plan: _mill/plan
@@ -34,4 +34,6 @@ plan-fix-r6  '2026-07-29T16:42:13Z'
 plan-review-r7  '2026-07-29T17:03:09Z'
 discussion-revised  '2026-07-29T17:10:03Z'
 replanning-hybrid-seam  '2026-07-29T17:19:31Z'
+plan-review-r8  '2026-07-29T17:30:27Z'
+plan-fix-r8  '2026-07-29T17:30:27Z'
 ```
