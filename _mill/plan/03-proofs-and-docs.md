@@ -58,10 +58,10 @@ Batch-local decisions: proof tests seed the fabric config on the WEFT side (`lyx
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/fabricengine/add_test.go`, extend the reserved-slug coverage (near `TestAdd_RejectsReservedHubNameSlug`, `:124`) so it also proves that a slug equal to a current `pathspec` junction name is rejected: with a `Topology` whose `cfg.Pathspec` includes a name such as `_pattern` (or an added `_extra`), `Add` rejects that slug with the "reserved for lyx hub geometry" error via the new `IsReservedHubName(slug, t.cfg.Dirs())` union — not only the hub-structural names. Keep the test at the tier the existing `TestAdd_RejectsReservedHubNameSlug` uses (it rejects at step 0 before any git operation, so no new fixture is needed).
+- **Requirements:** In `internal/fabricengine/add_test.go`, ADD new reserved-slug coverage (near `TestAdd_RejectsReservedHubNameSlug`, `:124`) proving that a slug equal to a current `pathspec` junction name is rejected: with a `Topology` whose `cfg.Pathspec` includes a name such as `_extra`, `Add` rejects the slug `_extra` with the "reserved for lyx hub geometry" error via the new `IsReservedHubName(slug, t.cfg.Dirs())` union (a name that is NOT in `hubgeometry.HubReservedNames()` and is reserved only because it is in `pathspec`) — proving the union's config-driven arm, not only the hub-structural arm. Note: card 10 (batch 2) already updated the existing `TestAdd_RejectsReservedHubNameSlug` `Topology` construction to `Config{Pathspec: "_lyx _pattern"}`; this card only adds the new `pathspec`-only case, it does not re-touch the `LyxDir` sub-case. Keep the test at the tier the existing test uses (rejection at step 0 before any git operation, so no fixture is needed).
 - **Commit:** `test(fabricengine): reject Add slug equal to a pathspec junction name`
 
-### Card 15: Document the config-driven junction set (doc.go + overview.md)
+### Card 15: Document the config-driven junction set (doc.go + overview.md + design doc)
 
 - **Context:**
   - `internal/fabricengine/junctionnames.go`
@@ -69,11 +69,12 @@ Batch-local decisions: proof tests seed the fabric config on the WEFT side (`lyx
 - **Edits:**
   - `internal/fabricengine/doc.go`
   - `docs/overview.md`
+  - `manifest/designs/fabric-unified-view.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/fabricengine/doc.go`, add prose stating the wired junction set is now sourced from `fabric.yaml`'s `pathspec` key (the same list that drives weft-sync staging), filtered against `hubgeometry.HubReservedNames()`, so a new weft-backed module is wired by appending its dir name to the `pathspec` template default with no `fabric`/`hubgeometry` code change; keep the existing narrow-pathspec asymmetry note accurate. In `docs/overview.md`: update the `Layout` method list at line 40 (`HostJunctions(slug)` → `HostJunctions(slug, names)`); reframe the "Junction model" section (lines ~95–101) so the wired set is described as the `pathspec`-driven list rather than a hardcoded `_lyx`/`_pattern` pair, retaining the concrete `<host>/_lyx`→`<weft>/_lyx` and `_pattern` examples as the default-pathspec instances and the existing "no `_raddle` junction is wired in this release" note. Preserve the repo's one-line-per-paragraph markdown style (no hard-wrap).
-- **Commit:** `docs(fabric): describe config-driven junction set in doc.go and overview`
+- **Requirements:** In `internal/fabricengine/doc.go`, add prose stating the wired junction set is now sourced from `fabric.yaml`'s `pathspec` key (the same list that drives weft-sync staging), filtered against `hubgeometry.HubReservedNames()`, so a new weft-backed module is wired by appending its dir name to the `pathspec` template default with no `fabric`/`hubgeometry` code change; keep the existing narrow-pathspec asymmetry note accurate. In `docs/overview.md`: update the `Layout` method list at line 40 (`HostJunctions(slug)` → `HostJunctions(slug, names)`); reframe the "Junction model" section (lines ~95–101) so the wired set is described as the `pathspec`-driven list rather than a hardcoded `_lyx`/`_pattern` pair, retaining the concrete `<host>/_lyx`→`<weft>/_lyx` and `_pattern` examples as the default-pathspec instances and the existing "no `_raddle` junction is wired in this release" note. In `manifest/designs/fabric-unified-view.md` (the campaign design that names this task as its build-order slice 1): mark slice 1 "Config-driven junction list" complete in the "Build order" section (`:104`, annotate item 1 as done / landed, since the design doc's Build-order is this campaign's slice tracker per the discussion's Constraints note) and resolve the "Home of the junction-name config" open question (`:116`) to the decided answer — `fabricengine` reads `fabric.yaml` `pathspec` and injects the name-set into `hubgeometry`, which stays the owner of path construction. Do NOT touch `manifest/roadmap.md` (the whole `fabric-unified-view` item stays Planned until the campaign completes, per the discussion). Preserve the repo's one-line-per-paragraph markdown style (no hard-wrap) in all three files.
+- **Commit:** `docs(fabric): describe config-driven junction set and mark design slice 1 done`
 
 ## Batch Tests
 

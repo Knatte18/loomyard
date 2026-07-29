@@ -53,8 +53,8 @@ _Cross-cutting decisions every batch inherits._
 
 ### Decision: fabric sources names internally; consumer signatures stay stable; no silent fallback
 
-- **Decision:** A `fabricengine` helper `junctionNames(baseDir string) ([]string, error)` returns `LoadConfig(baseDir).Dirs()` with the `hubgeometry.HubReservedNames()` set filtered out (the wiring-guard). Every fabric consumer that needs the wired name-set calls this helper and passes the result into the hubgeometry methods; all public/free-function signatures (`WireJunctions(l, slug)`, `UnwireJunctions(l, slug)`, `removeHostJunction(l, slug)`, `PairInSync(l)`, `checkJunctionHealth(l)`, `junctionRepointedDetail(l)`) are UNCHANGED, so `internal/initengine` and `internal/loomengine` callers are untouched. A config-load failure at any name-needing site is a SURFACED ERROR — propagated (`PairInSync` via its `err` return; wiring/unwiring via their existing `error`) or reported as a distinct junction-health reason naming the config-load fault (`"cannot load fabric.yaml: <err>"`) — never a hardcoded default. The `pathspec` template default (`_lyx _pattern`) applies only at config-scaffold time.
-- **Rationale:** Most contained; matches `_mill/discussion.md` name-sourcing + no-fallback Decisions and the operator's explicit Q6 direction that a broken config must be caught, not papered over.
+- **Decision:** A `fabricengine` helper `junctionNames(baseDir string) ([]string, error)` returns `LoadConfig(baseDir).Dirs()` with the `hubgeometry.HubReservedNames()` set filtered out (the wiring-guard). Every fabric consumer that needs the wired name-set calls this helper and passes the result into the hubgeometry methods; all public/free-function signatures (`WireJunctions(l, slug)`, `UnwireJunctions(l, slug)`, `removeHostJunction(l, slug)`, `PairInSync(l)`, `checkJunctionHealth(l)`, `junctionRepointedDetail(l)`) are UNCHANGED, so `internal/initengine` and `internal/loomengine` callers are untouched. A config-load failure at any name-needing site is a SURFACED FAILURE — never a hardcoded default — but its *shape* matches how each site already reports a determinable bad state versus an undeterminable one: the health/drift verdict functions `PairInSync` and `checkJunctionHealth` report it as a distinct verdict reason naming the config-load fault (`"cannot load fabric.yaml: <err>"`) with a `nil` Go error — a determinable "pair unhealthy: bad/absent config" state, NOT a hard `err` that `loomengine/preflight.go:120` would escalate as "could not determine an answer at all"; wiring/unwiring/`Init` (which have no verdict channel) return it through their existing `error` returns. `removeHostJunction`'s error is surfaced through its existing `error` return even though `remove.go:91` discards it (see the removal residual-risk note in batch 2 card 7). The `pathspec` template default (`_lyx _pattern`) applies only at config-scaffold time.
+- **Rationale:** Most contained; matches `_mill/discussion.md` name-sourcing + no-fallback Decisions and the operator's explicit Q6 direction that a broken config must be caught, not papered over. `PairInSync` reports the config-load failure as a verdict reason (not a hard `err`) so it stays the consistent Here-anchored twin of `checkJunctionHealth` and does not convert a determinable bad-config state into a preflight infra-escalation — surfacing the failure as a reason still fully honors no-fallback (nothing is defaulted; the operator sees the fault).
 - **Applies to:** batch 2, batch 3.
 
 ### Decision: all name-needing sites load config from the weft base; Add uses t.cfg
@@ -84,10 +84,12 @@ _Cross-cutting decisions every batch inherits._
 
 - `CONSTRAINTS.md`
 - `docs/overview.md`
+- `docs/shared-libs/hubgeometry.md`
 - `internal/fabricengine/add.go`
 - `internal/fabricengine/add_test.go`
 - `internal/fabricengine/config_driven_junctions_integration_test.go`
 - `internal/fabricengine/doc.go`
+- `manifest/designs/fabric-unified-view.md`
 - `internal/fabricengine/drift.go`
 - `internal/fabricengine/junction.go`
 - `internal/fabricengine/junctionnames.go`
