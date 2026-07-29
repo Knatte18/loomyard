@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-proofs-and-docs
+phase: holistic-reviewing
 slug: fabric-junction-config
 branch: fabric-junction-config
 plan: _mill/plan
@@ -45,6 +45,7 @@ implementing  '2026-07-29T18:00:12Z'
 approved-hubgeometry-inject-names  '2026-07-29T18:05:44Z'
 approved-fabricengine-wiring  '2026-07-29T18:18:09Z'
 approved-proofs-and-docs  '2026-07-29T18:25:27Z'
+holistic-reviewing  '2026-07-29T18:25:49Z'
 ```
 
 ## Batches
