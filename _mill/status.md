@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -31,4 +31,33 @@ plan-fix-r5  '2026-07-29T08:43:42Z'
 plan-review-r6  '2026-07-29T09:18:44Z'
 plan-fix-r6  '2026-07-29T09:19:03Z'
 planned  '2026-07-29T09:20:21Z'
+implementing  '2026-07-29T09:22:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: registry-and-state-foundations
+    state: pending
+  - name: lspclient-dial-transport
+    state: pending
+  - name: toolchain-manager
+    state: pending
+  - name: daemon-state-and-locking
+    state: pending
+  - name: ensure-server-native
+    state: pending
+  - name: ensure-server-supervised
+    state: pending
+  - name: wire-ensure-server-into-refs
+    state: pending
+  - name: definition-and-symbol-engine
+    state: pending
+  - name: cli-definition-and-symbol
+    state: pending
+  - name: batch-mode-cli
+    state: pending
+  - name: finalize-docs-and-invariants
+    state: pending
 ```
