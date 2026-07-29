@@ -11,11 +11,15 @@ package codeintelcli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/codeintelengine"
 )
 
 // TestRunCLI_NoArgsListsRefsSubcommand verifies that "lyx codeintel" with no
@@ -121,6 +125,242 @@ func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 	}
 	if !strings.Contains(errMsg, "no language detected") {
 		t.Errorf("RunCLI(refs MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_Definition_NoLanguageError verifies that "definition <symbol>
+// --target-dir <empty dir>" fails through the same ErrNoLanguage path
+// TestRunCLI_Refs_NoLanguageError exercises for "refs" — definitionCommand
+// shares the identical cwd/registry-resolution preamble.
+func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
+	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// codeintelengine.BuiltinRegistry() deterministically, independent of
+	// whatever git repo or servers.yaml the test happens to run inside.
+	t.Chdir(t.TempDir())
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"definition", "MySymbol", "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(definition MySymbol --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("RunCLI output has %d lines; want exactly 1. output:\n%s", len(lines), out.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, lines[0])
+	}
+
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(definition MySymbol --target-dir <empty>) ok = true; want false")
+	}
+
+	errMsg, _ := env["error"].(string)
+	if errMsg == "" {
+		t.Errorf("RunCLI(definition MySymbol --target-dir <empty>) error field empty or missing; got envelope: %v", env)
+	}
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(definition MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_Symbol_NoLanguageError verifies that "symbol <query>
+// --target-dir <empty dir>" fails through the same ErrNoLanguage path
+// TestRunCLI_Refs_NoLanguageError exercises for "refs" — symbolCommand
+// shares the identical cwd/registry-resolution preamble.
+func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
+	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// codeintelengine.BuiltinRegistry() deterministically, independent of
+	// whatever git repo or servers.yaml the test happens to run inside.
+	t.Chdir(t.TempDir())
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"symbol", "MySymbol", "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(symbol MySymbol --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("RunCLI output has %d lines; want exactly 1. output:\n%s", len(lines), out.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, lines[0])
+	}
+
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(symbol MySymbol --target-dir <empty>) ok = true; want false")
+	}
+
+	errMsg, _ := env["error"].(string)
+	if errMsg == "" {
+		t.Errorf("RunCLI(symbol MySymbol --target-dir <empty>) error field empty or missing; got envelope: %v", env)
+	}
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(symbol MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves
+// that symbolCommand never calls parsePosition: an argument shaped like
+// "file:line:col" must still be passed through to Query.Symbol unparsed,
+// not silently swallowed as a position.
+//
+// DetectLanguage never consults Options.Query at all (see
+// internal/codeintelengine/detect.go), so RunCLI("symbol", "foo.go:1:1",
+// --target-dir <empty>)'s ErrNoLanguage envelope is byte-for-byte identical
+// regardless of whether the argument was kept as a literal string or
+// mis-parsed as a position — confirmed empirically: "refs foo.go:1:1" and
+// "symbol foo.go:1:1" against the same empty target dir produce the exact
+// same error text. The ErrNoLanguage envelope therefore cannot itself prove
+// which shape Query took, so this test pins the real contract two ways
+// instead: (1) it exercises symbolQuery directly, the one seam
+// symbolCommand's RunE actually uses to build Query.Symbol, asserting it
+// keeps "foo.go:1:1" as a literal Query.Symbol with Query.Pos left nil, even
+// though the same string driven through parseQuery (refs/definition's
+// converter, which symbolCommand deliberately does not call) does parse as a
+// position — proving the two functions diverge exactly where they must; and
+// (2) it still drives the full RunCLI("symbol", ...) path to confirm the
+// command reaches DetectLanguage and fails through the expected
+// ErrNoLanguage envelope, exactly like TestRunCLI_Symbol_NoLanguageError.
+func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing.T) {
+	const arg = "foo.go:1:1"
+
+	query := symbolQuery(arg)
+	if query.Symbol != arg {
+		t.Errorf("symbolQuery(%q).Symbol = %q; want %q", arg, query.Symbol, arg)
+	}
+	if query.Pos != nil {
+		t.Errorf("symbolQuery(%q).Pos = %+v; want nil — the argument must never be position-parsed", arg, query.Pos)
+	}
+
+	// The same string, driven through parseQuery (the converter
+	// refs/definition use), DOES parse as a position — proving symbolQuery's
+	// literal-search-string behavior is a deliberate divergence, not an
+	// accident of parseQuery(arg) happening to leave Pos unset for this
+	// particular string.
+	parsed, err := parseQuery(arg)
+	if err != nil {
+		t.Fatalf("parseQuery(%q) error = %v; want nil", arg, err)
+	}
+	if parsed.Pos == nil {
+		t.Fatalf("parseQuery(%q).Pos = nil; want a parsed position, to prove symbolQuery's divergence from parseQuery is meaningful", arg)
+	}
+
+	t.Chdir(t.TempDir())
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"symbol", arg, "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(symbol %s --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage", arg)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(symbol %s --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", arg, errMsg)
+	}
+}
+
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo tests emitLookupResult
+// directly (this file is package codeintelcli, the same package
+// emitLookupResult is defined in) rather than through the full RunCLI tree —
+// reaching *codeintelengine.ErrAmbiguousSymbol through a live refs/definition
+// call would require a real language server, out of scope for this file per
+// its own header comment. It covers both the ambiguous exit-2 path and the
+// not-found path, in the same table, to prove the not-found case still falls
+// through to plain output.Err rather than being swept into the ambiguous
+// branch.
+func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
+	tests := []struct {
+		name         string
+		resultsField string
+		err          error
+		wantCode     int
+		wantOk       bool
+		checkBody    func(t *testing.T, env map[string]any)
+	}{
+		{
+			name:         "ambiguous",
+			resultsField: "references",
+			err: &codeintelengine.ErrAmbiguousSymbol{
+				Symbol:     "Foo",
+				Candidates: []string{"a.go:1:1", "b.go:2:2"},
+			},
+			wantCode: 2,
+			wantOk:   true,
+			checkBody: func(t *testing.T, env map[string]any) {
+				t.Helper()
+				candidates, ok := env["candidates"].([]any)
+				if !ok {
+					t.Fatalf("envelope %v missing []any \"candidates\" field", env)
+				}
+				want := []string{"a.go:1:1", "b.go:2:2"}
+				if len(candidates) != len(want) {
+					t.Fatalf("candidates = %v; want %v", candidates, want)
+				}
+				for i, c := range candidates {
+					if c != want[i] {
+						t.Errorf("candidates[%d] = %v; want %v", i, c, want[i])
+					}
+				}
+			},
+		},
+		{
+			name:         "not_found",
+			resultsField: "definitions",
+			err:          &codeintelengine.ErrSymbolNotFound{Symbol: "Bar", TargetDir: "/tmp"},
+			wantCode:     1,
+			wantOk:       false,
+			checkBody: func(t *testing.T, env map[string]any) {
+				t.Helper()
+				errMsg, _ := env["error"].(string)
+				if !strings.Contains(errMsg, "Bar") {
+					t.Errorf("error = %q; want it to mention %q", errMsg, "Bar")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			ctx, es := clihelp.NewExitContext(context.Background())
+
+			emitLookupResult(ctx, &out, tt.resultsField, nil, tt.err)
+
+			if es.Code() != tt.wantCode {
+				t.Errorf("es.Code() = %d; want %d", es.Code(), tt.wantCode)
+			}
+
+			var env map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+				t.Fatalf("emitLookupResult output is not valid JSON: %v; got: %q", err, out.String())
+			}
+
+			if ok, _ := env["ok"].(bool); ok != tt.wantOk {
+				t.Errorf("envelope ok = %v; want %v", ok, tt.wantOk)
+			}
+
+			tt.checkBody(t, env)
+		})
 	}
 }
 

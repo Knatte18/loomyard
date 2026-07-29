@@ -287,7 +287,7 @@ never position-parsed:
 				TargetDir:    dir,
 				WorktreeRoot: worktreeRoot,
 				Lang:         lang,
-				Query:        codeintelengine.Query{Symbol: args[0]},
+				Query:        symbolQuery(args[0]),
 				Timeout:      timeout,
 			}
 
@@ -311,6 +311,17 @@ never position-parsed:
 	symbol.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for the workspace/symbol request phase")
 
 	return symbol
+}
+
+// symbolQuery builds a codeintelengine.Query for the "symbol" verb's single
+// positional argument. Per the plan's symbol-semantics decision, arg is
+// always a plain workspace/symbol search string — unlike parseQuery (which
+// refs/definition use), symbolQuery never calls parsePosition, even when arg
+// happens to have a "file:line:col" shape. This is a separate named function
+// rather than an inline literal so the "never position-parsed" contract is
+// independently unit-testable without a live language server.
+func symbolQuery(arg string) codeintelengine.Query {
+	return codeintelengine.Query{Symbol: arg}
 }
 
 // symbolMatchFields converts each codeintelengine.SymbolMatch into the
