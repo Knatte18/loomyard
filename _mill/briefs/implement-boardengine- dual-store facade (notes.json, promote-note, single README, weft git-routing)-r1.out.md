@@ -1,0 +1,13 @@
+Summary of work completed for batch `03-board-dual-store-facade.md` (all 10 cards, 10 of 10 committed):
+
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/task.go` — Card 10: `Task.ShortName`, `ShortNameOrSlug()`, `maxSlugLength`/`validateSlugLength` wired into `NewTask`/`ApplyPatch`.
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/store.go` — Card 10/13: `short_name` added to `upsertAllowedKeys`; lock-doc comment updated for the `board.lock` rename.
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/config.go`, `template.yaml` — Card 11: `readme`/`design_prefix` keys, `sidebar` dropped, no back-compat shim.
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/render.go`, `layer.go`, `board.go` — Card 12: single-README rendering (`renderTasksSection` + new `renderManifestSection`), `renderDesigns` unions tasks+notes, `ExtendedTitle`/`renderSidebar` deleted, `RenderToDisk`/`Render` take a `notes` param.
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/sync.go` — Card 13: routes through `fabricengine.CommitWeftAt`/`PushWeftAt`; lock file renames to `board.lock`/`board.push.lock`. Fixture updates in `internal/boardengine/boardtest/{sync_test.go,bench_test.go,concurrency_test.go}`.
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/board.go` — Cards 14–16: `tasksFile`/`notesFile` constants, `storeTarget`, `boardCriticalSection`, generalized `writeOp`, cross-store slug-uniqueness helpers, mirrored `Note` methods, `taskToUpsertFields`, `PromoteNote`.
+- Repo-wide fixture sweep (Card 17): `internal/boardengine/{config_test.go,board_test.go,template_test.go}`, `cmd/lyx/{main_integration_test.go,exitcode_test.go}`, `internal/ideengine/menu_test.go`, `internal/configcli/{configcli.go,configcli_test.go}`.
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/{render_test.go,layer_test.go}` — Card 18: field renames, `notes` args, dropped sidebar/`ExtendedTitle` tests, new `TestRenderManifestSection`.
+- `/home/knatte/Code/loomyard/wts/board/internal/boardengine/{task_test.go,store_test.go,board_test.go}` — Card 19: slug-cap, `short_name`, cross-store uniqueness, and `PromoteNote` validation/crash-retry coverage.
+
+Verify passed: `go test ./internal/boardengine/...` and `go test -tags integration ./internal/boardengine/...` both green; `go build ./...` and `go vet ./...` clean across the whole repo. Working tree is clean (no uncommitted tracked changes).
