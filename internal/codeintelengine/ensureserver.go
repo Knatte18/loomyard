@@ -252,7 +252,15 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		}
 
 		// Step 2: the dial/finalize above failed, or the state was
-		// absent/stale — try to become the spawner.
+		// absent/stale — try to become the spawner. gofrs/flock opens the
+		// lock file with O_CREATE but never creates missing parent
+		// directories, so a worktree's very first supervised call (before
+		// .lyx/codeintel/<lang>/ exists at all) must create it here first,
+		// matching this package's own MkdirAll-before-lock precedent
+		// (goToolchainInstallLock in toolchain.go).
+		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised create spawn lock dir %s: %w", filepath.Dir(lockPath), err)
+		}
 		fileLock, acquired, err := lock.TryAcquireWriteLock(lockPath)
 		if err != nil {
 			return nil, fmt.Errorf("codeintelengine: ensureSupervised acquire spawn lock for %q: %w", lang, err)

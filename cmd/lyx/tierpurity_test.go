@@ -24,6 +24,7 @@ import (
 var allowedSpawners = map[string]string{
 	"internal/proc": "process control is the package's subject — its tests must spawn",
 	"internal/codeintelengine/daemonstate_test.go": "spawns a short-lived child process to obtain a confirmed-dead PID for the daemon-staleness fixture, mirroring internal/proc's own liveness-test technique",
+	"internal/codeintelengine/supervised_test.go":  "spawns short-lived test subprocesses for the retry-exhaustion PID-liveness fixture and the stale-socket-cleanup bind proof",
 	"cmd/lyx/tierpurity_test.go":                   "contains the banned token strings as its own test data",
 	"cmd/lyx/hermeticenv_test.go":                  "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
 	"tools/sandbox/pathresolve_guard_test.go":      "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
