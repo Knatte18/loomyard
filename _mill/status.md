@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: board
 branch: board
-plan: null
+plan: _mill/plan
 parent: main
 task: 'board: move storage to weft:main'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-29T04:59:29Z'
 discussion-fix-r5  '2026-07-29T06:27:43Z'
 discussed  '2026-07-29T06:27:43Z'
+planning  '2026-07-29T07:08:13Z'
 ```

@@ -1,0 +1,162 @@
+# Batch: boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)
+
+```yaml
+task: 'board: move storage to weft:main'
+batch: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
+number: 3
+cards: 10
+verify: go test ./internal/boardengine/...
+depends-on: [1]
+```
+
+## Rename mechanic
+
+Not applicable — this batch contains no `Moves:` entries.
+
+## Batch Scope
+
+This batch turns `internal/boardengine`'s single-store, raw-`gitrepo`-backed facade into a dual-store (`tasks.json` + `notes.json`), single-`README.md`, `fabricengine`-routed facade — the full weight of `_mill/discussion.md`'s Decisions section for this module. It depends on batch 1 for `fabricengine.CommitWeftAt`/`PushWeftAt`. It does NOT depend on batch 2 (`_board`'s hub-bootstrap mechanism) — this batch's code only assumes `_board` already exists at `hubgeometry.BoardDir(hub)`, exactly as today; how it got there is invisible to it. This batch is entirely internal to `internal/boardengine` — no exported API surface is consumed outside the package until batch 4 (`boardcli`) wires it into the CLI. Every existing public method on `Board` keeps its exact name and behavior (per `_mill/discussion.md`: "existing top-level task verbs keep their exact names and behavior"); new methods are added, none removed or renamed. The external interface this batch hands to batch 4: `Board.UpsertNote`/`SetNoteStatus`/`RemoveNote`/`MergeNotes`/`SetNoteDeps`/`GetNote`/`ListNotesBrief`/`ListNotesFull`/`UpsertNotesBatch`/`PromoteNote`, plus the renamed `Config`/`Outputs` fields (`Readme`, `DesignPrefix`).
+
+Config/render/sync/board changes land together in one batch rather than split across batches: `board.go`'s `boardCriticalSection` calls `RenderToDisk` with both stores' current task lists, so the dual-store facade and `RenderToDisk`'s new `(tasks, notes []Task, out Outputs)` signature must land in the same compiling state — splitting them would leave an intermediate batch boundary where either `board.go` calls a `RenderToDisk` signature that doesn't exist yet, or `render.go` exposes a signature nothing calls correctly yet.
+
+**Batch-local decision — `boardCriticalSection` as the shared lock/render/sync scaffolding:** `Board.writeOp` (single-store mutate-and-save) and the new `Board.PromoteNote` (dual-store mutate-and-save, in that order) both need the SAME lock-acquire → load-both-stores → render-from-both → spawn-sync scaffolding, but differ in what they save and how many stores they mutate. This batch extracts that shared scaffolding into a private `Board.boardCriticalSection(fn func(tasksStore, notesStore *Store) (any, error)) (any, error)` method that `writeOp` and `PromoteNote` both build on — `boardCriticalSection` itself never calls `Store.Save`; each caller's `fn` is responsible for saving whichever store(s) it mutated, in whatever order it needs. This is the concrete mechanism behind `_mill/discussion.md`'s combined-lock decision ("Recommend a single combined write lock... rather than two separate per-file locks with an ordering rule").
+
+## Cards
+
+### Card 10: `Task` gains `short_name`, slug length cap
+
+- **Context:**
+  - `internal/boardengine/store.go`
+- **Edits:**
+  - `internal/boardengine/task.go`
+  - `internal/boardengine/store.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `task.go`, add a field `ShortName string \`json:"short_name,omitempty"\`` to the `Task` struct (after `Status`). Add a method `func (t Task) ShortNameOrSlug() string` returning `t.ShortName` when non-empty, otherwise `t.Slug` — doc comment: this is the fallback a future display-label consumer (a VS Code window-title builder) will use, mirroring `mill-config.yaml`'s `repo.short_name` → `window.title` pattern one layer up; this task only adds and round-trips the field, the actual consumer is future work. Add a package-level `const maxSlugLength = 32` and a helper `func validateSlugLength(slug string) error` returning `fmt.Errorf("slug exceeds max length of %d characters: %q (%d chars)", maxSlugLength, slug, len(slug))` when `len(slug) > maxSlugLength`, else `nil`; add a code comment on `maxSlugLength` noting the rationale: slugs seed worktree/portal/launcher directory names, and 32 chars gives headroom against Windows `MAX_PATH` issues in nested paths while comfortably fitting this repo's own real slugs (`board`, `pattern-wiring`, `fabric-unified-view`, `codeintel-v1`). Call `validateSlugLength(slugStr)` in `NewTask` immediately after its existing `slugStr, ok := slugVal.(string); if !ok || slugStr == "" { ... }` block, returning `Task{}, err` on failure. Call `validateSlugLength(result.Slug)` in `ApplyPatch` immediately after its existing `if result.Slug == "" { ... }` check, same error-return shape. In `store.go`, add `"short_name": true` to the `upsertAllowedKeys` map (alongside the existing `slug`/`title`/`depends_on`/`isolated`/`deferred`/`brief`/`body`/`status` entries) — without this, `validateUpsertFields` rejects any upsert payload containing `short_name` as an unknown field, making the new field write-only-via-JSON-file-edit, never via any upsert path.
+- **Commit:** `feat(boardengine): add Task.ShortName, ShortNameOrSlug, and slug length cap`
+
+### Card 11: config key renames (`readme`/`design_prefix`, `sidebar` removed)
+
+- **Context:** none
+- **Edits:**
+  - `internal/boardengine/config.go`
+  - `internal/boardengine/template.yaml`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `config.go`, rename `Config.Home` (`yaml:"home"`) to `Config.Readme` (`yaml:"readme"`); rename `Config.ProposalPrefix` (`yaml:"proposal_prefix"`) to `Config.DesignPrefix` (`yaml:"design_prefix"`); delete `Config.Sidebar` (`yaml:"sidebar"`) entirely. Apply the identical three changes to the `Outputs` struct and to `Config.Outputs()`'s field-copying body. In `template.yaml`, rename the `home:` line to `readme: ${env:LYX_README:-README.md}` (default value becomes `README.md`, matching `_mill/discussion.md`'s "single generated README.md" decision — comment: "readme page file name; relative to board dir"); delete the `sidebar:` line entirely; rename the `proposal_prefix:` line to `design_prefix: ${env:LYX_DESIGN_PREFIX:-design-}` (comment: "prefix for design-doc files"). Per this batch's Shared Decision "no config-key migration/back-compat shim": no dual-key acceptance, no deprecation path.
+- **Commit:** `feat(boardengine): rename config keys to readme/design_prefix, drop sidebar`
+
+### Card 12: single-README rendering with a Manifest section for notes
+
+- **Context:**
+  - `internal/boardengine/task.go`
+- **Edits:**
+  - `internal/boardengine/render.go`
+  - `internal/boardengine/layer.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `render.go`: change `RenderToDisk`'s signature from `RenderToDisk(boardPath string, tasks []Task, out Outputs) error` to `RenderToDisk(boardPath string, tasks, notes []Task, out Outputs) error`, threading `notes` through to `Render`. Change `Render`'s signature from `Render(tasks []Task, out Outputs) (map[string]string, error)` to `Render(tasks, notes []Task, out Outputs) (map[string]string, error)`. Rename `renderHome` to `renderTasksSection` (identical body, only the `proposalPrefix` parameter renamed to `designPrefix` — no functional change to the "# Tasks" section's content or the bucket-header/dependency/brief rendering it already does). Delete `renderSidebar` entirely (no more `_Sidebar.md`). Rename `renderProposals` to `renderDesigns` (identical body, `proposalPrefix` parameter renamed to `designPrefix`). Add a new function `renderManifestSection(notes []Task, noteMap map[string]Task, designPrefix string) string` producing a flat "# Manifest" section — one block per note, sorted by `ID` ascending, each block: `"## **#%03d:** %s"` heading (ID + Title, no layer suffix — notes have no computed layer); a slug line (`"[%s]"` when `Body == ""`, else `"[%s](%s%s.md)"` linking to `design-<slug>.md`, mirroring `renderTasksSection`'s slug-line shape exactly); a `"Depends on: #%03d, ..."` line when `len(DependsOn) > 0`, resolving each dependency's display ID against `noteMap` (built from `notes` only — per `_mill/discussion.md`'s per-store-scoped `depends_on` decision, a note's dependencies are always other notes, never tasks) and falling back to `"#???: %s (missing)"` for an unresolved dep, exactly like `renderTasksSection`'s task-dependency resolution; a blank line plus `Brief` when non-empty. No status annotation (unlike `renderTasksSection`'s `[status]` suffix) — this is a deliberate simplification since notes are not bucket/status-tracked. Rewrite `Render`: build `taskMap`/`noteMap` from `tasks`/`notes` respectively; call `RenderOrder(tasks)` (tasks only — notes are never layer-computed, matching `_mill/discussion.md`'s "flatter presentation, no bucket/layer grouping" decision); build the result map's `out.Readme` entry by concatenating `renderTasksSection(ordered, taskMap, out.DesignPrefix)` and `renderManifestSection(notes, noteMap, out.DesignPrefix)` with a blank-line separator, in that order (Tasks/Done first, Manifest second); build the union `combined := append(append([]Task{}, tasks...), notes...)` and add every `renderDesigns(combined, out.DesignPrefix)` entry to the result map (a `design-<slug>.md` file applies uniformly to any entry — task or note — with a non-empty `Body`). In `layer.go`: delete the `ExtendedTitle` function entirely — it is used only by `renderSidebar` (being deleted) and becomes dead code once that caller is gone; update `layer.go`'s package-level doc comment (currently lists "ExtendedTitle formats a task's display title" among the file's contents) to remove that clause.
+- **Commit:** `feat(boardengine): single-README rendering with Tasks + Manifest sections, drop sidebar/ExtendedTitle`
+
+### Card 13: sync.go routes through `fabricengine.CommitWeftAt`/`PushWeftAt`
+
+- **Context:**
+  - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/fabric.go`
+- **Edits:**
+  - `internal/boardengine/sync.go`
+  - `internal/boardengine/boardtest/sync_test.go`
+  - `internal/boardengine/boardtest/bench_test.go`
+  - `internal/boardengine/boardtest/concurrency_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `sync.go`: rename the `writeLockFile` constant's value from `"tasks.json.lock"` to `"board.lock"`, and `pushLockFile`'s value from `"tasks.json.push.lock"` to `"board.push.lock"` (both stores now share these two lock files — see the batch's `boardCriticalSection` decision in Card 14). Delete the `repo := gitrepo.New(boardPath)` line and the `internal/gitrepo` import. Change `commitDirty`'s signature from `commitDirty(repo *gitrepo.Repo, boardPath string) (bool, error)` to `commitDirty(boardPath string) (bool, error)`; replace its `repo.StageAllAndCommit("board sync")` call with `fabricengine.CommitWeftAt(boardPath, "board sync", fabricengine.SyncOptions{})` (zero-value `SyncOptions` — `commitDirty` is only ever reached from inside `Sync`'s own `if skipGit { return nil }` early-return, so `SkipGit` is always already-false by construction at this call site; do NOT call `fabricengine.EnvSyncOptions()`, which reads a different pair of env vars, `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH`, not board's own `BOARD_SKIP_GIT`/`BOARD_SKIP_PUSH`). Update `Sync`'s call site from `commitDirty(repo, boardPath)` to `commitDirty(boardPath)`. Replace `repo.PushCoalesced()` with `fabricengine.PushWeftAt(boardPath, fabricengine.SyncOptions{})` (same zero-value-`SyncOptions` rationale — reached only inside `Sync`'s own `if !skipPush` branch). Add the `internal/fabricengine` import. Update `sync.go`'s file-header doc comment (currently: "Each loop iteration commits any dirty working-tree state via gitrepo.StageAllAndCommit and, unless skipPush is set, pushes anything unpushed via gitrepo.PushCoalesced...") to name `fabricengine.CommitWeftAt`/`fabricengine.PushWeftAt` instead. `ensureLockfilesIgnored`'s pattern list (`*.lock`, `*.swaplock`, `renderManifestFile`) needs NO changes — the wildcard patterns already cover the renamed lock files. In `boardtest/sync_test.go`, `boardtest/bench_test.go`, and `boardtest/concurrency_test.go`: rename every `boardengine.Config{...}` and `boardengine.Outputs{...}` struct literal's `Home:`/`Sidebar:`/`ProposalPrefix:` fields to `Readme:`/(delete `Sidebar:`)/`DesignPrefix:` (field values unchanged, e.g. `Home: "Home.md"` becomes `Readme: "Home.md"`) — `sync_test.go` has 8 such literals (one per test function/subtest), `bench_test.go` has 2 (one `Outputs{}` at its `boardengine.Render` call, one `Config{}`), `concurrency_test.go` has 3 (`Config{}` only). `bench_test.go`'s `boardengine.Render(tasks, boardengine.Outputs{...})` call additionally needs a `notes` argument — pass `nil` (an empty notes slice; this benchmark is deliberately task-only). No other logic in any of these three test files changes — `TestSyncIgnoresLockfiles`'s wildcard-pattern assertions (`*.lock`, `*.swaplock`) already cover the renamed lock filenames with no edit needed.
+- **Commit:** `feat(boardengine): sync.go routes commit/push through fabricengine.CommitWeftAt/PushWeftAt`
+
+### Card 14: `Board` facade plumbing — `boardCriticalSection`, generalized `writeOp`
+
+- **Context:**
+  - `internal/boardengine/store.go`
+- **Edits:**
+  - `internal/boardengine/board.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Add package-level constants `tasksFile = "tasks.json"` and `notesFile = "notes.json"`; replace the four existing inline `"tasks.json"` string literals in `board.go` (in `writeOp`, `GetTask`, `ListTasksBrief`, `ListTasksFull`) with `tasksFile` (`HealthCheck`'s own inline `"tasks.json"` literal is replaced with `tasksFile` too, for consistency — `HealthCheck`'s behavior is otherwise completely unchanged: it continues to check only the tasks store's existence/readability, it is NOT extended to also check `notes.json` in this task). Add an unexported `type storeTarget int` with `const (tasksTarget storeTarget = iota; notesTarget)`. Add a private method `func (b *Board) boardCriticalSection(fn func(tasksStore, notesStore *Store) (any, error)) (any, error)`: performs the existing `writeOp`'s guard (`if b.out.Readme == "" { return nil, fmt.Errorf(...) }` — note the guard condition changes from checking BOTH `b.out.Home == ""` and `b.out.Sidebar == ""` to checking only `b.out.Readme == ""`, since `Sidebar` no longer exists), `os.MkdirAll(b.boardPath, 0o755)`, and lock-acquire (`flock.AcquireWriteLock(filepath.Join(b.boardPath, writeLockFile))`, deferred release) exactly as today's `writeOp` does; then loads BOTH `tasksStore := NewStore(filepath.Join(b.boardPath, tasksFile))` and `notesStore := NewStore(filepath.Join(b.boardPath, notesFile))` (each `.Load()`-ed, error-wrapped as `"load tasks store: %w"`/`"load notes store: %w"`); calls `fn(tasksStore, notesStore)`, propagating its error; on success, calls `RenderToDisk(b.boardPath, tasksStore.Tasks(), notesStore.Tasks(), b.out)` (error-wrapped `"render: %w"` exactly as today); on success, launches the detached sync exactly as today (`if !b.skipGit { _ = spawnSync(b.boardPath) }`); returns `fn`'s result. `boardCriticalSection` itself never calls `Store.Save` — every `fn` is responsible for saving whichever store(s) it mutated. Rewrite `writeOp` to `func (b *Board) writeOp(target storeTarget, mutate func(target, other *Store) (any, error)) (any, error)`, implemented as a thin wrapper over `boardCriticalSection`: inside `boardCriticalSection`'s `fn`, select `targetStore, otherStore` from `tasksStore, notesStore` based on `target` (`notesTarget` → `notesStore, tasksStore`; else → `tasksStore, notesStore`), call `mutate(targetStore, otherStore)`, and on success call `targetStore.Save()` (error-wrapped `"save store: %w"`) before returning the result. Update every existing call site of `writeOp` (`UpsertTask`, `SetStatus`, `RemoveTask`, `MergeTasks`, `SetDeps`, `UpsertTasksBatch`, `Rerender`) to pass `tasksTarget` as the first argument and adapt their mutate closures from `func(s *Store) (any, error)` to `func(target, _ *Store) (any, error)` (renaming the parameter from `s` to `target`, adding an unused second parameter `_ *Store` — none of these seven existing methods need the other store). Update `board.go`'s package-level doc comment (currently: "The detached sync path talks to git through a single gitrepo.Repo (StageAllAndCommit + PushCoalesced), never hand-rolled gitexec calls, under board's own write and push locks.") to instead name `fabricengine.CommitWeftAt`/`fabricengine.PushWeftAt` and the renamed `board.lock`/`board.push.lock` files.
+- **Commit:** `refactor(boardengine): generalize writeOp into dual-store boardCriticalSection scaffolding`
+
+### Card 15: mirrored `Note` methods + cross-store slug uniqueness
+
+- **Context:**
+  - `internal/boardengine/task.go`
+- **Edits:**
+  - `internal/boardengine/board.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Add a private helper `func checkCrossStoreSlugAvailable(fields map[string]any, target, other *Store) error`: if `fields["slug"]` is absent or not a non-empty string, return `nil` (let the store-level check produce the clearer error); if the slug already exists in `target.slugIndex()`, return `nil` (an in-place update of an existing entry, not a new-slug introduction); if the slug exists in `other.slugIndex()`, return `fmt.Errorf("slug %q already exists in the other store", slugStr)`; else `nil`. Add a second helper `func checkCrossStoreSlugsAvailable(entries []map[string]any, target, other *Store) error` looping `checkCrossStoreSlugAvailable` over each element, returning the first error. Wire `checkCrossStoreSlugAvailable(fields, target, other)` into `UpsertTask`'s and `MergeTasks`'s (on its `upsert` argument) mutate closures, before calling `target.UpsertTask`/`target.MergeTasks`, returning early on a non-nil check error. Wire `checkCrossStoreSlugsAvailable(tasks, target, other)` into `UpsertTasksBatch`'s mutate closure the same way. Add the mirrored `Note` methods, each following the identical `Task`-method shape from `board.go` but targeting `notesTarget` and `notesFile`, with the same cross-store check wiring as their `Task` counterparts: `UpsertNote(fields map[string]any) (Task, error)`, `SetNoteStatus(idOrSlug any, status *string) error`, `RemoveNote(idOrSlug any) error`, `MergeNotes(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error)`, `SetNoteDeps(slug string, dependsOn []string) error`, `UpsertNotesBatch(notes []map[string]any) error`, `GetNote(idOrSlug any) (Task, bool, error)` (read-only, mirrors `GetTask`'s shape using `notesFile`), `ListNotesBrief() ([]BriefTask, error)` (mirrors `ListTasksBrief`, `notesFile`), `ListNotesFull() ([]Task, error)` (mirrors `ListTasksFull`, `notesFile`).
+- **Commit:** `feat(boardengine): add mirrored Note methods and cross-store slug uniqueness`
+
+### Card 16: `PromoteNote` — cross-store move primitive
+
+- **Context:**
+  - `internal/boardengine/store.go`
+  - `internal/boardengine/task.go`
+- **Edits:**
+  - `internal/boardengine/board.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Add a private helper `func taskToUpsertFields(t Task) map[string]any` building the field map explicitly (NOT a JSON round-trip of the whole `Task` — the struct's `id` field is not in `upsertAllowedKeys` and would be rejected as an unknown field if included): `map[string]any{"slug": t.Slug, "title": t.Title, "depends_on": t.DependsOn, "isolated": t.Isolated, "deferred": t.Deferred, "brief": t.Brief, "body": t.Body}`, plus `fields["status"] = *t.Status` when `t.Status != nil`, plus `fields["short_name"] = t.ShortName` when `t.ShortName != ""`. Add `func (b *Board) PromoteNote(idOrSlug any) (Task, error)`, built directly on `boardCriticalSection` (NOT on `writeOp` — `writeOp` only saves one store, `PromoteNote` must save both, in order): inside `boardCriticalSection`'s `fn`, look up `note, found := notesStore.GetTask(idOrSlug)`, returning `fmt.Errorf("note not found: %v", idOrSlug)` when not found (before any save — the validation-failure path); call `tasksStore.UpsertTask(taskToUpsertFields(note))` DIRECTLY (bypassing `checkCrossStoreSlugAvailable`/`Board.UpsertTask` entirely — this is the one legitimate path where the slug is expected to be transiently present in both stores, both on a genuine first call, where it exists in `notesStore` and is about to be added to `tasksStore`, and on a crash-recovery retry, where it may already exist in both), and on success call `tasksStore.Save()` (error-wrapped `"save tasks store: %w"`) — this is the FIRST save, per `_mill/discussion.md`'s crash-safety ordering; then call `notesStore.RemoveTask(note.Slug)` and on success `notesStore.Save()` (error-wrapped `"save notes store: %w"`) — the SECOND save; return the upserted `Task`. Document on `PromoteNote` that a crash between the two saves leaves the entry present in both files (recoverable, never silently lost) and that a retry is a plain idempotent call: `notesStore.GetTask` still finds the note (removal never ran), `tasksStore.UpsertTask` finds the slug already present and takes the `ApplyPatch` in-place-update branch (not `NewTask`), converging to the same result, and `notesStore.RemoveTask` then completes on the retry. Note that a note whose `depends_on` still names a `notes.json`-only, not-yet-promoted slug is rejected by `tasksStore.UpsertTask`'s own `validateWrite` dangling-dependency check with no new code needed — this is intended behavior (promote dependencies first), not a gap.
+- **Commit:** `feat(boardengine): add PromoteNote cross-store move primitive`
+
+### Card 17: mechanical test-literal updates for the config/store renames
+
+- **Context:**
+  - `internal/boardengine/config.go`
+  - `internal/boardengine/board.go`
+- **Edits:**
+  - `internal/boardengine/config_test.go`
+  - `internal/boardengine/board_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `config_test.go`: rename every `Home:`/`Sidebar:`/`ProposalPrefix:` field reference (in both `boardengine.Config{}` literals — e.g. `TestOutputs` — and the raw YAML content strings written to disk in `TestLoadConfig_HappyPath`/`TestLoadConfig_AbsolutePathResolution`/`TestLoadConfig_RelativePathResolution`/`TestLoadConfig_EnvResolution`, currently `"home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"`, becoming `"readme: Home.md\ndesign_prefix: proposal-\n"`) to `Readme:`/(deleted)/`DesignPrefix:`, keeping the same string VALUES (e.g. `Home: "Home.md"` becomes `Readme: "Home.md"`, not `"README.md"` — these are arbitrary fixture strings, not tied to the new production default). Update `TestLoadConfig_HappyPath`'s and `TestOutputs`'s field-value assertions to match (`cfg.Home`/`out.Home` become `cfg.Readme`/`out.Readme`, `cfg.ProposalPrefix`/`out.ProposalPrefix` become `cfg.DesignPrefix`/`out.DesignPrefix`, the `cfg.Sidebar`/`out.Sidebar` assertion blocks are deleted). In `board_test.go`: rename every `boardengine.Config{Path: ..., Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", ...}` literal's fields the same way (occurs in `TestUpsertTask`, `TestRerender`, `TestHealthCheckPasses`, `TestHealthCheckFailsNoBoardDir`, `TestHealthCheckFailsNoTasksFile`, `TestHealthCheckPassesCorruptFile` — `TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting`'s `Config{Path: boardPath, SkipGit: true}` has no `Home`/`Sidebar`/`ProposalPrefix` fields and needs no change). In `TestRerender`, delete the `sidebarPath := filepath.Join(boardPath, "_Sidebar.md")` variable and its `os.Stat`/`t.Fatalf` assertion block entirely (no more `_Sidebar.md` output) — the `homePath` assertion stays (still checking the one combined README, which this test's `Config` literal still names `"Home.md"` after the field rename above).
+- **Commit:** `test(boardengine): update Config/Outputs literals for readme/design_prefix rename`
+
+### Card 18: render_test.go — mechanical updates + new Manifest-section coverage
+
+- **Context:**
+  - `internal/boardengine/render.go`
+- **Edits:**
+  - `internal/boardengine/render_test.go`
+  - `internal/boardengine/layer_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `render_test.go`: rename every `boardengine.Outputs{Home: ..., Sidebar: ..., ProposalPrefix: ...}` literal's fields to `Readme:`/(deleted)/`DesignPrefix:` (keeping existing string values unchanged, e.g. `Home: "Home.md"` → `Readme: "Home.md"`; 20 occurrences per the grep survey done during planning, including the two `TestRenderCustomOutputs` literals at lines 615-618 and 641-644 which already use multi-line struct-literal form). Add a `notes []boardengine.Task` argument (pass `nil` — none of these existing tests exercise notes rendering) to every `boardengine.Render(tasks, out)` call (becomes `boardengine.Render(tasks, nil, out)`) and every `boardengine.RenderToDisk(dir, tasks, out)` call (becomes `boardengine.RenderToDisk(dir, tasks, nil, out)`) — both `TestRenderToDisk`/`TestRenderToDiskManifestCleanup`'s and the various `TestRender*` functions' call sites. Delete `TestRenderSidebarExtendedTitle` entirely (tests `renderSidebar`'s `wantSidebar` output and calls `ExtendedTitle`, both deleted in Card 12) — the whole test is sidebar-specific and is dropped, not adapted. In `layer_test.go`: delete `TestExtendedTitle` entirely (tests the now-deleted `ExtendedTitle` function) and update the file's package-level doc comment (currently "ComputeLayers depth assignment, RenderOrder, and ExtendedTitle") to drop the `ExtendedTitle` mention. Add new test coverage in `render_test.go` for the Manifest section (`_mill/discussion.md`'s Testing section: "README render output for both Tasks/Done and Manifest sections"): a new `TestRenderManifestSection` calling `boardengine.Render(tasks, notes, out)` with a non-empty `notes` slice (at least one note with a non-empty `Body`, one with `DependsOn` naming another note, one with neither) and asserting the `out.Readme` output contains a `"# Manifest"` heading positioned after the `"# Tasks"` section's content, a `"## **#%03d:** %s"` block per note, a `design-<slug>.md` link for the note with a non-empty `Body`, a `"Depends on: #%03d"` line for the note with a dependency, and that the returned map also contains a `design-<slug>.md` entry (verifying `renderDesigns`'s union-of-tasks-and-notes behavior from Card 12).
+- **Commit:** `test(boardengine): update render_test.go for readme/design_prefix + notes arg, add Manifest coverage, drop sidebar/ExtendedTitle tests`
+
+### Card 19: new-behavior tests — slug cap, short_name, cross-store uniqueness, promote-note
+
+- **Context:**
+  - `internal/boardengine/task.go`
+  - `internal/boardengine/store.go`
+  - `internal/boardengine/board.go`
+- **Edits:**
+  - `internal/boardengine/task_test.go`
+  - `internal/boardengine/store_test.go`
+  - `internal/boardengine/board_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** In `task_test.go`: add a `t.Run` subtest under `TestNewTask` asserting `NewTask` rejects a 33-character slug with an error containing `"exceeds max length"`, and a sibling subtest asserting a 32-character slug is accepted; add an equivalent pair of subtests under `TestApplyPatch` for the same boundary via a patch payload containing `"slug"` (mirrors `TestApplyPatch`'s existing `map[string]any{"slug": ...}` patch shape). Add a subtest asserting `NewTask` with a `"short_name"` field round-trips it onto `Task.ShortName`, and a subtest asserting `Task{Slug: "x"}.ShortNameOrSlug()` returns `"x"` while `Task{Slug: "x", ShortName: "y"}.ShortNameOrSlug()` returns `"y"`. In `store_test.go`: add a test asserting `Store.UpsertTask` accepts a `"short_name"` field (no longer rejected by `upsertAllowedKeys` per Card 10) — mirrors `TestUpsertFieldAllowlist`'s existing shape for a known-good field. In `board_test.go`: add a test (e.g. `TestGlobalSlugUniqueness`) constructing a `Board` with `SkipGit: true` (per this repo's `internal/boardengine` convention — see the Hermetic Git Test Environment Invariant guard, which requires plain `internal/boardengine` tests to stay git-spawn-free), upserting a task with slug `"shared"` via `UpsertTask`, then asserting `UpsertNote(map[string]any{"slug": "shared", ...})` fails with an error containing `"already exists"`; and the symmetric case (note first, then task). Add a test asserting an in-place update of an EXISTING slug within the SAME store still succeeds (not rejected by the cross-store check) even when the other store is non-empty. Add two `PromoteNote` tests: (1) a validation-failure case — upsert a note whose `depends_on` names a second, not-yet-promoted note-only slug, call `PromoteNote` on the first, assert it errors with a dangling-dependency message, and assert `tasks.json` and `notes.json` on disk are byte-identical to their pre-call state (read both files before and after, compare); (2) a crash-between-saves case — upsert a note via `UpsertNote`, then simulate the post-first-save/pre-second-save crash state by calling `UpsertTask` directly with the note's same slug (placing it in `tasks.json` while it is STILL also present in `notes.json`, exactly as `PromoteNote`'s first save alone would leave it), then call `PromoteNote` on that slug and assert: no error, the note is gone from `notes.json`, `tasks.json` contains exactly one entry for that slug (no duplicate ID), and the returned `Task` matches — proving the retry converges idempotently with no special-case code, per Card 16's documented crash-safety story.
+- **Commit:** `test(boardengine): cover slug length cap, short_name, cross-store uniqueness, PromoteNote validation and crash-retry`
+
+## Batch Tests
+
+`go test ./internal/boardengine/...` covers this batch across both the untagged `boardengine`/`boardengine_test` packages (Cards 10-12, 14-19 — all git-free, `SkipGit: true`) and the integration-tagged `boardtest` package (Card 13's real-git coverage via `lyxtest.CopyWeft`, proving `fabricengine.CommitWeftAt`/`PushWeftAt` actually commit and push against a real local remote — the most load-bearing test in this batch, since it is the only coverage that would catch a broken git-backend swap). Card 19's `PromoteNote` crash-retry test is the one place this batch directly exercises the crash-safety story `_mill/discussion.md` spent three review rounds pinning down; do not weaken its assertions to "no error" alone — the no-duplicate-ID and byte-identical-on-disk checks are what actually distinguish correct convergence from silent data loss or duplication.
