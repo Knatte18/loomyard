@@ -1,9 +1,10 @@
 // cli.go exposes the cobra command tree for the board module.
 //
-// Command() returns the root "board" command with 11 subcommands. Configuration
-// resolution happens once in a PersistentPreRunE: the config file (home, sidebar,
-// proposal_prefix) is loaded from _lyx/config/board.yaml, and the board data dir
-// is resolved as hubgeometry.BoardDir(layout.Hub) via hubgeometry.Resolve. The hidden
+// Command() returns the root "board" command with 13 subcommands (including
+// the notes group and promote-note). Configuration resolution happens once
+// in a PersistentPreRunE: the config file (readme, design_prefix) is loaded
+// from _lyx/config/board.yaml, and the board data dir is resolved as
+// hubgeometry.BoardDir(layout.Hub) via hubgeometry.Resolve. The hidden
 // --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
 
@@ -27,7 +28,7 @@ import (
 //
 // The parent "board" command carries a PersistentPreRunE that resolves config
 // and constructs the Board instance once, before any subcommand runs. The
-// resolved Board is shared via a closure variable closed over by all 11 RunEs.
+// resolved Board is shared via a closure variable closed over by all RunEs.
 // When the parent is invoked with no subcommand, cobra lists available
 // subcommands without invoking the PreRunE, so no board config is needed.
 func Command() *cobra.Command {
@@ -39,12 +40,16 @@ func Command() *cobra.Command {
 		Short: "task-tracker board",
 		Long: `board manages the task-tracker wiki board for the current lyx worktree.
 
-The config file (_lyx/config/board.yaml) controls non-geometry settings: home,
-sidebar, and proposal_prefix filenames. The board data dir (<hub>/_board) is
+The config file (_lyx/config/board.yaml) controls non-geometry settings: readme
+and design_prefix filenames. The board data dir (<hub>/_board) is
 derived from the worktree layout via hubgeometry and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lyx board" with no subcommand lists
-available subcommands without requiring a git repo.`,
+available subcommands without requiring a git repo.
+
+Task verbs operate on tasks.json (claimable); the notes subcommand group
+mirrors the same verb set over notes.json (not yet claimable); promote-note
+moves an entry from one to the other.`,
 	}
 
 	// --board-path is an internal persistent flag injected by spawnSync so that
@@ -525,10 +530,482 @@ Example:
 		}),
 	}
 
-	// rerender subcommand: rebuild Home.md and _Sidebar.md from the current tasks.json.
+	// notes subcommand group: mirrors the task verb set above, targeting notes.json
+	// instead of tasks.json. notes.json holds entries that are not yet claimable;
+	// promote-note (registered separately, below) moves an entry between the two stores.
+	notesCmd := &cobra.Command{
+		Use:   "notes",
+		Short: "manage not-yet-claimable manifest entries (notes.json)",
+		RunE:  clihelp.GroupRunE,
+	}
+
+	// notes upsert subcommand: create or update a single note.
+	notesUpsertCmd := &cobra.Command{
+		Use:   "upsert [json-payload]",
+		Short: "Create or update a single note",
+		Long: `Create or update a note identified by its slug. Unknown keys are rejected.
+
+Required field:
+  "slug"       string — unique note identifier
+
+Optional fields:
+  "title"      string — human-readable title
+  "brief"      string — one-line summary shown in board listings
+  "body"       string — full markdown body (proposal / background)
+  "depends_on" array  — list of slug strings this note depends on
+  "isolated"   bool   — true if the note has no dependencies by design
+  "deferred"   bool   — true if the note is deferred
+  "status"     string — lifecycle status (e.g. "active", "done")
+
+Example:
+  lyx board notes upsert '{"slug":"my-note","title":"My Note","brief":"Short summary"}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			// cobra strips the "upsert" token; json payload is now args[0].
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			var fields map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &fields); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+			task, err := b.UpsertNote(fields)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccessWithTask(out, task)
+		}),
+	}
+
+	// notes upsert-batch subcommand: create or update multiple notes atomically.
+	// Allowed wrapper key: {tasks}. A typo'd wrapper (e.g. "taks") errors;
+	// an absent or empty tasks array also errors (nothing to upsert is a mistake).
+	notesUpsertBatchCmd := &cobra.Command{
+		Use:   "upsert-batch [json-payload]",
+		Short: "Create or update multiple notes atomically",
+		Long: `Create or update multiple notes in one atomic write. Unknown wrapper keys are rejected.
+An absent or empty "tasks" array is an error. Each note element uses the same fields as
+"lyx board notes upsert" ("slug" required per element); unknown element keys are also rejected.
+
+Required wrapper field:
+  "tasks" array — one or more note objects (each with "slug" required)
+
+Example:
+  lyx board notes upsert-batch '{"tasks":[{"slug":"n1","title":"One"},{"slug":"n2","title":"Two"}]}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+
+			// Decode into a map to detect unknown wrapper keys.
+			var raw map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &raw); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+
+			// Only "tasks" is permitted at the wrapper level; a typo'd key would
+			// decode silently to count:0 with the old typed-struct approach.
+			for k := range raw {
+				if k != "tasks" {
+					return outputError(out, fmt.Sprintf("unknown field: %q", k))
+				}
+			}
+
+			// tasks is required and must be a non-empty array.
+			tasksVal, hasTasksKey := raw["tasks"]
+			if !hasTasksKey || tasksVal == nil {
+				return outputError(out, "missing required field: tasks")
+			}
+			tasksArr, ok := tasksVal.([]any)
+			if !ok {
+				return outputError(out, "tasks must be an array")
+			}
+			if len(tasksArr) == 0 {
+				return outputError(out, "tasks array must not be empty")
+			}
+
+			// Convert []any to []map[string]any; the store validates each element's fields.
+			notes := make([]map[string]any, len(tasksArr))
+			for i, v := range tasksArr {
+				m, ok := v.(map[string]any)
+				if !ok {
+					return outputError(out, fmt.Sprintf("tasks[%d] must be an object", i))
+				}
+				notes[i] = m
+			}
+
+			if err := b.UpsertNotesBatch(notes); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccessWithCount(out, len(notes))
+		}),
+	}
+
+	// notes set-status subcommand: set or clear the status field of a note identified by
+	// slug or numeric id. Allowed keys: {slug, id, status}.
+	notesSetStatusCmd := &cobra.Command{
+		Use:   "set-status [json-payload]",
+		Short: "Set or clear the status of a note",
+		Long: `Set or clear the lifecycle status of a note. Unknown keys are rejected.
+Exactly one of "slug" or "id" is required. "status" is always required; use null to clear.
+
+Fields:
+  "slug"   string      — note slug (mutually exclusive with "id")
+  "id"     integer     — numeric note ID (mutually exclusive with "slug")
+  "status" string|null — new status value; null clears the current status
+
+Examples:
+  lyx board notes set-status '{"slug":"my-note","status":"active"}'
+  lyx board notes set-status '{"id":96,"status":null}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			// resolveLookup enforces {slug, id, status} allowed keys and exactly-one-of slug/id.
+			selector, m, err := resolveLookup([]byte(args[0]), "status")
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+
+			// status key is required: an absent key is an error; an explicit null clears
+			// the status. This distinguishes a deliberate clear from a typo that would
+			// otherwise silently clear the status value.
+			sv, hasStatus := m["status"]
+			if !hasStatus {
+				return outputError(out, "missing required field: status")
+			}
+			var status *string
+			if sv != nil {
+				s, ok := sv.(string)
+				if !ok {
+					return outputError(out, "status must be a string or null")
+				}
+				status = &s
+			}
+
+			if err := b.SetNoteStatus(selector, status); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	// notes remove subcommand: remove a note by slug or numeric id.
+	notesRemoveCmd := &cobra.Command{
+		Use:   "remove [json-payload]",
+		Short: "Remove a note",
+		Long: `Remove a note by slug or numeric ID. Unknown keys are rejected.
+Exactly one of "slug" or "id" is required. Errors if the note is not found.
+
+Fields:
+  "slug" string  — note slug (mutually exclusive with "id")
+  "id"   integer — numeric note ID (mutually exclusive with "slug")
+
+Example:
+  lyx board notes remove '{"slug":"my-note"}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
+			selector, _, err := resolveLookup([]byte(args[0]))
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			if err := b.RemoveNote(selector); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	// notes get subcommand: fetch a single note by slug or numeric id; returns task:null
+	// for a valid-but-absent target (not an error). Malformed payloads error.
+	notesGetCmd := &cobra.Command{
+		Use:   "get [json-payload]",
+		Short: "Fetch a single note",
+		Long: `Fetch a single note by slug or numeric ID. Unknown keys are rejected.
+Exactly one of "slug" or "id" is required. Returns {"task":null} if not found (not an error).
+Malformed payloads (no identifier key, unknown key) are errors.
+
+Fields:
+  "slug" string  — note slug (mutually exclusive with "id")
+  "id"   integer — numeric note ID (mutually exclusive with "slug")
+
+Example:
+  lyx board notes get '{"id":96}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
+			selector, _, err := resolveLookup([]byte(args[0]))
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			task, found, err := b.GetNote(selector)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			if found {
+				return outputGetTask(out, &task)
+			}
+			return outputGetTask(out, nil) // task: null in JSON output
+		}),
+	}
+
+	// notes list subcommand: list all notes with computed fields (layer, has_proposal).
+	notesListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all notes with computed fields",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			tasks, err := b.ListNotesBrief()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputListBrief(out, tasks)
+		}),
+	}
+
+	// notes list-full subcommand: list all notes as stored in notes.json.
+	notesListFullCmd := &cobra.Command{
+		Use:   "list-full",
+		Short: "List all notes as stored in notes.json",
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			tasks, err := b.ListNotesFull()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputListFull(out, tasks)
+		}),
+	}
+
+	// notes merge subcommand: remove slugs, upsert one note, and optionally set status — atomically.
+	// Allowed top-level keys: {remove_slugs, upsert, set_status}. The inner set_status
+	// object is validated identically to the set-status command.
+	notesMergeCmd := &cobra.Command{
+		Use:   "merge [json-payload]",
+		Short: "Atomically remove, upsert, and set-status",
+		Long: `Remove notes, upsert a note, and optionally set status in one atomic write.
+Unknown top-level keys are rejected. The inner "set_status" object is validated
+identically to the standalone "set-status" command ({slug|id, status}, exactly-one-of).
+
+Fields:
+  "remove_slugs" array  — slug strings to remove (optional; omit to skip)
+  "upsert"       object — note to create or update (required; same fields as "lyx board notes upsert")
+  "set_status"   object — status to set after upsert (optional):
+    "slug"   string      — note slug (mutually exclusive with "id")
+    "id"     integer     — numeric note ID (mutually exclusive with "slug")
+    "status" string|null — new status; null clears
+
+Example:
+  lyx board notes merge '{"remove_slugs":["old"],"upsert":{"slug":"new","title":"New"},"set_status":{"slug":"new","status":"active"}}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+
+			// Decode into a map first to detect unknown top-level keys.
+			var raw map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &raw); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+
+			// Enforce strict top-level key set; a stale set_phase errors rather than
+			// being silently dropped (which would skip the status step with no feedback).
+			for k := range raw {
+				if k != "remove_slugs" && k != "upsert" && k != "set_status" {
+					return outputError(out, fmt.Sprintf("unknown field: %q", k))
+				}
+			}
+
+			// Parse remove_slugs (optional, default empty).
+			var removeSlugs []string
+			if rsVal, ok := raw["remove_slugs"]; ok && rsVal != nil {
+				rsArr, ok := rsVal.([]any)
+				if !ok {
+					return outputError(out, "remove_slugs must be an array")
+				}
+				for _, v := range rsArr {
+					s, ok := v.(string)
+					if !ok {
+						return outputError(out, "remove_slugs elements must be strings")
+					}
+					removeSlugs = append(removeSlugs, s)
+				}
+			}
+
+			// Parse upsert (required: contains the note fields to create or update).
+			upsertVal, hasUpsert := raw["upsert"]
+			if !hasUpsert || upsertVal == nil {
+				return outputError(out, "missing required field: upsert")
+			}
+			upsertFields, ok := upsertVal.(map[string]any)
+			if !ok {
+				return outputError(out, "upsert must be an object")
+			}
+
+			// Parse set_status (optional): validate using the same resolveLookup
+			// logic as the standalone set-status command — {slug,id,status} allowed,
+			// exactly-one-of slug/id, and status key required.
+			var setStatusPtr *boardengine.MergeStatusUpdate
+			if ssVal, ok := raw["set_status"]; ok && ssVal != nil {
+				ssBytes, err := json.Marshal(ssVal)
+				if err != nil {
+					return outputError(out, fmt.Sprintf("set_status: marshal error: %v", err))
+				}
+				selector, ssMap, err := resolveLookup(ssBytes, "status")
+				if err != nil {
+					return outputError(out, "set_status: "+err.Error())
+				}
+				// status key is required inside set_status, mirroring the standalone command.
+				sv, hasStatusKey := ssMap["status"]
+				if !hasStatusKey {
+					return outputError(out, "set_status: missing required field: status")
+				}
+				var status *string
+				if sv != nil {
+					s, ok := sv.(string)
+					if !ok {
+						return outputError(out, "set_status.status must be a string or null")
+					}
+					status = &s
+				}
+				setStatusPtr = &boardengine.MergeStatusUpdate{Selector: selector, Status: status}
+			}
+
+			task, err := b.MergeNotes(removeSlugs, upsertFields, setStatusPtr)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccessWithTask(out, task)
+		}),
+	}
+
+	// notes set-deps subcommand: replace the depends_on list for a note.
+	// Allowed keys: {slug, depends_on}. depends_on is required (absent errors;
+	// explicit [] clears the list, distinguishing intentional clear from a typo
+	// that would otherwise silently wipe the note's dependency list).
+	notesSetDepsCmd := &cobra.Command{
+		Use:   "set-deps [json-payload]",
+		Short: "Replace the depends_on list for a note",
+		Long: `Replace the full depends_on list for a note wholesale. Unknown keys are rejected.
+Both fields are required. An absent "depends_on" is an error; an explicit [] clears the list.
+
+Fields:
+  "slug"       string — note slug to update (required)
+  "depends_on" array  — complete list of dependency slug strings; replaces existing list (required)
+
+Example:
+  lyx board notes set-deps '{"slug":"my-note","depends_on":["dep-a","dep-b"]}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+
+			// Decode into a map to detect unknown keys and key presence.
+			var m map[string]any
+			if err := json.Unmarshal([]byte(args[0]), &m); err != nil {
+				return outputError(out, fmt.Sprintf("invalid json: %v", err))
+			}
+
+			// Reject unknown keys so a typo ("depends") errors instead of silently
+			// clearing the dependency list.
+			for k := range m {
+				if k != "slug" && k != "depends_on" {
+					return outputError(out, fmt.Sprintf("unknown field: %q", k))
+				}
+			}
+
+			// slug is required to identify the target note.
+			slug, ok := m["slug"].(string)
+			if !ok || slug == "" {
+				return outputError(out, "missing required field: slug")
+			}
+
+			// depends_on is required: absent key errors; explicit [] clears the list.
+			depsVal, hasDeps := m["depends_on"]
+			if !hasDeps {
+				return outputError(out, "missing required field: depends_on")
+			}
+
+			var dependsOn []string
+			if depsVal != nil {
+				arr, ok := depsVal.([]any)
+				if !ok {
+					return outputError(out, "depends_on must be an array")
+				}
+				dependsOn = make([]string, 0, len(arr))
+				for _, v := range arr {
+					s, ok := v.(string)
+					if !ok {
+						return outputError(out, "depends_on elements must be strings")
+					}
+					dependsOn = append(dependsOn, s)
+				}
+			} else {
+				// Explicit null — treat as empty (clear the list).
+				dependsOn = []string{}
+			}
+
+			if err := b.SetNoteDeps(slug, dependsOn); err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccess(out)
+		}),
+	}
+
+	notesCmd.AddCommand(
+		notesUpsertCmd,
+		notesUpsertBatchCmd,
+		notesSetStatusCmd,
+		notesRemoveCmd,
+		notesGetCmd,
+		notesListCmd,
+		notesListFullCmd,
+		notesMergeCmd,
+		notesSetDepsCmd,
+	)
+
+	// promote-note subcommand: move a note from notes.json into tasks.json. A
+	// top-level sibling of notesCmd (not nested under it) because it moves an
+	// entry OUT of notes.json — it is not itself a notes-scoped verb.
+	promoteNoteCmd := &cobra.Command{
+		Use:   "promote-note [json-payload]",
+		Short: "Move a note from notes.json into tasks.json",
+		Long: `Move a note identified by slug or numeric ID from notes.json into tasks.json.
+Unknown keys are rejected. Exactly one of "slug" or "id" is required. Errors if the
+note is not found. The move is atomic (both stores are saved as part of one write)
+and idempotent on retry: a crash between the two saves leaves the entry present in
+both files, and a retried call converges to the same result rather than erroring or
+duplicating.
+
+Fields:
+  "slug" string  — note slug (mutually exclusive with "id")
+  "id"   integer — numeric note ID (mutually exclusive with "slug")
+
+Example:
+  lyx board promote-note '{"slug":"my-note"}'`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if len(args) == 0 {
+				return outputError(out, "json payload required")
+			}
+			// resolveLookup enforces {slug, id} allowed keys and exactly-one-of.
+			selector, _, err := resolveLookup([]byte(args[0]))
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			task, err := b.PromoteNote(selector)
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			return outputSuccessWithTask(out, task)
+		}),
+	}
+
+	// rerender subcommand: rebuild the combined README from tasks.json and notes.json.
 	rerenderCmd := &cobra.Command{
 		Use:   "rerender",
-		Short: "Rebuild Home.md and _Sidebar.md from tasks.json",
+		Short: "Rebuild the combined README from tasks.json and notes.json",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if err := b.Rerender(); err != nil {
 				return outputError(out, err.Error())
@@ -561,6 +1038,8 @@ Example:
 		setDepsCmd,
 		rerenderCmd,
 		syncCmd,
+		notesCmd,
+		promoteNoteCmd,
 	)
 
 	return cmd

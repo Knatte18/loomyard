@@ -5,6 +5,7 @@
 package boardengine_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -71,6 +72,62 @@ func TestNewTask(t *testing.T) {
 		}
 		if task.DependsOn[0] != "task-a" || task.DependsOn[1] != "task-b" {
 			t.Errorf("expected [task-a task-b], got %v", task.DependsOn)
+		}
+	})
+
+	t.Run("slug exceeding maxSlugLength is rejected", func(t *testing.T) {
+		fields := map[string]any{
+			"slug": strings.Repeat("a", 33),
+		}
+		_, err := boardengine.NewTask(fields, 1)
+		if err == nil {
+			t.Fatalf("expected error for 33-character slug, got nil")
+		}
+		if !strings.Contains(err.Error(), "exceeds max length") {
+			t.Errorf("expected error containing 'exceeds max length', got: %v", err)
+		}
+	})
+
+	t.Run("slug at maxSlugLength is accepted", func(t *testing.T) {
+		fields := map[string]any{
+			"slug": strings.Repeat("a", 32),
+		}
+		task, err := boardengine.NewTask(fields, 1)
+		if err != nil {
+			t.Fatalf("unexpected error for 32-character slug: %v", err)
+		}
+		if task.Slug != strings.Repeat("a", 32) {
+			t.Errorf("expected slug to round-trip, got %q", task.Slug)
+		}
+	})
+
+	t.Run("short_name field round-trips onto Task.ShortName", func(t *testing.T) {
+		fields := map[string]any{
+			"slug":       "my-task",
+			"short_name": "mt",
+		}
+		task, err := boardengine.NewTask(fields, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.ShortName != "mt" {
+			t.Errorf("expected ShortName='mt', got %q", task.ShortName)
+		}
+	})
+}
+
+func TestShortNameOrSlug(t *testing.T) {
+	t.Run("falls back to Slug when ShortName is empty", func(t *testing.T) {
+		task := boardengine.Task{Slug: "x"}
+		if got := task.ShortNameOrSlug(); got != "x" {
+			t.Errorf("expected 'x', got %q", got)
+		}
+	})
+
+	t.Run("prefers ShortName when set", func(t *testing.T) {
+		task := boardengine.Task{Slug: "x", ShortName: "y"}
+		if got := task.ShortNameOrSlug(); got != "y" {
+			t.Errorf("expected 'y', got %q", got)
 		}
 	})
 }
@@ -161,6 +218,34 @@ func TestApplyPatch(t *testing.T) {
 		}
 		if result.Status != nil {
 			t.Errorf("expected Status=nil, got %v", result.Status)
+		}
+	})
+
+	t.Run("patching slug beyond maxSlugLength is rejected", func(t *testing.T) {
+		existing := boardengine.Task{ID: 1, Slug: "test"}
+		patch := map[string]any{
+			"slug": strings.Repeat("a", 33),
+		}
+		_, err := boardengine.ApplyPatch(existing, patch)
+		if err == nil {
+			t.Fatalf("expected error for 33-character slug patch, got nil")
+		}
+		if !strings.Contains(err.Error(), "exceeds max length") {
+			t.Errorf("expected error containing 'exceeds max length', got: %v", err)
+		}
+	})
+
+	t.Run("patching slug at maxSlugLength is accepted", func(t *testing.T) {
+		existing := boardengine.Task{ID: 1, Slug: "test"}
+		patch := map[string]any{
+			"slug": strings.Repeat("a", 32),
+		}
+		result, err := boardengine.ApplyPatch(existing, patch)
+		if err != nil {
+			t.Fatalf("unexpected error for 32-character slug patch: %v", err)
+		}
+		if result.Slug != strings.Repeat("a", 32) {
+			t.Errorf("expected slug to round-trip, got %q", result.Slug)
 		}
 	})
 }

@@ -47,7 +47,7 @@ func seedWiki(tb testing.TB, n int) string {
 		tb.Fatalf("mkdir _lyx/config: %v", err)
 	}
 	configPath := hubgeometry.ConfigFile(dir, "board")
-	if err := os.WriteFile(configPath, []byte("path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("path: board\nreadme: Home.md\ndesign_prefix: proposal-\n"), 0o644); err != nil {
 		tb.Fatalf("write board.yaml: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func BenchmarkRender(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := boardengine.Render(tasks, boardengine.Outputs{Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}); err != nil {
+				if _, err := boardengine.Render(tasks, nil, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -123,7 +123,7 @@ func BenchmarkUpsertFacade(b *testing.B) {
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)
-			cfg := boardengine.Config{Path: filepath.Join(dir, "board"), Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
+			cfg := boardengine.Config{Path: filepath.Join(dir, "board"), Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
 			w := boardengine.New(cfg)
 			fields := map[string]any{"slug": "task-0", "title": "Updated"}
 

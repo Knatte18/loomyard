@@ -412,3 +412,23 @@ func PushWeftAt(weftPath string, opts SyncOptions) error {
 	}
 	return gitrepo.New(weftPath).PushCoalesced()
 }
+
+// CommitWeftAt is the warp-untethered, wildcard-stage commit primitive for
+// _board's weft:main checkout, which has no corresponding warp branch to
+// trailer a commit against. Unlike Fabric.CommitWeft, it wraps
+// gitrepo.StageAllAndCommit directly: no pathspec filtering, no Warp-SHA
+// trailer, and no RecordCorrespondence call — there is no warp SHA to name
+// and no correspondence index entry to keep. It is PushWeftAt's natural
+// commit-side counterpart: package-level, no Fabric receiver, no warp path.
+// Returns ("", false, nil) immediately when opts.SkipGit is true, with no
+// git spawned. CommitWeftAt does not acquire ensureWeftLockDir's write lock
+// — that lock serializes CommitWeft callers sharing a pathspec-scoped
+// commit; CommitWeftAt's caller already holds its own write lock around the
+// equivalent critical section, so a second lock here would only add
+// contention with no correctness benefit.
+func CommitWeftAt(weftPath, message string, opts SyncOptions) (sha string, committed bool, err error) {
+	if opts.SkipGit {
+		return "", false, nil
+	}
+	return gitrepo.New(weftPath).StageAllAndCommit(message)
+}

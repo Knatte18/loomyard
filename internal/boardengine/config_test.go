@@ -34,9 +34,8 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 
 	// Write a config file with all template keys (path: is not a template key)
 	configFile := hubgeometry.ConfigFile(tmpDir, "board")
-	content := `home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
+	content := `readme: Home.md
+design_prefix: proposal-
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -51,14 +50,11 @@ proposal_prefix: proposal-
 	if cfg.Path != "" {
 		t.Errorf("expected Path to be empty after LoadConfig; got %q", cfg.Path)
 	}
-	if cfg.Home != "Home.md" {
-		t.Errorf("expected Home %q, got %q", "Home.md", cfg.Home)
+	if cfg.Readme != "Home.md" {
+		t.Errorf("expected Readme %q, got %q", "Home.md", cfg.Readme)
 	}
-	if cfg.Sidebar != "_Sidebar.md" {
-		t.Errorf("expected Sidebar %q, got %q", "_Sidebar.md", cfg.Sidebar)
-	}
-	if cfg.ProposalPrefix != "proposal-" {
-		t.Errorf("expected ProposalPrefix %q, got %q", "proposal-", cfg.ProposalPrefix)
+	if cfg.DesignPrefix != "proposal-" {
+		t.Errorf("expected DesignPrefix %q, got %q", "proposal-", cfg.DesignPrefix)
 	}
 }
 
@@ -82,9 +78,8 @@ func TestLoadConfig_AbsolutePathResolution(t *testing.T) {
 	// Write config with an absolute path: key that should be ignored.
 	configFile := hubgeometry.ConfigFile(tmpDir, "board")
 	content := `path: ` + absBoard + `
-home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
+readme: Home.md
+design_prefix: proposal-
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -121,9 +116,8 @@ func TestLoadConfig_RelativePathResolution(t *testing.T) {
 	// Write config with a relative path: key that should be ignored.
 	configFile := hubgeometry.ConfigFile(tmpDir, "board")
 	content := `path: ../custom_board
-home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
+readme: Home.md
+design_prefix: proposal-
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -163,9 +157,8 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 	// Write config with an env-variable path: key that should be ignored.
 	configFile := hubgeometry.ConfigFile(tmpDir, "board")
 	content := `path: ${env:TEST_BOARD_PATH}
-home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
+readme: Home.md
+design_prefix: proposal-
 `
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -206,21 +199,17 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 // TestOutputs tests the Outputs() method on Config.
 func TestOutputs(t *testing.T) {
 	cfg := boardengine.Config{
-		Path:           "/some/path",
-		Home:           "Home.md",
-		Sidebar:        "_Sidebar.md",
-		ProposalPrefix: "proposal-",
+		Path:         "/some/path",
+		Readme:       "Home.md",
+		DesignPrefix: "proposal-",
 	}
 
 	out := cfg.Outputs()
 
-	if out.Home != "Home.md" {
-		t.Errorf("expected Home %q, got %q", "Home.md", out.Home)
+	if out.Readme != "Home.md" {
+		t.Errorf("expected Readme %q, got %q", "Home.md", out.Readme)
 	}
-	if out.Sidebar != "_Sidebar.md" {
-		t.Errorf("expected Sidebar %q, got %q", "_Sidebar.md", out.Sidebar)
-	}
-	if out.ProposalPrefix != "proposal-" {
-		t.Errorf("expected ProposalPrefix %q, got %q", "proposal-", out.ProposalPrefix)
+	if out.DesignPrefix != "proposal-" {
+		t.Errorf("expected DesignPrefix %q, got %q", "proposal-", out.DesignPrefix)
 	}
 }

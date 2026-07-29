@@ -117,9 +117,8 @@ func TestMenuExcludesMain(t *testing.T) {
 	}
 	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
-home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
+readme: Home.md
+design_prefix: proposal-
 `
 	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
@@ -185,9 +184,8 @@ func TestMenuRequiresLyxDir(t *testing.T) {
 	}
 	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
-home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
+readme: Home.md
+design_prefix: proposal-
 `
 	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
@@ -255,9 +253,8 @@ func TestMenuNumericSelection(t *testing.T) {
 	}
 	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
-home: Home.md
-sidebar: _Sidebar.md
-proposal_prefix: proposal-
+readme: Home.md
+design_prefix: proposal-
 `
 	if err := os.WriteFile(boardConfigPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)

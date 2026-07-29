@@ -21,7 +21,34 @@ type Task struct {
 	Deferred  bool     `json:"deferred"`
 	Brief     string   `json:"brief"`
 	Body      string   `json:"body"`
-	Status    *string  `json:"status,omitempty"` // pointer: nil → field omitted in JSON; non-nil → status value present
+	Status    *string  `json:"status,omitempty"`     // pointer: nil → field omitted in JSON; non-nil → status value present
+	ShortName string   `json:"short_name,omitempty"` // optional short display label; falls back to Slug via ShortNameOrSlug
+}
+
+// ShortNameOrSlug returns t.ShortName when non-empty, otherwise t.Slug. This is
+// the fallback a future display-label consumer (a VS Code window-title builder)
+// will use, mirroring mill-config.yaml's repo.short_name -> window.title pattern
+// one layer up; this method only adds and round-trips the field — the actual
+// consumer is future work.
+func (t Task) ShortNameOrSlug() string {
+	if t.ShortName != "" {
+		return t.ShortName
+	}
+	return t.Slug
+}
+
+// maxSlugLength caps a slug's length. Slugs seed worktree/portal/launcher
+// directory names, and 32 chars gives headroom against Windows MAX_PATH issues
+// in nested paths while comfortably fitting this repo's own real slugs
+// (board, pattern-wiring, fabric-unified-view, codeintel-v1).
+const maxSlugLength = 32
+
+// validateSlugLength returns an error when slug exceeds maxSlugLength characters.
+func validateSlugLength(slug string) error {
+	if len(slug) > maxSlugLength {
+		return fmt.Errorf("slug exceeds max length of %d characters: %q (%d chars)", maxSlugLength, slug, len(slug))
+	}
+	return nil
 }
 
 // NewTask builds a Task from a raw field map, assigning nextID.
@@ -37,6 +64,10 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 	slugStr, ok := slugVal.(string)
 	if !ok || slugStr == "" {
 		return Task{}, fmt.Errorf("slug must be a non-empty string")
+	}
+
+	if err := validateSlugLength(slugStr); err != nil {
+		return Task{}, err
 	}
 
 	// Create default task with all fields initialized
@@ -104,6 +135,10 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 	// Check slug is still present
 	if result.Slug == "" {
 		return Task{}, fmt.Errorf("slug key is missing or empty after patch")
+	}
+
+	if err := validateSlugLength(result.Slug); err != nil {
+		return Task{}, err
 	}
 
 	return result, nil

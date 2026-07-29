@@ -1,8 +1,7 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task a dependency depth (its render bucket),
-// RenderOrder orders tasks for output, and ExtendedTitle formats a task's
-// display title. All computed at read time; never stored.
+// ComputeLayers assigns each task a dependency depth (its render bucket), and
+// RenderOrder orders tasks for output. All computed at read time; never stored.
 
 package boardengine
 
@@ -186,14 +185,4 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	})
 
 	return result, nil
-}
-
-// ExtendedTitle returns the task title, optionally annotated with layer.
-// For letter buckets (A–Y) and Z, returns title + " [" + layer + "]".
-// For __done__ and __deferred__, returns plain title.
-func ExtendedTitle(t Task, layer string) string {
-	if layer == "__done__" || layer == "__deferred__" {
-		return t.Title
-	}
-	return t.Title + " [" + layer + "]"
 }

@@ -100,7 +100,9 @@
 // reset, snapshot/correspondence tracking, and the CurrentBranch/CheckoutDetached/RestoreBranch
 // trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
 // opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
-// codeintel keep using explicit-list StageAndCommit. Rebase, interactive
+// codeintel keep using explicit-list StageAndCommit (called via
+// fabricengine.CommitWeftAt on board's behalf, not boardengine calling
+// gitrepo directly). Rebase, interactive
 // staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are
 // explicitly not supported — a human can always use plain git directly in
 // the working tree, since it's an ordinary git repo underneath. fabric

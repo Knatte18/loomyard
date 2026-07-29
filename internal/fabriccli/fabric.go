@@ -61,15 +61,13 @@ Example:
 	// clone [--reset] <host-url> <weft-url> [board-url]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] <host-url> <weft-url> [board-url]",
-		Short: "bootstrap a new hub (host prime + board passenger + weft prime)",
-		Long: `Clone three repositories into a new hub directory (<parent>/<host-name>-HUB):
+		Use:   "clone [--reset] <host-url> <weft-url>",
+		Short: "bootstrap a new hub (host prime + weft prime, with _board as a second weft worktree)",
+		Long: `Clone two repositories into a new hub directory (<parent>/<host-name>-HUB):
 
   <host-name>            — host prime (the main working repo)
   <host-name>` + hubgeometry.WeftSuffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
-  _board                 — board passenger (task-tracker wiki)
 
-The board URL defaults to <weft-url>.wiki.git when omitted.
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
@@ -79,6 +77,10 @@ already carries that suffixed branch (a re-clone of a hub with synced weft
 history), it is adopted as a tracking branch, inheriting the existing weft
 state; otherwise the branch is created fresh at the cloned HEAD. The cloned
 default branch itself remains, unclaimed.
+
+_board is then materialized as a second worktree of the weft repo, on the
+host's unsuffixed default branch — adopted if the weft remote already carries
+board history, freshly orphan-created otherwise.
 
 After cloning, run "lyx init" inside the host worktree to activate junctions and config.
 

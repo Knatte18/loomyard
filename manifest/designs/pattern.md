@@ -18,7 +18,7 @@ Why loomyard needs its own: **lyx initialized in any repo must be able to carry 
 PATTERN is a **directory**, reached from the warp worktree through a `_pattern` junction into `weft` — already anticipated in [fabric-unified-view.md](fabric-unified-view.md) and [finalize.md](finalize.md). It is `_lyx`'s first sibling junction, not a third peer alongside an already-junctioned `_raddle`: `_raddle` carries no junction of its own today, so `_pattern` is the *second* junction `hubgeometry` declares, not one of three. The directory holds:
 
 - **`_pattern/PATTERN.md`** — the index: short two-line entries, one per invariant (the constraint stated in a line, plus a pointer to its detail doc). Never long-form prose inline.
-- **`_pattern/<topic>/…`** — a detail submap: one per-topic doc per invariant carrying the full rule / rationale / enforcement. This is the same short-index-plus-linked-detail structure already proven for raddle's `Overview.md` → module docs, and named as the shared pattern in [board-weft-storage.md](board-weft-storage.md).
+- **`_pattern/<topic>/…`** — a detail submap: one per-topic doc per invariant carrying the full rule / rationale / enforcement. This is the same short-index-plus-linked-detail structure already proven for raddle's `Overview.md` → module docs, and named as the shared pattern in the `internal/boardengine` package documentation.
 
 All PATTERN content lives in `weft`, so it is invisible to the host repo's own git history by construction (this is what supersedes the `CONSTRAINTS.md`-equivalent half of the `host-visibility` item — see [host-visibility.md](host-visibility.md)).
 
@@ -80,7 +80,7 @@ Four of the five questions this section originally posed are settled by the wiri
 ## Related
 
 - `manifest/roadmap.md` — the Planned `PATTERN.md` item this doc details.
-- [board-weft-storage.md](board-weft-storage.md) — establishes that `PATTERN.md` (and all non-warp content) lives in `weft`; names the short-index-plus-linked-detail structure PATTERN reuses.
+- The `internal/boardengine` package documentation — establishes that `PATTERN.md` (and all non-warp content) lives in `weft`; names the short-index-plus-linked-detail structure PATTERN reuses.
 - [host-visibility.md](host-visibility.md) — its `CONSTRAINTS.md`-equivalent half is superseded by PATTERN-in-weft.
 - [finalize.md](finalize.md) — merge-back forwards `_pattern` (like `_raddle`) via a narrowed weft pathspec; PATTERN content is genuinely hand/LLM-authored, so it is the weft-side document-driven conflict path's main real case.
 - [fabric-unified-view.md](fabric-unified-view.md) — where `_pattern` is listed among the weft junctions; note this is a *Someday* API-unification item, **not** a dependency — PATTERN needs only base `fabric` junction creation.

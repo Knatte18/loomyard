@@ -29,7 +29,7 @@ import (
 )
 
 // seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
-// template keys (home, sidebar, proposal_prefix; path: is not a template key),
+// template keys (readme, design_prefix; path: is not a template key),
 // initialises a git repo there (so hubgeometry.Resolve succeeds), changes to that
 // directory, and returns the cwd path. The board data dir is Hub/_board where
 // Hub = filepath.Dir(cwd); callers can compute it as hubgeometry.BoardDir(filepath.Dir(cwd)).
@@ -51,7 +51,7 @@ func seedCwd(t *testing.T) string {
 	}
 
 	// Write board config with all template keys; path: is no longer a template key.
-	configContent := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(hubgeometry.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
@@ -802,7 +802,7 @@ func TestCLIBoardPathResolution(t *testing.T) {
 	if err := os.MkdirAll(hubgeometry.ConfigDir(worktree), 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
-	configContent := "home: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(hubgeometry.ConfigFile(worktree, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
