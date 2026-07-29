@@ -35,16 +35,16 @@
 //
 // # The generalized LSP client
 //
-// The LSP client (lspclient.go) speaks exactly seven methods over stdio
+// The LSP client (lspclient.go) speaks exactly eight methods over stdio
 // JSON-RPC framing (Content-Length-prefixed messages): initialize,
 // initialized, textDocument/references, textDocument/definition,
-// workspace/symbol, shutdown, exit. No callHierarchy, no implementation —
-// the spike's call-hierarchy recommendation (build it on
-// TypesInfo.Uses/Defs, never syntactic *ast.CallExpr pattern-matching) does
-// not translate to a language-agnostic LSP client at all, since LSP callers
-// must accept whatever callHierarchy/incomingCalls a given server
-// implements; that generalization is explicitly deferred (see Scope
-// boundaries below).
+// textDocument/documentSymbol, workspace/symbol, shutdown, exit. No
+// callHierarchy, no implementation — the spike's call-hierarchy
+// recommendation (build it on TypesInfo.Uses/Defs, never syntactic
+// *ast.CallExpr pattern-matching) does not translate to a language-agnostic
+// LSP client at all, since LSP callers must accept whatever
+// callHierarchy/incomingCalls a given server implements; that
+// generalization is explicitly deferred (see Scope boundaries below).
 //
 // Every request phase — initialize, the workspace/symbol resolver call, and
 // textDocument/references or textDocument/definition — is bounded by its
