@@ -148,3 +148,31 @@ func (e *ErrServerTimeout) Error() string {
 func (e *ErrServerTimeout) Is(target error) bool {
 	return target == ErrServerTimeoutSentinel
 }
+
+// ErrServerSpawnTimeoutSentinel is the package-level sentinel
+// *ErrServerSpawnTimeout.Is compares against, mirroring
+// ErrServerNotFoundSentinel.
+var ErrServerSpawnTimeoutSentinel = errors.New("codeintelengine: gave up waiting for supervised daemon spawn")
+
+// ErrServerSpawnTimeout reports that ensureSupervised's bounded retry loop
+// exhausted its deadline without ever observing a healthy daemon for Lang —
+// distinct from ErrServerTimeout, which names a single stalled LSP request
+// phase on an already-connected server. ErrServerSpawnTimeout instead means a
+// live process held the spawn-race lock (or kept losing it) and never
+// produced a daemon this call could dial and finalize within the deadline.
+type ErrServerSpawnTimeout struct {
+	Lang string
+}
+
+// Error implements error, naming the language whose supervised daemon spawn
+// never became ready in time.
+func (e *ErrServerSpawnTimeout) Error() string {
+	return fmt.Sprintf("codeintel: gave up waiting for the supervised daemon for %q to become ready", e.Lang)
+}
+
+// Is reports whether target is ErrServerSpawnTimeoutSentinel, letting
+// errors.Is(err, ErrServerSpawnTimeoutSentinel) match any
+// *ErrServerSpawnTimeout value regardless of its field contents.
+func (e *ErrServerSpawnTimeout) Is(target error) bool {
+	return target == ErrServerSpawnTimeoutSentinel
+}
