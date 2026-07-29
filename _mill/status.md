@@ -50,7 +50,9 @@ batches:
     start_sha: 372a747660a516777f87fbbb7eec2705ca3bbe69
     commit_sha: b5bbb1a6fa69b35fd31ce9c52d04a570243a82d1
   - name: 'boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
-    state: pending
+    state: running
+    implementer_session: 9aac811f-c9f0-4b7b-970f-7422815f1c74
+    start_sha: a49e710fa819f5aa7455b4d877b5236cc0d4cceb
   - name: 'boardcli: notes CLI surface + promote-note command'
     state: pending
   - name: 'cmd/lyx: board git-import guard + drift/help-tree/registration coverage'
