@@ -68,6 +68,55 @@ func TestBuiltins(t *testing.T) {
 	}
 }
 
+func TestBuiltins_GoHasPinnedNativeDaemon(t *testing.T) {
+	b := builtins()
+	goEntry := b["go"]
+	if goEntry.PinnedVersion != "v0.23.0" {
+		t.Errorf("builtins()[%q].PinnedVersion = %q; want %q", "go", goEntry.PinnedVersion, "v0.23.0")
+	}
+	if !goEntry.HasNativeDaemon {
+		t.Errorf("builtins()[%q].HasNativeDaemon = %v; want %v", "go", goEntry.HasNativeDaemon, true)
+	}
+}
+
+func TestBuiltins_NonGoLanguagesHaveNoDaemonStrategy(t *testing.T) {
+	// Every non-Go builtin must leave PinnedVersion/HasNativeDaemon at their
+	// Go zero values -- this is the "third, implicit no-daemon-strategy
+	// mode" the registry-scope decision requires, so a caller checking
+	// entry.HasNativeDaemon for these languages always gets false and never
+	// invokes ensureServer.
+	tests := []string{"python", "csharp", "typescript", "rust"}
+	b := builtins()
+	for _, lang := range tests {
+		t.Run(lang, func(t *testing.T) {
+			entry, ok := b[lang]
+			if !ok {
+				t.Fatalf("builtins() missing language %q", lang)
+			}
+			if entry.PinnedVersion != "" {
+				t.Errorf("builtins()[%q].PinnedVersion = %q; want %q", lang, entry.PinnedVersion, "")
+			}
+			if entry.HasNativeDaemon {
+				t.Errorf("builtins()[%q].HasNativeDaemon = %v; want %v", lang, entry.HasNativeDaemon, false)
+			}
+		})
+	}
+}
+
+func TestValidateEntry_AcceptsBuiltinsZeroValuedNewFields(t *testing.T) {
+	// Regression guard: validateEntry must keep accepting every builtin
+	// entry unchanged now that Entry carries PinnedVersion/HasNativeDaemon --
+	// the four non-Go entries leave both fields at their zero values, and
+	// validateEntry must not start rejecting them.
+	for lang, entry := range builtins() {
+		t.Run(lang, func(t *testing.T) {
+			if err := validateEntry(lang, entry); err != nil {
+				t.Errorf("validateEntry(%q, builtins()[%q]) returned unexpected error: %v", lang, lang, err)
+			}
+		})
+	}
+}
+
 func TestBuiltinRegistry_MatchesBuiltins(t *testing.T) {
 	got := BuiltinRegistry()
 	want := builtins()

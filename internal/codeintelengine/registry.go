@@ -16,6 +16,14 @@ import "fmt"
 // whether all or any of them must be present. Command is the launch argv
 // (the first element is the binary looked up on $PATH); InstallHint is the
 // operator-facing command to install that binary when it's missing.
+// PinnedVersion is the exact toolchain version the toolchain manager
+// installs when HasNativeDaemon is true (empty means "no pinned version, no
+// managed install" — the legacy cold-spawn-per-call path). HasNativeDaemon
+// reports whether this language has a persistent, `EnsureServer`-managed
+// daemon strategy (native or supervised) at all; the zero value (false)
+// means the language never goes through `EnsureServer` and keeps today's
+// cold-spawn-per-call behavior unchanged. Both fields are optional and
+// Go-only in V1: every entry except "go" leaves them at their zero values.
 //
 // The yaml struct tags let LoadRegistry (load.go) decode a servers.yaml
 // entry directly into this type: without them, yaml.v3's default field
@@ -23,10 +31,12 @@ import "fmt"
 // field name with no separator) rather than the template's snake_case
 // "install_hint".
 type Entry struct {
-	Markers     []string `yaml:"markers"`
-	Match       string   `yaml:"match"`
-	Command     []string `yaml:"command"`
-	InstallHint string   `yaml:"install_hint"`
+	Markers         []string `yaml:"markers"`
+	Match           string   `yaml:"match"`
+	Command         []string `yaml:"command"`
+	InstallHint     string   `yaml:"install_hint"`
+	PinnedVersion   string   `yaml:"pinned_version"`
+	HasNativeDaemon bool     `yaml:"has_native_daemon"`
 }
 
 // Registry maps a canonical language name ("go", "python", "csharp",
@@ -50,10 +60,12 @@ var precedence = []string{"go", "rust", "csharp", "typescript", "python"}
 func builtins() Registry {
 	return Registry{
 		"go": {
-			Markers:     []string{"go.mod"},
-			Match:       "any",
-			Command:     []string{"gopls"},
-			InstallHint: "go install golang.org/x/tools/gopls@latest",
+			Markers:         []string{"go.mod"},
+			Match:           "any",
+			Command:         []string{"gopls"},
+			InstallHint:     "go install golang.org/x/tools/gopls@latest",
+			PinnedVersion:   "v0.23.0",
+			HasNativeDaemon: true,
 		},
 		"python": {
 			Markers:     []string{"pyproject.toml", "setup.py", "setup.cfg"},

@@ -110,7 +110,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 		{
 			name:     "codeintel",
 			module:   "codeintel",
-			wantSubs: []string{"refs"},
+			wantSubs: []string{"refs", "definition", "symbol"},
 		},
 		{
 			name:     "webster",

@@ -24,6 +24,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // funcDeclPattern matches a top-level function declaration line
@@ -80,15 +82,28 @@ func TestReferences_Integration(t *testing.T) {
 		hubgeometryFile := filepath.Join(root, "internal", "hubgeometry", "hubgeometry.go")
 		pos := findFuncPosition(t, hubgeometryFile, "Resolve")
 
+		// Since the engine-supervised-flip batch, Go's registry entry
+		// dispatches through ensureServer -> ensureSupervised, which spawns a
+		// lyx-owned daemon that teardownConnection's connKindSupervised
+		// branch deliberately never kills. Without an explicit WorktreeRoot
+		// this anchors at a relative .lyx/codeintel/go/ under the test
+		// binary's cwd and leaks the daemon; an isolated t.TempDir() plus a
+		// state-file-driven reap avoids both.
+		worktreeRoot := t.TempDir()
+		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+		statePath := layout.CodeintelDaemonStateFile("go")
+		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
+
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		refs, err := References(ctx, Options{
-			Registry:  builtins(),
-			TargetDir: root,
-			Lang:      "go",
-			Query:     Query{Pos: &pos},
-			Timeout:   30 * time.Second,
+			Registry:     builtins(),
+			TargetDir:    root,
+			WorktreeRoot: worktreeRoot,
+			Lang:         "go",
+			Query:        Query{Pos: &pos},
+			Timeout:      30 * time.Second,
 		})
 		if err != nil {
 			t.Fatalf("References(hubgeometry.Resolve) returned unexpected error: %v", err)
@@ -132,6 +147,123 @@ func TestReferences_Integration(t *testing.T) {
 		})
 		if !errors.Is(err, ErrServerNotFoundSentinel) {
 			t.Errorf("References() with a non-existent server binary err = %v; want errors.Is(err, ErrServerNotFoundSentinel)", err)
+		}
+	})
+}
+
+// writeAmbiguousModule writes a minimal, self-contained Go module to dir: a
+// go.mod plus one .go file declaring the same method name ("Open") on two
+// distinct types. This is what makes a name-only, per-file
+// textDocument/documentSymbol lookup for "Open" within that file resolve to
+// more than one candidate — the case that distinguishes InFile's exhaustive
+// per-file search from a single hit, exercised by
+// TestReferences_InFile_Integration's "same-name-in-two-types ambiguity"
+// subtest.
+func writeAmbiguousModule(t *testing.T, dir string) {
+	t.Helper()
+	goMod := "module ambiguousmodule\n\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(go.mod) failed: %v", err)
+	}
+	src := `package main
+
+type FileHandle struct{}
+
+func (h FileHandle) Open() error { return nil }
+
+type SocketHandle struct{}
+
+func (h SocketHandle) Open() error { return nil }
+
+func main() {}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(main.go) failed: %v", err)
+	}
+}
+
+// TestReferences_InFile_Integration proves the Query.InFile resolve path —
+// documentSymbol -> position -> textDocument/references — end to end against
+// a real gopls, the InFile analogue of TestReferences_Integration's
+// Query.Pos coverage above. Both subcases route through ensureServer's now-
+// live supervised dispatch (builtins()'s Go entry has HasNativeDaemon:
+// true), which spawns a lyx-owned daemon that teardownConnection's
+// connKindSupervised branch deliberately never kills — each subcase anchors
+// WorktreeRoot at its own isolated t.TempDir() and reaps the spawned daemon
+// in t.Cleanup, exactly like TestEnsureServer_Integration_
+// SupervisedDispatch (ensureserver_integration_test.go) and
+// supervised_integration_test.go already do.
+func TestReferences_InFile_Integration(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip(builtins()["go"].InstallHint)
+	}
+
+	t.Run("single-match resolve", func(t *testing.T) {
+		root := repoRoot(t)
+		hubgeometryFile := filepath.Join(root, "internal", "hubgeometry", "hubgeometry.go")
+		pos := findFuncPosition(t, hubgeometryFile, "Resolve")
+
+		// TargetDir stays the real repo root (correct indexing), but
+		// WorktreeRoot is an isolated temp dir so the supervised daemon this
+		// call spawns anchors there, never the real repo's own
+		// .lyx/codeintel/go/.
+		worktreeRoot := t.TempDir()
+		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+		statePath := layout.CodeintelDaemonStateFile("go")
+		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
+
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		refs, err := References(ctx, Options{
+			Registry:     builtins(),
+			TargetDir:    root,
+			WorktreeRoot: worktreeRoot,
+			Lang:         "go",
+			Query:        Query{InFile: &InFileQuery{File: hubgeometryFile, Name: "Resolve"}},
+			Timeout:      30 * time.Second,
+		})
+		if err != nil {
+			t.Fatalf("References(InFile hubgeometry.Resolve) returned unexpected error: %v", err)
+		}
+		if len(refs) == 0 {
+			t.Fatal("References(InFile hubgeometry.Resolve) returned zero references; want the declaration site plus its call sites")
+		}
+
+		foundDeclSite := false
+		for _, ref := range refs {
+			if filepath.Clean(ref.File) == filepath.Clean(hubgeometryFile) && ref.Line == pos.Line {
+				foundDeclSite = true
+				break
+			}
+		}
+		if !foundDeclSite {
+			t.Errorf("References(InFile hubgeometry.Resolve) = %+v; want it to include the declaration site %s:%d", refs, hubgeometryFile, pos.Line)
+		}
+	})
+
+	t.Run("same-name-in-two-types ambiguity", func(t *testing.T) {
+		modRoot := t.TempDir()
+		writeAmbiguousModule(t, modRoot)
+
+		worktreeRoot := t.TempDir()
+		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+		statePath := layout.CodeintelDaemonStateFile("go")
+		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
+
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		_, err := References(ctx, Options{
+			Registry:     builtins(),
+			TargetDir:    modRoot,
+			WorktreeRoot: worktreeRoot,
+			Lang:         "go",
+			Query:        Query{InFile: &InFileQuery{File: filepath.Join(modRoot, "main.go"), Name: "Open"}},
+			Timeout:      30 * time.Second,
+		})
+		if !errors.Is(err, ErrAmbiguousSymbolSentinel) {
+			t.Errorf("References(InFile Open, two types) err = %v; want errors.Is(err, ErrAmbiguousSymbolSentinel)", err)
 		}
 	})
 }
