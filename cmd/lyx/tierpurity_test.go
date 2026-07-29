@@ -22,12 +22,13 @@ import (
 // a banned spawn token in an untagged test file, each with a one-line reason —
 // mirroring sandbox_coverage_test.go's excludedModules style.
 var allowedSpawners = map[string]string{
-	"internal/proc":                           "process control is the package's subject — its tests must spawn",
-	"cmd/lyx/tierpurity_test.go":              "contains the banned token strings as its own test data",
-	"cmd/lyx/hermeticenv_test.go":             "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
-	"tools/sandbox/pathresolve_guard_test.go": "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
-	"cmd/lyx/ghguard_test.go":                 "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
-	"cmd/lyx/gitrepoboundary_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
+	"internal/proc": "process control is the package's subject — its tests must spawn",
+	"internal/codeintelengine/daemonstate_test.go": "spawns a short-lived child process to obtain a confirmed-dead PID for the daemon-staleness fixture, mirroring internal/proc's own liveness-test technique",
+	"cmd/lyx/tierpurity_test.go":                   "contains the banned token strings as its own test data",
+	"cmd/lyx/hermeticenv_test.go":                  "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
+	"tools/sandbox/pathresolve_guard_test.go":      "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
+	"cmd/lyx/ghguard_test.go":                      "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
+	"cmd/lyx/gitrepoboundary_test.go":              "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
 }
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
