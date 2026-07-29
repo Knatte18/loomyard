@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: fabric-junction-config
 branch: fabric-junction-config
 plan: _mill/plan
@@ -48,6 +48,7 @@ approved-proofs-and-docs  '2026-07-29T18:25:27Z'
 holistic-reviewing  '2026-07-29T18:25:49Z'
 holistic-approved  '2026-07-29T18:28:06Z'
 done  '2026-07-29T18:28:40Z'
+pr-pending  '2026-07-29T18:29:13Z'
 ```
 
 ## Batches
