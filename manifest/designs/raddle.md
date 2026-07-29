@@ -49,4 +49,4 @@ Raddle files are a **snapshot** of the codebase from *before* a plan started —
 
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the `SnapshotSHA`/`SyncWeft` mechanics this design relies on.
 - [loom.md](loom.md) — where raddle's phase slot sits in the phase machine.
-- [board-weft-storage.md](board-weft-storage.md) — `PATTERN.md` (raddle's neighbor in `weft`) mentioned there.
+- The `internal/boardengine` package documentation — `PATTERN.md` (raddle's neighbor in `weft`) mentioned there.

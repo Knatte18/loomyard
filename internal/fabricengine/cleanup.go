@@ -30,11 +30,16 @@
 // unsuffixed "main" (WeftHostSlug rejects it → protected as unmanaged). Under fabric's
 // uniform suffix scheme the primary weft branch is "main-weft", which WeftHostSlug
 // accepts — so a directory-name comparison would misclassify it as a deletable orphan
-// and delete the very branch board-weft-storage requires to stay permanent. Comparing
+// and delete the very branch board's reserved weft:main branch requires to stay
+// permanent, distinct from it. Comparing
 // against live host *branches* protects "main-weft" (the primary host worktree is on
 // "main") and every task pair, with no BranchPrefix juggling.
 //
-// The board repo is excluded entirely — Cleanup only enumerates weft branches
+// Board needs no explicit exclusion: its weft:main branch is the host's own
+// unsuffixed default branch (e.g. "main"), which never matches the
+// -weft-suffixed pattern WeftHostSlug looks for, so it is never enumerated
+// as a Cleanup candidate in the first place — not because of any
+// repo-level carve-out, but because Cleanup only ever walks weft branches
 // and compares them against the set of known host worktree slugs.
 
 package fabricengine

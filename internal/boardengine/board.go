@@ -11,6 +11,39 @@
 // The detached sync path talks to git through fabricengine.CommitWeftAt and
 // fabricengine.PushWeftAt, never hand-rolled gitexec calls, under board's own
 // board.lock/board.push.lock write and push locks.
+//
+// Storage: board lives at weft:main, never a separate repo. fabricengine
+// enforces one uniform branch-naming scheme with no exceptions: a host
+// branch <branch> is always paired with weft branch <branch>-weft. That
+// means no task's weft branch can ever be named exactly the host's own
+// default branch (every paired weft branch carries the -weft suffix) —
+// which is what makes the unsuffixed name permanently unclaimed by the
+// pairing convention and reserved exclusively for board. This repo's
+// earlier design considered and rejected two alternatives before landing
+// here: a separate third repo for board is extra git-identity overhead
+// for something that doesn't need its own identity; and GitHub wiki
+// rendering (an intermediate idea) requires whichever repo hosts the wiki
+// to be public on GitHub's free tier — in the old separate-repo model that
+// meant board's own repo, never the host/warp repo — disqualifying for
+// private consulting work, where the host repo's wiki-hosting repo would
+// have had to go public just to render board's front page.
+//
+// The long-lived "prime" worktree is the only worktree with a reason to
+// check out two weft branches simultaneously: its own ordinary
+// <name>-weft companion (the standard pairing rule, unchanged), plus
+// weft:main for board access — never paired with any warp branch. No
+// other worktree checks out weft:main directly.
+//
+// Consequence for fabric: weft:main has no corresponding warp branch, so
+// the Warp-SHA trailer / correspondence-index machinery
+// (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not apply
+// to it — board's reads/writes to weft:main are a standalone concern, not
+// routed through fabric.SyncWeft/fabric.RevertWithWeft.
+//
+// Recorded for later, not acted on now: this repo's own manifest/roadmap.md
+// and the mill wiki's task list are both candidates to eventually fold
+// into board, once loomyard's own development moves off mill onto
+// lyx/loom.
 
 package boardengine
 
