@@ -59,6 +59,7 @@ batches:
 
 - `.gitattributes`
 - `CONSTRAINTS.md`
+- `docs/shared-libs/stencil.md`
 - `internal/burlerengine/doc.go`
 - `internal/burlerengine/engine.go`
 - `internal/burlerengine/engine_test.go`
