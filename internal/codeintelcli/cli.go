@@ -123,6 +123,12 @@ mode carries the same field on each per-entry "found" result.`,
 				dir = cwd
 			}
 
+			// worktreeRoot is resolved before registry loading below so both
+			// derive independently from the same cwd/dir inputs — see
+			// resolveWorktreeRoot's doc comment for why it never leaves
+			// WorktreeRoot empty outside a hub.
+			worktreeRoot := resolveWorktreeRoot(cwd, dir)
+
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
@@ -130,7 +136,6 @@ mode carries the same field on each per-entry "found" result.`,
 			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := codeintelengine.BuiltinRegistry()
-			var worktreeRoot string
 			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
 				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
 				if loadErr != nil {
@@ -138,7 +143,6 @@ mode carries the same field on each per-entry "found" result.`,
 					return nil
 				}
 				registry = loaded
-				worktreeRoot = layout.WorktreeRoot
 			}
 
 			if len(args) == 1 {
@@ -148,14 +152,7 @@ mode carries the same field on each per-entry "found" result.`,
 					return nil
 				}
 
-				opts := codeintelengine.Options{
-					Registry:     registry,
-					TargetDir:    dir,
-					WorktreeRoot: worktreeRoot,
-					Lang:         lang,
-					Query:        query,
-					Timeout:      timeout,
-				}
+				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
 
 				results, err := codeintelengine.References(ctx, opts)
 				emitLookupResult(ctx, out, "references", results, err)
@@ -167,7 +164,7 @@ mode carries the same field on each per-entry "found" result.`,
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := codeintelengine.References(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: query, Timeout: timeout})
+				results, err := codeintelengine.References(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
 				return classifyLookupError(err, "references", results)
 			})
 			return nil
@@ -238,6 +235,12 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 				dir = cwd
 			}
 
+			// worktreeRoot is resolved before registry loading below so both
+			// derive independently from the same cwd/dir inputs — see
+			// resolveWorktreeRoot's doc comment for why it never leaves
+			// WorktreeRoot empty outside a hub.
+			worktreeRoot := resolveWorktreeRoot(cwd, dir)
+
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
@@ -245,7 +248,6 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := codeintelengine.BuiltinRegistry()
-			var worktreeRoot string
 			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
 				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
 				if loadErr != nil {
@@ -253,7 +255,6 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 					return nil
 				}
 				registry = loaded
-				worktreeRoot = layout.WorktreeRoot
 			}
 
 			if len(args) == 1 {
@@ -263,14 +264,7 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 					return nil
 				}
 
-				opts := codeintelengine.Options{
-					Registry:     registry,
-					TargetDir:    dir,
-					WorktreeRoot: worktreeRoot,
-					Lang:         lang,
-					Query:        query,
-					Timeout:      timeout,
-				}
+				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
 
 				results, err := codeintelengine.Definition(ctx, opts)
 				emitLookupResult(ctx, out, "definitions", results, err)
@@ -282,7 +276,7 @@ marker; batch mode carries the same field on each per-entry "found" result.`,
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := codeintelengine.Definition(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: query, Timeout: timeout})
+				results, err := codeintelengine.Definition(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
 				return classifyLookupError(err, "definitions", results)
 			})
 			return nil
@@ -345,6 +339,12 @@ matches into an ambiguity failure. Example:
 				dir = cwd
 			}
 
+			// worktreeRoot is resolved before registry loading below so both
+			// derive independently from the same cwd/dir inputs — see
+			// resolveWorktreeRoot's doc comment for why it never leaves
+			// WorktreeRoot empty outside a hub.
+			worktreeRoot := resolveWorktreeRoot(cwd, dir)
+
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
@@ -352,7 +352,6 @@ matches into an ambiguity failure. Example:
 			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := codeintelengine.BuiltinRegistry()
-			var worktreeRoot string
 			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
 				loaded, loadErr := codeintelengine.LoadRegistry(layout.Cwd)
 				if loadErr != nil {
@@ -360,18 +359,10 @@ matches into an ambiguity failure. Example:
 					return nil
 				}
 				registry = loaded
-				worktreeRoot = layout.WorktreeRoot
 			}
 
 			if len(args) == 1 {
-				opts := codeintelengine.Options{
-					Registry:     registry,
-					TargetDir:    dir,
-					WorktreeRoot: worktreeRoot,
-					Lang:         lang,
-					Query:        symbolQuery(args[0]),
-					Timeout:      timeout,
-				}
+				opts := buildOptions(registry, dir, worktreeRoot, lang, symbolQuery(args[0]), timeout)
 
 				results, err := codeintelengine.Symbol(ctx, opts)
 				if err != nil {
@@ -394,7 +385,7 @@ matches into an ambiguity failure. Example:
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				results, err := codeintelengine.Symbol(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: codeintelengine.Query{Symbol: symbol}, Timeout: timeout})
+				results, err := codeintelengine.Symbol(ctx, buildOptions(registry, dir, worktreeRoot, lang, codeintelengine.Query{Symbol: symbol}, timeout))
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -406,6 +397,58 @@ matches into an ambiguity failure. Example:
 	symbol.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for the workspace/symbol request phase")
 
 	return symbol
+}
+
+// resolveWorktreeRoot resolves the codeintelengine.Options.WorktreeRoot value
+// a lookup rooted at targetDir should carry, given the process's cwd. Inside
+// a lyx hub (hubgeometry.Resolve(cwd) succeeds), it is the resolved
+// layout.WorktreeRoot — the git repository root — exactly as every verb
+// already used before this helper existed. Outside a hub (the supported
+// degrade-to-BuiltinRegistry path), it falls back to the absolute form of
+// targetDir rather than leaving WorktreeRoot empty: see the plan's
+// "Supervised daemon anchoring outside a lyx hub" Shared Decision — once a
+// language flips to the supervised strategy, an empty WorktreeRoot would
+// resolve EnsureServer's daemon state/lock/socket files at a cwd-relative
+// ".lyx/codeintel/<lang>/" path, littering/colliding across cwds for the
+// same --target-dir. filepath.Abs falls back to targetDir itself on error
+// (an Abs failure here means the process's own cwd is unresolvable, an
+// already-degraded environment), so this helper never returns an empty
+// string. It is a separate named function, rather than inlined into each
+// verb's RunE, specifically so the outside-a-hub fallback is independently
+// unit-testable without a live daemon.
+func resolveWorktreeRoot(cwd, targetDir string) string {
+	if layout, err := hubgeometry.Resolve(cwd); err == nil {
+		return layout.WorktreeRoot
+	}
+
+	abs, err := filepath.Abs(targetDir)
+	if err != nil {
+		return targetDir
+	}
+	return abs
+}
+
+// buildOptions constructs a codeintelengine.Options value from its component
+// parts. It is the single call site every refs/definition/symbol RunE
+// (single-arg and batch-mode alike) goes through: before this helper
+// existed, each verb's batch-mode closure built its own Options{...} literal
+// by hand, and three of the six literals (the batch closures) silently
+// omitted WorktreeRoot while their single-arg sibling set it — a latent
+// drift that only mattered once a language's daemon strategy flips to
+// supervised (native never reads WorktreeRoot). Collapsing every
+// construction site through this one function makes that omission
+// structurally impossible: a batch closure can no longer forget a field its
+// single-arg sibling sets, since both now call the same function with the
+// same locals.
+func buildOptions(registry codeintelengine.Registry, targetDir, worktreeRoot, lang string, query codeintelengine.Query, timeout time.Duration) codeintelengine.Options {
+	return codeintelengine.Options{
+		Registry:     registry,
+		TargetDir:    targetDir,
+		WorktreeRoot: worktreeRoot,
+		Lang:         lang,
+		Query:        query,
+		Timeout:      timeout,
+	}
 }
 
 // symbolQuery builds a codeintelengine.Query for the "symbol" verb's single
