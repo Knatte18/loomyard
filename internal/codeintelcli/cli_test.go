@@ -364,10 +364,12 @@ func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Refs_RequiresExactlyOneArg verifies that Args: cobra.ExactArgs(1)
-// rejects both a bare "refs" call and a 2-arg call through the same JSON error
-// envelope, without touching detection or the registry at all.
-func TestRunCLI_Refs_RequiresExactlyOneArg(t *testing.T) {
+// TestRunCLI_Refs_RequiresAtLeastOneArg verifies that Args:
+// cobra.MinimumNArgs(1) still rejects a bare "refs" call (0 args) through the
+// JSON error envelope, without touching detection or the registry at all. A
+// 2-arg call is no longer an arg-count violation as of batch-mode-cli — see
+// TestRunCLI_Refs_TwoArgsIsBatchMode for that case.
+func TestRunCLI_Refs_RequiresAtLeastOneArg(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -375,7 +377,6 @@ func TestRunCLI_Refs_RequiresExactlyOneArg(t *testing.T) {
 		args []string
 	}{
 		{"bare", []string{"refs"}},
-		{"two_args", []string{"refs", "one", "two"}},
 	}
 
 	for _, tt := range tests {
@@ -395,5 +396,50 @@ func TestRunCLI_Refs_RequiresExactlyOneArg(t *testing.T) {
 				t.Errorf("RunCLI(%v) ok = true; want false", tt.args)
 			}
 		})
+	}
+}
+
+// TestRunCLI_Refs_TwoArgsIsBatchMode proves the opposite point from
+// TestRunCLI_Refs_RequiresAtLeastOneArg: "refs one two" is valid batch-mode
+// syntax now, not an arg-count rejection. It runs against an empty temp dir
+// so DetectLanguage fails identically for both symbols, keeping the
+// assertion deterministic and gopls-independent — an ErrNoLanguage failure
+// is not "confirmed absent," so both entries classify as "error", not
+// "not_found", pinning that distinction as a useful regression check.
+func TestRunCLI_Refs_TwoArgsIsBatchMode(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"refs", "one", "two", "--target-dir", t.TempDir()})
+
+	if exitCode != 3 {
+		t.Fatalf("RunCLI(refs one two --target-dir <empty>) = %d; want 3 (worst-outcome rank for an all-error batch)", exitCode)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	results, ok := env["results"].([]any)
+	if !ok {
+		t.Fatalf("envelope %v missing []any \"results\" field", env)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d; want 2", len(results))
+	}
+
+	wantSymbols := []string{"one", "two"}
+	for i, r := range results {
+		entry, ok := r.(map[string]any)
+		if !ok {
+			t.Fatalf("results[%d] = %v; want a JSON object", i, r)
+		}
+		if status, _ := entry["status"].(string); status != "error" {
+			t.Errorf("results[%d][\"status\"] = %q; want \"error\"", i, status)
+		}
+		if symbol, _ := entry["symbol"].(string); symbol != wantSymbols[i] {
+			t.Errorf("results[%d][\"symbol\"] = %q; want %q", i, symbol, wantSymbols[i])
+		}
 	}
 }
