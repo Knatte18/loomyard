@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: burler-prompt-split
 branch: burler-prompt-split
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-29T18:50:04Z'
+discussion-fix-r2  '2026-07-29T19:19:46Z'
+discussed  '2026-07-29T19:19:46Z'
 ```
