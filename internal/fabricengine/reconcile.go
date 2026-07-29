@@ -319,19 +319,31 @@ func readBranch(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// checkJunctionHealth verifies that every junction in hostLayout.HostJunctionsHere()
-// is a link resolving to its own Target, reporting the first unhealthy one found
-// (first-unhealthy-wins).
+// checkJunctionHealth verifies that every junction in
+// hostLayout.HostJunctionsHere(names) is a link resolving to its own Target,
+// reporting the first unhealthy one found (first-unhealthy-wins). names is
+// loaded internally from the pair's weft base — the same durable,
+// junction-health-independent base junctionRepointedDetail and PairInSync use —
+// via junctionNames; checkJunctionHealth's own signature is unchanged.
 //
 // A junction is unhealthy if its Link is missing, is not a link, or resolves
 // somewhere other than its Target. Every reason string names the junction (by
 // Name) it describes, since with more than one junction a bare "junction
-// missing" no longer tells an operator which one is broken.
+// missing" no longer tells an operator which one is broken. A config-load
+// failure produces its own reason, worded identically to PairInSync's twin
+// (drift.go) — "host junction check unavailable: cannot load fabric.yaml:
+// <err>" — naming the config-load fault rather than misdirecting an operator
+// toward junction-drift repair.
 //
 // Returns (ok, reason) where ok is true only if every junction is correctly
 // configured; reason is empty in that case.
 func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
-	for _, j := range hostLayout.HostJunctionsHere() {
+	names, err := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+	if err != nil {
+		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err)
+	}
+
+	for _, j := range hostLayout.HostJunctionsHere(names) {
 		// Check whether the host link exists at all.
 		_, err := os.Lstat(j.Link)
 		if err != nil {
@@ -367,12 +379,20 @@ func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
 }
 
 // junctionRepointedDetail formats ReconcileActionJunctionRepointed's Detail
-// string, naming every junction in hostLayout.HostJunctionsHere() as
+// string, naming every junction in hostLayout.HostJunctionsHere(names) as
 // "Link → Target" — not just the one checkJunctionHealth found unhealthy,
 // since WireJunctions repairs (or verifies) all of them in the single call
-// that produced this outcome.
+// that produced this outcome. names is loaded internally from the same
+// weft base checkJunctionHealth uses. This function only runs after
+// checkJunctionHealth found the pair unhealthy AND WireJunctions succeeded,
+// so config is present in practice; the error branch below is defensive.
 func junctionRepointedDetail(hostLayout *hubgeometry.Layout) string {
-	junctions := hostLayout.HostJunctionsHere()
+	names, err := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+	if err != nil {
+		return "junction re-pointed: cannot load fabric.yaml: " + err.Error()
+	}
+
+	junctions := hostLayout.HostJunctionsHere(names)
 	parts := make([]string, len(junctions))
 	for i, j := range junctions {
 		parts[i] = fmt.Sprintf("%s → %s", j.Link, j.Target)
