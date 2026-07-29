@@ -155,10 +155,50 @@ func (b *Board) writeOp(target storeTarget, mutate func(target, other *Store) (a
 	})
 }
 
+// checkCrossStoreSlugAvailable rejects an upsert whose slug already exists in
+// the OTHER store: tasks.json and notes.json share one global slug
+// namespace, so a slug introduced in one store must never silently shadow an
+// entry already living in the other. An in-place update of a slug already
+// present in target is not a new-slug introduction and passes through
+// unchecked. A missing or non-string slug is left for the store-level check
+// (UpsertTask/ApplyPatch's own validation) to report with a clearer message.
+func checkCrossStoreSlugAvailable(fields map[string]any, target, other *Store) error {
+	slugVal, hasSlug := fields["slug"]
+	if !hasSlug {
+		return nil
+	}
+	slugStr, ok := slugVal.(string)
+	if !ok || slugStr == "" {
+		return nil
+	}
+	if _, exists := target.slugIndex()[slugStr]; exists {
+		return nil
+	}
+	if _, exists := other.slugIndex()[slugStr]; exists {
+		return fmt.Errorf("slug %q already exists in the other store", slugStr)
+	}
+	return nil
+}
+
+// checkCrossStoreSlugsAvailable applies checkCrossStoreSlugAvailable to every
+// entry of a batch upsert, returning the first error encountered so a batch
+// with one colliding slug fails fast before any of it is applied.
+func checkCrossStoreSlugsAvailable(entries []map[string]any, target, other *Store) error {
+	for _, fields := range entries {
+		if err := checkCrossStoreSlugAvailable(fields, target, other); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // UpsertTask creates or updates the task identified by fields["slug"] under the
 // write lock; field validation (allowlist, slug shape) is the store's job.
 func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
-	result, err := b.writeOp(tasksTarget, func(target, _ *Store) (any, error) {
+	result, err := b.writeOp(tasksTarget, func(target, other *Store) (any, error) {
+		if err := checkCrossStoreSlugAvailable(fields, target, other); err != nil {
+			return nil, err
+		}
 		return target.UpsertTask(fields)
 	})
 	if err != nil {
@@ -188,7 +228,10 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 // pass nil to skip the status step. A status update that targets a missing task
 // causes the entire merge to fail (writeOp discards the in-memory mutation).
 func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
-	result, err := b.writeOp(tasksTarget, func(target, _ *Store) (any, error) {
+	result, err := b.writeOp(tasksTarget, func(target, other *Store) (any, error) {
+		if err := checkCrossStoreSlugAvailable(upsert, target, other); err != nil {
+			return nil, err
+		}
 		return target.MergeTasks(removeSlugs, upsert, setStatus)
 	})
 	if err != nil {
@@ -205,7 +248,10 @@ func (b *Board) SetDeps(slug string, dependsOn []string) error {
 }
 
 func (b *Board) UpsertTasksBatch(tasks []map[string]any) error {
-	_, err := b.writeOp(tasksTarget, func(target, _ *Store) (any, error) {
+	_, err := b.writeOp(tasksTarget, func(target, other *Store) (any, error) {
+		if err := checkCrossStoreSlugsAvailable(tasks, target, other); err != nil {
+			return nil, err
+		}
 		return nil, target.UpsertTasksBatch(tasks)
 	})
 	return err
@@ -277,6 +323,126 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 	}
 
 	store := NewStore(filepath.Join(b.boardPath, tasksFile))
+	if err := store.Load(); err != nil {
+		return nil, fmt.Errorf("load store: %w", err)
+	}
+
+	return store.ListTasksFull(), nil
+}
+
+// UpsertNote creates or updates the note identified by fields["slug"] under the
+// write lock; field validation (allowlist, slug shape) is the store's job.
+// Mirrors UpsertTask, targeting notesFile instead of tasksFile.
+func (b *Board) UpsertNote(fields map[string]any) (Task, error) {
+	result, err := b.writeOp(notesTarget, func(target, other *Store) (any, error) {
+		if err := checkCrossStoreSlugAvailable(fields, target, other); err != nil {
+			return nil, err
+		}
+		return target.UpsertTask(fields)
+	})
+	if err != nil {
+		return Task{}, err
+	}
+	return result.(Task), nil
+}
+
+// SetNoteStatus sets or clears the status field of the note identified by
+// idOrSlug. Mirrors SetStatus, targeting notesFile instead of tasksFile.
+func (b *Board) SetNoteStatus(idOrSlug any, status *string) error {
+	_, err := b.writeOp(notesTarget, func(target, _ *Store) (any, error) {
+		return nil, target.SetStatus(idOrSlug, status)
+	})
+	return err
+}
+
+// RemoveNote deletes the note by ID or slug. Mirrors RemoveTask, targeting
+// notesFile instead of tasksFile.
+func (b *Board) RemoveNote(idOrSlug any) error {
+	_, err := b.writeOp(notesTarget, func(target, _ *Store) (any, error) {
+		return nil, target.RemoveTask(idOrSlug)
+	})
+	return err
+}
+
+// MergeNotes atomically removes slugs, upserts one note, and optionally
+// applies a status update. Mirrors MergeTasks, targeting notesFile instead of
+// tasksFile.
+func (b *Board) MergeNotes(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
+	result, err := b.writeOp(notesTarget, func(target, other *Store) (any, error) {
+		if err := checkCrossStoreSlugAvailable(upsert, target, other); err != nil {
+			return nil, err
+		}
+		return target.MergeTasks(removeSlugs, upsert, setStatus)
+	})
+	if err != nil {
+		return Task{}, err
+	}
+	return result.(Task), nil
+}
+
+// SetNoteDeps replaces the depends_on list for a note. Mirrors SetDeps,
+// targeting notesFile instead of tasksFile.
+func (b *Board) SetNoteDeps(slug string, dependsOn []string) error {
+	_, err := b.writeOp(notesTarget, func(target, _ *Store) (any, error) {
+		return nil, target.SetDeps(slug, dependsOn)
+	})
+	return err
+}
+
+// UpsertNotesBatch applies multiple note upserts atomically. Mirrors
+// UpsertTasksBatch, targeting notesFile instead of tasksFile.
+func (b *Board) UpsertNotesBatch(notes []map[string]any) error {
+	_, err := b.writeOp(notesTarget, func(target, other *Store) (any, error) {
+		if err := checkCrossStoreSlugsAvailable(notes, target, other); err != nil {
+			return nil, err
+		}
+		return nil, target.UpsertTasksBatch(notes)
+	})
+	return err
+}
+
+// GetNote looks up a note by integer ID or slug string. Mirrors GetTask,
+// targeting notesFile instead of tasksFile.
+func (b *Board) GetNote(idOrSlug any) (Task, bool, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return Task{}, false, nil
+	}
+
+	store := NewStore(filepath.Join(b.boardPath, notesFile))
+	if err := store.Load(); err != nil {
+		return Task{}, false, fmt.Errorf("load store: %w", err)
+	}
+
+	note, found := store.GetTask(idOrSlug)
+	return note, found, nil
+}
+
+// ListNotesBrief returns all notes enriched with computed Layer/HasProposal
+// fields. Mirrors ListTasksBrief, targeting notesFile instead of tasksFile.
+func (b *Board) ListNotesBrief() ([]BriefTask, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	store := NewStore(filepath.Join(b.boardPath, notesFile))
+	if err := store.Load(); err != nil {
+		return nil, fmt.Errorf("load store: %w", err)
+	}
+
+	return store.ListTasksBrief(), nil
+}
+
+// ListNotesFull returns a copy of the raw note list with no enrichment.
+// Mirrors ListTasksFull, targeting notesFile instead of tasksFile.
+func (b *Board) ListNotesFull() ([]Task, error) {
+	// Short-circuit if board dir does not exist
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	store := NewStore(filepath.Join(b.boardPath, notesFile))
 	if err := store.Load(); err != nil {
 		return nil, fmt.Errorf("load store: %w", err)
 	}
