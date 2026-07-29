@@ -42,7 +42,7 @@ LoomYard keeps the host repo pristine by routing all its own artifacts into a co
   ├── <prime>-weft/                 (weft Prime worktree)
   ├── <slug>/                       (additional host worktree)
   ├── <slug>-weft/                  (weft worktree for <slug>)
-  └── _board/                       (board repo; the task store)
+  └── _board/                       (weft:main worktree; the task store)
 ```
 
 Each host worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`, `_raddle/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection. Two state roots with opposite lifecycles: **`_lyx/`** is durable and weft-synced (config, board, orchestration status — resume works across machines); **`.lyx/`** is ephemeral and machine-bound (live tmux runtime state, never synced).
@@ -107,7 +107,7 @@ The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, ex
 - [Claude Code](https://claude.ai/code)
 - Go 1.26+
 - A resolvable GitHub token for `selfreport`: set `GH_TOKEN` or `GITHUB_TOKEN`, or have the `gh` CLI installed and authenticated (`gh auth login`) as a fallback token source — `gh` is not required when either environment variable is set
-- Git 2.35+ (for `git worktree`)
+- Git 2.42+ (for `git worktree add --orphan`)
 - tmux (for the orchestration layers; on Windows via psmux)
 
 ## Documentation
