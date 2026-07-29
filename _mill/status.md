@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-daemon-state-and-locking
+phase: approved-ensure-server-native
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-registry-and-state-foundations  '2026-07-29T09:26:22Z'
 approved-lspclient-dial-transport  '2026-07-29T09:29:21Z'
 approved-toolchain-manager  '2026-07-29T09:36:41Z'
 approved-daemon-state-and-locking  '2026-07-29T09:45:57Z'
+approved-ensure-server-native  '2026-07-29T09:51:03Z'
 ```
 
 ## Batches
@@ -64,9 +65,10 @@ batches:
     start_sha: edb0dfbb163588d0e8d81b9279f933af00f1548e
     commit_sha: 976c6be5563a3f06ad63c586ad6f8df7fa19c034
   - name: ensure-server-native
-    state: running
+    state: approved
     implementer_session: db8e2537-6a7e-4e30-ae8d-869c4e37cc63
     start_sha: b18a7918477a5fa42e0d061a6cd4bd3b9e9deb16
+    commit_sha: 31b4b2a45cfbcf557aa6cbeaf727e2dcebab8264
   - name: ensure-server-supervised
     state: pending
   - name: wire-ensure-server-into-refs
