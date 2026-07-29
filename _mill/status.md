@@ -46,7 +46,9 @@ batches:
     start_sha: 4608d6d1bd3d5e98e31859b86131d731a683ad16
     commit_sha: fdd7e6d15a9e2ceb2f05c2f7fdae1fc48161695f
   - name: lspclient-dial-transport
-    state: pending
+    state: running
+    implementer_session: ae2c3163-14da-4a75-8177-de1cf45088c2
+    start_sha: ce0561b5c312999abf694758ada30a9d1ec988ac
   - name: toolchain-manager
     state: pending
   - name: daemon-state-and-locking
