@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-finalize-docs-and-invariants
+phase: holistic-reviewing
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-definition-and-symbol-engine  '2026-07-29T10:51:13Z'
 approved-cli-definition-and-symbol  '2026-07-29T11:00:17Z'
 approved-batch-mode-cli  '2026-07-29T11:05:18Z'
 approved-finalize-docs-and-invariants  '2026-07-29T11:11:21Z'
+holistic-reviewing  '2026-07-29T11:11:41Z'
 ```
 
 ## Batches
