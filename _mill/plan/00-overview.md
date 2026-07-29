@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: config-driven junction list'
 slug: fabric-junction-config
-approved: false
+approved: true
 started: 20260729-150807
 parent: main
 root: ""

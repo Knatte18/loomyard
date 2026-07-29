@@ -1,0 +1,28 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: config-driven junction list — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: opusxhigh
+reviewer_self_id: Claude Opus 4.8 (claude-opus-4-8)
+reviewed_file: plan/
+date: 2026-07-29
+```
+
+## Findings
+
+### [NIT] Dead SeedConfig left in MaterialisesMissingWeftTarget
+**Location:** Batch 2 / Card 6
+**Issue:** The card states TestWireJunctions_MaterialisesMissingWeftTarget "needs NO config seeding," but its Edits instruction only covers adding the `names` arg; the existing `lyxtest.SeedConfig` (junction_pattern_integration_test.go:70-73) is left in place, now dead and implying config is still consulted.
+**Fix:** Have the card explicitly remove that SeedConfig call so the test setup matches the no-config-load reality.
+
+### [NIT] removeJunctionRecords cited but its file not in Card 6 Context
+**Location:** Batch 2 / Card 6
+**Issue:** Requirements mention `removeJunctionRecords` (defined in weftwiring.go) as "unchanged," yet weftwiring.go is not in Card 6's Context/Edits; the mention is incidental (it is modified only via Card 7) so no exploration is actually forced.
+**Fix:** Drop the incidental reference, or add weftwiring.go to Card 6 Context for hygiene.
+
+## Verdict
+
+APPROVE
+Line numbers, signatures, DAG, file-touch union, and Hub Geometry Invariant handling all verified sound.
+MILL_REVIEW_END
