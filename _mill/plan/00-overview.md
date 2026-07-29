@@ -95,6 +95,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/fabricengine/junctionnames.go`
 - `internal/fabricengine/junctionnames_test.go`
 - `internal/fabricengine/reconcile.go`
+- `internal/fabricengine/remove_junctions_integration_test.go`
 - `internal/fabricengine/weftwiring.go`
 - `internal/hubgeometry/geometry_test.go`
 - `internal/hubgeometry/hubgeometry.go`
