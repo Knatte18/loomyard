@@ -88,7 +88,9 @@ batches:
     start_sha: 1d9ba4316abd16e65809c45cc6d923fc39c3f259
     commit_sha: 4fdba7195417ad2752a0cbcbbbe2db02f43d8bef
   - name: cli-definition-and-symbol
-    state: pending
+    state: running
+    implementer_session: a83f535e-4885-42cd-b937-d0e49339bdf4
+    start_sha: df0cb8848e2fb0d3c9ff9ffc6f1044950cd93703
   - name: batch-mode-cli
     state: pending
   - name: finalize-docs-and-invariants
