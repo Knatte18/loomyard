@@ -1,3 +1,2 @@
-home: ${env:LYX_HOME:-Home.md}           # home page file name; relative to board dir
-sidebar: ${env:LYX_SIDEBAR:-_Sidebar.md}   # sidebar file name; relative to board dir
-proposal_prefix: ${env:LYX_PROPOSAL_PREFIX:-proposal-}   # prefix for proposal files
+readme: ${env:LYX_README:-README.md}   # readme page file name; relative to board dir
+design_prefix: ${env:LYX_DESIGN_PREFIX:-design-}   # prefix for design-doc files
