@@ -100,5 +100,7 @@ batches:
     start_sha: 71489d6b1991811eb977d7d401aae13aa3b0be1c
     commit_sha: 6b330faf9aec7c1ab263c29973b2168e3e616390
   - name: finalize-docs-and-invariants
-    state: pending
+    state: running
+    implementer_session: 9f6a7f2b-c0c0-43b7-b0be-1c6c4b8ad984
+    start_sha: f34728b2a6e6bf5e93ca52f576ad69678799b6bb
 ```
