@@ -473,6 +473,173 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 	}
 }
 
+// TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy asserts that
+// documentSymbol() sends the correct textDocument.uri in its
+// textDocument/documentSymbol request and correctly parses a hierarchical
+// DocumentSymbol[] response, preserving each node's Children subtree so a
+// later caller's recursion (collectInFileMatches, refs.go) can reach nested
+// symbols such as a method nested under its type.
+func TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy(t *testing.T) {
+	clientTransport, serverTransport := newPipeTransportPair()
+	defer clientTransport.Close()
+	defer serverTransport.Close()
+
+	client := newLSPClientFromRW(clientTransport)
+	server := newFakeServer(serverTransport)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req, ok := server.readMessage(t)
+		if !ok {
+			return
+		}
+		if req.Method != "textDocument/documentSymbol" {
+			t.Errorf("fakeServer: got request method %q; want %q", req.Method, "textDocument/documentSymbol")
+			return
+		}
+
+		var params struct {
+			TextDocument struct {
+				URI string `json:"uri"`
+			} `json:"textDocument"`
+		}
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Errorf("fakeServer: unmarshal documentSymbol params: %v", err)
+			return
+		}
+		if params.TextDocument.URI != "file:///tmp/example/foo.go" {
+			t.Errorf("fakeServer: textDocument/documentSymbol params.textDocument.uri = %q; want %q", params.TextDocument.URI, "file:///tmp/example/foo.go")
+		}
+
+		server.respond(t, req.ID, []map[string]any{
+			{
+				"name": "Foo",
+				"kind": 23, // Struct
+				"range": map[string]any{
+					"start": map[string]any{"line": 4, "character": 0},
+					"end":   map[string]any{"line": 10, "character": 1},
+				},
+				"selectionRange": map[string]any{
+					"start": map[string]any{"line": 4, "character": 5},
+					"end":   map[string]any{"line": 4, "character": 8},
+				},
+				"children": []map[string]any{
+					{
+						"name": "Open",
+						"kind": 6, // Method
+						"range": map[string]any{
+							"start": map[string]any{"line": 6, "character": 0},
+							"end":   map[string]any{"line": 8, "character": 1},
+						},
+						"selectionRange": map[string]any{
+							"start": map[string]any{"line": 6, "character": 15},
+							"end":   map[string]any{"line": 6, "character": 19},
+						},
+					},
+				},
+			},
+		})
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	symbols, err := client.documentSymbol(ctx, "file:///tmp/example/foo.go")
+	if err != nil {
+		t.Fatalf("documentSymbol() returned unexpected error: %v", err)
+	}
+	<-done
+
+	if len(symbols) != 1 {
+		t.Fatalf("documentSymbol() returned %d top-level symbols; want 1", len(symbols))
+	}
+	top := symbols[0]
+	if top.Name != "Foo" {
+		t.Errorf("documentSymbol()[0].Name = %q; want %q", top.Name, "Foo")
+	}
+	if top.Kind != 23 {
+		t.Errorf("documentSymbol()[0].Kind = %d; want %d", top.Kind, 23)
+	}
+	wantRange := lspRange{Start: lspPosition{Line: 4, Character: 0}, End: lspPosition{Line: 10, Character: 1}}
+	if top.Range != wantRange {
+		t.Errorf("documentSymbol()[0].Range = %+v; want %+v", top.Range, wantRange)
+	}
+	wantSelectionRange := lspRange{Start: lspPosition{Line: 4, Character: 5}, End: lspPosition{Line: 4, Character: 8}}
+	if top.SelectionRange != wantSelectionRange {
+		t.Errorf("documentSymbol()[0].SelectionRange = %+v; want %+v", top.SelectionRange, wantSelectionRange)
+	}
+
+	if len(top.Children) != 1 {
+		t.Fatalf("documentSymbol()[0].Children has %d entries; want 1 (proving the children subtree is preserved)", len(top.Children))
+	}
+	child := top.Children[0]
+	if child.Name != "Open" {
+		t.Errorf("documentSymbol()[0].Children[0].Name = %q; want %q", child.Name, "Open")
+	}
+	if child.Kind != 6 {
+		t.Errorf("documentSymbol()[0].Children[0].Kind = %d; want %d", child.Kind, 6)
+	}
+}
+
+// TestLSPClient_SupportsDocumentSymbol asserts supportsDocumentSymbol()
+// reflects whether the server's initialize response advertised
+// documentSymbolProvider, mirroring
+// TestLSPClient_InitializeCapturesCapabilities's coverage of
+// supportsWorkspaceSymbol().
+func TestLSPClient_SupportsDocumentSymbol(t *testing.T) {
+	tests := []struct {
+		name         string
+		capabilities map[string]any
+		want         bool
+	}{
+		{
+			name:         "Advertised",
+			capabilities: map[string]any{"documentSymbolProvider": true},
+			want:         true,
+		},
+		{
+			name:         "Omitted",
+			capabilities: map[string]any{},
+			want:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientTransport, serverTransport := newPipeTransportPair()
+			defer clientTransport.Close()
+			defer serverTransport.Close()
+
+			client := newLSPClientFromRW(clientTransport)
+			server := newFakeServer(serverTransport)
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				req, ok := server.readMessage(t)
+				if !ok {
+					return
+				}
+				if !server.respond(t, req.ID, map[string]any{"capabilities": tt.capabilities}) {
+					return
+				}
+				server.readMessage(t) // initialized notification
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+				t.Fatalf("initialize() returned unexpected error: %v", err)
+			}
+			<-done
+
+			if got := client.supportsDocumentSymbol(); got != tt.want {
+				t.Errorf("supportsDocumentSymbol() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext asserts that a
 // context whose deadline has already passed causes call() (exercised here
 // via references()) to return ErrServerTimeout without ever blocking on a
