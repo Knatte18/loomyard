@@ -468,6 +468,37 @@ func (l *Layout) LoomStatusLock() string {
 	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json.lock")
 }
 
+// CodeintelDaemonStateFile returns the path to the codeintel daemon's
+// runtime state file for the given language (e.g. "go"). It is
+// deliberately WorktreeRoot-anchored, NOT Cwd-anchored, for the same
+// reason LoomStatusFile above is: the supervised codeintel daemon must be
+// a worktree-wide singleton per language, so two lyx invocations from
+// different subdirectories of one worktree resolve to the same state file
+// and share one running gopls rather than each spawning its own. It lives
+// under dotLyxDirName (".lyx"), never LyxDirName ("_lyx"): DotLyxDir's own
+// doc comment already names reed's reed.json/reed.lock as exactly this
+// kind of machine-bound runtime daemon state, and a git-committed
+// PID/socket file would be actively wrong (stale the instant it is
+// committed). The lang path segment lets two different languages' daemons
+// (a future Python supervised daemon alongside Go's native one) coexist
+// under one worktree without colliding on a shared state file.
+//
+// Returns filepath.Join(WorktreeRoot, dotLyxDirName, "codeintel", lang, "daemon.json").
+func (l *Layout) CodeintelDaemonStateFile(lang string) string {
+	return filepath.Join(l.WorktreeRoot, dotLyxDirName, "codeintel", lang, "daemon.json")
+}
+
+// CodeintelDaemonLock returns the path to the advisory lock file guarding
+// concurrent access to CodeintelDaemonStateFile(lang). It shares that
+// method's WorktreeRoot anchoring and per-lang scoping for the same
+// reasons: the lock must fence the one true per-language state file at the
+// worktree root, not a per-subdirectory or cross-language copy.
+//
+// Returns filepath.Join(WorktreeRoot, dotLyxDirName, "codeintel", lang, "daemon.lock").
+func (l *Layout) CodeintelDaemonLock(lang string) string {
+	return filepath.Join(l.WorktreeRoot, dotLyxDirName, "codeintel", lang, "daemon.lock")
+}
+
 // DiscussionDir returns the path to the Discussion phase's output directory
 // for this worktree: the two-file `decision-record.md` / `support-log.md`
 // pair described in docs/reference/discussion-format.md. It is deliberately
