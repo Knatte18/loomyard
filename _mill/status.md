@@ -58,7 +58,9 @@ batches:
     start_sha: 93d577d1f36b3c6cf5a2f85c3514303e532ba6be
     commit_sha: 81240b4e9dc06c45f8b43194a626ade9960080e6
   - name: daemon-state-and-locking
-    state: pending
+    state: running
+    implementer_session: 9809ec16-36a2-451d-aa36-4b3a2ea358a5
+    start_sha: edb0dfbb163588d0e8d81b9279f933af00f1548e
   - name: ensure-server-native
     state: pending
   - name: ensure-server-supervised
