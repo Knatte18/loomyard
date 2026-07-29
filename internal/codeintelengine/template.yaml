@@ -16,6 +16,8 @@ go:
   match: any
   command: [gopls]
   install_hint: "go install golang.org/x/tools/gopls@latest"
+  pinned_version: v0.23.0
+  has_native_daemon: true
 python:
   markers: [pyproject.toml, setup.py, setup.cfg]
   match: any

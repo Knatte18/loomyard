@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"sort"
@@ -52,22 +53,46 @@ type lspMessage struct {
 }
 
 // symbolInformation is the LSP wire shape for one workspace/symbol result:
-// the symbol's display name plus the location of its declaration. It is
-// deliberately narrow — the LSP spec's SymbolInformation carries a "kind"
-// and other fields this engine never inspects.
+// the symbol's display name, its declaration location, and its kind (a
+// 1-indexed LSP SymbolKind enum, e.g. File=1, Module=2, Function=12 — this
+// package only passes the raw integer through, since decoding it into a
+// display-facing meaning belongs to the CLI layer, not the engine). It is
+// otherwise deliberately narrow — the LSP spec's SymbolInformation carries
+// other fields this engine never inspects.
 type symbolInformation struct {
 	Name     string      `json:"name"`
+	Kind     int         `json:"kind"`
 	Location lspLocation `json:"location"`
 }
 
+// lspDocumentSymbol is the LSP wire shape for one textDocument/documentSymbol
+// result: gopls (and the LSP spec's preferred shape) returns this
+// hierarchical DocumentSymbol[] form, where a type's methods and a
+// namespace's members nest under it via Children, rather than the flat
+// SymbolInformation[] alternative the spec also allows — parsing the
+// hierarchical shape is sufficient for this engine's needs, so the flat
+// alternative is deliberately not handled. Range spans the whole symbol
+// (e.g. a function's entire body); SelectionRange spans just the
+// identifier itself, which is what refs.go's InFile resolve branch uses as
+// the reported position.
+type lspDocumentSymbol struct {
+	Name           string              `json:"name"`
+	Kind           int                 `json:"kind"`
+	Range          lspRange            `json:"range"`
+	SelectionRange lspRange            `json:"selectionRange"`
+	Children       []lspDocumentSymbol `json:"children"`
+}
+
 // capabilities is the narrow slice of the server's initialize response this
-// client retains: whether workspace/symbol name resolution is supported.
-// The LSP spec allows workspaceSymbolProvider to be either a bare bool or an
-// options object; UnmarshalJSON below normalizes both to a Supported bool
-// so refs.go's supportsWorkspaceSymbol() check never has to care which
-// shape a given server sent.
+// client retains: whether workspace/symbol name resolution and
+// textDocument/documentSymbol are supported. The LSP spec allows both
+// capability fields to be either a bare bool or an options object;
+// UnmarshalJSON below normalizes both shapes to a Supported bool so
+// refs.go's supportsWorkspaceSymbol()/supportsDocumentSymbol() checks never
+// have to care which shape a given server sent.
 type capabilities struct {
 	WorkspaceSymbolProvider capabilityFlag `json:"workspaceSymbolProvider"`
+	DocumentSymbolProvider  capabilityFlag `json:"documentSymbolProvider"`
 }
 
 // capabilityFlag normalizes an LSP capability field that servers may report
@@ -215,6 +240,28 @@ func newLSPClientFromRW(rwc io.ReadWriteCloser) *lspClient {
 	}
 	go c.readLoop()
 	return c
+}
+
+// newLSPClientDial dials network/address (a Unix socket path or a TCP
+// address) and wraps the resulting connection with newLSPClientFromRW —
+// net.Conn already satisfies io.ReadWriteCloser, so the dial-transport mode
+// needs no framing, readLoop, or protocol code of its own; it reuses every
+// piece of newLSPClientFromRW's already-tested behavior unchanged. This is
+// the supervised-strategy constructor: it dials an already-running,
+// externally-owned language server process rather than spawning one, so
+// unlike newLSPClient the returned client's cmd field is nil — close()'s
+// `if c.cmd != nil { c.cmd.Wait() }` branch is already a no-op for a dialed
+// client, since close() guards on c.cmd == nil correctly. network/address
+// are passed through verbatim to net.Dialer.DialContext; this function has
+// no opinion on Unix-vs-TCP, the caller decides based on the daemon's
+// recorded state-file address.
+func newLSPClientDial(ctx context.Context, network, address string) (*lspClient, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, fmt.Errorf("codeintelengine: dial lsp server at %s %s: %w", network, address, err)
+	}
+	return newLSPClientFromRW(conn), nil
 }
 
 // writeMessage marshals v and frames it with the LSP Content-Length header,
@@ -384,6 +431,13 @@ func (c *lspClient) supportsWorkspaceSymbol() bool {
 	return c.caps.WorkspaceSymbolProvider.Supported
 }
 
+// supportsDocumentSymbol reports whether the server's initialize response
+// advertised documentSymbolProvider. It is only meaningful after a
+// successful initialize call.
+func (c *lspClient) supportsDocumentSymbol() bool {
+	return c.caps.DocumentSymbolProvider.Supported
+}
+
 // references issues one textDocument/references request (with
 // includeDeclaration: true, so the declaration site is included alongside
 // call sites) and returns the raw location list.
@@ -400,6 +454,80 @@ func (c *lspClient) references(ctx context.Context, fileURI string, pos lspPosit
 	var locations []lspLocation
 	if err := json.Unmarshal(raw, &locations); err != nil {
 		return nil, fmt.Errorf("unmarshal textDocument/references result: %w", err)
+	}
+	return locations, nil
+}
+
+// definition issues one textDocument/definition request and returns the
+// server's reported definition location(s), parsed via
+// parseDefinitionResult since the LSP spec allows three distinct wire
+// shapes for this method's response. Unlike references, no
+// context.includeDeclaration parameter is sent — that field is specific to
+// textDocument/references's request shape and does not exist on
+// textDocument/definition's.
+func (c *lspClient) definition(ctx context.Context, fileURI string, pos lspPosition) ([]lspLocation, error) {
+	raw, err := c.call(ctx, "definition", "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": fileURI},
+		"position":     pos,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseDefinitionResult(raw)
+}
+
+// parseDefinitionResult decodes a textDocument/definition response, whose
+// LSP-specified result type is `Location | Location[] | LocationLink[] |
+// null` — three distinct wire shapes one Go type cannot json.Unmarshal into
+// directly. A null or empty result is a legitimate "zero definitions found"
+// outcome at this layer (returned as (nil, nil), not an error); the caller
+// visible outcome for an empty result is decided higher up, in Definition
+// (definition.go), not here. gopls is known to report Location[] for this
+// method (not LocationLink[]), so the LocationLink branch below is
+// defensive per the LSP spec's stated possible shapes rather than something
+// this task can empirically confirm exercises against the one real server
+// V1 ships with — lspclient_test.go's table-driven coverage is what
+// actually exercises it.
+func parseDefinitionResult(raw json.RawMessage) ([]lspLocation, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil, nil
+	}
+
+	// A bare Location object (not wrapped in an array) is the single-result
+	// shape some servers use; JSON objects start with '{', arrays with '['.
+	if trimmed[0] == '{' {
+		var loc lspLocation
+		if err := json.Unmarshal(trimmed, &loc); err != nil {
+			return nil, fmt.Errorf("unmarshal textDocument/definition bare Location result: %w", err)
+		}
+		return []lspLocation{loc}, nil
+	}
+
+	var elements []json.RawMessage
+	if err := json.Unmarshal(trimmed, &elements); err != nil {
+		return nil, fmt.Errorf("unmarshal textDocument/definition result array: %w", err)
+	}
+
+	locations := make([]lspLocation, len(elements))
+	for i, elem := range elements {
+		// probe carries both possible per-element shapes at once (Location's
+		// uri/range and LocationLink's targetUri/targetSelectionRange) so a
+		// single unmarshal determines which one the server actually sent.
+		var probe struct {
+			URI                  string   `json:"uri"`
+			Range                lspRange `json:"range"`
+			TargetURI            string   `json:"targetUri"`
+			TargetSelectionRange lspRange `json:"targetSelectionRange"`
+		}
+		if err := json.Unmarshal(elem, &probe); err != nil {
+			return nil, fmt.Errorf("unmarshal textDocument/definition result element %d: %w", i, err)
+		}
+		if probe.URI != "" {
+			locations[i] = lspLocation{URI: probe.URI, Range: probe.Range}
+		} else {
+			locations[i] = lspLocation{URI: probe.TargetURI, Range: probe.TargetSelectionRange}
+		}
 	}
 	return locations, nil
 }
@@ -422,6 +550,28 @@ func (c *lspClient) workspaceSymbol(ctx context.Context, query string) ([]symbol
 	sort.Slice(symbols, func(i, j int) bool {
 		return formatLocation(symbols[i].Location) < formatLocation(symbols[j].Location)
 	})
+	return symbols, nil
+}
+
+// documentSymbol issues one textDocument/documentSymbol request and returns
+// the server's hierarchical DocumentSymbol[] result unchanged (children
+// still nested under their parent). gopls returns this hierarchical shape,
+// not the LSP spec's alternative flat SymbolInformation[] shape; parsing
+// only the hierarchical shape is a deliberate scope choice (see
+// lspDocumentSymbol's doc comment), not an oversight of the spec's other
+// legal response shape.
+func (c *lspClient) documentSymbol(ctx context.Context, fileURI string) ([]lspDocumentSymbol, error) {
+	raw, err := c.call(ctx, "documentSymbol", "textDocument/documentSymbol", map[string]any{
+		"textDocument": map[string]any{"uri": fileURI},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var symbols []lspDocumentSymbol
+	if err := json.Unmarshal(raw, &symbols); err != nil {
+		return nil, fmt.Errorf("unmarshal textDocument/documentSymbol result: %w", err)
+	}
 	return symbols, nil
 }
 
