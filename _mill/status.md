@@ -76,7 +76,9 @@ batches:
     start_sha: 80556f07b1548f857031453b11758dfc93148de7
     commit_sha: a288ba939682f9dbf4d0ace5cefc9def75b72ff1
   - name: wire-ensure-server-into-refs
-    state: pending
+    state: running
+    implementer_session: a3971197-76c8-41e4-8e2e-85064f469251
+    start_sha: 11a21b66fa2c51724f6dde64ac82ce3320df61c2
   - name: definition-and-symbol-engine
     state: pending
   - name: cli-definition-and-symbol
