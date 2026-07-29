@@ -446,6 +446,110 @@ func parsePosition(arg string) (codeintelengine.Position, bool) {
 	return codeintelengine.Position{File: file, Line: line, Character: col}, true
 }
 
+// batchStatus is the per-symbol outcome batch mode reports for each entry in
+// a multi-argument refs/definition/symbol call. Its four values rank
+// strictly worst-to-best via statusRank, per the plan's batch-mode-cli
+// exit-code contract: found < not_found < ambiguous < error.
+type batchStatus string
+
+const (
+	statusFound     batchStatus = "found"
+	statusNotFound  batchStatus = "not_found"
+	statusAmbiguous batchStatus = "ambiguous"
+	statusError     batchStatus = "error"
+)
+
+// statusRank orders batchStatus values from best (0) to worst (3) outcome,
+// so runBatch can pick the process exit code that reflects the worst status
+// present across an entire batch — a batch that finds every symbol exits 0,
+// one with any error anywhere exits 3, regardless of how many other symbols
+// succeeded.
+var statusRank = map[batchStatus]int{
+	statusFound:     0,
+	statusNotFound:  1,
+	statusAmbiguous: 2,
+	statusError:     3,
+}
+
+// classifyLookupError maps a References/Definition call's outcome to a
+// batchStatus and its extra JSON fields, shared by refs and definition's
+// batch-mode closures (card 39). A nil err is statusFound, carrying results
+// under resultsField. An *codeintelengine.ErrAmbiguousSymbol is
+// statusAmbiguous, carrying the candidate list — batch mode surfaces the
+// same ambiguity emitLookupResult's exit-2 path already reports for
+// single-arg mode, just per-entry instead of for the whole call.
+// ErrSymbolNotFoundSentinel is statusNotFound with no extra fields — a
+// confirmed absence needs nothing more reported. Every other error
+// (ErrNoLanguage, ErrServerNotFound, ErrServerTimeout,
+// ErrResolverUnsupported, a toolchain-install failure, ...) is statusError,
+// since none of them mean "confirmed absent."
+func classifyLookupError(err error, resultsField string, results []codeintelengine.Reference) (batchStatus, map[string]any) {
+	if err == nil {
+		return statusFound, map[string]any{resultsField: referenceFields(results)}
+	}
+
+	var ambiguous *codeintelengine.ErrAmbiguousSymbol
+	if errors.As(err, &ambiguous) {
+		return statusAmbiguous, map[string]any{"candidates": ambiguous.Candidates}
+	}
+
+	if errors.Is(err, codeintelengine.ErrSymbolNotFoundSentinel) {
+		return statusNotFound, nil
+	}
+
+	return statusError, map[string]any{"error": err.Error()}
+}
+
+// classifySymbolError is classifyLookupError's twin for Symbol's batch-mode
+// closure (card 40). It shares the same nil/not-found/else structure but has
+// no ambiguous branch at all — per the plan's symbol-semantics decision,
+// Symbol never collapses multiple candidates into ambiguity, so
+// classifySymbolError has no case that could ever produce statusAmbiguous.
+func classifySymbolError(err error, results []codeintelengine.SymbolMatch) (batchStatus, map[string]any) {
+	if err == nil {
+		return statusFound, map[string]any{"symbols": symbolMatchFields(results)}
+	}
+
+	if errors.Is(err, codeintelengine.ErrSymbolNotFoundSentinel) {
+		return statusNotFound, nil
+	}
+
+	return statusError, map[string]any{"error": err.Error()}
+}
+
+// runBatch drives batch mode for any of the three verbs: it calls lookupOne
+// once per entry in args, builds one {"symbol":..., "status":..., ...}
+// envelope entry per call (lookupOne's returned fields map merged in — a nil
+// fields map, the not-found case, merges nothing extra), emits
+// {"results": [...]} via output.Ok, and overrides the process exit code to
+// the worst statusRank seen across the batch. output.Ok's return value is
+// discarded — like emitLookupResult's own output.Ok call, it always returns
+// 0 — and clihelp.SetExit is only called when the worst rank is non-zero:
+// when every symbol is found, the rank is already 0 and SetExit(ctx, 0)
+// would be a no-op anyway. runBatch has no opinion on how lookupOne resolves
+// a symbol; that is each verb's own closure (cards 39, 40).
+func runBatch(ctx context.Context, out io.Writer, args []string, lookupOne func(symbol string) (batchStatus, map[string]any)) {
+	entries := make([]map[string]any, len(args))
+	worst := statusFound
+	for i, arg := range args {
+		status, fields := lookupOne(arg)
+		if statusRank[status] > statusRank[worst] {
+			worst = status
+		}
+
+		entry := map[string]any{"symbol": arg, "status": string(status)}
+		for k, v := range fields {
+			entry[k] = v
+		}
+		entries[i] = entry
+	}
+
+	output.Ok(out, map[string]any{"results": entries})
+	if statusRank[worst] != 0 {
+		clihelp.SetExit(ctx, statusRank[worst])
+	}
+}
+
 // RunCLI is the public seam for the codeintel module CLI.
 //
 // It delegates to clihelp.Execute with the cobra command tree, passing out as the
