@@ -34,6 +34,7 @@ This batch delivers item 4's **engine** half: a new `textDocument/documentSymbol
   - `internal/codeintelengine/lspclient.go`
   - `internal/codeintelengine/symbol.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/position.go`
 - **Edits:**
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/doc.go`
@@ -61,6 +62,7 @@ This batch delivers item 4's **engine** half: a new `textDocument/documentSymbol
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/lspclient_test.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/position.go`
 - **Edits:**
   - `internal/codeintelengine/refs_test.go`
 - **Creates:** none
@@ -71,4 +73,4 @@ This batch delivers item 4's **engine** half: a new `textDocument/documentSymbol
 
 ## Batch Tests
 
-`verify: go test ./internal/codeintelengine/...` runs the whole engine package untagged, exercising the new `documentSymbol` parse (card 5) and the `InFile` resolve branch + `collectInFileMatches` helper (card 6) over the package's established fake-transport harness (`newPipeTransportPair`/`newFakeServer`) — no real gopls, no spawn, satisfying the Test Tier Purity Invariant. The `leaf_enforcement_test.go` import-allowlist check also runs here and confirms the new code adds no disallowed import (all additions use stdlib types already in the package). Integration coverage of `--in-file` end-to-end against a real gopls (the same-name-in-two-types ambiguity case) is deferred to the out-of-band `-tags integration` suite per the Test Tier Purity Invariant and is not part of this batch's gate.
+`verify: go test ./internal/codeintelengine/...` runs the whole engine package untagged, exercising the new `documentSymbol` parse (card 5) and the `InFile` resolve branch + `collectInFileMatches` helper (card 6) over the package's established fake-transport harness (`newPipeTransportPair`/`newFakeServer`) — no real gopls, no spawn, satisfying the Test Tier Purity Invariant. The `leaf_enforcement_test.go` import-allowlist check also runs here and confirms the new code adds no disallowed import (all additions use stdlib types already in the package). Integration coverage of `--in-file` end-to-end against a real gopls (the same-name-in-two-types ambiguity case) is a real deliverable, created by **batch 4 card 14** (`//go:build integration`, in `refs_integration_test.go`) — placed there because batch 4 is the only batch whose dependencies include both this batch's engine `InFile` resolve and batch 3's `--in-file` CLI flag, and it already owns the package's other integration-test addition (card 13). Like every `//go:build integration` test it is excluded from the plain `go test` gate per the Test Tier Purity Invariant and run out-of-band with `-tags integration`.

@@ -36,6 +36,11 @@ batches:
     file: 04-engine-supervised-flip.md
     depends-on: [1, 2, 3]
     verify: go test ./internal/codeintelengine/...
+  - number: 5
+    name: engine-integration-tests
+    file: 05-engine-integration-tests.md
+    depends-on: [4]
+    verify: go test -tags integration -run=^$ ./internal/codeintelengine/...
 ```
 
 ## Shared Decisions
@@ -86,8 +91,10 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/codeintelengine/lspclient.go`
 - `internal/codeintelengine/lspclient_test.go`
 - `internal/codeintelengine/refs.go`
+- `internal/codeintelengine/refs_integration_test.go`
 - `internal/codeintelengine/refs_test.go`
 - `internal/codeintelengine/supervised_integration_test.go`
+- `internal/codeintelengine/supervised_test.go`
 - `internal/proc/killpid_test.go`
 - `internal/proc/proc_linux.go`
 - `internal/proc/proc_windows.go`
