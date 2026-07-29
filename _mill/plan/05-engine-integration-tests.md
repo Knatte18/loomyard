@@ -20,6 +20,7 @@ This batch adds the two `//go:build integration` proofs the task needs — one f
 - **Context:**
   - `internal/codeintelengine/ensureserver.go`
   - `internal/codeintelengine/daemonstate.go`
+  - `internal/codeintelengine/registry.go`
 - **Edits:**
   - `internal/codeintelengine/ensureserver_integration_test.go`
   - `internal/codeintelengine/supervised_integration_test.go`
@@ -34,6 +35,8 @@ This batch adds the two `//go:build integration` proofs the task needs — one f
 - **Context:**
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/supervised_test.go`
+  - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/errors.go`
 - **Edits:**
   - `internal/codeintelengine/refs_integration_test.go`
 - **Creates:** none
