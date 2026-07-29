@@ -60,16 +60,16 @@ type Query struct {
 // Options configures one References call: Registry supplies the language
 // servers to choose from, TargetDir is the project root to detect the
 // language in and root the launched server at, WorktreeRoot is the
-// worktree root EnsureServer's supervised strategy would anchor its daemon
-// singleton at; unused by every strategy actually reachable in V1 (native
-// never reads it), but threaded through now so a future language selecting
-// supervised needs no signature change. The CLI layer populates it from a
-// resolved hubgeometry.Layout.WorktreeRoot when available, empty
-// otherwise. Lang optionally overrides detection, Query selects the symbol
-// or position to look up, and Timeout bounds every individual LSP request
-// (initialize, the resolver call, and references) — not the call as a
-// whole, so a slow-but-eventually-fed server only fails the specific phase
-// that stalls.
+// worktree root EnsureServer's supervised strategy anchors its daemon
+// singleton (state file, spawn lock, socket) at — Go's registry entry
+// dispatches to supervised as its live V1 strategy, so this field is read
+// on every Go lookup, not merely threaded through unused. The CLI layer
+// populates it from a resolved hubgeometry.Layout.WorktreeRoot when
+// available, empty otherwise. Lang optionally overrides detection, Query
+// selects the symbol or position to look up, and Timeout bounds every
+// individual LSP request (initialize, the resolver call, and references) —
+// not the call as a whole, so a slow-but-eventually-fed server only fails
+// the specific phase that stalls.
 type Options struct {
 	Registry     Registry
 	TargetDir    string

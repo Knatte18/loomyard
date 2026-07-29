@@ -393,13 +393,15 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 // real gopls. It swaps installGoToolchain for a fake that always fails
 // with a distinct, recognizable error, then asserts References's returned
 // error wraps that exact sentinel: only reachable if the call chain was
-// References -> lookup -> acquireConnection -> ensureServer -> ensureNative
-// -> resolveGoToolchain -> the fake installer. Had References instead taken
-// the legacy path, it would fail with ErrServerNotFoundSentinel from a
-// literal, unresolved "gopls" lookup on $PATH — a categorically different
-// error this assertion distinguishes from. This is not a proof that a real
-// gopls connection works end to end — that is ensureserver_integration_test.go
-// (batch 5).
+// References -> lookup -> acquireConnection -> ensureServer ->
+// resolveGoToolchain -> the fake installer. ensureServer resolves the
+// toolchain directly and returns on failure before ever attempting
+// ensureSupervised or ensureNative, so this fake-install failure never
+// reaches either strategy. Had References instead taken the legacy path,
+// it would fail with ErrServerNotFoundSentinel from a literal, unresolved
+// "gopls" lookup on $PATH — a categorically different error this assertion
+// distinguishes from. This is not a proof that a real gopls connection
+// works end to end — that is ensureserver_integration_test.go (batch 5).
 func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 	withTempUserCacheDir(t)
 
@@ -425,7 +427,7 @@ func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 		Timeout:   5 * time.Second,
 	})
 	if !errors.Is(err, errFakeInstallRefused) {
-		t.Errorf("References() with HasNativeDaemon: true err = %v; want errors.Is(err, errFakeInstallRefused) (proving the ensureServer -> ensureNative -> resolveGoToolchain path was taken, not the legacy newLSPClient path)", err)
+		t.Errorf("References() with HasNativeDaemon: true err = %v; want errors.Is(err, errFakeInstallRefused) (proving the ensureServer -> resolveGoToolchain path was taken, not the legacy newLSPClient path)", err)
 	}
 }
 

@@ -18,8 +18,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // TestFinalizeConnection_SuccessReturnsNil drives a fake server that answers
@@ -320,5 +326,80 @@ func TestReconnectUnderLock_ReuseOrRestart(t *testing.T) {
 				t.Errorf("reconnectUnderLock() client = %v; want %v", client, tt.wantClient)
 			}
 		})
+	}
+}
+
+// TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative
+// drives ensureServer's step-3 safety net — "supervised fails for a
+// non-toolchain reason, so native is attempted and native's own result is
+// returned" — the one branch no other untagged test reaches: the
+// toolchain-failure test (TestReferences_HasNativeDaemonRoutesThroughEnsureServer,
+// refs_test.go) short-circuits at step 1 before ensureSupervised is ever
+// attempted, and the integration test (batch 5) only proves the fallback's
+// success path, not this one. resolveGoToolchain succeeds here — a fake
+// installer writes a non-executable stub binary, and resolveGoToolchain's
+// own fast-path/post-install check is a bare os.Stat that never inspects
+// the executable bit — but ensureSupervised cannot acquire its spawn lock
+// (pre-held by this test) and returns ErrServerSpawnTimeout within a short
+// deadline, a non-toolchain reason that triggers the fallback. The
+// fallback's ensureNative re-resolves the same stub binPath and fails at
+// exec.LookPath (the stub is non-executable) before any cmd.Start, so this
+// test spawns no subprocess and stays untagged/process-free.
+func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *testing.T) {
+	withTempUserCacheDir(t)
+
+	binName := "gopls"
+	if runtime.GOOS == "windows" {
+		binName = "gopls.exe"
+	}
+	withFakeInstaller(t, func(ctx context.Context, version, destDir string) error {
+		// A present-but-non-executable stub: resolveGoToolchain's os.Stat-
+		// only checks are satisfied by mere presence, which is all step 1
+		// (the toolchain resolve) needs to succeed, while still guaranteeing
+		// the fallback's newLSPClient -> exec.LookPath call fails, with no
+		// real subprocess ever spawned by either strategy.
+		return os.WriteFile(filepath.Join(destDir, binName), nil, 0o644)
+	})
+
+	worktreeRoot := t.TempDir()
+	lockPath := (&hubgeometry.Layout{WorktreeRoot: worktreeRoot}).CodeintelDaemonLock("go")
+	// The lock's parent directory does not otherwise exist under a fresh
+	// t.TempDir() worktree root — no daemon state write happens first to
+	// create it as a side effect here, unlike supervised_test.go's own
+	// retry-exhaustion test — so lock.AcquireWriteLock would otherwise fail
+	// opening the lock file with a not-exist error.
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(%s) failed: %v", filepath.Dir(lockPath), err)
+	}
+	fileLock, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("lock.AcquireWriteLock() failed: %v", err)
+	}
+	t.Cleanup(func() { _ = fileLock.Release() })
+
+	entry := Entry{
+		Command:         []string{"gopls"},
+		PinnedVersion:   "v0.0.0-test",
+		HasNativeDaemon: true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// command is never reached by either strategy: ensureSupervised can
+	// never win the pre-held lock, so it returns ErrServerSpawnTimeout well
+	// within this deadline, and the fallback's ensureNative fails at
+	// exec.LookPath before spawning anything either.
+	client, kind, err := ensureServer(ctx, "go", entry, t.TempDir(), worktreeRoot, 300*time.Millisecond)
+	if client != nil {
+		t.Errorf("ensureServer() client = %v; want nil", client)
+	}
+	if kind != connKindNative {
+		t.Errorf("ensureServer() connKind = %v; want connKindNative (proving the fallback fired, not the supervised success path)", kind)
+	}
+	if err == nil {
+		t.Fatal("ensureServer() returned nil error; want native's own LookPath failure")
+	}
+	if errors.Is(err, ErrServerSpawnTimeoutSentinel) {
+		t.Errorf("ensureServer() err = %v; want it to NOT satisfy errors.Is(err, ErrServerSpawnTimeoutSentinel) (native's own result, not supervised's timeout, must be what ensureServer returns)", err)
 	}
 }

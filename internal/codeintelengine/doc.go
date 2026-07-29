@@ -153,16 +153,15 @@
 // calls, not gopls's 1-minute human-editing-rhythm default) and
 // ensureSupervised (supervised — lyx owns a state file, an advisory
 // spawn-race lock, a deterministic socket path, and detached-spawn/restart
-// logic for a language server with no shared-daemon mode of its own, e.g. a
-// future ty/OmniSharp adapter). ensureServer's own dispatch has exactly one
-// live arm in V1: it always calls ensureNative, since no V1 registry entry
-// (only Go's, which is native) ever requests supervised. ensureSupervised is
-// nonetheless fully built, unit-tested, and integration-tested — its own
-// dedicated integration test drives it directly against a plain gopls,
-// proving the state-file, probe, and kill-and-restart behavior work before
-// any language that actually needs it exists. A future ty/OmniSharp adapter
-// is what will first reach ensureSupervised through ensureServer's dispatch,
-// once a registry entry requests it.
+// logic for a language server with no shared-daemon mode of its own).
+// ensureServer dispatches Go to ensureSupervised as its live V1 strategy: it
+// resolves the toolchain once, then attempts supervised, falling back to
+// ensureNative on any supervised error (a toolchain-resolution failure
+// itself never reaches the fallback, since it is returned before
+// ensureSupervised is ever attempted). ensureNative remains fully built,
+// unit-tested, and integration-tested as this fallback — its own dedicated
+// integration test still drives it directly, proving the -remote=auto
+// proxy path independently of the supervised dispatch above it.
 //
 // Connection teardown differs by connKind, and getting this wrong is a
 // protocol-correctness bug, not a style choice:
@@ -184,14 +183,12 @@
 //     the real server subprocess it directly owns, since it never went
 //     through ensureServer at all.
 //
-// Known limitation, carried forward from ensureSupervised's own doc comment:
-// daemonStale only checks PID liveness and protocol version, not whether the
-// daemon actually answers a dial. A daemon that is live but wedged is never
-// classified stale, so every caller's dial-then-finalize keeps failing
-// against a state that keeps reading "healthy," and no caller ever restarts
-// it. This is an accepted gap, not a bug fixed here — supervised has no live
-// V1 dispatch path, so it affects no production caller yet; recovering from
-// it is a future consumer's problem, not this task's.
+// A wedged daemon — live but hung, or never finished binding its listen
+// socket, neither of which daemonStale's PID-plus-protocol-version check
+// alone detects — no longer strands every caller indefinitely: see
+// ensureSupervised's own doc comment for the re-dial-under-lock-then-
+// one-restart escalation that recovers it, now that Go's registry entry
+// dispatches here as a live V1 caller.
 //
 // # Go toolchain manager
 //

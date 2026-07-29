@@ -51,21 +51,50 @@ const (
 
 // ensureServer resolves entry's language server connection and returns it
 // already initialized and probed, alongside the connKind the caller needs
-// to pick the right teardown. worktreeRoot is accepted but unused by the
-// native branch in this batch (native takes no state file/lock) — it
-// exists on the signature now so the supervised strategy (which does need
-// it) can be added without changing this signature again.
+// to pick the right teardown.
 //
-// ensureServer has exactly one live dispatch arm in V1: it always calls
-// ensureNative, because no V1 registry entry ever requests the supervised
-// strategy (every entry that reaches this function has HasNativeDaemon ==
-// true, and in V1 that is Go alone, which uses native). ensureSupervised
-// exists and is fully tested, but proven by its own dedicated integration
-// test, not through this dispatcher — wiring a second arm here would be
-// dead code reachable by no test except one written to force it
-// artificially.
+// ensureServer dispatches Go to the supervised strategy with native as its
+// fallback: it resolves the toolchain-managed binary once via
+// resolveGoToolchain, then calls ensureSupervised, returning
+// connKindSupervised on success. On any error from ensureSupervised it
+// falls back to ensureNative, returning connKindNative and ensureNative's
+// error verbatim on failure. This fallback ordering is deliberately
+// escalation-first, not escalation-instead-of: ensureSupervised's own
+// wedged-daemon escalation (its own doc comment) has already acquired the
+// spawn lock, re-dialed under it, and exhausted its own one restart before
+// ever returning a terminal error here, so this fallback only ever fires
+// after that recovery attempt has already failed, not as a substitute for
+// it.
+//
+// A toolchain-resolution failure never reaches the fallback: it is returned
+// directly, before ensureSupervised is ever attempted, since native needs
+// the identical pinned binary and would only reproduce the identical
+// failure at doubled latency — the toolchain resolve happening first, ahead
+// of the supervised attempt, is what enforces this structurally rather than
+// via a special-cased error check. ensureNative re-resolves the same
+// toolchain internally on the fallback path (a second resolveGoToolchain
+// call); this redundancy is accepted — it is a cached fast-path os.Stat
+// with negligible cost — rather than threading the already-resolved
+// binPath through ensureNative's own signature, which would change both it
+// and its TestEnsureNative_Integration call site for no real benefit.
 func ensureServer(ctx context.Context, lang string, entry Entry, targetDir, worktreeRoot string, timeout time.Duration) (*lspClient, connKind, error) {
-	client, err := ensureNative(ctx, lang, entry, targetDir, timeout)
+	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
+	if err != nil {
+		return nil, connKindNative, fmt.Errorf("codeintelengine: resolve go toolchain for %q: %w", lang, err)
+	}
+
+	// binPath (the toolchain-resolved binary), not entry.Command[0] (the
+	// literal string "gopls"), is what gets launched — entry.Command[1:] is
+	// any fixed extra args the registry entry carries, the same
+	// binPath-plus-extraArgs composition nativeArgv applies for the native
+	// strategy's own argv.
+	command := append([]string{binPath}, entry.Command[1:]...)
+	client, err := ensureSupervised(ctx, command, lang, targetDir, worktreeRoot, timeout)
+	if err == nil {
+		return client, connKindSupervised, nil
+	}
+
+	client, err = ensureNative(ctx, lang, entry, targetDir, timeout)
 	return client, connKindNative, err
 }
 
@@ -256,11 +285,10 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 // file so every reconnecting caller — this worktree's own future lyx
 // invocations — finds and reuses the same daemon rather than spawning a new
 // one. Unlike ensureNative, this function takes a raw command []string, not
-// an Entry: it does no toolchain resolution of its own, and is the
-// low-level strategy proven directly against a plain "gopls" by its own
-// dedicated integration test — no V1 registry entry requests it yet (see
-// the plan's "EnsureServer has exactly one live dispatch arm" Shared
-// Decision).
+// an Entry: it does no toolchain resolution of its own — that is
+// ensureServer's job, which resolves the toolchain and dispatches Go's
+// registry entry here as its live V1 strategy, with ensureNative as its
+// fallback.
 //
 // The whole call is bounded by deadline := time.Now().Add(timeout): a
 // caller that keeps losing the spawn race, or keeps finding a healthy state
@@ -280,21 +308,18 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 // default — or a future restart's stale-socket cleanup finding it already
 // dead.
 //
-// Known limitation: daemonStale only checks PID liveness and protocol
-// version, not whether the daemon actually answers a dial. A process that
-// is alive but hung, or that never finished binding its listen socket, is
-// never classified stale, so every caller's dial-then-finalize keeps
-// failing against a state that keeps reading "healthy," and no caller ever
-// restarts it. The bounded retry below still returns ErrServerSpawnTimeout
-// per call rather than hanging, but a fresh call later hits the identical
-// wedged daemon and times out again, indefinitely, until the process dies
-// on its own or an operator intervenes. This is accepted as a known gap
-// rather than fixed with a dial-failure-triggers-restart heuristic, because
-// that heuristic risks misclassifying a daemon that is merely slow to bind
-// on first spawn (the exact case the dial retry below already exists to
-// tolerate) as wedged, and getting that distinction right needs empirical
-// grounding this task has no reason to invest in — supervised has no live
-// V1 dispatch path, so this limitation affects no production caller yet.
+// daemonStale itself still only checks PID liveness and protocol version,
+// not whether the daemon actually answers a dial — a process that is alive
+// but hung, or that never finished binding its listen socket, is never
+// classified stale on its own. What used to be this function's known gap —
+// every caller's dial-then-finalize failing forever against a state that
+// keeps reading "healthy," with no caller ever restarting it — is closed by
+// the wedged-daemon escalation above: a dial-or-finalize failure against a
+// non-stale state re-dials under the spawn lock and, only if that fresh
+// attempt also fails, force-kills and respawns. Now that Go's registry
+// entry dispatches here as its live V1 strategy (via ensureServer), that
+// escalation is what keeps a single wedged daemon from stranding every
+// caller in this worktree indefinitely.
 func ensureSupervised(ctx context.Context, command []string, lang, targetDir, worktreeRoot string, timeout time.Duration) (*lspClient, error) {
 	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
 	statePath := layout.CodeintelDaemonStateFile(lang)
