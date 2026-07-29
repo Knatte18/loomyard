@@ -51,6 +51,8 @@ This batch adds the one new git-commit primitive board's detached sync process n
   - `internal/fabricengine/index_integration_test.go`
   - `internal/fabricengine/testmain_test.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/weftgit_pathspec_integration_test.go`
+  - `internal/fabricengine/weftgit_unborn_warp_test.go`
 - **Edits:** none
 - **Creates:**
   - `internal/fabricengine/commitweftat_test.go`

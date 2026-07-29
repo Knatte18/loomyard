@@ -94,7 +94,9 @@ union._
 - `CONSTRAINTS.md`
 - `README.md`
 - `cmd/lyx/boardguard_test.go`
+- `cmd/lyx/exitcode_test.go`
 - `cmd/lyx/helptree_test.go`
+- `cmd/lyx/main_integration_test.go`
 - `docs/overview.md`
 - `internal/boardcli/cli.go`
 - `internal/boardcli/cli_test.go`
@@ -118,6 +120,9 @@ union._
 - `internal/boardengine/task.go`
 - `internal/boardengine/task_test.go`
 - `internal/boardengine/template.yaml`
+- `internal/boardengine/template_test.go`
+- `internal/configcli/configcli.go`
+- `internal/configcli/configcli_test.go`
 - `internal/fabriccli/cli_test.go`
 - `internal/fabriccli/clone.go`
 - `internal/fabriccli/fabric.go`
@@ -130,6 +135,7 @@ union._
 - `internal/fabricengine/doc.go`
 - `internal/fabricengine/weftgit.go`
 - `internal/gitrepo/doc.go`
+- `internal/ideengine/menu_test.go`
 - `manifest/designs/curation-triage.md`
 - `manifest/designs/fabric-unified-view.md`
 - `manifest/designs/host-visibility.md`
