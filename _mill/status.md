@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lspclient-dial-transport
+phase: approved-toolchain-manager
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -35,6 +35,7 @@ planned  '2026-07-29T09:20:21Z'
 implementing  '2026-07-29T09:22:02Z'
 approved-registry-and-state-foundations  '2026-07-29T09:26:22Z'
 approved-lspclient-dial-transport  '2026-07-29T09:29:21Z'
+approved-toolchain-manager  '2026-07-29T09:36:41Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     start_sha: ce0561b5c312999abf694758ada30a9d1ec988ac
     commit_sha: e77cdb85fd41782cb897d3add6d8c34cfc3014ed
   - name: toolchain-manager
-    state: running
+    state: approved
     implementer_session: 642c181e-c7c4-4417-b9a3-2495cbad37bd
     start_sha: 93d577d1f36b3c6cf5a2f85c3514303e532ba6be
+    commit_sha: 81240b4e9dc06c45f8b43194a626ade9960080e6
   - name: daemon-state-and-locking
     state: pending
   - name: ensure-server-native
