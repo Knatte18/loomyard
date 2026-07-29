@@ -53,11 +53,15 @@ type lspMessage struct {
 }
 
 // symbolInformation is the LSP wire shape for one workspace/symbol result:
-// the symbol's display name plus the location of its declaration. It is
-// deliberately narrow — the LSP spec's SymbolInformation carries a "kind"
-// and other fields this engine never inspects.
+// the symbol's display name, its declaration location, and its kind (a
+// 1-indexed LSP SymbolKind enum, e.g. File=1, Module=2, Function=12 — this
+// package only passes the raw integer through, since decoding it into a
+// display-facing meaning belongs to the CLI layer, not the engine). It is
+// otherwise deliberately narrow — the LSP spec's SymbolInformation carries
+// other fields this engine never inspects.
 type symbolInformation struct {
 	Name     string      `json:"name"`
+	Kind     int         `json:"kind"`
 	Location lspLocation `json:"location"`
 }
 
