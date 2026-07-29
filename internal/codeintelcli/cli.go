@@ -69,8 +69,16 @@ The single positional argument is either:
       lyx codeintel refs MyFunction
   - an explicit "file:line:col" position (1-based line and column), bypassing
     name resolution entirely:
-      lyx codeintel refs internal/foo/bar.go:42:8`,
-		Args: cobra.ExactArgs(1),
+      lyx codeintel refs internal/foo/bar.go:42:8
+
+Passing 2 or more positional arguments switches to batch mode: each argument
+is looked up independently and the results are reported as one array, rather
+than the single-symbol envelope above:
+    {"ok":true,"results":[{"symbol":...,"status":"found"|"not_found"|"ambiguous"|"error",...}, ...]}
+The process exit code is set to the worst status present across the batch
+(0 < 1 < 2 < 3). Example:
+    lyx codeintel refs Foo Bar Baz`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
@@ -87,12 +95,6 @@ The single positional argument is either:
 			dir := targetDir
 			if dir == "" {
 				dir = cwd
-			}
-
-			query, err := parseQuery(args[0])
-			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
 			}
 
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
@@ -113,17 +115,35 @@ The single positional argument is either:
 				worktreeRoot = layout.WorktreeRoot
 			}
 
-			opts := codeintelengine.Options{
-				Registry:     registry,
-				TargetDir:    dir,
-				WorktreeRoot: worktreeRoot,
-				Lang:         lang,
-				Query:        query,
-				Timeout:      timeout,
+			if len(args) == 1 {
+				query, err := parseQuery(args[0])
+				if err != nil {
+					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					return nil
+				}
+
+				opts := codeintelengine.Options{
+					Registry:     registry,
+					TargetDir:    dir,
+					WorktreeRoot: worktreeRoot,
+					Lang:         lang,
+					Query:        query,
+					Timeout:      timeout,
+				}
+
+				results, err := codeintelengine.References(ctx, opts)
+				emitLookupResult(ctx, out, "references", results, err)
+				return nil
 			}
 
-			results, err := codeintelengine.References(ctx, opts)
-			emitLookupResult(ctx, out, "references", results, err)
+			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
+				query, err := parseQuery(symbol)
+				if err != nil {
+					return statusError, map[string]any{"error": err.Error()}
+				}
+				results, err := codeintelengine.References(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: query, Timeout: timeout})
+				return classifyLookupError(err, "references", results)
+			})
 			return nil
 		},
 	}
@@ -158,8 +178,17 @@ The single positional argument is either:
       lyx codeintel definition MyFunction
   - an explicit "file:line:col" position (1-based line and column), bypassing
     name resolution entirely:
-      lyx codeintel definition internal/foo/bar.go:42:8`,
-		Args: cobra.ExactArgs(1),
+      lyx codeintel definition internal/foo/bar.go:42:8
+
+Passing 2 or more positional arguments switches to batch mode: each argument
+is looked up independently and the results are reported as one array, rather
+than the single-symbol envelope above:
+    {"ok":true,"results":[{"symbol":...,"status":"found"|"not_found"|"ambiguous"|"error",...}, ...]}
+The process exit code is set to the worst status present across the batch
+(0 < 1 < 2 < 3). definition has no other shape difference from refs in batch
+mode. Example:
+    lyx codeintel definition Foo Bar Baz`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
@@ -176,12 +205,6 @@ The single positional argument is either:
 			dir := targetDir
 			if dir == "" {
 				dir = cwd
-			}
-
-			query, err := parseQuery(args[0])
-			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
 			}
 
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
@@ -202,17 +225,35 @@ The single positional argument is either:
 				worktreeRoot = layout.WorktreeRoot
 			}
 
-			opts := codeintelengine.Options{
-				Registry:     registry,
-				TargetDir:    dir,
-				WorktreeRoot: worktreeRoot,
-				Lang:         lang,
-				Query:        query,
-				Timeout:      timeout,
+			if len(args) == 1 {
+				query, err := parseQuery(args[0])
+				if err != nil {
+					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					return nil
+				}
+
+				opts := codeintelengine.Options{
+					Registry:     registry,
+					TargetDir:    dir,
+					WorktreeRoot: worktreeRoot,
+					Lang:         lang,
+					Query:        query,
+					Timeout:      timeout,
+				}
+
+				results, err := codeintelengine.Definition(ctx, opts)
+				emitLookupResult(ctx, out, "definitions", results, err)
+				return nil
 			}
 
-			results, err := codeintelengine.Definition(ctx, opts)
-			emitLookupResult(ctx, out, "definitions", results, err)
+			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
+				query, err := parseQuery(symbol)
+				if err != nil {
+					return statusError, map[string]any{"error": err.Error()}
+				}
+				results, err := codeintelengine.Definition(ctx, codeintelengine.Options{Registry: registry, TargetDir: dir, Lang: lang, Query: query, Timeout: timeout})
+				return classifyLookupError(err, "definitions", results)
+			})
 			return nil
 		},
 	}
