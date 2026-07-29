@@ -146,7 +146,14 @@ separately from recomputing it), and removes an entire class of bug
   (see Batch Scope). Bound the whole function by a single
   `deadline := time.Now().Add(timeout)` the retry loop below checks
   against — this is the "bounded retry, not indefinite blocking" the
-  `concurrency-locking` decision requires. Loop: (1) `readDaemonState`;
+  `concurrency-locking` decision requires. **A non-nil `error` return from
+  either `readDaemonState` or `lock.TryAcquireWriteLock` (a genuine
+  OS-level failure — a permissions error, a corrupt state file, disk
+  full — distinct from "lock held by someone else" or "no state file
+  yet," both of which are `(false, nil)`/`(daemonState{}, false, nil)`,
+  not errors) aborts the loop immediately: wrap and return the error,
+  do not fold it into the "not acquired"/"absent" retry branches below.**
+  Loop: (1) `readDaemonState`;
   if it exists and `!daemonStale(state)`, split `state.Address` on the
   first `;` into `network, address`, attempt
   `newLSPClientDial(ctx, network, address)` then

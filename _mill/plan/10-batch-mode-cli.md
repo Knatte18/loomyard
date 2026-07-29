@@ -38,6 +38,8 @@ top-level array key.
 
 - **Context:**
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/refs.go`
+  - `internal/codeintelengine/symbol.go`
 - **Edits:**
   - `internal/codeintelcli/cli.go`
 - **Creates:** none
@@ -120,8 +122,22 @@ top-level array key.
   no capability is lost relative to single-arg mode, `batch-mode-cli`
   never restricts batch entries to names-only (that restriction is
   `symbol`-specific, per `symbol-semantics`, and unrelated to this
-  arg-count discriminant).
-- **Commit:** `feat(codeintelcli): add batch mode to refs and definition`
+  arg-count discriminant). **Update both `Long` fields** — `2+` arguments
+  is a major observable CLI behavior change (an entirely different
+  top-level JSON shape), so per CONSTRAINTS.md's CLI/Cobra Invariant
+  ("stale help is a review-blocking defect" whenever behavior changes),
+  it must be documented where an operator/agent actually finds it, not
+  only in the package-level Go doc (card 44). Append to `refsCommand`'s
+  `Long`: a paragraph stating that 2 or more positional arguments switch
+  to batch mode, returning `{"ok":true,"results":[{"symbol":...,
+  "status":"found"|"not_found"|"ambiguous"|"error", ...}, ...]}` with the
+  process exit code set to the worst status present across the batch
+  (`0` < `1` < `2` < `3`), plus one concrete example line:
+  `lyx codeintel refs Foo Bar Baz`. Append the identical paragraph shape
+  to `definitionCommand`'s `Long`, substituting the example
+  (`lyx codeintel definition Foo Bar Baz`) and noting `definition` has no
+  other shape difference from `refs` in batch mode.
+- **Commit:** `feat(codeintelcli): add batch mode to refs and definition, document it in --help`
 
 ### Card 40: Batch mode for `symbol`
 
@@ -147,8 +163,13 @@ top-level array key.
   mode never calls `parseQuery`/position-parsing either, so
   `lyx codeintel symbol foo.go:1:1 bar.go:2:2` treats both arguments as
   literal search strings, not positions, consistent across both arg-count
-  shapes.
-- **Commit:** `feat(codeintelcli): add batch mode to symbol`
+  shapes. **Update `symbolCommand`'s `Long`** the same way card 39 updates
+  `refs`/`definition`'s: append a paragraph stating 2+ arguments switch to
+  batch mode with the same `{"ok":true,"results":[...]}` shape, but note
+  `symbol`'s status set is only three-way (`found`/`not_found`/`error` —
+  no `"ambiguous"`, and correspondingly no exit code `2`), with one
+  example line: `lyx codeintel symbol Foo Bar Baz`.
+- **Commit:** `feat(codeintelcli): add batch mode to symbol, document it in --help`
 
 ### Card 41: Fix the pre-existing 2-arg test — batch mode is now valid syntax
 

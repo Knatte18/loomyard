@@ -105,6 +105,8 @@ context.Context, opts Options) ([]Reference, error)` (new file
   - `internal/codeintelengine/refs.go`
   - `internal/codeintelengine/position.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/registry.go`
+  - `internal/codeintelengine/detect.go`
 - **Edits:**
   - `internal/codeintelengine/lspclient.go`
 - **Creates:**
@@ -182,6 +184,7 @@ context.Context, opts Options) ([]Reference, error)` (new file
   - `internal/codeintelengine/refs_test.go`
   - `internal/codeintelengine/registry.go`
   - `internal/codeintelengine/lspclient.go`
+  - `internal/codeintelengine/definition.go`
 - **Edits:**
   - `internal/codeintelengine/lspclient_test.go`
 - **Creates:**

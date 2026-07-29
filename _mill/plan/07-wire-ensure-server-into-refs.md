@@ -124,6 +124,7 @@ batches (9, 10) never see any of this — they only call
   - `internal/codeintelengine/ensureserver.go`
   - `internal/codeintelengine/registry.go`
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/refs.go`
 - **Edits:**
   - `internal/codeintelengine/refs_test.go`
 - **Creates:** none

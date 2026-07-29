@@ -35,6 +35,7 @@ top of what this batch establishes.
 
 - **Context:**
   - `internal/codeintelengine/errors.go`
+  - `internal/codeintelengine/refs.go`
 - **Edits:**
   - `internal/codeintelcli/cli.go`
 - **Creates:** none
