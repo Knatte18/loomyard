@@ -53,7 +53,7 @@ func (b *Board) writeOp(mutate func(*Store) (any, error)) (any, error) {
 	// read but must not write — otherwise the store would be saved and the
 	// render would then fail on an empty filename, leaving a half-applied,
 	// never-synced write behind.
-	if b.out.Home == "" || b.out.Sidebar == "" {
+	if b.out.Readme == "" {
 		return nil, fmt.Errorf("board outputs not configured; write commands require board config (not --board-path)")
 	}
 
@@ -90,7 +90,11 @@ func (b *Board) writeOp(mutate func(*Store) (any, error)) (any, error) {
 
 	// (5) Render the readable .md files (render.go owns all markdown output and
 	// orphan cleanup; board.go only deals with tasks.json).
-	if err := RenderToDisk(b.boardPath, store.Tasks(), b.out); err != nil {
+	//
+	// INTERIM single-store form: board.go does not yet know about a second
+	// (notes) store, so notes is passed as nil here. Card 14 replaces this
+	// call site entirely with boardCriticalSection's dual-store form.
+	if err := RenderToDisk(b.boardPath, store.Tasks(), nil, b.out); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 
