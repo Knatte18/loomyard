@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: codeintel-daemon-persistence
 branch: codeintel-daemon-persistence
-plan: null
+plan: _mill/plan
 parent: codeintel-v1
 task: Give codeintel a persistent, session-long daemon
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-29T14:50:18Z'
 discussion-fix-r2  '2026-07-29T15:24:29Z'
 discussed  '2026-07-29T15:24:29Z'
+planning  '2026-07-29T15:49:13Z'
 ```
