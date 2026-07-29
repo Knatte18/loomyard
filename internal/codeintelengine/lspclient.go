@@ -427,6 +427,80 @@ func (c *lspClient) references(ctx context.Context, fileURI string, pos lspPosit
 	return locations, nil
 }
 
+// definition issues one textDocument/definition request and returns the
+// server's reported definition location(s), parsed via
+// parseDefinitionResult since the LSP spec allows three distinct wire
+// shapes for this method's response. Unlike references, no
+// context.includeDeclaration parameter is sent — that field is specific to
+// textDocument/references's request shape and does not exist on
+// textDocument/definition's.
+func (c *lspClient) definition(ctx context.Context, fileURI string, pos lspPosition) ([]lspLocation, error) {
+	raw, err := c.call(ctx, "definition", "textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": fileURI},
+		"position":     pos,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseDefinitionResult(raw)
+}
+
+// parseDefinitionResult decodes a textDocument/definition response, whose
+// LSP-specified result type is `Location | Location[] | LocationLink[] |
+// null` — three distinct wire shapes one Go type cannot json.Unmarshal into
+// directly. A null or empty result is a legitimate "zero definitions found"
+// outcome at this layer (returned as (nil, nil), not an error); the caller
+// visible outcome for an empty result is decided higher up, in Definition
+// (definition.go), not here. gopls is known to report Location[] for this
+// method (not LocationLink[]), so the LocationLink branch below is
+// defensive per the LSP spec's stated possible shapes rather than something
+// this task can empirically confirm exercises against the one real server
+// V1 ships with — lspclient_test.go's table-driven coverage is what
+// actually exercises it.
+func parseDefinitionResult(raw json.RawMessage) ([]lspLocation, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil, nil
+	}
+
+	// A bare Location object (not wrapped in an array) is the single-result
+	// shape some servers use; JSON objects start with '{', arrays with '['.
+	if trimmed[0] == '{' {
+		var loc lspLocation
+		if err := json.Unmarshal(trimmed, &loc); err != nil {
+			return nil, fmt.Errorf("unmarshal textDocument/definition bare Location result: %w", err)
+		}
+		return []lspLocation{loc}, nil
+	}
+
+	var elements []json.RawMessage
+	if err := json.Unmarshal(trimmed, &elements); err != nil {
+		return nil, fmt.Errorf("unmarshal textDocument/definition result array: %w", err)
+	}
+
+	locations := make([]lspLocation, len(elements))
+	for i, elem := range elements {
+		// probe carries both possible per-element shapes at once (Location's
+		// uri/range and LocationLink's targetUri/targetSelectionRange) so a
+		// single unmarshal determines which one the server actually sent.
+		var probe struct {
+			URI                  string   `json:"uri"`
+			Range                lspRange `json:"range"`
+			TargetURI            string   `json:"targetUri"`
+			TargetSelectionRange lspRange `json:"targetSelectionRange"`
+		}
+		if err := json.Unmarshal(elem, &probe); err != nil {
+			return nil, fmt.Errorf("unmarshal textDocument/definition result element %d: %w", i, err)
+		}
+		if probe.URI != "" {
+			locations[i] = lspLocation{URI: probe.URI, Range: probe.Range}
+		} else {
+			locations[i] = lspLocation{URI: probe.TargetURI, Range: probe.TargetSelectionRange}
+		}
+	}
+	return locations, nil
+}
+
 // workspaceSymbol issues one workspace/symbol query and returns the
 // server's candidate matches, each carrying the symbol's name and
 // declaration location.
