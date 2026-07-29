@@ -1,0 +1,7 @@
+No dirty tracked files. Both cards (13 and 14) have matching commits in the log. Card-count self-check: 2 of 2 cards committed, matching the batch's declared card count exactly.
+
+{"status":"success","commit_sha":"6f32b94c","session_id":"09ff1550-0634-4baf-a808-9a943cddfc7c","cards_done":[13,14]}
+
+Summary: both cards in batch 05-engine-integration-tests are complete — 2 of 2 cards committed. Card 13 added `TestEnsureServer_Integration_SupervisedDispatch` to `/home/knatte/Code/loomyard/wts/codeintel-daemon-persistence/internal/codeintelengine/ensureserver_integration_test.go` and updated header comments there and in `/home/knatte/Code/loomyard/wts/codeintel-daemon-persistence/internal/codeintelengine/supervised_integration_test.go` (commit `2e554bad`). Card 14 added `TestReferences_InFile_Integration` (single-match resolve + same-name-in-two-types ambiguity) to `/home/knatte/Code/loomyard/wts/codeintel-daemon-persistence/internal/codeintelengine/refs_integration_test.go`, and fixed the pre-existing daemon-leak in `TestReferences_Integration`'s "live gopls references" subtest by giving it an isolated `WorktreeRoot` and a `t.Cleanup` reap (commit `6f32b94c`). Verify (`go test -tags integration -run=^$ ./internal/codeintelengine/...`) passes; `go vet -tags integration`, `go build ./...`, and `gofmt -l` all clean. Working tree is clean with no uncommitted tracked changes.
+
+{"status":"success","commit_sha":"6f32b94c","session_id":"09ff1550-0634-4baf-a808-9a943cddfc7c","cards_done":[13,14]}
