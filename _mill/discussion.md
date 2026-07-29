@@ -1,0 +1,127 @@
+# Discussion: burler: split the round prompt into an orchestrator + three instruction files
+
+```yaml
+task: 'burler: split the round prompt into an orchestrator + three instruction files'
+slug: burler-prompt-split
+status: discussing
+parent: main
+```
+
+## Problem
+
+`internal/burlerengine/review-prompt-template.md` is one monolithic prompt template. Today `composePrompt` (prompt.go) renders it — via `internal/stencil` — into a single string, which `Engine.Run` hands to the shuttle as `spec.Prompt`; the shuttle writes it to `<_lyx>/shuttle/<runID>/prompt.md` and launches claude with that whole text inline. The consequence is that the agent is handed the full text for **every** step of the round up front: the fix-step rules (fix-everything, fix-scope, fixer-report) and the cluster/forking-review rules (fork spawn, review-file format) are all in the agent's context before it has started step 1. A burler round is really three sequential steps — explore/review-setup, then forking-review, then fix — not one undifferentiated block. Closes GitHub issue #105.
+
+**Why now:** the monolith is a maintenance and behavior hazard. Nothing structurally stops the agent from reading ahead and interleaving jobs A and B, and a single file mixing three steps' rules is harder to evolve one step at a time. The fix is to make the agent read each step's instructions only when it reaches that step, and to give ordering a single source of truth.
+
+## Scope
+
+**In:**
+
+- Replace the single embedded template `internal/burlerengine/review-prompt-template.md` with **four** embedded assets: a thin orchestrator + three self-contained instruction files.
+- Change the runtime so the three instruction files are **rendered per round and written to disk**, and the orchestrator (the inline `spec.Prompt`) **names their absolute paths** and instructs the agent to read+execute each in turn, never previewing a later file. This is a true lazy read — the agent does not have steps 2 and 3 in context when it starts step 1.
+- `composePrompt` (prompt.go) changes to render all four assets and return the orchestrator string plus the three `(path, content)` instruction pairs; it stays filesystem-free (the three target paths come in as parameters, exactly like `review_path`/`fixer_report_path` do today).
+- `Engine.Run` (engine.go) mints a fresh per-round dir under `_lyx`, computes the three instruction paths, calls the new `composePrompt`, writes the three files, and passes only the orchestrator to the shuttle as `spec.Prompt`.
+- `template.go`: four `//go:embed` directives + package-private vars (no exported accessors — `composePrompt` is in-package).
+- `template_test.go` / `prompt_test.go`: move the existing substring pins to their new per-file homes, add per-asset fill tests, add a test that `Engine.Run` writes the three instruction files, and add a **guard test** that the rendered orchestrator does **not** contain step 2/3 bodies.
+- `.gitattributes`: replace the single `review-prompt-template.md text eol=lf` line with four lines (one per new embedded source asset).
+- Docs in the same commit: `doc.go`'s A/B-round section (reference to `review-prompt-template.md` → the new layout + a sentence on runtime materialization) and `CONSTRAINTS.md`'s Review Round Invariant "Enforced by" line (restructured/added tests).
+
+**Out:**
+
+- **`shuttleengine` is not touched.** No new `Spec` field. The instruction files are written by `Engine.Run` under `_lyx`, not by the shuttle into its run dir. (This was an explicit fork — see Decision "Who materializes the instruction files".)
+- **`crucible/review-prompt-template.md` is a different, out-of-scope file** (the hand-run crucible prototype). The docs/overview.md, `.claude/agents/crucible-*.md`, and `crucible/*.md` references all point at the crucible file, not burler's — none change.
+- No change to `internal/stencil`. The existing `Fill`/`FillOptional` marker semantics are reused as-is for all four assets.
+- No change to the round's behavior contract: still ONE shuttle session per round; still A-before-B; still cluster-fork discipline unchanged; still `Result`/`Verdict`/`Findings` unchanged. This is a prompt-delivery refactor, not a semantics change.
+- No new `manifest/designs/burler.md` — `doc.go` remains the module doc.
+- No target-type (code vs prose) branching is introduced (unchanged from today's `pattern_directive` handling).
+
+## Decisions
+
+### Delivery mechanism — true lazy read, not an authoring-only split
+
+- Decision: The three instruction files are rendered to disk per round; the orchestrator (inline `spec.Prompt`) names their absolute paths and tells the agent to read & execute #1, then #2, then #3. The agent only pulls a later step's content into context when it reaches that step.
+- Rationale: This is the only option that delivers the issue's actual goal — the agent must **not** be handed the fix/cluster instructions before it starts step 1. A source-only reorganization (four embedded assets concatenated back into one inline prompt) would leave the agent seeing everything up front and would not achieve the goal.
+- Rejected: Authoring-only split (concatenate the four assets into one inline prompt) — cheaper (nothing outside burlerengine changes) but does not deliver lazy reading.
+
+### Who materializes the instruction files — `Engine.Run` under `_lyx`, no shuttle change
+
+- Decision: `Engine.Run` (which already holds `e.layout *hubgeometry.Layout`) mints a fresh per-round dir under `layout.DotLyxDir()`, computes the three absolute instruction paths, passes them to `composePrompt`, and writes the three rendered files itself before calling `e.shuttle.Run`. `composePrompt` stays filesystem-free — it receives the paths as parameters and returns the orchestrator (paths already baked in via markers) plus the three `(path, content)` pairs.
+- Rationale: Zero changes to `shuttleengine`, a shared engine used by builder/webster/loom. The orchestrator needs absolute instruction paths, and only the party that decides where the files live can bake those paths in without a placeholder-substitution hack. `Engine.Run` decides the location, so it can bake the paths cleanly. Passing paths into `composePrompt` mirrors how it already takes `review_path`/`fixer_report_path` as marker values, and how builder's implementer template takes `{{.batch_file}}`/`{{.report_path}}` — an idiomatic in-repo pattern. `DotLyxDir()` is the Hub-Geometry-compliant, machine-local, never-committed `_lyx` tree, so no Hub Geometry Invariant or Weft Git Invariant concern (burler still never constructs a weft `_lyx/...` output path and never commits these files — they are its own prompt scaffolding, exactly like the shuttle's own `prompt.md`).
+- Rejected: New `shuttleengine.Spec` field (e.g. `PromptFiles map[string]string`) writing the files into the run dir next to `prompt.md`. Better for co-locating diagnosis artifacts with the run, but adds a new seam to a shared engine and still needs the run-dir path injected into the orchestrator (path-substitution friction inside shuttle). Not worth it for a single consumer.
+
+### Instruction dir lifecycle — per-round unique dir, left in place
+
+- Decision: `Engine.Run` mints a fresh unique dir per round (`<_lyx>/burler/<unique>/`) and never deletes it. Use `os.MkdirTemp(<_lyx>/burler, "round-")` (create the `<_lyx>/burler` parent with `os.MkdirAll` first) so uniqueness needs no round id (there is no run id available before the shuttle's `Prepare` mints one).
+- Rationale: No races if perch ever runs rounds concurrently in one worktree. Matches the existing "run dirs persist for post-mortem, swept later" philosophy — a died/timed-out round's orchestrator (visible in the persisted `prompt.md`) still points at readable instruction files. The files are tiny text.
+- Rejected: (a) `defer os.RemoveAll` after the run — clean, but a died round's instruction files are gone before anyone inspects it. (b) Fixed overwrite location (`<_lyx>/burler/instructions/*.md`) — self-bounding but races if two burler rounds ever share a worktree concurrently (latent, since perch is unbuilt). The accumulation downside of the chosen option is accepted; a dedicated sweeper is YAGNI for now.
+
+### Instruction 2 (forking-review) — one template, `{{.cluster_rules}}` renders empty for solo
+
+- Decision: Solo and cluster rounds share ONE instruction-2 asset. The cluster machinery folds in through the existing `{{.cluster_rules}}` marker, which already renders the single-reviewer line for a solo round today (via `clusterRulesBlock` in prompt.go).
+- Rationale: Mirrors exactly how `{{.cluster_rules}}` already works — no new mode-selection logic, no duplicated review-file-format/source-grounding prose across two files.
+- Rejected: Distinct instruction-2 content per mode — more files, duplicated prose, each tighter for its mode but not worth the duplication.
+
+### Marker → file distribution
+
+- Decision: distribute the monolith's sections and markers across the four assets as follows. Each instruction file is self-contained and reusable independent of ordering; the orchestrator is the only place that encodes ordering.
+  - **Orchestrator** (`round-orchestrator-template.md`): the "you are a burler / two jobs (A review, B fix) in order, in one session" framing; the **BLOCKING sequencing invariant** (job A must be fully written to `{{.review_path}}` on disk before touching — edit/create/delete — a single target file; record findings as found, never fix on sight); and the ordered list of the three instruction paths with the "read & execute each in turn, never preview a later file's content early" rule. Markers: `{{.instruction_1_path}}`, `{{.instruction_2_path}}`, `{{.instruction_3_path}}`, `{{.review_path}}`.
+  - **Instruction 1 — explore + review setup** (`instruction-1-explore-template.md`): read and understand the target against what it is judged by. Sections/markers: `{{.pattern_directive}}` (optional marker, `FillOptional`, renders blank when PATTERN inactive — keep it at the top level of this file, before the first work heading, so its optional-blank semantics hold exactly as today), `{{.target}}`, the fasit block + "a review that ignores the fasit degenerates" prose (`{{.fasit}}`), the rubric block + four-value severity vocabulary prose (`{{.rubric}}`), `{{.tool_use_rules}}` (job-A evidence gathering).
+  - **Instruction 2 — forking-review** (`instruction-2-review-template.md`): `{{.cluster_rules}}`, the review-file format block (writes to `{{.review_path}}`), the source-grounding rule, and `{{.prior_rounds}}` (clean-room: form your own findings first; read prior-round files only after your review is saved). Marker `{{.review_path}}` appears here too.
+  - **Instruction 3 — fix** (`instruction-3-fix-template.md`): the fix-everything rule (all severities incl. LOW/NIT), `{{.fix_scope_rules}}`, the fixer-report rule (writes `{{.fixer_report_path}}`), and the never-push / never-touch-weft rule. Markers: `{{.review_path}}` (to read its own recorded findings), `{{.fixer_report_path}}`.
+- Rationale: follows the issue's prescribed split. The orchestrator owns ordering (a single source of truth) instead of a per-file "now read the next file" tail. `pattern_directive` stays with instruction 1 because today it sits before the first work instruction ("What to review"); source-grounding and `prior_rounds` sit with instruction 2 because they govern job A (review); never-push sits with instruction 3 per the issue.
+- Rejected: putting the sequencing rule or never-push in a per-file tail (scatters ordering across three files — the exact anti-pattern the issue calls out).
+
+### `composePrompt` API shape
+
+- Decision: `composePrompt` renders all four assets and returns the orchestrator string plus the three instruction `(path, content)` pairs (e.g. a small struct or an ordered slice of `{Path, Content}`), and an error. It receives the three instruction paths as parameters (alongside the existing `patternDirective` param). `Engine.Run` computes those paths, calls `composePrompt`, writes the three files (`os.WriteFile`), and uses the returned orchestrator as `spec.Prompt`. Internally `composePrompt` may use per-asset helper functions, but the block-composition helpers (`fixScopeRules`, `toolUseRules`, `priorRoundsBlock`, `clusterRulesBlock`, `formatFileSet`) are reused unchanged — only which asset each marker's value fills changes.
+- Rationale: keeps `composePrompt` filesystem-free (the documented invariant in its banner) while making it path-aware, and keeps all filesystem I/O in `Engine.Run` where the layout lives. The four-asset render reuses the existing `stencil.Fill`/`FillOptional` calls (one per asset; `pattern_directive` uses `FillOptional` on instruction 1, the rest use `Fill`).
+- Rejected: keeping `composePrompt` returning a single string (cannot express the four-file split); doing the file writes inside `composePrompt` (breaks its filesystem-free invariant and its testability).
+
+### Failure handling in `Engine.Run`
+
+- Decision: a `MkdirAll`/`MkdirTemp`/`WriteFile` failure while materializing the instruction files is a hard error returned from `Engine.Run` (`return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)`), in the same class as an invalid profile or a compose error — before `e.shuttle.Run` is called.
+- Rationale: without the instruction files on disk, the orchestrator points at nothing and the round cannot run; fail loud and early, consistent with the existing compose-error path.
+- Rejected: proceeding with a partial write or a silent fallback to an inline monolith.
+
+## Technical context
+
+- **Delivery path today:** `Engine.Run` (engine.go:98) → `composePrompt(&p, directive)` (prompt.go:32) returns one string → `spec.Prompt` (engine.go:112) → `e.shuttle.Run(spec)`. The Claude engine (`internal/shuttleengine/claudeengine/claudeengine.go:104`) writes `spec.Prompt` to `<runDir>/prompt.md` and launches claude with that text inline. There is a hard **30 000-byte launch cap** on `spec.Prompt` (`claudeengine/command.go:34`, `maxLaunchPromptBytes`) — a Windows command-line limit. Splitting **reduces** the inline prompt to the thin orchestrator; the three instruction files are read from disk and are **not** subject to this cap. This is a side benefit, not a current problem (the monolith is well under 30 000 bytes today).
+- **Run dir location:** `<_lyx>/shuttle/<runID>/` via `runDirRoot` (`shuttleengine/rundir.go:44`), which uses `layout.DotLyxDir()`. `Engine.Run`'s own instruction dir will sit under the same `_lyx` tree (`layout.DotLyxDir()/burler/...`), never in the shuttle run dir (burler doesn't know the run id before `Prepare`).
+- **Only Go consumers of burler's template:** `template.go` (embed), `prompt.go` (`composePrompt`), `template_test.go`, `prompt_test.go`. No other package imports or names the file. (`internal/builderengine/template.go:12` mentions it only in a comment as a pattern reference — no code dependency.)
+- **stencil semantics to preserve** (`internal/stencil/stencil.go`): every required top-level `{{.X}}` marker must be non-empty or `Fill` errors naming it; a required marker must live at the **top level** of its asset, never inside an `{{if}}`/`{{range}}` (there are none today, keep it that way). `pattern_directive` is the one **optional** marker — filled via `FillOptional(..., []string{"pattern_directive"})` — and must render cleanly to nothing when empty (no leftover `{{`, no orphan heading, no stray blank-line block). A leading `<!-- ... -->` banner comment is stripped before parsing, so each new asset may carry its own banner comment documenting its markers (mirrors builder's per-asset banners).
+- **Builder precedent** (`internal/builderengine/template.go`): two embedded `.md` assets (`orchestrator-template.md`, `implementer-template.md`), each its own `//go:embed`, filled via `stencil.Fill`, passing file paths as markers (`{{.batch_file}}`, `{{.report_path}}`, `{{.worktree_root}}`). Note builder's two files feed **two separate shuttle sessions** — a different shape from burler's one-session-reads-three-files. Reuse the naming/embed/fill/test convention, not the two-session architecture.
+- **Cluster-fork content is composed dynamically** by `clusterRulesBlock` (prompt.go:151) and injected via `{{.cluster_rules}}` — it is **not** static in the template bytes. So the cluster substring pins must be asserted against a `composePrompt` render of a cluster profile (as `TestTemplate_StatesClusterForkDiscipline` does today), now checking instruction 2's rendered content specifically.
+- **`DotLyxDir()`** comes from `*hubgeometry.Layout`, already on `Engine` (engine.go:38, set by `New`). Confirm the exact accessor name/signature in `internal/hubgeometry` when implementing (the shuttle uses `layout.DotLyxDir()` and `layout.WorktreeRoot`).
+
+## Constraints
+
+From `CONSTRAINTS.md`:
+
+- **Hub Geometry Invariant** — `internal/hubgeometry` owns all cwd/geometry and `_lyx`/config paths. The instruction dir must be derived from `layout.DotLyxDir()`, never a literal `.lyx`/`_lyx` string.
+- **Weft Git Invariant** — committing plan/discussion/review-class files is the loop owner's job, never an agent. The instruction files are burler's own prompt scaffolding under `_lyx` (never committed, never a weft output path), so this invariant is not implicated — but keep burlerengine weft-blind: it must not import the weft module or construct a weft `_lyx/...` **output** path (its own machine-local prompt-dir under `DotLyxDir()` is not that).
+- **Review Round Invariant** (`CONSTRAINTS.md`, "Review Round Invariant") — A-before-B, fix-everything (all severities), no self-grading, commit-per-fix/never-push, and cluster-fork read-only discipline must all survive the split verbatim in prompt content. "Enforced by" currently names `template_test.go`'s `TestTemplate_StatesRoundDiscipline` and `TestTemplate_StatesClusterForkDiscipline`; update this line to reflect the restructured pins (now spread across the four assets) and the new orchestrator guard test. The invariant's substance (review fully on disk before B) is unchanged and moves to the orchestrator.
+- **CLI/Cobra Invariant, lyxtest Leaf Invariant** — not implicated (no CLI surface, no lyxtest changes).
+- **Documentation Lifecycle** — docs land in the same commit (see Scope): `doc.go` and `CONSTRAINTS.md`.
+- **Markdown: one line per paragraph, no hard-wrap** — applies to `discussion.md` and any `.md` prose written; the four template assets are LLM prompts (LF-pinned in `.gitattributes`) and follow the existing template's prose style.
+
+## Testing
+
+Package `burlerengine`, Go table/substring tests, no LLM (the existing fake-shuttle unit pattern). TDD candidates are the guard test and the materialization test — write them first, watch them fail against the monolith, then split.
+
+- **Per-asset substring pins** (relocate the existing `TestTemplate_StatesRoundDiscipline` assertions): assert each load-bearing phrase against the correct asset's bytes/render — sequencing phrases ("Sequencing rule", "fully written to", "before you touch") in the **orchestrator** bytes; fix-everything ("not whether it gets fixed") and never-push ("never push", "nothing fixed") in **instruction 3** bytes; the review-file `origin` key and cluster fork-discipline in **instruction 2**'s `composePrompt` render for a cluster profile (reuse `TestTemplate_StatesClusterForkDiscipline`'s approach, now scoped to instruction 2). A phrase silently watered down still fails a test, not only human review.
+- **Orchestrator guard test (new, key invariant):** assert the rendered orchestrator (what goes inline as `spec.Prompt`) does **not** contain step 2/3 bodies — e.g. it excludes the fix-everything phrasing, the cluster-round fork-spawn phrasing, and the review-file YAML keys (`verdict:`, `findings:`). This mechanically pins the lazy-read separation: a regression that inlines the downstream instructions back into the orchestrator fails here.
+- **Per-asset fill tests** (relocate/extend `TestTemplate_FillsWithAllMarkers`): each asset renders when its required markers are supplied, and fails naming the marker when any single required one is missing. `pattern_directive` on instruction 1 stays exempt from the deletion sweep and must still render cleanly empty and (non-empty) precede instruction 1's first work heading (relocate `TestTemplate_PatternDirectiveOptional`).
+- **`Engine.Run` materialization test (new):** with a fake `Shuttle` capturing the received `Spec`, assert that after `Run`: (a) the three instruction files exist on disk at paths under `layout.DotLyxDir()`; (b) `spec.Prompt` (the orchestrator) contains those three absolute paths; (c) each written instruction file's content matches what `composePrompt` returned (markers filled — e.g. the target/fasit text is present in instruction 1). Use a `t.TempDir()`-based layout so no real `_lyx` is touched.
+- **Materialization failure test (new):** point the instruction dir at an unwritable location (or otherwise force `WriteFile` to fail) and assert `Engine.Run` returns a hard error naming the materialization step and does **not** call the shuttle.
+- **`composePrompt` unit tests** (extend `prompt_test.go`): the happy path returns a non-empty orchestrator plus exactly three `(path, content)` pairs; each block helper's output lands in the intended asset (e.g. `fix_scope_rules` content appears in instruction 3, not the orchestrator).
+- **Existing suites stay green:** `smoke_round_test.go` / `smoke_cluster_test.go` (opt-in real-engine) and the cluster audit tests are behavior-level and should pass unchanged — this refactor does not alter round semantics. Run the full `go test ./internal/burlerengine/...` plus `go test ./internal/stencil/...` (unchanged, sanity).
+
+## Q&A log
+
+- **Q:** Does "split into instruction files the agent reads as it goes" mean true lazy read (files on disk, read one at a time) or an authoring-only source split (still one inline prompt)? **A:** True lazy read — render three instruction files to disk, orchestrator names their paths, agent reads each only when it reaches that step. The authoring-only split does not deliver the issue's goal.
+- **Q:** Who writes the instruction files and where? **A:** `Engine.Run` writes them under `_lyx` (`layout.DotLyxDir()/burler/<unique>/`), baking absolute paths into the orchestrator; `composePrompt` stays filesystem-free and takes the paths as parameters. No `shuttleengine.Spec` change — the shared engine is untouched.
+- **Q:** Instruction 2 for solo vs cluster rounds — one template or two? **A:** One template; `{{.cluster_rules}}` renders empty (the single-reviewer line) for solo, exactly as today.
+- **Q:** Lifecycle of the per-round instruction temp dir? **A:** Per-round unique dir (`os.MkdirTemp` under `<_lyx>/burler`), left in place — no races if rounds ever run concurrently; matches run-dir-persists-for-post-mortem. Accumulation accepted; dedicated sweeper is YAGNI.
+- **Q:** Add a guard test that the orchestrator excludes step 2/3 bodies? **A:** Yes — assert the rendered orchestrator lacks the fix/cluster phrasing and review-file YAML keys, pinning the lazy-read separation mechanically.
+- **Q:** Asset naming? **A:** `round-orchestrator-template.md` + `instruction-{1-explore,2-review,3-fix}-template.md` (embedded, package-private vars); on-disk per-round files `instruction-{1-explore,2-review,3-fix}.md`; `.gitattributes` gets four `eol=lf` lines replacing the one.
+- **Q:** Docs scope for the commit? **A:** `doc.go` (A/B-round section reference → new layout + runtime-materialization sentence) and `CONSTRAINTS.md` (Review Round Invariant "Enforced by" line). No new `manifest/designs/` doc; `doc.go` remains the module doc. `docs/overview.md` unchanged (its template reference is to the out-of-scope crucible file).
