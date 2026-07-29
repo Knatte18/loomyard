@@ -39,7 +39,7 @@
 //
 //	if card.HasSymbolFields() {
 //	    // Mechanism 1: DAG from plan-internal cross-matching (dead code
-//	    // until codeintel lands and a planner starts populating symbol
+//	    // until trace lands and a planner starts populating symbol
 //	    // fields)
 //	} else {
 //	    // v0: declared order
@@ -47,7 +47,7 @@
 //
 // HasSymbolFields() is unreachable in v0 — plan-format-v3 cards carry no
 // symbol fields yet — so this costs nothing today and turns the eventual
-// codeintel-driven rollout into "the planner starts populating fields,"
+// trace-driven rollout into "the planner starts populating fields,"
 // never a webster code change.
 //
 // # Fork-return contract: OK/FAILED, a head SHA, an informational deviation list

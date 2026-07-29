@@ -246,7 +246,7 @@ func hasPathspecMagic(files []string) bool {
 // commits whatever lands in the index with msg — the wildcard sibling of
 // StageAndCommit, which never wildcard-stages. It exists as board's
 // Sync/commitDirty opt-in exception, not a relaxation of the explicit-list
-// default: every other consumer (fabric, raddle, codeintel) must keep using
+// default: every other consumer (fabric, raddle, trace) must keep using
 // StageAndCommit's explicit file list. Return semantics mirror
 // StageAndCommit exactly: when nothing is staged after the add (a clean
 // working tree), it returns ("", false, nil) rather than an error, since

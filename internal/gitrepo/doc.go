@@ -4,7 +4,7 @@
 // remote or mutates the working tree. It exposes the small set of semantic
 // operations (current SHA, stage+commit, changed-files-since, SHA existence,
 // push, pull, hard reset, snapshot tracking) that every consumer of a
-// git-backed repo (fabric, raddle, codeintel, webster) would otherwise
+// git-backed repo (fabric, raddle, trace, webster) would otherwise
 // reimplement by parsing raw git stdout itself.
 //
 // # Relationship to internal/gitexec — the two-backend boundary
@@ -70,7 +70,7 @@
 // # The self-correcting snapshot pattern
 //
 // SnapshotSHA/SetSnapshotSHA is the one pattern every consumer of gitrepo
-// (fabric's coordination, raddle's staleness tracking, codeintel's
+// (fabric's coordination, raddle's staleness tracking, trace's
 // per-language notification) reuses: a consumer only calls SetSnapshotSHA
 // after confirmed success. If a downstream step fails partway, the stored
 // SHA is not advanced, so the next attempt naturally recomputes the diff
@@ -100,7 +100,7 @@
 // reset, snapshot/correspondence tracking, and the CurrentBranch/CheckoutDetached/RestoreBranch
 // trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
 // opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
-// codeintel keep using explicit-list StageAndCommit (called via
+// trace keep using explicit-list StageAndCommit (called via
 // fabricengine.CommitWeftAt on board's behalf, not boardengine calling
 // gitrepo directly). Rebase, interactive
 // staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are

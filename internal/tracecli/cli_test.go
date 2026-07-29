@@ -1,0 +1,936 @@
+// cli_test.go drives RunCLI through its seam: the bare/--help subcommand listing,
+// every command's Short, and the ErrNoLanguage error-envelope path. It is
+// deliberately untagged, offline, and spawn-free: it never shells out to a
+// subprocess, never touches git, and never copies a fixture tree, so it never
+// launches a language server or requires a git repo. A real "refs" query against a
+// live language server belongs to the //go:build integration tier
+// (internal/traceengine's own integration test) and batch 4's measurement, not
+// here.
+
+package tracecli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/traceengine"
+)
+
+// TestRunCLI_NoArgsListsRefsSubcommand verifies that "lyx trace" with no
+// subcommand lists the "refs" subcommand and exits 0 — matching every other
+// module group's bare-invocation behavior (clihelp.GroupRunE).
+func TestRunCLI_NoArgsListsRefsSubcommand(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{})
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI() = %d; want 0 for no-arg listing", exitCode)
+	}
+	if got := out.String(); !strings.Contains(got, "refs") {
+		t.Errorf("RunCLI() no-arg output missing subcommand %q; got: %q", "refs", got)
+	}
+}
+
+// TestRunCLI_Help verifies that "lyx trace --help" also lists the "refs"
+// subcommand and exits 0, mirroring the bare-invocation assertion above for the
+// explicit --help path.
+func TestRunCLI_Help(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"--help"})
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI(--help) = %d; want 0", exitCode)
+	}
+	if got := out.String(); !strings.Contains(got, "refs") {
+		t.Errorf("RunCLI(--help) output missing subcommand %q; got: %q", "refs", got)
+	}
+}
+
+// TestCommand_EveryCommandHasShort walks the full command tree returned by
+// Command() and asserts every node (the "trace" group and each subcommand)
+// carries a non-empty Short — the same structural self-documentation contract
+// cmd/lyx/drift_test.go enforces repo-wide, checked locally here so this module's
+// own test suite catches a missing Short before the root-level guard would.
+func TestCommand_EveryCommandHasShort(t *testing.T) {
+	t.Parallel()
+
+	violations := collectMissingShorts(Command())
+	for _, v := range violations {
+		t.Errorf("command %q has no Short description", v)
+	}
+}
+
+// collectMissingShorts performs a depth-first walk of the command tree rooted at
+// cmd and returns the command path of every node whose Short is empty.
+func collectMissingShorts(cmd *cobra.Command) []string {
+	var violations []string
+	if cmd.Short == "" {
+		violations = append(violations, cmd.CommandPath())
+	}
+	for _, child := range cmd.Commands() {
+		violations = append(violations, collectMissingShorts(child)...)
+	}
+	return violations
+}
+
+// TestRunCLI_Refs_NoLanguageError verifies that "refs <symbol> --target-dir
+// <empty dir>" fails through the ErrNoLanguage path: an empty temp dir has no
+// registry markers, so DetectLanguage fails before References ever launches a
+// language server. This exercises the engine-error-to-output.Err mapping without
+// any subprocess spawn.
+func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
+	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// traceengine.BuiltinRegistry() deterministically, independent of
+	// whatever git repo or servers.yaml the test happens to run inside.
+	t.Chdir(t.TempDir())
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"refs", "MySymbol", "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(refs MySymbol --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	// Assert the JSON envelope shape: exactly one object on one line, ok=false,
+	// and a populated, non-empty error field.
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("RunCLI output has %d lines; want exactly 1. output:\n%s", len(lines), out.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, lines[0])
+	}
+
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(refs MySymbol --target-dir <empty>) ok = true; want false")
+	}
+
+	errMsg, _ := env["error"].(string)
+	if errMsg == "" {
+		t.Errorf("RunCLI(refs MySymbol --target-dir <empty>) error field empty or missing; got envelope: %v", env)
+	}
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(refs MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_Definition_NoLanguageError verifies that "definition <symbol>
+// --target-dir <empty dir>" fails through the same ErrNoLanguage path
+// TestRunCLI_Refs_NoLanguageError exercises for "refs" — definitionCommand
+// shares the identical cwd/registry-resolution preamble.
+func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
+	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// traceengine.BuiltinRegistry() deterministically, independent of
+	// whatever git repo or servers.yaml the test happens to run inside.
+	t.Chdir(t.TempDir())
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"definition", "MySymbol", "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(definition MySymbol --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("RunCLI output has %d lines; want exactly 1. output:\n%s", len(lines), out.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, lines[0])
+	}
+
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(definition MySymbol --target-dir <empty>) ok = true; want false")
+	}
+
+	errMsg, _ := env["error"].(string)
+	if errMsg == "" {
+		t.Errorf("RunCLI(definition MySymbol --target-dir <empty>) error field empty or missing; got envelope: %v", env)
+	}
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(definition MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_Symbol_NoLanguageError verifies that "symbol <query>
+// --target-dir <empty dir>" fails through the same ErrNoLanguage path
+// TestRunCLI_Refs_NoLanguageError exercises for "refs" — symbolCommand
+// shares the identical cwd/registry-resolution preamble.
+func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
+	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// traceengine.BuiltinRegistry() deterministically, independent of
+	// whatever git repo or servers.yaml the test happens to run inside.
+	t.Chdir(t.TempDir())
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"symbol", "MySymbol", "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(symbol MySymbol --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("RunCLI output has %d lines; want exactly 1. output:\n%s", len(lines), out.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, lines[0])
+	}
+
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(symbol MySymbol --target-dir <empty>) ok = true; want false")
+	}
+
+	errMsg, _ := env["error"].(string)
+	if errMsg == "" {
+		t.Errorf("RunCLI(symbol MySymbol --target-dir <empty>) error field empty or missing; got envelope: %v", env)
+	}
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(symbol MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves
+// that symbolCommand never calls parsePosition: an argument shaped like
+// "file:line:col" must still be passed through to Query.Symbol unparsed,
+// not silently swallowed as a position.
+//
+// DetectLanguage never consults Options.Query at all (see
+// internal/traceengine/detect.go), so RunCLI("symbol", "foo.go:1:1",
+// --target-dir <empty>)'s ErrNoLanguage envelope is byte-for-byte identical
+// regardless of whether the argument was kept as a literal string or
+// mis-parsed as a position — confirmed empirically: "refs foo.go:1:1" and
+// "symbol foo.go:1:1" against the same empty target dir produce the exact
+// same error text. The ErrNoLanguage envelope therefore cannot itself prove
+// which shape Query took, so this test pins the real contract two ways
+// instead: (1) it exercises symbolQuery directly, the one seam
+// symbolCommand's RunE actually uses to build Query.Symbol, asserting it
+// keeps "foo.go:1:1" as a literal Query.Symbol with Query.Pos left nil, even
+// though the same string driven through parseQuery (refs/definition's
+// converter, which symbolCommand deliberately does not call) does parse as a
+// position — proving the two functions diverge exactly where they must; and
+// (2) it still drives the full RunCLI("symbol", ...) path to confirm the
+// command reaches DetectLanguage and fails through the expected
+// ErrNoLanguage envelope, exactly like TestRunCLI_Symbol_NoLanguageError.
+func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing.T) {
+	const arg = "foo.go:1:1"
+
+	query := symbolQuery(arg)
+	if query.Symbol != arg {
+		t.Errorf("symbolQuery(%q).Symbol = %q; want %q", arg, query.Symbol, arg)
+	}
+	if query.Pos != nil {
+		t.Errorf("symbolQuery(%q).Pos = %+v; want nil — the argument must never be position-parsed", arg, query.Pos)
+	}
+
+	// The same string, driven through parseQuery (the converter
+	// refs/definition use), DOES parse as a position — proving symbolQuery's
+	// literal-search-string behavior is a deliberate divergence, not an
+	// accident of parseQuery(arg) happening to leave Pos unset for this
+	// particular string.
+	parsed, err := parseQuery(arg)
+	if err != nil {
+		t.Fatalf("parseQuery(%q) error = %v; want nil", arg, err)
+	}
+	if parsed.Pos == nil {
+		t.Fatalf("parseQuery(%q).Pos = nil; want a parsed position, to prove symbolQuery's divergence from parseQuery is meaningful", arg)
+	}
+
+	t.Chdir(t.TempDir())
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"symbol", arg, "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(symbol %s --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage", arg)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(symbol %s --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", arg, errMsg)
+	}
+}
+
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo tests emitLookupResult
+// directly (this file is package tracecli, the same package
+// emitLookupResult is defined in) rather than through the full RunCLI tree —
+// reaching *traceengine.ErrAmbiguousSymbol through a live refs/definition
+// call would require a real language server, out of scope for this file per
+// its own header comment. It covers both the ambiguous exit-2 path and the
+// not-found path, in the same table, to prove the not-found case still falls
+// through to plain output.Err rather than being swept into the ambiguous
+// branch.
+func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
+	tests := []struct {
+		name         string
+		resultsField string
+		err          error
+		wantCode     int
+		wantOk       bool
+		checkBody    func(t *testing.T, env map[string]any)
+	}{
+		{
+			name:         "ambiguous",
+			resultsField: "references",
+			err: &traceengine.ErrAmbiguousSymbol{
+				Symbol:     "Foo",
+				Candidates: []string{"a.go:1:1", "b.go:2:2"},
+			},
+			wantCode: 2,
+			wantOk:   true,
+			checkBody: func(t *testing.T, env map[string]any) {
+				t.Helper()
+				candidates, ok := env["candidates"].([]any)
+				if !ok {
+					t.Fatalf("envelope %v missing []any \"candidates\" field", env)
+				}
+				want := []string{"a.go:1:1", "b.go:2:2"}
+				if len(candidates) != len(want) {
+					t.Fatalf("candidates = %v; want %v", candidates, want)
+				}
+				for i, c := range candidates {
+					if c != want[i] {
+						t.Errorf("candidates[%d] = %v; want %v", i, c, want[i])
+					}
+				}
+			},
+		},
+		{
+			name:         "not_found",
+			resultsField: "definitions",
+			err:          &traceengine.ErrSymbolNotFound{Symbol: "Bar", TargetDir: "/tmp"},
+			wantCode:     1,
+			wantOk:       false,
+			checkBody: func(t *testing.T, env map[string]any) {
+				t.Helper()
+				errMsg, _ := env["error"].(string)
+				if !strings.Contains(errMsg, "Bar") {
+					t.Errorf("error = %q; want it to mention %q", errMsg, "Bar")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			ctx, es := clihelp.NewExitContext(context.Background())
+
+			emitLookupResult(ctx, &out, tt.resultsField, nil, tt.err)
+
+			if es.Code() != tt.wantCode {
+				t.Errorf("es.Code() = %d; want %d", es.Code(), tt.wantCode)
+			}
+
+			var env map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+				t.Fatalf("emitLookupResult output is not valid JSON: %v; got: %q", err, out.String())
+			}
+
+			if ok, _ := env["ok"].(bool); ok != tt.wantOk {
+				t.Errorf("envelope ok = %v; want %v", ok, tt.wantOk)
+			}
+
+			tt.checkBody(t, env)
+		})
+	}
+}
+
+// TestRunCLI_Refs_RequiresAtLeastOneArg verifies that Args:
+// cobra.MinimumNArgs(1) still rejects a bare "refs" call (0 args) through the
+// JSON error envelope, without touching detection or the registry at all. A
+// 2-arg call is no longer an arg-count violation as of batch-mode-cli — see
+// TestRunCLI_Refs_TwoArgsIsBatchMode for that case.
+func TestRunCLI_Refs_RequiresAtLeastOneArg(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"bare", []string{"refs"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := RunCLI(&out, tt.args)
+
+			if exitCode == 0 {
+				t.Fatalf("RunCLI(%v) = 0; want non-zero exit for arg-count violation", tt.args)
+			}
+
+			var env map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+				t.Fatalf("RunCLI(%v) output is not valid JSON: %v; got: %q", tt.args, err, out.String())
+			}
+			if ok, _ := env["ok"].(bool); ok {
+				t.Errorf("RunCLI(%v) ok = true; want false", tt.args)
+			}
+		})
+	}
+}
+
+// TestRunCLI_Refs_TwoArgsIsBatchMode proves the opposite point from
+// TestRunCLI_Refs_RequiresAtLeastOneArg: "refs one two" is valid batch-mode
+// syntax now, not an arg-count rejection. It runs against an empty temp dir
+// so DetectLanguage fails identically for both symbols, keeping the
+// assertion deterministic and gopls-independent — an ErrNoLanguage failure
+// is not "confirmed absent," so both entries classify as "error", not
+// "not_found", pinning that distinction as a useful regression check.
+func TestRunCLI_Refs_TwoArgsIsBatchMode(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"refs", "one", "two", "--target-dir", t.TempDir()})
+
+	if exitCode != 3 {
+		t.Fatalf("RunCLI(refs one two --target-dir <empty>) = %d; want 3 (worst-outcome rank for an all-error batch)", exitCode)
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	results, ok := env["results"].([]any)
+	if !ok {
+		t.Fatalf("envelope %v missing []any \"results\" field", env)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d; want 2", len(results))
+	}
+
+	wantSymbols := []string{"one", "two"}
+	for i, r := range results {
+		entry, ok := r.(map[string]any)
+		if !ok {
+			t.Fatalf("results[%d] = %v; want a JSON object", i, r)
+		}
+		if status, _ := entry["status"].(string); status != "error" {
+			t.Errorf("results[%d][\"status\"] = %q; want \"error\"", i, status)
+		}
+		if symbol, _ := entry["symbol"].(string); symbol != wantSymbols[i] {
+			t.Errorf("results[%d][\"symbol\"] = %q; want %q", i, symbol, wantSymbols[i])
+		}
+	}
+}
+
+// TestBatchRunner_WorstOutcomeWinsExitCode tests runBatch directly rather
+// than through a live language server: a small table-driven lookupOne
+// closure maps each input symbol string to a fixed (batchStatus,
+// map[string]any) pair, so this test needs no engine call or subprocess at
+// all. It table-drives one sub-test per possible "worst status present"
+// combination, asserting both the resulting exit code (via
+// clihelp.NewExitContext's exitState.Code(), mirroring
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo's pattern above) and that
+// "results" has one entry per input symbol with the expected "status".
+func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
+	t.Parallel()
+
+	outcomes := map[string]struct {
+		status batchStatus
+		fields map[string]any
+	}{
+		"a": {statusFound, map[string]any{"references": []any{}}},
+		"b": {statusNotFound, nil},
+		"c": {statusAmbiguous, map[string]any{"candidates": []string{"x"}}},
+		"d": {statusError, map[string]any{"error": "boom"}},
+	}
+	lookupOne := func(symbol string) (batchStatus, map[string]any) {
+		o := outcomes[symbol]
+		return o.status, o.fields
+	}
+
+	tests := []struct {
+		name       string
+		symbols    []string
+		wantCode   int
+		wantStatus []string
+	}{
+		{"all_found", []string{"a"}, 0, []string{"found"}},
+		{"found_and_not_found", []string{"a", "b"}, 1, []string{"found", "not_found"}},
+		{"found_not_found_ambiguous", []string{"a", "b", "c"}, 2, []string{"found", "not_found", "ambiguous"}},
+		{"found_not_found_ambiguous_error", []string{"a", "b", "c", "d"}, 3, []string{"found", "not_found", "ambiguous", "error"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			ctx, es := clihelp.NewExitContext(context.Background())
+
+			runBatch(ctx, &out, tt.symbols, lookupOne)
+
+			if es.Code() != tt.wantCode {
+				t.Errorf("es.Code() = %d; want %d", es.Code(), tt.wantCode)
+			}
+
+			var env map[string]any
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+				t.Fatalf("runBatch output is not valid JSON: %v; got: %q", err, out.String())
+			}
+
+			results, ok := env["results"].([]any)
+			if !ok {
+				t.Fatalf("envelope %v missing []any \"results\" field", env)
+			}
+			if len(results) != len(tt.wantStatus) {
+				t.Fatalf("len(results) = %d; want %d", len(results), len(tt.wantStatus))
+			}
+			for i, r := range results {
+				entry, ok := r.(map[string]any)
+				if !ok {
+					t.Fatalf("results[%d] = %v; want a JSON object", i, r)
+				}
+				if status, _ := entry["status"].(string); status != tt.wantStatus[i] {
+					t.Errorf("results[%d][\"status\"] = %q; want %q", i, status, tt.wantStatus[i])
+				}
+			}
+		})
+	}
+}
+
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker proves the
+// success branch of emitLookupResult (a nil err) adds the machine-readable
+// "resolution":"complete" trust marker alongside the results field, while
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo's table above proves the
+// ambiguous and not-found branches do NOT carry it — the marker is
+// meaningful only for a confirmed, complete result set.
+func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	ctx, es := clihelp.NewExitContext(context.Background())
+
+	emitLookupResult(ctx, &out, "references", []traceengine.Reference{{File: "a.go", Line: 1, Character: 2}}, nil)
+
+	if es.Code() != 0 {
+		t.Errorf("es.Code() = %d; want 0", es.Code())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("emitLookupResult output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	if resolution, _ := env["resolution"].(string); resolution != "complete" {
+		t.Errorf("envelope %v missing \"resolution\":\"complete\"; got %q", env, resolution)
+	}
+}
+
+// TestClassifyLookupError_FoundCarriesResolutionCompleteMarker mirrors
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker for batch
+// mode's classifier: classifyLookupError's statusFound branch must carry the
+// same "resolution":"complete" field, one per batch entry, while its
+// statusAmbiguous/statusNotFound/statusError branches leave it out.
+func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) {
+	t.Parallel()
+
+	status, fields := classifyLookupError(nil, "references", []traceengine.Reference{{File: "a.go", Line: 1, Character: 2}})
+
+	if status != statusFound {
+		t.Errorf("classifyLookupError(nil, ...) status = %q; want %q", status, statusFound)
+	}
+	if resolution, _ := fields["resolution"].(string); resolution != "complete" {
+		t.Errorf("classifyLookupError(nil, ...) fields = %v; missing \"resolution\":\"complete\"", fields)
+	}
+
+	ambiguousStatus, ambiguousFields := classifyLookupError(&traceengine.ErrAmbiguousSymbol{Symbol: "Foo", Candidates: []string{"a.go:1:1"}}, "references", nil)
+	if ambiguousStatus != statusAmbiguous {
+		t.Fatalf("classifyLookupError(ambiguous, ...) status = %q; want %q", ambiguousStatus, statusAmbiguous)
+	}
+	if _, ok := ambiguousFields["resolution"]; ok {
+		t.Errorf("classifyLookupError(ambiguous, ...) fields = %v; want no \"resolution\" field", ambiguousFields)
+	}
+}
+
+// TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir proves the
+// "Supervised daemon anchoring outside a lyx hub" Shared Decision's fallback:
+// from a fresh t.TempDir() with no _lyx (outside any lyx hub, and — being a
+// t.TempDir() — never inside a git repository either, so
+// hubgeometry.Resolve fails), resolveWorktreeRoot must return the absolute
+// form of targetDir, never an empty string.
+func TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir(t *testing.T) {
+	cwd := t.TempDir()
+	targetDir := t.TempDir()
+
+	got := resolveWorktreeRoot(cwd, targetDir)
+
+	if got == "" {
+		t.Fatalf("resolveWorktreeRoot(%q, %q) = \"\"; want a non-empty absolute path", cwd, targetDir)
+	}
+	wantAbs, err := filepath.Abs(targetDir)
+	if err != nil {
+		t.Fatalf("filepath.Abs(%q) error = %v", targetDir, err)
+	}
+	if got != wantAbs {
+		t.Errorf("resolveWorktreeRoot(%q, %q) = %q; want %q", cwd, targetDir, got, wantAbs)
+	}
+}
+
+// TestBuildOptions_ThreadsEveryFieldFromItsArguments pins buildOptions's
+// field-threading contract: every argument lands in the identically-named
+// Options field, WorktreeRoot included and non-empty. This does not (and
+// cannot) prove a specific call site passes the right worktreeRoot local —
+// that regression is guarded structurally by the DRY collapse of the six
+// construction sites onto this one function, not by this tautological
+// self-check — but it does pin the shape/wiring contract every call site
+// relies on.
+func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
+	t.Parallel()
+
+	registry := traceengine.BuiltinRegistry()
+	query := traceengine.Query{Symbol: "Foo"}
+
+	got := buildOptions(registry, "/target", "/worktree/root", "go", query, 5*time.Second)
+
+	if got.TargetDir != "/target" {
+		t.Errorf("buildOptions(...).TargetDir = %q; want %q", got.TargetDir, "/target")
+	}
+	if got.WorktreeRoot != "/worktree/root" {
+		t.Errorf("buildOptions(...).WorktreeRoot = %q; want %q", got.WorktreeRoot, "/worktree/root")
+	}
+	if got.Lang != "go" {
+		t.Errorf("buildOptions(...).Lang = %q; want %q", got.Lang, "go")
+	}
+	if got.Query != query {
+		t.Errorf("buildOptions(...).Query = %+v; want %+v", got.Query, query)
+	}
+	if got.Timeout != 5*time.Second {
+		t.Errorf("buildOptions(...).Timeout = %v; want %v", got.Timeout, 5*time.Second)
+	}
+}
+
+// TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName proves
+// inFileQuery's core contract: the returned Query carries InFile (absolute
+// File, bare Name) and never Pos — even when name itself happens to have a
+// "file:line:col" shape, mirroring symbolQuery's never-position-parsed
+// discipline for the flag-less "symbol" verb.
+func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testing.T) {
+	t.Parallel()
+
+	const name = "foo.go:1:1"
+
+	query, err := inFileQuery("internal/foo/bar.go", name)
+	if err != nil {
+		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "internal/foo/bar.go", name, err)
+	}
+
+	if query.Pos != nil {
+		t.Errorf("inFileQuery(...).Pos = %+v; want nil — the name must never be position-parsed", query.Pos)
+	}
+	if query.InFile == nil {
+		t.Fatalf("inFileQuery(...).InFile = nil; want a populated *InFileQuery")
+	}
+	if query.InFile.Name != name {
+		t.Errorf("inFileQuery(...).InFile.Name = %q; want %q", query.InFile.Name, name)
+	}
+	if !filepath.IsAbs(query.InFile.File) {
+		t.Errorf("inFileQuery(...).InFile.File = %q; want an absolute path", query.InFile.File)
+	}
+}
+
+// TestInFileQuery_ResolvesRelativePathToAbsolute proves a relative --in-file
+// path is resolved against the process cwd, exactly like parseQuery resolves
+// a relative "file:line:col" argument's file component.
+func TestInFileQuery_ResolvesRelativePathToAbsolute(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	query, err := inFileQuery("relative/bar.go", "MyFunc")
+	if err != nil {
+		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "relative/bar.go", "MyFunc", err)
+	}
+
+	want := filepath.Join(cwd, "relative/bar.go")
+	if query.InFile == nil || query.InFile.File != want {
+		t.Errorf("inFileQuery(...).InFile.File = %+v; want %q", query.InFile, want)
+	}
+}
+
+// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol proves --in-file
+// is registered on refs and definition but deliberately absent from symbol:
+// per the plan, symbol has no --in-file variant at all.
+func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cmd     *cobra.Command
+		wantHas bool
+	}{
+		{"refs", refsCommand(), true},
+		{"definition", definitionCommand(), true},
+		{"symbol", symbolCommand(), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasFlag := tt.cmd.Flags().Lookup("in-file") != nil
+			if hasFlag != tt.wantHas {
+				t.Errorf("%s command has --in-file registered = %v; want %v", tt.name, hasFlag, tt.wantHas)
+			}
+		})
+	}
+}
+
+// TestFilterWithin covers the pure --within filtering logic refs, definition,
+// and assert-no-callers all delegate to, entirely offline. It is the
+// regression test for the mitigation this repo's own trace-vs-grep
+// benchmark (docs/benchmarks/trace-vs-grep.md, Task 3) surfaced as a
+// real gap: an unscoped "lyx trace refs" on an interface method
+// conflates results from every structurally-identical interface anywhere in
+// the workspace, and the CI-shaped "assert-no-callers" gate can turn that
+// noise into false "violation":true reports. --within is what lets a caller
+// who already knows a query's intended package scope discard that noise.
+func TestFilterWithin(t *testing.T) {
+	t.Parallel()
+
+	inScope1 := traceengine.Reference{File: "/repo/internal/builderengine/poll.go", Line: 203}
+	inScope2 := traceengine.Reference{File: "/repo/internal/builderengine/spawn.go", Line: 10}
+	crossPackage := traceengine.Reference{File: "/repo/internal/websterengine/poll.go", Line: 44}
+	// A sibling directory whose name merely starts with the same prefix —
+	// proves filterWithin does not fall back to a naive string-prefix
+	// check, which would wrongly treat "internal/builder" as containing
+	// anything under "internal/builderengine" (they share no path
+	// component boundary in common beyond the literal substring).
+	prefixCollision := traceengine.Reference{File: "/repo/internal/buildercli/cli.go", Line: 5}
+
+	tests := []struct {
+		name     string
+		within   string
+		baseDir  string
+		refs     []traceengine.Reference
+		wantRefs []traceengine.Reference
+	}{
+		{
+			name:     "absolute_within_keeps_only_in_scope",
+			within:   "/repo/internal/builderengine",
+			baseDir:  "/anything", // unused: within is already absolute
+			refs:     []traceengine.Reference{inScope1, inScope2, crossPackage, prefixCollision},
+			wantRefs: []traceengine.Reference{inScope1, inScope2},
+		},
+		{
+			name:     "relative_within_resolves_against_baseDir",
+			within:   "internal/builderengine",
+			baseDir:  "/repo",
+			refs:     []traceengine.Reference{inScope1, crossPackage},
+			wantRefs: []traceengine.Reference{inScope1},
+		},
+		{
+			name:     "prefix_collision_directory_excluded",
+			within:   "/repo/internal/builder",
+			baseDir:  "/anything",
+			refs:     []traceengine.Reference{prefixCollision},
+			wantRefs: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := filterWithin(tt.refs, tt.within, tt.baseDir)
+			if len(got) != len(tt.wantRefs) {
+				t.Fatalf("filterWithin() = %v; want %v", got, tt.wantRefs)
+			}
+			for i := range got {
+				if got[i] != tt.wantRefs[i] {
+					t.Errorf("filterWithin()[%d] = %v; want %v", i, got[i], tt.wantRefs[i])
+				}
+			}
+		})
+	}
+}
+
+// TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous pins the
+// regression classifySymbolError exists to prevent: a future edit that
+// makes classifySymbolError reuse classifyLookupError's ambiguity branch by
+// mistake. Two matches is exactly the multi-candidate case that *would* be
+// "ambiguous" for refs/definition (via classifyLookupError), but per
+// symbol-semantics symbol has no ambiguous status at all — every match is
+// just part of the found result set.
+func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	status, fields := classifySymbolError(nil, []traceengine.SymbolMatch{{Name: "Foo"}, {Name: "FooBar"}})
+
+	if status != statusFound {
+		t.Errorf("classifySymbolError(nil, <2 matches>) status = %q; want %q", status, statusFound)
+	}
+
+	symbols, ok := fields["symbols"].([]map[string]any)
+	if !ok {
+		t.Fatalf("fields %v missing []map[string]any \"symbols\" field", fields)
+	}
+	if len(symbols) != 2 {
+		t.Fatalf("len(symbols) = %d; want 2", len(symbols))
+	}
+	wantNames := []string{"Foo", "FooBar"}
+	for i, s := range symbols {
+		if name, _ := s["name"].(string); name != wantNames[i] {
+			t.Errorf("symbols[%d][\"name\"] = %q; want %q", i, name, wantNames[i])
+		}
+	}
+}
+
+// TestRunCLI_AssertNoCallers_NoLanguageError verifies that "assert-no-callers
+// <symbol> --target-dir <empty dir>" fails through the same ErrNoLanguage
+// path TestRunCLI_Refs_NoLanguageError exercises for "refs" —
+// assertNoCallersCommand shares the identical cwd/registry-resolution
+// preamble, and the very first engine call (Definition) never launches a
+// language server against an empty temp dir.
+func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
+	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// traceengine.BuiltinRegistry() deterministically, independent of
+	// whatever git repo or servers.yaml the test happens to run inside.
+	t.Chdir(t.TempDir())
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"assert-no-callers", "MySymbol", "--target-dir", emptyTargetDir})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(assert-no-callers MySymbol --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("RunCLI output has %d lines; want exactly 1. output:\n%s", len(lines), out.String())
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, lines[0])
+	}
+
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("RunCLI(assert-no-callers MySymbol --target-dir <empty>) ok = true; want false")
+	}
+	if env["violation"] != nil {
+		t.Errorf(`RunCLI(assert-no-callers MySymbol --target-dir <empty>) envelope carries "violation"; want absent for a lookup failure, not a real violation`)
+	}
+
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(assert-no-callers MySymbol --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\"", errMsg)
+	}
+}
+
+// TestRunCLI_AssertNoCallers_RequiresExactlyOneArg verifies Args:
+// cobra.ExactArgs(1) rejects both zero and two-or-more arguments —
+// assert-no-callers has no batch mode (refs/definition/symbol's 2+-arg
+// switch to batch mode does not apply here), so a second positional argument
+// must be a hard usage error, not silently ignored or reinterpreted.
+func TestRunCLI_AssertNoCallers_RequiresExactlyOneArg(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"bare", []string{"assert-no-callers"}},
+		{"two_args", []string{"assert-no-callers", "Foo", "Bar"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := RunCLI(&out, tt.args)
+
+			if exitCode == 0 {
+				t.Errorf("RunCLI(%v) = 0; want non-zero exit for wrong arg count", tt.args)
+			}
+		})
+	}
+}
+
+// TestFilterUnexpectedCallers covers the pure filtering logic
+// assertNoCallersCommand's RunE delegates to, entirely offline: no language
+// server, no cobra plumbing — just the File+Line+Character set arithmetic
+// that decides which References results are genuine violations.
+func TestFilterUnexpectedCallers(t *testing.T) {
+	t.Parallel()
+
+	decl := traceengine.Reference{File: "/repo/pkg/foo.go", Line: 10, Character: 6}
+	wrapper := traceengine.Reference{File: "/repo/pkg/wrapper.go", Line: 20, Character: 3}
+	caller := traceengine.Reference{File: "/repo/other/bar.go", Line: 5, Character: 12}
+
+	tests := []struct {
+		name      string
+		refs      []traceengine.Reference
+		declRefs  []traceengine.Reference
+		exceptAbs map[string]bool
+		want      []traceengine.Reference
+	}{
+		{
+			name:     "declaration_only_is_clean",
+			refs:     []traceengine.Reference{decl},
+			declRefs: []traceengine.Reference{decl},
+			want:     nil,
+		},
+		{
+			name:      "except_path_is_excluded",
+			refs:      []traceengine.Reference{decl, wrapper},
+			declRefs:  []traceengine.Reference{decl},
+			exceptAbs: map[string]bool{"/repo/pkg/wrapper.go": true},
+			want:      nil,
+		},
+		{
+			name:     "unexpected_caller_survives",
+			refs:     []traceengine.Reference{decl, wrapper, caller},
+			declRefs: []traceengine.Reference{decl},
+			exceptAbs: map[string]bool{
+				"/repo/pkg/wrapper.go": true,
+			},
+			want: []traceengine.Reference{caller},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := filterUnexpectedCallers(tt.refs, tt.declRefs, tt.exceptAbs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("filterUnexpectedCallers() = %v; want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("filterUnexpectedCallers()[%d] = %v; want %v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}

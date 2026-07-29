@@ -86,7 +86,7 @@ Each card lives in its own file, and the file's content is, in this order:
 **Why it is safe to include in v0, unlike the symbol fields:** it carries no hallucination risk — it only references other cards within the same plan, written by the same planner in the same session, never a claim about external code that could turn out to be wrong. Three reasons to include it now:
 
 1. Human-readable context at escalation time (if card 5 fails, is card 6 known to depend on it?).
-2. Forward-compatible input for a future DAG mechanism (a cross-check layer once codeintel-derived edges exist, analogous to how `SHAExists` cross-checks a stored git reference — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
+2. Forward-compatible input for a future DAG mechanism (a cross-check layer once trace-derived edges exist, analogous to how `SHAExists` cross-checks a stored git reference — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
 3. **A cheap, mechanical, pre-review order-validation gate:** it powers the `depends-on-order` check — a card whose `Depends-on:` names a *later* card in the declared order, names itself, or names an id referencing no existing card is flagged before any LLM-based review runs, at zero LLM cost.
 
 ## Card path resolution: `root:` and `//`
@@ -132,11 +132,11 @@ There is **no mandatory per-batch/per-card verify gate** — batch is gone, and 
 
 ## Deferred / forward-compat
 
-The symbol fields — `creates-symbols`/`edits-symbols`/`reads-symbols` — are **deliberately omitted in v0**, not just left optional. They depend on a working, planner-side-verified `codeintel`, which is deprioritized (see the roadmap's Someday list). Adding them now as unused optional fields would create confusion later; better to add them explicitly once `codeintel` is actually ready. See [../../manifest/designs/codeintel-redesign.md](../../manifest/designs/codeintel-redesign.md) for what they'd depend on.
+The symbol fields — `creates-symbols`/`edits-symbols`/`reads-symbols` — are **deliberately omitted in v0**, not just left optional. They depend on a working, planner-side-verified `trace`, which is deprioritized (see the roadmap's Someday list). Adding them now as unused optional fields would create confusion later; better to add them explicitly once `trace` is actually ready. See [../../manifest/designs/trace-redesign.md](../../manifest/designs/trace-redesign.md) for what they'd depend on.
 
 **The derived `changes-files` union** — the union of the typed file-op fields (`Edits:` ∪ `Creates:` ∪ `Deletes:` ∪ both `Moves:` endpoints) — is the artifact webster's future contract-verification compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note; a file-list mismatch against `changes-files` is always informational, never blocking on its own). See `internal/websterengine`'s package documentation for the verification semantics.
 
-The detailed continuous-DAG-update / symbol-matching / SCC-merging **scheduling** design is summarized in `internal/websterengine`'s package documentation ("Declared order now, a dead DAG seam for later") — v0 runs strictly in declared order; the eventual DAG scheduler waits on codeintel-backed symbol fields.
+The detailed continuous-DAG-update / symbol-matching / SCC-merging **scheduling** design is summarized in `internal/websterengine`'s package documentation ("Declared order now, a dead DAG seam for later") — v0 runs strictly in declared order; the eventual DAG scheduler waits on trace-backed symbol fields.
 
 A parked, more aggressive parallel-execution idea also exists — see [../../manifest/designs/webster-parallel-execution.md](../../manifest/designs/webster-parallel-execution.md).
 
@@ -286,4 +286,4 @@ row mapper via `git mv` per the Rename mechanic above (no behavior change in thi
 
 - [builder-contract.md](builder-contract.md#webster-the-fork-based-sibling) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
-- [codeintel-redesign.md](../../manifest/designs/codeintel-redesign.md) — the module the symbol fields depend on.
+- [trace-redesign.md](../../manifest/designs/trace-redesign.md) — the module the symbol fields depend on.

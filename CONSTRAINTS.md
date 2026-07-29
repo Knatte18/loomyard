@@ -42,14 +42,14 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 - The reverse import (`tokenvocab` → `reed`, `tokenvocab` → `loom`, or any other feature package) is never allowed.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
-## Codeintelengine Leaf Invariant
+## Traceengine Leaf Invariant
 
-`internal/codeintelengine` production code imports only stdlib, `internal/hubgeometry`, `internal/lock`, `internal/proc`, and `gopkg.in/yaml.v3` — no `internal/output`, no `cobra`, no `internal/*cli` package — so the engine stays a cycle-free leaf importable by builder/webster later, exactly like `internal/modelspec`'s leaf excludes `output`. The engine returns typed Go errors and typed result values (`(T, error)`) and never touches `io.Writer`, exit codes, or the `output.Ok`/`output.Err` envelope; `internal/codeintelcli` is the sole layer that maps engine errors/results into that envelope.
+`internal/traceengine` production code imports only stdlib, `internal/hubgeometry`, `internal/lock`, `internal/proc`, and `gopkg.in/yaml.v3` — no `internal/output`, no `cobra`, no `internal/*cli` package — so the engine stays a cycle-free leaf importable by builder/webster later, exactly like `internal/modelspec`'s leaf excludes `output`. The engine returns typed Go errors and typed result values (`(T, error)`) and never touches `io.Writer`, exit codes, or the `output.Ok`/`output.Err` envelope; `internal/tracecli` is the sole layer that maps engine errors/results into that envelope.
 
-- `codeintelcli` → `codeintelengine` is the only allowed direction; the reverse import (`codeintelengine` → `codeintelcli`, or `codeintelengine` → any other feature package) is never allowed.
+- `tracecli` → `traceengine` is the only allowed direction; the reverse import (`traceengine` → `tracecli`, or `traceengine` → any other feature package) is never allowed.
 - `internal/lock` fences the toolchain-install race (the Go toolchain manager's `resolveGoToolchain`) and the daemon spawn-race (the supervised-strategy daemon state file) — both genuinely cross-process coordination problems the leaf needs to solve itself, and `internal/lock` is already the repo's one primitive for exactly that, so allowlisting it is reuse rather than a new dependency class.
 - `internal/proc` supplies the cross-platform `IsAlive` PID-liveness primitive the daemon state file's staleness check needs and the `Detach`/`DetachBreakaway` spawn primitive the `supervised` strategy needs — and, mirroring the **GitHub Auth Invariant** entry's own justification for the identical allowlist question, `internal/proc`'s own production imports are `os/exec` and `syscall` only, so allowlisting it does not widen the leaf's real transitive dependency surface.
-- **Enforced by** `internal/codeintelengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
+- **Enforced by** `internal/traceengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) on every `go test`.
 
 ## Pattern Leaf Invariant
 
@@ -108,7 +108,7 @@ One review+fix round (burler now, hardener later) follows the round discipline: 
 Every registered lyx module must be exercised by the black-box sandbox suite or be explicitly excluded with a reason.
 
 - **Tagging.** A scenario in **any** suite file matching `tools/sandbox/*SUITE.md` (today: `SANDBOX-BUILDER-SUITE.md`, `SANDBOX-BURLER-SUITE.md`, `SANDBOX-CORE-SUITE.md`, `SANDBOX-FABRIC-SUITE.md`, `SANDBOX-PERCH-SUITE.md`, `SANDBOX-REED-SUITE.md`, `SANDBOX-SHUTTLE-SUITE.md`, `SANDBOX-WEBSTER-SUITE.md`) that drives a specific module declares it with a `**Covers:** <module>[, <module>...]` line, in the same bold-label style as the scenario's `**Goal:**`/`**Watch:**`/`**Verdict:**` lines. The guard unions tags across all matched files. Coverage is checked at module granularity against the live cobra root (`newRoot().Commands()`, skipping `help`/`completion`) — the same enumeration `longlist_test.go` already uses, never a separately hand-maintained list. The guard fails fast if the glob matches fewer than two files (vacuous-glob protection).
-- **Allowlist.** Modules that are intentionally never sandbox-exercised across any suite file are named on the test's `excludedModules` allowlist with a one-line reason: `ide` (side-effect heavy: `spawn` opens a real VS Code window, `menu` is an interactive stdin picker), `selfreport` (`create` files a real GitHub issue), `codeintel` (requires an external language-server binary (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build integration tests, not the black-box sandbox suite).
+- **Allowlist.** Modules that are intentionally never sandbox-exercised across any suite file are named on the test's `excludedModules` allowlist with a one-line reason: `ide` (side-effect heavy: `spawn` opens a real VS Code window, `menu` is an interactive stdin picker), `selfreport` (`create` files a real GitHub issue), `trace` (requires an external language-server binary (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build integration tests, not the black-box sandbox suite).
 - **Exists ⇒ covered or excluded.** Adding a new registered module requires either a scenario in some suite file tagged with that module's `**Covers:**` or a new allowlist entry with a reason — the same "exists ⇒ registered" discipline as the CLI/Cobra Invariant's registration guard.
 - **Enforced by** `cmd/lyx/sandbox_coverage_test.go` (`TestSandboxCoverage_AllModulesCoveredOrExcluded`) on every `go test`.
 
