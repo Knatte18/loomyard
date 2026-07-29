@@ -24,9 +24,19 @@
 // target file. Fixing findings as they are spotted turns the "review"
 // into a post-hoc rationalization of edits already made, which destroys
 // the independent judgment the whole method depends on — see the Review
-// Round Invariant in CONSTRAINTS.md and the embedded prompt template
-// (review-prompt-template.md via template.go) that states this rule to
-// the agent every round.
+// Round Invariant in CONSTRAINTS.md and the embedded prompt assets (a
+// thin orchestrator, round-orchestrator-template.md, plus three
+// instruction files, instruction-{1-explore,2-review,3-fix}-template.md,
+// via template.go) that state this rule to the agent every round. The
+// orchestrator is the single source of truth for ordering — it names the
+// three instruction files and states the sequencing rule; each
+// instruction file carries exactly one step's rules, read only when the
+// round reaches that step. Engine.Run renders the three instruction files
+// per round and writes them to a fresh directory under .lyx
+// (layout.DotLyxDir(), machine-local, never committed — distinct from the
+// weft-synced _lyx), then hands the shuttle only the orchestrator, which
+// names their absolute paths so the agent reads each step's rules when it
+// reaches that step.
 //
 // Every recorded finding is fixed in B, all severities including LOW and
 // NIT: severity affects how a finding is reported, never whether it gets
