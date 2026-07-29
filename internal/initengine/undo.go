@@ -40,13 +40,17 @@ type UndoResult struct {
 //     independently no-ops when its own target is absent).
 //  2. Derive slug from the worktree root (identical to Init).
 //  3. Unwire every host junction (both _lyx and _pattern) and their shared
-//     .git/info/exclude entries via fabricengine.UnwireJunctions. Any error
-//     here aborts immediately: no weft-content clearing or .gitignore
-//     revert runs. UnwireJunctions itself loads no config, so Undo supplies
-//     names via fabricengine.WiredNames — but only when the weft worktree
-//     exists (see below): a truly-unpaired host has no config to load and
-//     Undo's contract is that each step independently no-ops when its own
-//     target is absent, never hard-gating on weft pairing the way Init does.
+//     .git/info/exclude entries via fabricengine.UnwireJunctions. Any junction
+//     inconsistency UnwireJunctions itself reports still aborts immediately:
+//     no weft-content clearing or .gitignore revert runs. UnwireJunctions
+//     loads no config itself, so Undo supplies names via
+//     fabricengine.WiredNames — best-effort, like Remove's card-7 teardown
+//     posture: Undo is itself a teardown, and a truly-unpaired or
+//     never-initialized host (no weft worktree, or a weft worktree whose
+//     _lyx/config was never created or was already cleared by a prior Undo)
+//     has no config to load. A load failure there means nothing was ever
+//     wired, not a hard error, so names stays nil and
+//     UnwireJunctions(l, slug, nil) legitimately no-ops.
 //  4. Clear weft-side _lyx content ONLY, if any weft worktree exists at all,
 //     then unconditionally commit and push that deletion through
 //     fabricengine. Weft _pattern content is deliberately NEVER cleared,
@@ -84,20 +88,20 @@ func Undo(cwd string) (UndoResult, error) {
 	// or .gitignore step runs.
 	//
 	// UnwireJunctions loads no config itself, so names must be supplied here —
-	// but ONLY when the weft worktree exists. Gate the load on weft presence
-	// rather than loading unconditionally: TestUndo_NoWeftPairing runs Undo on
-	// a bare `git init` with no weft/config at all and asserts err == nil,
-	// matching Undo's contract that each step no-ops when its own target is
-	// absent (unlike Init, Undo has no weft-pairing pre-gate). When the weft
-	// is absent, names stays nil and UnwireJunctions(l, slug, nil) no-ops —
-	// nothing is wired without a weft, so there is nothing to unwire. When the
-	// weft is present its config is too, so the load succeeds and unwiring
-	// proceeds normally.
+	// best-effort, exactly like Remove's card-7 teardown posture. Undo has no
+	// weft-pairing pre-gate (unlike Init), so first check the weft worktree
+	// exists at all: TestUndo_NoWeftPairing runs Undo on a bare `git init`
+	// with no weft sibling and asserts err == nil. Beyond that, the weft
+	// worktree existing does not guarantee its config does: a never-init'd
+	// weft (TestUndo_NeverInitialized) or one whose _lyx was already cleared
+	// by a prior Undo run (TestUndo_Idempotent's second call,
+	// TestUndo_PartialRecovery) has no fabric.yaml to load. Either way, a
+	// load failure here means nothing was ever wired, not a hard error:
+	// names stays nil and UnwireJunctions(l, slug, nil) legitimately no-ops.
 	var names []string
 	if _, statErr := os.Stat(l.WeftWorktree()); statErr == nil {
-		names, err = fabricengine.WiredNames(filepath.Join(l.WeftWorktree(), l.RelPath))
-		if err != nil {
-			return UndoResult{}, err
+		if loaded, loadErr := fabricengine.WiredNames(filepath.Join(l.WeftWorktree(), l.RelPath)); loadErr == nil {
+			names = loaded
 		}
 	}
 	junctionResult, err := fabricengine.UnwireJunctions(l, slug, names)

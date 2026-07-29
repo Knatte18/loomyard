@@ -20,11 +20,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// setupPreflightFixture builds a CopyPaired fixture, moves the weft primary
-// onto fabric's suffixed branch naming (CopyPaired's raw fixture leaves both
-// sides on "main", the warp-era equality convention; fabric's PairInSync
-// requires the weft branch to be WeftBranchName(hostBranch) — see
-// newFabricFixture's identical fixup in fabricengine's own regression tests),
+// setupPreflightFixture builds a CopyPaired fixture, seeds a fabric config at
+// the weft base (PairInSync/checkJunctionHealth now load fabric.yaml for the
+// wired junction name-set, so a fixture without one would see every junction
+// health check fail as "cannot load fabric.yaml" instead of exercising the
+// scenario under test — mirroring fabricengine's own newFabricFixture), moves
+// the weft primary onto fabric's suffixed branch naming (CopyPaired's raw
+// fixture leaves both sides on "main", the warp-era equality convention;
+// fabric's PairInSync requires the weft branch to be WeftBranchName(hostBranch)),
 // wires the host-weft _lyx junction (CopyPaired does not wire it — see
 // WireJunctions' host-pristine invariant), and seeds a fresh, coherent
 // status.json through the wired junction. Returns the fixture and the slug
@@ -36,6 +39,9 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	f := lyxtest.CopyPaired(t)
 	slug := filepath.Base(f.Layout.WorktreeRoot)
 
+	lyxtest.SeedConfig(t, f.WeftPrime, map[string]string{
+		"fabric": fabricengine.ConfigTemplate(),
+	})
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
