@@ -44,7 +44,8 @@ Batch-local note: changing these three method signatures breaks `internal/fabric
 
 ### Card 3: Update hubgeometry unit tests to the new signatures + regression assertions
 
-- **Context:** none
+- **Context:**
+  - `internal/hubgeometry/hubgeometry.go`
 - **Edits:**
   - `internal/hubgeometry/weft_test.go`
   - `internal/hubgeometry/geometry_test.go`
