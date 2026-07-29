@@ -6,6 +6,7 @@ slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)
 task_description: |
   codeintel V1 — LSP-backed lookups (Go-only, CLI + EnsureServer)
@@ -39,7 +40,9 @@ implementing  '2026-07-29T09:22:02Z'
 ```yaml
 batches:
   - name: registry-and-state-foundations
-    state: pending
+    state: running
+    implementer_session: bde17b03-58f2-4d09-9448-0025b8cb1c3d
+    start_sha: 4608d6d1bd3d5e98e31859b86131d731a683ad16
   - name: lspclient-dial-transport
     state: pending
   - name: toolchain-manager
