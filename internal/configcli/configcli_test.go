@@ -464,7 +464,7 @@ func TestPrintModule_KnownButUnseeded(t *testing.T) {
 // for seeded ones, and # (not configured) for absent ones, all at exit 0.
 func TestPrintAggregate_PartialSeed(t *testing.T) {
 	baseDir := t.TempDir()
-	const boardYAML = "path: board\nhome: Home.md\n"
+	const boardYAML = "path: board\nreadme: Home.md\n"
 	seedModuleConfig(t, baseDir, "board", boardYAML)
 	// fabric and builder are intentionally not seeded.
 

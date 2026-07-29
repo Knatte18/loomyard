@@ -17,7 +17,7 @@ import (
 // fields" (owned by store_test.go:TestUpsertTaskPreservesFields).
 func TestUpsertTask(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
 	w := boardengine.New(cfg)
 
 	// Creates task, tasks.json written, Home.md written
@@ -69,7 +69,7 @@ func TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting(t *testing.T) {
 
 func TestRerender(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
 	w := boardengine.New(cfg)
 
 	// (d) Writes all output files without error on empty store
@@ -78,22 +78,17 @@ func TestRerender(t *testing.T) {
 		t.Fatalf("Rerender failed: %v", err)
 	}
 
-	// Check that Home.md and _Sidebar.md exist
+	// Check that Home.md exists
 	homePath := filepath.Join(boardPath, "Home.md")
-	sidebarPath := filepath.Join(boardPath, "_Sidebar.md")
 
 	if _, err := os.Stat(homePath); err != nil {
 		t.Fatalf("Home.md not created: %v", err)
-	}
-
-	if _, err := os.Stat(sidebarPath); err != nil {
-		t.Fatalf("_Sidebar.md not created: %v", err)
 	}
 }
 
 func TestHealthCheckPasses(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-", SkipGit: true}
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
 	w := boardengine.New(cfg)
 
 	// Create a task to initialize the board directory and tasks.json
@@ -114,7 +109,7 @@ func TestHealthCheckPasses(t *testing.T) {
 
 func TestHealthCheckFailsNoBoardDir(t *testing.T) {
 	boardPath := filepath.Join(t.TempDir(), "nonexistent")
-	cfg := boardengine.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-"}
 	w := boardengine.New(cfg)
 
 	// HealthCheck should fail when board directory does not exist
@@ -126,7 +121,7 @@ func TestHealthCheckFailsNoBoardDir(t *testing.T) {
 
 func TestHealthCheckFailsNoTasksFile(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-"}
 	w := boardengine.New(cfg)
 
 	// HealthCheck should fail when tasks.json does not exist
@@ -138,7 +133,7 @@ func TestHealthCheckFailsNoTasksFile(t *testing.T) {
 
 func TestHealthCheckPassesCorruptFile(t *testing.T) {
 	boardPath := t.TempDir()
-	cfg := boardengine.Config{Path: boardPath, Home: "Home.md", Sidebar: "_Sidebar.md", ProposalPrefix: "proposal-"}
+	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-"}
 	w := boardengine.New(cfg)
 
 	// Create a corrupt but readable tasks.json
