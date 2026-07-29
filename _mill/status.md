@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: crucible-board
 branch: crucible-board
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-29T13:33:00Z'
+done  '2026-07-29T14:09:24Z'
 ```
