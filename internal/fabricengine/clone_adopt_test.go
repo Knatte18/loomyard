@@ -103,6 +103,68 @@ func gitOutput(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// makeEmptyBareRemote creates a bare git repository with no commits at all —
+// a genuinely empty remote, unlike makeBareRemote's seed-and-push. It exists
+// to exercise ensureBoardWorktree's orphan path, which only fires when clone
+// leaves no local hostBranch ref to adopt.
+func makeEmptyBareRemote(t *testing.T, dir, name string) string {
+	t.Helper()
+
+	bare := filepath.Join(dir, name+".git")
+	lyxtest.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
+
+	return bare
+}
+
+// resolveGitCommonDir returns the absolute, cleaned git-common-dir for the
+// repo at repoDir, resolving a relative result (e.g. ".git") against repoDir
+// itself rather than the test process's own cwd.
+func resolveGitCommonDir(t *testing.T, repoDir string) string {
+	t.Helper()
+	common := gitOutput(t, repoDir, "rev-parse", "--git-common-dir")
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(repoDir, common)
+	}
+	abs, err := filepath.Abs(common)
+	if err != nil {
+		t.Fatalf("filepath.Abs(%q): %v", common, err)
+	}
+	return filepath.Clean(abs)
+}
+
+// assertBoardIsWeftWorktree asserts that _board (resolved via
+// hubgeometry.BoardDir(hubPath)) shares its git-common-dir with weftPrime —
+// proving _board is a linked worktree of the same weft repo, not a separate
+// clone — and that _board is checked out on wantBranch.
+func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch string) {
+	t.Helper()
+	boardPath := hubgeometry.BoardDir(hubPath)
+
+	boardCommonDir := resolveGitCommonDir(t, boardPath)
+	weftCommonDir := resolveGitCommonDir(t, weftPrime)
+	if boardCommonDir != weftCommonDir {
+		t.Errorf("_board git-common-dir = %q; want %q (same weft repo as weft prime)", boardCommonDir, weftCommonDir)
+	}
+
+	if got := currentBranch(t, boardPath); got != wantBranch {
+		t.Errorf("_board branch = %q; want %q", got, wantBranch)
+	}
+}
+
+// hasNoCommits reports whether `git log` fails or returns no output in dir —
+// the unborn-HEAD signature of a freshly orphan-created branch with no
+// commits yet.
+func hasNoCommits(t *testing.T, dir string) bool {
+	t.Helper()
+	cmd := exec.Command("git", "log")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(string(out)) == ""
+}
+
 // TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch re-clones against a weft
 // remote whose main-weft branch is ahead of main and asserts the fresh weft
 // primary adopted it: checked out on main-weft, at the remote branch's tip
@@ -112,7 +174,6 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 
 	hostBare := makeBareRemote(t, fixtures, "adopt-host")
 	weftBare := makeBareRemote(t, fixtures, "adopt-weft")
-	boardBare := makeBareRemote(t, fixtures, "adopt-board")
 
 	// Advance the weft remote's main-weft past main, the way a previously
 	// active hub's synced weft history would have: one extra commit carrying a
@@ -134,11 +195,10 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 
 	// Clone the hub fresh, as a second machine (or clone --reset) would.
 	cloneParent := t.TempDir()
-	hubPath, _, err := fabricengine.CloneHub(
+	hubPath, err := fabricengine.CloneHub(
 		cloneParent,
 		filepath.ToSlash(hostBare),
 		filepath.ToSlash(weftBare),
-		filepath.ToSlash(boardBare),
 	)
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -170,6 +230,11 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	if upstream != "origin/main-weft" {
 		t.Errorf("weft prime upstream = %q; want %q", upstream, "origin/main-weft")
 	}
+
+	// _board must be a second worktree of the same weft repo, checked out on
+	// the unsuffixed host branch "main" — adopted from the local ref
+	// cloneRepo already created, proving _board is not a separate clone.
+	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 }
 
 // TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that when the weft
@@ -182,14 +247,12 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 
 	hostBare := makeBareRemote(t, fixtures, "fresh-host")
 	weftBare := makeBareRemote(t, fixtures, "fresh-weft")
-	boardBare := makeBareRemote(t, fixtures, "fresh-board")
 
 	cloneParent := t.TempDir()
-	hubPath, _, err := fabricengine.CloneHub(
+	hubPath, err := fabricengine.CloneHub(
 		cloneParent,
 		filepath.ToSlash(hostBare),
 		filepath.ToSlash(weftBare),
-		filepath.ToSlash(boardBare),
 	)
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
@@ -199,15 +262,17 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(hubPath, "fresh-host", ".git")); err != nil {
 		t.Fatalf("host clone missing .git: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(hubgeometry.BoardDir(hubPath), ".git")); err != nil {
-		t.Fatalf("board clone missing .git: %v", err)
-	}
 
 	weftPrime := hubgeometry.WeftSiblingPath(hubPath, "fresh-host")
 	want := fabricengine.WeftBranchName("main")
 	if got := currentBranch(t, weftPrime); got != want {
 		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
 	}
+
+	// _board must be a second worktree of the same weft repo, checked out on
+	// the unsuffixed host branch "main" — a linked worktree, not a separate
+	// clone (a plain ".git" file existing would no longer distinguish the two).
+	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 
 	// The freshly-created branch carries no upstream — that is deliberately
 	// left to the first push, distinguishing it from the adopt path's
@@ -232,11 +297,54 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	cloneParent := t.TempDir()
 	expectedHubPath := hubgeometry.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
 
-	_, _, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(hostBare), filepath.ToSlash(nonExistentWeft), "")
+	_, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(hostBare), filepath.ToSlash(nonExistentWeft))
 	if err == nil {
 		t.Fatalf("CloneHub should have failed with a non-existent weft remote")
 	}
 	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
 		t.Errorf("hub directory %s should have been removed by teardownHub after clone failure", expectedHubPath)
+	}
+}
+
+// TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote asserts that when
+// the weft remote is genuinely empty (no commits, so cloneRepo leaves no
+// local hostBranch ref to adopt), ensureBoardWorktree's orphan path fires:
+// _board is materialized as a second weft worktree on a freshly orphan-
+// created "main" branch that shares no history with the weft primary's
+// "main-weft" branch — both end up with no commits at all.
+func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
+	fixtures := t.TempDir()
+
+	// The host remote needs a real commit for suffixWeftPrimaryBranch to read
+	// a checked-out branch; the weft remote is genuinely empty.
+	hostBare := makeBareRemote(t, fixtures, "orphan-host")
+	weftBare := makeEmptyBareRemote(t, fixtures, "orphan-weft")
+
+	cloneParent := t.TempDir()
+	hubPath, err := fabricengine.CloneHub(
+		cloneParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+	)
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
+
+	weftPrime := hubgeometry.WeftSiblingPath(hubPath, "orphan-host")
+	if got := currentBranch(t, weftPrime); got != "main-weft" {
+		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
+	}
+	if !hasNoCommits(t, weftPrime) {
+		t.Errorf("weft prime at %s has commits; want an unborn HEAD (genuinely empty weft remote)", weftPrime)
+	}
+
+	// _board must still be a linked worktree of the same weft repo, checked
+	// out on "main", and itself carry no commits — proving the orphan branch
+	// shares no history with main-weft.
+	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
+	boardPath := hubgeometry.BoardDir(hubPath)
+	if !hasNoCommits(t, boardPath) {
+		t.Errorf("_board at %s has commits; want an unborn HEAD (fresh orphan branch)", boardPath)
 	}
 }

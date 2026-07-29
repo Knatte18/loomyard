@@ -13,13 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardcli"
 )
 
-// runHelp invokes RunCLI for a single leaf command with --help and returns the
+// runHelp invokes RunCLI for a leaf command (identified by one or more path
+// segments, e.g. "upsert" or "notes", "upsert") with --help and returns the
 // combined stdout. Help output does not require a seeded cwd because cobra
 // intercepts --help before PersistentPreRunE executes.
-func runHelp(t *testing.T, verb string) string {
+func runHelp(t *testing.T, args ...string) string {
 	t.Helper()
 	var buf bytes.Buffer
-	boardcli.RunCLI(&buf, []string{verb, "--help"})
+	boardcli.RunCLI(&buf, append(args, "--help"))
 	return buf.String()
 }
 
@@ -33,13 +34,13 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		verb           string
+		args           []string
 		mustContain    []string // field names or tokens that must appear in the Long
 		mustNotContain []string // overrides removedTokens for a specific command (merged)
 	}{
 		{
 			name: "upsert",
-			verb: "upsert",
+			args: []string{"upsert"},
 			mustContain: []string{
 				"slug",
 				"title",
@@ -53,7 +54,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		},
 		{
 			name: "upsert-batch",
-			verb: "upsert-batch",
+			args: []string{"upsert-batch"},
 			mustContain: []string{
 				"tasks",
 				"slug",
@@ -61,7 +62,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		},
 		{
 			name: "set-status",
-			verb: "set-status",
+			args: []string{"set-status"},
 			mustContain: []string{
 				"slug",
 				"id",
@@ -70,7 +71,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		},
 		{
 			name: "remove",
-			verb: "remove",
+			args: []string{"remove"},
 			mustContain: []string{
 				"slug",
 				"id",
@@ -78,7 +79,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		},
 		{
 			name: "get",
-			verb: "get",
+			args: []string{"get"},
 			mustContain: []string{
 				"slug",
 				"id",
@@ -86,7 +87,7 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		},
 		{
 			name: "merge",
-			verb: "merge",
+			args: []string{"merge"},
 			mustContain: []string{
 				"remove_slugs",
 				"upsert",
@@ -98,31 +99,98 @@ func TestHelpSchema_LeafCommands(t *testing.T) {
 		},
 		{
 			name: "set-deps",
-			verb: "set-deps",
+			args: []string{"set-deps"},
 			mustContain: []string{
 				"slug",
 				"depends_on",
+			},
+		},
+		{
+			name: "notes upsert",
+			args: []string{"notes", "upsert"},
+			mustContain: []string{
+				"slug",
+				"title",
+				"brief",
+				"body",
+				"depends_on",
+				"isolated",
+				"deferred",
+				"status",
+			},
+		},
+		{
+			name: "notes set-status",
+			args: []string{"notes", "set-status"},
+			mustContain: []string{
+				"slug",
+				"id",
+				"status",
+			},
+		},
+		{
+			name: "notes remove",
+			args: []string{"notes", "remove"},
+			mustContain: []string{
+				"slug",
+				"id",
+			},
+		},
+		{
+			name: "notes get",
+			args: []string{"notes", "get"},
+			mustContain: []string{
+				"slug",
+				"id",
+			},
+		},
+		{
+			name: "notes merge",
+			args: []string{"notes", "merge"},
+			mustContain: []string{
+				"remove_slugs",
+				"upsert",
+				"set_status",
+				"slug",
+				"id",
+				"status",
+			},
+		},
+		{
+			name: "notes set-deps",
+			args: []string{"notes", "set-deps"},
+			mustContain: []string{
+				"slug",
+				"depends_on",
+			},
+		},
+		{
+			name: "promote-note",
+			args: []string{"promote-note"},
+			mustContain: []string{
+				"slug",
+				"id",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			helpText := runHelp(t, tt.verb)
+			helpText := runHelp(t, tt.args...)
 
 			// Each listed field name must appear somewhere in the help output.
 			for _, token := range tt.mustContain {
 				if !strings.Contains(helpText, token) {
-					t.Errorf("RunCLI(%q --help) help text does not contain %q\noutput:\n%s",
-						tt.verb, token, helpText)
+					t.Errorf("RunCLI(%v --help) help text does not contain %q\noutput:\n%s",
+						tt.args, token, helpText)
 				}
 			}
 
 			// No removed token from the old schema must appear in any command's help.
 			for _, bad := range removedTokens {
 				if strings.Contains(helpText, bad) {
-					t.Errorf("RunCLI(%q --help) help text must not contain removed token %q\noutput:\n%s",
-						tt.verb, bad, helpText)
+					t.Errorf("RunCLI(%v --help) help text must not contain removed token %q\noutput:\n%s",
+						tt.args, bad, helpText)
 				}
 			}
 		})

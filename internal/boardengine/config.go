@@ -21,10 +21,9 @@ type Config struct {
 	// caller (boardcli.Command's PersistentPreRunE via hubgeometry.BoardDir or the
 	// --board-path flag), never by the config file. yaml:"-" prevents the
 	// yaml.v3 unmarshaller from mapping any leftover path: key onto this field.
-	Path           string `yaml:"-"`
-	Home           string `yaml:"home"`
-	Sidebar        string `yaml:"sidebar"`
-	ProposalPrefix string `yaml:"proposal_prefix"`
+	Path         string `yaml:"-"`
+	Readme       string `yaml:"readme"`
+	DesignPrefix string `yaml:"design_prefix"`
 	// SkipGit and SkipPush are populated from BOARD_SKIP_* env at the CLI entry.
 	SkipGit  bool
 	SkipPush bool
@@ -32,17 +31,15 @@ type Config struct {
 
 // Outputs represents the output configuration values derived from Config.
 type Outputs struct {
-	Home           string
-	Sidebar        string
-	ProposalPrefix string
+	Readme       string
+	DesignPrefix string
 }
 
 // Outputs returns the Outputs derived from a Config.
 func (c Config) Outputs() Outputs {
 	return Outputs{
-		Home:           c.Home,
-		Sidebar:        c.Sidebar,
-		ProposalPrefix: c.ProposalPrefix,
+		Readme:       c.Readme,
+		DesignPrefix: c.DesignPrefix,
 	}
 }
 

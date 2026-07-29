@@ -116,6 +116,11 @@ pipeline:
   auto_merge: true
   auto_report: true
   autonomous_mode: false  # Set true by mill-autofix; read by mill-go and mill-plan for autonomous stuck-handling
+  # done_gate: repo-wide safety net for this task. Batch verify commands are scoped
+  # per-package (boardengine/boardcli/fabricengine/fabriccli/cmd/lyx); this catches
+  # cross-package regressions (e.g. a CloneHub signature change breaking a caller in
+  # a package no single batch's verify command covers) before mill-go marks done.
+  done_gate: "go test ./..."
 
 # ---------------------------------------------------------------------------
 # Reviewer roles

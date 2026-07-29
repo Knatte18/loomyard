@@ -81,31 +81,3 @@ func TestCloneRepo_InvalidURLFails(t *testing.T) {
 		t.Errorf("cloneRepo(%q, %q) error = %q; want no %q substring (raw git stderr leak)", url, dest, err.Error(), "fatal:")
 	}
 }
-
-func TestDeriveBoardURL(t *testing.T) {
-	tests := []struct {
-		name    string
-		weftURL string
-		want    string
-	}{
-		{
-			name:    "weft with .git",
-			weftURL: "https://github.com/u/weft.git",
-			want:    "https://github.com/u/weft.wiki.git",
-		},
-		{
-			name:    "weft without .git",
-			weftURL: "https://github.com/u/weft",
-			want:    "https://github.com/u/weft.wiki.git",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := deriveBoardURL(tt.weftURL)
-			if got != tt.want {
-				t.Errorf("deriveBoardURL(%q) = %q; want %q", tt.weftURL, got, tt.want)
-			}
-		})
-	}
-}

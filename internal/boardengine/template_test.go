@@ -23,7 +23,7 @@ func TestConfigTemplate_ValidYAML(t *testing.T) {
 }
 
 // TestConfigTemplate_HasRequiredKeys asserts that the template contains
-// all expected configuration keys (home, sidebar, proposal_prefix).
+// all expected configuration keys (readme, design_prefix).
 // The geometry key path is intentionally absent — board data dir is now
 // owned by hubgeometry.BoardDir, not the config file.
 func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
@@ -33,7 +33,7 @@ func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 		t.Fatalf("ConfigTemplate() is not valid YAML: %v", err)
 	}
 
-	expectedKeys := []string{"home", "sidebar", "proposal_prefix"}
+	expectedKeys := []string{"readme", "design_prefix"}
 	for _, key := range expectedKeys {
 		if _, ok := result[key]; !ok {
 			t.Errorf("ConfigTemplate() missing expected key: %s", key)
@@ -59,9 +59,8 @@ func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
 		key     string
 		wantVal any
 	}{
-		{"home", "Home.md"},
-		{"sidebar", "_Sidebar.md"},
-		{"proposal_prefix", "proposal-"},
+		{"readme", "README.md"},
+		{"design_prefix", "design-"},
 	}
 
 	for _, tt := range tests {

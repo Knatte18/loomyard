@@ -15,7 +15,7 @@ import (
 
 // swapLockSuffix names the fine-grained lock that fences readers of a file
 // against the instant a writer swaps it in via rename. It is deliberately
-// separate from the coarse tasks.json.lock held across a whole write (which
+// separate from the coarse board.lock held across a whole write (which
 // includes git network I/O) so reads wait microseconds, not seconds.
 const swapLockSuffix = ".swaplock"
 
@@ -240,6 +240,7 @@ var upsertAllowedKeys = map[string]bool{
 	"brief":      true,
 	"body":       true,
 	"status":     true,
+	"short_name": true,
 }
 
 // validateUpsertFields rejects any key in fields that is not in upsertAllowedKeys.

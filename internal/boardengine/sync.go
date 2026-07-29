@@ -2,8 +2,8 @@
 //
 // Writes only touch the filesystem; Sync is what gets those changes to GitHub.
 // Each loop iteration commits any dirty working-tree state via
-// gitrepo.StageAllAndCommit and, unless skipPush is set, pushes anything
-// unpushed via gitrepo.PushCoalesced (which owns the hasUnpushed guard and
+// fabricengine.CommitWeftAt and, unless skipPush is set, pushes anything
+// unpushed via fabricengine.PushWeftAt (which owns the hasUnpushed guard and
 // the rebase-retry, so a fully-pushed board never touches the network) —
 // looping until a commit iteration finds nothing dirty, so a burst of writes
 // coalesces into as few pushes as possible. A single top-level push lock
@@ -18,15 +18,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
 const (
 	// writeLockFile serialises file-state changes (writers' mutations and the
-	// sync commit). pushLockFile guarantees a single active pusher.
-	writeLockFile = "tasks.json.lock"
-	pushLockFile  = "tasks.json.push.lock"
+	// sync commit). pushLockFile guarantees a single active pusher. Both stores
+	// (tasks.json and notes.json) share these two lock files.
+	writeLockFile = "board.lock"
+	pushLockFile  = "board.push.lock"
 )
 
 // Sync commits any pending changes and pushes them to the remote, looping until
@@ -54,18 +55,21 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 		return err
 	}
 
-	repo := gitrepo.New(boardPath)
 	for {
-		committed, err := commitDirty(repo, boardPath)
+		committed, err := commitDirty(boardPath)
 		if err != nil {
 			return err
 		}
 		if !skipPush {
-			// PushCoalesced no-ops when nothing is ahead of upstream, so a sync
+			// PushWeftAt no-ops when nothing is ahead of upstream, so a sync
 			// with nothing to do never touches the network (and never fails just
 			// because the remote is unreachable) — matching the pre-gitrepo
-			// pushUnpushed behavior.
-			if err := repo.PushCoalesced(); err != nil {
+			// pushUnpushed behavior. commitDirty is only reached from inside
+			// Sync's own skipGit-false path, so a zero-value SyncOptions is
+			// always correct here — do not call fabricengine.EnvSyncOptions(),
+			// which reads WEFT_SKIP_GIT/WEFT_SKIP_PUSH, not board's own
+			// BOARD_SKIP_GIT/BOARD_SKIP_PUSH.
+			if err := fabricengine.PushWeftAt(boardPath, fabricengine.SyncOptions{}); err != nil {
 				return fmt.Errorf("sync push: %w", err)
 			}
 		}
@@ -80,14 +84,17 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 // commitDirty stages and commits the working tree if it has changes, under the
 // write lock so it snapshots a state no writer is mid-mutation on. Returns
 // whether a commit was made.
-func commitDirty(repo *gitrepo.Repo, boardPath string) (bool, error) {
+func commitDirty(boardPath string) (bool, error) {
 	lock, err := flock.AcquireWriteLock(filepath.Join(boardPath, writeLockFile))
 	if err != nil {
 		return false, fmt.Errorf("acquire write lock: %w", err)
 	}
 	defer lock.Release()
 
-	_, committed, err := repo.StageAllAndCommit("board sync")
+	// commitDirty is only ever reached from inside Sync's own skipGit-false
+	// path, so SkipGit is always already false by construction here — a
+	// zero-value SyncOptions is correct, not a shortcut.
+	_, committed, err := fabricengine.CommitWeftAt(boardPath, "board sync", fabricengine.SyncOptions{})
 	if err != nil {
 		return false, fmt.Errorf("sync commit: %w", err)
 	}

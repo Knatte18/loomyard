@@ -33,7 +33,7 @@ func setupBoardConfig(t *testing.T) {
 		t.Fatalf("setupBoardConfig: MkdirAll _lyx/config: %v", err)
 	}
 	configPath := hubgeometry.ConfigFile(cwd, "board")
-	boardConfig := "path: board\nhome: Home.md\nsidebar: _Sidebar.md\nproposal_prefix: proposal-\n"
+	boardConfig := "path: board\nreadme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("setupBoardConfig: write board.yaml: %v", err)
 	}

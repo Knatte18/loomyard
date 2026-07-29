@@ -210,3 +210,46 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 		t.Errorf("ok should be true; got false. Error: %v", result["error"])
 	}
 }
+
+// TestRunCLI_CloneRequiresExactlyTwoArgs verifies that "fabric clone" rejects both
+// too few (1) and too many (3, the old <host-url> <weft-url> <board-url> form this
+// task removed) positional arguments with exit 1 and the updated usage message —
+// runCloneWithReset's len(args) != 2 check runs before any git spawn, so a
+// t.TempDir + t.Chdir is sufficient with no fixture.
+func TestRunCLI_CloneRequiresExactlyTwoArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "OneArg",
+			args: []string{"clone", "https://example.com/host"},
+		},
+		{
+			name: "ThreeArgs",
+			args: []string{"clone", "https://example.com/host", "https://example.com/weft", "https://example.com/board"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Chdir(tmpDir)
+
+			var out bytes.Buffer
+			exitCode := fabriccli.RunCLI(&out, tt.args)
+
+			if exitCode != 1 {
+				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
+			}
+
+			result := decodeResult(t, &out)
+			if ok, _ := result["ok"].(bool); ok {
+				t.Errorf("RunCLI(%v) ok = true; want false", tt.args)
+			}
+			errMsg, _ := result["error"].(string)
+			if !strings.Contains(errMsg, "usage: lyx fabric clone") {
+				t.Errorf("RunCLI(%v) error = %q; want \"usage: lyx fabric clone\" substring", tt.args, errMsg)
+			}
+		})
+	}
+}

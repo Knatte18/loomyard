@@ -258,7 +258,7 @@ func buildConfigLong() string {
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
 		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
 		"bypassing the editor entirely, e.g.\n" +
-		"  lyx config board --set proposal_prefix=foo- --set home=Home.md\n" +
+		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"Pre-existing config keys not recognized by the current template are\n" +
 		"preserved untouched (never dropped) and reported via a \"preserved\" field\n" +
 		"in the JSON success output; run \"lyx config reconcile\" to actually remove\n" +

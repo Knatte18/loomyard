@@ -1,6 +1,6 @@
 // layer_test.go — unit tests for derived fields (layer.go).
 //
-// ComputeLayers depth assignment, RenderOrder, and ExtendedTitle.
+// ComputeLayers depth assignment and RenderOrder.
 
 package boardengine_test
 
@@ -224,49 +224,6 @@ func TestRenderOrder(t *testing.T) {
 				t.Fatalf("RenderOrder() error = %v", err)
 			}
 			tt.check(t, result)
-		})
-	}
-}
-
-func TestExtendedTitle(t *testing.T) {
-	tests := []struct {
-		name  string
-		task  boardengine.Task
-		layer string
-		want  string
-	}{
-		{
-			name:  "letter bucket",
-			task:  boardengine.Task{Title: "My Task"},
-			layer: "A",
-			want:  "My Task [A]",
-		},
-		{
-			name:  "Z bucket",
-			task:  boardengine.Task{Title: "Isolated"},
-			layer: "Z",
-			want:  "Isolated [Z]",
-		},
-		{
-			name:  "done bucket",
-			task:  boardengine.Task{Title: "Completed"},
-			layer: "__done__",
-			want:  "Completed",
-		},
-		{
-			name:  "deferred bucket",
-			task:  boardengine.Task{Title: "Postponed"},
-			layer: "__deferred__",
-			want:  "Postponed",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := boardengine.ExtendedTitle(tt.task, tt.layer)
-			if got != tt.want {
-				t.Errorf("ExtendedTitle() got %q, want %q", got, tt.want)
-			}
 		})
 	}
 }

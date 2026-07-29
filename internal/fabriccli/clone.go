@@ -24,15 +24,11 @@ func runCloneWithReset(out io.Writer, args []string, reset bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	if len(args) < 2 {
-		return output.Err(out, "usage: lyx fabric clone [--reset] <host-url> <weft-url> [board-url]")
+	if len(args) != 2 {
+		return output.Err(out, "usage: lyx fabric clone [--reset] <host-url> <weft-url>")
 	}
 	hostURL := args[0]
 	weftURL := args[1]
-	var boardURL string
-	if len(args) >= 3 {
-		boardURL = args[2]
-	}
 
 	if reset {
 		// Derive the hub path so we can remove it before cloning (idempotent re-clone).
@@ -47,12 +43,11 @@ func runCloneWithReset(out io.Writer, args []string, reset bool) int {
 		}
 	}
 
-	hubPath, resolvedBoard, err := fabricengine.CloneHub(cwd, hostURL, weftURL, boardURL)
+	hubPath, err := fabricengine.CloneHub(cwd, hostURL, weftURL)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 	return output.Ok(out, map[string]any{
-		"hub":   hubPath,
-		"board": resolvedBoard,
+		"hub": hubPath,
 	})
 }
