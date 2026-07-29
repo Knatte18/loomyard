@@ -68,5 +68,7 @@ batches:
     start_sha: 6c1053ed0800ce95f8c45db47f48e2daf33be4f9
     commit_sha: cefa25c3450f02b86d39bf235dd9d12861f12df5
   - name: 'docs: CONSTRAINTS, overview, README, manifest, sandbox suites'
-    state: pending
+    state: running
+    implementer_session: daaaa3dd-0bff-40f1-ba40-f2e31c6faf11
+    start_sha: 1443c52c5a94d8fd1182ca1de521b80b1dfe363b
 ```
