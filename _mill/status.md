@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: 'approved-boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)'
+phase: 'approved-boardcli: notes CLI surface + promote-note command'
 slug: board
 branch: board
 plan: _mill/plan
@@ -34,6 +34,7 @@ implementing  '2026-07-29T09:11:13Z'
 approved-fabricengine: CommitWeftAt primitive  '2026-07-29T09:15:05Z'
 approved-fabricengine+fabriccli: _board as second weft worktree  '2026-07-29T09:22:15Z'
 approved-boardengine: dual-store facade (notes.json, promote-note, single README, weft git-routing)  '2026-07-29T09:38:43Z'
+approved-boardcli: notes CLI surface + promote-note command  '2026-07-29T09:44:13Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     start_sha: a49e710fa819f5aa7455b4d877b5236cc0d4cceb
     commit_sha: 2d815f07999c52c4854c2920e3a84dd08127cd1b
   - name: 'boardcli: notes CLI surface + promote-note command'
-    state: running
+    state: approved
     implementer_session: ebff4b01-8ad5-4a7b-9011-0866f310b9e2
     start_sha: 3187f5e998f3398fbc0156e927df3845232e5b62
+    commit_sha: 37b7b31620a6c93d13f0867077ed6ce8feba1a09
   - name: 'cmd/lyx: board git-import guard + drift/help-tree/registration coverage'
     state: pending
   - name: 'docs: CONSTRAINTS, overview, README, manifest, sandbox suites'
