@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ensure-server-supervised
+phase: approved-wire-ensure-server-into-refs
 slug: codeintel-v1
 branch: codeintel-v1
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-toolchain-manager  '2026-07-29T09:36:41Z'
 approved-daemon-state-and-locking  '2026-07-29T09:45:57Z'
 approved-ensure-server-native  '2026-07-29T09:51:03Z'
 approved-ensure-server-supervised  '2026-07-29T10:00:13Z'
+approved-wire-ensure-server-into-refs  '2026-07-29T10:44:36Z'
 ```
 
 ## Batches
@@ -76,9 +77,10 @@ batches:
     start_sha: 80556f07b1548f857031453b11758dfc93148de7
     commit_sha: a288ba939682f9dbf4d0ace5cefc9def75b72ff1
   - name: wire-ensure-server-into-refs
-    state: running
+    state: approved
     implementer_session: a3971197-76c8-41e4-8e2e-85064f469251
     start_sha: 11a21b66fa2c51724f6dde64ac82ce3320df61c2
+    commit_sha: 87eee1adeb7174f0e007d2ab23b654198c5ed4c9
   - name: definition-and-symbol-engine
     state: pending
   - name: cli-definition-and-symbol
