@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: burler-prompt-split
 branch: burler-prompt-split
 plan: _mill/plan
@@ -20,4 +20,13 @@ discussed  '2026-07-29T19:19:46Z'
 planning  '2026-07-29T19:31:18Z'
 plan-fix-r1  '2026-07-29T19:46:45Z'
 planned  '2026-07-29T19:47:01Z'
+implementing  '2026-07-29T20:19:51Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: split-round-prompt
+    state: pending
 ```
