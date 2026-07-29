@@ -11,7 +11,10 @@ package codeintelengine
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -92,4 +95,62 @@ func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, 
 	}
 
 	return nil
+}
+
+// rootURIFor converts targetDir into the file:// rootURI the LSP
+// "initialize" request expects, exactly as References builds it today.
+// Factored out here so ensureNative and References (batch 7) share exactly
+// one implementation of "path to rootURI" rather than duplicating it.
+func rootURIFor(targetDir string) (string, error) {
+	absTargetDir, err := filepath.Abs(targetDir)
+	if err != nil {
+		return "", fmt.Errorf("codeintelengine: resolve absolute path for %s: %w", targetDir, err)
+	}
+	return "file://" + absTargetDir, nil
+}
+
+// ensureNative implements the native EnsureServer strategy: resolve the
+// toolchain-managed gopls binary for entry.PinnedVersion, spawn it as a
+// disposable -remote=auto proxy rooted at targetDir, and finalize the
+// connection (initialize + probe) before handing it back. On a
+// finalizeConnection failure lyx makes no second spawn attempt — it has no
+// supervisory authority over the shared daemon under native, so a single
+// reported-and-torn-down failure is the correct behavior, not a retry
+// loop.
+func ensureNative(ctx context.Context, lang string, entry Entry, targetDir string, timeout time.Duration) (*lspClient, error) {
+	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
+	if err != nil {
+		return nil, fmt.Errorf("codeintelengine: resolve go toolchain for %q: %w", lang, err)
+	}
+
+	// entry.Command[0] (the literal string "gopls") is never used here —
+	// only entry.Command[1:] (empty for Go's current registry entry, but
+	// preserved for forward compatibility with a future entry that carries
+	// extra fixed args) is kept, per toolchain-manager-authority's exact
+	// argv-composition decision. The toolchain-resolved binPath, not
+	// whatever "gopls" resolves to on $PATH, is what gets launched.
+	argv := append([]string{binPath}, entry.Command[1:]...)
+	argv = append(argv, "-remote=auto")
+
+	client, err := newLSPClient(argv)
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return nil, &ErrServerNotFound{Language: lang, InstallHint: entry.InstallHint}
+		}
+		return nil, fmt.Errorf("codeintelengine: start language server for %q: %w", lang, err)
+	}
+
+	rootURI, err := rootURIFor(targetDir)
+	if err != nil {
+		client.kill()
+		return nil, err
+	}
+
+	// finalizeConnection already kills client on its own failure path — a
+	// second kill() here would be idempotent but pointless noise.
+	if err := finalizeConnection(ctx, client, rootURI, timeout); err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
