@@ -38,7 +38,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 
 	// Healthy junction so Checkout's wiring step succeeds.
 	slug := filepath.Base(l.WorktreeRoot)
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 

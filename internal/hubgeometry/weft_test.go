@@ -207,9 +207,11 @@ func TestWeftGeometryAtMainWorktree(t *testing.T) {
 	}
 }
 
-// TestHostJunctions verifies that HostJunctions(slug) returns exactly two entries, _lyx
-// first then _pattern, with the correct Name, Link, and Target fields for each, at
-// RelPath == "." and at a nested RelPath, and that no entry's Name equals _raddle.
+// TestHostJunctions verifies that HostJunctions(slug, names) returns one record per name
+// in names, in names's own input order, with Link/Target correctly composed from the
+// Layout's WorktreePath/WeftWorktreePath and RelPath, at RelPath == "." and at a nested
+// RelPath, for an empty names slice, a 3-name slice, and a reversed 2-name slice — and that
+// no entry's Name equals _raddle for the default two-name pathspec.
 func TestHostJunctions(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -217,36 +219,55 @@ func TestHostJunctions(t *testing.T) {
 		prime   string
 		slug    string
 		relPath string
-		// Expected junction values
-		wantJunctionCount int
-		wantNames         []string
+		names   []string
 	}{
 		{
-			name:              "prime-derived layout, root case",
-			hub:               "/h",
-			prime:             "/h/main",
-			slug:              "feat",
-			relPath:           ".",
-			wantJunctionCount: 2,
-			wantNames:         []string{"_lyx", "_pattern"},
+			name:    "prime-derived layout, root case",
+			hub:     "/h",
+			prime:   "/h/main",
+			slug:    "feat",
+			relPath: ".",
+			names:   []string{"_lyx", "_pattern"},
 		},
 		{
-			name:              "non-prime worktree layout, root case",
-			hub:               "/h",
-			prime:             "/h/main",
-			slug:              "other",
-			relPath:           ".",
-			wantJunctionCount: 2,
-			wantNames:         []string{"_lyx", "_pattern"},
+			name:    "non-prime worktree layout, root case",
+			hub:     "/h",
+			prime:   "/h/main",
+			slug:    "other",
+			relPath: ".",
+			names:   []string{"_lyx", "_pattern"},
 		},
 		{
-			name:              "subpath case",
-			hub:               "/h",
-			prime:             "/h/main",
-			slug:              "feat",
-			relPath:           "sub",
-			wantJunctionCount: 2,
-			wantNames:         []string{"_lyx", "_pattern"},
+			name:    "subpath case",
+			hub:     "/h",
+			prime:   "/h/main",
+			slug:    "feat",
+			relPath: "sub",
+			names:   []string{"_lyx", "_pattern"},
+		},
+		{
+			name:    "empty names yields zero records",
+			hub:     "/h",
+			prime:   "/h/main",
+			slug:    "feat",
+			relPath: ".",
+			names:   []string{},
+		},
+		{
+			name:    "3-name slice yields three records in input order",
+			hub:     "/h",
+			prime:   "/h/main",
+			slug:    "feat",
+			relPath: ".",
+			names:   []string{"_lyx", "_pattern", "_extra"},
+		},
+		{
+			name:    "reversed 2-name slice preserves given order, no forced sort",
+			hub:     "/h",
+			prime:   "/h/main",
+			slug:    "feat",
+			relPath: ".",
+			names:   []string{"_pattern", "_lyx"},
 		},
 	}
 
@@ -260,44 +281,34 @@ func TestHostJunctions(t *testing.T) {
 				Prime:        tt.prime,
 			}
 
-			junctions := layout.HostJunctions(tt.slug)
+			junctions := layout.HostJunctions(tt.slug, tt.names)
 
-			// Verify count
-			if len(junctions) != tt.wantJunctionCount {
-				t.Fatalf("HostJunctions(%q) returned %d entries; want %d", tt.slug, len(junctions), tt.wantJunctionCount)
-			}
-
-			// Verify the _lyx entry (index 0)
-			lyxJunction := junctions[0]
-			if lyxJunction.Name != tt.wantNames[0] {
-				t.Errorf("HostJunctions(%q)[0].Name = %q; want %q", tt.slug, lyxJunction.Name, tt.wantNames[0])
-			}
-			wantLyxLink := layout.HostLyxLink(tt.slug)
-			if lyxJunction.Link != wantLyxLink {
-				t.Errorf("HostJunctions(%q)[0].Link = %q; want %q", tt.slug, lyxJunction.Link, wantLyxLink)
-			}
-			wantLyxTarget := layout.WeftLyxDirFor(tt.slug)
-			if lyxJunction.Target != wantLyxTarget {
-				t.Errorf("HostJunctions(%q)[0].Target = %q; want %q", tt.slug, lyxJunction.Target, wantLyxTarget)
+			// Verify count matches the input names slice exactly, including the
+			// empty-slice case (zero records).
+			if len(junctions) != len(tt.names) {
+				t.Fatalf("HostJunctions(%q, %v) returned %d entries; want %d", tt.slug, tt.names, len(junctions), len(tt.names))
 			}
 
-			// Verify the _pattern entry (index 1)
-			patternJunction := junctions[1]
-			if patternJunction.Name != tt.wantNames[1] {
-				t.Errorf("HostJunctions(%q)[1].Name = %q; want %q", tt.slug, patternJunction.Name, tt.wantNames[1])
-			}
-			wantPatternLink := layout.HostPatternLink(tt.slug)
-			if patternJunction.Link != wantPatternLink {
-				t.Errorf("HostJunctions(%q)[1].Link = %q; want %q", tt.slug, patternJunction.Link, wantPatternLink)
-			}
-			wantPatternTarget := layout.WeftPatternDirFor(tt.slug)
-			if patternJunction.Target != wantPatternTarget {
-				t.Errorf("HostJunctions(%q)[1].Target = %q; want %q", tt.slug, patternJunction.Target, wantPatternTarget)
+			// Verify each record, in the given names order (config order is
+			// authoritative — no forced sort).
+			for i, wantName := range tt.names {
+				got := junctions[i]
+				if got.Name != wantName {
+					t.Errorf("HostJunctions(%q, %v)[%d].Name = %q; want %q", tt.slug, tt.names, i, got.Name, wantName)
+				}
+				wantLink := filepath.Join(layout.WorktreePath(tt.slug), layout.RelPath, wantName)
+				if got.Link != wantLink {
+					t.Errorf("HostJunctions(%q, %v)[%d].Link = %q; want %q", tt.slug, tt.names, i, got.Link, wantLink)
+				}
+				wantTarget := filepath.Join(layout.WeftWorktreePath(tt.slug), layout.RelPath, wantName)
+				if got.Target != wantTarget {
+					t.Errorf("HostJunctions(%q, %v)[%d].Target = %q; want %q", tt.slug, tt.names, i, got.Target, wantTarget)
+				}
 			}
 		})
 	}
 
-	// Sub-test: scope guard — verify no junction name is _raddle
+	// Sub-test: scope guard — verify no junction name is _raddle for the default pathspec.
 	t.Run("no_raddle_names", func(t *testing.T) {
 		layout := &hubgeometry.Layout{
 			Cwd:          filepath.Join("/h", "main"),
@@ -307,7 +318,7 @@ func TestHostJunctions(t *testing.T) {
 			Prime:        filepath.Join("/h", "main"),
 		}
 
-		junctions := layout.HostJunctions("slug")
+		junctions := layout.HostJunctions("slug", []string{"_lyx", "_pattern"})
 		for _, j := range junctions {
 			if j.Name == "_raddle" {
 				t.Errorf("HostJunctions found _raddle entry (forbidden by design)")

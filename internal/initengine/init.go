@@ -40,10 +40,22 @@ type InitResult struct {
 //  1. Resolving the layout from cwd
 //  2. Checking for a weft pairing; if absent, returning an error early
 //  3. Observing whether each HOST junction path already exists, BEFORE wiring
-//  4. Wiring the host junctions via fabricengine.WireJunctions
+//  4. Materialising fabric.yaml on the weft base (configsync.ReconcileAll), then
+//     loading the wired name-set from it, then wiring the host junctions via
+//     fabricengine.WireJunctions — reordered from a bare WireJunctions call because
+//     WireJunctions itself no longer reads config, so Init must obtain names before
+//     calling it, and on a genesis first-ever init no fabric.yaml exists yet
 //  5. Creating _lyx and _pattern directories (and _lyx/config)
 //  6. Maintaining the managed .gitignore block for .lyx/
-//  7. Reconciling all module config files against their templates via ReconcileAll
+//  7. Feeding InitResult.Modules from step 4's pre-wire ReconcileAll results (no
+//     second ReconcileAll call — see below)
+//
+// Step 4's config write targets the WEFT base (filepath.Join(l.WeftWorktree(),
+// l.RelPath)), never cwd: writing to cwd before wiring would trip seedLyxJunction's
+// host-pristine guard, and after wiring cwd/_lyx and the weft base's _lyx are the
+// same physical directory (junction) anyway, so the reconcile result is identical
+// either way. There is no chicken-and-egg here — WireJunctions itself never reads
+// config; the pre-seed exists solely so Init has a pathspec to read names from.
 //
 // Idempotent: junction wiring is idempotent (via fslink.IsLink/PointsTo); a second
 // run does not clobber existing config files (Reconcile preserves user values) and
@@ -87,8 +99,32 @@ func Init(cwd string) (InitResult, error) {
 		return InitResult{}, err
 	}
 
-	// Wire junctions for the current worktree (keyed by its slug).
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	// Materialise fabric.yaml on the WEFT base before wiring — on a genesis
+	// first-ever init no config exists yet anywhere, and WireJunctions itself
+	// no longer reads config, so Init must obtain a name-set to pass it. The
+	// weft base (not cwd) is the write target: writing to cwd first would trip
+	// seedLyxJunction's host-pristine guard, and after wiring cwd/_lyx and the
+	// weft base's _lyx are the same physical directory via the junction, so
+	// the reconcile result is identical either way. ReconcileAll (not a raw
+	// template write) preserves the legacy warp/weft→fabric migration.
+	weftBase := filepath.Join(l.WeftWorktree(), l.RelPath)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(weftBase), 0o755); err != nil {
+		return InitResult{}, fmt.Errorf("failed to create weft _lyx/config directory: %w", err)
+	}
+	results, err := configsync.ReconcileAll(weftBase, true)
+	if err != nil {
+		return InitResult{}, fmt.Errorf("failed to reconcile configs: %w", err)
+	}
+
+	// Load the wired name-set from the config just materialised, then wire
+	// the host junctions for the current worktree (keyed by its slug). There
+	// is no chicken-and-egg: WireJunctions itself never reads config; the
+	// pre-seed above exists only so Init has a pathspec to read names from.
+	names, err := fabricengine.WiredNames(weftBase)
+	if err != nil {
+		return InitResult{}, fmt.Errorf("failed to load wired junction names: %w", err)
+	}
+	if err := fabricengine.WireJunctions(l, slug, names); err != nil {
 		return InitResult{}, fmt.Errorf("failed to wire junctions: %w", err)
 	}
 
@@ -124,15 +160,11 @@ func Init(cwd string) (InitResult, error) {
 		result.Gitignore = "unchanged"
 	}
 
-	// Reconcile all module configs.
-	// Note: init uses cwd as baseDir (where the user runs 'lyx init'), while update uses
-	// WorktreeRoot+RelPath. This is intentional—init is user-driven from any directory,
-	// update is file-based from repo root.
-	results, err := configsync.ReconcileAll(cwd, true)
-	if err != nil {
-		return InitResult{}, fmt.Errorf("failed to reconcile configs: %w", err)
-	}
-
+	// Feed InitResult.Modules from the pre-wire ReconcileAll results computed
+	// above (against the weft base) — no second ReconcileAll call here. After
+	// wiring, cwd's _lyx is the same physical directory as the weft base's
+	// _lyx (via the junction), so a second reconcile against cwd would only
+	// re-observe the identical on-disk state the pre-wire call already wrote.
 	result.Modules = make([]ModuleResult, len(results))
 	for i, r := range results {
 		// Determine if module was "created" (Applied && file absent at start)

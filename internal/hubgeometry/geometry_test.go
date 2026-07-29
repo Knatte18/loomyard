@@ -207,9 +207,12 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 
 // TestIsReservedHubName verifies the reserved hub-entry name predicate slug
 // validation (fabric's Add) gates on: every geometry-owned hub-level entry
-// name is reserved, ordinary slugs and near-misses are not.
+// name is reserved (union of HubReservedNames() and the caller-supplied
+// junctionNames), ordinary slugs and near-misses are not.
 func TestIsReservedHubName(t *testing.T) {
 	t.Parallel()
+
+	junctionNames := []string{"_lyx", "_pattern"}
 
 	tests := []struct {
 		name  string
@@ -229,9 +232,60 @@ func TestIsReservedHubName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := hubgeometry.IsReservedHubName(tt.input); got != tt.want {
-				t.Errorf("IsReservedHubName(%q) = %v; want %v", tt.input, got, tt.want)
+			if got := hubgeometry.IsReservedHubName(tt.input, junctionNames); got != tt.want {
+				t.Errorf("IsReservedHubName(%q, %v) = %v; want %v", tt.input, junctionNames, got, tt.want)
 			}
 		})
 	}
+
+	// Regression (r1-review): the hub-structural tokens must stay reserved even
+	// when junctionNames is empty — a worktree slug must never claim _board,
+	// _portals, _launchers, or _raddle regardless of the caller's pathspec.
+	t.Run("hub-structural tokens reserved for empty junctionNames", func(t *testing.T) {
+		t.Parallel()
+
+		for _, hubStructural := range []string{"_board", "_portals", "_launchers", "_raddle"} {
+			if got := hubgeometry.IsReservedHubName(hubStructural, []string{}); !got {
+				t.Errorf("IsReservedHubName(%q, []) = %v; want true", hubStructural, got)
+			}
+		}
+	})
+
+	// A name present only in the caller-supplied junctionNames (not in
+	// HubReservedNames()) must be reported reserved — the injected portion of
+	// the union.
+	t.Run("junction-only name is reserved", func(t *testing.T) {
+		t.Parallel()
+
+		if got := hubgeometry.IsReservedHubName("_custom", []string{"_custom"}); !got {
+			t.Errorf("IsReservedHubName(%q, %v) = %v; want true", "_custom", []string{"_custom"}, got)
+		}
+	})
+
+	// A name absent from both HubReservedNames() and junctionNames must not be
+	// reserved.
+	t.Run("unrelated name is not reserved", func(t *testing.T) {
+		t.Parallel()
+
+		if got := hubgeometry.IsReservedHubName("_other", []string{"_custom"}); got {
+			t.Errorf("IsReservedHubName(%q, %v) = %v; want false", "_other", []string{"_custom"}, got)
+		}
+	})
+
+	// The union over the default pathspec's junctionNames reserves exactly the
+	// six names today's hardcoded switch reserved: _lyx, _pattern, _board,
+	// _portals, _launchers, _raddle — no more, no fewer.
+	t.Run("default pathspec union reserves exactly six names", func(t *testing.T) {
+		t.Parallel()
+
+		wantReserved := []string{"_lyx", "_pattern", "_board", "_portals", "_launchers", "_raddle"}
+		for _, name := range wantReserved {
+			if got := hubgeometry.IsReservedHubName(name, junctionNames); !got {
+				t.Errorf("IsReservedHubName(%q, %v) = %v; want true", name, junctionNames, got)
+			}
+		}
+		if got := hubgeometry.IsReservedHubName("not-reserved", junctionNames); got {
+			t.Errorf("IsReservedHubName(%q, %v) = %v; want false", "not-reserved", junctionNames, got)
+		}
+	})
 }

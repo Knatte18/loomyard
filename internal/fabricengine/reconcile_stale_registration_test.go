@@ -449,7 +449,7 @@ func TestPairInSync_RealDirNotAJunction(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 

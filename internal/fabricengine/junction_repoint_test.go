@@ -63,7 +63,7 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 		t.Fatalf("seed wrong-target junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -114,7 +114,7 @@ func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 		t.Fatalf("seed wrong-target junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -159,7 +159,7 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 		t.Fatalf("seed dangling junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -207,7 +207,7 @@ func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
 		t.Fatalf("seed dangling junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 

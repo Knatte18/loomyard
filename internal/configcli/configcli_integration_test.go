@@ -56,7 +56,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 
 	// Wire junctions for the new host worktree.
-	if err := fabricengine.WireJunctions(f.Layout, slug); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
