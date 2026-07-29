@@ -631,6 +631,79 @@ func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	}
 }
 
+// TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName proves
+// inFileQuery's core contract: the returned Query carries InFile (absolute
+// File, bare Name) and never Pos — even when name itself happens to have a
+// "file:line:col" shape, mirroring symbolQuery's never-position-parsed
+// discipline for the flag-less "symbol" verb.
+func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testing.T) {
+	t.Parallel()
+
+	const name = "foo.go:1:1"
+
+	query, err := inFileQuery("internal/foo/bar.go", name)
+	if err != nil {
+		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "internal/foo/bar.go", name, err)
+	}
+
+	if query.Pos != nil {
+		t.Errorf("inFileQuery(...).Pos = %+v; want nil — the name must never be position-parsed", query.Pos)
+	}
+	if query.InFile == nil {
+		t.Fatalf("inFileQuery(...).InFile = nil; want a populated *InFileQuery")
+	}
+	if query.InFile.Name != name {
+		t.Errorf("inFileQuery(...).InFile.Name = %q; want %q", query.InFile.Name, name)
+	}
+	if !filepath.IsAbs(query.InFile.File) {
+		t.Errorf("inFileQuery(...).InFile.File = %q; want an absolute path", query.InFile.File)
+	}
+}
+
+// TestInFileQuery_ResolvesRelativePathToAbsolute proves a relative --in-file
+// path is resolved against the process cwd, exactly like parseQuery resolves
+// a relative "file:line:col" argument's file component.
+func TestInFileQuery_ResolvesRelativePathToAbsolute(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	query, err := inFileQuery("relative/bar.go", "MyFunc")
+	if err != nil {
+		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "relative/bar.go", "MyFunc", err)
+	}
+
+	want := filepath.Join(cwd, "relative/bar.go")
+	if query.InFile == nil || query.InFile.File != want {
+		t.Errorf("inFileQuery(...).InFile.File = %+v; want %q", query.InFile, want)
+	}
+}
+
+// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol proves --in-file
+// is registered on refs and definition but deliberately absent from symbol:
+// per the plan, symbol has no --in-file variant at all.
+func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cmd     *cobra.Command
+		wantHas bool
+	}{
+		{"refs", refsCommand(), true},
+		{"definition", definitionCommand(), true},
+		{"symbol", symbolCommand(), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasFlag := tt.cmd.Flags().Lookup("in-file") != nil
+			if hasFlag != tt.wantHas {
+				t.Errorf("%s command has --in-file registered = %v; want %v", tt.name, hasFlag, tt.wantHas)
+			}
+		})
+	}
+}
+
 // TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous pins the
 // regression classifySymbolError exists to prevent: a future edit that
 // makes classifySymbolError reuse classifyLookupError's ambiguity branch by
