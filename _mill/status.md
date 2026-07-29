@@ -70,7 +70,9 @@ batches:
     start_sha: b18a7918477a5fa42e0d061a6cd4bd3b9e9deb16
     commit_sha: 31b4b2a45cfbcf557aa6cbeaf727e2dcebab8264
   - name: ensure-server-supervised
-    state: pending
+    state: running
+    implementer_session: 7c382855-0a49-4748-8d8b-1bef03bfad36
+    start_sha: 80556f07b1548f857031453b11758dfc93148de7
   - name: wire-ensure-server-into-refs
     state: pending
   - name: definition-and-symbol-engine
