@@ -13,9 +13,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // connKind reports which EnsureServer strategy produced a given *lspClient,
@@ -153,4 +159,198 @@ func ensureNative(ctx context.Context, lang string, entry Entry, targetDir strin
 	}
 
 	return client, nil
+}
+
+// spawnRacePollInterval is the sleep duration used at two distinct points in
+// ensureSupervised's retry loop: while waiting for someone else's spawn lock
+// to free up, and while waiting for the winner of a just-released lock to
+// finish binding its listen socket. Both are the same bounded interval
+// deliberately — see ensureSupervised's own doc comment for why the second
+// wait matters just as much as the first.
+const spawnRacePollInterval = 100 * time.Millisecond
+
+// ensureSupervised implements the supervised EnsureServer strategy: dial (or
+// spawn, race-fenced by a worktree-scoped advisory lock) a lyx-owned,
+// detached daemon process running command with "serve
+// -listen=unix;<socketPath>" appended, recorded in a per-language state
+// file so every reconnecting caller — this worktree's own future lyx
+// invocations — finds and reuses the same daemon rather than spawning a new
+// one. Unlike ensureNative, this function takes a raw command []string, not
+// an Entry: it does no toolchain resolution of its own, and is the
+// low-level strategy proven directly against a plain "gopls" by its own
+// dedicated integration test — no V1 registry entry requests it yet (see
+// the plan's "EnsureServer has exactly one live dispatch arm" Shared
+// Decision).
+//
+// The whole call is bounded by deadline := time.Now().Add(timeout): a
+// caller that keeps losing the spawn race, or keeps finding a healthy state
+// it can never actually dial, gets ErrServerSpawnTimeout rather than
+// blocking indefinitely — the "bounded retry, not indefinite blocking" the
+// concurrency-locking decision requires.
+//
+// The daemon this function spawns is never killed by its caller: its
+// process is intentionally detached (proc.DetachBreakaway) and outlives
+// this call. The only things that ever terminate it are its own idle
+// timeout (gopls's own -listen.timeout, left unconfigured here, defaulting
+// per gopls itself) or a future restart's stale-socket cleanup finding it
+// already dead.
+//
+// Known limitation: daemonStale only checks PID liveness and protocol
+// version, not whether the daemon actually answers a dial. A process that
+// is alive but hung, or that never finished binding its listen socket, is
+// never classified stale, so every caller's dial-then-finalize keeps
+// failing against a state that keeps reading "healthy," and no caller ever
+// restarts it. The bounded retry below still returns ErrServerSpawnTimeout
+// per call rather than hanging, but a fresh call later hits the identical
+// wedged daemon and times out again, indefinitely, until the process dies
+// on its own or an operator intervenes. This is accepted as a known gap
+// rather than fixed with a dial-failure-triggers-restart heuristic, because
+// that heuristic risks misclassifying a daemon that is merely slow to bind
+// on first spawn (the exact case the dial retry below already exists to
+// tolerate) as wedged, and getting that distinction right needs empirical
+// grounding this task has no reason to invest in — supervised has no live
+// V1 dispatch path, so this limitation affects no production caller yet.
+func ensureSupervised(ctx context.Context, command []string, lang, targetDir, worktreeRoot string, timeout time.Duration) (*lspClient, error) {
+	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	statePath := layout.CodeintelDaemonStateFile(lang)
+	lockPath := layout.CodeintelDaemonLock(lang)
+	// The daemon's socket path is a deterministic function of
+	// (worktreeRoot, lang), not randomly chosen at spawn time — this keeps
+	// the state file's address field stable across restarts, since there is
+	// nothing to "choose" or persist separately from recomputing it.
+	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
+
+	rootURI, err := rootURIFor(targetDir)
+	if err != nil {
+		return nil, err
+	}
+
+	deadline := time.Now().Add(timeout)
+
+	for {
+		// Step 1: the common-case reconnect-to-a-healthy-daemon path. This
+		// never touches the lock at all.
+		state, found, err := readDaemonState(statePath)
+		if err != nil {
+			// A genuine OS-level failure (permissions, corrupt file, disk
+			// full) — distinct from "no state file yet" (found == false,
+			// err == nil) — aborts the whole call rather than being folded
+			// into the retry logic below.
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised read daemon state for %q: %w", lang, err)
+		}
+		if found && !daemonStale(state) {
+			if network, address, ok := strings.Cut(state.Address, ";"); ok {
+				if client, dialErr := newLSPClientDial(ctx, network, address); dialErr == nil {
+					if finalizeErr := finalizeConnection(ctx, client, rootURI, timeout); finalizeErr == nil {
+						return client, nil
+					}
+					// Initialize/probe failed against a state that read as
+					// healthy; fall through to the lock/spawn path below
+					// rather than retrying the same dead end.
+				}
+			}
+		}
+
+		// Step 2: the dial/finalize above failed, or the state was
+		// absent/stale — try to become the spawner.
+		fileLock, acquired, err := lock.TryAcquireWriteLock(lockPath)
+		if err != nil {
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised acquire spawn lock for %q: %w", lang, err)
+		}
+		if !acquired {
+			// Someone else is spawning or restarting; re-check state after a
+			// short bounded interval rather than blocking on the lock, so
+			// this call keeps re-evaluating whether the state has become
+			// healthy meanwhile.
+			if time.Now().After(deadline) {
+				return nil, &ErrServerSpawnTimeout{Lang: lang}
+			}
+			time.Sleep(spawnRacePollInterval)
+			continue
+		}
+
+		// Step 3: double-check under the lock — another process may have
+		// spawned a fresh daemon while this call was waiting for the lock.
+		state, found, err = readDaemonState(statePath)
+		if err != nil {
+			fileLock.Release()
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised re-read daemon state for %q: %w", lang, err)
+		}
+		if found && !daemonStale(state) {
+			fileLock.Release()
+			// The winner writes the state file and releases the lock
+			// *before* its own dial-retry loop (step 6 below) confirms the
+			// daemon has actually finished binding its listen socket. A
+			// loser reaching here immediately after the winner's release
+			// would otherwise land back on step 1 dialing a socket that
+			// isn't bound yet, repeatedly, with no backoff anywhere in this
+			// specific path — a tight spin for the duration of the bind
+			// window. This sleep is what prevents that.
+			time.Sleep(spawnRacePollInterval)
+			continue
+		}
+
+		// Step 4: this call is the winner. Stale-socket cleanup runs
+		// unconditionally before every spawn, first-ever or restart — a
+		// nonexistent-path removal is a harmless no-op, and a leftover
+		// socket file from a dead daemon would otherwise make the fresh
+		// spawn's bind fail with EADDRINUSE.
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+			fileLock.Release()
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised remove stale socket %s: %w", socketPath, err)
+		}
+
+		argv := append(append([]string{}, command...), "serve", fmt.Sprintf("-listen=unix;%s", socketPath))
+		cmd := exec.Command(argv[0], argv[1:]...)
+		// Detach (and, on Windows, break away from any Job Object lyx itself
+		// runs in) so the daemon survives this process's exit — it is meant
+		// to outlive this one call by design.
+		proc.DetachBreakaway(cmd)
+		// Surface the daemon's own diagnostics rather than discarding them,
+		// matching newLSPClient's existing convention.
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			// A spawn that fails to even start is not a race-losable
+			// condition worth looping on.
+			fileLock.Release()
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised spawn daemon for %q: %w", lang, err)
+		}
+
+		// Step 5: write the state file *before* releasing the lock, so a
+		// losing caller that acquires the lock immediately after release
+		// always sees a state file, never a window where the lock is free
+		// but no state exists yet.
+		if err := writeDaemonState(statePath, daemonState{
+			PID:             cmd.Process.Pid,
+			Address:         "unix;" + socketPath,
+			ProtocolVersion: supervisedProtocolVersion,
+			StartedAt:       time.Now().UTC().Format(time.RFC3339),
+		}); err != nil {
+			fileLock.Release()
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised write daemon state for %q: %w", lang, err)
+		}
+		fileLock.Release()
+
+		// Step 6: dial the daemon just spawned, with a short bounded retry
+		// of its own — the process needs a moment to bind the listen socket
+		// after cmd.Start() returns.
+		var client *lspClient
+		var dialErr error
+		for attempt := 0; attempt < 10; attempt++ {
+			client, dialErr = newLSPClientDial(ctx, "unix", socketPath)
+			if dialErr == nil {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if dialErr != nil {
+			return nil, fmt.Errorf("codeintelengine: ensureSupervised dial newly spawned daemon for %q: %w", lang, dialErr)
+		}
+
+		// Step 7.
+		if err := finalizeConnection(ctx, client, rootURI, timeout); err != nil {
+			return nil, err
+		}
+		return client, nil
+	}
 }
