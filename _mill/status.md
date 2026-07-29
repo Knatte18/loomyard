@@ -53,7 +53,9 @@ batches:
     start_sha: 75ce7cdcb45dd6f4cf32b98524761ca1a3f1ecba
     commit_sha: 7998f2feb60496868edf107eb9da66d2d82dd9fb
   - name: cli-resolution-buildoptions-infile
-    state: pending
+    state: running
+    implementer_session: 5b31419b-f7e7-4c8f-af32-cdf1a2b9a46c
+    start_sha: a80dbda39a01e50ac9878b265e7765dd0ec8745c
   - name: engine-supervised-flip
     state: pending
   - name: engine-integration-tests
