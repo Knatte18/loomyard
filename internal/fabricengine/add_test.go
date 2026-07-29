@@ -134,7 +134,12 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			topology := fabricengine.NewTopology(fabricengine.Config{})
+			// Config{Pathspec: "_lyx _pattern"} injects the junction-name half
+			// of the reserved union: after card 1 removed _lyx/_pattern from
+			// hubgeometry.HubReservedNames(), those two are rejected only via
+			// this injected pathspec, while _board/_portals/_launchers/_raddle
+			// stay rejected via HubReservedNames() regardless of pathspec.
+			topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern"})
 			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
 
 			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
