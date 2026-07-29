@@ -24,6 +24,7 @@ Batch-local decisions (all elaborated in the overview's Shared Decisions): weft-
 - **Context:**
   - `internal/fabricengine/config.go`
   - `internal/fabricengine/topology.go`
+  - `internal/hubgeometry/hubgeometry.go`
   - `internal/fabriccli/weft_verbs.go`
 - **Edits:** none
 - **Creates:**

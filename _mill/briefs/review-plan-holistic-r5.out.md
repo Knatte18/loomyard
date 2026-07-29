@@ -1,0 +1,23 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: config-driven junction list — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opusxhigh
+reviewer_self_id: Claude Opus 4.8 (claude-opus-4-8)
+reviewed_file: plan/
+date: 2026-07-29
+```
+
+## Findings
+
+### [BLOCKING] Card 5 Context omits hubgeometry.go
+**Location:** batch 2 / card 5 (junctionNames helper)
+**Issue:** Card 5's Requirements calls `hubgeometry.HubReservedNames()` in `filterHubReserved`, but the Context list is only `config.go`, `topology.go`, `weft_verbs.go` — `internal/hubgeometry/hubgeometry.go` (where that function lives) is absent, while every other card that references a hubgeometry symbol (cards 6–14) lists it; `weft_verbs.go` is only marginally relevant since `junctionNames(baseDir)` takes baseDir as a parameter and never computes the weft base.
+**Fix:** Add `internal/hubgeometry/hubgeometry.go` to card 5's `Context:`. (Mitigation the orchestrator may weigh: the exact signature `HubReservedNames() []string` is already given in card 1 and the overview's "single hub-reserved-names source" Decision, so real cold-start risk is low.)
+
+## Verdict
+
+REQUEST_CHANGES
+Sole gap: card 5 Context missing hubgeometry.go for the HubReservedNames call; otherwise sound.
+MILL_REVIEW_END

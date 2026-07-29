@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: plan-fix-r5
 slug: fabric-junction-config
 branch: fabric-junction-config
 plan: _mill/plan
@@ -27,4 +27,6 @@ plan-fix-r3  '2026-07-29T15:49:23Z'
 planned  '2026-07-29T15:49:34Z'
 plan-review-r4  '2026-07-29T16:17:15Z'
 plan-fix-r4  '2026-07-29T16:17:15Z'
+plan-review-r5  '2026-07-29T16:27:16Z'
+plan-fix-r5  '2026-07-29T16:27:16Z'
 ```
