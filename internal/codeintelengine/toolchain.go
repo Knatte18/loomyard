@@ -25,32 +25,37 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
+// userCacheDir is the seam goToolchainCacheDir/goToolchainInstallLock call
+// through instead of os.UserCacheDir() directly, so tests can redirect the
+// toolchain manager at a t.TempDir() without ever touching the real
+// machine-global cache. Production leaves it at the stdlib default.
+var userCacheDir = os.UserCacheDir
+
 // goToolchainCacheDir returns the machine-global cache directory a pinned
-// gopls version's binary lives in: filepath.Join(os.UserCacheDir(), "lyx",
+// gopls version's binary lives in: filepath.Join(userCacheDir(), "lyx",
 // "tools", "go", version). Every pinned version gets its own subdirectory so
 // two worktrees pinned to different gopls versions never collide.
 func goToolchainCacheDir(version string) string {
-	// os.UserCacheDir() only fails when neither $XDG_CACHE_HOME nor $HOME
-	// (or their per-OS equivalents) is set; the error is ignored here
-	// because the function signature returns a bare string, matching
-	// resolveGoToolchain's own no-inputs-to-validate contract for this
-	// helper — an empty root simply yields a path rooted at "lyx/tools/...",
-	// which os.MkdirAll then reports as a normal filesystem error.
-	dir, _ := os.UserCacheDir()
+	// userCacheDir() only fails when neither $XDG_CACHE_HOME nor $HOME (or
+	// their per-OS equivalents) is set; the error is ignored here because the
+	// function signature returns a bare string, matching resolveGoToolchain's
+	// own no-inputs-to-validate contract for this helper — an empty root
+	// simply yields a path rooted at "lyx/tools/...", which os.MkdirAll then
+	// reports as a normal filesystem error.
+	dir, _ := userCacheDir()
 	return filepath.Join(dir, "lyx", "tools", "go", version)
 }
 
 // goToolchainInstallLock returns the path to the advisory lock file fencing
-// a Go toolchain install: filepath.Join(os.UserCacheDir(), "lyx", "tools",
-// "go", "install.lock"). Deliberately not version-scoped — one lock per
-// language, not per version — so two processes installing two different
-// pinned versions of the same language still serialize through the same
-// lock file, matching toolchain-manager-authority's "one per language"
-// decision.
+// a Go toolchain install: filepath.Join(userCacheDir(), "lyx", "tools", "go",
+// "install.lock"). Deliberately not version-scoped — one lock per language,
+// not per version — so two processes installing two different pinned
+// versions of the same language still serialize through the same lock file,
+// matching toolchain-manager-authority's "one per language" decision.
 func goToolchainInstallLock() string {
-	// See goToolchainCacheDir's comment for why os.UserCacheDir()'s error is
+	// See goToolchainCacheDir's comment for why userCacheDir()'s error is
 	// ignored here.
-	dir, _ := os.UserCacheDir()
+	dir, _ := userCacheDir()
 	return filepath.Join(dir, "lyx", "tools", "go", "install.lock")
 }
 
@@ -111,7 +116,16 @@ func resolveGoToolchain(ctx context.Context, pinnedVersion string) (string, erro
 		return binPath, nil
 	}
 
-	fileLock, err := lock.AcquireWriteLock(goToolchainInstallLock())
+	// gofrs/flock opens the lock file with O_CREATE but never creates missing
+	// parent directories, so a brand-new machine's very first Go toolchain
+	// install (before the shared "go" cache directory exists at all) must
+	// create it here first, matching internal/state's and
+	// internal/reedengine's own MkdirAll-before-lock pattern.
+	lockPath := goToolchainInstallLock()
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return "", fmt.Errorf("codeintelengine: create go toolchain install lock dir %s: %w", filepath.Dir(lockPath), err)
+	}
+	fileLock, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return "", fmt.Errorf("codeintelengine: acquire go toolchain install lock: %w", err)
 	}
