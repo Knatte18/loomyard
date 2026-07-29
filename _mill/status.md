@@ -28,5 +28,7 @@ implementing  '2026-07-29T20:19:51Z'
 ```yaml
 batches:
   - name: split-round-prompt
-    state: pending
+    state: running
+    implementer_session: 4966c302-4780-4f78-8f22-7d64ca17bdca
+    start_sha: de1012a042ed6263c36491e01e070caf8060aae2
 ```
