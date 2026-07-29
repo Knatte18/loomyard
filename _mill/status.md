@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: board
 branch: board
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-boardcli: notes CLI surface + promote-note command  '2026-07-29T09:44:1
 approved-cmd/lyx: board git-import guard + drift/help-tree/registration coverage  '2026-07-29T09:48:49Z'
 approved-docs: CONSTRAINTS, overview, README, manifest, sandbox suites  '2026-07-29T09:56:14Z'
 holistic-reviewing  '2026-07-29T09:56:29Z'
+holistic-fixing  '2026-07-29T09:59:55Z'
 ```
 
 ## Batches
