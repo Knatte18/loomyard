@@ -20,7 +20,8 @@ This is **slice 1 of the `fabric` V2 campaign** (`manifest/designs/fabric-unifie
 - Reuse the **existing `fabric.yaml` `pathspec` key** as the single, canonical list of weft-backed folder names. It already exists (`pathspec: _lyx _pattern` in `internal/fabricengine/template.yaml`) and already drives weft-sync staging. This slice makes the **same list also drive junction wiring** and the reserved junction-name portion of slug validation.
 - Change `internal/hubgeometry` `HostJunctions`/`HostJunctionsHere`/`IsReservedHubName` to take the junction name-set as an **injected `[]string` parameter** and compute paths generically (`filepath.Join(base, RelPath, name)` per name). Remove the hardcoded `_lyx`/`_pattern` junction-record literals from `hubgeometry`.
 - Add a `fabricengine` helper that sources the names from `LoadConfig(baseDir).Dirs()` and pass them into the hubgeometry methods at every fabric call site. All `fabricengine` consumer signatures (`WireJunctions`, `UnwireJunctions`, `removeHostJunction`, `PairInSync`, `checkJunctionHealth`, `junctionRepointedDetail`) **keep their current signatures**; the helper is called internally.
-- Make `IsReservedHubName` = (config junction names) ∪ (hardcoded hub-structural names `_board`, `_portals`, `_launchers`). The hub-structural names stay owned by `hubgeometry` for slug-collision; only the junction/weft-backed portion comes from config.
+- Make `IsReservedHubName` = (config junction names) ∪ (hardcoded hub-reserved names `{_board, _portals, _launchers, _raddle}` = today's set minus the config-migrated `_lyx`/`_pattern`). The union equals exactly today's six reserved names — no reservation lost. The hardcoded names stay owned by `hubgeometry` for slug-collision; only the junction/weft-backed portion comes from config.
+- Guard the wiring loop: the `fabricengine` junction-name helper filters out the hardcoded hub-reserved names before wiring, so a hub-level name mis-added to `pathspec` can never wire a colliding per-worktree junction.
 - Update tests, godoc (`hubgeometry`, `fabricengine/doc.go`), `docs/overview.md` (the junction-wiring section), and the **Hub Geometry Invariant** in `CONSTRAINTS.md` (amend to record that the junction name-set is injected from fabric config while path construction and the hub-structural tokens stay hubgeometry-owned) — all in the same commit(s) per the Documentation Lifecycle rule.
 
 **Out:**
@@ -29,7 +30,7 @@ This is **slice 1 of the `fabric` V2 campaign** (`manifest/designs/fabric-unifie
 - **Adding a `_raddle` junction** — the raddle module does not exist yet. This slice adds no new junction; it only makes the *existing* `_lyx`+`_pattern` set config-driven so raddle can append later with zero code change.
 - **A new per-worktree `_board` junction** — board storage currently lives at the hub level (`<hub>/_board`, on `weft:main`), not as a per-worktree junction. If a future board rework wants a per-worktree junction, it appends to the same `pathspec` list like raddle will. Not in scope now.
 - **A new config key** — deliberately not introduced; we reuse `pathspec` (see Decisions → config-key). This avoids any migration break.
-- **`_portals` / `_launchers`** — these are **hub-level mirror directories** (`<hub>/_portals/<...>`, `<hub>/_launchers/<...>`), not per-worktree weft junctions and never in `pathspec`. They stay hardcoded hub-structural tokens in `hubgeometry` (slug-collision only). Not migrated to config.
+- **`_portals` / `_launchers` / `_board` / `_raddle`** — `_portals`/`_launchers` are **hub-level mirror directories** (`<hub>/_portals/<...>`, `<hub>/_launchers/<...>`); `_board` is the hub-level board dir; `_raddle` is a known-future junction with no wiring yet. None are per-worktree weft junctions to be wired in this slice, and none go in `pathspec` now. All four stay hardcoded in `hubgeometry`'s hub-reserved set (slug-collision only). Not migrated to config.
 - **Migration / backfill of narrow-`pathspec` worktrees** — no automated detection or backfill (see Decisions → migration).
 - **Changing weft-sync staging semantics** — `pathspec` continues to drive staging exactly as today; we only additionally read it for wiring.
 
@@ -64,11 +65,26 @@ This is **slice 1 of the `fabric` V2 campaign** (`manifest/designs/fabric-unifie
 - **Rejected:** Fabric helper falls back to the template default on load failure; `hubgeometry` keeps a hardcoded default when `names` is nil. Both re-introduce a silent wrong-answer path and (for the latter) the very literals this slice removes.
 - **Note for mill-plan:** `hubgeometry`'s own unit tests build a `Layout` and pass `names` explicitly — no config load, no error path there. The no-fallback rule concerns only the `fabricengine` helper and its consumers, which run in initialized-worktree contexts (real fixtures in integration-tagged tests).
 
-### reserved-names: config junctions ∪ hardcoded hub-structural
+### reserved-names: config junctions ∪ hardcoded hub-reserved (incl. `_raddle`)
 
-- **Decision:** `IsReservedHubName(name, junctionNames)` returns true if `name` is in `junctionNames` (from config) **or** in the hardcoded hub-structural set `{_board, _portals, _launchers}` still owned by `hubgeometry`. Appending a name to `pathspec` therefore automatically reserves it as a slug too — no separate edit.
-- **Rationale:** The dangerous slug collisions are the hub-level dirs (`_portals`, `_launchers`, `_board`) whose geometry differs from per-worktree junctions; those stay geometry-intrinsic. The junction names track config so the extensibility contract (append → wired + synced + reserved) holds end-to-end.
-- **Rejected:** Making the entire reserved set config-driven — would force `_board`/`_portals`/`_launchers` into config even though no module appends them and their geometry is hub-level, not per-worktree.
+- **Decision:** `IsReservedHubName(name, junctionNames)` returns true if `name` is in `junctionNames` (from config) **or** in a hardcoded hub-reserved set still owned by `hubgeometry`. That hardcoded set is defined as **today's `IsReservedHubName` set minus the names now sourced from config** (`_lyx`, `_pattern`) — i.e. `{_board, _portals, _launchers, _raddle}`. The union therefore equals **exactly today's six reserved names** — no reservation is lost. Appending a name to `pathspec` automatically reserves it as a slug too (no separate edit); the union is idempotent, so a name that is both hardcoded and in config is harmless.
+- **`_raddle` specifically:** kept in the hardcoded set as a **known-future junction name reserved ahead of wiring** (it already has `hubgeometry.WeftRaddleDir` and is the design's next junction consumer; `hubgeometry.go:426` reserves it today). No `_raddle` junction is wired now (honors Q4 — raddle does not exist). When raddle is built, it appends `_raddle` to the `pathspec` default (getting it wired + synced), and the hardcoded `_raddle` entry can be dropped at that point (the union already keeps it reserved either way).
+- **Rationale:** Preserving every current reservation is a strict requirement — dropping `_raddle` would let a worktree be named `_raddle` and collide when raddle later appends to `pathspec` (the exact regression the r1 review caught). The dangerous hub-level collisions (`_portals`, `_launchers`, `_board`) stay geometry-intrinsic; `_raddle` rides the same hardcoded set until it graduates to config.
+- **Rejected:** (a) Making the entire reserved set config-driven — would force `_board`/`_portals`/`_launchers` into config even though no module appends them and their geometry is hub-level. (b) Adding `_raddle` to `pathspec` now — would wire an empty `_raddle` junction on every worktree, contradicting Q4. (c) Accepting `_raddle`'s de-reservation — a real (if low-probability) collision risk for no benefit.
+
+### wiring-guard: never wire a junction for a hub-reserved name
+
+- **Decision:** The `fabricengine` junction-name helper **filters out the hardcoded hub-reserved names** (`_board`, `_portals`, `_launchers`, `_raddle`) from the list it feeds to `WireJunctions`/`HostJunctions`, even if an operator mis-adds one to `pathspec`. Junction wiring only ever acts on genuine per-worktree weft-backed names.
+- **Rationale:** `_board`/`_portals`/`_launchers` have **hub-level** geometry (`<hub>/<name>/…`), not per-worktree (`<worktree>/<RelPath>/<name>`). Wiring a per-worktree junction for one of them would create a directory colliding with the hub-level dir — a silent operator-error footfault the reserved-set union does not itself prevent (it stops the name being a *slug*, not being a *pathspec entry*). The filter closes that hazard cheaply and keeps "the correct path is the easy path, mistakes are inert" (per `docs/overview.md`). `_raddle` is filtered too until it graduates to a real junction, so a stray `_raddle` in `pathspec` stages content (harmless) but does not wire a premature junction.
+- **Rejected:** Consciously accepting the mis-wire as pure operator error and only documenting it — the guard is a one-line filter and removes a whole class of confusing breakage.
+- **Note for mill-plan:** the filter set is exactly the hardcoded hub-reserved set from the reserved-names decision — keep the two definitions sharing one source (a single `hubgeometry` accessor or `fabricengine` const), not two drifting lists.
+
+### junction-order: `pathspec` token order is authoritative
+
+- **Decision:** Junction order (observable via `UnwireResult.JunctionsRemoved` and first-unhealthy-wins in the health checks) follows **`pathspec` token order**. The default `pathspec: _lyx _pattern` keeps `_lyx` first; the helper does **not** force a sort or pin `_lyx`. `_lyx`-first is a property of the default value, not an enforced invariant.
+- **Rationale:** No code depends on `_lyx` being *first* specifically — the order is documented as "observable," not correctness-critical (`_lyx`'s primacy today is just its position in the default list). Making config order authoritative is the simplest honest rule and matches "you wire what you list, in the order you list it." YAGNI: pinning `_lyx` first would add sort logic guarding a case nothing needs.
+- **Rejected:** Forcing `_lyx` to sort first regardless of `pathspec` order — unnecessary machinery; if a future need to pin `_lyx` first emerges, add it then.
+- **Note for mill-plan:** update the `hubgeometry` godoc on `HostJunctions`/`HostJunctionsHere`/`UnwireResult` that currently asserts "`_lyx` first deliberately" to state that order follows the injected name list (default keeps `_lyx` first).
 
 ### migration: none
 
@@ -120,7 +136,7 @@ Follow `golang:golang-testing` conventions; respect the **Test Tier Purity** and
 **`internal/hubgeometry` (pure, Tier-1, TDD candidates):**
 
 - `HostJunctions(slug, names)` / `HostJunctionsHere(names)` — table test: given `names`, produces the correct `{Name, Link, Target}` records in input order; `["_lyx","_pattern"]` reproduces today's exact two records (regression lock against the pre-change literals); an empty list yields no records; a 3-name list (`["_lyx","_pattern","_extra"]`) yields three correctly-composed records. Update the existing `TestIsReservedHubName` and `TestIsReservedHubName_Pattern` to the new signature.
-- `IsReservedHubName(name, junctionNames)` — hub-structural names (`_board`, `_portals`, `_launchers`) reserved for **any** `junctionNames` (including empty); names in `junctionNames` reserved; unrelated names not reserved; a name appearing only in `junctionNames` (e.g. `_raddle` passed in) is reserved, proving the union.
+- `IsReservedHubName(name, junctionNames)` — hardcoded hub-reserved names (`_board`, `_portals`, `_launchers`, **`_raddle`**) reserved for **any** `junctionNames` (including empty — assert `_raddle` stays reserved even when it is not in `junctionNames`, the exact r1-review regression); names in `junctionNames` reserved; unrelated names not reserved. Include a regression assertion that the union over the default `junctionNames = ["_lyx","_pattern"]` reserves **exactly today's six names** (`_lyx`, `_pattern`, `_board`, `_portals`, `_launchers`, `_raddle`).
 - `enforcement_test.go` still passes (no new literals) — implicitly covered by the whole `go test` run; no new assertion needed, but confirm it stays green after removing the `HostJunctions` literals.
 
 **`internal/fabricengine` (integration-tagged where git spawns):**
@@ -132,9 +148,10 @@ Follow `golang:golang-testing` conventions; respect the **Test Tier Purity** and
 
 **Edge cases to cover or consciously accept:**
 
-- Empty `pathspec` ⇒ no junctions wired (degenerate but not an error at the wiring loop; reserved set = hub-structural only). Accept.
+- Empty `pathspec` ⇒ no junctions wired (degenerate but not an error at the wiring loop; reserved set = hardcoded hub-reserved only). Accept.
 - Duplicate/whitespace-noisy `pathspec` ⇒ `strings.Fields` normalizes whitespace; decide in mill-plan whether the helper de-dups (wiring is idempotent, so low-risk either way).
-- A `pathspec` name colliding with a hub-structural token (e.g. `_board`) — union still reserves it; no special guard needed.
+- **A hub-reserved name in `pathspec` (e.g. `_board`, `_raddle`)** — the wiring-guard filter (Decisions → wiring-guard) must drop it so **no junction is wired** for it; assert `WireJunctions` with `pathspec: _lyx _pattern _board` wires only `_lyx`+`_pattern`, never a `_board` junction. This is the r1-review NOTE made a hard test.
+- **Junction order follows `pathspec`** (Decisions → junction-order) — assert `HostJunctions(["_pattern","_lyx"])` yields records in that given order (config order authoritative), and the default `_lyx _pattern` keeps `_lyx` first. No forced-sort assertion.
 
 ## Q&A log
 
@@ -145,3 +162,4 @@ Follow `golang:golang-testing` conventions; respect the **Test Tier Purity** and
 - **Q:** How do the read-only health functions (`PairInSync` in loom preflight, `checkJunctionHealth`) source the names? **A:** Fabric loads its own config internally via a helper; consumer signatures (incl. `PairInSync(l)`) stay stable; `loomengine` untouched.
 - **Q:** What is the fallback when `fabric.yaml` can't be loaded at a name-needing site? **A:** There is none — that is a real error, surfaced/propagated, never silently defaulted. The template default applies only at scaffold time, as today.
 - **Q:** Any migration for existing worktrees? **A:** None — reusing `pathspec` means no forced reconcile; a narrow-`pathspec` worktree already matches its on-disk junction reality. Document, don't backfill.
+- **Q:** (r1 review gap) The new `IsReservedHubName` drops `_raddle` from the reserved set — a worktree could be named `_raddle` and collide when raddle later appends to `pathspec`. Keep it reserved or accept removal? **A:** Keep it. The hardcoded hub-reserved set is defined as "today's set minus the config-migrated `_lyx`/`_pattern`" = `{_board, _portals, _launchers, _raddle}`, so the union over the default `pathspec` reserves exactly today's six names. No `_raddle` junction is wired (honors Q4); `_raddle` is reserved as a known-future junction name until raddle graduates it to `pathspec`.
