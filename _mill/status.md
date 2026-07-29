@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r5
+phase: plan-fix-r6
 slug: codeintel-daemon-persistence
 branch: codeintel-daemon-persistence
 plan: _mill/plan
@@ -28,4 +28,6 @@ plan-review-r4  '2026-07-29T16:52:16Z'
 plan-fix-r4  '2026-07-29T16:52:16Z'
 plan-review-r5  '2026-07-29T17:05:42Z'
 plan-fix-r5  '2026-07-29T17:05:42Z'
+plan-review-r6  '2026-07-29T17:17:27Z'
+plan-fix-r6  '2026-07-29T17:17:27Z'
 ```

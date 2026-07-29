@@ -77,6 +77,12 @@ _Cross-cutting decisions every batch inherits. Batch-local decisions live in eac
 - **Rationale:** Folding reachability into `daemonStale` would add write contention to rarely-touched state and centralize logic in a currently-pure check; re-dial-under-lock is what distinguishes a wedged daemon from a freshly-respawned healthy one under concurrency.
 - **Applies to:** batch 4
 
+### Decision: Supervised daemon anchoring outside a lyx hub
+
+- **Decision:** When `hubgeometry.Resolve(cwd)` fails (the supported "outside a lyx hub" path where the CLI degrades to `BuiltinRegistry()`), the CLI resolves `worktreeRoot` to the **absolute `--target-dir`** rather than leaving it `""`. So the supervised daemon anchors its state/lock/socket at `<abs target dir>/.lyx/codeintel/go/` — a deterministic, absolute location stable across cwds for the same `--target-dir` — instead of a cwd-relative `.lyx/codeintel/go/` path.
+- **Rationale:** Under native (pre-flip) an empty `worktreeRoot` was inert. Once batch 4 flips Go to supervised, `Layout{WorktreeRoot: ""}.CodeintelDaemonStateFile("go")` resolves to a **relative** path anchored to the process cwd, so two invocations against the same `--target-dir` from different cwds would spawn/collide different daemons and litter `.lyx/` wherever the shell happens to be — defeating the session-long-daemon goal for a first-class supported mode. Anchoring at the absolute target dir restores per-target stability with a one-line CLI fallback; it writes the same ephemeral, machine-local `.lyx/codeintel/` artifacts it already writes inside a hub, just rooted at the target project. Implemented in batch 3 (card 8), before the flip goes live.
+- **Applies to:** batch 3 (and the property it protects is what batch 4's flip relies on)
+
 ## All Files Touched
 
 _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across every batch, sorted alphabetically._

@@ -55,6 +55,7 @@ This batch delivers item 5: it flips `ensureServer`'s single live dispatch arm f
   - `internal/codeintelengine/ensureserver_integration_test.go`
   - `internal/codeintelengine/toolchain_test.go`
   - `internal/codeintelengine/supervised_test.go`
+  - `internal/codeintelengine/lspclient.go`
 - **Edits:**
   - `internal/codeintelengine/ensureserver.go`
   - `internal/codeintelengine/refs.go`

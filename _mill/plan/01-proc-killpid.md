@@ -19,6 +19,7 @@ This batch adds the cross-platform `proc.KillPID(pid int) error` primitive item 
 
 - **Context:**
   - `internal/codeintelengine/daemonstate.go`
+  - `internal/codeintelengine/lspclient.go`
 - **Edits:**
   - `internal/proc/proc_linux.go`
   - `internal/proc/proc_windows.go`
