@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implemented
+phase: reviewed
 slug: codeintel-trace-rename
 branch: codeintel-trace-rename
 plan: null
@@ -16,6 +16,7 @@ task_description: |
 ```text
 discussing  '2026-07-29T19:52:13Z'
 implemented '2026-07-29T20:36:44Z'
+reviewed    '2026-07-29T21:10:00Z'
 ```
 
 ## Result
@@ -43,4 +44,6 @@ Scripts used (repo discipline: scripted, not manual file-by-file edits — same 
 
 **Not touched (deliberately, per rename scope):** `.wiki/` task slugs; `.scratch/prompt-codeintel-trace-rename.md` (gitignored, this task's own instructions).
 
-Next: one review pass, then finalize.
+**Review pass:** workflow-backed xhigh code review (`code-review` skill, task `woec3k81u`) — 6 finders + independent verifiers, 18 agents, 1.05M tokens. 8 confirmed findings, all the same root cause: the blind text substitution over-applied itself to references into *immutable history* — deleted git-history paths (`tools/codeintel-poc/`), a real git tag (`archive/codeintel-spike`), real branch/task slugs (`codeintel-v1`, `codeintel-multilang`, `codeintel-daemon-persistence`, `codeintel-spike`), gitignored scratch-directory paths from a past benchmark run (`.scratch/codeintel/...`), and a reproduction recipe pinned to pre-rename commit `448e5b25` (whose binary only ever registered a `codeintel` subcommand, never `trace`). Fixed in commit `cd293223`: those specific literal facts reverted to `codeintel`; every reference to the current, live module (package names, current file paths, present-day CLI usage) stays `trace`. Re-verified after fixes: `go build`/`go vet`/`go test ./...` clean, `gofmt -l .` clean except the same two pre-existing files.
+
+Next: finalize (`mill-merge`).
