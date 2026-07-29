@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: codeintel-daemon-persistence
 branch: codeintel-daemon-persistence
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-cli-resolution-buildoptions-infile  '2026-07-29T18:17:28Z'
 approved-engine-supervised-flip  '2026-07-29T18:31:52Z'
 approved-engine-integration-tests  '2026-07-29T18:35:36Z'
 holistic-reviewing  '2026-07-29T18:36:01Z'
+holistic-fixing  '2026-07-29T18:39:33Z'
 ```
 
 ## Batches
