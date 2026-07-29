@@ -22,7 +22,10 @@
 //
 // fabric never calls gitrepo's `StageAllAndCommit` (board's opt-in wildcard-stage
 // exception, per gitrepo's doc.go) — all staging is explicit-list
-// `StageAndCommit`, scoped to a configured pathspec.
+// `StageAndCommit`, scoped to a configured pathspec. The one exception is the
+// package-level `CommitWeftAt` function (not a `Fabric` method), which wraps
+// board's wildcard-stage commit on its behalf — see `CommitWeftAt`'s own doc
+// comment.
 //
 // The default weft-staging pathspec (template.yaml's `pathspec:` key) is `_lyx _pattern`, so a `PATTERN.md` written through the `_pattern` junction is staged and committed alongside `_lyx` by the same `CommitWeft` call, rather than being inert content nothing ever pushes.
 //
