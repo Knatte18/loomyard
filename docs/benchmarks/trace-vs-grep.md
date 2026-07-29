@@ -12,11 +12,13 @@ Both tasks target `internal/perchengine`/`internal/hubgeometry` in this repo at 
 
 ```sh
 go build -o /tmp/lyx-bench ./cmd/lyx
-/tmp/lyx-bench trace refs internal/perchengine/engine.go:34:2 --target-dir .      # Task 1
-/tmp/lyx-bench trace assert-no-callers internal/hubgeometry/hubgeometry.go:107:6 --target-dir .  # Task 2
-/tmp/lyx-bench trace refs internal/builderengine/poll.go:177:2 --target-dir .    # Task 3, Now()
-/tmp/lyx-bench trace refs internal/builderengine/poll.go:178:2 --target-dir .    # Task 3, Sleep()
+/tmp/lyx-bench codeintel refs internal/perchengine/engine.go:34:2 --target-dir .      # Task 1
+/tmp/lyx-bench codeintel assert-no-callers internal/hubgeometry/hubgeometry.go:107:6 --target-dir .  # Task 2
+/tmp/lyx-bench codeintel refs internal/builderengine/poll.go:177:2 --target-dir .    # Task 3, Now()
+/tmp/lyx-bench codeintel refs internal/builderengine/poll.go:178:2 --target-dir .    # Task 3, Sleep()
 ```
+
+(At commit `448e5b25` the CLI subcommand was still `codeintel`, pre-dating the `trace` rename — use `codeintel`, not `trace`, when checking out that commit to reproduce.)
 
 Each condition was a fresh `general-purpose` subagent (Claude Sonnet 5) given only the task description and either a mandate or a prohibition on using `lyx trace`; neither was told the other condition existed or given any hint toward the answer. Full agent prompts are reproduced in the "Task" sections below.
 

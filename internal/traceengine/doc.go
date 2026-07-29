@@ -4,12 +4,12 @@
 // <symbol|file:line:col>`) in a target project, across whichever of five
 // languages (Go, Python, C#, TypeScript, Rust) the project is written in. It
 // generalizes the Go-only, in-process go/packages/go/types approach the
-// trace spike (wiki task trace-spike, #008) recommended for Go alone
+// trace spike (wiki task codeintel-spike, #008) recommended for Go alone
 // into a uniform LSP ("Language Server Protocol") path that works for every
 // supported language, including Go, trading the spike's sub-millisecond
 // in-process query cost for one LSP round trip per query — a deliberate
 // scope trade the trace multilang research (wiki task
-// trace-multilang, #009) records in full. V1 (this package's current
+// codeintel-multilang, #009) records in full. V1 (this package's current
 // shape) goes further for Go specifically: it wires a full `EnsureServer`
 // daemon lifecycle — toolchain-managed install, spawn-or-reuse, health
 // probing — so Go's language server is warm across calls rather than

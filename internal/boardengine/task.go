@@ -40,7 +40,7 @@ func (t Task) ShortNameOrSlug() string {
 // maxSlugLength caps a slug's length. Slugs seed worktree/portal/launcher
 // directory names, and 32 chars gives headroom against Windows MAX_PATH issues
 // in nested paths while comfortably fitting this repo's own real slugs
-// (board, pattern-wiring, fabric-unified-view, trace-v1).
+// (board, pattern-wiring, fabric-unified-view, codeintel-v1).
 const maxSlugLength = 32
 
 // validateSlugLength returns an error when slug exceeds maxSlugLength characters.

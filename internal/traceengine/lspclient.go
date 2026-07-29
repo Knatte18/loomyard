@@ -3,7 +3,7 @@
 // (initialize, initialized, textDocument/references, workspace/symbol,
 // shutdown, exit) — not the full LSP protocol, per the plan's
 // references-only Shared Decision. It is ported from the recovered
-// tools/trace-poc/gopls.go harness (git show 3b4dcf86), generalized to
+// tools/codeintel-poc/gopls.go harness (git show 3b4dcf86), generalized to
 // launch any command []string rather than a hardcoded "gopls" lookup, and
 // with every request-level call threading a context.Context so a caller can
 // bound it with a deadline that hard-kills the subprocess on expiry.

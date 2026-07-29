@@ -1,6 +1,6 @@
 # Structured Go reference/call-graph lookup — spike findings
 
-**Task:** `trace-spike`. **Date:** 2026-07-17. **Machine:** Linux x86_64, 12 cores, 30GiB RAM. **Toolchain:** `go version go1.26.0 linux/amd64`, `golang.org/x/tools/gopls v0.23.0` (installed live via `go install golang.org/x/tools/gopls@latest` — the network fetch succeeded, so no gopls arm degraded to docs-only characterization). Target module: this repo, `github.com/Knatte18/loomyard`, ~47 `internal/` packages plus `cmd/`/`tools/`.
+**Task:** `codeintel-spike`. **Date:** 2026-07-17. **Machine:** Linux x86_64, 12 cores, 30GiB RAM. **Toolchain:** `go version go1.26.0 linux/amd64`, `golang.org/x/tools/gopls v0.23.0` (installed live via `go install golang.org/x/tools/gopls@latest` — the network fetch succeeded, so no gopls arm degraded to docs-only characterization). Target module: this repo, `github.com/Knatte18/loomyard`, ~47 `internal/` packages plus `cmd/`/`tools/`.
 
 **Verdict up front:**
 
@@ -10,15 +10,15 @@
 
 ## Method
 
-Every mechanism was driven through the throwaway harness at `tools/trace-poc/` (`go run ./tools/trace-poc -mode=<mode> -symbol=<spec> ...`; see `main.go`'s `-help` text for the full flag/spec surface). Each symbol's `refs`/`callers` run recorded a **warm-up** (one-time module load, `packages.Load` with `Tests: false`) and **steady-state** (`n=5` repeated queries against the already-loaded packages, in the same process) separately, per the run-scoped warm-host model (see below). `gopls-refs` (held-open LSP subprocess) recorded warm-up as spawn+`initialize`+first query and steady-state as `n-1` further queries over the same connection; `gopls-cli-refs` (fresh `gopls references ...` process per call) recorded every call as effectively-warm-up since the CLI form never persists state between invocations. `callgraph` recorded SSA-build time and per-algorithm analysis time separately, for `-algo=cha|rta|vta`. Raw JSON output for every run above is under `.scratch/trace/` (gitignored, not part of this commit, per Shared Decision `measurement-artifacts-to-scratch`); the tables below are the distilled result.
+Every mechanism was driven through the throwaway harness at `tools/codeintel-poc/` (`go run ./tools/codeintel-poc -mode=<mode> -symbol=<spec> ...`; see `main.go`'s `-help` text for the full flag/spec surface). Each symbol's `refs`/`callers` run recorded a **warm-up** (one-time module load, `packages.Load` with `Tests: false`) and **steady-state** (`n=5` repeated queries against the already-loaded packages, in the same process) separately, per the run-scoped warm-host model (see below). `gopls-refs` (held-open LSP subprocess) recorded warm-up as spawn+`initialize`+first query and steady-state as `n-1` further queries over the same connection; `gopls-cli-refs` (fresh `gopls references ...` process per call) recorded every call as effectively-warm-up since the CLI form never persists state between invocations. `callgraph` recorded SSA-build time and per-algorithm analysis time separately, for `-algo=cha|rta|vta`. Raw JSON output for every run above is under `.scratch/codeintel/` (gitignored, not part of this commit, per Shared Decision `measurement-artifacts-to-scratch`); the tables below are the distilled result.
 
-**Harness source (preserved in git history).** The throwaway harness was deleted in batch 4 (revert commit `d4dcb31c`) so this branch's product diff against `main` is doc-only. Its full, tested source is preserved in git history at `d4dcb31c^` = **`3b4dcf86`** (the last commit before the revert): `tools/trace-poc/{main, gopackages,callers,gopls,callgraph}.go` plus the repo-root `.lsp.json`. Recover a single file with `git show 3b4dcf86:tools/trace-poc/gopackages.go`, or check out the whole harness with `git checkout 3b4dcf86 -- tools/trace-poc .lsp.json`. The same tree is also reachable via the `trace-spike` archive tag `mill-merge` creates when this task lands.
+**Harness source (preserved in git history).** The throwaway harness was deleted in batch 4 (revert commit `d4dcb31c`) so this branch's product diff against `main` is doc-only. Its full, tested source is preserved in git history at `d4dcb31c^` = **`3b4dcf86`** (the last commit before the revert): `tools/codeintel-poc/{main, gopackages,callers,gopls,callgraph}.go` plus the repo-root `.lsp.json`. Recover a single file with `git show 3b4dcf86:tools/codeintel-poc/gopackages.go`, or check out the whole harness with `git checkout 3b4dcf86 -- tools/codeintel-poc .lsp.json`. The same tree is also reachable via the `codeintel-spike` archive tag `mill-merge` creates when this task lands.
 
 **Ground truth** for the precision table was established by hand: `grep`-ing every non-test call site of each benchmark symbol across the module and manually excluding false grep matches (e.g. a doc-comment mentioning the symbol's name), then diffing that hand-built set's *count* against the harness's reported count (the harness always returned the exact position list too, spot-checked per symbol, not just counted).
 
 ## Benchmark symbols
 
-Chosen per `_mill/discussion.md` → `benchmark-symbols`; full selection rationale and fan-in survey in `.scratch/trace/symbols.md`.
+Chosen per `_mill/discussion.md` → `benchmark-symbols`; full selection rationale and fan-in survey in `.scratch/codeintel/symbols.md`.
 
 | # | Category | Symbol |
 |---|---|---|
@@ -92,7 +92,7 @@ clihelp.Execute → warpcli.RunCLI → cmd/lyx.main
 
 VTA's reported 30-entry set **contains every link of this 12-entry true chain — zero missed real callers, confirming soundness** — but pads it with 18 extra entries: the sibling modules' own `RunCLI` functions (`boardcli.RunCLI`, `buildercli.RunCLI`, `burlercli.RunCLI`, `idecli.RunCLI`, `initcli.RunInit`, `reedcli.RunCLI`, `perchcli.RunCLI`, `selfreportcli.RunCLI`, `shuttlecli.RunCLI`, `weftcli.RunCLI` — 10 functions) plus `configcli`'s own internal call fan-out (`configcli.Command$1`, `configcli.RunCLI`, `configcli.dispatch`, `configcli.editOne`, `configcli.menu`, `configcli.runConfig`, `configcli.runConfig$1`, `configcli.setModule` — 8 functions). None of these 18 functions' code paths can actually reach `warpcli.runPruneWithFlag` — they are **false positives** caused by every module wrapping its own commands through the same `clihelp.WrapRun` closure shape (`func(io.Writer, []string) int`), which VTA's type-based abstraction cannot fully disambiguate by closure identity once several different closures share that exact signature. This is the "bounded, explainable false positives" the rubric tolerates — explainable here down to the exact repo pattern causing it — but it is real, present even in VTA (the most precise of the three), and is what keeps the callgraph sub-verdict at Defer rather than Adopt: an implementer using VTA's transitive result on this repo would need to manually discount every unrelated sibling-module entry, which undermines "trust it instead of grep" for the transitive case specifically (direct `refs`/`callers` carry no such caveat).
 
-12 (true chain) + 18 (sibling-module false positives) = the full 30-entry `transitive_callers` set in `.scratch/trace/weftHostSlug-callgraph-vta.json`.
+12 (true chain) + 18 (sibling-module false positives) = the full 30-entry `transitive_callers` set in `.scratch/codeintel/weftHostSlug-callgraph-vta.json`.
 
 ## Run-scoped warm-host model
 
@@ -100,7 +100,7 @@ Confirmed exactly as designed in `_mill/discussion.md` → `warm-host-model`: th
 
 ## CC-native LSP tool: architectural mismatch
 
-Per Card 6 (`chore(trace-poc): add throwaway .lsp.json + characterize CC-native LSP`), enabling Claude Code's native LSP tool requires `ENABLE_LSP_TOOL=1` set *before* an interactive session starts — this mill-go implementer session could not toggle it on itself mid-session (confirmed via `CLAUDECODE=1`/`CLAUDE_CODE_CHILD_SESSION=1` env, `ENABLE_LSP_TOOL` unset), so per `_mill/discussion.md` → `cc-native-lsp-mismatch`'s Accepted-outcome note, this arm is a **docs-only characterization**, not a live measurement — an accepted, non-blocking spike outcome. The wiring itself (repo-root `.lsp.json` pointing `gopls` at stdio transport, per the recipe below) is in place and `gopls` is confirmed installed and working via the other two arms, so the recipe is runnable by an operator with a fresh session.
+Per Card 6 (`chore(codeintel-poc): add throwaway .lsp.json + characterize CC-native LSP`), enabling Claude Code's native LSP tool requires `ENABLE_LSP_TOOL=1` set *before* an interactive session starts — this mill-go implementer session could not toggle it on itself mid-session (confirmed via `CLAUDECODE=1`/`CLAUDE_CODE_CHILD_SESSION=1` env, `ENABLE_LSP_TOOL` unset), so per `_mill/discussion.md` → `cc-native-lsp-mismatch`'s Accepted-outcome note, this arm is a **docs-only characterization**, not a live measurement — an accepted, non-blocking spike outcome. The wiring itself (repo-root `.lsp.json` pointing `gopls` at stdio transport, per the recipe below) is in place and `gopls` is confirmed installed and working via the other two arms, so the recipe is runnable by an operator with a fresh session.
 
 **The recipe:** (1) `go install golang.org/x/tools/gopls@latest` so `gopls` resolves on `$PATH`; (2) a repo-root `.lsp.json` of the shape committed in Card 6; (3) launch Claude Code with `ENABLE_LSP_TOOL=1` in the process environment before the session starts; (4) prompt the model to use the LSP tool — it is an **LLM-invoked** capability, not one the harness or an orchestrator can call directly.
 
@@ -108,7 +108,7 @@ Per Card 6 (`chore(trace-poc): add throwaway .lsp.json + characterize CC-native 
 
 ## How-to recipe (adopt-now path: `go/packages`+`go/types` in-process references)
 
-Verified live during this spike (Card 7 step (b), the `refs` runs tabulated above). Minimal, runnable shape a follow-up production Go verb can lift directly — see `tools/trace-poc/gopackages.go` at commit `3b4dcf86` in git history (the full, tested version this recipe is extracted from; see **Method → Harness source** above for recovery commands):
+Verified live during this spike (Card 7 step (b), the `refs` runs tabulated above). Minimal, runnable shape a follow-up production Go verb can lift directly — see `tools/codeintel-poc/gopackages.go` at commit `3b4dcf86` in git history (the full, tested version this recipe is extracted from; see **Method → Harness source** above for recovery commands):
 
 ```go
 import (
