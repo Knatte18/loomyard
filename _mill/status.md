@@ -46,7 +46,9 @@ batches:
     start_sha: 8671d6869a18eeb282e4fa0242c4f1f576fb99db
     commit_sha: c79fe060365588e497c351534f3b8ff74df4487a
   - name: unified-diff-status
-    state: pending
+    state: running
+    implementer_session: 2c201db5-cc26-4350-b3ad-9b611322f80b
+    start_sha: c5df5056d55da9f197c5d9cb9321c8b258892a0d
   - name: fabric-commit
     state: pending
   - name: docs
