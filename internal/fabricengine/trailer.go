@@ -18,6 +18,74 @@ import (
 // trailer: "Warp-SHA: <sha>".
 const WarpSHATrailerKey = "Warp-SHA"
 
+// SnapshotTrailerKey is the git-trailer key fabric writes into a weft commit's
+// message, once per caller-supplied snapshot tag, alongside the Warp-SHA
+// trailer (see appendSnapshotTrailers).
+const SnapshotTrailerKey = "Snapshot"
+
+// snapshotTagPattern is the single-line token charset a snapshot tag must
+// match: letters, digits, dot, underscore, hyphen. It deliberately excludes
+// newline, carriage return, and colon — the trailer-injection vector a tag
+// containing one of those characters would otherwise open (an attacker- or
+// bug-supplied tag could inject a fake trailer line, or an unrelated one,
+// into the commit message).
+var snapshotTagPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// ErrInvalidSnapshotTag is a typed error returned by validateSnapshotTag,
+// naming the offending tag so a caller (or an operator reading the error)
+// knows exactly which supplied tag was rejected.
+type ErrInvalidSnapshotTag struct {
+	Tag string
+}
+
+// Error implements the error interface, naming the offending tag.
+func (e *ErrInvalidSnapshotTag) Error() string {
+	return fmt.Sprintf("fabricengine: invalid snapshot tag %q: must match %s", e.Tag, snapshotTagPattern.String())
+}
+
+// validateSnapshotTag returns an *ErrInvalidSnapshotTag when tag does not
+// match snapshotTagPattern, and nil otherwise.
+func validateSnapshotTag(tag string) error {
+	if !snapshotTagPattern.MatchString(tag) {
+		return &ErrInvalidSnapshotTag{Tag: tag}
+	}
+	return nil
+}
+
+// appendSnapshotTrailers returns message with one "Snapshot: <tag>" trailer
+// line appended per entry in tags, in order. Every tag is validated via
+// validateSnapshotTag BEFORE any line is appended, so a single invalid tag
+// fails the whole call with nothing written — a caller must not end up
+// committing a message with some, but not all, of its intended snapshot
+// trailers. Reuses endsInTrailerBlock so the appended lines join an
+// existing trailer block (e.g. the Warp-SHA trailer a caller has already
+// appended) directly, rather than starting a new paragraph. An empty tags
+// slice returns message unchanged with a nil error.
+func appendSnapshotTrailers(message string, tags []string) (string, error) {
+	if len(tags) == 0 {
+		return message, nil
+	}
+	for _, tag := range tags {
+		if err := validateSnapshotTag(tag); err != nil {
+			return "", err
+		}
+	}
+
+	result := strings.TrimRight(message, "\n")
+	for i, tag := range tags {
+		trailerLine := fmt.Sprintf("%s: %s", SnapshotTrailerKey, tag)
+		if i == 0 && !endsInTrailerBlock(result) {
+			// Only the FIRST appended line needs to decide whether to start a
+			// new trailer-block paragraph; every subsequent line joins the
+			// block this call itself just started.
+			result += "\n\n" + trailerLine
+			continue
+		}
+		result += "\n" + trailerLine
+	}
+	return result, nil
+}
+
 // trailerLinePattern matches a single git-trailer-shaped line: a token key
 // (letters, digits, hyphens) followed by a colon, at least one space, and a
 // non-empty value. It is used to decide whether a commit message's final
