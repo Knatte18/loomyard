@@ -53,5 +53,7 @@ batches:
     start_sha: 340da3bc449754d0670533b20ab132cd39831d04
     commit_sha: a1d0ebbcb6c79c7a05793c06bcdd5fd684117673
   - name: slice-3-design-doc-completion
-    state: pending
+    state: running
+    implementer_session: eb701b0f-4bc9-4b17-aec2-178dec2aa100
+    start_sha: 37eda1da2d97b2483f7bd7c6ed4305ebbedb5639
 ```
