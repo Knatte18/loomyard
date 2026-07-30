@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-site-adapters
+phase: approved-skills-and-docs
 slug: prowler-web-reading
 branch: prowler-web-reading
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-07-30T18:24:24Z'
 planned  '2026-07-30T18:24:53Z'
 implementing  '2026-07-30T18:25:41Z'
 approved-site-adapters  '2026-07-30T18:33:15Z'
+approved-skills-and-docs  '2026-07-30T18:36:26Z'
 ```
 
 ## Batches
@@ -38,7 +39,8 @@ batches:
     start_sha: bb6b66549a925b91aac833bfb5d147a6d22e3374
     commit_sha: 64a8c4ae52d7888e56c1b68c0bc7e7290dc4127a
   - name: skills-and-docs
-    state: running
+    state: approved
     implementer_session: 5cb3c478-ab2f-4ca8-af69-a8e3b95e1104
     start_sha: 6a564f7fc9b870c6d4f5d16ee787bd4049ce6fa2
+    commit_sha: 75a1e2398ee1ae0351f0eb7717e08effeb106851
 ```
