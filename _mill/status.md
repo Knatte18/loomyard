@@ -47,7 +47,9 @@ batches:
     start_sha: 0e75346075c755f54621c6265c55172666bfa1e7
     commit_sha: 922c7a06f6c8139674e97e828463173d0f110b1b
   - name: boardengine-delegation
-    state: pending
+    state: running
+    implementer_session: e04be7f7-1591-47fc-a188-2e580aedd303
+    start_sha: 340da3bc449754d0670533b20ab132cd39831d04
   - name: slice-3-design-doc-completion
     state: pending
 ```
