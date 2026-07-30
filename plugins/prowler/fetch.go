@@ -40,6 +40,14 @@ const minUsableTextLen = 100
 // the readable article and can otherwise pollute extracted text.
 var scriptStyleNoscriptBlock = regexp.MustCompile(`(?is)<(script|style|noscript)\b[^>]*>.*?</(script|style|noscript)>`)
 
+// errorResult formats a fetch failure into the "# Error fetching <url>"
+// markdown shape shared by every failure branch of both fetchPage and
+// fetchReddit (reddit.go), so the prefix is written once rather than
+// hand-rolled at each of their several error-return points.
+func errorResult(url, detail string) string {
+	return "# Error fetching " + url + "\n\n" + detail
+}
+
 // fetchPage fetches url and extracts its readable content, trying — in
 // order — the Reddit JSON special-case, static HTML plus Readability, raw
 // body text, and finally a headless-browser render. Every step degrades to
@@ -63,7 +71,7 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 	if err != nil {
 		// An unparseable URL can never be sent, so there is nothing for
 		// f.do to attempt — report it exactly like a transport failure.
-		return "# Error fetching " + url + "\n\n" + err.Error()
+		return errorResult(url, err.Error())
 	}
 	for key, values := range defaultHeaders() {
 		req.Header[key] = values
@@ -71,17 +79,17 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 
 	resp, err := f.do(req)
 	if err != nil {
-		return "# Error fetching " + url + "\n\n" + err.Error()
+		return errorResult(url, err.Error())
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "# Error fetching " + url + "\n\nHTTP " + strconv.Itoa(resp.StatusCode)
+		return errorResult(url, "HTTP "+strconv.Itoa(resp.StatusCode))
 	}
 
 	compressedBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "# Error fetching " + url + "\n\n" + err.Error()
+		return errorResult(url, err.Error())
 	}
 	// defaultHeaders() sends an explicit Accept-Encoding, which disables
 	// http.Transport's own transparent gzip decoding (it only auto-decodes
@@ -99,7 +107,7 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 		return "# " + url + "\n\nCould not extract readable content from this page."
 	}
 	if err != nil {
-		return "# Error fetching " + url + "\n\n" + err.Error()
+		return errorResult(url, err.Error())
 	}
 	cleaned := scriptStyleNoscriptBlock.ReplaceAll(rawHTML, nil)
 

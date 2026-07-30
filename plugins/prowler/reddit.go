@@ -84,7 +84,7 @@ func fetchReddit(ctx context.Context, f fetcher, url string) (out string, handle
 	if err != nil {
 		// A malformed URL can never be sent, so there is nothing for f.do to
 		// attempt — report it exactly like a transport failure.
-		return "# Error fetching " + url + "\n\n" + err.Error(), true
+		return errorResult(url, err.Error()), true
 	}
 	// Deliberately not defaultHeaders(): Reddit's JSON API wants a distinct,
 	// identifying UA rather than the browser-impersonation UA used for the
@@ -93,12 +93,12 @@ func fetchReddit(ctx context.Context, f fetcher, url string) (out string, handle
 
 	resp, err := f.do(req)
 	if err != nil {
-		return "# Error fetching " + url + "\n\n" + err.Error(), true
+		return errorResult(url, err.Error()), true
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "# Error fetching " + url + "\n\nHTTP " + strconv.Itoa(resp.StatusCode), true
+		return errorResult(url, "HTTP "+strconv.Itoa(resp.StatusCode)), true
 	}
 
 	// Some Reddit URLs (e.g. search results) respond with HTML even under
