@@ -6,6 +6,7 @@ slug: fabric-commit-lock-coalescing
 branch: fabric-commit-lock-coalescing
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'fabric: warp-side commit lock + push coalescing'
 task_description: |
   fabric: warp-side commit lock + push coalescing
@@ -28,7 +29,9 @@ implementing  '2026-07-30T18:43:41Z'
 ```yaml
 batches:
   - name: gitrepo-rebase-free-push
-    state: pending
+    state: running
+    implementer_session: 0502467a-19d2-4e3c-8b50-e7cdfdda0d68
+    start_sha: fcf7cdfb0cd18948e5bbd4b0400a81f0ce685b66
   - name: fabricengine-coalescing-primitive
     state: pending
   - name: fabric-commit-lock-and-wiring
