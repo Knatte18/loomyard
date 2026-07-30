@@ -64,6 +64,7 @@ _Cross-cutting decisions every batch inherits. Full rationale lives in `_mill/di
 ## All Files Touched
 
 - `.claude-plugin/marketplace.json`
+- `.gitattributes`
 - `.gitignore`
 - `plugins/prowler/1.0.0/.claude-plugin/plugin.json`
 - `plugins/prowler/1.0.0/browser.go`
@@ -72,12 +73,14 @@ _Cross-cutting decisions every batch inherits. Full rationale lives in `_mill/di
 - `plugins/prowler/1.0.0/chrome_test.go`
 - `plugins/prowler/1.0.0/fetch.go`
 - `plugins/prowler/1.0.0/fetch_test.go`
+- `plugins/prowler/1.0.0/fetcher.go`
 - `plugins/prowler/1.0.0/go.mod`
 - `plugins/prowler/1.0.0/go.sum`
 - `plugins/prowler/1.0.0/headers.go`
 - `plugins/prowler/1.0.0/htmltext.go`
 - `plugins/prowler/1.0.0/htmltext_test.go`
 - `plugins/prowler/1.0.0/main.go`
+- `plugins/prowler/1.0.0/main_test.go`
 - `plugins/prowler/1.0.0/outfile.go`
 - `plugins/prowler/1.0.0/outfile_test.go`
 - `plugins/prowler/1.0.0/reddit.go`
