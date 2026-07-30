@@ -21,6 +21,10 @@ prowler ships no compiled binary — LoomYard's `.gitignore` bans committing bin
 
 The headless-browser fallback (used when a page is bot-blocked or JS-rendered and static extraction alone isn't enough) needs a local Chrome or Chromium install. prowler discovers it via the `CHROME_PATH` environment variable first, then a platform-specific candidate list (matching weblens' own discovery). If no browser is found, the browser fallback is simply skipped — the run still returns whatever the static-extraction path produced, with a note; it is never a hard failure of the whole invocation.
 
+## Site adapters
+
+prowler routes each fetch through an ordered registry of site adapters before falling back to the generic static-fetch/Readability/browser cascade. Each adapter matches a URL family and provides a higher-fidelity strategy for that site, falling through to the generic cascade when it cannot handle the page. Two adapters are registered today: Reddit rewrites the URL to its `old.reddit.com` equivalent and extracts the body text, keeping comments intact. Hacker News matches `item?id=N` discussion pages and reads them from the community-run Algolia JSON API instead of scraping HN's own HTML.
+
 ## License
 
 Apache-2.0, per the `license` field in `.claude-plugin/plugin.json`. See the repository-root `LICENSE` file, which covers this plugin along with the rest of LoomYard.
