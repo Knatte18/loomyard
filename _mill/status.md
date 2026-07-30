@@ -38,5 +38,7 @@ batches:
     start_sha: bb6b66549a925b91aac833bfb5d147a6d22e3374
     commit_sha: 64a8c4ae52d7888e56c1b68c0bc7e7290dc4127a
   - name: skills-and-docs
-    state: pending
+    state: running
+    implementer_session: 5cb3c478-ab2f-4ca8-af69-a8e3b95e1104
+    start_sha: 6a564f7fc9b870c6d4f5d16ee787bd4049ce6fa2
 ```
