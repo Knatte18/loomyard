@@ -95,7 +95,14 @@ if ! command -v go >/dev/null 2>&1; then
 fi
 
 TMP="$BIN.tmp.$MYTOKEN"
-if ! go build -o "$TMP" "$PLUGIN_ROOT" >&2; then
+# Build from inside PLUGIN_ROOT (in a subshell, so the cd never leaks back
+# to the rest of this script or its caller). `go build` resolves module
+# context from ITS OWN working directory, not merely from the absolute
+# path given as an argument — a caller invoking this wrapper from any
+# other repo (prowler's whole point) would otherwise have `go build`
+# resolve against that repo's own go.mod instead of the nested prowler
+# module, and fail with "main module ... does not contain package ...".
+if ! (cd "$PLUGIN_ROOT" && go build -o "$TMP" .) >&2; then
     echo "prowler: build failed — see the go build output above" >&2
     rm -f "$TMP"
     exit 1
