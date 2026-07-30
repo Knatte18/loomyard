@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-plugin-packaging
+phase: holistic-reviewing
 slug: prowler
 branch: prowler
 plan: _mill/plan
@@ -35,6 +35,7 @@ planned  '2026-07-30T10:27:24Z'
 implementing  '2026-07-30T10:33:59Z'
 approved-fetch-binary  '2026-07-30T11:03:25Z'
 approved-plugin-packaging  '2026-07-30T11:14:16Z'
+holistic-reviewing  '2026-07-30T11:14:43Z'
 ```
 
 ## Batches
