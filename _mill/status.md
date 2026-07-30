@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r6
+phase: plan-fix-r7
 slug: prowler
 branch: prowler
 plan: _mill/plan
@@ -29,4 +29,6 @@ plan-review-r5  '2026-07-30T09:53:50Z'
 plan-fix-r5  '2026-07-30T09:53:50Z'
 plan-review-r6  '2026-07-30T09:59:38Z'
 plan-fix-r6  '2026-07-30T09:59:38Z'
+plan-review-r7  '2026-07-30T10:18:18Z'
+plan-fix-r7  '2026-07-30T10:18:18Z'
 ```

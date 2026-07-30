@@ -66,7 +66,7 @@ Batch-local decisions (refine `## Shared Decisions`):
   - `plugins/prowler/settings.json`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create the permissions block: JSON `{ "permissions": { "allow": ["Skill(prowler:*)", "Bash(bash *)"] } }` — exactly these two entries. `Bash(bash *)` covers the wrapper invocation, the child `go build` it spawns, and the `bash -c 'rm -f …'` cleanup. Must be valid JSON.
+- **Requirements:** Create the permissions block: JSON `{ "permissions": { "allow": ["Skill(prowler:*)", "Bash(bash *)", "Bash(go *)"] } }` — three entries, mirroring the **verified** shape of weblens' own `settings.json`, which grants `Skill(weblens:*)` + `Bash(bash *)` + `Bash(node *)` (it explicitly gates the `node` child that its `run.sh` spawns via `exec node`, the exact relationship prowler's `go build` child has to its wrapper). `Skill(prowler:*)` permits the skill; `Bash(bash *)` covers the wrapper invocation `bash …/run.sh …` and the `bash -c 'rm -f …'` cleanup; `Bash(go *)` explicitly grants the child `go build` the wrapper spawns rather than assuming the grandchild spawn is covered transitively by `Bash(bash *)`. This deliberately supersedes the discussion's skill-contract "exactly two entries" claim, which was based on a mischaracterization of weblens' shape (weblens is three entries, not two) — see the overview Shared Decision below. Must be valid JSON.
 - **Commit:** `feat(prowler): plugin permissions`
 
 ### Card 12: The `prowler` skill
