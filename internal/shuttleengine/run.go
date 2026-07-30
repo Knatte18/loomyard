@@ -17,6 +17,7 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -162,6 +163,8 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		_ = os.RemoveAll(runDir)
 		return nil, fmt.Errorf("shuttle: save run state: %w", err)
 	}
+
+	logger.Info("shuttle: run started", "runDir", runDir, "strandGUID", strand.GUID, "sessionID", launch.SessionID, "role", spec.Role, "round", spec.Round, "forkSubagents", spec.ForkSubagents)
 
 	clk := clock(realClock{})
 	return &Run{

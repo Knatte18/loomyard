@@ -7,7 +7,10 @@
 internal/builderengine/implementer-template.md text eol=lf
 internal/builderengine/orchestrator-template.md text eol=lf
 internal/builderengine/template.yaml text eol=lf
-internal/burlerengine/review-prompt-template.md text eol=lf
+internal/burlerengine/round-orchestrator-template.md text eol=lf
+internal/burlerengine/instruction-1-explore-template.md text eol=lf
+internal/burlerengine/instruction-2-review-template.md text eol=lf
+internal/burlerengine/instruction-3-fix-template.md text eol=lf
 internal/boardengine/template.yaml text eol=lf
 internal/modelspec/template.yaml text eol=lf
 internal/reedengine/template_posix.yaml text eol=lf

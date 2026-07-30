@@ -187,7 +187,7 @@ The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) la
 
 **init** is not a module but a cross-cutting setup command (`lyx init`) that scaffolds the shared `_lyx/` config dir for every module.
 
-The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_pattern/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (builder implementer, webster fork/Master, burler review+fix, loom plan).
+The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_pattern/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (builder implementer, webster fork/Master, burler review+fix, loom plan).
 
 ## Execution stack (orchestration layers)
 
