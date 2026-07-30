@@ -91,6 +91,13 @@ import (
 //     r.goGitMu.Lock (not RLock) for its entire attempt-check-reindex-retry
 //     sequence as one unit — see that function's doc for why a read-only
 //     lock is not enough there.
+//   - A working-tree scan (Worktree.Status(), via WorktreeChangedFiles)
+//     acquires r.goGitMu.Lock directly — a full write lock, not RLock, and
+//     not routed through lookupObjectRetrying — for the duration of the
+//     single Status() call. Status() builds/uses the lazy object index once
+//     with no reindex-retry loop, so this is a third, write-locked but
+//     non-retried category: neither a plain ref read nor a fingerprint-gated
+//     object lookup.
 //
 // This is the single point of truth for that discipline; it exists in code,
 // here, rather than only in the plan, precisely so a future implementer
