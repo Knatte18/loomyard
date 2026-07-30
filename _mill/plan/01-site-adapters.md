@@ -13,6 +13,8 @@ depends-on: []
 
 This batch generalizes prowler's single hardcoded Reddit special-case into a pluggable site-adapter mechanism (interface + registry on the `fetcher` seam), migrates Reddit to be the first adapter using only its working `old.reddit.com` HTML strategy (deleting the dead JSON path), adds a Hacker News adapter (Algolia JSON API) as the second, and updates/adds the Go tests plus the now-stale code comments. It is one batch because every card shares the same small Go package (`plugins/prowler`, `package main`) and the same `fetchPage`/`fetcher` seam — splitting would force the same context to be reloaded. External interface consumed by nothing downstream (the skills batch is codeless and independent). All Go; no `PYTHONPATH=` verify prefix.
 
+**Build-unit note (intended non-atomicity across cards):** the package does **not** compile until Card 4 (`hackernews.go`) lands, because `defaultAdapters()` (Card 1) forward-references both concrete adapter types (`redditAdapter` from Card 3, `hackerNewsAdapter` from Card 4). Cards 1–4 are therefore a single build unit: `go build`/`go test` (the batch `verify`) is only expected to pass after Card 4, and mill-go's `verify` runs once at the end of the implementer round (not per card), so the intermediate non-compiling commits across Cards 1–3 are expected and not a defect. Do not attempt to make each of Cards 1–3 independently compilable.
+
 ## Cards
 
 ### Card 1: Define the siteAdapter interface and registry
@@ -47,6 +49,7 @@ This batch generalizes prowler's single hardcoded Reddit special-case into a plu
 ### Card 3: Migrate Reddit to redditAdapter (old.reddit-only), delete JSON path
 
 - **Context:**
+  - `plugins/prowler/fetcher.go`
   - `plugins/prowler/fetch.go`
   - `plugins/prowler/htmltext.go`
   - `plugins/prowler/headers.go`
@@ -65,6 +68,7 @@ This batch generalizes prowler's single hardcoded Reddit special-case into a plu
   - `plugins/prowler/reddit.go`
   - `plugins/prowler/fetcher.go`
   - `plugins/prowler/fetch.go`
+  - `plugins/prowler/htmltext.go`
 - **Edits:** none
 - **Creates:**
   - `plugins/prowler/hackernews.go`
@@ -78,12 +82,13 @@ This batch generalizes prowler's single hardcoded Reddit special-case into a plu
 - **Context:**
   - `plugins/prowler/reddit.go`
   - `plugins/prowler/fetch.go`
+  - `plugins/prowler/fetch_test.go`
 - **Edits:**
   - `plugins/prowler/reddit_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete every test covering now-deleted code: `TestToRedditJsonUrl`, `TestFormatRedditPost`, `TestFormatRedditSubreddit`, `TestFetchReddit` (and the `redditPostFixture`, `redditPostFixtureNoSelftext`, `redditPostFixtureEmptyChildren`, `redditSubredditFixture`, `redditSubredditFixtureEmpty` fixtures and the `newTestResponse` helper if no longer referenced by any remaining test in the package — check `fetch_test.go` card 6 first; `newTestResponse` may still be needed there, in which case keep it). Retarget `TestIsRedditUrl` to call `redditAdapter{}.Matches(...)` instead of `isRedditUrl(...)` (rename it e.g. `TestRedditAdapterMatches`, keep the same URL/expectation table). Keep `TestToOldRedditURL` unchanged. Add a small test that `redditAdapter.Fetch` returns `handled=false` when `fetchOldRedditHTML` fails (e.g. a non-2xx stubbed `fetcher.do`) and `handled=true` with the body when it succeeds (stub `toOldRedditURL(url)` → usable HTML), reusing the `stubResponses`/`htmlResponse` helpers from `fetch_test.go` and the `redditLikeHTMLWithComments`-style fixture pattern. Remove now-unused imports.
+- **Requirements:** Delete every test covering now-deleted code: `TestToRedditJsonUrl`, `TestFormatRedditPost`, `TestFormatRedditSubreddit`, `TestFetchReddit`, the `redditPostFixture`, `redditPostFixtureNoSelftext`, `redditPostFixtureEmptyChildren`, `redditSubredditFixture`, and `redditSubredditFixtureEmpty` fixtures, and the `newTestResponse` helper — delete `newTestResponse` outright: its only call sites are `TestFetchReddit`'s subtests (removed here), and neither the retargeted `redditAdapter` test below nor Card 6's rewritten `fetch_test.go` test uses it (both use `stubResponses`/`htmlResponse`). Retarget `TestIsRedditUrl` to call `redditAdapter{}.Matches(...)` instead of `isRedditUrl(...)` (rename it e.g. `TestRedditAdapterMatches`, keep the same URL/expectation table). Keep `TestToOldRedditURL` unchanged. Add a small test that `redditAdapter.Fetch` returns `handled=false` when `fetchOldRedditHTML` fails (e.g. a non-2xx stubbed `fetcher.do`) and `handled=true` with the body when it succeeds (stub `toOldRedditURL(url)` → usable HTML), reusing the `stubResponses`/`htmlResponse` helpers from `fetch_test.go` and the `redditLikeHTMLWithComments`-style fixture pattern. Remove now-unused imports.
 - **Commit:** `test(prowler): update Reddit tests for old.reddit-only adapter`
 
 ### Card 6: Update fetch_test.go's Reddit routing test
@@ -97,7 +102,7 @@ This batch generalizes prowler's single hardcoded Reddit special-case into a plu
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Rewrite `TestFetchPage_RedditUrlRoutesThroughRedditPath` so it no longer references the deleted JSON path (`redditPostFixture`, the `url + ".json"` stub). The rewritten test must construct a `fetcher` that includes `adapters: defaultAdapters()` (or `adapters: []siteAdapter{redditAdapter{}}`) — otherwise no adapter matches and the Reddit URL wrongly takes the generic cascade — stub the `old.reddit.com` URL (`toOldRedditURL(url)`) with usable HTML containing post + comment text, and assert `fetchPage` returns that old.reddit-derived body (rename to e.g. `TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter`). Leave `TestFetchOldRedditHTML` and all non-Reddit `TestFetchPage_*` tests unchanged (they build `fetcher` values with no `adapters` field, which is valid — a nil adapter slice means their `example.com` URLs correctly take the generic cascade). Ensure any helper the deleted assertions used (`newTestResponse`) is either still defined here or in `reddit_test.go`.
+- **Requirements:** Rewrite `TestFetchPage_RedditUrlRoutesThroughRedditPath` so it no longer references the deleted JSON path (`redditPostFixture`, the `url + ".json"` stub). The rewritten test must construct a `fetcher` that includes `adapters: defaultAdapters()` (or `adapters: []siteAdapter{redditAdapter{}}`) — otherwise no adapter matches and the Reddit URL wrongly takes the generic cascade — stub the `old.reddit.com` URL (`toOldRedditURL(url)`) with usable HTML containing post + comment text, and assert `fetchPage` returns that old.reddit-derived body (rename to e.g. `TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter`). Leave `TestFetchOldRedditHTML` and all non-Reddit `TestFetchPage_*` tests unchanged (they build `fetcher` values with no `adapters` field, which is valid — a nil adapter slice means their `example.com` URLs correctly take the generic cascade). This rewritten test uses only `fetch_test.go`'s own helpers (`stubResponses`/`htmlResponse`) and `toOldRedditURL`/`redditAdapter` — it does not depend on anything in `reddit_test.go` (the old `newTestResponse` helper is deleted in Card 5).
 - **Commit:** `test(prowler): route Reddit fetch test through the old.reddit adapter`
 
 ### Card 7: Add hackernews_test.go

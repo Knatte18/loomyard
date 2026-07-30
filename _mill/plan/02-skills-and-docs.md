@@ -54,7 +54,9 @@ This batch delivers the two new codeless skills — `distill-subagent` (the extr
 
 ### Card 12: Register both skills in INDEX.md
 
-- **Context:** none
+- **Context:**
+  - `plugins/prowler/skills/distill-subagent/SKILL.md`
+  - `plugins/prowler/skills/github-repo-explorer/SKILL.md`
 - **Edits:**
   - `plugins/prowler/skills/INDEX.md`
 - **Creates:** none
