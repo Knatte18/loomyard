@@ -171,3 +171,41 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 		}
 	}
 }
+
+// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the
+// weft-only "lyx fabric sync" production path (warpPath == "", the shape
+// spawnPush/SpawnDetachedPush always uses per fabriccli/spawn.go): with the
+// detached child's cwd left at some unrelated, non-git directory (nothing
+// overrides cmd.Dir), CoalescePushBothAt must still push the weft side and
+// return nil — not open (or fail to open) a git checkout at the inherited
+// cwd for the absent warp side. Before the headOrEmpty("") short-circuit
+// fix, this call errored (aborting the loop before the weft push ever ran)
+// because gitrepo.New("").CurrentSHA() resolves "" to the process's cwd via
+// filepath.Abs and found no .git there.
+func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.T) {
+	unrelatedCwd := t.TempDir()
+
+	origCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(unrelatedCwd); err != nil {
+		t.Fatalf("Chdir(%s): %v", unrelatedCwd, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(origCwd); err != nil {
+			t.Fatalf("restore Chdir(%s): %v", origCwd, err)
+		}
+	})
+
+	weftFixture := lyxtest.CopyWeft(t)
+	weftSHA := commitPlain(t, weftFixture.WeftPath, "weft-file.txt", "weft change, no warp")
+
+	if err := CoalescePushBothAt("", weftFixture.WeftPath, SyncOptions{}); err != nil {
+		t.Fatalf("CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)
+	}
+
+	if got := bareBranchSHA(t, weftFixture.Bare, "main"); got != weftSHA {
+		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
+	}
+}

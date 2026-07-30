@@ -49,8 +49,18 @@ func CoalescePush(lockPath string, step func() (progressed bool, err error)) err
 // unborn HEAD (gitrepo.ErrNoCommits — a repo with no commits yet) to ("", nil)
 // rather than propagating it as a failure: an unborn side is a legitimate
 // "nothing to push (yet)" state for the fabric push step's before/after
-// comparison, not an error.
+// comparison, not an error. An empty path is also a true no-op — ("", nil)
+// without ever opening a repo — rather than falling through to
+// gitrepo.New("").CurrentSHA(), which would resolve "" to the process's
+// inherited cwd (via filepath.Abs) and open whatever git checkout happens to
+// live there. That matters because CoalescePushBothAt's detached child is
+// spawned with no cmd.Dir override, so the weft-only "lyx fabric sync" path
+// (warpPath == "") would otherwise silently open (and read HEAD from) an
+// unrelated checkout instead of treating the absent warp side as stable.
 func headOrEmpty(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
 	sha, err := gitrepo.New(path).CurrentSHA()
 	if err == nil {
 		return sha, nil
