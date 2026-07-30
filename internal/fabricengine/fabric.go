@@ -82,7 +82,10 @@ func requireDir(path string) error {
 
 // SyncOptions controls git sync behavior for weft-touching operations.
 type SyncOptions struct {
-	SkipGit  bool // Skip all git operations if true.
+	// SkipGit skips all git operations if true — narrowed by Fabric.Commit
+	// (commit.go) to weft-scoped: its warp commit and its env-gated async
+	// push proceed regardless. See Fabric.Commit's doc comment.
+	SkipGit  bool
 	SkipPush bool // Skip push operations if true; affects push only.
 }
 
