@@ -46,7 +46,13 @@ var hermeticGitEnvOnce sync.Once
 // qualified lyxtest.HermeticGitEnv() call form used by other packages and the
 // unqualified HermeticGitEnv() form used by lyxtest's own tests). Do not rename
 // this function without updating the guard.
+//
+// HermeticGitEnv also runs the CLI-reexec refusal guard (reexecguard.go)
+// before anything else: a test binary invoked with a leading positional
+// argument is being mistaken for a CLI by whatever spawned it, and aborts
+// loudly instead of silently running the whole suite.
 func HermeticGitEnv() {
+	refuseCLIReexec()
 	hermeticGitEnvOnce.Do(func() {
 		// Neutral config content: fsmonitor/maintenance/gc keys mirror Layer A so
 		// raw `git init`/`git clone` calls inside tests are quiet too; identity and

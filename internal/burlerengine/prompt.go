@@ -1,14 +1,15 @@
-// prompt.go composes the burler round prompt: it builds the nine required
-// marker values the embedded template (template.go) requires, plus the
-// optional pattern_directive marker, and fills it via internal/stencil.
-// composePrompt is called only after (*Profile).validate has run, so every
-// path field it reads is already a cleaned absolute path and
-// p.clusterLenses (when ClusterFan was set) is already resolved.
-// composePrompt itself does no filesystem access beyond the directory
-// check formatFileSet already performs on each Target/Fasit path — it
-// takes patternDirective as a plain string parameter rather than a
-// *hubgeometry.Layout, so it never gains geometry awareness of its own;
-// the caller (Engine.Run) computes the directive.
+// prompt.go composes the burler round prompt: it renders the four embedded
+// assets (template.go) — the orchestrator plus three instruction files —
+// each with only its own marker subset, and returns the orchestrator
+// string plus the three rendered (path, content) instruction pairs the
+// caller (Engine.Run) writes to disk. composePrompt is called only after
+// (*Profile).validate has run, so every path field it reads is already a
+// cleaned absolute path and p.clusterLenses (when ClusterFan was set) is
+// already resolved. composePrompt itself does no filesystem access beyond
+// the directory check formatFileSet already performs on each Target/Fasit
+// path — it takes the three instruction paths as plain string parameters
+// rather than a *hubgeometry.Layout, so it never gains geometry awareness
+// of its own; the caller computes both the directive and the three paths.
 
 package burlerengine
 
@@ -20,34 +21,76 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// composePrompt builds the burler round prompt for p by composing each of
-// the template's nine required top-level marker values (path lists,
-// fix-scope rules, tool-use rules, the prior-rounds block, the
-// cluster-rules block), plus patternDirective under the optional
-// pattern_directive marker, and filling reviewPromptTemplate with them via
-// stencil.FillOptional. patternDirective is not gated on whether the
-// round's target is code or prose: loomyard has no target-type
-// classification, and a file-extension heuristic would be new fragile
-// logic whose misclassification would silently drop the constraints.
-func composePrompt(p *Profile, patternDirective string) (string, error) {
-	values := map[string]string{
+// instructionFile is one rendered instruction asset paired with the
+// absolute path Engine.Run will write it to. composePrompt returns three
+// of these, in read order, so the caller can materialize them under a
+// fresh per-round directory before handing the shuttle only the
+// orchestrator string.
+type instructionFile struct {
+	Path    string
+	Content string
+}
+
+// composePrompt builds the burler round prompt for p by rendering each of
+// the four embedded assets separately, each with only its own required
+// top-level markers (plus patternDirective under instruction 1's optional
+// pattern_directive marker), via internal/stencil. It returns the rendered
+// orchestrator string and the three instruction files — at inst1Path,
+// inst2Path, inst3Path respectively — in the order the orchestrator names
+// them. patternDirective is not gated on whether the round's target is
+// code or prose: loomyard has no target-type classification, and a
+// file-extension heuristic would be new fragile logic whose
+// misclassification would silently drop the constraints.
+func composePrompt(p *Profile, patternDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
+	orchestratorValues := map[string]string{
+		"instruction_1_path": inst1Path,
+		"instruction_2_path": inst2Path,
+		"instruction_3_path": inst3Path,
+		"review_path":        p.ReviewPath,
+	}
+	orchestrator, err := stencil.Fill(roundOrchestratorTemplate, orchestratorValues)
+	if err != nil {
+		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
+	instruction1Values := map[string]string{
+		"pattern_directive": patternDirective,
 		"target":            formatFileSet(p.Target),
 		"fasit":             formatFileSet(p.Fasit),
 		"rubric":            p.Rubric,
-		"fix_scope_rules":   fixScopeRules(p),
 		"tool_use_rules":    toolUseRules(p.ToolUse),
-		"prior_rounds":      priorRoundsBlock(p),
-		"cluster_rules":     clusterRulesBlock(p),
-		"review_path":       p.ReviewPath,
-		"fixer_report_path": p.FixerReportPath,
-		"pattern_directive": patternDirective,
+	}
+	instruction1, err := stencil.FillOptional(instruction1Template, instruction1Values, []string{"pattern_directive"})
+	if err != nil {
+		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
-	rendered, err := stencil.FillOptional(reviewPromptTemplate, values, []string{"pattern_directive"})
-	if err != nil {
-		return "", fmt.Errorf("burler: compose prompt: %w", err)
+	instruction2Values := map[string]string{
+		"cluster_rules": clusterRulesBlock(p),
+		"review_path":   p.ReviewPath,
+		"prior_rounds":  priorRoundsBlock(p),
 	}
-	return string(rendered), nil
+	instruction2, err := stencil.Fill(instruction2Template, instruction2Values)
+	if err != nil {
+		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
+	instruction3Values := map[string]string{
+		"fix_scope_rules":   fixScopeRules(p),
+		"review_path":       p.ReviewPath,
+		"fixer_report_path": p.FixerReportPath,
+	}
+	instruction3, err := stencil.Fill(instruction3Template, instruction3Values)
+	if err != nil {
+		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
+	}
+
+	files := []instructionFile{
+		{Path: inst1Path, Content: string(instruction1)},
+		{Path: inst2Path, Content: string(instruction2)},
+		{Path: inst3Path, Content: string(instruction3)},
+	}
+	return string(orchestrator), files, nil
 }
 
 // formatFileSet renders a FileSet as the template expects: one
