@@ -53,6 +53,16 @@ The pure/unit-tested parts are usually solid; defects concentrate in the COMPOSE
 
 State the **merge bar** so the reviewer calibrates: correctness in the NORMAL single-instance flow is the gate; the N×-concurrent suite is a diagnostic amplifier, not a merge blocker.
 
+## Live-substrate cost declaration (BLOCKING — fill in before instantiating for a new module)
+Before writing the "Live smoke" commands below, the person instantiating this template MUST check every `//go:build smoke` test in the target module and answer: **does any of them spawn a real LLM subprocess (a real `claude`/provider session), not just a real tmux/pty?** A module whose smoke tests only drive real tmux (e.g. reed) is cheap — a stray pane costs nothing. A module whose smoke tests drive a real LLM round (e.g. burler, perch, loom) is expensive — ONE test function can spawn several simultaneous real provider sessions (a cluster/fan round spawns one per lens), each costing real RAM, tokens, and wall-clock. Confusing the two classes is what caused a real incident: a generic `-run Smoke` pattern matched (and ran) every smoke test in a package, including expensive cluster-fan tests never intended for that round, spawning enough simultaneous real `claude` processes to exhaust the host's RAM.
+
+`<LLM-DRIVING: yes/no — fill in for this module>`. If **yes**:
+- List every `//go:build smoke` test function by name and, for each, how many real LLM subprocesses ONE invocation spawns (check any fan/cluster config it resolves).
+- The "Live smoke" commands below MUST each name exactly ONE test function via `-run <ExactTestName>` — a bare `-run Smoke` or any pattern matching more than one test function is BANNED for this module, full stop, no exceptions for "extra confidence" or "if there's time."
+- Any test function that spawns more than one real LLM subprocess per invocation (a fan/cluster test) MUST be named explicitly in an "EXECUTION BAN" list unless this round's own mission is specifically to test that fan/cluster path — copy the shape of the EXECUTION BAN section in `burler-review-prompt.md` for the wording to reuse.
+- Never run more than one live-substrate (`-tags smoke`) invocation at a time, in parallel, or backgrounded — one process, foreground, waited on to completion.
+- The generic "N× CONCURRENT full smoke suites" gate in `orchestrator-prompt.md`/README.md's verification protocol does NOT apply to an LLM-driving module as written — running N concurrent copies of a real-LLM-spawning suite multiplies real subprocess count by N. Do not run that gate for this module without first working out, on paper, the actual process count it would produce, and getting the operator to confirm that count is acceptable.
+
 ## What to TEST — do not just read, EXERCISE it
 Report the exact commands you ran and what you observed.
 
@@ -62,7 +72,8 @@ Hermetic (must stay green throughout):
 - `go test <MODULE PACKAGE PATHS> ./cmd/lyx/...` — stress timing/concurrency tests with `-count=5`.
 
 Live smoke (real substrate, behind the `smoke` build tag):
-- `go test -tags smoke <MODULE CLI PACKAGE> -run Smoke -v -count=1`
+- For a module that is NOT LLM-driving (per the cost declaration above): `go test -tags smoke <MODULE CLI PACKAGE> -run Smoke -v -count=1` is fine as written — a bare tmux/pty pane is cheap regardless of how many match.
+- For an LLM-driving module: `go test -tags smoke <MODULE CLI PACKAGE> -run <ExactTestName> -v -count=1` — never the bare `Smoke` pattern (see the cost declaration above).
 - `<substrate binary/tool locations + any absolute-path footgun>`.
 
 Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs surface):

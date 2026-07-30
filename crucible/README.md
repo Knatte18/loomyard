@@ -63,6 +63,8 @@ A round agent that just fixed something is motivated to declare it fixed — the
 
 ## The verification protocol (orchestrator, every round)
 
+**Before running any of this, know what class of module you're verifying.** This protocol was designed and validated on `reed`, where a smoke test only ever costs a real tmux pane — cheap to run broadly, cheap to run N times concurrently. A module whose smoke tests drive a real LLM round (burler, perch, loom) is a different animal entirely: a single test function can spawn several simultaneous real provider sessions (a cluster/fan round spawns one per lens), and step 3's "N concurrent copies of the WHOLE suite" multiplies that further. Applying this protocol to an LLM-driving module exactly as written below — bare `-run Smoke`, N concurrent copies — is what caused a real incident: it matched and ran every smoke test in the package (including cluster-fan tests nobody intended to run that round), spawning enough real `claude` processes simultaneously to exhaust the host's RAM in minutes. Before step 2, work out (from the module's own smoke test source, not from assumption) how many real LLM subprocesses a bare `-run Smoke` would spawn; if it's more than one process for an LLM-driving module, replace `-run Smoke` with the exact test name you actually mean to run, and skip or radically scale down step 3's concurrency for that module (see the per-module review prompt's own "Live-substrate cost declaration" section, which every instantiation must fill in).
+
 Run from the module's worktree root. Adjust package paths per module.
 
 ```sh
@@ -72,11 +74,15 @@ go vet ./internal/<module>engine/... ./internal/<module>cli/...
 go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lyx/...
 
 # 2. Live serial smoke (real substrate, behind the `smoke` build tag)
+# For an LLM-driving module, replace -run Smoke with the ONE exact test name you mean to run.
 go test -tags smoke ./internal/<module>cli/... -run Smoke -v -count=1
 #    -> scan output for FAIL and for substrate-specific corruption markers
 #       (reed: "being used by another process" / "TempDir RemoveAll" / "did not start")
 
-# 3. THE decisive gate — N× CONCURRENT full smoke suites.
+# 3. THE decisive gate — N× CONCURRENT full smoke suites — TMUX-ONLY MODULES LIKE REED ONLY.
+#    Do NOT run this step against an LLM-driving module without first computing the real
+#    process count it would produce (tests-matched × subprocesses-per-test × N) and getting
+#    the operator to confirm that count is acceptable — it is not a default step for those modules.
 #    A quiet serial pass is NOT proof; concurrency + CPU saturation is the amplifier
 #    that surfaces teardown races and leaked substrate state. Compile once, run N copies.
 go test -c -tags smoke -o "$SCRATCH/smoke.test.exe" ./internal/<module>cli/...
