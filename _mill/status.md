@@ -6,6 +6,7 @@ slug: fabric-commit-api
 branch: fabric-commit-api
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'fabric: Fabric.Commit classify+dispatch + unified diff/status'
 task_description: |
   fabric: Fabric.Commit classify+dispatch + unified diff/status
@@ -33,7 +34,9 @@ implementing  '2026-07-30T10:13:02Z'
 ```yaml
 batches:
   - name: commit-foundations
-    state: pending
+    state: running
+    implementer_session: dd4f2ae7-c6b8-47c7-9744-6b34d8ca3a3d
+    start_sha: c62076163b5e7eaa03c00aa82ed4fef932154afc
   - name: async-push-plumbing
     state: pending
   - name: unified-diff-status
