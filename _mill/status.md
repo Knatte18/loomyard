@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-commit-lock-coalescing
 branch: fabric-commit-lock-coalescing
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-30T17:21:12Z'
+discussion-fix-r2  '2026-07-30T18:11:47Z'
+discussed  '2026-07-30T18:11:47Z'
 ```
