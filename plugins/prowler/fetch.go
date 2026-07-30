@@ -1,7 +1,8 @@
-// fetch.go implements the static-fetch extraction cascade: Reddit special-case
-// first, then a plain HTTP GET run through Readability, falling back to raw
-// body text and finally a headless-browser render when nothing else yields
-// usable content. This is the same degrade-gracefully shape weblens uses.
+// fetch.go implements the static-fetch extraction cascade: a matching site
+// adapter first, then a plain HTTP GET run through Readability, falling back
+// to raw body text and finally a headless-browser render when nothing else
+// yields usable content. This is the same degrade-gracefully shape weblens
+// uses.
 
 package main
 
@@ -44,30 +45,34 @@ const minUsableTextLen = 100
 var scriptStyleNoscriptBlock = regexp.MustCompile(`(?is)<(script|style|noscript)\b[^>]*>.*?</(script|style|noscript)>`)
 
 // errorResult formats a fetch failure into the "# Error fetching <url>"
-// markdown shape shared by every failure branch of both fetchPage and
-// fetchReddit (reddit.go), so the prefix is written once rather than
-// hand-rolled at each of their several error-return points.
+// markdown shape shared by every failure branch of fetchPage, so the prefix
+// is written once rather than hand-rolled at each of its several
+// error-return points.
 func errorResult(url, detail string) string {
 	return "# Error fetching " + url + "\n\n" + detail
 }
 
 // fetchPage fetches url and extracts its readable content, trying — in
-// order — the Reddit JSON special-case, static HTML plus Readability, raw
-// body text, and finally a headless-browser render. Every step degrades to
-// the next rather than failing the whole fetch, matching weblens' resilient
-// behavior: a bot-blocked or JS-only page should still yield the best
-// content available rather than an empty result. f is the injectable
-// transport/browser seam, so this whole cascade is unit-testable without
-// real network or Chrome access.
+// order — a matching site adapter first, then the generic cascade: static
+// HTML plus Readability, raw body text, and finally a headless-browser
+// render. Every step degrades to the next rather than failing the whole
+// fetch, matching weblens' resilient behavior: a bot-blocked or JS-only page
+// should still yield the best content available rather than an empty
+// result. f is the injectable transport/browser/adapter seam, so this whole
+// cascade is unit-testable without real network or Chrome access.
 func fetchPage(ctx context.Context, f fetcher, url string) string {
-	// Reddit hard-blocks scraping of its HTML pages but leaves the JSON API
-	// open, so a Reddit URL gets a dedicated, higher-fidelity path first.
-	if isRedditUrl(url) {
-		if out, handled := fetchReddit(ctx, f, url); handled {
+	// At most one adapter is consulted: the first whose Matches reports
+	// true. A match that can't produce usable content (handled=false)
+	// falls through to the generic cascade below rather than being retried
+	// against a second adapter — see siteAdapter's doc comment.
+	for _, adapter := range f.adapters {
+		if !adapter.Matches(url) {
+			continue
+		}
+		if out, handled := adapter.Fetch(ctx, f, url); handled {
 			return out
 		}
-		// A Reddit-shaped URL that didn't yield a JSON response (e.g. a
-		// search page) falls through to the ordinary static path below.
+		break
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -149,12 +154,11 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 	return "# " + url + "\n\nCould not extract readable content from this page."
 }
 
-// fetchOldRedditHTML is fetchReddit's fallback for when Reddit's JSON API
-// itself is unreachable (e.g. a 403 from network-level bot protection): it
-// retries the same post/subreddit against old.reddit.com's plain,
+// fetchOldRedditHTML is redditAdapter's sole fetch strategy: it fetches the
+// given Reddit post/subreddit URL against old.reddit.com's plain,
 // server-rendered HTML page — which Reddit does not appear to gate as
-// aggressively as its JSON API or its www SPA shell (the SPA shell serves a
-// JS-driven "please wait" verification page to non-browser clients, which
+// aggressively as its www SPA shell (the SPA shell serves a JS-driven
+// "please wait" verification page to non-browser clients, which
 // old.reddit.com's legacy markup does not).
 //
 // Deliberately skips Readability (unlike the ordinary static-fetch cascade
@@ -166,9 +170,9 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 // post body, none of an 18-comment thread present in the same page's raw
 // HTML). stripToBodyText's cruder script/style/nav/header/footer strip
 // keeps everything else, comments included, which is what this fallback
-// needs. It reports ok=false when the fallback request itself fails or
-// yields too little content to be useful, so the caller falls back to the
-// original JSON-API error instead of a near-empty result.
+// needs. It reports ok=false when the request itself fails or yields too
+// little content to be useful, so the caller (redditAdapter.Fetch) falls
+// through to the generic cascade instead of returning a near-empty result.
 func fetchOldRedditHTML(ctx context.Context, f fetcher, url string) (out string, ok bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, toOldRedditURL(url), nil)
 	if err != nil {

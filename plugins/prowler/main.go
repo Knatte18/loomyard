@@ -17,14 +17,16 @@ import (
 const resultJoiner = "\n\n---\n\n"
 
 // newFetcher wires the real, side-effecting implementations into a fetcher:
-// httpClient.Do for the transport and fetchWithBrowser for the headless-Chrome
-// fallback. It is the only place production code constructs a fetcher —
+// httpClient.Do for the transport, fetchWithBrowser for the headless-Chrome
+// fallback, and defaultAdapters() for the site-specific strategies fetchPage
+// tries first. It is the only place production code constructs a fetcher —
 // every other package function receives one as a parameter so it can be
 // exercised in tests with stubs instead.
 func newFetcher() fetcher {
 	return fetcher{
-		do:      httpClient.Do,
-		browser: fetchWithBrowser,
+		do:       httpClient.Do,
+		browser:  fetchWithBrowser,
+		adapters: defaultAdapters(),
 	}
 }
 

@@ -25,4 +25,10 @@ type fetcher struct {
 	// whether it produced usable content (the empty string with false means
 	// the browser fallback was unavailable or failed).
 	browser func(ctx context.Context, url string) (string, bool)
+
+	// adapters are the site-specific fetch strategies fetchPage tries, in
+	// order, before falling back to the generic HTML cascade. A nil or
+	// empty slice is valid — it simply means no site adapters run and every
+	// URL takes the generic cascade.
+	adapters []siteAdapter
 }

@@ -201,22 +201,28 @@ func TestFetchPage_Non2xxDoesNotInvokeBrowser(t *testing.T) {
 	}
 }
 
-func TestFetchPage_RedditUrlRoutesThroughRedditPath(t *testing.T) {
+func TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter(t *testing.T) {
 	const url = "https://reddit.com/r/golang/comments/abc/some_post"
+	oldURL := toOldRedditURL(url)
 	f := stubResponses(t, map[string]*http.Response{
-		url + ".json": {
-			StatusCode: 200,
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(redditPostFixture)),
-		},
+		oldURL: htmlResponse(redditLikeHTMLWithComments),
 	}, func(context.Context, string) (string, bool) {
 		t.Fatal("browser fallback should not be invoked for a handled Reddit fetch")
 		return "", false
 	})
+	// Without an adapters slice, no adapter matches and this URL would
+	// wrongly take the generic cascade instead of the old.reddit.com path.
+	f.adapters = defaultAdapters()
 
 	got := fetchPage(context.Background(), f, url)
-	if !strings.HasPrefix(got, "# Test Title") {
-		t.Errorf("fetchPage() = %q; want it to be the Reddit-formatted post", got)
+	if !strings.HasPrefix(got, "# "+url) {
+		t.Errorf("fetchPage() = %q; want it to start with \"# %s\"", got, url)
+	}
+	if !strings.Contains(got, "original self-post text") {
+		t.Errorf("fetchPage() = %q; want the old.reddit-derived post text", got)
+	}
+	if !strings.Contains(got, "First commenter's opinion") {
+		t.Errorf("fetchPage() = %q; want the old.reddit-derived comment text", got)
 	}
 }
 

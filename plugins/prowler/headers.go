@@ -14,9 +14,10 @@ import (
 // key off User-Agent see an ordinary browser, not a scripted client.
 const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-// defaultHeaders returns the full header set applied to every static (non-Reddit)
-// fetch request. The set mirrors a real browser's request headers closely enough
-// to pass simple bot-detection checks that key off User-Agent/Accept alone.
+// defaultHeaders returns the full header set applied to every static HTTP
+// fetch request in this package, Reddit's old.reddit.com strategy included.
+// The set mirrors a real browser's request headers closely enough to pass
+// simple bot-detection checks that key off User-Agent/Accept alone.
 func defaultHeaders() http.Header {
 	h := http.Header{}
 	h.Set("User-Agent", browserUA)
