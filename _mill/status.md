@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabricengine-coalescing-primitive
+phase: approved-fabric-commit-lock-and-wiring
 slug: fabric-commit-lock-coalescing
 branch: fabric-commit-lock-coalescing
 plan: _mill/plan
@@ -24,6 +24,7 @@ planned  '2026-07-30T18:35:27Z'
 implementing  '2026-07-30T18:43:41Z'
 approved-gitrepo-rebase-free-push  '2026-07-30T18:47:42Z'
 approved-fabricengine-coalescing-primitive  '2026-07-30T18:53:03Z'
+approved-fabric-commit-lock-and-wiring  '2026-07-30T19:00:58Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     start_sha: 3071c36090b189533ab8d7413adc0c06c52d1adc
     commit_sha: 931ec7c4be30cd03426745de9e3fcb5b2fc9cac2
   - name: fabric-commit-lock-and-wiring
-    state: running
+    state: approved
     implementer_session: 90e413a2-1432-488f-b99c-b59336f3ece8
     start_sha: 0e75346075c755f54621c6265c55172666bfa1e7
+    commit_sha: 922c7a06f6c8139674e97e828463173d0f110b1b
   - name: boardengine-delegation
     state: pending
   - name: slice-3-design-doc-completion
