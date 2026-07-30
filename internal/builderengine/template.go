@@ -9,9 +9,9 @@
 // implementer prompt one batch's implementer session receives; both are
 // embedded from their own .md asset and filled via internal/stencil at spawn
 // time (runlevel.go and spawn.go, respectively) — the same embed+fill+test
-// pattern burlerengine's review-prompt-template.md uses (see the
-// discussion's "prompt templates are embedded stencils, co-versioned"
-// decision).
+// pattern burlerengine's round-orchestrator-template.md and its three
+// instruction-*-template.md assets use (see the discussion's "prompt
+// templates are embedded stencils, co-versioned" decision).
 
 package builderengine
 

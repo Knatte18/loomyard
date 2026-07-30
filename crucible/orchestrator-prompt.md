@@ -32,17 +32,22 @@ You do **not** review or edit the module yourself. Your job is to drive rounds o
 4. **Verify independently** — the part that actually catches residuals. Run the protocol below from a cold state on the committed tree. For any **new test** the round added, **reproduce its not-false-green proof yourself**: mutate the production code to reintroduce the bug the test claims to catch, confirm the test FAILS at the right assertion, then revert (confirm an empty diff). A test you did not watch fail is not yet proven.
 5. **Decide.**
    - **Residual found** → the round's fixes should already be committed one-by-one as they landed (per-fix commits — see the spawn step). If the round left anything genuinely uncommitted (e.g. it was killed mid-fix with no self-report at all), that is exactly the failure mode per-fix commits are meant to make cheap to recover from: read `git log` to see precisely which findings already landed clean, then either finish the remainder yourself or spawn a narrow, targeted fixer agent (rule 4 above) scoped to "read the existing review report + the current diff/log, finish and commit whatever is left" — not a fresh full review round. Re-seed the prompt (step 1) with the new finding, and spawn the next full round with a **different** model and/or effort tier.
+   - **Round died before any commits (crashed during Job 1)** → check `.scratch/<module>-review-<tag>.md` before assuming nothing survived. Per the template's "Log as you go" section, the round appends its What-was-tested section and provisional findings incrementally, so even a crash mid-review usually leaves a partial-but-real account on disk — read it and re-seed the next round to pick up where it left off (what was already tested, what wasn't yet) rather than starting the whole review over blind. Only treat it as truly a total loss if the file is genuinely absent or empty.
    - **Clean** → a further safety pass with a *different* model is cheap insurance. Convergence is when a safety pass **and** your gates **and** (for a live-substrate module) an operator-assisted visual check all agree.
 6. **Hand off.** Once converged, do any step your harness cannot reach headlessly (e.g. an operator-assisted visual `attach`/render check in a real TTY), then merge or open the PR. **The push/merge decision is the operator's** — surface merge-readiness and let them trigger it.
 
 ## The verification protocol (exact — run every round)
+
+**LLM-driving modules first — read this before touching the commands below.** This protocol was built and safety-validated on `reed`, where a smoke test only ever costs a real tmux pane. A module whose smoke tests drive a real LLM round instead (burler, perch, loom) is not the same shape of risk: one test function can spawn several simultaneous real provider sessions (a fan/cluster round = one per lens), and the N-concurrent step below multiplies that again. Running this protocol against such a module exactly as written — bare `-run Smoke`, N concurrent copies — caused a real incident: it matched and ran every smoke test in the package at once, spawning enough real `claude` processes to exhaust the host's RAM in minutes. Before step 2 for an LLM-driving module: check the module's own smoke test source for how many real LLM subprocesses each test spawns, replace `-run Smoke` with the exact ONE test name this round actually needs, and do NOT run step 3 (N concurrent copies) against it without first computing the resulting real-process count and getting the operator to explicitly sign off on that number — it is not a default step for these modules, only for tmux-only ones like reed.
+
 Run from the module worktree root; adjust package paths.
 ```sh
 go build ./...
 go vet ./internal/<module>engine/... ./internal/<module>cli/...
 go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lyx/...   # hermetic
-go test -tags smoke ./internal/<module>cli/... -run Smoke -v -count=1                      # live serial
+go test -tags smoke ./internal/<module>cli/... -run Smoke -v -count=1                      # live serial — LLM-driving module: -run <ExactTestName>, never bare Smoke
 # THE decisive amplifier — N× CONCURRENT full smoke suites (compile once, run N copies):
+# TMUX-ONLY MODULES LIKE REED ONLY — see the LLM-driving-modules note above before ever running this against burler/perch/loom.
 go test -c -tags smoke -o "$SCRATCH/smoke.test.exe" ./internal/<module>cli/...
 for i in 1 2 3; do ( "$SCRATCH/smoke.test.exe" -test.run Smoke -test.count=1 -test.v \
     > "$SCRATCH/s_$i.txt" 2>&1; echo rc=$? ) & done; wait

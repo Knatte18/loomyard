@@ -15,8 +15,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -66,13 +68,27 @@ type StatusResult struct {
 // zombie boot and reaped; bootOverallTimeout is the total budget across
 // spawn/reap/respawn cycles, sized for a CPU-saturated machine (a quiet boot
 // is ~1-2s; three concurrent smoke suites have been observed to starve a
-// boot past two full 20s windows). staleSocketGrace is how long a
-// session-less socket-holder must persist before the pre-boot check treats
-// it as stale rather than a sibling worktree's still-registering fresh boot.
+// boot past two full 20s windows). maxBootAttempts is a second, independent
+// cap on the SAME loop: bootOverallTimeout alone assumes each failed attempt
+// costs real wall-clock time (a slow boot), but a spawn that fails FAST
+// (e.g. the OS rejecting the fork outright under resource pressure) burns
+// through the 90s budget in many more than the ~4-5 attempts the timeout
+// alone was sized for -- observed live (2026-07-30): a fork-bomb incident
+// where each fresh spawn attempt failed near-instantly, retried near-
+// instantly, and the loop reached 30-90+ real tmux-server spawns within the
+// SAME single bootOverallTimeout window before the caller ever saw the loop
+// exit. maxBootAttempts bounds attempt COUNT independent of how fast or
+// slow each attempt fails, so a fast-failure spiral is capped at a handful
+// of real spawns regardless of how much of the 90s budget remains -- the
+// loop exits on whichever limit (time or count) is hit first. staleSocketGrace
+// is how long a session-less socket-holder must persist before the pre-boot
+// check treats it as stale rather than a sibling worktree's still-
+// registering fresh boot.
 const (
 	bootAttemptTimeout = 20 * time.Second
 	bootPoll           = 100 * time.Millisecond
 	bootOverallTimeout = 90 * time.Second
+	maxBootAttempts    = 8
 	staleSocketGrace   = 5 * time.Second
 )
 
@@ -341,6 +357,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("start tmux: %w", err)
 		}
+		logger.Info("reed: spawned tmux server", "socket", e.Socket(), "session", session, "pid", cmd.Process.Pid)
 		return nil
 	}
 
@@ -361,7 +378,10 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// never-boots regression still fails, at bootOverallTimeout instead of
 	// after two attempts.
 	bootDeadline := time.Now().Add(bootOverallTimeout)
+	attempt := 0
 	for {
+		attempt++
+		logger.Info("reed: boot attempt", "socket", e.Socket(), "session", session, "attempt", attempt)
 		if err := spawnSession(); err != nil {
 			return false, nil, err
 		}
@@ -386,8 +406,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
 			return false, nil, fmt.Errorf("tmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
+		logger.Warn("reed: zombie boot, reaping socket before retry", "socket", e.Socket(), "session", session, "attempt", attempt)
 		if err := e.reapSocketProcesses(); err != nil {
 			return false, nil, fmt.Errorf("reap zombie tmux boot: %w", err)
+		}
+		if attempt >= maxBootAttempts {
+			return false, nil, fmt.Errorf("tmux session did not start after %d attempts (fast-failure spiral guard; see maxBootAttempts)", attempt)
 		}
 		if time.Now().After(bootDeadline) {
 			return false, nil, fmt.Errorf("tmux session did not start within %s", bootOverallTimeout)
@@ -560,15 +584,24 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		_ = e.tmux.run("kill-pane", "-t", corpseID)
 	}
 
-	launchCmd := headerLaunchCmd(shell.ForGOOS(), exe)
-	// Same literal send-keys mechanics launchStrandLocked (spawn.go) uses:
-	// -l so tmux never reinterprets any part of the launch line, then a
-	// separate Enter to submit it.
-	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
-		return fmt.Errorf("send header launch command: %w", err)
-	}
-	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
-		return fmt.Errorf("submit header launch command: %w", err)
+	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, testing.Testing())
+	if launchCmd == "" {
+		// Under go test the header pane stays a bare blocking shell — see
+		// headerLaunchLine: re-exec'ing exe here would run the test binary's
+		// entire suite recursively. The pane still exists and its id is still
+		// recorded below, so layout geometry and up/resume idempotence are
+		// unchanged.
+		logger.Info("reed: header re-exec suppressed under go test, pane left as bare shell", "socket", e.Socket(), "pane", paneID, "exe", exe)
+	} else {
+		// Same literal send-keys mechanics launchStrandLocked (spawn.go) uses:
+		// -l so tmux never reinterprets any part of the launch line, then a
+		// separate Enter to submit it.
+		if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+			return fmt.Errorf("send header launch command: %w", err)
+		}
+		if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+			return fmt.Errorf("submit header launch command: %w", err)
+		}
 	}
 
 	st.HeaderPaneID = paneID
@@ -766,6 +799,10 @@ func (e *Engine) Resume() (ResumeResult, error) {
 func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {
+		start := time.Now()
+		defer func() {
+			logger.Info("reed: down complete", "socket", e.Socket(), "session", e.SessionName(), "duration", time.Since(start))
+		}()
 		// Grab the server's OS pid while our session can still be queried —
 		// it is the only reliable death signal: tmux's CLI cannot report
 		// "no server" at all (list-sessions exits 0 with empty output and
@@ -798,8 +835,12 @@ func (e *Engine) Down() (DownResult, error) {
 		// pre-boot check applies regardless).
 		var serverErr error
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
+			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
 			_ = e.tmux.run("kill-server")
 			serverErr = e.ensureServerGoneLocked(serverPID)
+			if serverErr != nil {
+				logger.Warn("reed: server did not confirm gone after kill-server", "socket", e.Socket(), "serverPID", serverPID, "err", serverErr)
+			}
 		}
 
 		// ALWAYS reap this session's pane child subtree, even when the server

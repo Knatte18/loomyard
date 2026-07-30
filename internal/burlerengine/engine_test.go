@@ -2,9 +2,15 @@
 // construction (including the ClusterFan -> Spec.ForkSubagents wiring), the
 // cluster audit policy wiring (a violating audit fails the round, a clean
 // one passes with warnings copied through, and a non-cluster profile never
-// invokes it), every shuttleengine.Outcome, and the review-file parse path
+// invokes it), every shuttleengine.Outcome, the review-file parse path
 // (valid BLOCKING/APPROVED, missing file, malformed frontmatter) plus a
-// hard shuttle error.
+// hard shuttle error, and the per-round instruction-file materialization
+// step (happy path writes exactly three files under layout.DotLyxDir(),
+// and a materialization failure returns a hard error before the shuttle
+// ever runs). Every *hubgeometry.Layout built here sets Cwd, not only
+// WorktreeRoot — DotLyxDir() is Cwd-anchored, so an unset Cwd would resolve
+// materialization into the real package source tree instead of a test
+// temp dir.
 
 package burlerengine
 
@@ -80,7 +86,7 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 }
 
 func newEngineForTest(root string, shuttle Shuttle) *Engine {
-	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, Config{})
+	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, Config{})
 }
 
 const (
@@ -167,7 +173,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 				},
 			},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -184,7 +190,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -218,7 +224,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err == nil {
@@ -243,7 +249,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -268,7 +274,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 				ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}},
 			},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root}, cfg)
+		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -441,5 +447,81 @@ func TestEngine_Run_ShuttleError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "reed: add strand failed") {
 		t.Errorf("Run() error = %q; want it to carry the underlying shuttle error", err.Error())
+	}
+}
+
+// TestEngine_Run_MaterializesInstructionFiles proves Run writes exactly
+// three instruction files to a fresh per-round directory under
+// layout.DotLyxDir(), bakes their absolute paths into the orchestrator
+// prompt it hands the shuttle, and that a rendered file's content reflects
+// a filled marker from the profile.
+func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
+	root, p := newEngineTestProfile(t)
+	shuttle := &fakeShuttle{
+		reviewContent: approvedReview,
+		fixerContent:  "nothing fixed",
+		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+	layout := &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}
+	e := New(shuttle, layout, Config{})
+
+	if _, err := e.Run(p, RunOpts{}); err != nil {
+		t.Fatalf("Run() = %v; want nil error", err)
+	}
+
+	burlerDir := filepath.Join(layout.DotLyxDir(), "burler")
+	matches, err := filepath.Glob(filepath.Join(burlerDir, "round-*", "instruction-*.md"))
+	if err != nil {
+		t.Fatalf("filepath.Glob() = %v; want nil", err)
+	}
+	if len(matches) != 3 {
+		t.Fatalf("materialized instruction files = %v; want exactly 3", matches)
+	}
+
+	for _, path := range matches {
+		if !strings.Contains(shuttle.spec.Prompt, path) {
+			t.Errorf("spec.Prompt does not contain materialized instruction path %q", path)
+		}
+	}
+
+	// target.txt's content ("target") is the profile's Target — it should
+	// show up in the instruction-1 (explore) file, proving the file
+	// actually carries a filled marker rather than empty/leftover template
+	// syntax.
+	instruction1Path := filepath.Join(filepath.Dir(matches[0]), "instruction-1-explore.md")
+	content, err := os.ReadFile(instruction1Path)
+	if err != nil {
+		t.Fatalf("ReadFile(instruction-1-explore.md) = %v; want nil", err)
+	}
+	if !strings.Contains(string(content), p.Rubric) {
+		t.Errorf("instruction-1-explore.md content = %q; want it to contain the profile's rubric %q", content, p.Rubric)
+	}
+}
+
+// TestEngine_Run_MaterializeFailure proves a materialization failure (the
+// .lyx parent directory cannot be created) returns a hard error naming the
+// failure, before the shuttle is ever invoked.
+func TestEngine_Run_MaterializeFailure(t *testing.T) {
+	root, p := newEngineTestProfile(t)
+
+	// A regular file named "notdir" makes os.MkdirAll(<notdir>/.lyx/burler)
+	// fail: "notdir" cannot be traversed as a directory component.
+	notdir := filepath.Join(root, "notdir")
+	if err := os.WriteFile(notdir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("WriteFile(notdir) = %v; want nil", err)
+	}
+
+	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
+	e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: notdir}, Config{})
+
+	_, err := e.Run(p, RunOpts{})
+	if err == nil {
+		t.Fatalf("Run() error = nil; want a materialization failure")
+	}
+	if !strings.Contains(err.Error(), "materialize instruction files") {
+		t.Errorf("Run() error = %q; want it to name the materialization failure", err.Error())
+	}
+	if shuttle.called {
+		t.Errorf("fakeShuttle.Run was called; want it never invoked on a materialization failure")
 	}
 }
