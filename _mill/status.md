@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: fabric-commit-api
 branch: fabric-commit-api
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-async-push-plumbing  '2026-07-30T10:24:10Z'
 approved-unified-diff-status  '2026-07-30T10:34:37Z'
 approved-fabric-commit  '2026-07-30T10:42:16Z'
 approved-docs  '2026-07-30T10:45:24Z'
+holistic-reviewing  '2026-07-30T10:45:50Z'
 ```
 
 ## Batches
