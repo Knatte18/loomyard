@@ -1,8 +1,10 @@
 // commit.go — CommitResult, PartialCommitError, and Fabric.Commit: the
 // classify-and-dispatch two-sided commit that fans a caller's mixed file
 // list into a warp-side plain-git commit and a weft-side trailer-bearing
-// commit under one held write lock, per the warp-first-then-weft-under-one-lock
-// Shared Decision.
+// commit, both performed under one combined write lock whenever the call
+// will commit anything at all — warp-only included — per the
+// combined-commit-lock Shared Decision, with the lock released before the
+// async push is spawned per commit-lock-scoped-to-commit-only.
 
 package fabricengine
 
@@ -67,25 +69,17 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // Commit classifies files into warp-side and weft-side paths (via
 // classifyPaths, passing relPath == "." per the relpath-is-dot-for-slice-2
 // Shared Decision, against the wired name-set WiredNames(f.weftPath)
-// resolves) and commits each side separately: the warp side first, with a
-// bare msg and no trailer (the plain-git property — no correspondence
-// entry), then — when at least one file is weft-side and opts.SkipGit is
-// false — the weft side under the fabric-layer write lock, acquired before
-// the warp commit and held across both. See the
-// warp-first-then-weft-under-one-lock Shared Decision: this is why
-// commitWeftLocked exists rather than calling the public, lock-acquiring
-// CommitWeft, which would self-deadlock reacquiring its own non-reentrant
-// lock. A warp-only commit (no weft-side files, or opts.SkipGit) takes no
-// lock and silently drops snapshotTags — they ride the weft commit's
-// trailer block, which does not exist on this path.
-//
-// On a warp commit failure, Commit returns immediately with a zero
-// CommitResult and the wrapped warp error — nothing has landed yet, and the
-// async push below is never reached. Otherwise, once the weft side (if any)
-// has been attempted, Commit maps its three possible outcomes onto a
-// *PartialCommitError per the partial-failure-report-three-outcomes Shared
-// Decision: a failed-but-landed weft commit, a failed-and-unlanded weft
-// commit, or (the non-error path) a landed or no-op weft commit.
+// resolves), commits each side under commitBothSides, and — once that
+// returns, lock already released — fires the async both-sides push whenever
+// something landed. See the combined-commit-lock Shared Decision: the
+// combined write lock (`.weft/weft.write.lock`, the existing
+// weftWriteLockFile) is acquired whenever the call will commit anything at
+// all, not only on the weft side — closing the warp-only race a weft-scoped
+// lock left open — and is released before spawnDetachedPushFn is called (the
+// commit-lock-scoped-to-commit-only Shared Decision): the network push runs
+// in the detached child under its own separate absorbing push lock, never
+// under this commit lock. A fully degenerate no-op call (nothing on either
+// side) takes no lock, runs no ensureWeftLockDir, and spawns no push.
 //
 // Finally, Commit fires the async, fire-and-forget push of whatever landed
 // via spawnDetachedPushFn, but only when something actually landed
@@ -105,14 +99,52 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	warpFiles, weftFiles := classifyPaths(".", wiredNames, files)
 	weftSide := len(weftFiles) > 0 && !opts.SkipGit
 
-	if weftSide {
+	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)
+	if err != nil {
+		return result, err
+	}
+
+	if result.WarpCommitted || result.WeftCommitted {
+		_ = spawnDetachedPushFn(f.warpPath, f.weftPath)
+	}
+
+	if partialErr != nil {
+		return result, partialErr
+	}
+	return result, nil
+}
+
+// commitBothSides performs the locked, warp-then-weft commit critical
+// section Commit dispatches to: it acquires the combined write lock
+// (`.weft/weft.write.lock`) whenever committing is true — computed by the
+// caller as `len(warpFiles) > 0 || weftSide`, per the combined-commit-lock
+// Shared Decision — releases it via a helper-scoped defer before returning,
+// and performs the same warp-first-then-weft ordering, hard-error-on-warp-
+// failure, and three-outcome *PartialCommitError mapping Commit always has.
+// Scoping the lock to this helper (rather than a defer in Commit itself) is
+// what keeps the lock released before Commit's own spawnDetachedPushFn call,
+// per the commit-lock-scoped-to-commit-only Shared Decision: a
+// function-scoped defer in Commit would still be held across that spawn,
+// which the design forbids and a test asserts against.
+//
+// On a warp commit failure, commitBothSides returns immediately with a zero
+// CommitResult and the wrapped warp error — nothing has landed yet. Otherwise,
+// once the weft side (if any) has been attempted, it maps its three possible
+// outcomes onto a *PartialCommitError per the
+// partial-failure-report-three-outcomes Shared Decision: a failed-but-landed
+// weft commit, a failed-and-unlanded weft commit, or (the non-error path) a
+// landed or no-op weft commit.
+func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, msg string, snapshotTags []string, opts SyncOptions) (CommitResult, *PartialCommitError, error) {
+	committing := len(warpFiles) > 0 || weftSide
+
+	if committing {
 		lockDir, err := f.ensureWeftLockDir()
 		if err != nil {
-			return CommitResult{}, err
+			return CommitResult{}, nil, err
 		}
 		l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
 		if err != nil {
-			return CommitResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+			return CommitResult{}, nil, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 		}
 		defer func() { _ = l.Release() }()
 	}
@@ -122,7 +154,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	if len(warpFiles) > 0 {
 		warpSHA, warpCommitted, err := f.Warp.StageAndCommit(msg, warpFiles)
 		if err != nil {
-			return CommitResult{}, fmt.Errorf("fabricengine: warp commit: %w", err)
+			return CommitResult{}, nil, fmt.Errorf("fabricengine: warp commit: %w", err)
 		}
 		result.WarpSHA = warpSHA
 		result.WarpCommitted = warpCommitted
@@ -144,12 +176,5 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		}
 	}
 
-	if result.WarpCommitted || result.WeftCommitted {
-		_ = spawnDetachedPushFn(f.warpPath, f.weftPath)
-	}
-
-	if partialErr != nil {
-		return result, partialErr
-	}
-	return result, nil
+	return result, partialErr, nil
 }
