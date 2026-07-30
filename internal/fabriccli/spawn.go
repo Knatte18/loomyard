@@ -1,38 +1,16 @@
-// spawn.go — detached fabric weft push process launching.
-//
-// spawnPush launches `lyx fabric --weft-path <abs> push` as a detached, windowless
-// process. It has its own process group (so the parent's Ctrl-C does not reach it)
-// and survives the parent's exit.
+// spawn.go — the "lyx fabric sync" verb's async-push call site. spawnPush
+// delegates to fabricengine.SpawnDetachedPush, weft-only (an empty warpPath),
+// preserving the existing "lyx fabric sync" verb's behavior at its unchanged
+// call site in weft_verbs.go. The detach/process-group mechanics themselves
+// now live in the engine helper — see internal/fabricengine/spawn.go.
 
 package fabriccli
 
-import (
-	"os"
-	"os/exec"
-	"path/filepath"
+import "github.com/Knatte18/loomyard/internal/fabricengine"
 
-	"github.com/Knatte18/loomyard/internal/proc"
-)
-
-// spawnPush launches `lyx fabric --weft-path <abs> push` as a detached, windowless
-// process. Returns nil immediately if WEFT_SKIP_GIT or WEFT_SKIP_PUSH is set (no
-// child process forked). Otherwise builds the command, sets it to run detached and
-// windowless, and starts it without waiting.
+// spawnPush launches a detached, weft-only push of weftPath via
+// fabricengine.SpawnDetachedPush. See that function's doc comment for the
+// skip-env gating, detached-child mechanics, and no-Wait posture.
 func spawnPush(weftPath string) error {
-	if os.Getenv("WEFT_SKIP_GIT") == "1" || os.Getenv("WEFT_SKIP_PUSH") == "1" {
-		return nil
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	abs, err := filepath.Abs(weftPath)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(exe, "fabric", "--weft-path", abs, "push")
-	proc.Detach(cmd)
-	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
-	return cmd.Start() // intentionally not Wait()ed
+	return fabricengine.SpawnDetachedPush("", weftPath)
 }
