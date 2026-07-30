@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: fabric-commit-api
 branch: fabric-commit-api
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-review-r2  '2026-07-30T09:40:51Z'
 plan-fix-r2  '2026-07-30T09:41:25Z'
 plan-review-r3  '2026-07-30T09:59:47Z'
 plan-fix-r3  '2026-07-30T10:00:13Z'
+plan-fix-r4  '2026-07-30T10:11:20Z'
 ```

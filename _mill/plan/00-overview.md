@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: Fabric.Commit classify+dispatch + unified diff/status'
 slug: fabric-commit-api
-approved: false
+approved: true
 started: '2026-07-29T20:51:11Z'
 parent: main
 root: ""
