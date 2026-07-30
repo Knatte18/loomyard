@@ -7,7 +7,10 @@ package main
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"regexp"
@@ -15,6 +18,15 @@ import (
 
 	readability "github.com/go-shiori/go-readability"
 )
+
+// errUnsupportedContentEncoding is returned by decodeContentEncoding for a
+// Content-Encoding value it has no decoder for (e.g. "br"/Brotli, which the
+// Go standard library cannot decode). It is a distinct sentinel — rather
+// than a generic decode error — so fetchPage can route around it to the
+// browser fallback instead of surfacing it as a hard fetch failure: a real
+// browser's network stack decodes Brotli internally, so the content is
+// still recoverable via that path.
+var errUnsupportedContentEncoding = errors.New("unsupported Content-Encoding")
 
 // minUsableTextLen is the character-count threshold below which extracted
 // text is considered too thin to be the article itself (e.g. a cookie
@@ -67,7 +79,25 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 		return "# Error fetching " + url + "\n\nHTTP " + strconv.Itoa(resp.StatusCode)
 	}
 
-	rawHTML, err := io.ReadAll(resp.Body)
+	compressedBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "# Error fetching " + url + "\n\n" + err.Error()
+	}
+	// defaultHeaders() sends an explicit Accept-Encoding, which disables
+	// http.Transport's own transparent gzip decoding (it only auto-decodes
+	// when the caller has NOT set that header itself) — so a compressed
+	// response must be decoded here or every downstream step sees garbage
+	// bytes instead of HTML.
+	rawHTML, err := decodeContentEncoding(compressedBody, resp.Header.Get("Content-Encoding"))
+	if errors.Is(err, errUnsupportedContentEncoding) {
+		// We cannot statically decode this encoding, so the compressed bytes
+		// are useless to Readability/stripToBodyText — go straight to the
+		// browser fallback rather than feeding either of them garbage.
+		if browserText, ok := f.browser(ctx, url); ok && browserText != "" {
+			return browserText
+		}
+		return "# " + url + "\n\nCould not extract readable content from this page."
+	}
 	if err != nil {
 		return "# Error fetching " + url + "\n\n" + err.Error()
 	}
@@ -106,4 +136,31 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 	}
 
 	return "# " + url + "\n\nCould not extract readable content from this page."
+}
+
+// decodeContentEncoding decompresses body according to the response's
+// Content-Encoding header. gzip and deflate are handled directly (the two
+// formats the standard library supports); an empty or "identity" encoding is
+// returned unchanged; any other non-empty value (most notably "br"/Brotli,
+// which weblens' Node runtime decodes natively but Go's standard library
+// cannot) yields errUnsupportedContentEncoding so the caller can route
+// around it instead of treating the still-compressed bytes as HTML.
+func decodeContentEncoding(body []byte, contentEncoding string) ([]byte, error) {
+	switch contentEncoding {
+	case "", "identity":
+		return body, nil
+	case "gzip":
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		defer reader.Close()
+		return io.ReadAll(reader)
+	case "deflate":
+		reader := flate.NewReader(bytes.NewReader(body))
+		defer reader.Close()
+		return io.ReadAll(reader)
+	default:
+		return nil, errUnsupportedContentEncoding
+	}
 }

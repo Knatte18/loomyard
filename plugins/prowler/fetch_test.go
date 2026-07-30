@@ -5,6 +5,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -213,5 +215,62 @@ func TestFetchPage_RedditUrlRoutesThroughRedditPath(t *testing.T) {
 	got := fetchPage(context.Background(), f, url)
 	if !strings.HasPrefix(got, "# Test Title") {
 		t.Errorf("fetchPage() = %q; want it to be the Reddit-formatted post", got)
+	}
+}
+
+// gzipCompress compresses body for use as a stubbed gzip-encoded response.
+func gzipCompress(t *testing.T, body string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	if _, err := w.Write([]byte(body)); err != nil {
+		t.Fatalf("gzip.Write() error = %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("gzip.Close() error = %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestFetchPage_GzipContentEncodingIsDecoded(t *testing.T) {
+	const url = "https://example.com/gzipped"
+	f := stubResponses(t, map[string]*http.Response{
+		url: {
+			StatusCode: 200,
+			Header:     http.Header{"Content-Encoding": []string{"gzip"}},
+			Body:       io.NopCloser(bytes.NewReader(gzipCompress(t, readableArticleHTML))),
+		},
+	}, func(context.Context, string) (string, bool) {
+		t.Fatal("browser fallback should not be invoked once gzip is decoded")
+		return "", false
+	})
+
+	got := fetchPage(context.Background(), f, url)
+	if !strings.Contains(got, "genuinely readable article content") {
+		t.Errorf("fetchPage() = %q; want the decoded article body, not compressed bytes", got)
+	}
+}
+
+func TestFetchPage_UnsupportedContentEncodingFallsBackToBrowser(t *testing.T) {
+	const url = "https://example.com/brotli"
+	f := stubResponses(t, map[string]*http.Response{
+		url: {
+			StatusCode: 200,
+			Header:     http.Header{"Content-Encoding": []string{"br"}},
+			// The body content is irrelevant here: prowler has no Brotli
+			// decoder, so it must never be interpreted as HTML.
+			Body: io.NopCloser(strings.NewReader("compressed-bytes-not-real-brotli")),
+		},
+	}, func(ctx context.Context, u string) (string, bool) {
+		if u != url {
+			t.Errorf("browser() called with %q; want %q", u, url)
+		}
+		return "# Browser Rendered\n\nDecoded via the real browser's network stack.", true
+	})
+
+	got := fetchPage(context.Background(), f, url)
+	want := "# Browser Rendered\n\nDecoded via the real browser's network stack."
+	if got != want {
+		t.Errorf("fetchPage() = %q; want %q", got, want)
 	}
 }
