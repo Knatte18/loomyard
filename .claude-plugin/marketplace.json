@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "loomyard",
+  "version": "1.0.0",
+  "description": "LoomYard Claude Code plugin marketplace",
+  "owner": {
+    "name": "Knatte18"
+  },
+  "plugins": [
+    {
+      "name": "prowler",
+      "description": "Fetch blocked/restricted/JS-rendered web pages and output readable markdown",
+      "version": "1.0.0",
+      "author": {
+        "name": "Knatte18"
+      },
+      "source": "./plugins/prowler",
+      "category": "productivity"
+    }
+  ]
+}
