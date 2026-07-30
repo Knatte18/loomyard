@@ -41,7 +41,9 @@ batches:
     start_sha: 3071c36090b189533ab8d7413adc0c06c52d1adc
     commit_sha: 931ec7c4be30cd03426745de9e3fcb5b2fc9cac2
   - name: fabric-commit-lock-and-wiring
-    state: pending
+    state: running
+    implementer_session: 90e413a2-1432-488f-b99c-b59336f3ece8
+    start_sha: 0e75346075c755f54621c6265c55172666bfa1e7
   - name: boardengine-delegation
     state: pending
   - name: slice-3-design-doc-completion
