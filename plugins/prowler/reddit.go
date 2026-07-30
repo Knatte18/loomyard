@@ -23,7 +23,9 @@ var redditHostReplace = regexp.MustCompile(`^(https?://)(www\.|old\.)?reddit\.co
 // maxTopComments bounds how many top-level comments an adapter includes when
 // formatting a discussion thread into markdown, mirroring weblens' behavior
 // of showing only the first ~20 rather than an entire, potentially huge,
-// comment tree. Shared by redditAdapter and the Hacker News adapter.
+// comment tree. Used by the Hacker News adapter; declared here alongside
+// Reddit's other retained constants. redditAdapter keeps all comments
+// unbounded via stripToBodyText.
 const maxTopComments = 20
 
 // toOldRedditURL rewrites a Reddit URL to its old.reddit.com equivalent,
