@@ -21,6 +21,7 @@ This batch adds the detached, both-sides async-push machinery `Fabric.Commit` (b
   - `internal/fabriccli/spawn.go`
   - `internal/boardengine/spawn.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/gitrepo/gitrepo.go`
   - `internal/gitrepo/push.go`
   - `internal/proc/proc_linux.go`
 - **Edits:** none
