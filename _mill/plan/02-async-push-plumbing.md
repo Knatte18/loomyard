@@ -36,6 +36,7 @@ This batch adds the detached, both-sides async-push machinery `Fabric.Commit` (b
 
 - **Context:**
   - `internal/fabricengine/spawn.go`
+  - `internal/fabricengine/weftgit.go`
 - **Edits:**
   - `internal/fabriccli/weft_verbs.go`
   - `internal/fabriccli/spawn.go`

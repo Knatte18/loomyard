@@ -68,7 +68,7 @@ _Cross-cutting decisions every batch inherits. Batch-local decisions live in eac
 ### Decision: async-push-both-sides-via-detached-child
 
 - **Decision:** `Fabric.Commit` commits synchronously, then fires a detached, fire-and-forget push of **both** repos through an engine-level spawn helper (`fabricengine.SpawnDetachedPush`) that mirrors `boardengine.spawnSync`. The child re-enters `lyx fabric` in bypass mode via companion hidden `--warp-path`/`--weft-path` flags and pushes each supplied path with `PushWarpAt`/`PushWeftAt`. Skip-env gating (`WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH`) is **helper-internal** (no child forked when set), matching `fabriccli.spawnPush`. The push fires for whatever landed even on a partial failure; only a warp-commit failure returns before it.
-- **Rationale:** Board's model — fast local commit, deferred network push. `PushCoalesced` no-ops when a side has nothing ahead / no upstream, so "push whatever landed" is self-scoping. See `async-push-both-sides-detached` in `_mill/discussion.md`.
+- **Rationale:** Board's model — fast local commit, deferred network push. `PushCoalesced` no-ops when a side has nothing ahead of its upstream, and (when no upstream is configured) performs a harmless first push that establishes tracking rather than no-opping — `gitrepo.hasUnpushed` returns true in the no-upstream case, so the push proceeds — which is why "push whatever landed" is self-scoping. See `async-push-both-sides-detached` in `_mill/discussion.md`.
 - **Applies to:** async-push-plumbing, fabric-commit
 
 ### Decision: push-invocation-seam-for-tests
@@ -104,6 +104,7 @@ _Cross-cutting decisions every batch inherits. Batch-local decisions live in eac
 - `internal/fabricengine/diff.go`
 - `internal/fabricengine/diff_integration_test.go`
 - `internal/fabricengine/doc.go`
+- `internal/fabricengine/fabric.go`
 - `internal/fabricengine/spawn.go`
 - `internal/fabricengine/spawn_test.go`
 - `internal/fabricengine/trailer.go`

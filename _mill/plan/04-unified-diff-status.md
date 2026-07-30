@@ -52,6 +52,8 @@ This batch adds the Go-internal unified `Fabric.Diff`/`Status`, independent of t
 
 - **Context:**
   - `internal/fabricengine/diff.go`
+  - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/syncweft.go`
   - `internal/fabricengine/index_integration_test.go`
   - `internal/fabricengine/syncweft_integration_test.go`
   - `internal/gitrepo/worktree.go`

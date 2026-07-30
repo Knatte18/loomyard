@@ -1,0 +1,48 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: Fabric.Commit classify+dispatch + unified diff/status — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetmax
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-07-30
+```
+
+## Findings
+
+### [BLOCKING] Context completeness gaps in several cards
+**Location:** Batch 1 Card 3; Batch 3 Card 8 (same pattern in Cards 5, 7, 9, 13)
+**Issue:** Requirements name functions whose defining file is absent from Context/Edits. Card 3 moves `f.Weft.StageAndCommit` (defined in `internal/gitrepo/gitrepo.go`) and calls `lock.AcquireWriteLock` (`internal/lock`) into `commitWeftLocked`, but neither file is listed (Context: trailer.go, index.go, syncweft.go; Edits: weftgit.go). Card 8 asserts `WeftSHAForWarpSHA(result.WarpSHA)` (defined in `internal/fabricengine/index.go`) but only `index_integration_test.go` is in Context, not `index.go`.
+**Fix:** Add the missing production-file paths (`internal/gitrepo/gitrepo.go`, the `internal/lock` source file, `internal/fabricengine/index.go`) to each affected card's Context list.
+
+### [NIT] classifyPaths output path normalization unspecified
+**Location:** Batch 1, Card 1
+**Issue:** Card 1 requires `filepath.ToSlash`-normalizing both sides for the weft/warp prefix comparison, but doesn't say whether the returned warp/weft slices carry the original (possibly backslash-bearing, on Windows) input string or the normalized one.
+**Fix:** State explicitly that the original, unmodified input string is appended to the output slices; ToSlash normalization is used only for the classification decision, never for the returned value.
+
+### [NIT] Fabric.Commit spawns a push child even on a fully no-op call
+**Location:** Batch 3, Card 7
+**Issue:** `_ = spawnDetachedPushFn(f.warpPath, f.weftPath)` fires whenever no early warp-failure return happened, including a call where `files` is empty and neither side ever committed anything — spawning a real detached child process for nothing.
+**Fix:** Gate the push on `result.WarpCommitted || result.WeftCommitted`, or explicitly accept this as a deliberate, documented cost.
+
+### [NIT] `.gitrepo-push.lock` is git-excluded only on the weft side
+**Location:** Batch 2 Card 4; Batch 4 Cards 12–13
+**Issue:** `seedWeftArtifactExcludes` (weftgit.go) seeds only weft's `.git/info/exclude`. Once `PushWarpAt`/`Fabric.Commit`'s async push touches warp via `gitrepo.PushCoalesced`, the lingering `.gitrepo-push.lock` file has no warp-side exclude, so it could surface as a spurious entry in `Fabric.Status()`'s warp-side results.
+**Fix:** Note this as a known limitation in Card 14's doc.go update, or seed an equivalent exclude on warp.
+
+### [NIT] Shared Decision 4's "no-ops ... no upstream" claim contradicts hasUnpushed() and Card 6's own text
+**Location:** 00-overview.md Shared Decisions, `async-push-both-sides-via-detached-child`
+**Issue:** `gitrepo.hasUnpushed()` returns `true` (push proceeds) when no upstream is configured — it does not no-op. Card 6's own Requirements says this correctly ("PushCoalesced performs the first push ... even when no upstream is configured"), directly contradicting the shared decision's rationale in the same plan.
+**Fix:** Reword the decision's rationale to match the real no-upstream behavior (push proceeds, harmlessly, rather than no-ops); no code requirement changes either way.
+
+### [NIT] SyncOptions.SkipGit field doc not updated for Fabric.Commit's narrower semantics
+**Location:** Batch 3 Card 7; Batch 5 Card 14
+**Issue:** `Fabric.Commit` narrows `opts.SkipGit` to weft-only (warp commit and the async push proceed regardless), documented in `doc.go` per Card 14 — but `fabric.go`'s `SyncOptions.SkipGit` field comment ("Skip all git operations if true.") is left untouched and now reads misleadingly for this one entry point.
+**Fix:** Add a one-line cross-reference on the `SkipGit` field noting Fabric.Commit's weft-scoped narrowing.
+
+## Verdict
+
+REQUEST_CHANGES
+One Context-completeness gap plus minor NITs; otherwise thorough, well-sequenced, and technically accurate against source.
+MILL_REVIEW_END
