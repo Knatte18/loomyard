@@ -19,3 +19,7 @@ lyx.exe
 **/.portals
 **/.vscode/
 # === end mill-managed ===
+
+# prowler plugin: build-on-first-run binary + its build lock — never
+# committed (the nested go.mod/go.sum ARE source and stay committed).
+plugins/prowler/bin/

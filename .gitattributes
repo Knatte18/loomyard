@@ -22,5 +22,6 @@ internal/treadleengine/judge-milestone-template.md text eol=lf
 internal/treadleengine/targeting-template.md text eol=lf
 internal/treadleengine/triage-template.md text eol=lf
 internal/fabricengine/post-checkout.sh text eol=lf
+plugins/prowler/scripts/*.sh text eol=lf
 internal/fabricengine/template.yaml text eol=lf
 internal/planparser/testdata/goodplan/*.md text eol=lf
