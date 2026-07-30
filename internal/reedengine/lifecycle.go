@@ -67,13 +67,27 @@ type StatusResult struct {
 // zombie boot and reaped; bootOverallTimeout is the total budget across
 // spawn/reap/respawn cycles, sized for a CPU-saturated machine (a quiet boot
 // is ~1-2s; three concurrent smoke suites have been observed to starve a
-// boot past two full 20s windows). staleSocketGrace is how long a
-// session-less socket-holder must persist before the pre-boot check treats
-// it as stale rather than a sibling worktree's still-registering fresh boot.
+// boot past two full 20s windows). maxBootAttempts is a second, independent
+// cap on the SAME loop: bootOverallTimeout alone assumes each failed attempt
+// costs real wall-clock time (a slow boot), but a spawn that fails FAST
+// (e.g. the OS rejecting the fork outright under resource pressure) burns
+// through the 90s budget in many more than the ~4-5 attempts the timeout
+// alone was sized for -- observed live (2026-07-30): a fork-bomb incident
+// where each fresh spawn attempt failed near-instantly, retried near-
+// instantly, and the loop reached 30-90+ real tmux-server spawns within the
+// SAME single bootOverallTimeout window before the caller ever saw the loop
+// exit. maxBootAttempts bounds attempt COUNT independent of how fast or
+// slow each attempt fails, so a fast-failure spiral is capped at a handful
+// of real spawns regardless of how much of the 90s budget remains -- the
+// loop exits on whichever limit (time or count) is hit first. staleSocketGrace
+// is how long a session-less socket-holder must persist before the pre-boot
+// check treats it as stale rather than a sibling worktree's still-
+// registering fresh boot.
 const (
 	bootAttemptTimeout = 20 * time.Second
 	bootPoll           = 100 * time.Millisecond
 	bootOverallTimeout = 90 * time.Second
+	maxBootAttempts    = 8
 	staleSocketGrace   = 5 * time.Second
 )
 
@@ -394,6 +408,9 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		logger.Warn("reed: zombie boot, reaping socket before retry", "socket", e.Socket(), "session", session, "attempt", attempt)
 		if err := e.reapSocketProcesses(); err != nil {
 			return false, nil, fmt.Errorf("reap zombie tmux boot: %w", err)
+		}
+		if attempt >= maxBootAttempts {
+			return false, nil, fmt.Errorf("tmux session did not start after %d attempts (fast-failure spiral guard; see maxBootAttempts)", attempt)
 		}
 		if time.Now().After(bootDeadline) {
 			return false, nil, fmt.Errorf("tmux session did not start within %s", bootOverallTimeout)
