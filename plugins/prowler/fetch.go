@@ -16,15 +16,18 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/andybalholm/brotli"
 	readability "github.com/go-shiori/go-readability"
 )
 
 // errUnsupportedContentEncoding is returned by decodeContentEncoding for a
-// Content-Encoding value it has no decoder for (e.g. "br"/Brotli, which the
-// Go standard library cannot decode). It is a distinct sentinel — rather
-// than a generic decode error — so fetchPage can route around it to the
-// browser fallback instead of surfacing it as a hard fetch failure: a real
-// browser's network stack decodes Brotli internally, so the content is
+// Content-Encoding value it has no decoder for. gzip, deflate, and br
+// (Brotli, via the pure-Go andybalholm/brotli decoder — the standard
+// library has none) all decode locally; anything else falls back to this
+// sentinel. It is a distinct sentinel — rather than a generic decode error —
+// so fetchPage can route around it to the browser fallback instead of
+// surfacing it as a hard fetch failure: a real browser's network stack
+// decodes encodings this function doesn't recognize, so the content is
 // still recoverable via that path.
 var errUnsupportedContentEncoding = errors.New("unsupported Content-Encoding")
 
@@ -226,6 +229,8 @@ func decodeContentEncoding(body []byte, contentEncoding string) ([]byte, error) 
 		reader := flate.NewReader(bytes.NewReader(body))
 		defer reader.Close()
 		return io.ReadAll(reader)
+	case "br":
+		return io.ReadAll(brotli.NewReader(bytes.NewReader(body)))
 	default:
 		return nil, errUnsupportedContentEncoding
 	}

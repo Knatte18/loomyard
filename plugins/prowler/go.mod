@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
+	github.com/andybalholm/brotli v1.2.2
 	github.com/chromedp/chromedp v0.16.0
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 )

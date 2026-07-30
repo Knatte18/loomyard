@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/andybalholm/brotli"
 )
 
 // stubResponses builds a fetcher whose do dispatches on the request URL to a
@@ -312,8 +314,10 @@ func TestFetchOldRedditHTML(t *testing.T) {
 		f := fetcher{do: func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: 200,
-				Header:     http.Header{"Content-Encoding": []string{"br"}},
-				Body:       io.NopCloser(strings.NewReader("compressed-bytes-not-real-brotli")),
+				// "compress" has no decoder in this package or the standard
+				// library, unlike gzip/deflate/br.
+				Header: http.Header{"Content-Encoding": []string{"compress"}},
+				Body:   io.NopCloser(strings.NewReader("compressed-bytes-irrelevant")),
 			}, nil
 		}}
 
@@ -357,15 +361,48 @@ func TestFetchPage_GzipContentEncodingIsDecoded(t *testing.T) {
 	}
 }
 
-func TestFetchPage_UnsupportedContentEncodingFallsBackToBrowser(t *testing.T) {
+// brotliCompress compresses body for use as a stubbed br-encoded response.
+func brotliCompress(t *testing.T, body string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := brotli.NewWriter(&buf)
+	if _, err := w.Write([]byte(body)); err != nil {
+		t.Fatalf("brotli.Write() error = %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("brotli.Close() error = %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestFetchPage_BrotliContentEncodingIsDecoded(t *testing.T) {
 	const url = "https://example.com/brotli"
 	f := stubResponses(t, map[string]*http.Response{
 		url: {
 			StatusCode: 200,
 			Header:     http.Header{"Content-Encoding": []string{"br"}},
-			// The body content is irrelevant here: prowler has no Brotli
-			// decoder, so it must never be interpreted as HTML.
-			Body: io.NopCloser(strings.NewReader("compressed-bytes-not-real-brotli")),
+			Body:       io.NopCloser(bytes.NewReader(brotliCompress(t, readableArticleHTML))),
+		},
+	}, func(context.Context, string) (string, bool) {
+		t.Fatal("browser fallback should not be invoked once brotli is decoded")
+		return "", false
+	})
+
+	got := fetchPage(context.Background(), f, url)
+	if !strings.Contains(got, "genuinely readable article content") {
+		t.Errorf("fetchPage() = %q; want the decoded article body, not compressed bytes", got)
+	}
+}
+
+func TestFetchPage_UnsupportedContentEncodingFallsBackToBrowser(t *testing.T) {
+	const url = "https://example.com/compress"
+	f := stubResponses(t, map[string]*http.Response{
+		url: {
+			StatusCode: 200,
+			// "compress" (legacy Unix compress/LZW) has no decoder in this
+			// package or the standard library, unlike gzip/deflate/br.
+			Header: http.Header{"Content-Encoding": []string{"compress"}},
+			Body:   io.NopCloser(strings.NewReader("compressed-bytes-irrelevant")),
 		},
 	}, func(ctx context.Context, u string) (string, bool) {
 		if u != url {
