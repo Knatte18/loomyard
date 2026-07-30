@@ -3,7 +3,7 @@
 ```yaml
 task: 'prowler: installable Claude Code plugin (Go), hosted in LoomYard'
 slug: prowler
-approved: false
+approved: true
 started: '20260729-193053'
 parent: 'main'
 root: ""
