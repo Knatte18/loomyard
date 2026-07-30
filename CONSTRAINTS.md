@@ -103,6 +103,12 @@ One review+fix round (burler now, hardener later) follows the round discipline: 
 
 - **Enforced by** `internal/burlerengine/template_test.go` (`TestTemplate_StatesRoundDiscipline` for the orchestrator's sequencing statements and instruction 3's fix-everything/never-push statements, `TestTemplate_StatesClusterForkDiscipline` for instruction 2's cluster sequencing/read-only statements via a cluster-profile `composePrompt` render, and `TestTemplate_OrchestratorExcludesDownstreamBodies` guarding that the inline orchestrator does not carry the downstream instruction bodies — the lazy-read separation). The rest — no self-grading, commit-per-fix discipline — is a review obligation on prompt templates, not machine-checked.
 
+## Live-Substrate Spawn Observability
+
+Any code path that starts a real OS process on behalf of a round/strand/session (a tmux server, a `claude`/provider session, any subprocess a live-substrate test can multiply) logs the spawn and its teardown via `internal/logger` — `logger.Info` for the normal spawn/teardown events (session/socket/PID/round identifiers), `logger.Warn` for a retry or a teardown that did not confirm clean. This is silent by default (matching `internal/logger`'s own Warn-threshold default) but is switched on for a `go test`-only entry point — which never reaches `cmd/lyx/main.go`'s `-v`/`-vv` flag parsing — via the `LYX_LOG_LEVEL`/`LYX_LOG_FILE` environment variables `internal/logger` reads at init. This exists because a RAM-exhaustion incident (crucible round on burler, 2026-07-30) left no trace of what had actually spawned or how many times — only `ps` forensics after the fact could reconstruct any of it. Known instrumented call sites today: `internal/reedengine/lifecycle.go` (tmux server spawn/boot-retry/teardown), `internal/shuttleengine/run.go` (`Start`, one line per run naming role/round/fork-authorization), `internal/burlerengine/engine.go` (`Run`, naming the cluster fan and resolved fork count before the round starts).
+
+- **A new spawn point for a live-substrate module must add its own `logger.Info`/`Warn` call in the same change** — this is a review obligation, not machine-enforced.
+
 ## Sandbox Suite Coverage
 
 Every registered lyx module must be exercised by the black-box sandbox suite or be explicitly excluded with a reason.

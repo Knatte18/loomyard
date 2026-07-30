@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -341,6 +342,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("start tmux: %w", err)
 		}
+		logger.Info("reed: spawned tmux server", "socket", e.Socket(), "session", session, "pid", cmd.Process.Pid)
 		return nil
 	}
 
@@ -361,7 +363,10 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// never-boots regression still fails, at bootOverallTimeout instead of
 	// after two attempts.
 	bootDeadline := time.Now().Add(bootOverallTimeout)
+	attempt := 0
 	for {
+		attempt++
+		logger.Info("reed: boot attempt", "socket", e.Socket(), "session", session, "attempt", attempt)
 		if err := spawnSession(); err != nil {
 			return false, nil, err
 		}
@@ -386,6 +391,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
 			return false, nil, fmt.Errorf("tmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
+		logger.Warn("reed: zombie boot, reaping socket before retry", "socket", e.Socket(), "session", session, "attempt", attempt)
 		if err := e.reapSocketProcesses(); err != nil {
 			return false, nil, fmt.Errorf("reap zombie tmux boot: %w", err)
 		}
@@ -766,6 +772,10 @@ func (e *Engine) Resume() (ResumeResult, error) {
 func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {
+		start := time.Now()
+		defer func() {
+			logger.Info("reed: down complete", "socket", e.Socket(), "session", e.SessionName(), "duration", time.Since(start))
+		}()
 		// Grab the server's OS pid while our session can still be queried —
 		// it is the only reliable death signal: tmux's CLI cannot report
 		// "no server" at all (list-sessions exits 0 with empty output and
@@ -798,8 +808,12 @@ func (e *Engine) Down() (DownResult, error) {
 		// pre-boot check applies regardless).
 		var serverErr error
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
+			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
 			_ = e.tmux.run("kill-server")
 			serverErr = e.ensureServerGoneLocked(serverPID)
+			if serverErr != nil {
+				logger.Warn("reed: server did not confirm gone after kill-server", "socket", e.Socket(), "serverPID", serverPID, "err", serverErr)
+			}
 		}
 
 		// ALWAYS reap this session's pane child subtree, even when the server

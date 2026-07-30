@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -103,6 +104,8 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	if err := p.validate(e.layout.WorktreeRoot, e.cfg); err != nil {
 		return Result{}, err
 	}
+
+	logger.Info("burler: round starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
 	// RoleReviewFix, not a reviewer-only role: the template states in as
 	// many words that the agent has two jobs in order in one session, and

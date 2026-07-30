@@ -5,6 +5,7 @@ package logger
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -78,5 +79,70 @@ func TestSetOutput_CapturesIntoCallerBuffer(t *testing.T) {
 
 	if !strings.Contains(buf.String(), "warn goes to the injected buffer") {
 		t.Errorf("SetOutput buffer = %q; want it to contain the Warn message", buf.String())
+	}
+}
+
+func TestConfigureFromEnv_LogLevelRaisesThreshold(t *testing.T) {
+	buf := withCapturedOutput(t)
+	SetVerbosity(0)
+	t.Setenv("LYX_LOG_LEVEL", "info")
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	configureFromEnv()
+	Info("info via LYX_LOG_LEVEL")
+
+	if !strings.Contains(buf.String(), "info via LYX_LOG_LEVEL") {
+		t.Errorf("output = %q; want it to contain the Info message once LYX_LOG_LEVEL=info is applied", buf.String())
+	}
+}
+
+func TestConfigureFromEnv_UnsetLogLevelLeavesDefaultUntouched(t *testing.T) {
+	buf := withCapturedOutput(t)
+	SetVerbosity(0)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	configureFromEnv()
+	Info("should stay silent")
+
+	if buf.Len() != 0 {
+		t.Errorf("output = %q; want 0 bytes when LYX_LOG_LEVEL is unset", buf.String())
+	}
+}
+
+func TestConfigureFromEnv_LogFileRedirectsOutput(t *testing.T) {
+	SetVerbosity(1)
+	t.Cleanup(func() {
+		SetVerbosity(0)
+		SetOutput(originalOut)
+	})
+
+	path := t.TempDir() + "/reed-trace.log"
+	t.Setenv("LYX_LOG_FILE", path)
+
+	configureFromEnv()
+	Warn("warn routed to LYX_LOG_FILE")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read LYX_LOG_FILE: %v", err)
+	}
+	if !strings.Contains(string(data), "warn routed to LYX_LOG_FILE") {
+		t.Errorf("file content = %q; want it to contain the Warn message", string(data))
+	}
+}
+
+func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
+	buf := withCapturedOutput(t)
+	SetVerbosity(1)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	// A path under a directory that does not exist can never be opened.
+	t.Setenv("LYX_LOG_FILE", t.TempDir()+"/no-such-dir/reed-trace.log")
+
+	configureFromEnv()
+	Warn("still goes to the captured sink")
+
+	if !strings.Contains(buf.String(), "still goes to the captured sink") {
+		t.Errorf("output = %q; want the pre-existing sink to keep receiving log lines when LYX_LOG_FILE cannot be opened", buf.String())
 	}
 }
