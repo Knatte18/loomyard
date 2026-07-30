@@ -1,11 +1,13 @@
 // weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull,
 // sync) onto the "fabric" parent command built by fabric.go. addWeftVerbs installs
-// a hidden persistent --weft-path flag and a PersistentPreRunE scoped to these five
-// verb names only — the topology verbs built in fabric.go resolve their own layout
-// per invocation and never touch this file's closure state. The PersistentPreRunE
-// splits normal mode (resolve cwd → layout → config → pathspec → Fabric handle) from
-// bypass mode (--weft-path injected by the detached push child, push-only gate),
-// driving fabricengine.Fabric's StatusWeft/CommitWeft/PushWeft/PullWeft.
+// two hidden persistent flags — --weft-path and --warp-path — and a
+// PersistentPreRunE scoped to these five verb names only — the topology verbs built
+// in fabric.go resolve their own layout per invocation and never touch this file's
+// closure state. The PersistentPreRunE splits normal mode (resolve cwd → layout →
+// config → pathspec → Fabric handle) from bypass mode (either hidden path flag
+// injected by the detached push child, push-only gate), driving fabricengine.Fabric's
+// StatusWeft/CommitWeft/PushWeft/PullWeft in normal mode and
+// fabricengine.PushWarpAt/PushWeftAt directly in bypass mode.
 
 package fabriccli
 
@@ -35,13 +37,13 @@ var weftVerbNames = map[string]bool{
 // PersistentPreRunE, and the status/commit/push/pull/sync subcommands onto cmd — the
 // "fabric" parent command built by Command() in fabric.go.
 //
-// Normal mode (no --weft-path) resolves cwd → layout → weftBaseDir (the weft
-// worktree joined with the caller's RelPath) → fabric config loaded from
-// weftBaseDir → pathspec scoped to RelPath → a Fabric handle over the resolved
-// warp and weft worktree roots. Bypass mode (--weft-path set, used by the
-// detached push child spawned by spawnPush) skips all of that and permits only
-// the push verb, rejecting every other verb with "subcommand requires a worktree
-// context" at exit 1.
+// Normal mode (neither --weft-path nor --warp-path set) resolves cwd → layout →
+// weftBaseDir (the weft worktree joined with the caller's RelPath) → fabric config
+// loaded from weftBaseDir → pathspec scoped to RelPath → a Fabric handle over the
+// resolved warp and weft worktree roots. Bypass mode (--weft-path and/or --warp-path
+// set, used by the detached push child spawned by fabricengine.SpawnDetachedPush)
+// skips all of that and permits only the push verb, rejecting every other verb with
+// "subcommand requires a worktree context" at exit 1.
 func addWeftVerbs(cmd *cobra.Command) {
 	// Closure vars populated by PersistentPreRunE and read by subcommand RunEs.
 	var (
@@ -49,14 +51,18 @@ func addWeftVerbs(cmd *cobra.Command) {
 		cfg      fabricengine.Config
 		pathspec []string
 		fab      *fabricengine.Fabric
-		bypass   bool   // true when --weft-path is set
+		bypass   bool   // true when --weft-path and/or --warp-path is set
 		weftPath string // populated from --weft-path in bypass mode
+		warpPath string // populated from --warp-path in bypass mode
 	)
 
-	// --weft-path is a hidden persistent flag so it is available to all subcommands
-	// and visible to the PersistentPreRunE without referencing the child command directly.
+	// --weft-path and --warp-path are hidden persistent flags so they are available
+	// to all subcommands and visible to the PersistentPreRunE without referencing
+	// the child command directly.
 	cmd.PersistentFlags().String("weft-path", "", "internal: injected absolute weft worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("weft-path") //nolint:errcheck
+	cmd.PersistentFlags().String("warp-path", "", "internal: injected absolute warp worktree path for the detached push child")
+	cmd.PersistentFlags().MarkHidden("warp-path") //nolint:errcheck
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		// Guard: skip resolution for the bare "fabric" group, an unknown-subcommand
@@ -69,16 +75,19 @@ func addWeftVerbs(cmd *cobra.Command) {
 		ctx := cmd.Context()
 		out := cmd.OutOrStdout()
 
-		// Read the hidden persistent flag via InheritedFlags to make explicit
-		// that this flag is inherited from the parent command, not local.
-		injectedPath, _ := cmd.InheritedFlags().GetString("weft-path")
+		// Read the hidden persistent flags via InheritedFlags to make explicit
+		// that these flags are inherited from the parent command, not local.
+		injectedWeft, _ := cmd.InheritedFlags().GetString("weft-path")
+		injectedWarp, _ := cmd.InheritedFlags().GetString("warp-path")
 
-		if injectedPath != "" {
-			// Bypass mode: --weft-path was injected by the detached push child.
-			// Only the push subcommand is valid in this mode; reject everything else
-			// to prevent accidental invocation without a worktree context.
+		if injectedWeft != "" || injectedWarp != "" {
+			// Bypass mode: --weft-path and/or --warp-path was injected by the
+			// detached push child. Only the push subcommand is valid in this mode;
+			// reject everything else to prevent accidental invocation without a
+			// worktree context.
 			bypass = true
-			weftPath = injectedPath
+			weftPath = injectedWeft
+			warpPath = injectedWarp
 
 			// In PersistentPreRunE, cmd is the leaf subcommand being executed,
 			// so cmd.Name() returns the subcommand name (e.g. "push", "status").
@@ -184,7 +193,7 @@ Related commands:
 		},
 	}
 
-	// push subcommand: commits then pushes, or in bypass mode pushes directly via --weft-path.
+	// push subcommand: commits then pushes, or in bypass mode pushes directly via --weft-path and/or --warp-path.
 	pushCmd := &cobra.Command{
 		Use:   "push",
 		Short: "commit and push weft changes",
@@ -195,10 +204,21 @@ Related commands:
 			out := cmd.OutOrStdout()
 
 			if bypass {
-				// Detached push child: use injected weftPath directly, skip commit.
-				if err := fabricengine.PushWeftAt(weftPath, fabricengine.SyncOptions{}); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-					return nil
+				// Detached push child: use whichever of the injected warpPath/
+				// weftPath were supplied directly, skip commit entirely. The
+				// first error (warp checked first) is surfaced; on success both
+				// supplied sides have been pushed.
+				if warpPath != "" {
+					if err := fabricengine.PushWarpAt(warpPath, fabricengine.SyncOptions{}); err != nil {
+						clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+						return nil
+					}
+				}
+				if weftPath != "" {
+					if err := fabricengine.PushWeftAt(weftPath, fabricengine.SyncOptions{}); err != nil {
+						clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+						return nil
+					}
 				}
 				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{}))
 				return nil

@@ -298,45 +298,39 @@ func entryMatchesWeft(weftPath, entry string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// CommitWeft stages pathspec-scoped changes in the weft worktree and commits
-// them, under the fabric-layer write lock. Staging always goes through
-// f.Weft.StageAndCommit's explicit pathspec list — CommitWeft never calls
-// StageAllAndCommit, per gitrepo's doc.go consumer rules. Immediately before
-// staging, pathspec is run through weftPathspecFilter (still inside the
-// write lock): non-magic entries that match nothing in the worktree or
-// index are dropped, and if no positive entry survives at all, CommitWeft
-// returns ("", false, nil) without calling StageAndCommit — see
-// weftPathspecFilter's doc comment for why that early return is not
+// commitWeftLocked stages pathspec-scoped changes in the weft worktree and
+// commits them. It ASSUMES the weft write lock is already held by its caller
+// and that opts.SkipGit has already been handled — it neither calls
+// ensureWeftLockDir nor acquires the lock itself, so a caller that wants to
+// hold the lock across more than this one commit (a two-sided Fabric.Commit
+// holding it across a warp commit and this weft commit) can do so without
+// commitWeftLocked reacquiring it out from under it. Staging always goes
+// through f.Weft.StageAndCommit's explicit pathspec list — commitWeftLocked
+// never calls StageAllAndCommit, per gitrepo's doc.go consumer rules.
+// Immediately before staging, pathspec is run through weftPathspecFilter
+// (still inside the write lock): non-magic entries that match nothing in the
+// worktree or index are dropped, and if no positive entry survives at all,
+// commitWeftLocked returns ("", false, nil) without calling StageAndCommit —
+// see weftPathspecFilter's doc comment for why that early return is not
 // optional. When the warp repo already has a HEAD, the commit carries a
-// Warp-SHA trailer naming it, and RecordCorrespondence is called immediately
-// with the (pre-push) new weft SHA: this is the detached CLI push path's
-// pre-push record, which self-corrects at lookup time if a later
+// Warp-SHA trailer naming it, followed by one Snapshot: trailer per entry in
+// snapshotTags (see appendSnapshotTrailers; a validation failure there is
+// returned before anything is staged), and RecordCorrespondence is called
+// immediately with the (pre-push) new weft SHA: this is the detached CLI
+// push path's pre-push record, which self-corrects at lookup time if a later
 // rebase-recovered push rewrites the SHA out from under it. When the warp
 // repo has no commits yet (see warpHeadSHA), the commit lands with no
-// trailer and no correspondence record — there is no warp SHA yet to name —
-// and normal trailer/record behavior resumes on the first CommitWeft call
-// after warp's first commit. Returns ("", false, nil) when opts.SkipGit is
-// true, nothing was staged, or pathspec has already been fully removed from
-// both the working tree and the index by a prior commit — CommitWeft
-// tolerates git's "did not match any files" pathspec failure, which the
-// shared gitrepo.StageAndCommit primitive does not special-case on its own
+// trailer, no Snapshot tags (there is no trailer block to append them to),
+// and no correspondence record — there is no warp SHA yet to name — and
+// normal trailer/record behavior resumes on the first commitWeftLocked call
+// after warp's first commit. Returns ("", false, nil) when nothing was
+// staged, or pathspec has already been fully removed from both the working
+// tree and the index by a prior commit — commitWeftLocked tolerates git's
+// "did not match any files" pathspec failure, which the shared
+// gitrepo.StageAndCommit primitive does not special-case on its own
 // (retained as a defense-in-depth fallback; weftPathspecFilter's own
 // pre-check is what keeps this path from being reached in practice).
-func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions) (sha string, committed bool, err error) {
-	if opts.SkipGit {
-		return "", false, nil
-	}
-
-	lockDir, err := f.ensureWeftLockDir()
-	if err != nil {
-		return "", false, err
-	}
-	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
-	if err != nil {
-		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
-	}
-	defer func() { _ = l.Release() }()
-
+func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	warpSHA, unborn, err := f.warpHeadSHA()
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: warp CurrentSHA: %w", err)
@@ -345,6 +339,10 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 	commitMessage := message
 	if !unborn {
 		commitMessage = appendWarpSHATrailer(message, warpSHA)
+		commitMessage, err = appendSnapshotTrailers(commitMessage, snapshotTags)
+		if err != nil {
+			return "", false, err
+		}
 	}
 
 	filteredPathspec, positive, err := weftPathspecFilter(f.weftPath, pathspec)
@@ -383,6 +381,33 @@ func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions)
 	}
 
 	return sha, true, nil
+}
+
+// CommitWeft acquires the fabric-layer weft write lock and delegates to
+// commitWeftLocked to stage and commit pathspec-scoped changes in the weft
+// worktree. The trailing snapshotTags variadic lets a caller (a later
+// batch's two-sided Fabric.Commit) attach one or more Snapshot: trailers to
+// the commit alongside its Warp-SHA trailer; every existing 3-argument call
+// site keeps compiling unchanged and passes zero tags. Returns ("", false,
+// nil) immediately when opts.SkipGit is true, with no lock taken and no git
+// spawned. See commitWeftLocked's doc comment for the staging-tolerance,
+// trailer, and RecordCorrespondence behavior this delegates to.
+func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
+	if opts.SkipGit {
+		return "", false, nil
+	}
+
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return "", false, err
+	}
+	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = l.Release() }()
+
+	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
 // PushWeft pushes unpushed weft commits, honoring SkipGit/SkipPush gating.
