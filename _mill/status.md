@@ -40,7 +40,9 @@ implementing  '2026-07-30T10:33:59Z'
 ```yaml
 batches:
   - name: fetch-binary
-    state: pending
+    state: running
+    implementer_session: fdd4fea9-f6d8-4bdd-b2d5-9fd42e9ca0e7
+    start_sha: 0060610546b5bbb596009262d1c50406ee5dcc8b
   - name: plugin-packaging
     state: pending
 ```
