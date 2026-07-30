@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: prowler
 branch: prowler
 plan: _mill/plan
@@ -32,4 +32,15 @@ plan-fix-r6  '2026-07-30T09:59:38Z'
 plan-review-r7  '2026-07-30T10:18:18Z'
 plan-fix-r7  '2026-07-30T10:18:18Z'
 planned  '2026-07-30T10:27:24Z'
+implementing  '2026-07-30T10:33:59Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fetch-binary
+    state: pending
+  - name: plugin-packaging
+    state: pending
 ```
