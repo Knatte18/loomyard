@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -583,15 +584,24 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		_ = e.tmux.run("kill-pane", "-t", corpseID)
 	}
 
-	launchCmd := headerLaunchCmd(shell.ForGOOS(), exe)
-	// Same literal send-keys mechanics launchStrandLocked (spawn.go) uses:
-	// -l so tmux never reinterprets any part of the launch line, then a
-	// separate Enter to submit it.
-	if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
-		return fmt.Errorf("send header launch command: %w", err)
-	}
-	if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
-		return fmt.Errorf("submit header launch command: %w", err)
+	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, testing.Testing())
+	if launchCmd == "" {
+		// Under go test the header pane stays a bare blocking shell — see
+		// headerLaunchLine: re-exec'ing exe here would run the test binary's
+		// entire suite recursively. The pane still exists and its id is still
+		// recorded below, so layout geometry and up/resume idempotence are
+		// unchanged.
+		logger.Info("reed: header re-exec suppressed under go test, pane left as bare shell", "socket", e.Socket(), "pane", paneID, "exe", exe)
+	} else {
+		// Same literal send-keys mechanics launchStrandLocked (spawn.go) uses:
+		// -l so tmux never reinterprets any part of the launch line, then a
+		// separate Enter to submit it.
+		if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+			return fmt.Errorf("send header launch command: %w", err)
+		}
+		if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+			return fmt.Errorf("submit header launch command: %w", err)
+		}
 	}
 
 	st.HeaderPaneID = paneID
