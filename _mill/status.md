@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: prowler
 branch: prowler
 plan: _mill/plan
@@ -39,6 +39,7 @@ holistic-reviewing  '2026-07-30T11:14:43Z'
 holistic-fixing  '2026-07-30T11:18:07Z'
 nits-fixed-holistic  '2026-07-30T11:25:33Z'
 holistic-approved  '2026-07-30T11:25:39Z'
+done  '2026-07-30T11:26:18Z'
 ```
 
 ## Batches
