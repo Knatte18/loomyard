@@ -46,5 +46,7 @@ batches:
     start_sha: 0060610546b5bbb596009262d1c50406ee5dcc8b
     commit_sha: bcc4c87c17471c666a726baec8928d06dfb21e39
   - name: plugin-packaging
-    state: pending
+    state: running
+    implementer_session: 5600cf98-9699-4681-ae18-11a5be9c764f
+    start_sha: 0c787a18b91ae763d1f8a76d9461acb2892a2bbd
 ```
