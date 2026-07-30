@@ -146,6 +146,64 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 	return "# " + url + "\n\nCould not extract readable content from this page."
 }
 
+// fetchOldRedditHTML is fetchReddit's fallback for when Reddit's JSON API
+// itself is unreachable (e.g. a 403 from network-level bot protection): it
+// retries the same post/subreddit against old.reddit.com's plain,
+// server-rendered HTML page — which Reddit does not appear to gate as
+// aggressively as its JSON API or its www SPA shell (the SPA shell serves a
+// JS-driven "please wait" verification page to non-browser clients, which
+// old.reddit.com's legacy markup does not).
+//
+// Deliberately skips Readability (unlike the ordinary static-fetch cascade
+// in fetchPage): Readability's whole job is to find and keep only the
+// single highest-scoring "article" block and discard the rest as chrome —
+// but on a Reddit thread the comments are a separate, lower-scoring block
+// from the self-post text, so Readability silently drops exactly the
+// content a reader most wants (verified empirically: it returned only the
+// post body, none of an 18-comment thread present in the same page's raw
+// HTML). stripToBodyText's cruder script/style/nav/header/footer strip
+// keeps everything else, comments included, which is what this fallback
+// needs. It reports ok=false when the fallback request itself fails or
+// yields too little content to be useful, so the caller falls back to the
+// original JSON-API error instead of a near-empty result.
+func fetchOldRedditHTML(ctx context.Context, f fetcher, url string) (out string, ok bool) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, toOldRedditURL(url), nil)
+	if err != nil {
+		return "", false
+	}
+	for key, values := range defaultHeaders() {
+		req.Header[key] = values
+	}
+
+	resp, err := f.do(req)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", false
+	}
+
+	compressedBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", false
+	}
+	rawHTML, err := decodeContentEncoding(compressedBody, resp.Header.Get("Content-Encoding"))
+	if err != nil {
+		// Includes errUnsupportedContentEncoding: this fallback has no
+		// browser tier to route around it, so an undecodable encoding is
+		// simply a failed fallback attempt.
+		return "", false
+	}
+
+	if bodyText := stripToBodyText(string(rawHTML)); len(bodyText) >= minUsableTextLen {
+		return "# " + url + "\n\n" + bodyText, true
+	}
+
+	return "", false
+}
+
 // decodeContentEncoding decompresses body according to the response's
 // Content-Encoding header. gzip and deflate are handled directly (the two
 // formats the standard library supports); an empty or "identity" encoding is

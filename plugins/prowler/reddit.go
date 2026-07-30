@@ -21,6 +21,11 @@ import (
 // three, so any of them is eligible for the .json special-case.
 var redditHostPattern = regexp.MustCompile(`^https?://(www\.|old\.)?reddit\.com`)
 
+// redditHostReplace captures the scheme separately from the host so
+// toOldRedditURL can rewrite just the host segment, regardless of which of
+// the three eligible forms (bare, www, old.) the input used.
+var redditHostReplace = regexp.MustCompile(`^(https?://)(www\.|old\.)?reddit\.com`)
+
 // maxTopComments bounds how many top-level comments formatRedditPost includes,
 // mirroring weblens' behavior of showing only the first ~20 rather than an
 // entire, potentially huge, comment tree.
@@ -71,6 +76,16 @@ func toRedditJsonUrl(rawURL string) string {
 	return strings.TrimSuffix(rawURL, "/") + ".json"
 }
 
+// toOldRedditURL rewrites a Reddit URL to its old.reddit.com equivalent,
+// e.g. "https://www.reddit.com/r/foo" -> "https://old.reddit.com/r/foo". This
+// is a no-op rewrite when the input is already old.reddit.com, which is
+// harmless: fetchOldRedditHTML always fetches the plain HTML page (never
+// .json), a request fetchReddit has not already made even when the input was
+// already old.reddit.com.
+func toOldRedditURL(rawURL string) string {
+	return redditHostReplace.ReplaceAllString(rawURL, "${1}old.reddit.com")
+}
+
 // fetchReddit fetches url's Reddit JSON API equivalent through f.do (the
 // shared, injectable transport, so this path is unit-testable without
 // network) and formats it into markdown. It reports handled=false when the
@@ -79,6 +94,14 @@ func toRedditJsonUrl(rawURL string) string {
 // through to the ordinary HTML extraction cascade instead — this matters
 // because some Reddit responses (e.g. search pages) are HTML, not JSON, even
 // though the URL matched isRedditUrl.
+//
+// A non-2xx response from the JSON API (e.g. a 403 from network-level bot
+// protection, which blocks the JSON API far more aggressively than
+// old.reddit.com's plain, server-rendered HTML page) is not immediately
+// terminal: fetchReddit first retries via fetchOldRedditHTML before falling
+// back to the error message, since old.reddit.com's legacy page is
+// frequently reachable even when both the JSON API and the www SPA shell are
+// not.
 func fetchReddit(ctx context.Context, f fetcher, url string) (out string, handled bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, toRedditJsonUrl(url), nil)
 	if err != nil {
@@ -98,6 +121,9 @@ func fetchReddit(ctx context.Context, f fetcher, url string) (out string, handle
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if out, ok := fetchOldRedditHTML(ctx, f, url); ok {
+			return out, true
+		}
 		return errorResult(url, "HTTP "+strconv.Itoa(resp.StatusCode)), true
 	}
 

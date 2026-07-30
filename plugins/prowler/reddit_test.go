@@ -35,6 +35,26 @@ func TestIsRedditUrl(t *testing.T) {
 	}
 }
 
+func TestToOldRedditURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"bare_reddit", "https://reddit.com/r/golang/comments/abc/post", "https://old.reddit.com/r/golang/comments/abc/post"},
+		{"www_reddit", "https://www.reddit.com/r/golang/comments/abc/post", "https://old.reddit.com/r/golang/comments/abc/post"},
+		{"already_old_reddit", "https://old.reddit.com/r/golang/comments/abc/post", "https://old.reddit.com/r/golang/comments/abc/post"},
+		{"http_scheme", "http://reddit.com/r/golang", "http://old.reddit.com/r/golang"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toOldRedditURL(tt.url); got != tt.want {
+				t.Errorf("toOldRedditURL(%q) = %q; want %q", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestToRedditJsonUrl(t *testing.T) {
 	tests := []struct {
 		name string
@@ -170,7 +190,10 @@ func TestFetchReddit(t *testing.T) {
 		}
 	})
 
-	t.Run("non_2xx_status", func(t *testing.T) {
+	t.Run("non_2xx_status_and_old_reddit_fallback_also_fails", func(t *testing.T) {
+		// Every request (both the .json call and the old.reddit.com HTML
+		// fallback fetchReddit now attempts) gets the same 404, so the
+		// fallback fails too and the original JSON-API error surfaces.
 		f := fetcher{do: func(*http.Request) (*http.Response, error) {
 			return newTestResponse(404, "application/json", ""), nil
 		}}
@@ -180,6 +203,24 @@ func TestFetchReddit(t *testing.T) {
 		}
 		if !strings.Contains(out, "HTTP 404") {
 			t.Errorf("fetchReddit() out = %q; want it to contain \"HTTP 404\"", out)
+		}
+	})
+
+	t.Run("non_2xx_status_falls_back_to_old_reddit_html", func(t *testing.T) {
+		f := stubResponses(t, map[string]*http.Response{
+			toRedditJsonUrl(url): newTestResponse(403, "text/html", "blocked"),
+			toOldRedditURL(url):  htmlResponse(readableArticleHTML),
+		}, func(context.Context, string) (string, bool) {
+			t.Fatal("browser fallback should not be invoked; the old.reddit.com HTML fallback is not tiered that deep")
+			return "", false
+		})
+
+		out, handled := fetchReddit(context.Background(), f, url)
+		if !handled {
+			t.Fatalf("fetchReddit() handled = false; want true")
+		}
+		if !strings.Contains(out, "genuinely readable article content") {
+			t.Errorf("fetchReddit() out = %q; want the old.reddit.com fallback's article body", out)
 		}
 	})
 

@@ -218,6 +218,112 @@ func TestFetchPage_RedditUrlRoutesThroughRedditPath(t *testing.T) {
 	}
 }
 
+// redditLikeHTMLWithComments mimics old.reddit.com's shape well enough to
+// exercise the property fetchOldRedditHTML exists for: the self-post text
+// and the comment thread sit in separate divs, neither of which is
+// nav/header/footer, so both must survive stripToBodyText's strip — unlike
+// Readability, which (verified empirically against the real page) keeps
+// only the post and silently discards the entire comment thread.
+const redditLikeHTMLWithComments = `<html><head><title>Ignored</title></head><body>
+<nav>site nav — must not appear in output</nav>
+<div class="thing"><p>This is the original self-post text, long enough on its own to clear the usable-content threshold for this fallback path.</p></div>
+<div class="commentarea">
+  <div class="comment"><p>First commenter's opinion, also reasonably long so the combined body text is well past the threshold either way.</p></div>
+  <div class="comment"><p>Second commenter disagrees and explains why at some length here.</p></div>
+</div>
+<footer>site footer — must not appear in output</footer>
+</body></html>`
+
+func TestFetchOldRedditHTML(t *testing.T) {
+	const url = "https://www.reddit.com/r/golang/comments/abc/some_post"
+	const oldURL = "https://old.reddit.com/r/golang/comments/abc/some_post"
+
+	t.Run("keeps_post_and_comments_strips_chrome", func(t *testing.T) {
+		f := stubResponses(t, map[string]*http.Response{
+			oldURL: htmlResponse(redditLikeHTMLWithComments),
+		}, nil)
+
+		out, ok := fetchOldRedditHTML(context.Background(), f, url)
+		if !ok {
+			t.Fatalf("fetchOldRedditHTML() ok = false; want true")
+		}
+		if !strings.HasPrefix(out, "# "+url) {
+			t.Errorf("fetchOldRedditHTML() out = %q; want it to start with \"# %s\"", out, url)
+		}
+		if !strings.Contains(out, "original self-post text") {
+			t.Errorf("fetchOldRedditHTML() out = %q; want the post text", out)
+		}
+		if !strings.Contains(out, "First commenter's opinion") || !strings.Contains(out, "Second commenter disagrees") {
+			t.Errorf("fetchOldRedditHTML() out = %q; want both comments kept, not just the post", out)
+		}
+		if strings.Contains(out, "site nav") || strings.Contains(out, "site footer") {
+			t.Errorf("fetchOldRedditHTML() out = %q; want nav/footer stripped", out)
+		}
+	})
+
+	t.Run("no_article_long_body_falls_back_to_body_text", func(t *testing.T) {
+		f := stubResponses(t, map[string]*http.Response{
+			oldURL: htmlResponse(noArticleButLongBodyHTML),
+		}, nil)
+
+		out, ok := fetchOldRedditHTML(context.Background(), f, url)
+		if !ok {
+			t.Fatalf("fetchOldRedditHTML() ok = false; want true")
+		}
+		if !strings.Contains(out, "long stretch of plain body text") {
+			t.Errorf("fetchOldRedditHTML() out = %q; want the body text", out)
+		}
+	})
+
+	t.Run("thin_content_fails", func(t *testing.T) {
+		f := stubResponses(t, map[string]*http.Response{
+			oldURL: htmlResponse(noArticleShortBodyHTML),
+		}, nil)
+
+		out, ok := fetchOldRedditHTML(context.Background(), f, url)
+		if ok {
+			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		}
+	})
+
+	t.Run("non_2xx_fails", func(t *testing.T) {
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("blocked"))}, nil
+		}}
+
+		out, ok := fetchOldRedditHTML(context.Background(), f, url)
+		if ok {
+			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		}
+	})
+
+	t.Run("transport_error_fails", func(t *testing.T) {
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("boom")
+		}}
+
+		out, ok := fetchOldRedditHTML(context.Background(), f, url)
+		if ok {
+			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		}
+	})
+
+	t.Run("unsupported_content_encoding_fails", func(t *testing.T) {
+		f := fetcher{do: func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Encoding": []string{"br"}},
+				Body:       io.NopCloser(strings.NewReader("compressed-bytes-not-real-brotli")),
+			}, nil
+		}}
+
+		out, ok := fetchOldRedditHTML(context.Background(), f, url)
+		if ok {
+			t.Fatalf("fetchOldRedditHTML() ok = true, out = %q; want false", out)
+		}
+	})
+}
+
 // gzipCompress compresses body for use as a stubbed gzip-encoded response.
 func gzipCompress(t *testing.T, body string) []byte {
 	t.Helper()
