@@ -20,12 +20,12 @@ batches:
     name: fetch-binary
     file: 01-fetch-binary.md
     depends-on: []
-    verify: cd plugins/prowler/1.0.0 && go test ./...
+    verify: cd plugins/prowler && go test ./...
   - number: 2
     name: plugin-packaging
     file: 02-plugin-packaging.md
     depends-on: [1]
-    verify: bash plugins/prowler/1.0.0/scripts/selftest.sh
+    verify: bash plugins/prowler/scripts/selftest.sh
 ```
 
 ## Shared Decisions
@@ -40,15 +40,21 @@ _Cross-cutting decisions every batch inherits. Full rationale lives in `_mill/di
 
 ### Decision: guard-cleanliness by construction (binding on every prowler `.go` file)
 
-- **Decision:** the parent LoomYard module's three disk-walking grep guards (`cmd/lyx/tierpurity_test.go`, `cmd/lyx/hermeticenv_test.go`, `cmd/lyx/ghguard_test.go`) walk into `plugins/prowler/1.0.0/` even though it is a separate nested module. Therefore: (a) **no prowler `*_test.go` file may contain the raw substrings** `exec.Command`, `exec.CommandContext`, `gitexec.RunGit`, or any `lyxtest.` token — not in code, comments, or string literals (raw-substring match); (b) **no prowler production `.go` file may contain** `LookPath("gh")` or a same-line `exec.Command(…, "gh")`/`exec.CommandContext(…, "gh")`. Any shell-out / subprocess-spawning behavior (the build-lock concurrency check) lives in a **non-`*_test.go` shell script** (`scripts/selftest.sh`), never a Go test. Do NOT edit any guard's skip set.
+- **Decision:** the parent LoomYard module's three disk-walking grep guards (`cmd/lyx/tierpurity_test.go`, `cmd/lyx/hermeticenv_test.go`, `cmd/lyx/ghguard_test.go`) walk into `plugins/prowler/` even though it is a separate nested module. Therefore: (a) **no prowler `*_test.go` file may contain the raw substrings** `exec.Command`, `exec.CommandContext`, `gitexec.RunGit`, or any `lyxtest.` token — not in code, comments, or string literals (raw-substring match); (b) **no prowler production `.go` file may contain** `LookPath("gh")` or a same-line `exec.Command(…, "gh")`/`exec.CommandContext(…, "gh")`. Any shell-out / subprocess-spawning behavior (the build-lock concurrency check) lives in a **non-`*_test.go` shell script** (`scripts/selftest.sh`), never a Go test. Do NOT edit any guard's skip set.
 - **Rationale:** the parent `go test ./...` (the configured done-gate) runs these guards against prowler's committed files; a banned substring fails the done-gate. chromedp spawns Chrome from inside the library, not from prowler test source, so an `//go:build integration` test that drives chromedp is clean (it contains no banned substring).
 - **Applies to:** all batches (Go source in batch 1; the shell harness in batch 2)
 
 ### Decision: nested Go module boundary
 
-- **Decision:** all Go code is one nested module rooted at `plugins/prowler/1.0.0/` — `module github.com/Knatte18/loomyard/plugins/prowler`, `go 1.26`, `package main` in the module-root directory. It is NOT part of lyx's module; its deps (chromedp, go-readability, goquery) never enter lyx's `go.mod`/`go.sum`. The nested `go.mod`/`go.sum` ARE committed (they are source); the built `bin/` is gitignored.
+- **Decision:** all Go code is one nested module rooted at `plugins/prowler/` — `module github.com/Knatte18/loomyard/plugins/prowler`, `go 1.26`, `package main` in the module-root directory. It is NOT part of lyx's module; its deps (chromedp, go-readability, goquery) never enter lyx's `go.mod`/`go.sum`. The nested `go.mod`/`go.sum` ARE committed (they are source); the built `bin/` is gitignored.
 - **Rationale:** isolates the browser-automation dependency stack from lyx and from `go build/test ./...`.
 - **Applies to:** all batches
+
+### Decision: flat plugin layout `plugins/prowler/` (supersedes the discussion's versioned default)
+
+- **Decision:** the plugin source lives at `plugins/prowler/` (not `plugins/prowler/1.0.0/`), and the marketplace entry uses `source: ./plugins/prowler`. The Go nested module, `.claude-plugin/plugin.json`, `skills/`, `scripts/`, `settings.json`, and `README.md` all sit directly under `plugins/prowler/`.
+- **Rationale:** the discussion chose a versioned subdir (`plugins/prowler/1.0.0/`) as a deliberate divergence, but made it **conditional**: "do not ship the versioned form unverified," with flat named as the sanctioned fallback. Plan-review round 4 verified against real data that the versioned-subdir local `source` has **zero precedent** — 0 of 276 official-marketplace plugins use a version segment in a local `source`, and weblens itself is `source: ./plugins/weblens` with `version: 1.0.0` (version and source-path are decoupled). Because the autonomous mill-go pipeline cannot run the interactive `/plugin install` verification the discussion required, shipping versioned would mean shipping unverified — exactly what the discussion forbade. Flat is therefore the discussion-compliant choice, loses no versioning affordance (the `version` field carries `1.0.0`), and matches the only proven shape. The Go module path (`github.com/Knatte18/loomyard/plugins/prowler`) already had no version segment, so it is unchanged.
+- **Applies to:** all batches (every plan path uses `plugins/prowler/…`)
 
 ### Decision: stdout/stderr discipline
 
@@ -66,28 +72,28 @@ _Cross-cutting decisions every batch inherits. Full rationale lives in `_mill/di
 - `.claude-plugin/marketplace.json`
 - `.gitattributes`
 - `.gitignore`
-- `plugins/prowler/1.0.0/.claude-plugin/plugin.json`
-- `plugins/prowler/1.0.0/browser.go`
-- `plugins/prowler/1.0.0/browser_integration_test.go`
-- `plugins/prowler/1.0.0/chrome.go`
-- `plugins/prowler/1.0.0/chrome_test.go`
-- `plugins/prowler/1.0.0/fetch.go`
-- `plugins/prowler/1.0.0/fetch_test.go`
-- `plugins/prowler/1.0.0/fetcher.go`
-- `plugins/prowler/1.0.0/go.mod`
-- `plugins/prowler/1.0.0/go.sum`
-- `plugins/prowler/1.0.0/headers.go`
-- `plugins/prowler/1.0.0/htmltext.go`
-- `plugins/prowler/1.0.0/htmltext_test.go`
-- `plugins/prowler/1.0.0/main.go`
-- `plugins/prowler/1.0.0/main_test.go`
-- `plugins/prowler/1.0.0/outfile.go`
-- `plugins/prowler/1.0.0/outfile_test.go`
-- `plugins/prowler/1.0.0/reddit.go`
-- `plugins/prowler/1.0.0/reddit_test.go`
-- `plugins/prowler/1.0.0/scripts/run.sh`
-- `plugins/prowler/1.0.0/scripts/selftest.sh`
-- `plugins/prowler/1.0.0/settings.json`
-- `plugins/prowler/1.0.0/skills/INDEX.md`
-- `plugins/prowler/1.0.0/skills/prowler/SKILL.md`
+- `plugins/prowler/.claude-plugin/plugin.json`
+- `plugins/prowler/browser.go`
+- `plugins/prowler/browser_integration_test.go`
+- `plugins/prowler/chrome.go`
+- `plugins/prowler/chrome_test.go`
+- `plugins/prowler/fetch.go`
+- `plugins/prowler/fetch_test.go`
+- `plugins/prowler/fetcher.go`
+- `plugins/prowler/go.mod`
+- `plugins/prowler/go.sum`
+- `plugins/prowler/headers.go`
+- `plugins/prowler/htmltext.go`
+- `plugins/prowler/htmltext_test.go`
+- `plugins/prowler/main.go`
+- `plugins/prowler/main_test.go`
+- `plugins/prowler/outfile.go`
+- `plugins/prowler/outfile_test.go`
+- `plugins/prowler/reddit.go`
+- `plugins/prowler/reddit_test.go`
+- `plugins/prowler/scripts/run.sh`
+- `plugins/prowler/scripts/selftest.sh`
+- `plugins/prowler/settings.json`
+- `plugins/prowler/skills/INDEX.md`
+- `plugins/prowler/skills/prowler/SKILL.md`
 - `plugins/prowler/README.md`
