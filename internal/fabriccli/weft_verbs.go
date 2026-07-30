@@ -193,7 +193,7 @@ Related commands:
 		},
 	}
 
-	// push subcommand: commits then pushes, or in bypass mode pushes directly via --weft-path.
+	// push subcommand: commits then pushes, or in bypass mode pushes directly via --weft-path and/or --warp-path.
 	pushCmd := &cobra.Command{
 		Use:   "push",
 		Short: "commit and push weft changes",
