@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-slice-3-design-doc-completion
+phase: holistic-reviewing
 slug: fabric-commit-lock-coalescing
 branch: fabric-commit-lock-coalescing
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-fabricengine-coalescing-primitive  '2026-07-30T18:53:03Z'
 approved-fabric-commit-lock-and-wiring  '2026-07-30T19:00:58Z'
 approved-boardengine-delegation  '2026-07-30T19:05:29Z'
 approved-slice-3-design-doc-completion  '2026-07-30T19:07:41Z'
+holistic-reviewing  '2026-07-30T19:08:02Z'
 ```
 
 ## Batches
