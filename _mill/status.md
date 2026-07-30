@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: fabric-commit-lock-coalescing
 branch: fabric-commit-lock-coalescing
 plan: _mill/plan
@@ -31,6 +31,7 @@ holistic-reviewing  '2026-07-30T19:08:02Z'
 holistic-fixing  '2026-07-30T19:13:03Z'
 holistic-reviewing  '2026-07-30T19:17:10Z'
 holistic-approved  '2026-07-30T19:19:11Z'
+done  '2026-07-30T19:19:58Z'
 ```
 
 ## Batches
