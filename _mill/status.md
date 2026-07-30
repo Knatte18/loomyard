@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gitrepo-rebase-free-push
+phase: approved-fabricengine-coalescing-primitive
 slug: fabric-commit-lock-coalescing
 branch: fabric-commit-lock-coalescing
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-07-30T18:35:14Z'
 planned  '2026-07-30T18:35:27Z'
 implementing  '2026-07-30T18:43:41Z'
 approved-gitrepo-rebase-free-push  '2026-07-30T18:47:42Z'
+approved-fabricengine-coalescing-primitive  '2026-07-30T18:53:03Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ batches:
     start_sha: fcf7cdfb0cd18948e5bbd4b0400a81f0ce685b66
     commit_sha: 7ae6f2cfe82cd2eca91e0dac3a8a3235418e1a3a
   - name: fabricengine-coalescing-primitive
-    state: running
+    state: approved
     implementer_session: e5964919-ff97-4044-b463-8be454efd13f
     start_sha: 3071c36090b189533ab8d7413adc0c06c52d1adc
+    commit_sha: 931ec7c4be30cd03426745de9e3fcb5b2fc9cac2
   - name: fabric-commit-lock-and-wiring
     state: pending
   - name: boardengine-delegation

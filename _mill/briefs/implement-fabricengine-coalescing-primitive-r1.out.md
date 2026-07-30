@@ -1,0 +1,8 @@
+Summary: all 3 cards in batch `02-fabricengine-coalescing-primitive` were completed and committed (3 of 3 cards done — a full, honest count verified against the commit log since the `mill-go: start batch` marker `1008c93e`).
+
+Work done:
+- `/home/knatte/Code/loomyard/wts/fabric-commit-lock-coalescing/internal/fabricengine/weftgit.go` — Card 3: added `weftPushLockFile = "fabric.push.lock"` constant and extracted package-level `ensureWeftLockDirAt(weftPath string)`, with `ensureWeftLockDir` now delegating to it. Commit `8ab1dee1`.
+- `/home/knatte/Code/loomyard/wts/fabric-commit-lock-coalescing/internal/fabricengine/coalesce.go` (new) — Card 4: generic `CoalescePush(lockPath string, step func() (bool, error)) error` primitive plus fabric's `CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) error` two-sided rebase-free push step, with helpers `headOrEmpty` and `pushRebaseFreeLogged`. Commit `b7c7f4b4`.
+- `/home/knatte/Code/loomyard/wts/fabric-commit-lock-coalescing/internal/fabricengine/coalesce_test.go` (new, untagged) and `/home/knatte/Code/loomyard/wts/fabric-commit-lock-coalescing/internal/fabricengine/coalesce_integration_test.go` (new, `//go:build integration`) — Card 5: loop-exit contract tests and real-git two-sided push tests (advance-both-sides, no host-root `.gitrepo-push.lock`, diverged-warp-rejection-returns-nil-without-spinning). Commit `931ec7c4`.
+
+Verify command `go test -tags integration ./internal/fabricengine/...` passes cleanly. `git status --porcelain --untracked-files=no` shows no dirty tracked files (only the pre-existing untracked brief file remains, out of scope).
