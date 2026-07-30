@@ -52,7 +52,9 @@ batches:
     start_sha: c5df5056d55da9f197c5d9cb9321c8b258892a0d
     commit_sha: 57ce35abf25ded68aaeceec8cae2112b13a8861a
   - name: fabric-commit
-    state: pending
+    state: running
+    implementer_session: a3c45f39-7966-42f1-8985-5cd244483555
+    start_sha: ae1286aa895487b6734cf7b22eb66aa83ebe975c
   - name: docs
     state: pending
 ```
