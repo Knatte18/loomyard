@@ -35,7 +35,9 @@ batches:
     start_sha: fcf7cdfb0cd18948e5bbd4b0400a81f0ce685b66
     commit_sha: 7ae6f2cfe82cd2eca91e0dac3a8a3235418e1a3a
   - name: fabricengine-coalescing-primitive
-    state: pending
+    state: running
+    implementer_session: e5964919-ff97-4044-b463-8be454efd13f
+    start_sha: 3071c36090b189533ab8d7413adc0c06c52d1adc
   - name: fabric-commit-lock-and-wiring
     state: pending
   - name: boardengine-delegation
