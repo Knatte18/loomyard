@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-unified-diff-status
+phase: approved-fabric-commit
 slug: fabric-commit-api
 branch: fabric-commit-api
 plan: _mill/plan
@@ -30,6 +30,7 @@ implementing  '2026-07-30T10:13:02Z'
 approved-commit-foundations  '2026-07-30T10:18:23Z'
 approved-async-push-plumbing  '2026-07-30T10:24:10Z'
 approved-unified-diff-status  '2026-07-30T10:34:37Z'
+approved-fabric-commit  '2026-07-30T10:42:16Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     start_sha: c5df5056d55da9f197c5d9cb9321c8b258892a0d
     commit_sha: 57ce35abf25ded68aaeceec8cae2112b13a8861a
   - name: fabric-commit
-    state: running
+    state: approved
     implementer_session: a3c45f39-7966-42f1-8985-5cd244483555
     start_sha: ae1286aa895487b6734cf7b22eb66aa83ebe975c
+    commit_sha: 28ef24d3413ff767255e779d22326ed80364fa52
   - name: docs
     state: pending
 ```
