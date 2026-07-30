@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-site-adapters
 slug: prowler-web-reading
 branch: prowler-web-reading
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-07-30T18:15:20Z'
 plan-fix-r3  '2026-07-30T18:24:24Z'
 planned  '2026-07-30T18:24:53Z'
 implementing  '2026-07-30T18:25:41Z'
+approved-site-adapters  '2026-07-30T18:33:15Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-07-30T18:25:41Z'
 ```yaml
 batches:
   - name: site-adapters
-    state: running
+    state: approved
     implementer_session: 5955756b-e947-40d1-99e1-89fa96fa934b
     start_sha: bb6b66549a925b91aac833bfb5d147a6d22e3374
+    commit_sha: 64a8c4ae52d7888e56c1b68c0bc7e7290dc4127a
   - name: skills-and-docs
     state: pending
 ```
