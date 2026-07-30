@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-commit-api
 branch: fabric-commit-api
 plan: _mill/plan
@@ -25,4 +25,21 @@ plan-review-r3  '2026-07-30T09:59:47Z'
 plan-fix-r3  '2026-07-30T10:00:13Z'
 plan-fix-r4  '2026-07-30T10:11:20Z'
 planned  '2026-07-30T10:11:58Z'
+implementing  '2026-07-30T10:13:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: commit-foundations
+    state: pending
+  - name: async-push-plumbing
+    state: pending
+  - name: unified-diff-status
+    state: pending
+  - name: fabric-commit
+    state: pending
+  - name: docs
+    state: pending
 ```
