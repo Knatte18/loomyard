@@ -32,7 +32,9 @@ implementing  '2026-07-30T18:25:41Z'
 ```yaml
 batches:
   - name: site-adapters
-    state: pending
+    state: running
+    implementer_session: 5955756b-e947-40d1-99e1-89fa96fa934b
+    start_sha: bb6b66549a925b91aac833bfb5d147a6d22e3374
   - name: skills-and-docs
     state: pending
 ```
