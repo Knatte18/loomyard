@@ -26,6 +26,13 @@ const (
 	// identical file rather than racing past each other.
 	weftLockDirName   = ".weft"
 	weftWriteLockFile = "weft.write.lock"
+	// weftPushLockFile names the absorbing push lock the coalescing loop
+	// (CoalescePush, in coalesce.go) holds for the whole loop-until-clean push
+	// window. It lives inside .weft/ alongside weftWriteLockFile — already
+	// git-excluded by seedWeftArtifactExcludes' whole-directory
+	// weftLockDirName + "/" entry, so no separate exclude entry is needed for
+	// it (Shared Decision lock-artifact-under-weft).
+	weftPushLockFile = "fabric.push.lock"
 )
 
 // ensureWeftLockDir creates (idempotently) the .weft lock directory inside
@@ -35,11 +42,20 @@ const (
 // verb passes through before any lock file exists, so excluding here
 // guarantees the artifacts never surface as untracked dirt.
 func (f *Fabric) ensureWeftLockDir() (string, error) {
-	dir := filepath.Join(f.weftPath, weftLockDirName)
+	return ensureWeftLockDirAt(f.weftPath)
+}
+
+// ensureWeftLockDirAt is ensureWeftLockDir's no-Fabric-instance form: it takes
+// the weft worktree path directly rather than a *Fabric receiver, so a caller
+// with no Fabric instance at hand — the detached push child building
+// CoalescePushBothAt's absorbing lock path — can still create and
+// exclude-seed the lock dir.
+func ensureWeftLockDirAt(weftPath string) (string, error) {
+	dir := filepath.Join(weftPath, weftLockDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("fabricengine: mkdir weft lock dir: %w", err)
 	}
-	if err := seedWeftArtifactExcludes(f.weftPath); err != nil {
+	if err := seedWeftArtifactExcludes(weftPath); err != nil {
 		return "", err
 	}
 	return dir, nil

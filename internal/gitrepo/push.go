@@ -1,18 +1,29 @@
 // push.go implements the push surface: Push (a single synchronous push with
-// rebase-retry resilience) and PushCoalesced (a single-pusher lock plus one
+// rebase-retry resilience), PushCoalesced (a single-pusher lock plus one
 // guarded push, coalescing across processes via the lock queue rather than
-// an internal retry loop). Both are push-only; committing is always the
-// caller's separate StageAndCommit or StageAllAndCommit call.
+// an internal retry loop), and PushRebaseFree (a single plain push that never
+// rebases, for callers that supply their own serialization). All three are
+// push-only; committing is always the caller's separate StageAndCommit or
+// StageAllAndCommit call.
 
 package gitrepo
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 )
+
+// ErrPushRejected is returned by PushRebaseFree when git push fails with a
+// non-fast-forward-style rejection — the remote has commits this checkout
+// lacks. It is a distinguishable sentinel (checkable via errors.Is), not a
+// genuine failure: a caller with its own reconciliation strategy (or one that
+// simply tolerates leaving commits unpushed until the next round) can react
+// to it differently from a network or auth error.
+var ErrPushRejected = errors.New("gitrepo: push rejected (remote diverged)")
 
 // PushLockFileName is the pinned, repo-agnostic name of the single-pusher lock
 // file PushCoalesced acquires in the repo's worktree root (discussion.md's
@@ -106,6 +117,32 @@ func (r *Repo) pushWithRebaseRetry() error {
 		return fmt.Errorf("gitrepo: git push (retry after rebase): %s", stderr)
 	}
 	return nil
+}
+
+// PushRebaseFree runs a single plain git push and never rebases — no
+// `pull --rebase`, no lock acquisition, no `.gitrepo-push.lock` file.
+// It establishes the upstream tracking branch on a checkout's first push via
+// `push.autoSetupRemote=true`, matching Push's and PushCoalesced's same
+// first-push handling. On a non-fast-forward rejection it returns
+// ErrPushRejected (checkable via errors.Is) rather than the rebase-retry
+// Push and PushCoalesced perform; any other failure returns a wrapped error
+// carrying git's stderr. PushRebaseFree is lock-free by design: a caller that
+// needs cross-goroutine or cross-process serialization must provide its own
+// absorbing lock around the call, per discussion "no-host-root-gitrepo-push-lock" —
+// this method exists specifically so such a caller is not forced to also take
+// on gitrepo's own `.gitrepo-push.lock` artifact.
+func (r *Repo) PushRebaseFree() error {
+	_, stderr, code, err := r.run("-c", "push.autoSetupRemote=true", "push")
+	if err != nil {
+		return err
+	}
+	if code == 0 {
+		return nil
+	}
+	if containsAny(stderr, rebaseRetryTriggers) {
+		return ErrPushRejected
+	}
+	return fmt.Errorf("gitrepo: git push: %s", stderr)
 }
 
 // containsAny reports whether s contains any of substrs.

@@ -11,6 +11,7 @@ package gitrepo_test
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -229,6 +230,113 @@ func TestPush_RebaseConflict_AbortsToCleanState(t *testing.T) {
 	}
 	if head != localHead {
 		t.Errorf("HEAD after aborted rebase = %q; want %q (local commit preserved)", head, localHead)
+	}
+}
+
+// TestPushRebaseFree_FirstPush_EstablishesUpstream exercises PushRebaseFree's
+// first-push path: a checkout with no upstream tracking branch yet must both
+// succeed and establish tracking (proving push.autoSetupRemote=true is
+// applied, exactly as Push's own first-push path does), landing the local
+// HEAD on the bare remote.
+func TestPushRebaseFree_FirstPush_EstablishesUpstream(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	repoPath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
+	writeFile(t, repoPath, "a.txt", "from clone, commit 1")
+	commitAll(t, repoPath, "commit 1")
+
+	localHead, err := repo.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	if err := repo.PushRebaseFree(); err != nil {
+		t.Fatalf("PushRebaseFree() (first push, no upstream) error = %v; want nil", err)
+	}
+	if got := upstreamRef(t, repoPath); got == "" {
+		t.Fatal("upstream ref after first PushRebaseFree() = \"\"; want PushRebaseFree() to have established tracking")
+	}
+
+	remoteHead, stderr, code, err := runGit(t, bareRemote, "rev-parse", "main")
+	if err != nil {
+		t.Fatalf("git rev-parse main (bare) error = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("git rev-parse main (bare) exited %d: %s", code, stderr)
+	}
+	if got := strings.TrimSpace(remoteHead); got != localHead {
+		t.Errorf("bare remote main = %q; want it to match local HEAD %q", got, localHead)
+	}
+}
+
+// TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected proves
+// PushRebaseFree never recovers a non-fast-forward rejection: clone B pushes
+// a commit clone A lacks, so clone A's next PushRebaseFree must return an
+// error satisfying errors.Is(err, gitrepo.ErrPushRejected) and must leave the
+// working tree completely untouched — no pull --rebase ever ran, so a dirty
+// tracked file left in place before the call stays exactly as it was, no
+// rebase is left in progress, and local HEAD does not move.
+func TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected(t *testing.T) {
+	container := t.TempDir()
+	bareRemote := newBareRemote(t, container)
+
+	cloneAPath, repoA := newRepoWithRemote(t, container, "cloneA", bareRemote)
+	writeFile(t, cloneAPath, "a.txt", "from A, commit 1")
+	commitAll(t, cloneAPath, "commit from A #1")
+	if err := repoA.PushRebaseFree(); err != nil {
+		t.Fatalf("PushRebaseFree() (first push, no upstream) error = %v; want nil", err)
+	}
+
+	cloneBPath, repoB := cloneFromBare(t, container, "cloneB", bareRemote)
+	writeFile(t, cloneBPath, "b.txt", "from B")
+	commitAll(t, cloneBPath, "commit from B")
+	if err := repoB.PushRebaseFree(); err != nil {
+		t.Fatalf("PushRebaseFree() from clone B error = %v; want nil", err)
+	}
+
+	// Clone A is now behind the remote. A further local commit followed by a
+	// dirty tracked file (left uncommitted on purpose) sets up the state
+	// PushRebaseFree must leave untouched.
+	writeFile(t, cloneAPath, "a.txt", "from A, commit 2")
+	commitAll(t, cloneAPath, "commit from A #2")
+	const dirtyContent = "dirty uncommitted edit"
+	writeFile(t, cloneAPath, "a.txt", dirtyContent)
+
+	localHead, err := repoA.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+
+	err = repoA.PushRebaseFree()
+	if err == nil {
+		t.Fatal("PushRebaseFree() against a diverged remote error = nil; want ErrPushRejected")
+	}
+	if !errors.Is(err, gitrepo.ErrPushRejected) {
+		t.Errorf("PushRebaseFree() error = %v; want it to satisfy errors.Is(err, gitrepo.ErrPushRejected)", err)
+	}
+
+	// No pull --rebase ever ran, so the dirty tracked file must be exactly as
+	// left, and no rebase state must exist.
+	got, readErr := os.ReadFile(filepath.Join(cloneAPath, "a.txt"))
+	if readErr != nil {
+		t.Fatalf("read a.txt: %v", readErr)
+	}
+	if string(got) != dirtyContent {
+		t.Errorf("a.txt content after rejected PushRebaseFree() = %q; want unchanged %q", got, dirtyContent)
+	}
+	for _, rebaseDir := range []string{"rebase-merge", "rebase-apply"} {
+		if _, statErr := os.Stat(filepath.Join(cloneAPath, ".git", rebaseDir)); statErr == nil {
+			t.Errorf(".git/%s exists after PushRebaseFree(); want no rebase ever attempted", rebaseDir)
+		}
+	}
+
+	head, err := repoA.CurrentSHA()
+	if err != nil {
+		t.Fatalf("CurrentSHA() error = %v", err)
+	}
+	if head != localHead {
+		t.Errorf("HEAD after rejected PushRebaseFree() = %q; want unchanged %q", head, localHead)
 	}
 }
 

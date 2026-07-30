@@ -7,7 +7,8 @@
 // config → pathspec → Fabric handle) from bypass mode (either hidden path flag
 // injected by the detached push child, push-only gate), driving fabricengine.Fabric's
 // StatusWeft/CommitWeft/PushWeft/PullWeft in normal mode and
-// fabricengine.PushWarpAt/PushWeftAt directly in bypass mode.
+// fabricengine.CoalescePushBothAt's loop-until-clean coalescing push directly in
+// bypass mode.
 
 package fabriccli
 
@@ -204,21 +205,17 @@ Related commands:
 			out := cmd.OutOrStdout()
 
 			if bypass {
-				// Detached push child: use whichever of the injected warpPath/
-				// weftPath were supplied directly, skip commit entirely. The
-				// first error (warp checked first) is surfaced; on success both
-				// supplied sides have been pushed.
-				if warpPath != "" {
-					if err := fabricengine.PushWarpAt(warpPath, fabricengine.SyncOptions{}); err != nil {
-						clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-						return nil
-					}
-				}
-				if weftPath != "" {
-					if err := fabricengine.PushWeftAt(weftPath, fabricengine.SyncOptions{}); err != nil {
-						clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
-						return nil
-					}
+				// Detached push child: run the loop-until-clean coalescing push
+				// over whichever of the injected warpPath/weftPath were
+				// supplied, skipping commit entirely. CoalescePushBothAt holds
+				// its own absorbing push lock under weftPath's .weft/ for the
+				// whole loop and requires weftPath to be non-empty for that
+				// lock's home — the detached push child (the only production
+				// caller of this bypass) always injects both paths, so that
+				// guard is unreachable here in practice.
+				if err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{}); err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{}))
 				return nil

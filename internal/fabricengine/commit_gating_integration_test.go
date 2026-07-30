@@ -21,8 +21,12 @@ import (
 
 // TestCommit_SkipGit_TwoSided asserts that under opts.SkipGit, a two-sided
 // Fabric.Commit lands the warp side but no-ops the weft side entirely: no
-// weft commit, unchanged weft HEAD, and no weft lock directory created (i.e.
-// no lock acquisition attempted at all).
+// weft commit and unchanged weft HEAD. Per the combined-commit-lock Shared
+// Decision, the combined write lock is taken whenever the call commits
+// anything at all, warp-only included — since this call's warp side is
+// non-empty ("README"), the lock dir IS created here even though the weft
+// side is skipped; that is the correct, intended behavior, not a
+// weft-scoped-lock regression.
 func TestCommit_SkipGit_TwoSided(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -60,8 +64,8 @@ func TestCommit_SkipGit_TwoSided(t *testing.T) {
 		t.Errorf("weft HEAD changed under SkipGit: %q -> %q; want unchanged", preWeftSHA, postWeftSHA)
 	}
 
-	if _, err := os.Stat(lockDirPath); !os.IsNotExist(err) {
-		t.Errorf("weft lock dir %q exists after Commit() under SkipGit; want no lock acquisition attempted", lockDirPath)
+	if _, err := os.Stat(lockDirPath); os.IsNotExist(err) {
+		t.Errorf("weft lock dir %q does not exist after Commit() under SkipGit; want it created (the warp side alone makes this a committing call under combined-commit-lock)", lockDirPath)
 	}
 }
 
