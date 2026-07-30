@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-fetch-binary
 slug: prowler
 branch: prowler
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-review-r7  '2026-07-30T10:18:18Z'
 plan-fix-r7  '2026-07-30T10:18:18Z'
 planned  '2026-07-30T10:27:24Z'
 implementing  '2026-07-30T10:33:59Z'
+approved-fetch-binary  '2026-07-30T11:03:25Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ implementing  '2026-07-30T10:33:59Z'
 ```yaml
 batches:
   - name: fetch-binary
-    state: running
+    state: approved
     implementer_session: fdd4fea9-f6d8-4bdd-b2d5-9fd42e9ca0e7
     start_sha: 0060610546b5bbb596009262d1c50406ee5dcc8b
+    commit_sha: bcc4c87c17471c666a726baec8928d06dfb21e39
   - name: plugin-packaging
     state: pending
 ```
