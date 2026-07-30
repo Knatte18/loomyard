@@ -55,6 +55,7 @@ var gitrepoPinnedRunBoundMethods = map[string]bool{
 	"Pull":                      true,
 	"ResetHard":                 true,
 	"pushWithRebaseRetry":       true,
+	"PushRebaseFree":            true,
 	"SnapshotSHA":               true,
 	"advanceAndPushSnapshotRef": true,
 	"adoptSnapshotRef":          true,
