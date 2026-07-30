@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: fabric-commit-lock-coalescing
 branch: fabric-commit-lock-coalescing
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-07-30T17:21:12Z'
 discussion-fix-r2  '2026-07-30T18:11:47Z'
 discussed  '2026-07-30T18:11:47Z'
 planning  '2026-07-30T18:26:18Z'
+plan-fix-r1  '2026-07-30T18:35:14Z'
 ```

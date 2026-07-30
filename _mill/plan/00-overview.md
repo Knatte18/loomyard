@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: warp-side commit lock + push coalescing'
 slug: fabric-commit-lock-coalescing
-approved: false
+approved: true
 started: '2026-07-30T18:21:14Z'
 parent: main
 root: ""
