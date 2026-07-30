@@ -61,7 +61,7 @@ _Cross-cutting decisions every batch inherits. Batch-local decisions live in eac
 
 ### Decision: partial-failure-report-three-outcomes
 
-- **Decision:** No cross-repo transaction, no rollback. Warp-commit failure returns the warp error with nothing landed (before the push step). A landed warp + failed weft returns a populated `CommitResult` plus a typed `*PartialCommitError`. The error models three weft outcomes — didn't-commit / committed-and-recorded / committed-but-unrecorded — the last (weft commit lands but `RecordCorrespondence` fails, `CommitWeft` returns `(sha, true, err)`) surfaced with `WeftCommitted=true` and self-healing via `RebuildIndex`.
+- **Decision:** No cross-repo transaction, no rollback. Warp-commit failure returns the warp error with nothing landed (before the push step). A landed warp + failed weft returns a populated `CommitResult` plus a typed `*PartialCommitError`. The error models three weft outcomes — didn't-commit / committed-and-recorded / committed-but-unrecorded — the last (weft commit lands but `RecordCorrespondence` fails, `CommitWeft` returns `(sha, true, err)`) surfaced with `WeftCommitted=true`; recovery is an explicit `RebuildIndex` that rescans the landed weft commit's `Warp-SHA` trailer (the index's source of truth), since `WeftSHAForWarpSHA`'s own one-shot rebuild fires only on a stale *hit*, not on the index *miss* a never-written entry produces.
 - **Rationale:** A landed warp commit is ordinary host git and must not be unwound. See `partial-failure-report-not-rollback` in `_mill/discussion.md`.
 - **Applies to:** fabric-commit
 
@@ -109,6 +109,7 @@ _Cross-cutting decisions every batch inherits. Batch-local decisions live in eac
 - `internal/fabricengine/trailer.go`
 - `internal/fabricengine/trailer_test.go`
 - `internal/fabricengine/weftgit.go`
+- `internal/gitrepo/gogit.go`
 - `internal/gitrepo/worktree.go`
 - `internal/gitrepo/worktree_test.go`
 - `manifest/designs/fabric-unified-view.md`
