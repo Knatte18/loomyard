@@ -11,7 +11,7 @@ depends-on: [1]
 
 ## Batch Scope
 
-This batch delivers the two new codeless skills — `distill-subagent` (the extracted, model-agnostic cheap-subagent judgment rule) and `github-repo-explorer` (a `gh`-CLI wrapper letting Claude browse a repo tree and read files without cloning) — refactors the existing `prowler` skill to load `distill-subagent` instead of inlining the rule, and lands the accompanying doc/registration updates (`INDEX.md`, `README.md`, `plugin.json` version bump). It depends on batch 1 so the README's site-adapter description documents the shipped mechanism. Every card is Markdown/JSON, one-line-per-paragraph prose (repo rule); there is no runnable surface, so `verify: null`.
+This batch delivers the two new codeless skills — `distill-subagent` (the extracted, model-agnostic cheap-subagent judgment rule) and `github-repo-explorer` (a `gh`-CLI wrapper letting Claude browse a repo tree and read files without cloning) — refactors the existing `prowler` skill to load `distill-subagent` instead of inlining the rule, and lands the accompanying doc/registration updates (`INDEX.md`, `README.md`, and the version bump in both `plugin.json` and the repo-root `marketplace.json`). It depends on batch 1 so the README's site-adapter description documents the shipped mechanism. Every card is Markdown/JSON, one-line-per-paragraph prose (repo rule); there is no runnable surface, so `verify: null`.
 
 ## Cards
 
@@ -84,10 +84,11 @@ This batch delivers the two new codeless skills — `distill-subagent` (the extr
 - **Context:** none
 - **Edits:**
   - `plugins/prowler/.claude-plugin/plugin.json`
+  - `.claude-plugin/marketplace.json`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `plugins/prowler/.claude-plugin/plugin.json`, change the `"version"` field from `"1.0.0"` to `"1.1.0"` (a minor bump for the new adapters + two new skills). Change nothing else.
+- **Requirements:** In `plugins/prowler/.claude-plugin/plugin.json`, change the `"version"` field from `"1.0.0"` to `"1.1.0"` (a minor bump for the new adapters + two new skills). In the repo-root `.claude-plugin/marketplace.json`, change the prowler entry's `"version"` (`plugins[0].version`) from `"1.0.0"` to `"1.1.0"` to keep the marketplace listing in sync with the plugin manifest. Leave the marketplace's own top-level `"version"` field unchanged (it versions the catalog, not the plugin). Change nothing else in either file.
 - **Commit:** `chore(prowler): bump plugin version to 1.1.0`
 
 ## Batch Tests

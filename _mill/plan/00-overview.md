@@ -3,7 +3,7 @@
 ```yaml
 task: 'prowler: site-adapter mechanism + github-repo-explorer skill (Claude reading the web)'
 slug: prowler-web-reading
-approved: false
+approved: true
 started: 20260730-175552
 parent: main
 root: ""
@@ -68,6 +68,7 @@ batches:
 
 ## All Files Touched
 
+- `.claude-plugin/marketplace.json`
 - `plugins/prowler/.claude-plugin/plugin.json`
 - `plugins/prowler/README.md`
 - `plugins/prowler/adapter.go`
