@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -30,4 +30,39 @@ plan-review-r5  '2026-07-31T20:05:07Z'
 plan-fix-r5  '2026-07-31T20:05:07Z'
 plan-fix-r6  '2026-07-31T20:11:56Z'
 planned  '2026-07-31T20:12:42Z'
+implementing  '2026-07-31T20:17:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: hubgeometry-worktree-logs-dir
+    state: pending
+  - name: logger-trace-identity
+    state: pending
+  - name: logger-retention-sweep
+    state: pending
+  - name: reedengine-trace-env-filter
+    state: pending
+  - name: logger-durable-sink
+    state: pending
+  - name: logger-dual-handler-fanout
+    state: pending
+  - name: logger-spans
+    state: pending
+  - name: reedengine-adoption
+    state: pending
+  - name: treadleengine-adoption
+    state: pending
+  - name: burler-fabric-shuttle-adoption
+    state: pending
+  - name: perchengine-adoption
+    state: pending
+  - name: cmd-lyx-root-wiring
+    state: pending
+  - name: scoutengine-logger-conversion
+    state: pending
+  - name: docs-and-constraints-wrapup
+    state: pending
 ```
