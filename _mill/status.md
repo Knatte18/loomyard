@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-design-docs
+phase: holistic-reviewing
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-snapshot-reader  '2026-07-31T11:42:53Z'
 approved-commit-empty-primitive  '2026-07-31T11:54:08Z'
 approved-empty-commit-rule  '2026-07-31T12:30:50Z'
 approved-design-docs  '2026-07-31T18:30:59Z'
+holistic-reviewing  '2026-07-31T18:31:30Z'
 ```
 
 ## Batches
