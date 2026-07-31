@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-snapshot-reader
+phase: approved-commit-empty-primitive
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: _mill/plan
@@ -34,6 +34,7 @@ planned  '2026-07-31T10:19:34Z'
 implementing  '2026-07-31T10:21:15Z'
 approved-retire-ref-mechanism  '2026-07-31T10:49:41Z'
 approved-snapshot-reader  '2026-07-31T11:42:53Z'
+approved-commit-empty-primitive  '2026-07-31T11:54:08Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     start_sha: b165d245e2b054b800f9b87ecb5e40461392c72a
     commit_sha: 347decba386178c55bd850c0b76e8022063e8d74
   - name: commit-empty-primitive
-    state: running
+    state: approved
     implementer_session: dd6f1bc5-c8dd-4c96-b9d4-fee9b4c0ce14
     start_sha: d6b91109d0c45ceabddad5bb58c0661bdfc53e9f
+    commit_sha: 301a0f301bc3de1de002a390afe404d0072c5a5b
   - name: empty-commit-rule
     state: pending
   - name: design-docs
