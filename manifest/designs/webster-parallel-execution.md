@@ -4,7 +4,7 @@
 
 ## Why it's parked
 
-[plan-format-v3.md](../../docs/reference/plan-format-v3.md) is deliberately a flat, sequential card list with **no DAG wired into scheduling**. Running cards as *parallel* forks would require reintroducing a DAG and worktree isolation, which reopens exactly the problem sequential execution avoids: git's index/staging area is a single shared file per working tree, so two forks concurrently committing — even to fully disjoint files — race on the same lock. Current (2026) ecosystem guidance treats worktree isolation as effectively required for concurrent subagents on the same repo for exactly this reason. A declared-disjoint card pair that turns out (via deviation) to actually overlap is a **live corruption risk** in a concurrent-no-worktree model, not just a bookkeeping problem to fix after the fact as it is sequentially; trace would also see other forks' uncommitted, potentially syntactically-broken in-flight edits while serving a concurrent fork's query, since there's no filesystem isolation between them.
+[plan-format-v3.md](../../docs/reference/plan-format-v3.md) is deliberately a flat, sequential card list with **no DAG wired into scheduling**. Running cards as *parallel* forks would require reintroducing a DAG and worktree isolation, which reopens exactly the problem sequential execution avoids: git's index/staging area is a single shared file per working tree, so two forks concurrently committing — even to fully disjoint files — race on the same lock. Current (2026) ecosystem guidance treats worktree isolation as effectively required for concurrent subagents on the same repo for exactly this reason. A declared-disjoint card pair that turns out (via deviation) to actually overlap is a **live corruption risk** in a concurrent-no-worktree model, not just a bookkeeping problem to fix after the fact as it is sequentially; scout would also see other forks' uncommitted, potentially syntactically-broken in-flight edits while serving a concurrent fork's query, since there's no filesystem isolation between them.
 
 **A possible middle ground, if this is ever revisited:** let forks edit concurrently (the LLM-thinking-dominated part) but serialize the actual `git add`+commit+verify step through a mutex in webster's Go orchestration ("edit in parallel, land sequentially"). Even this requires *strictly enforced* file-disjointness (not just DAG-edge-absence) to be safe. Not built.
 
@@ -34,12 +34,12 @@ Run the card-DAG width analysis across several *real* completed plans, weighted 
 
 A planner that emits true card dependencies (`depends-on`) instead of an over-constrained batch line recovers most of the *width* insight with **no worktrees and no concurrent execution** — this is exactly what [plan-format-v3.md](../../docs/reference/plan-format-v3.md) already does. Only the *executor that actually runs the width* (this entry) remains parked.
 
-## Relationship to trace (Part B of the retired draft)
+## Relationship to scout (Part B of the retired draft)
 
-The retired `websterv2.md` draft also had a Part B — structured impact lookup via `go/packages`/`gopls` (find-all-references as a Go verb instead of LLM-driven grep). That idea is superseded, not lost: it's the direct ancestor of the [trace](trace-redesign.md) proposal, which generalizes it to a multi-language, daemon-based design.
+The retired `websterv2.md` draft also had a Part B — structured impact lookup via `go/packages`/`gopls` (find-all-references as a Go verb instead of LLM-driven grep). That idea is superseded, not lost: it's the direct ancestor of the [scout](scout-redesign.md) proposal, which generalizes it to a multi-language, daemon-based design.
 
 ## Related
 
 - `internal/websterengine`'s package documentation — the sequential model this would extend.
 - [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — already captures the cheap win (`depends-on`).
-- [trace-redesign.md](trace-redesign.md) — Part B's successor.
+- [scout-redesign.md](scout-redesign.md) — Part B's successor.
