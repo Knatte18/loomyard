@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: _mill/plan
@@ -31,4 +31,21 @@ plan-review-r6  '2026-07-31T10:11:21Z'
 plan-fix-r6  '2026-07-31T10:11:21Z'
 plan-review-r7  '2026-07-31T10:19:34Z'
 planned  '2026-07-31T10:19:34Z'
+implementing  '2026-07-31T10:21:15Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: retire-ref-mechanism
+    state: pending
+  - name: snapshot-reader
+    state: pending
+  - name: commit-empty-primitive
+    state: pending
+  - name: empty-commit-rule
+    state: pending
+  - name: design-docs
+    state: pending
 ```
