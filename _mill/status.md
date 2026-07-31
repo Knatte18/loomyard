@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: trace-logging
 branch: trace-logging
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-31T11:40:44Z'
+discussion-fix-r6  '2026-07-31T18:42:59Z'
+discussed  '2026-07-31T18:42:59Z'
 ```
