@@ -39,7 +39,9 @@ implementing  '2026-07-31T10:21:15Z'
 ```yaml
 batches:
   - name: retire-ref-mechanism
-    state: pending
+    state: running
+    implementer_session: 9e88276e-fffb-49a5-a1fe-8546ba571c96
+    start_sha: ba96260dd51b9198920c26a5b562a6088be90c48
   - name: snapshot-reader
     state: pending
   - name: commit-empty-primitive
