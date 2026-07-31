@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: fold snapshot-tracking into the Warp-SHA trailer'
 slug: fabric-snapshot-trailer
-approved: false
+approved: true
 started: '20260731T091500Z'
 parent: main
 root: ""
