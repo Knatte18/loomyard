@@ -45,7 +45,9 @@ batches:
     start_sha: ba96260dd51b9198920c26a5b562a6088be90c48
     commit_sha: 29044020388767e2f5138dc692effd3a28279dc0
   - name: snapshot-reader
-    state: pending
+    state: running
+    implementer_session: 859853ed-67ed-4f00-beb8-c39019e6ce6e
+    start_sha: b165d245e2b054b800f9b87ecb5e40461392c72a
   - name: commit-empty-primitive
     state: pending
   - name: empty-commit-rule
