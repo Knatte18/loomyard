@@ -25,12 +25,12 @@ import (
 // typed signal instead of an ambiguous empty SHA string.
 var ErrNoCommits = errors.New("gitrepo: repository has no commits")
 
-// ErrInvalidSHA is returned by ChangedFilesSince and SetSnapshotSHA (and
-// folded into false by SHAExists, per its bool-swallowing posture) when a
-// caller-supplied SHA argument is not a plain hex object name — surfaced
-// before the string ever reaches git, where an option-shaped value would be
-// parsed as a flag (`update-ref <ref> -d` deletes the ref instead of setting
-// it).
+// ErrInvalidSHA is returned by ChangedFilesSince, CheckoutDetached, and
+// ResetHard (and folded into false by SHAExists, per its bool-swallowing
+// posture) when a caller-supplied SHA argument is not a plain hex object
+// name — surfaced before the string ever reaches git, where an
+// option-shaped value (e.g. a leading "-") would be parsed as a flag rather
+// than a target commit.
 var ErrInvalidSHA = errors.New("gitrepo: invalid SHA")
 
 // shaPattern matches a plain abbreviated-or-full hex object name: 4 hex
@@ -426,8 +426,10 @@ func (r *Repo) RestoreBranch(ref string) error {
 
 // ChangedFilesSince returns the repo-relative paths that differ between sha
 // and HEAD, considering committed history only — uncommitted working-tree
-// or staged edits are never inspected, matching the snapshot model's
-// SHA-to-SHA determinism. A missing or invalid sha is a genuine failure
+// or staged edits are never inspected, since sha and HEAD are the only two
+// points this comparison is defined over: a diff against an uncommitted
+// state would have no stable SHA to compare against later. A missing or
+// invalid sha is a genuine failure
 // here (unlike SHAExists' bool-swallowing posture): callers are expected to
 // check SHAExists first and treat a missing SHA as staleness. A non-hex sha
 // returns ErrInvalidSHA (checkable via errors.Is) without ever opening the
