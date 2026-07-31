@@ -9,14 +9,14 @@
 // # The one blind spot this guard cannot see
 //
 // Set-equality on method names cannot detect a NEW r.run call added inside a
-// method that is already on gitrepoPinnedRunBoundMethods. SnapshotSHA is
-// precisely such a method: it hosts a migrated go-git ref read and a CLI-bound
-// fetch side by side (see the package's Shared Decisions on call-granular
-// classification), so a third, illegitimate r.run call slipped into SnapshotSHA
-// would pass this guard's first assertion undetected. Reviewing SnapshotSHA's
-// diff by hand remains necessary; this guard catches every other regression
-// shape (a call added to a method not on the list, or the boundary's only
-// gitexec.RunGit call site moving or duplicating).
+// method that is already on gitrepoPinnedRunBoundMethods. StageAndCommit is
+// precisely such a method: it hosts three CLI-bound r.run calls (add,
+// diff --cached, commit) followed by a migrated go-git CurrentSHA read side
+// by side, so a fourth, illegitimate r.run call slipped into StageAndCommit
+// would pass this guard's first assertion undetected. Reviewing
+// StageAndCommit's diff by hand remains necessary; this guard catches every
+// other regression shape (a call added to a method not on the list, or the
+// boundary's only gitexec.RunGit call site moving or duplicating).
 
 package main
 
@@ -40,32 +40,29 @@ import (
 // the package's post-migration source. This is deliberately NOT "the CLI-bound
 // methods" -- the two sets differ in both directions:
 //
-//   - SnapshotSHA appears here despite being a migrating method, because it
-//     keeps a CLI-side fetch alongside its migrated go-git ref read (see the
-//     call-granular classification decision).
-//   - Push, PushCoalesced, and SetSnapshotSHA are CLI-bound by contract yet do
-//     NOT appear here: they delegate to pushWithRebaseRetry /
-//     advanceAndPushSnapshotRef (which do appear) or lost their own r.run
-//     calls to go-git entirely.
+//   - StageAndCommit appears here as a mixed method: three CLI-bound r.run
+//     calls (add, diff --cached, commit) sit alongside a migrated go-git
+//     CurrentSHA read at the end -- presence in this list says nothing
+//     about whether a method also has a migrated read.
+//   - Push and PushCoalesced are CLI-bound by contract yet do NOT appear
+//     here: they delegate to pushWithRebaseRetry (which does appear)
+//     rather than calling r.run directly themselves.
 var gitrepoPinnedRunBoundMethods = map[string]bool{
-	"StageAndCommit":            true,
-	"StageAllAndCommit":         true,
-	"CheckoutDetached":          true,
-	"RestoreBranch":             true,
-	"Pull":                      true,
-	"ResetHard":                 true,
-	"pushWithRebaseRetry":       true,
-	"PushRebaseFree":            true,
-	"SnapshotSHA":               true,
-	"advanceAndPushSnapshotRef": true,
-	"adoptSnapshotRef":          true,
-	"hasUnpushed":               true,
+	"StageAndCommit":      true,
+	"StageAllAndCommit":   true,
+	"CheckoutDetached":    true,
+	"RestoreBranch":       true,
+	"Pull":                true,
+	"ResetHard":           true,
+	"pushWithRebaseRetry": true,
+	"PushRebaseFree":      true,
+	"hasUnpushed":         true,
 }
 
 // gitrepoBoundaryMinScannedFiles is the vacuous-scan floor for this guard's
 // single-directory walk of internal/gitrepo. The package has 7 non-test .go
 // files today (doc.go, gitrepo.go, gogit.go, pull.go, push.go, reset.go,
-// snapshot.go); fewer than 5 found means the directory resolution is
+// worktree.go); fewer than 5 found means the directory resolution is
 // misconfigured rather than the package having genuinely shrunk.
 const gitrepoBoundaryMinScannedFiles = 5
 
