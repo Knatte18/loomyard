@@ -6,20 +6,33 @@
 // weft-only inputs, the warp commit's plain-git property (no trailer, no
 // correspondence entry), Snapshot trailer presence/absence, message
 // handling, and the spawnDetachedPushFn push-invocation seam (fired for
-// anything landed, never for a genuine no-op). Package fabricengine
-// (internal) because it swaps the unexported spawnDetachedPushFn seam.
-// Reuses index_integration_test.go's fixture helpers (newPlainWarpRepo,
-// commitWarp, newFabric, currentSHA) and syncweft_integration_test.go's
-// (writeWeftConfigContent, commitMessageAt).
+// anything landed, never for a genuine no-op). It also carries this batch's
+// empty-commit-rule coverage: the inverted warp-only-tagged case, the
+// unchanged-content correctness hole, every remaining triggering case (a
+// tags-only call, a pathspec filtered to nothing, an unborn weft HEAD), both
+// exceptions (unborn warp HEAD, SkipGit), the no-tags-no-op guard against
+// over-firing, the CommitResult/push-seam shape on a warp-only tagged
+// commit, the invalid-tag-on-an-otherwise-empty-commit guard, the dirty-
+// weft-index-becomes-an-error transition, and CommitWeft's own inherited
+// contract. Package fabricengine (internal) because it swaps the unexported
+// spawnDetachedPushFn seam and reaches unexported helpers (weftWriteLockPath
+// from commit_lock_integration_test.go). Reuses index_integration_test.go's
+// fixture helpers (newPlainWarpRepo, commitWarp, newFabric, currentSHA),
+// weftgit_unborn_warp_test.go's newUnbornWarpRepo, and
+// syncweft_integration_test.go's (writeWeftConfigContent, commitMessageAt).
 
 package fabricengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -433,5 +446,407 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 	}
 	if got2 != result2.WarpSHA {
 		t.Errorf("SnapshotWarpSHA() after round 2 = %q; want the ADVANCED baseline %q, not the stale round-1 baseline %q", got2, result2.WarpSHA, result1.WarpSHA)
+	}
+}
+
+// newUnbornWeftRepo creates a minimal, isolated git repo at t.TempDir() on
+// branch main with NO commits — an unborn weft HEAD — mirroring
+// newUnbornWarpRepo (weftgit_unborn_warp_test.go) so the warp and weft
+// unborn fixtures read as the pair they are. lyxtest.CopyWeft's fixture
+// already carries commits, so it cannot reach this state.
+func newUnbornWeftRepo(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	lyxtest.MustRun(t, dir, "git", "init", "-q", "-b", "main")
+	lyxtest.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, dir, "git", "config", "user.name", "Test")
+	return dir
+}
+
+// TestCommit_TagsOnly_LandsEmptyWeftCommit pins the tags-only supported call
+// shape (Commit(nil, msg, tags, opts)): a nil files list with a non-empty
+// snapshotTags still takes the combined write lock (proven here by
+// externally holding it and observing the call block until released),
+// lands an empty weft commit, and SnapshotWarpSHA resolves the tag to
+// warp's current HEAD.
+func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
+	f, warpPath, _ := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	warpHEAD := currentSHA(t, warpPath)
+
+	lockPath := weftWriteLockPath(t, f)
+	externalLock, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("AcquireWriteLock(%q) error = %v", lockPath, err)
+	}
+
+	type outcome struct {
+		result CommitResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := f.Commit(nil, "tags only commit", []string{"raddle"}, SyncOptions{})
+		done <- outcome{result: result, err: err}
+	}()
+
+	select {
+	case <-done:
+		_ = externalLock.Release()
+		t.Fatal("Commit() completed while the combined write lock was externally held; want it to block (a tags-only call must take the lock)")
+	case <-time.After(150 * time.Millisecond):
+		// Still blocked, as expected.
+	}
+
+	if err := externalLock.Release(); err != nil {
+		t.Fatalf("Release() error = %v", err)
+	}
+
+	var got outcome
+	select {
+	case got = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Commit() did not complete after the external lock was released")
+	}
+	if got.err != nil {
+		t.Fatalf("Commit() error = %v", got.err)
+	}
+
+	result := got.result
+	if result.WarpCommitted || result.WarpSHA != "" {
+		t.Errorf("Commit() = %+v; want no warp commit (nil files)", result)
+	}
+	if !result.WeftCommitted || result.WeftSHA == "" {
+		t.Fatalf("Commit() = %+v; want an empty weft commit to have landed", result)
+	}
+
+	gotWarpSHA, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+	}
+	if gotWarpSHA != warpHEAD {
+		t.Errorf("SnapshotWarpSHA() = %q; want warp's current HEAD %q", gotWarpSHA, warpHEAD)
+	}
+}
+
+// TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit covers
+// the `!positive` fall-through: a weft-side pathspec entry that
+// weftPathspecFilter drops (it matches nothing in the worktree or index)
+// still lands an empty weft commit when snapshotTags is non-empty.
+func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testing.T) {
+	f, warpPath, _ := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	writeWarpFile(t, warpPath, "README", "warp change")
+
+	result, err := f.Commit([]string{"README", "_lyx/doesnotexist"}, "commit", []string{"raddle"}, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if !result.WeftCommitted || result.WeftSHA == "" {
+		t.Fatalf("Commit() = %+v; want an empty weft commit despite the weft-side pathspec matching nothing", result)
+	}
+}
+
+// The fourth triggering case — StageAndCommit's "did not match any files"
+// tolerance, plus tags — is deliberately NOT covered by a test in this file.
+// weftPathspecFilter's own pre-check (entryMatchesWeft, via `git ls-files
+// --cached --others`) uses the identical anchor and pathspec semantics
+// StageAndCommit's own `git add` uses, so the two can never disagree within
+// one commitWeftLocked call: whatever the pre-check says matches is what
+// `git add` sees too, in the same synchronous call, with no window for the
+// underlying state to change in between. Every construction attempted here —
+// exclude-magic combinations, case-only differences under Windows'
+// core.ignorecase, deleting the matched path between the two checks — either
+// reproduced the SAME "did not match any files" failure the pre-check exists
+// to prevent (so weftPathspecFilter itself would have to be bypassed to
+// reach commitWeftLocked's fallback at all) or resolved identically in both
+// commands and never triggered the fallback. Per this card's own
+// instruction, that is recorded here explicitly rather than shipping a
+// contrived, potentially-flaky construction: the fallback remains
+// defense-in-depth for a StageAndCommit caller other than commitWeftLocked's
+// own pre-checked path, not something this package's own tests can force.
+
+// TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit covers the case that
+// is NOT an exception to the empty-commit rule: an unborn weft HEAD still
+// gets an empty commit as its own root commit, carrying its Warp-SHA and
+// Snapshot trailers like any other — contrast with the unborn-WARP case
+// below, which drops the tags entirely.
+func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
+	warpPath := newPlainWarpRepo(t)
+	weftPath := newUnbornWeftRepo(t)
+	seedFabricConfig(t, weftPath)
+	f := newFabric(t, warpPath, weftPath)
+	swapPushRecorder(t)
+
+	warpHEAD := currentSHA(t, warpPath)
+
+	result, err := f.Commit(nil, "unborn weft, tags only", []string{"raddle"}, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if !result.WeftCommitted || result.WeftSHA == "" {
+		t.Fatalf("Commit() = %+v; want an empty weft commit to have landed as weft's root commit", result)
+	}
+
+	msg := commitMessageAt(t, weftPath, result.WeftSHA)
+	wantTrailer := WarpSHATrailerKey + ": " + warpHEAD
+	if !strings.Contains(msg, wantTrailer) {
+		t.Errorf("root weft commit message = %q; want it to contain %q", msg, wantTrailer)
+	}
+	if !strings.Contains(msg, SnapshotTrailerKey+": raddle") {
+		t.Errorf("root weft commit message = %q; want it to contain the Snapshot trailer", msg)
+	}
+
+	got, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+	}
+	if got != warpHEAD {
+		t.Errorf("SnapshotWarpSHA() = %q; want %q", got, warpHEAD)
+	}
+}
+
+// TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit covers the
+// empty-commit rule's one genuine exception: an unborn warp HEAD drops the
+// tags exactly as before this batch — no commit, no trailer, no error —
+// because a snapshot's whole content is a warp SHA and there is none to
+// record yet.
+func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
+	warpPath := newUnbornWarpRepo(t)
+	weftFixture := lyxtest.CopyWeft(t)
+	seedFabricConfig(t, weftFixture.WeftPath)
+	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	swapPushRecorder(t)
+
+	preWeftSHA := currentSHA(t, weftFixture.WeftPath)
+
+	result, err := f.Commit(nil, "unborn warp, tags only", []string{"raddle"}, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if result.WarpCommitted || result.WeftCommitted {
+		t.Errorf("Commit() = %+v; want a full no-op (unborn warp drops tags exactly as before)", result)
+	}
+
+	postWeftSHA := currentSHA(t, weftFixture.WeftPath)
+	if postWeftSHA != preWeftSHA {
+		t.Errorf("weft HEAD changed from %q to %q; want unchanged (no commit)", preWeftSHA, postWeftSHA)
+	}
+
+	got, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+	}
+	if got != "" {
+		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (nothing was recorded)", got)
+	}
+}
+
+// TestCommit_SkipGit_WithTags_NoWeftCommitNoError covers the second
+// exception: opts.SkipGit still produces no weft commit and no trailer
+// regardless of tags — it is an explicit "touch no git at all" opt-out for
+// the weft side — while the warp commit proceeds regardless, since SkipGit
+// is weft-scoped for Fabric.Commit specifically.
+func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
+	f, warpPath, weftPath := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	writeWarpFile(t, warpPath, "README", "warp change")
+	writeWeftConfigContent(t, weftPath, "weft change")
+
+	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "skip git", []string{"raddle"}, SyncOptions{SkipGit: true})
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if result.WeftCommitted {
+		t.Errorf("Commit() = %+v; want no weft commit under SkipGit even with tags", result)
+	}
+	if !result.WarpCommitted {
+		t.Errorf("Commit() = %+v; want the warp commit to still land (SkipGit is weft-scoped)", result)
+	}
+
+	got, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+	}
+	if got != "" {
+		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (SkipGit skips the weft side entirely)", got)
+	}
+}
+
+// TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire guards against the
+// uniform empty-commit rule firing when it should not: unchanged content and
+// zero tags must still be a clean no-op, with the weft HEAD left untouched.
+func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
+	f, warpPath, _ := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	preWeftSHA, err := f.Weft.CurrentSHA()
+	if err != nil {
+		t.Fatalf("Weft.CurrentSHA() error = %v", err)
+	}
+
+	// newPlainWarpRepo already committed README with content "warp"; writing
+	// the identical content again leaves nothing staged, and no tags are
+	// supplied.
+	writeWarpFile(t, warpPath, "README", "warp")
+
+	result, err := f.Commit([]string{"README"}, "no-op, no tags", nil, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if result.WarpCommitted || result.WeftCommitted {
+		t.Fatalf("Commit() = %+v; want a full no-op (unchanged content, no tags)", result)
+	}
+
+	postWeftSHA, err := f.Weft.CurrentSHA()
+	if err != nil {
+		t.Fatalf("Weft.CurrentSHA() error = %v", err)
+	}
+	if postWeftSHA != preWeftSHA {
+		t.Errorf("weft HEAD changed from %q to %q; want unchanged (the empty-commit rule must not fire with no tags)", preWeftSHA, postWeftSHA)
+	}
+}
+
+// TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce pins the CommitResult
+// and push-seam shape on a warp-only tagged commit: WeftCommitted=true with
+// a populated WeftSHA (the empty commit), and exactly one push-seam
+// invocation — the async-push gate is WarpCommitted || WeftCommitted, and
+// the snapshot trailer must reach the remote for cross-clone sharing.
+func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
+	f, warpPath, _ := newCommitFixture(t)
+	calls := swapPushRecorder(t)
+
+	writeWarpFile(t, warpPath, "README", "warp only tagged change")
+
+	result, err := f.Commit([]string{"README"}, "warp only tagged commit", []string{"raddle"}, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if !result.WeftCommitted || result.WeftSHA == "" {
+		t.Fatalf("Commit() = %+v; want WeftCommitted=true and a populated WeftSHA", result)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("push recorder invocation count = %d; want 1", len(*calls))
+	}
+}
+
+// TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted pins that
+// appendSnapshotTrailers' validate-all-before-appending-any property
+// survives the empty-commit path: an invalid tag on an otherwise-fully-empty
+// call fails before anything is staged or committed, on either side.
+func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
+	f, warpPath, _ := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	preWarpSHA := currentSHA(t, warpPath)
+	preWeftSHA, err := f.Weft.CurrentSHA()
+	if err != nil {
+		t.Fatalf("Weft.CurrentSHA() error = %v", err)
+	}
+
+	_, err = f.Commit(nil, "invalid tag commit", []string{"bad tag with spaces"}, SyncOptions{})
+	var invalidTagErr *ErrInvalidSnapshotTag
+	if !errors.As(err, &invalidTagErr) {
+		t.Fatalf("Commit() error = %v; want *ErrInvalidSnapshotTag via errors.As", err)
+	}
+
+	postWarpSHA := currentSHA(t, warpPath)
+	postWeftSHA, err := f.Weft.CurrentSHA()
+	if err != nil {
+		t.Fatalf("Weft.CurrentSHA() error = %v", err)
+	}
+	if postWarpSHA != preWarpSHA {
+		t.Errorf("warp HEAD changed from %q to %q; want unchanged", preWarpSHA, postWarpSHA)
+	}
+	if postWeftSHA != preWeftSHA {
+		t.Errorf("weft HEAD changed from %q to %q; want unchanged", preWeftSHA, postWeftSHA)
+	}
+}
+
+// TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError
+// covers the accepted no-op-becomes-error transition: an aborted earlier run
+// leaves unrelated content staged in the weft index (something the combined
+// write lock serializes fabric's own callers against, but does not itself
+// clean up); a tagged commit whose own pathspec content is unchanged reaches
+// the `!committed` fall-through, calls CommitEmpty, and CommitEmpty's own
+// dirty-index pre-check refuses with gitrepo.ErrIndexNotEmpty. That refusal
+// must surface as a *PartialCommitError with WeftCommitted=false — the same
+// unlanded-weft outcome the mapping already models — while the warp commit
+// that already landed stands and is still pushed.
+func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError(t *testing.T) {
+	f, warpPath, weftPath := newCommitFixture(t)
+	calls := swapPushRecorder(t)
+
+	writeWarpFile(t, warpPath, "README", "warp change")
+
+	// Simulate an aborted earlier run's leftover staged content: unrelated to
+	// this call's own pathspec, so StageAndCommit's own pathspec-scoped diff
+	// never sees it, but CommitEmpty's unscoped diff --cached --quiet does.
+	if err := os.WriteFile(filepath.Join(weftPath, "leftover.txt"), []byte("staged by an aborted earlier run"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftPath, "git", "add", "leftover.txt")
+
+	// _lyx/config.yaml is left at its fixture-default content, so the
+	// weft-side pathspec's own StageAndCommit reports committed=false and
+	// the empty-commit rule's !committed fall-through fires.
+	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "dirty index, tagged", []string{"raddle"}, SyncOptions{})
+	if err == nil {
+		t.Fatal("Commit() error = nil; want an error (CommitEmpty should refuse on the dirty index)")
+	}
+
+	var partialErr *PartialCommitError
+	if !errors.As(err, &partialErr) {
+		t.Fatalf("Commit() error = %v; want *PartialCommitError via errors.As", err)
+	}
+	if partialErr.WeftCommitted {
+		t.Errorf("PartialCommitError.WeftCommitted = true; want false (CommitEmpty refused, nothing landed)")
+	}
+	if !errors.Is(err, gitrepo.ErrIndexNotEmpty) {
+		t.Errorf("Commit() error = %v; want errors.Is(err, gitrepo.ErrIndexNotEmpty)", err)
+	}
+
+	if !result.WarpCommitted || result.WarpSHA == "" {
+		t.Errorf("Commit() = %+v; want the warp commit to stand", result)
+	}
+	if result.WeftCommitted {
+		t.Errorf("Commit() = %+v; want WeftCommitted=false", result)
+	}
+
+	if len(*calls) != 1 {
+		t.Errorf("push recorder invocation count = %d; want 1 (the durable warp commit should still be pushed)", len(*calls))
+	}
+}
+
+// TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit pins that
+// CommitWeft — an exported entry point, not just an internal dispatch
+// target — inherits commitWeftLocked's empty-commit rule as its own
+// contract: called directly (not via Fabric.Commit) with a pathspec matching
+// nothing and one snapshot tag, it lands the empty commit.
+func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.T) {
+	warpPath := newPlainWarpRepo(t)
+	weftFixture := lyxtest.CopyWeft(t)
+	f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+	sha, committed, err := f.CommitWeft([]string{"doesnotexist"}, DefaultCommitMessage, SyncOptions{}, "raddle")
+	if err != nil {
+		t.Fatalf("CommitWeft() error = %v", err)
+	}
+	if !committed || sha == "" {
+		t.Fatalf("CommitWeft() = (%q, %v); want an empty commit to have landed", sha, committed)
+	}
+
+	warpSHA := currentSHA(t, warpPath)
+	msg := commitMessageAt(t, weftFixture.WeftPath, sha)
+	wantWarpTrailer := WarpSHATrailerKey + ": " + warpSHA
+	if !strings.Contains(msg, wantWarpTrailer) {
+		t.Errorf("commit message = %q; want it to contain %q", msg, wantWarpTrailer)
+	}
+	if !strings.Contains(msg, SnapshotTrailerKey+": raddle") {
+		t.Errorf("commit message = %q; want it to contain the Snapshot trailer", msg)
 	}
 }
