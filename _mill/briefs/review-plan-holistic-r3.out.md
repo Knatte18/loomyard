@@ -1,0 +1,23 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: fold snapshot-tracking into the Warp-SHA trailer — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5 (Sonnet 5, per system identification)
+reviewed_file: plan/
+date: 2026-07-31
+```
+
+## Findings
+
+### [BLOCKING] Card 5's crucible sweep misses live (non-history) mentions in gitrepo-review-prompt.md
+**Location:** batch 1 / card 5
+**Issue:** Card 5 only edits `crucible/gitrepo-review-prompt.md`'s "What to read" list (line 21), but the file's "High-yield focus" section (lines 37-39) instructs a *future* reviewer to actively drive-test `SetSnapshotSHA`'s adopt-on-conflict race, `SnapshotSHA`/`SetSnapshotSHA` argument injection, and `remoteName()`'s fallback under `SnapshotSHA`/`SetSnapshotSHA` — all live, forward-looking test instructions for a mechanism this batch deletes, not frozen findings history (F1/F3/R1/etc. are the actual frozen history and are correctly left alone). The "Fixing" section's line 101 also tells a future fixer to "match... the file-level doc-comment convention already used across `gitrepo.go`/`push.go`/`snapshot.go`" — `snapshot.go` will not exist. Card 5's closing-gate grep is explicitly scoped to `internal/gitrepo/` and `cmd/lyx/`, so it will never catch these.
+**Fix:** Extend card 5's requirements to also correct the "High-yield focus" bullets (lines 37-39) and the "Fixing" section's file enumeration (line 101) in `crucible/gitrepo-review-prompt.md`, distinguishing them from the genuinely frozen F1-style findings history the card correctly leaves untouched.
+
+## Verdict
+
+REQUEST_CHANGES
+One BLOCKING gap: card 5 under-scopes the crucible/gitrepo-review-prompt.md sweep, leaving live test instructions for deleted API.
+MILL_REVIEW_END
