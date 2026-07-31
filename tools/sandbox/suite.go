@@ -74,7 +74,7 @@ type suiteSpec struct {
 	// (lyx reed up). For those, runSuite runs `lyx reed down` in the host repo
 	// after the agent session ends, whatever the agent did: an orphaned tmux
 	// server holds open handles inside the Hub and blocks the next
-	// sandbox-build.cmd -reset.
+	// sandbox/build.cmd -reset.
 	reedTeardown bool
 }
 
@@ -375,7 +375,7 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 	// Guard against a missing Hub so the operator gets a clear, actionable message
 	// rather than a confusing downstream file-write failure.
 	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("hub host repo not found at %s -- run sandbox-build.cmd first", hostRepoDir)
+		return fmt.Errorf("hub host repo not found at %s -- run sandbox/build.cmd first", hostRepoDir)
 	} else if err != nil {
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
@@ -451,13 +451,13 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 	// separate step, so print guidance and return nil regardless of the code.
 	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
-		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
+		"sandbox: agent session ended (exit code %d). Run sandbox/fetch.cmd to collect findings into .scratch.\n",
 		code)
 
 	// For suites whose scenarios boot a live reed substrate, tear it down now,
 	// regardless of how the agent session ended: an orphaned tmux server holds
 	// open handles inside the Hub host repo and blocks the next
-	// sandbox-build.cmd -reset. Best-effort -- a teardown failure must not turn
+	// sandbox/build.cmd -reset. Best-effort -- a teardown failure must not turn
 	// a completed session into a launcher error.
 	if spec.reedTeardown {
 		if err := reedDown(hostRepoDir, lyxPath); err != nil {

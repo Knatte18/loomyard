@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Local launcher for the lyx deploy tool (POSIX twin of deploy.cmd). The
+# machine-specific install dir is hardcoded HERE (a dir on this machine's PATH)
+# — the Go tool stays general. Forward slashes in the dest so Go on Windows
+# accepts it as-is under git-bash (a leading-slash /c/... path can be mangled
+# by MSYS or misread as a current-drive-root path when handed to `go run`).
+# cd to the repo root (this script's own directory) so `go run` finds go.mod.
+cd "$(dirname "$0")"
+exec go run ./tools/deploy -dest C:/Code/tools/bin "$@"

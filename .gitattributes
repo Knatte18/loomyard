@@ -23,5 +23,9 @@ internal/treadleengine/targeting-template.md text eol=lf
 internal/treadleengine/triage-template.md text eol=lf
 internal/fabricengine/post-checkout.sh text eol=lf
 plugins/prowler/scripts/*.sh text eol=lf
+# Root POSIX deploy launchers run via `#!/usr/bin/env bash` shebang -- a CRLF
+# checkout (autocrlf=true) breaks the shebang line, so pin them to LF.
+deploy text eol=lf
+deploy-dev text eol=lf
 internal/fabricengine/template.yaml text eol=lf
 internal/planparser/testdata/goodplan/*.md text eol=lf

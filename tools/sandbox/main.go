@@ -173,7 +173,7 @@ func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
 	// cannot happen -- the "fabric-suite" case runs decideFabricClone first -- but
 	// a direct call (e.g. from a test) should still fail loudly.
 	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("fabric hub host repo not found at %s -- run sandbox-fabric-suite.cmd, which clones it first", hostRepoDir)
+		return fmt.Errorf("fabric hub host repo not found at %s -- run sandbox/fabric-suite.cmd, which clones it first", hostRepoDir)
 	} else if err != nil {
 		return fmt.Errorf("stat fabric host repo %s: %w", hostRepoDir, err)
 	}
@@ -246,7 +246,7 @@ func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
 	// separate step, so print guidance and return nil regardless of the code.
 	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
-		"sandbox: agent session ended (exit code %d). Run sandbox-fetch.cmd to collect findings into .scratch.\n",
+		"sandbox: agent session ended (exit code %d). Run sandbox/fetch.cmd to collect findings into .scratch.\n",
 		code)
 
 	return nil
@@ -282,7 +282,7 @@ func run(argv []string) int {
 	}
 
 	// Dispatch on the first remaining positional argument. An absent positional
-	// defaults to "build" so the bare `sandbox-build.cmd` invocation still builds.
+	// defaults to "build" so the bare `sandbox/build.cmd` invocation still builds.
 	subcommand := ""
 	if args := fs.Args(); len(args) > 0 {
 		subcommand = args[0]
@@ -292,7 +292,7 @@ func run(argv []string) int {
 	case "", "build":
 		// Default subcommand: clone or reset the Hub. Parse the build-only -reset
 		// flag from the positionals after the "build" token (absent when the bare
-		// sandbox-build.cmd is used, so reset defaults to false).
+		// sandbox/build.cmd is used, so reset defaults to false).
 		bf := flag.NewFlagSet("sandbox build", flag.ContinueOnError)
 		bf.SetOutput(os.Stderr)
 		reset := bf.Bool("reset", false, "rebuild the Hub even if it already exists")
@@ -509,7 +509,7 @@ func run(argv []string) int {
 			fmt.Fprintln(os.Stderr, "sandbox: -loomyard is required for the fetch subcommand")
 			return 1
 		}
-		// filepath.Clean strips the trailing "."/separator that sandbox-fetch.cmd
+		// filepath.Clean strips the trailing "."/separator that sandbox/fetch.cmd
 		// passes via "%~dp0." before resolving to an absolute path.
 		absLoomyard, err := filepath.Abs(filepath.Clean(*loomyard))
 		if err != nil {

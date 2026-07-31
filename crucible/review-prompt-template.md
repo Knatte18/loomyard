@@ -1,6 +1,6 @@
 # `<MODULE>` — independent review + fix (prompt template)
 
-> **This is a TEMPLATE.** Copy it to `crucible/<module>-review-prompt.md` and replace every `<PLACEHOLDER>`. It is the round agent's instruction set for the review+fix work itself — the orchestrator spawns a fresh clean-room agent told only "read this file and do exactly what it says". The `crucible-reviewer-<effort>` agent-file preamble under `.claude/agents/` also carries the clean-room / commit-per-fix / summary-only contract, but this file remains the authoritative statement of it. See [README.md](README.md) for the loop this prompt runs inside, and [`reed-review-prompt.md`](reed-review-prompt.md) for a fully-worked instance to crib from.
+> **This is a TEMPLATE — the only checked-in prompt in this directory.** When you (the orchestrator) are asked to run crucible on a module, fill every `<PLACEHOLDER>` in a COPY of this file and write that filled instance to `.scratch/<module>-review-prompt.md` (gitignored). The per-module prompt is written fresh each campaign and is deliberately **NOT checked in** — a module's real state is stale the moment a review lands, so any committed instance would only rot; if crucible is re-run on a module later, its prompt is written anew from this template then and there. The filled instance is the round agent's instruction set for the review+fix work itself — the orchestrator spawns a fresh clean-room agent told only "read that file and do exactly what it says". The `crucible-reviewer-<effort>` agent-file preamble under `.claude/agents/` also carries the clean-room / commit-per-fix / summary-only contract, but this file remains the authoritative statement of it. See [README.md](README.md) for the loop this prompt runs inside.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `<MODULE>` module in the loomyard repo, followed by FIXING what you find. Work in the worktree at `<WORKTREE_PATH>` (branch `<BRANCH>`). Adjust that path/branch if the task lives elsewhere now.
 
@@ -41,7 +41,11 @@ The pure/unit-tested parts are usually solid; defects concentrate in the COMPOSE
 - `<INVARIANT 2 — a crash/restart/rebirth path>`
 - `<INVARIANT 3 — a concurrency / cross-instance / shared-resource scope boundary>`
 - `<INVARIANT 4 — a mid-operation-failure orphan / reporting-honesty / env-hygiene invariant>`
-(For a fully-worked example of this list, see the "High-yield focus" section of [`reed-review-prompt.md`](reed-review-prompt.md).)
+(Worked example — reed's high-yield focus list, showing the shape and specificity expected. Fill THIS section with the equivalent for your module:
+- `down` must reap every pane **child** process, not just the pane itself — repro: start a pane running a long-lived child, `lyx reed down`, then confirm no orphaned child PIDs survive.
+- Crash/rebirth — a hub whose tmux **server** died out from under it must rebuild cleanly on the next command, never error out or act on dead state — repro: kill the tmux server while a hub is live, then run any `lyx reed` verb.
+- Cross-instance scope boundary — `remove`/`down` in worktree A must never reap panes belonging to worktree B's hub — repro: two hubs live at once, tear one down, assert the other's panes are untouched.
+- Mid-operation-failure orphan — an operation interrupted between two steps (e.g. clone-then-junction) must leave no half-linked state a later run trips on, and must report honestly what it did and did not complete.)
 
 ## Explicitly OUT of scope for `<MODULE>` v1
 `<List anything whose ABSENCE is correct so the reviewer doesn't flag it — e.g. concerns that belong to a neighboring module. State it plainly.>`
@@ -59,7 +63,7 @@ Before writing the "Live smoke" commands below, the person instantiating this te
 `<LLM-DRIVING: yes/no — fill in for this module>`. If **yes**:
 - List every `//go:build smoke` test function by name and, for each, how many real LLM subprocesses ONE invocation spawns (check any fan/cluster config it resolves).
 - The "Live smoke" commands below MUST each name exactly ONE test function via `-run <ExactTestName>` — a bare `-run Smoke` or any pattern matching more than one test function is BANNED for this module, full stop, no exceptions for "extra confidence" or "if there's time."
-- Any test function that spawns more than one real LLM subprocess per invocation (a fan/cluster test) MUST be named explicitly in an "EXECUTION BAN" list unless this round's own mission is specifically to test that fan/cluster path — copy the shape of the EXECUTION BAN section in `burler-review-prompt.md` for the wording to reuse.
+- Any test function that spawns more than one real LLM subprocess per invocation (a fan/cluster test) MUST be named explicitly in an "EXECUTION BAN" list unless this round's own mission is specifically to test that fan/cluster path. Shape to reuse for that list: a bold **EXECUTION BAN** heading, then one bullet per banned test naming the exact `//go:build smoke` function, how many real provider subprocesses ONE invocation of it spawns, and the flat rule "do NOT run this test this round — not for extra confidence, not if there's time." Close the list with the one-line reason the ban exists: simultaneous real provider sessions exhaust the host's RAM.
 - Never run more than one live-substrate (`-tags smoke`) invocation at a time, in parallel, or backgrounded — one process, foreground, waited on to completion.
 - The generic "N× CONCURRENT full smoke suites" gate in `orchestrator-prompt.md`/README.md's verification protocol does NOT apply to an LLM-driving module as written — running N concurrent copies of a real-LLM-spawning suite multiplies real subprocess count by N. Do not run that gate for this module without first working out, on paper, the actual process count it would produce, and getting the operator to confirm that count is acceptable.
 

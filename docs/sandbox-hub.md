@@ -49,7 +49,7 @@ If neither is resolvable, the sandbox tool will fail with a clear error message.
 ### First Build
 
 ```cmd
-sandbox-build.cmd
+sandbox/build.cmd
 ```
 
 This command:
@@ -65,7 +65,7 @@ This command:
 To remove and rebuild the Hub:
 
 ```cmd
-sandbox-build.cmd -reset
+sandbox/build.cmd -reset
 ```
 
 The `-reset` flag:
@@ -80,13 +80,13 @@ Once the Hub is built, the `suite` subcommand runs an automated black-box test s
 
 ### Prerequisites
 
-- Hub already built (`sandbox-build.cmd`).
+- Hub already built (`sandbox/build.cmd`).
 - `lyx` resolvable: dev binary in `.dev-bin` (deployed via `deploy-dev`), or, as a fallback, on PATH (deployed via `deploy.cmd`).
 
 ### Usage
 
 ```cmd
-sandbox-core-suite.cmd
+sandbox/core-suite.cmd
 ```
 
 This command, run from the lyx repo directory:
@@ -102,20 +102,20 @@ The agent works entirely as a black box: it sees only `lyx` on PATH and the copi
 ### Optional flags
 
 ```cmd
-sandbox-core-suite.cmd -claude <path>   # override the claude binary (default: resolve from PATH)
-sandbox-core-suite.cmd -prompt <text>   # override the instruction string (default: built-in)
+sandbox/core-suite.cmd -claude <path>   # override the claude binary (default: resolve from PATH)
+sandbox/core-suite.cmd -prompt <text>   # override the instruction string (default: built-in)
 ```
 
 ### Exit-code note
 
-The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox-fetch.cmd`. The claude session's precise exit code is not otherwise acted upon.
+The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox/fetch.cmd`. The claude session's precise exit code is not otherwise acted upon.
 
 ## Fetching the report
 
 After the suite session ends, collect the agent-written report into this repo's `.scratch/`:
 
 ```cmd
-sandbox-fetch.cmd
+sandbox/fetch.cmd
 ```
 
 This command:
@@ -126,7 +126,7 @@ This command:
 
 On success it prints the fetched path and, when there are findings, the exact `/mill-report-to-tasks "<path>"` triage command to run next (nothing is written to the wiki until you approve); a clean run says so and points at nothing.
 
-If the agent produced no report, `fetch` fails with a distinct "not found" error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage". Only `sandbox-fetch.cmd` passes `-loomyard` (as `"%~dp0."`, the loomyard repo root); it is required only by this subcommand.
+If the agent produced no report, `fetch` fails with a distinct "not found" error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage". Only `sandbox/fetch.cmd` passes `-loomyard` (as `"%~dp0..\."`, the loomyard repo root — the parent of the `sandbox/` folder the launcher lives in); it is required only by this subcommand.
 
 ### Future: tmux launch
 
@@ -134,21 +134,21 @@ The direct `claude` launch used today will be replaced by a tmux interactive ses
 
 ## Running the reed suite
 
-Alongside the main suite, `sandbox-reed-suite.cmd` runs a dedicated black-box suite against `lyx reed`. It mirrors the main-suite flow: it copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes the copy the same way `SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches the interactive agent there. Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a precondition beyond what the main suite requires. Findings land in the same `sandbox-report.json` in the host repo, so `sandbox-fetch.cmd` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
+Alongside the main suite, `sandbox/reed-suite.cmd` runs a dedicated black-box suite against `lyx reed`. It mirrors the main-suite flow: it copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes the copy the same way `SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches the interactive agent there. Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a precondition beyond what the main suite requires. Findings land in the same `sandbox-report.json` in the host repo, so `sandbox/fetch.cmd` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
 
 ## Launchers and subcommands
 
 The single Go tool (`tools/sandbox`) still dispatches four subcommands internally — `build` (default), `suite`, `reed-suite`, and `fetch` — but each is fronted by its own single-purpose launcher, mirroring how `deploy.cmd`/`deploy-dev.cmd` each do one thing:
 
 ```cmd
-sandbox-build.cmd            # go run ./tools/sandbox -parent C:\Code build
-sandbox-build.cmd -reset     # ... build -reset  (tear down and re-clone)
-sandbox-core-suite.cmd            # ... suite  (run the interactive agent)
-sandbox-reed-suite.cmd       # ... reed-suite  (run the reed-specific interactive agent)
-sandbox-fetch.cmd            # ... -loomyard "%~dp0." fetch  (collect the report)
+sandbox/build.cmd            # go run ./tools/sandbox -parent C:\Code build
+sandbox/build.cmd -reset     # ... build -reset  (tear down and re-clone)
+sandbox/core-suite.cmd            # ... suite  (run the interactive agent)
+sandbox/reed-suite.cmd       # ... reed-suite  (run the reed-specific interactive agent)
+sandbox/fetch.cmd            # ... -loomyard "%~dp0..\." fetch  (collect the report)
 ```
 
-`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so `sandbox-build.cmd -reset` forwards `%*` straight through to `... build -reset`.
+`-reset` is a flag of the `build` subcommand (parsed after the `build` token), so `sandbox/build.cmd -reset` forwards `%*` straight through to `... build -reset`.
 
 ## Purpose: dogfooding lyx
 

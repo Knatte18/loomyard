@@ -9,7 +9,7 @@ A structured test-loop for exercising `lyx reed` against a **live tmux server** 
 Before starting a session:
 
 1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot -- re-deploy after any source change you want to test.
-2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset` to start clean); the session cwd is the Hub host repo root, the same operating model as the main suite.
+2. **Materialize the hub.** Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean); the session cwd is the Hub host repo root, the same operating model as the main suite.
 3. **Live-tmux requirement.** tmux (or the Windows tmux port) on PATH and PowerShell 7 present. If tmux or pwsh is unavailable in the session, **note that as the session outcome rather than treating it as a reed defect** -- the `**Covers:** reed` tag on M2 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
 
 ## Black-box rule
