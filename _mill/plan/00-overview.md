@@ -30,12 +30,12 @@ batches:
     name: snapshot-reader
     file: 03-snapshot-reader.md
     depends-on: []
-    verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/...
+    verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/... ./cmd/lyx/...
   - number: 4
     name: empty-commit-rule
     file: 04-empty-commit-rule.md
     depends-on: [2, 3]
-    verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/...
+    verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/... ./cmd/lyx/...
   - number: 5
     name: design-docs
     file: 05-design-docs.md

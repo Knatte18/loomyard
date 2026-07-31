@@ -5,7 +5,7 @@ task: 'fabric: fold snapshot-tracking into the Warp-SHA trailer'
 batch: empty-commit-rule
 number: 4
 cards: 7
-verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/...
+verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/... ./cmd/lyx/...
 depends-on: [2, 3]
 ```
 
@@ -108,6 +108,7 @@ The rule closes a genuine correctness hole with no other fix. raddle regenerates
   - `internal/fabricengine/revert.go`
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/syncweft_integration_test.go`
+  - `internal/fabricengine/snapshot.go`
   - `internal/gitrepo/gitrepo.go`
 - **Edits:**
   - `internal/fabricengine/snapshot_integration_test.go`
@@ -134,7 +135,7 @@ The rule closes a genuine correctness hole with no other fix. raddle regenerates
 
 ## Batch Tests
 
-`verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/...` — the same scope and the same two pre-existing Windows failures as batch 3; see the overview's `known-pre-existing-windows-test-failures` Shared Decision.
+`verify: go test -tags integration -count=1 -skip 'TestDiff_MergesWarpAndWeftSides|TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts' ./internal/fabricengine/... ./cmd/lyx/...` — the same scope and the same two pre-existing Windows failures as batch 3; see the overview's `known-pre-existing-windows-test-failures` Shared Decision. `cmd/lyx` is included for the reason every other batch includes it: the tier-purity and hermetic-env guards are module-wide walks living there, and this batch edits test files. It also carries the boundary guard, which batch 2 last touched — running it here confirms nothing in the fabricengine work drifted the pinned `gitrepo` method set out from under it.
 
 Coverage lands in two existing files: `commit_integration_test.go` (cards 18 and 19 — the inverted drop test, the unchanged-content hole, every remaining empty-commit path, and both exceptions) and `snapshot_integration_test.go` (card 20 — the correspondence overwrite and the dangling baseline). Nothing new is written in the untagged tier: every assertion in this batch needs real git history, and `commitWeftLocked`'s behaviour is not reachable without spawning git.
 
