@@ -339,12 +339,17 @@ func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 	})
 }
 
-// TestCommit_WarpOnly_SnapshotTagsDropped asserts that a warp-only
-// Fabric.Commit with a non-empty snapshotTags returns no error, commits the
-// warp side, and silently drops the tags: no Snapshot trailer and no
-// Warp-SHA trailer land on the bare warp commit.
-func TestCommit_WarpOnly_SnapshotTagsDropped(t *testing.T) {
-	f, warpPath, _ := newCommitFixture(t)
+// TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit is the inverted form
+// of the old TestCommit_WarpOnly_SnapshotTagsDropped: since the
+// tags-force-a-weft-commit Shared Decision, a warp-only Fabric.Commit call
+// carrying a non-empty snapshotTags no longer drops the tags — it commits
+// the warp side as before AND lands an empty weft commit carrying both a
+// Warp-SHA trailer (naming the warp commit that just landed) and a
+// Snapshot: trailer per tag. The old name asserted the opposite of what this
+// batch makes true, so it is renamed rather than merely re-bodied: the name
+// is the clearest single statement of the behaviour this batch reverses.
+func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
+	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "warp only change, tagged")
@@ -356,12 +361,77 @@ func TestCommit_WarpOnly_SnapshotTagsDropped(t *testing.T) {
 	if !result.WarpCommitted {
 		t.Fatalf("Commit() = %+v; want WarpCommitted=true", result)
 	}
-
-	msg := commitMessageAt(t, warpPath, result.WarpSHA)
-	if strings.Contains(msg, SnapshotTrailerKey+":") {
-		t.Errorf("warp-only commit message = %q; want no Snapshot trailer", msg)
+	if !result.WeftCommitted || result.WeftSHA == "" {
+		t.Fatalf("Commit() = %+v; want an empty weft commit to have landed (WeftCommitted=true, WeftSHA populated)", result)
 	}
-	if strings.Contains(msg, WarpSHATrailerKey+":") {
-		t.Errorf("warp-only commit message = %q; want no Warp-SHA trailer", msg)
+
+	weftMsg := commitMessageAt(t, weftPath, result.WeftSHA)
+	wantWarpTrailer := WarpSHATrailerKey + ": " + result.WarpSHA
+	if !strings.Contains(weftMsg, wantWarpTrailer) {
+		t.Errorf("empty weft commit message = %q; want it to contain %q", weftMsg, wantWarpTrailer)
+	}
+	if !strings.Contains(weftMsg, SnapshotTrailerKey+": tag1") {
+		t.Errorf("empty weft commit message = %q; want it to contain the Snapshot trailer for %q", weftMsg, "tag1")
+	}
+}
+
+// TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline is the
+// correctness-hole regression this whole batch exists to close: two
+// Fabric.Commit calls land the IDENTICAL weft content under the same
+// snapshot tag, at two different warp SHAs. Before the empty-commit rule,
+// the second call's weft-side StageAndCommit would report committed=false
+// (nothing changed against HEAD), no weft commit would land, and
+// SnapshotWarpSHA would keep answering with the first call's now-stale warp
+// SHA forever — despite the second regeneration having just confirmed
+// itself current against a newer baseline. This test must fail before the
+// implementation and pass after; a pass before the implementation means the
+// fixture itself is wrong.
+func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing.T) {
+	f, warpPath, weftPath := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	writeWarpFile(t, warpPath, "README", "warp change 1")
+	writeWeftConfigContent(t, weftPath, "identical content")
+	result1, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 1", []string{"raddle"}, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() round 1 error = %v", err)
+	}
+	if !result1.WarpCommitted || !result1.WeftCommitted {
+		t.Fatalf("Commit() round 1 = %+v; want both sides committed", result1)
+	}
+
+	got1, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() after round 1 error = %v", err)
+	}
+	if got1 != result1.WarpSHA {
+		t.Fatalf("SnapshotWarpSHA() after round 1 = %q; want %q", got1, result1.WarpSHA)
+	}
+
+	// Advance warp again, but write the IDENTICAL weft content: the
+	// weft-side pathspec matches real, tracked content, but StageAndCommit's
+	// diff against HEAD finds nothing changed — the unchanged-content case.
+	writeWarpFile(t, warpPath, "README", "warp change 2")
+	writeWeftConfigContent(t, weftPath, "identical content")
+	result2, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 2", []string{"raddle"}, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() round 2 error = %v", err)
+	}
+	if !result2.WarpCommitted {
+		t.Fatalf("Commit() round 2 = %+v; want WarpCommitted=true", result2)
+	}
+	if !result2.WeftCommitted || result2.WeftSHA == "" {
+		t.Fatalf("Commit() round 2 = %+v; want an empty weft commit to have landed despite unchanged content", result2)
+	}
+	if result2.WeftSHA == result1.WeftSHA {
+		t.Errorf("Commit() round 2 WeftSHA = %q; want a NEW commit distinct from round 1's %q", result2.WeftSHA, result1.WeftSHA)
+	}
+
+	got2, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() after round 2 error = %v", err)
+	}
+	if got2 != result2.WarpSHA {
+		t.Errorf("SnapshotWarpSHA() after round 2 = %q; want the ADVANCED baseline %q, not the stale round-1 baseline %q", got2, result2.WarpSHA, result1.WarpSHA)
 	}
 }
