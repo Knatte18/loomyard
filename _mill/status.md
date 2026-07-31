@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-design-docs  '2026-07-31T18:30:59Z'
 holistic-reviewing  '2026-07-31T18:31:30Z'
 holistic-approved  '2026-07-31T18:35:38Z'
 done  '2026-07-31T18:36:12Z'
+pr-pending  '2026-07-31T18:40:23Z'
 ```
 
 ## Batches
