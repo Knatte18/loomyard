@@ -27,18 +27,22 @@ type CommitResult struct {
 	WeftCommitted bool
 }
 
-// PartialCommitError reports a Fabric.Commit call that landed a warp commit
-// but did not complete cleanly on the weft side — see the
-// partial-failure-report-three-outcomes Shared Decision. WeftCommitted
-// distinguishes the two weft-side failure shapes it can wrap: true means the
-// weft commit itself landed but RecordCorrespondence failed to persist an
-// index entry afterwards — recoverable via an explicit RebuildIndex, since
-// the landed commit's own Warp-SHA trailer remains the correspondence
-// index's sole source of truth, and WeftSHAForWarpSHA's own one-shot rebuild
-// fires only on a stale hit, never on the index miss a never-written entry
-// produces; false means the weft commit itself failed, so nothing landed on
-// that side. WarpSHA/WeftSHA name whatever DID land, for a caller (or an
-// operator reading the error) to act on without re-deriving it.
+// PartialCommitError reports a Fabric.Commit call whose weft side did not
+// complete cleanly — see the partial-failure-report-three-outcomes Shared
+// Decision. It does NOT imply a warp commit landed: since the
+// tags-force-a-weft-commit rule, a tags-only call (zero warp files) can hit
+// either weft-side failure shape with WarpSHA left empty, so WarpSHA must be
+// read as "whatever landed on warp, if anything" rather than as proof a warp
+// commit exists. WeftCommitted distinguishes the two weft-side failure
+// shapes it can wrap: true means the weft commit itself landed but
+// RecordCorrespondence failed to persist an index entry afterwards —
+// recoverable via an explicit RebuildIndex, since the landed commit's own
+// Warp-SHA trailer remains the correspondence index's sole source of truth,
+// and WeftSHAForWarpSHA's own one-shot rebuild fires only on a stale hit,
+// never on the index miss a never-written entry produces; false means the
+// weft commit itself failed, so nothing landed on that side. WarpSHA/WeftSHA
+// name whatever DID land, for a caller (or an operator reading the error) to
+// act on without re-deriving it.
 type PartialCommitError struct {
 	WarpSHA       string
 	WeftSHA       string
@@ -46,12 +50,20 @@ type PartialCommitError struct {
 	Err           error
 }
 
-// Error implements the error interface.
+// Error implements the error interface. The warp clause is included only
+// when e.WarpSHA is populated: a tags-only Fabric.Commit call (zero warp
+// files) can hit either branch below with no warp commit at all, and
+// asserting one landed regardless — as an earlier version of this method
+// did — misdescribes that first-class shape.
 func (e *PartialCommitError) Error() string {
-	if e.WeftCommitted {
-		return fmt.Sprintf("fabricengine: warp commit %s landed, weft commit %s landed but was not recorded in the correspondence index: %v", e.WarpSHA, e.WeftSHA, e.Err)
+	warpClause := "no warp commit"
+	if e.WarpSHA != "" {
+		warpClause = fmt.Sprintf("warp commit %s landed", e.WarpSHA)
 	}
-	return fmt.Sprintf("fabricengine: warp commit %s landed, weft commit failed: %v", e.WarpSHA, e.Err)
+	if e.WeftCommitted {
+		return fmt.Sprintf("fabricengine: %s, weft commit %s landed but was not recorded in the correspondence index: %v", warpClause, e.WeftSHA, e.Err)
+	}
+	return fmt.Sprintf("fabricengine: %s, weft commit failed: %v", warpClause, e.Err)
 }
 
 // Unwrap returns the wrapped error, so errors.Is/errors.As reach it.
@@ -79,7 +91,23 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // commit-lock-scoped-to-commit-only Shared Decision): the network push runs
 // in the detached child under its own separate absorbing push lock, never
 // under this commit lock. A fully degenerate no-op call (nothing on either
-// side) takes no lock, runs no ensureWeftLockDir, and spawns no push.
+// side, and no snapshot tags) takes no lock, runs no ensureWeftLockDir, and
+// spawns no push.
+//
+// weftSide — and therefore whether committing takes the combined lock and
+// runs ensureWeftLockDir — is true whenever there are weft files OR
+// snapshotTags is non-empty (and opts.SkipGit is false), per the
+// tags-force-a-weft-commit Shared Decision: commitWeftLocked lands an empty
+// weft commit carrying the tags when there is otherwise nothing to commit.
+// This means a tags-only or warp-only-but-tagged call now takes the lock and
+// runs ensureWeftLockDir where an earlier version of Commit did neither —
+// that is correct, since the call is about to write to weft, but it is a
+// real behavioural widening from a predicate that once looked only at
+// weftFiles. Commit(nil, msg, tags, opts) — tags with zero files at all — is
+// consequently a supported call shape, not an accident of the predicate: it
+// is how a caller records a baseline (a warp SHA under a snapshot tag)
+// without producing any weft content of its own, the standalone-snapshot use
+// this design's write path serves without a new method.
 //
 // Finally, Commit fires the async, fire-and-forget push of whatever landed
 // via spawnDetachedPushFn, but only when something actually landed
@@ -97,7 +125,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	}
 
 	warpFiles, weftFiles := classifyPaths(".", wiredNames, files)
-	weftSide := len(weftFiles) > 0 && !opts.SkipGit
+	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 
 	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)
 	if err != nil {
