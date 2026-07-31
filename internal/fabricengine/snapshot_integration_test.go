@@ -4,8 +4,11 @@
 // Fabric.SnapshotWarpSHA: newest-tagged-commit-wins, tag isolation, the
 // multi-tag-on-one-commit split, the absent-is-not-an-error miss path, the
 // unborn-weft-HEAD tolerance, untagged/no-baseline commits, a Snapshot
-// trailer with no Warp-SHA sibling, byte-exact tag matching, and per-branch
-// scoping. Package fabricengine (internal), reusing
+// trailer with no Warp-SHA sibling, byte-exact tag matching, per-branch
+// scoping, and (card 13) the one fixture that can actually discriminate
+// card 10's --topo-order change from git log's date-ordered default: a
+// back-dated merge commit, plus a RebuildIndex equivalence assertion on the
+// same history. Package fabricengine (internal), reusing
 // index_integration_test.go's newPlainWarpRepo, currentSHA, commitWarp,
 // commitWeftWithTrailer, and newFabric helpers rather than building a
 // parallel harness — they share this package.
@@ -14,6 +17,7 @@ package fabricengine
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -293,5 +297,147 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	}
 	if got != "" {
 		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (tag recorded on another branch must read as absent)", got)
+	}
+}
+
+// commitWeftTaggedWithDate commits content into weftPath's tracked
+// _lyx/<file> (a caller-chosen filename, so a side-branch commit can avoid
+// touching the same path a mainline commit touches and merge without
+// conflict) at a caller-chosen GIT_COMMITTER_DATE, carrying a Warp-SHA
+// trailer for warp's current HEAD (advanced first) and one Snapshot trailer
+// per tag. It then calls f.RecordCorrespondence itself, exactly as
+// commitWeftLocked would have — building the back-dated commit directly,
+// rather than committing normally through CommitWeft and amending the date
+// afterward, means there is never an earlier, now-superseded correspondence
+// entry to clean up before the equivalence assertion below runs.
+//
+// The raw `git commit` call is a bare exec.Command, not
+// gitexec.RunGit/lyxtest.MustRun: neither of those helpers accepts a
+// caller-supplied environment, and this is the only commit in this package
+// that needs one. cmd.Env is scoped to this ONE invocation — appended onto
+// os.Environ(), never replacing it — rather than a process-wide
+// os.Setenv(GIT_COMMITTER_DATE, ...): several tests in this package run
+// under t.Parallel(), so a process-wide override would leak into whichever
+// of them happens to be committing at the same moment and produce an
+// intermittent failure blamed on the wrong test. Appending onto
+// os.Environ() (rather than replacing it) preserves the
+// GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM pair this package's TestMain sets
+// via lyxtest.HermeticGitEnv(), so this one raw commit stays hermetic too.
+func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file, content, committerDate string, tags ...string) (warpSHA, weftSHA string) {
+	t.Helper()
+
+	warpSHA = commitWarp(t, warpPath, content)
+
+	filePath := filepath.Join(weftPath, "_lyx", file)
+	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftPath, "git", "add", ".")
+
+	msg := appendWarpSHATrailer(DefaultCommitMessage, warpSHA)
+	msg, err := appendSnapshotTrailers(msg, tags)
+	if err != nil {
+		t.Fatalf("appendSnapshotTrailers() error = %v", err)
+	}
+
+	cmd := exec.Command("git", "commit", "-q", "-m", msg)
+	cmd.Dir = weftPath
+	cmd.Env = append(os.Environ(), "GIT_COMMITTER_DATE="+committerDate)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit (backdated, dir=%s): %v; output: %s", weftPath, err, output)
+	}
+
+	weftSHA = currentSHA(t, weftPath)
+	if err := f.RecordCorrespondence(warpSHA, weftSHA); err != nil {
+		t.Fatalf("RecordCorrespondence() error = %v", err)
+	}
+	return warpSHA, weftSHA
+}
+
+// TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate is the one fixture that
+// can actually witness card 10's --topo-order change: every other case in
+// this file (and TestRebuildIndex_EqualsIncrementallyBuiltIndex in
+// syncweft_integration_test.go) is a linear history where date order and
+// topological order coincide, so they would pass identically with or
+// without the flag and prove nothing about it.
+//
+// The fixture: a mainline commit carries the "raddle" tag at a normal
+// (real, current) committer date. A "side" branch is then forked FROM that
+// mainline commit — so the side commit is a genuine topological descendant
+// of it — and its own "raddle"-tagged commit is given a committer date
+// back-dated to the year 2000, simulating a skewed clock on whatever
+// machine produced it. The side branch is merged back into mainline with
+// --no-ff. Because the side commit really is a descendant of the mainline
+// one (regardless of what its clock claims), --topo-order must never list
+// it before its own ancestor; a plain date-ordered scan would get this
+// backwards and answer with the OLDER mainline baseline, under-reporting
+// staleness. Both assertions below run against this same history: first,
+// that SnapshotWarpSHA resolves to the topologically-newest (side) commit's
+// warp SHA, not the date-newest (mainline) one; second, reusing
+// TestRebuildIndex_EqualsIncrementallyBuiltIndex's own comparison, that
+// RebuildIndex agrees with the incrementally-built index over the same
+// history — proving the ordering change did not desynchronize the two.
+//
+// A residual ambiguity is accepted here rather than solved: when two
+// snapshot commits for the same tag sit on genuinely CONCURRENT branches —
+// neither an ancestor of the other, as opposed to this fixture's genuine
+// ancestor relationship — "newest" is a topological choice between
+// incomparable commits, and either could legitimately be returned. Both
+// are legitimate baselines in that case; whichever is chosen, the
+// consumer's ChangedFilesSince against it reports a superset or equal set
+// of the truly-changed files, and over-reporting is the safe direction, so
+// no attempt is made to define a tie-break between concurrent branches here.
+func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
+	t.Parallel()
+
+	warpPath := newPlainWarpRepo(t)
+	weftFixture := lyxtest.CopyWeft(t)
+	f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "mainline tagged", "raddle")
+
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "side")
+	warpSHASide, _ := commitWeftTaggedWithDate(t, f, warpPath, weftFixture.WeftPath, "side-marker.txt", "side tagged (back-dated)", "2000-01-01T00:00:00+0000", "raddle")
+
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "main")
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "merge", "--no-ff", "-m", "merge side into main", "side")
+
+	got, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+	}
+	if got != warpSHASide {
+		t.Errorf("SnapshotWarpSHA(\"raddle\") = %q; want the topologically-newest (side) baseline %q, not the date-newest mainline baseline %q", got, warpSHASide, warpSHAMainline)
+	}
+
+	path, err := f.corrIndexPath()
+	if err != nil {
+		t.Fatalf("corrIndexPath() error = %v", err)
+	}
+	incremental, err := loadCorrIndex(path)
+	if err != nil {
+		t.Fatalf("loadCorrIndex() error = %v", err)
+	}
+	wantEntries := incremental.entries()
+	if len(wantEntries) != 2 {
+		t.Fatalf("incrementally-built index has %d entries; want 2", len(wantEntries))
+	}
+
+	if err := f.RebuildIndex(); err != nil {
+		t.Fatalf("RebuildIndex() error = %v", err)
+	}
+	rebuilt, err := loadCorrIndex(path)
+	if err != nil {
+		t.Fatalf("loadCorrIndex() (post-rebuild) error = %v", err)
+	}
+	gotEntries := rebuilt.entries()
+
+	if len(gotEntries) != len(wantEntries) {
+		t.Fatalf("RebuildIndex() entries = %d; want %d", len(gotEntries), len(wantEntries))
+	}
+	for i := range wantEntries {
+		if gotEntries[i] != wantEntries[i] {
+			t.Errorf("entries[%d]: RebuildIndex()=%+v incremental=%+v; want equal", i, gotEntries[i], wantEntries[i])
+		}
 	}
 }
