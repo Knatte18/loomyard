@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxtest"
@@ -439,5 +440,133 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 		if gotEntries[i] != wantEntries[i] {
 			t.Errorf("entries[%d]: RebuildIndex()=%+v incremental=%+v; want equal", i, gotEntries[i], wantEntries[i])
 		}
+	}
+}
+
+// treeSHA resolves rev's tree object SHA in repoPath, via `git rev-parse
+// <rev>^{tree}` — used to compare two commits' trees directly, independent
+// of their own commit SHAs.
+func treeSHA(t *testing.T, repoPath, rev string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-parse", rev+"^{tree}")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse %s^{tree} in %s: %v", rev, repoPath, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins pins the
+// case card 17 documents but does not itself pin: a warp SHA recorded by
+// TWO weft commits — a content commit under "raddle", then a tags-only
+// commit at the SAME (unchanged) warp HEAD under the same tag. Three things
+// are asserted. First, WeftSHAForWarpSHA resolves to the newer, EMPTY
+// commit — last recorded wins, exactly as corrIndex.record already
+// documents. Second, RebuildIndex's full trailer rescan agrees with the
+// incrementally-built index over this same history, reusing the
+// entries()-comparison TestRebuildIndex_EqualsIncrementallyBuiltIndex
+// (syncweft_integration_test.go) already establishes as the equivalence
+// check. Third — the assertion that makes the overwrite BENIGN rather than
+// merely tolerated — the empty commit's tree is byte-identical to the
+// content commit's, so resolving through the overwritten entry restores
+// exactly the same weft state either commit would have.
+func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T) {
+	warpPath := newPlainWarpRepo(t)
+	weftFixture := lyxtest.CopyWeft(t)
+	f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+	warpSHA, contentWeftSHA := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "content commit", "raddle")
+
+	// A genuine tags-only call (nil pathspec) at the same warp HEAD — warp is
+	// not advanced again here — so the empty-commit rule's `!positive`
+	// fall-through fires and RecordCorrespondence upserts over the entry the
+	// content commit just wrote for warpSHA.
+	emptyWeftSHA, committed, err := f.CommitWeft(nil, DefaultCommitMessage, SyncOptions{}, "raddle")
+	if err != nil {
+		t.Fatalf("CommitWeft() (tags-only, same warp HEAD) error = %v", err)
+	}
+	if !committed || emptyWeftSHA == "" {
+		t.Fatalf("CommitWeft() = (%q, %v); want an empty commit to have landed", emptyWeftSHA, committed)
+	}
+	if emptyWeftSHA == contentWeftSHA {
+		t.Fatalf("CommitWeft() landed the same SHA as the content commit; want a distinct empty commit")
+	}
+
+	got, err := f.WeftSHAForWarpSHA(warpSHA)
+	if err != nil {
+		t.Fatalf("WeftSHAForWarpSHA() error = %v", err)
+	}
+	if got != emptyWeftSHA {
+		t.Errorf("WeftSHAForWarpSHA(%q) = %q; want the newer empty commit %q (last recorded wins)", warpSHA, got, emptyWeftSHA)
+	}
+
+	path, err := f.corrIndexPath()
+	if err != nil {
+		t.Fatalf("corrIndexPath() error = %v", err)
+	}
+	incremental, err := loadCorrIndex(path)
+	if err != nil {
+		t.Fatalf("loadCorrIndex() error = %v", err)
+	}
+	wantEntries := incremental.entries()
+
+	if err := f.RebuildIndex(); err != nil {
+		t.Fatalf("RebuildIndex() error = %v", err)
+	}
+	rebuilt, err := loadCorrIndex(path)
+	if err != nil {
+		t.Fatalf("loadCorrIndex() (post-rebuild) error = %v", err)
+	}
+	gotEntries := rebuilt.entries()
+
+	if len(gotEntries) != len(wantEntries) {
+		t.Fatalf("RebuildIndex() entries = %d; want %d", len(gotEntries), len(wantEntries))
+	}
+	for i := range wantEntries {
+		if gotEntries[i] != wantEntries[i] {
+			t.Errorf("entries[%d]: RebuildIndex()=%+v incremental=%+v; want equal", i, gotEntries[i], wantEntries[i])
+		}
+	}
+
+	gotTree := treeSHA(t, weftFixture.WeftPath, emptyWeftSHA)
+	wantTree := treeSHA(t, weftFixture.WeftPath, contentWeftSHA)
+	if gotTree != wantTree {
+		t.Errorf("empty commit tree = %q; want it identical to the content commit's tree %q (the overwrite is benign because both resolve to the same weft state)", gotTree, wantTree)
+	}
+}
+
+// TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse pins the
+// reader's validate-at-use posture: a recorded Warp-SHA whose warp commit is
+// later rewritten away (rebase/amend/reset+prune) is returned RAW by
+// SnapshotWarpSHA, with a nil error — not collapsed to absent and not
+// resolved to an older baseline — and f.Warp.SHAExists on the returned SHA
+// reports false, demonstrating the "read, then check SHAExists" consumer
+// idiom SnapshotWarpSHA's own doc comment describes, in executable form.
+func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
+	warpPath := newPlainWarpRepo(t)
+	weftFixture := lyxtest.CopyWeft(t)
+	f := newFabric(t, warpPath, weftFixture.WeftPath)
+
+	baseWarpSHA := currentSHA(t, warpPath)
+	danglingWarpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "will be rewritten away", "raddle")
+
+	// Rewrite warp history so danglingWarpSHA no longer resolves: reset back
+	// to the base commit, then force git to genuinely forget the orphaned
+	// object — a plain reset alone leaves it resolvable via the reflog for a
+	// while (expireAndPruneUnreachable, syncweft_integration_test.go).
+	lyxtest.MustRun(t, warpPath, "git", "reset", "--hard", baseWarpSHA)
+	expireAndPruneUnreachable(t, warpPath)
+
+	got, err := f.SnapshotWarpSHA("raddle")
+	if err != nil {
+		t.Fatalf("SnapshotWarpSHA() error = %v; want nil (a dangling Warp-SHA is returned raw, not an error)", err)
+	}
+	if got != danglingWarpSHA {
+		t.Errorf("SnapshotWarpSHA() = %q; want the dangling SHA %q returned raw", got, danglingWarpSHA)
+	}
+	if f.Warp.SHAExists(got) {
+		t.Errorf("Warp.SHAExists(%q) = true; want false (the warp commit was rewritten away)", got)
 	}
 }
