@@ -27,6 +27,8 @@ It is a root batch with no dependencies. Batch 2 (`commit-empty-primitive`) depe
   - `internal/gitrepo/snapshot.go`
   - `internal/gitrepo/gitrepo.go`
   - `internal/gitrepo/gogit.go`
+  - `internal/gitrepo/reset.go`
+  - `internal/gitrepo/push.go`
 - **Edits:**
   - `internal/gitrepo/gogit_test.go`
   - `internal/gitrepo/keyvalidation_test.go`
@@ -77,6 +79,7 @@ It is a root batch with no dependencies. Batch 2 (`commit-empty-primitive`) depe
 - **Context:**
   - `cmd/lyx/gitrepoboundary_test.go`
   - `internal/gitrepo/gitrepo.go`
+  - `internal/gitrepo/push.go`
 - **Edits:**
   - `CONSTRAINTS.md`
 - **Creates:** none

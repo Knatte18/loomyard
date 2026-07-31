@@ -44,6 +44,7 @@ The rule closes a genuine correctness hole with no other fix. raddle regenerates
   - `internal/fabricengine/trailer.go`
   - `internal/fabricengine/index.go`
   - `internal/gitrepo/gitrepo.go`
+  - `internal/fabricengine/fabric.go`
 - **Edits:**
   - `internal/fabricengine/weftgit.go`
 - **Creates:** none
@@ -92,6 +93,7 @@ The rule closes a genuine correctness hole with no other fix. raddle regenerates
   - `internal/fabricengine/weftgit_pathspec_integration_test.go`
   - `internal/fabricengine/weftgit_unborn_warp_test.go`
   - `internal/gitrepo/gitrepo.go`
+  - `internal/lyxtest/lyxtest.go`
 - **Edits:**
   - `internal/fabricengine/commit_integration_test.go`
 - **Creates:** none

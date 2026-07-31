@@ -43,6 +43,7 @@ It is a root batch alongside batch 1: it touches only `internal/fabricengine`, w
   - `internal/fabricengine/trailer.go`
   - `internal/fabricengine/fabric.go`
   - `internal/gitrepo/gitrepo.go`
+  - `internal/fabricengine/checkout.go`
 - **Edits:** none
 - **Creates:**
   - `internal/fabricengine/snapshot.go`
@@ -61,6 +62,7 @@ It is a root batch alongside batch 1: it touches only `internal/fabricengine`, w
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/checkout.go`
   - `internal/fabricengine/testmain_test.go`
+  - `internal/lyxtest/lyxtest.go`
 - **Edits:** none
 - **Creates:**
   - `internal/fabricengine/snapshot_integration_test.go`
@@ -77,6 +79,9 @@ It is a root batch alongside batch 1: it touches only `internal/fabricengine`, w
   - `internal/fabricengine/corrindex.go`
   - `internal/fabricengine/index_integration_test.go`
   - `internal/fabricengine/syncweft_integration_test.go`
+  - `internal/lyxtest/lyxtest.go`
+  - `internal/gitexec/gitexec.go`
+  - `internal/fabricengine/testmain_test.go`
 - **Edits:**
   - `internal/fabricengine/snapshot_integration_test.go`
 - **Creates:** none
