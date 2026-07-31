@@ -88,7 +88,7 @@ The most surgical adoption batch: widens `internal/scoutengine`'s machine-enforc
   Convert `internal/scoutengine/ensureserver.go:465`'s `fmt.Fprintf(os.Stderr, "scoutengine: kill wedged supervised daemon pid %d for %q: %v\n", escalationState.PID, lang, err)` to `logger.Warn("scoutengine: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)` — all three values (`escalationState.PID`, `lang`, `err`) are already in scope at this site (guarded by the existing `if escalationFound { if err := proc.KillPID(...); err != nil { ... } }` block at lines 463-467).
 - **Commit:** `feat(scoutengine): convert the wedged-daemon-kill stderr write to logger.Warn`
 
-### Card 44: Missing spawn/teardown observability
+### Card 44: Missing spawn observability
 
 - **Context:** none
 - **Edits:**
@@ -97,10 +97,10 @@ The most surgical adoption batch: widens `internal/scoutengine`'s machine-enforc
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Add the spawn/teardown observability CONSTRAINTS.md's Live-Substrate Spawn Observability entry already requires for a live-substrate spawn point, per discussion.md's `scoutengine-allowlist` decision's "The spawn-logging obligation is IN this task" paragraph:
-  - Immediately after the supervised daemon's `cmd.Start()` succeeds (`ensureserver.go:520`, `cmd := exec.Command(argv[0], argv[1:]...)` built from `supervisedArgv(command, socketPath)` at line 519), add `logger.Info("scoutengine: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)` — naming lang, pid, and socket path as discussion.md's decision text specifies verbatim.
-  - Locate this package's normal-exit teardown path for the supervised daemon (its clean-shutdown counterpart to the wedged-kill escalation at line 465 — read `ensureserver.go` in full via this card's own edit target to find it, since the research pass surfaced the spawn and the wedged-kill sites but not a separately named clean-teardown call) and add a matching `logger.Info` there, naming lang and pid, so both halves of the daemon's lifecycle (spawn, and its normal teardown — distinct from the already-converted wedged-kill Warn in Card 43) are observable.
-- **Commit:** `feat(scoutengine): add missing spawn/teardown logger.Info calls at the daemon lifecycle`
+  Add the spawn-side observability CONSTRAINTS.md's Live-Substrate Spawn Observability entry already requires for a live-substrate spawn point, per discussion.md's `scoutengine-allowlist` decision's "The spawn-logging obligation is IN this task" paragraph. Immediately after the supervised daemon's `cmd.Start()` succeeds (`ensureserver.go:520`, `cmd := exec.Command(argv[0], argv[1:]...)` built from `supervisedArgv(command, socketPath)` at line 519), add `logger.Info("scoutengine: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)` — naming lang, pid, and socket path as discussion.md's decision text specifies verbatim.
+
+  **There is no separate "normal teardown" call site to add** — confirmed by reading `ensureserver.go` in full: the function's own doc comment (lines 303-308) states the daemon "ends on its own: its own idle timeout... or a future restart's stale-socket cleanup finding it already dead," and `refs.go`'s `teardownConnection`'s `connKindSupervised` branch (line 146-151) is a deliberate bare `return` — the daemon must outlive the call, so scoutengine's own code never observes a clean exit event to log. Discussion.md's "both halves of the lifecycle" (spawn + teardown) is therefore satisfied by this card's spawn `Info` plus Card 43's already-converted wedged-kill `Warn` at `ensureserver.go:465` — the wedged-kill IS the only teardown event scoutengine's own code can ever see; do not invent a clean-teardown call site that does not exist.
+- **Commit:** `feat(scoutengine): add spawn observability at the supervised daemon's cmd.Start()`
 
 ## Batch Tests
 

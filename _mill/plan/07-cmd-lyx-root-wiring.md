@@ -26,7 +26,7 @@ Wires the root `PersistentPreRunE` in `cmd/lyx/main.go` to mint/adopt/export the
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  In `cmd/lyx/main.go`'s `newRoot()` (lines 70-133), extend the existing `PersistentPreRunE` (currently just `logger.SetVerbosity(verbosity); return nil`, lines 82-85):
+  In `cmd/lyx/main.go`'s `newRoot()` (lines 70-133), extend the existing `PersistentPreRunE` (currently just `logger.SetVerbosity(verbosity); return nil`, lines 95-98):
 
   ```go
   PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -51,7 +51,7 @@ Wires the root `PersistentPreRunE` in `cmd/lyx/main.go` to mint/adopt/export the
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  In `cmd/lyx/main.go`, change both `main()` (lines 39-44) and `run()` (lines 46-52) so `clihelp.RunRoot`'s result is captured into a named variable before being returned/passed to `os.Exit`, and call `logger.NotifyExit(code)` (batch 4's Card 14) immediately after capturing it and before returning:
+  In `cmd/lyx/main.go`, change both `main()` (lines 39-47) and `run()` (lines 55-63) so `clihelp.RunRoot`'s result is captured into a named variable before being returned/passed to `os.Exit`, and call `logger.NotifyExit(code)` (batch 4's Card 14) immediately after capturing it and before returning:
 
   ```go
   func main() {
