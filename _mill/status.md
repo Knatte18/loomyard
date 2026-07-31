@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: scout-rename
 branch: scout-rename
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-31T11:02:34Z'
+done  '2026-07-31T11:22:13Z'
 ```
