@@ -49,8 +49,8 @@
 // cannot fail, and it does not create, clone, or otherwise manage repo
 // topology; that is fabric's job, built directly on gitexec. From there:
 //
-//   - CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, and
-//     SHAExists are the core read/write primitives.
+//   - CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit,
+//     ChangedFilesSince, and SHAExists are the core read/write primitives.
 //   - Push and PushCoalesced are the push surface (see below).
 //   - Pull is the fast-forward-only pull surface (see below).
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
@@ -62,6 +62,43 @@
 // option-shaped string (a value with a leading '-', e.g. "--hard") can never
 // be parsed as a git flag; invalid SHAs surface as ErrInvalidSHA, or as false
 // from SHAExists per its bool-swallowing posture.
+//
+// # CommitEmpty — the empty-commit primitive
+//
+// CommitEmpty(msg) records a commit whose only content is msg itself — a
+// commit whose tree is identical to its parent's, carrying no file changes at
+// all. Neither existing primitive can be coaxed into that shape: StageAndCommit
+// returns its documented no-op signal, by design, on an empty file list, and
+// its `diff --cached --quiet` gate returns that same no-op the moment the
+// listed files' staged content matches HEAD — both are "commit this content,
+// or signal that there was none" primitives, and an empty commit has no
+// content to key either check on. CommitEmpty exists for the caller that
+// wants a commit to land regardless, with meaning carried entirely in msg.
+//
+// Because it has no content to check, CommitEmpty instead runs a pre-check on
+// the index itself, branching on whether HEAD is born or unborn. On a born
+// HEAD, an unscoped `git diff --cached --quiet` reports via exit code exactly
+// like StageAndCommit's own pathspec-scoped check does. On an unborn HEAD
+// there is no HEAD tree for `diff --cached` to compare against, so the
+// pre-check runs `git ls-files --cached` instead and treats any listed path
+// as "something is staged" — this avoids needing an empty-tree object
+// constant, which is hash-algorithm-dependent and would be a latent
+// SHA-256 bug the moment a repo's hash algorithm changes.
+//
+// This package's never-sweep norm — an automated commit must never absorb
+// content nobody asked it to commit — is what StageAndCommit enforces
+// structurally, through pathspec scoping: its `commit ... -- <files>` cannot
+// commit an unlisted path no matter what races it. CommitEmpty has no
+// pathspec to scope an empty commit with, so it can only approximate that
+// norm by refusing: finding the index dirty at the pre-check returns
+// ErrIndexNotEmpty (checkable via errors.Is) without committing. That leaves
+// an honest, narrower guarantee than StageAndCommit's — CommitEmpty is
+// check-then-commit across two separate git spawns, so an index write landing
+// in the milliseconds between the pre-check and the commit is still swept
+// into it, a window StageAndCommit's pathspec scoping closes structurally and
+// CommitEmpty cannot. This package makes no claim that CommitEmpty's callers
+// serialize their writes against that window; that discipline lives with the
+// caller.
 //
 // # SHAExists — history-rewrite safety
 //
