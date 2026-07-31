@@ -6,6 +6,7 @@ slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Diagnostic tracing (trace) on the logger module
 task_description: |
   Diagnostic tracing (trace) on the logger module
@@ -38,7 +39,9 @@ implementing  '2026-07-31T20:17:53Z'
 ```yaml
 batches:
   - name: hubgeometry-worktree-logs-dir
-    state: pending
+    state: running
+    implementer_session: 13e656c9-5683-433c-818e-b07c7b3cb274
+    start_sha: 1f688d7c9fe9fcad1d0057fcc691dc3d972c944e
   - name: logger-trace-identity
     state: pending
   - name: logger-retention-sweep
