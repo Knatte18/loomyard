@@ -85,7 +85,7 @@ Rewrites `internal/logger/logger.go`'s `Debug`/`Info`/`Warn` to fan out to two i
   - A `Debug` call under `-vv` (`SetVerbosity(2)`) reaches the stderr buffer and does **not** reach the durable sink (assert no file exists at all for a Debug-only sequence in a freshly-reset sink directory).
   - An `Info` call reaches the durable sink at **every** verbosity including the default (`SetVerbosity(0)`, Warn threshold) — the composite's `Enabled` OR-gate assertion — and reaches stderr only at `-v` (`SetVerbosity(1)`) or above.
   - A `Warn` call reaches both stderr and the durable sink at every verbosity.
-  - A `Warn` call with the durable sink unarmed (e.g. `testing.Testing()` true and `LYX_TRACE` unset, so `ensureDurableSink`'s gate keeps `sinkOK` false) reaches stderr only, no error, no panic.
+  - A `Warn` call with the durable sink unarmed — this specific case must call `SetDurableSinkDir("")` (clearing any override, unlike every other case in this card) so `ensureDurableSink`'s override check falls through to the `testing.Testing()`/`LYX_TRACE` gate and keeps `sinkOK` false — reaches stderr only, no error, no panic.
   - Every emitted line at every level carries `trace=` matching `TraceID()`'s current value (Card 18's assertion, deferred here since this is where the dual-handler wiring that actually calls `Debug`/`Info`/`Warn` end-to-end exists).
 - **Commit:** `test(logger): cover dual-handler fan-out and trace= stamping across all three levels`
 
