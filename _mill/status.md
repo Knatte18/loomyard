@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-retire-ref-mechanism
+phase: approved-snapshot-reader
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-review-r7  '2026-07-31T10:19:34Z'
 planned  '2026-07-31T10:19:34Z'
 implementing  '2026-07-31T10:21:15Z'
 approved-retire-ref-mechanism  '2026-07-31T10:49:41Z'
+approved-snapshot-reader  '2026-07-31T11:42:53Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     start_sha: ba96260dd51b9198920c26a5b562a6088be90c48
     commit_sha: 29044020388767e2f5138dc692effd3a28279dc0
   - name: snapshot-reader
-    state: running
+    state: approved
     implementer_session: 859853ed-67ed-4f00-beb8-c39019e6ce6e
     start_sha: b165d245e2b054b800f9b87ecb5e40461392c72a
+    commit_sha: 347decba386178c55bd850c0b76e8022063e8d74
   - name: commit-empty-primitive
     state: pending
   - name: empty-commit-rule
