@@ -11,11 +11,11 @@ A structured test-loop for exercising `lyx builder` against a **live tmux server
 Before starting a session:
 
 1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot -- re-deploy after any source change you want to test.
-2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset` to start clean); the session cwd is the Hub host repo root, the same operating model as the main suite.
+2. **Materialize the hub.** Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean); the session cwd is the Hub host repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7, and a logged-in `claude` on PATH. If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a builder defect** -- the `**Covers:** builder` tag on B1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
 4. **`lyx init` first.** `lyx builder` requires an initialized worktree (`_lyx/config/builder.yaml`, plus `shuttle.yaml`/`reed.yaml` since builder branches off shuttle directly) exactly like `lyx shuttle`/`lyx burler` do.
 5. **`lyx reed up` before any spawn.** `run` and `spawn-batch` spawn through shuttle into an existing reed session and do not boot one themselves; without it the spawn fails loud with `no reed session; run "lyx reed up"` (after `run` has already taken the lock and initialized `state.json`, so its error-exit backstop weft commit fires).
-6. **Attached interactive terminal.** Launch `sandbox-builder-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached. Without a TTY the driving claude session cannot idle between turns waiting for notifications, so the process ends as soon as a turn ends and the remaining scenarios are silently abandoned. The launcher prints a warning when it detects non-console stdio.
+6. **Attached interactive terminal.** Launch `sandbox/builder-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached. Without a TTY the driving claude session cannot idle between turns waiting for notifications, so the process ends as soon as a turn ends and the remaining scenarios are silently abandoned. The launcher prints a warning when it detects non-console stdio.
 
 ## Black-box rule
 
@@ -215,7 +215,7 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Teardown
 
-After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted. An orphaned tmux server holds open handles inside the Hub host repo and blocks the next `sandbox-build.cmd -reset`. The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth, and it keeps the Hub clean while the session is still open for inspection.
+After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted. An orphaned tmux server holds open handles inside the Hub host repo and blocks the next `sandbox/build.cmd -reset`. The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth, and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 

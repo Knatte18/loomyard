@@ -11,10 +11,10 @@ burler drives one review+fix round over an artifact: an A phase reviews the targ
 Before starting a session:
 
 1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot -- re-deploy after any source change you want to test.
-2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset` to start clean); the session cwd is the Hub host repo root, the same operating model as the main suite.
+2. **Materialize the hub.** Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean); the session cwd is the Hub host repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7, and a logged-in `claude` on PATH. If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a burler defect** -- the `**Covers:** burler` tag on S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
 4. **`lyx init` first.** `lyx burler run` requires an initialized worktree (`_lyx/config/shuttle.yaml` and `reed.yaml`) exactly like `lyx shuttle` and `lyx reed` do -- burler wires the real shuttle substrate (reed + claude) on every invocation and has no config file of its own; the profile YAML is the only burler-specific input.
-5. **Attached interactive terminal.** Launch `sandbox-burler-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached. Without a TTY the driving claude session cannot idle between turns waiting for notifications, so the process ends as soon as a turn ends and the remaining scenarios are silently abandoned (observed live: S1 completed, S2/S3 never ran, no `sandbox-report.json`). The launcher prints a warning when it detects non-console stdio.
+5. **Attached interactive terminal.** Launch `sandbox/burler-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached. Without a TTY the driving claude session cannot idle between turns waiting for notifications, so the process ends as soon as a turn ends and the remaining scenarios are silently abandoned (observed live: S1 completed, S2/S3 never ran, no `sandbox-report.json`). The launcher prints a warning when it detects non-console stdio.
 
 ## Black-box rule
 
@@ -128,7 +128,7 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Teardown
 
-After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted with `lyx reed up`. An orphaned tmux server holds open handles inside the Hub host repo and blocks the next `sandbox-build.cmd -reset`. The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth, and it keeps the Hub clean while the session is still open for inspection.
+After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted with `lyx reed up`. An orphaned tmux server holds open handles inside the Hub host repo and blocks the next `sandbox/build.cmd -reset`. The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth, and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 

@@ -11,7 +11,7 @@ This parallels how millhouse was bootstrapped: get lyx working well enough that 
 Before starting a session:
 
 1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot -- re-deploy after any source change you want to test.
-2. **Materialize the hub.** Run `sandbox-build.cmd` (or `sandbox-build.cmd -reset` to start clean) to clone the host and weft into a fresh `lyx-test-HUB`.
+2. **Materialize the hub.** Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) to clone the host and weft into a fresh `lyx-test-HUB`.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
 
 ### PowerShell JSON-quoting
@@ -161,7 +161,7 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Covers:** init
 
-**Durability note:** S6 scaffolds a real nested `_lyx/` in the subfolder — a directory junction into the weft worktree, not a plain directory — and touches `.gitignore` there. That state persists across sandbox sessions unless the hub is rebuilt with `sandbox-build.cmd -reset` (optional, not mandatory, per Pre-conditions), so S6 must run `lyx init --undo` from the subdir at session end to restore the "not yet initialized" state. `init --undo` is not purely local: clearing the weft-side `_lyx` content commits and pushes that deletion to the shared `lyx-test-weft` remote, so each S6 run leaves an init-then-undo commit pair in the weft repo's history. It is a clean no-op on a never-initialized directory, so it is always safe to run at session end even if S6 bailed early.
+**Durability note:** S6 scaffolds a real nested `_lyx/` in the subfolder — a directory junction into the weft worktree, not a plain directory — and touches `.gitignore` there. That state persists across sandbox sessions unless the hub is rebuilt with `sandbox/build.cmd -reset` (optional, not mandatory, per Pre-conditions), so S6 must run `lyx init --undo` from the subdir at session end to restore the "not yet initialized" state. `init --undo` is not purely local: clearing the weft-side `_lyx` content commits and pushes that deletion to the shared `lyx-test-weft` remote, so each S6 run leaves an init-then-undo commit pair in the weft repo's history. It is a clean no-op on a never-initialized directory, so it is always safe to run at session end even if S6 bailed early.
 
 **Watch:** Does `lyx init` scaffold a subdir-scoped `_lyx/` (not at the repo root)? Does `lyx config --print`/`--set` run from the subdir resolve against the subdir's own `_lyx/config` rather than the root's — the actual subfolder-scoping demonstrator? Does `lyx board` still run cleanly from the subdir — a "still works from any subfolder" smoke check only; board's data lives at the hub level, so this does *not* itself prove subfolder-scoped resolution the way `config` does. Does `lyx init --undo` cleanly reverse the scaffolding?
 
@@ -230,7 +230,7 @@ Run `lyx builder status` first, before writing any of the files above touches `_
 
 ---
 
-reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox-reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
+reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox/reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
 
 ## Session log format
 

@@ -50,7 +50,7 @@ This is the real work of the clone change. Today `Resolve(cwd)` trusts cwd. Once
 
 ## Config-driven junction list — fabric stops enumerating modules
 
-Today the wired-junction set is hardcoded (`hubgeometry.IsReservedHubName`: `_lyx`, `_raddle`, `_board`, `_portals`, `_launchers`) — adding `_pattern` or `_trace` means a code change. Instead, the set of weft-backed folder names lives in a **config file with a template** that any new weft-backed module appends its junction name to. `fabric` never has to know about every module that might want a folder.
+Today the wired-junction set is hardcoded (`hubgeometry.IsReservedHubName`: `_lyx`, `_raddle`, `_board`, `_portals`, `_launchers`) — adding `_pattern` or `_scout` means a code change. Instead, the set of weft-backed folder names lives in a **config file with a template** that any new weft-backed module appends its junction name to. `fabric` never has to know about every module that might want a folder.
 
 This lives naturally in the **same weft config as the subpath binding** — both are per-repo setup facts, and `lyx fabric clone` reads both from one place. It grows out of today's `fabric.yaml` (`pathspec` key already there).
 
@@ -77,7 +77,7 @@ Fold it into `Commit` rather than a standalone `Fabric.Snapshot("tag")`: a snaps
 The naïve fear is "replay all of weft onto the rebased warp." That fear shrinks once decomposed, because most of weft is a **pure function of the code that regenerates**, not something merged:
 
 - **Detection is already honest and shipped.** After a warp rewrite, weft's `Warp-SHA` trailers point at warp SHAs that no longer exist; `SHAExists` catches this rather than trusting a dead reference (the "staleness survives rebuild" tests already guard it).
-- **raddle / trace self-heal.** Both regenerate at merge-time (raddle.md) — pure functions of code. Post-rebase: stale → regenerate → new weft commit with a fresh `Warp-SHA` trailer → correspondence re-established.
+- **raddle / scout self-heal.** Both regenerate at merge-time (raddle.md) — pure functions of code. Post-rebase: stale → regenerate → new weft commit with a fresh `Warp-SHA` trailer → correspondence re-established.
 - **`_lyx` never propagates to parent** (finalize.md) — no re-alignment needed against a rebased parent.
 - **The residue is small:** genuinely hand/LLM-authored weft content (`PATTERN`). Rare, small. This is the only thing that needs real re-alignment.
 

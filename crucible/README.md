@@ -4,8 +4,7 @@ This directory holds **`crucible`** — the **manual, human-in-the-loop review m
 
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
-- [`review-prompt-template.md`](review-prompt-template.md) — module-agnostic skeleton for the **round agent** prompt (the reviewer-fixer a round spawns).
-- [`reed-review-prompt.md`](reed-review-prompt.md) — the fully-worked `reed` instance of that template.
+- [`review-prompt-template.md`](review-prompt-template.md) — module-agnostic skeleton for the **round agent** prompt (the reviewer-fixer a round spawns). The orchestrator fills it per module into `.scratch/<module>-review-prompt.md` at run time; that per-module instance is gitignored and **never checked in** — a module's state is stale the moment its review lands, so a committed instance would only rot, and a fresh prompt is written from this template each time crucible is re-run.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
 > **This is the hand-executed prototype of the `perch` (see the `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by `perch` with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/perchengine` and `internal/burlerengine` package documentation.
@@ -36,7 +35,7 @@ Reach for this before merging a **live-substrate module** — one whose real def
         └─────────────────────────── until converged ───────────────────────────┘
 ```
 
-1. **Seed.** The prompt (`<module>-review-prompt.md`, instantiated from [`review-prompt-template.md`](review-prompt-template.md)) carries a *"round context seeded from prior-round verification"* section. Each round rewrites it with the residual the last verification found — or, once clean, flips it to a **safety pass** ("no known residual; confirm merge-readiness or find what every prior round missed").
+1. **Seed.** The prompt (`.scratch/<module>-review-prompt.md`, the orchestrator's filled instance of [`review-prompt-template.md`](review-prompt-template.md), gitignored) carries a *"round context seeded from prior-round verification"* section. Each round rewrites it with the residual the last verification found — or, once clean, flips it to a **safety pass** ("no known residual; confirm merge-readiness or find what every prior round missed").
 2. **Spawn.** One fresh `subagent_type: crucible-reviewer-<effort>` Agent (the operator's pick this round) with a `model:` override, told **only** to read the prompt file and do exactly what it says, tagged `<model>-<effort>-r<N>`, told to **commit each individual fix as it lands** (message identifying the finding it closes — see "Commit per fix" in [`review-prompt-template.md`](review-prompt-template.md)) but **never push**. It writes two deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and `<module>-review-<tag>-fixer-report.md`.
 3. **Verify — the part that actually catches residuals.** See the protocol below. The round's own verdict is **never** the gate: in the reed campaign rounds 3, 4, and 5 each self-reported "merge-ready" and each left a residual the orchestrator's independent verification caught.
 4. **Re-seed + rotate.** The round's fixes are already committed one-by-one (per-fix commits, not a single wrap-up commit from the orchestrator — see below). Re-seed the prompt with whatever verification found. Spawn the next round with a **different** model and/or effort tier.
@@ -115,7 +114,7 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
 
 ## Instantiating this for a new module
 
-1. Copy [`review-prompt-template.md`](review-prompt-template.md) to `crucible/<module>-review-prompt.md` and fill every `<PLACEHOLDER>` (what to read, the high-yield focus list = where *this* module's bugs actually live, the exact test commands, the substrate-teardown check).
+1. Fill every `<PLACEHOLDER>` in a copy of [`review-prompt-template.md`](review-prompt-template.md) and write it to `.scratch/<module>-review-prompt.md` (gitignored — not checked in): what to read, the high-yield focus list = where *this* module's bugs actually live, the exact test commands, the substrate-teardown check.
 2. Confirm the module already satisfies `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant (a `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`). That invariant is pre-existing and independent of this method — do NOT build a new dedicated suite file or launcher just to satisfy this hardening loop; the round agent drives the real CLI directly (see "Driving the real substrate" above) whether or not a dedicated suite file exists.
 3. Run the loop: seed → spawn (rotate model + effort) → independently verify → re-seed → repeat until a safety pass finds nothing and your gates agree. Then do any operator-assisted step the harness can't reach headlessly (for reed: the visual `attach` test in a real TTY), and merge.
 
