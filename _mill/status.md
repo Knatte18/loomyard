@@ -63,5 +63,7 @@ batches:
     start_sha: 36a05c17492742fd110b92a9013a2b7f63add2b2
     commit_sha: 58cb0c1816b411feaf1eea89809c458499dfccd3
   - name: design-docs
-    state: pending
+    state: running
+    implementer_session: 3954d4f5-6ac8-4ea8-8ba2-e3fa0b10d139
+    start_sha: c473cfceb8650cffd5fe1f178dc52bb434bbd3ee
 ```
