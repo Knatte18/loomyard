@@ -159,6 +159,7 @@ batches:
 - `internal/scoutengine/ensureserver.go`
 - `internal/scoutengine/leaf_enforcement_test.go`
 - `internal/scoutengine/lspclient.go`
+- `internal/shuttleengine/run.go`
 - `internal/treadleengine/run.go`
 - `internal/treadleengine/seam_enforcement_test.go`
 </content>

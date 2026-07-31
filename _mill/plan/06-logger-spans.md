@@ -88,7 +88,7 @@ Adds explicit-parent spans in a new `internal/logger/span.go` per discussion.md'
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Add to `internal/logger/span_test.go` (created by Card 25), using `SetDurableSinkDir(t.TempDir())` (batch 4):
+  Add to `internal/logger/span_test.go` (created by Card 25). Each case below calls `SetDurableSinkDir(t.TempDir())` (batch 4's Card 12) at its own start — never sharing one call across cases — which both points the sink at a fresh directory and, per Card 12, fully resets `sinkOnce`/`sinkWriter`/`sinkOK`/`header`/`headerOnce`/the byte-counter/marker-flag before the case runs, so an earlier case's sink-open (here or in `sink_test.go`/`logger_test.go`) cannot leak into this one:
   - `StartSpan`/`Child`/`End(nil)`'s own open and close records are absent from the durable sink file (they emit at Debug, which never reaches the durable handler per batch 5's `Enabled` gate) — assert the durable file, once opened by some other Info+ activity in the test, contains none of the span open/close lines.
   - `End(err)` with a non-nil error **is** present in the durable file (it emits at Warn).
   - An `Info` emitted through a span-scoped method (`sp.Info(...)`) carries the `span=` path into the durable file even though that span's own open/close records did not — i.e. the causal structure survives via the `span=` field on ordinary Info/Warn lines, not via the open/close records themselves (this is the property discussion.md's `explicit-span-parenting` decision and its correction to `no-reader-cli`'s forward-compat property (2) both depend on).

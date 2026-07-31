@@ -4,7 +4,7 @@
 task: Diagnostic tracing (trace) on the logger module
 batch: logger-trace-identity
 number: 2
-cards: 4
+cards: 3
 verify: go test ./internal/logger/...
 depends-on: []
 ```
