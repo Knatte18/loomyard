@@ -17,6 +17,11 @@
 // StageAndCommit's diff by hand remains necessary; this guard catches every
 // other regression shape (a call added to a method not on the list, or the
 // boundary's only gitexec.RunGit call site moving or duplicating).
+//
+// CommitEmpty is a second worked example of the same blind spot: it hosts two
+// r.run calls (the dirty-index pre-check and the commit itself), which this
+// guard's set-equality check counts as one pinned method either way, exactly
+// like StageAndCommit's three.
 
 package main
 
@@ -44,11 +49,15 @@ import (
 //     calls (add, diff --cached, commit) sit alongside a migrated go-git
 //     CurrentSHA read at the end -- presence in this list says nothing
 //     about whether a method also has a migrated read.
+//   - CommitEmpty is the same mixed shape: two CLI-bound r.run calls (the
+//     dirty-index pre-check and the commit) sit alongside a migrated go-git
+//     CurrentSHA read on both the entry pre-check and the return path.
 //   - Push and PushCoalesced are CLI-bound by contract yet do NOT appear
 //     here: they delegate to pushWithRebaseRetry (which does appear)
 //     rather than calling r.run directly themselves.
 var gitrepoPinnedRunBoundMethods = map[string]bool{
 	"StageAndCommit":      true,
+	"CommitEmpty":         true,
 	"StageAllAndCommit":   true,
 	"CheckoutDetached":    true,
 	"RestoreBranch":       true,
