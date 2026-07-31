@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-07-31T07:07:17Z'
+discussed  '2026-07-31T08:50:36Z'
 ```
