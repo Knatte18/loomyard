@@ -47,6 +47,7 @@ Implements the durable second sink in a new `internal/logger/sink.go`: lazy geom
 - **Context:**
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/logger/retention.go`
+  - `internal/logger/logger.go`
 - **Edits:**
   - `internal/logger/sink.go`
 - **Creates:** none

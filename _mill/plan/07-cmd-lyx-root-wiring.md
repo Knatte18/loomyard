@@ -51,7 +51,7 @@ Wires the root `PersistentPreRunE` in `cmd/lyx/main.go` to mint/adopt/export the
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  In `cmd/lyx/main.go`, change both `main()` (lines 39-47) and `run()` (lines 55-63) so `clihelp.RunRoot`'s result is captured into a named variable before being returned/passed to `os.Exit`, and call `logger.NotifyExit(code)` (batch 4's Card 14) immediately after capturing it and before returning:
+  In `cmd/lyx/main.go`, change both `main()` (lines 39-48) and `run()` (lines 55-63) so `clihelp.RunRoot`'s result is captured into a named variable before being returned/passed to `os.Exit`, and call `logger.NotifyExit(code)` (batch 4's Card 14) immediately after capturing it and before returning:
 
   ```go
   func main() {

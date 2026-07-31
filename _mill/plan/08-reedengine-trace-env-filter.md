@@ -37,7 +37,8 @@ Adds the `LYX_TRACE_ID` filter at reed's tmux-server-boot `cmd.Env` assignment, 
 
 ### Card 33: Long-lived child env test
 
-- **Context:** none
+- **Context:**
+  - `internal/reedengine/env.go`
 - **Edits:**
   - `internal/reedengine/lifecycle_test.go`
 - **Creates:** none

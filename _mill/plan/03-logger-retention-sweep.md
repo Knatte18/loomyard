@@ -80,7 +80,7 @@ Implements the retention sweep as a standalone, directory-scoped function in a n
 - **Requirements:**
   Add to `internal/logger/retention_test.go` (created by Card 7, which runs first):
   - A file whose `<pid>` segment names this test process's own live PID (`os.Getpid()`) is never deleted by either bound, even when its filename timestamp is old enough to otherwise qualify for the age bound and it would otherwise be evicted by the count bound.
-  - A file whose `<pid>` is a value guaranteed dead in the test sandbox (e.g. a very large PID unlikely to be alive, or a PID obtained by spawning and immediately waiting a short-lived helper process if the test needs certainty) which is over-age or over-count is deleted.
+  - A file whose `<pid>` is a large, implausible-to-be-alive value (e.g. a PID far above what the test platform would ever actually assign) which is over-age or over-count is deleted. **Do not spawn a real process to obtain a guaranteed-dead PID** — `retention_test.go` is an untagged file, and `exec.Command`/`exec.CommandContext` as a raw substring in an untagged file is a hard failure under the Test Tier Purity Invariant's banned-substring guard (`TestTierPurity_UntaggedTestsSpawnNothing`); the large-PID approach is the only one this file may use.
   - **Live-skip does not consume the newest-50 budget**: seed one live-pid file plus 50 dead-pid, in-bound files; assert all 50 dead-pid files survive the count pass (none of them is evicted to make room for the live file, since the live file was never one of the 50 slots to begin with).
 - **Commit:** `test(logger): cover retention liveness rule and live-skip budget exemption`
 

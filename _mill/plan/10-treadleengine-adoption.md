@@ -33,7 +33,8 @@ Fixes the now-stale "geometry-blind, excludes hubgeometry" prose in `internal/tr
 
 ### Card 37: `run.go` adoption pass
 
-- **Context:** none
+- **Context:**
+  - `internal/treadleengine/state.go`
 - **Edits:**
   - `internal/treadleengine/run.go`
 - **Creates:** none
@@ -41,7 +42,7 @@ Fixes the now-stale "geometry-blind, excludes hubgeometry" prose in `internal/tr
 - **Moves:** none
 - **Requirements:**
   Apply the `adoption-scope` done-criterion to `internal/treadleengine/run.go`'s currently-unlogged candidates (verified against the existing 10/5/2/2 `logger.Warn` calls already in `judge.go`/`targeting.go`/`handoff.go`/`run.go` — all of which are fail-safe-default patterns; the sites below are the ones without an accompanying log call):
-  - `run.go:224-227` — `saveState(runDir, st)`'s error (`saveErr`) is swallowed as a bare error and the round is aborted with a different error (`e.errf("round %d gate command: %w", round, err)`) — the `saveErr` itself never surfaces anywhere, logged or otherwise. Add `logger.Warn` naming `runDir`, `round`, and `saveErr` before the function returns, since this is exactly a "swallowed by a fallback" case per `adoption-scope`'s criterion (a).
+  - `run.go:224-227` — `if saveErr := saveState(runDir, st); saveErr != nil { return Result{}, saveErr }` (line 224-225) returns `saveErr` directly — it is **not** the discarded value. What's actually discarded is the **original gate-command error** (`err`, the one line 227's `e.errf("round %d gate command: %w", round, err)` would have returned had `saveState` succeeded): when `saveErr` fires, execution returns at line 225 and never reaches line 227, so `err` — the real reason this round failed — never surfaces anywhere, logged or otherwise, while only the unrelated persistence failure (`saveErr`) is visible to the caller. Add `logger.Warn` naming `runDir`, `round`, `err` (the original gate-command failure being lost), and `saveErr` (the persistence failure masking it) immediately before line 225's `return`, since the masked `err` is exactly a "swallowed by a fallback" case per `adoption-scope`'s criterion (a).
   - `run.go:183` and `run.go:426-429` — both call `moveStaleArtifacts(e.name, runDir, round, <1 or attempt>)` (pre-round clear at 183, retry-attempt clear at 426-429) and propagate its failure with no log call. `moveStaleArtifacts` itself wraps via `moveStaleIfExists` (`state.go:204,213`) with `name`/`path` context only — no `round`/`attempt` field, unlike `run.go:447-448`'s own wrap (`"round %d attempt run: %w"`), which is why these two qualify while 447-448 (below) does not: a reader of the bare wrapped error knows which file failed to move but not which round or attempt was in progress. Add `logger.Warn` naming `e.name`, `round`, `attempt` (1 at the 183 site), and the error at both call sites.
   - `run.go:486-490` — the died/timeout retry fall-through: when `result.Outcome` is neither `OutcomeDone` nor `OutcomeAsking` (a died/timeout attempt) and `attempt == 1`, the loop silently `continue`s to a second attempt with no log call at all — the retry itself is currently invisible. Add `logger.Warn` naming `round`, `result.Outcome`, and `result.SessionID` immediately before the implicit `continue` at the bottom of the loop body, so the retry is observable, not only its eventual "failed twice" outcome (which already errors with full context at line 488's sibling `attempt == 2` branch and does not need an additional call). Do **not** add a call at `run.go:447-448` (`RunAttempt`'s own Go-error return, `e.errf("round %d attempt run: %w", round, err)`) — that error already names `round` in its wrapped message, so it does not qualify under `adoption-scope`'s negative case (context already present).
 
