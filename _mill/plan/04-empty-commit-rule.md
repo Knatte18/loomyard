@@ -108,6 +108,7 @@ The rule closes a genuine correctness hole with no other fix. raddle regenerates
   - `internal/fabricengine/revert.go`
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/syncweft_integration_test.go`
+  - `internal/gitrepo/gitrepo.go`
 - **Edits:**
   - `internal/fabricengine/snapshot_integration_test.go`
 - **Creates:** none

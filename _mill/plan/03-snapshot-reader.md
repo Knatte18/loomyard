@@ -42,6 +42,7 @@ It is a root batch alongside batch 1: it touches only `internal/fabricengine`, w
   - `internal/fabricengine/index.go`
   - `internal/fabricengine/trailer.go`
   - `internal/fabricengine/fabric.go`
+  - `internal/gitrepo/gitrepo.go`
 - **Edits:** none
 - **Creates:**
   - `internal/fabricengine/snapshot.go`

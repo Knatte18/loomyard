@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: _mill/plan
@@ -23,4 +23,6 @@ plan-review-r2  '2026-07-31T09:37:01Z'
 plan-fix-r2  '2026-07-31T09:37:01Z'
 plan-review-r3  '2026-07-31T09:43:43Z'
 plan-fix-r3  '2026-07-31T09:43:43Z'
+plan-review-r4  '2026-07-31T09:50:47Z'
+plan-fix-r4  '2026-07-31T09:50:47Z'
 ```
