@@ -145,7 +145,7 @@ func TestEnforcement(t *testing.T) {
 
 				// Check the file for banned tokens. Comments are stripped first so
 				// that a file which merely *names* a banned token in an explanatory
-				// comment (e.g. tracecli/cli.go documenting why hubgeometry.Getwd
+				// comment (e.g. scoutcli/cli.go documenting why hubgeometry.Getwd
 				// is the only permitted os.Getwd caller) is not falsely flagged; the
 				// guard is about real code usage, not prose.
 				data, err := os.ReadFile(path)
