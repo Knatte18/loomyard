@@ -324,8 +324,8 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 	if err == nil {
 		t.Fatal("runSuite should return error when Hub host subdir is absent")
 	}
-	if !strings.Contains(err.Error(), "sandbox-build.cmd") {
-		t.Errorf("error should mention 'sandbox-build.cmd'; got %q", err.Error())
+	if !strings.Contains(err.Error(), "sandbox/build.cmd") {
+		t.Errorf("error should mention 'sandbox/build.cmd'; got %q", err.Error())
 	}
 }
 

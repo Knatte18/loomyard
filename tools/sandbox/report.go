@@ -75,7 +75,7 @@ func runFetch(parentDir, loomyardRoot string) error {
 	// Guard against a missing Hub so the operator gets a clear, actionable message
 	// rather than a confusing downstream read failure.
 	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("hub host repo not found at %s -- run sandbox-build.cmd first", hostRepoDir)
+		return fmt.Errorf("hub host repo not found at %s -- run sandbox/build.cmd first", hostRepoDir)
 	} else if err != nil {
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}

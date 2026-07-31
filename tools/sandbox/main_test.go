@@ -336,7 +336,7 @@ func TestRun_BuildResetRoutesToBuildWithReset(t *testing.T) {
 	}
 
 	// -reset is now a build-subcommand flag, parsed after the build token, which
-	// is exactly what sandbox-build.cmd -reset forwards to the tool.
+	// is exactly what sandbox/build.cmd -reset forwards to the tool.
 	code := run([]string{"-parent", tmpDir, "build", "-reset"})
 	if code != 0 {
 		t.Errorf("run() = %d; want 0", code)
