@@ -57,7 +57,9 @@ batches:
     start_sha: d6b91109d0c45ceabddad5bb58c0661bdfc53e9f
     commit_sha: 301a0f301bc3de1de002a390afe404d0072c5a5b
   - name: empty-commit-rule
-    state: pending
+    state: running
+    implementer_session: f68ab44c-b9a2-4d4c-b5cd-f814b1f84317
+    start_sha: 36a05c17492742fd110b92a9013a2b7f63add2b2
   - name: design-docs
     state: pending
 ```
