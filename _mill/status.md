@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: fabric-snapshot-trailer
 branch: fabric-snapshot-trailer
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-empty-commit-rule  '2026-07-31T12:30:50Z'
 approved-design-docs  '2026-07-31T18:30:59Z'
 holistic-reviewing  '2026-07-31T18:31:30Z'
 holistic-approved  '2026-07-31T18:35:38Z'
+done  '2026-07-31T18:36:12Z'
 ```
 
 ## Batches
