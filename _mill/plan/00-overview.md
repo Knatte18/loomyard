@@ -3,7 +3,7 @@
 ```yaml
 task: Diagnostic tracing (trace) on the logger module
 slug: trace-logging
-approved: false
+approved: true
 started: 20260731-185537
 parent: main
 root: ""
