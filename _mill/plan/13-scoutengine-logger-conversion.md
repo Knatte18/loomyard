@@ -90,7 +90,8 @@ The most surgical adoption batch: widens `internal/scoutengine`'s machine-enforc
 
 ### Card 44: Missing spawn observability
 
-- **Context:** none
+- **Context:**
+  - `internal/scoutengine/refs.go`
 - **Edits:**
   - `internal/scoutengine/ensureserver.go`
 - **Creates:** none

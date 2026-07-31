@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -22,4 +22,6 @@ plan-review-r1  '2026-07-31T19:22:55Z'
 plan-fix-r1  '2026-07-31T19:22:55Z'
 plan-review-r2  '2026-07-31T19:36:18Z'
 plan-fix-r2  '2026-07-31T19:36:18Z'
+plan-review-r3  '2026-07-31T19:46:00Z'
+plan-fix-r3  '2026-07-31T19:46:00Z'
 ```
