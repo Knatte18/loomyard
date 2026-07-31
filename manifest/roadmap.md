@@ -71,7 +71,7 @@ Committed to eventually — will be done — but not scheduled next. No build or
 
 1. **shared infra** — `internal/configengine`, `internal/gitexec`, `internal/lock`, `internal/state`.
 
-1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`, `PushCoalesced`, `CurrentSHA`, `ChangedFilesSince`, `SHAExists`, `SnapshotSHA`/ `SetSnapshotSHA`), split across two backends — go-git for local object and ref reads, `internal/gitexec` for anything that authenticates to a remote or mutates the working tree (`internal/gitrepo`; consumed by the `fabric` module).
+1. **gitrepo** — generic, repo-agnostic git primitives (`StageAndCommit`, `Push`, `PushCoalesced`, `CurrentSHA`, `ChangedFilesSince`, `SHAExists`), split across two backends — go-git for local object and ref reads, `internal/gitexec` for anything that authenticates to a remote or mutates the working tree (`internal/gitrepo`; consumed by the `fabric` module).
 
 1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by `warp`).
 
