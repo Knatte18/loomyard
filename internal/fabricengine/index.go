@@ -344,11 +344,37 @@ func (f *Fabric) RebuildIndex() error {
 	// no commit ever listed before one of its own descendants — see its doc
 	// comment for why --topo-order matters over git's date-ordered default);
 	// walk oldest-to-newest so a warp SHA recorded by more than one weft
-	// commit (a rare but legal history shape) converges on the same "last
-	// recorded wins" result an incremental RecordCorrespondence build would
-	// have produced, matching corrIndex.record's own upsert semantics. Two
-	// order-sensitivities fall out of this walk and are worth stating rather
-	// than leaving implicit. First, the dedup below is last-assignment-wins
+	// commit converges on the same "last recorded wins" result an incremental
+	// RecordCorrespondence build would have produced, matching
+	// corrIndex.record's own upsert semantics.
+	//
+	// A warp SHA recorded by more than one weft commit is no longer a rare
+	// edge case once the empty-commit rule (tags-force-a-weft-commit) exists:
+	// the warp SHA does not move between a content commit and a subsequent
+	// tags-only or unchanged-content call at the same warp HEAD, so an empty
+	// commit's RecordCorrespondence(warpSHA, emptyWeftSHA) routinely upserts
+	// over the entry a preceding content commit wrote for that same warp SHA.
+	// WeftSHAForWarpSHA(warpSHA) and RevertWithWeft(warpSHA) then resolve to
+	// the empty commit — accepted, not worked around, because an empty
+	// commit's tree is identical to its parent's by construction, so
+	// resolving a revert target to it restores the same weft tree the
+	// content commit produced; RevertWithWeft/resolveRevertTarget use the
+	// resolved weft SHA only as a reset target (f.Weft.SHAExists,
+	// f.Weft.ResetHard) and do nothing else with it, so the overwrite changes
+	// no other observable behaviour. Two alternatives were rejected rather
+	// than merely unconsidered. Skipping RecordCorrespondence for empty
+	// commits would make the incremental and rebuilt indexes diverge, since
+	// this very rebuild reads trailers (not this call site's choices) and
+	// would record the commit anyway. Special-casing the index to keep the
+	// content commit as the winner would make the index disagree with a
+	// plain trailer scan, breaking the trailer-is-truth/index-is-a-
+	// rebuildable-cache layering the whole design rests on — "last recorded
+	// wins" is already corrIndex.record's own documented upsert rule, so this
+	// is existing semantics meeting a newly-common input, not new semantics.
+	//
+	// Two order-sensitivities fall out of this walk and are worth stating
+	// rather than leaving implicit. First, the dedup below is
+	// last-assignment-wins
 	// over this reversed (oldest-to-newest) walk of a topologically-ordered
 	// scan, so for a warp SHA recorded by more than one weft commit, the
 	// winner is whichever commit the (newest-first) scan listed FIRST — i.e.
