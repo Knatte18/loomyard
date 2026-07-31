@@ -67,25 +67,6 @@ func newRenameFixture(t *testing.T) (dir, oldName, newName string) {
 	return dir, oldName, newName
 }
 
-// newSnapshotRefFixture builds a repo on a one-commit baseline with a
-// refs/loomyard/snapshot/<key> ref set to HEAD, exercising SnapshotSHA's set-
-// ref case against the snapshot-namespace ref layout snapshot.go reads and
-// writes.
-func newSnapshotRefFixture(t *testing.T) (dir, key string) {
-	t.Helper()
-
-	key = "mykey"
-	dir, repo := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-	sha, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-	writeSnapshotRef(t, dir, key, sha)
-	return dir, key
-}
-
 // commitFile writes name under dir with content and commits it directly via
 // the git CLI, bypassing the Repo under test — a repo-shaping helper the
 // parity cases use to build history, not something under test itself.
@@ -95,15 +76,6 @@ func commitFile(t *testing.T, dir, name, content, message string) {
 	writeFile(t, dir, name, content)
 	lyxtest.MustRun(t, dir, "git", "add", name)
 	lyxtest.MustRun(t, dir, "git", "commit", "-m", message)
-}
-
-// writeSnapshotRef sets refs/loomyard/snapshot/<key> to sha directly via
-// `git update-ref`, bypassing SetSnapshotSHA — used to seed a snapshot ref a
-// parity case then reads back through both the oracle and SnapshotSHA.
-func writeSnapshotRef(t *testing.T, dir, key, sha string) {
-	t.Helper()
-
-	lyxtest.MustRun(t, dir, "git", "update-ref", "refs/loomyard/snapshot/"+key, sha)
 }
 
 // assertParitySHA fails the test unless oracle and impl — the SHAs returned
@@ -397,91 +369,6 @@ func containsPath(haystack []string, needle string) bool {
 	return false
 }
 
-// TestSnapshotSHA_Parity_SetRef asserts the oracle and gitrepo agree on the
-// SHA recorded under a snapshot ref that has been set.
-func TestSnapshotSHA_Parity_SetRef(t *testing.T) {
-	dir, key := newSnapshotRefFixture(t)
-
-	oracleSHA, oracleErr := oracleSnapshotSHA(t, dir, key)
-	if oracleErr != nil {
-		t.Fatalf("oracleSnapshotSHA(%q) error = %v", key, oracleErr)
-	}
-	implSHA, implErr := gitrepo.New(dir).SnapshotSHA(key)
-	if implErr != nil {
-		t.Fatalf("SnapshotSHA(%q) error = %v", key, implErr)
-	}
-
-	assertParitySHA(t, oracleSHA, implSHA)
-}
-
-// TestSnapshotSHA_Parity_AbsentRef asserts a key with no ref ever set reads
-// as ("", nil) on both the oracle and gitrepo — a verified-absent ref is a
-// normal state, not a failure.
-func TestSnapshotSHA_Parity_AbsentRef(t *testing.T) {
-	dir, _ := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-	const key = "never-set"
-
-	oracleSHA, oracleErr := oracleSnapshotSHA(t, dir, key)
-	if oracleErr != nil {
-		t.Fatalf("oracleSnapshotSHA(%q) error = %v", key, oracleErr)
-	}
-	if oracleSHA != "" {
-		t.Fatalf("oracleSnapshotSHA(%q) = %q, want \"\"", key, oracleSHA)
-	}
-
-	implSHA, implErr := gitrepo.New(dir).SnapshotSHA(key)
-	if implErr != nil {
-		t.Fatalf("SnapshotSHA(%q) error = %v", key, implErr)
-	}
-	if implSHA != "" {
-		t.Fatalf("SnapshotSHA(%q) = %q, want \"\"", key, implSHA)
-	}
-
-	assertParitySHA(t, oracleSHA, implSHA)
-}
-
-// TestSnapshotSHA_Parity_InvalidKey asserts an invalid key returns gitrepo's
-// own ErrInvalidSnapshotKey without ever touching a ref — the oracle has no
-// key-validation layer of its own (that check exists only in production code
-// as a pre-git guard), so this case asserts gitrepo's contract directly
-// rather than an oracle comparison.
-func TestSnapshotSHA_Parity_InvalidKey(t *testing.T) {
-	dir, _ := newRepo(t)
-	writeFile(t, dir, "a.txt", "initial")
-	commitAll(t, dir, "init")
-	// "key..bad" passes the character-class check but is rejected by the
-	// separate ".." shape check, exercising that specific rule.
-	const key = "key..bad"
-
-	_, implErr := gitrepo.New(dir).SnapshotSHA(key)
-	if !errors.Is(implErr, gitrepo.ErrInvalidSnapshotKey) {
-		t.Errorf("SnapshotSHA(%q) error = %v, want gitrepo.ErrInvalidSnapshotKey", key, implErr)
-	}
-}
-
-// TestSnapshotSHA_Parity_UnreadableStore asserts the third leg of
-// SnapshotSHA's three-way distinction: a checkout that cannot be read at all
-// (here, a plain directory that is not a git repository) surfaces as an
-// error on both the oracle and gitrepo, rather than folding into the
-// verified-absent ("", nil) case — folding the two together would tell a
-// miswired read-only consumer "no snapshot" forever instead of surfacing the
-// real problem.
-func TestSnapshotSHA_Parity_UnreadableStore(t *testing.T) {
-	dir := t.TempDir() // deliberately never `git init`-ed
-	const key = "somekey"
-
-	_, oracleErr := oracleSnapshotSHA(t, dir, key)
-	if oracleErr == nil {
-		t.Fatal("oracleSnapshotSHA() on a non-repository path error = nil, want non-nil")
-	}
-	_, implErr := gitrepo.New(dir).SnapshotSHA(key)
-	if implErr == nil {
-		t.Fatal("SnapshotSHA() on a non-repository path error = nil, want non-nil")
-	}
-}
-
 // TestCurrentBranch_Parity covers CurrentBranch across all four HEAD states
 // the method can encounter: an ordinary branch, a detached HEAD (must be an
 // error, never an empty string — a caller with no captured branch has no
@@ -587,8 +474,8 @@ func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
 // the commit its own preceding `git commit` call just wrote, even when the
 // Repo's go-git handle was warmed (opened and cached) before that commit
 // landed. This is the call-granular boundary's central mixed-backend site:
-// a stale answer here would feed a wrong SHA straight into a caller's
-// SetSnapshotSHA, recording a snapshot that points off-history.
+// a stale answer here would hand a wrong SHA to any caller that records
+// StageAndCommit's return value as the checkout's new baseline.
 func TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -699,90 +586,5 @@ func TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo(t *te
 
 	if !repoA.SHAExists(sha) {
 		t.Errorf("repoA.SHAExists(%q) = false; want true (repoA's fingerprint-gated reindex must see a write+repack made through a separate *Repo)", sha)
-	}
-}
-
-// TestSnapshotSHA_MixedBackend_ReadsRefCLISideAdvanceWrote asserts
-// SnapshotSHA's go-git ref read sees the value SetSnapshotSHA's own
-// CLI-side advanceAndPushSnapshotRef just wrote locally, even when the
-// Repo's handle was warmed before that local ref update landed — go-git
-// never caches refs, so this pins that fact at the exported call site the
-// plan enumerates rather than leaving it untested there.
-func TestSnapshotSHA_MixedBackend_ReadsRefCLISideAdvanceWrote(t *testing.T) {
-	container := t.TempDir()
-	bareRemote := newBareRemote(t, container)
-
-	clonePath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
-	writeFile(t, clonePath, "a.txt", "initial")
-	commitAll(t, clonePath, "init")
-	if err := repo.Push(); err != nil {
-		t.Fatalf("Push() error = %v; want nil", err)
-	}
-	headSHA, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	// Warm the handle before SetSnapshotSHA's own CLI-side ref advance below.
-	if _, err := repo.SnapshotSHA("warmup"); err != nil {
-		t.Fatalf("SnapshotSHA() (warm handle) error = %v", err)
-	}
-
-	if err := repo.SetSnapshotSHA("mykey", headSHA); err != nil {
-		t.Fatalf("SetSnapshotSHA() error = %v; want nil", err)
-	}
-
-	got, err := repo.SnapshotSHA("mykey")
-	if err != nil {
-		t.Fatalf("SnapshotSHA() error = %v; want nil", err)
-	}
-	if got != headSHA {
-		t.Errorf("SnapshotSHA() = %q; want %q (the ref value SetSnapshotSHA's own CLI push just wrote)", got, headSHA)
-	}
-}
-
-// TestSetSnapshotSHA_MixedBackend_RepackBetweenCommitAndCanonicalization is
-// the hard variant for SetSnapshotSHA's own `^{commit}` canonicalization:
-// the handle's pack index is frozen before a new commit lands, the commit is
-// then repacked (git gc) before SetSnapshotSHA ever resolves an abbreviated
-// spelling of it. Without the fingerprint-gated reindex, the resolution
-// would fail silently (best-effort semantics: the abbreviated spelling is
-// passed through unchanged), and the stored ref — and a later read back via
-// SnapshotSHA — would carry the abbreviated spelling instead of the full
-// canonical one.
-func TestSetSnapshotSHA_MixedBackend_RepackBetweenCommitAndCanonicalization(t *testing.T) {
-	container := t.TempDir()
-	bareRemote := newBareRemote(t, container)
-
-	clonePath, repo := newRepoWithRemote(t, container, "clone", bareRemote)
-	writeFile(t, clonePath, "a.txt", "initial")
-	commitAll(t, clonePath, "init")
-	if err := repo.Push(); err != nil {
-		t.Fatalf("Push() error = %v; want nil", err)
-	}
-
-	forcePackIndexFreeze(t, repo)
-
-	writeFile(t, clonePath, "a.txt", "second")
-	commitAll(t, clonePath, "second commit")
-	fullSHA, err := repo.CurrentSHA()
-	if err != nil {
-		t.Fatalf("CurrentSHA() error = %v", err)
-	}
-
-	// Force the new commit into a packfile before SetSnapshotSHA's own
-	// canonicalization ever resolves it.
-	lyxtest.MustRun(t, clonePath, "git", "gc")
-
-	if err := repo.SetSnapshotSHA("mykey", fullSHA[:7]); err != nil {
-		t.Fatalf("SetSnapshotSHA(abbreviated, repacked) error = %v; want nil", err)
-	}
-
-	got, err := repo.SnapshotSHA("mykey")
-	if err != nil {
-		t.Fatalf("SnapshotSHA() error = %v; want nil", err)
-	}
-	if got != fullSHA {
-		t.Errorf("SnapshotSHA() after repacked abbreviated SetSnapshotSHA = %q; want %q (full canonical spelling)", got, fullSHA)
 	}
 }

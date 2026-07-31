@@ -173,24 +173,45 @@ func (f *Fabric) WeftSHAForWarpSHA(warpSHA string) (string, error) {
 }
 
 // warpSHATrailerCommit is one weft commit's SHA paired with the Warp-SHA
-// trailer value it carries, as scanned by scanWarpSHATrailers.
+// trailer value it carries and every Snapshot trailer value alongside it, as
+// scanned by scanWarpSHATrailers. snapshotTags is nil (not empty-non-nil)
+// when the commit carries no Snapshot trailer at all — the common case.
 type warpSHATrailerCommit struct {
-	weftSHA string
-	warpSHA string
+	weftSHA      string
+	warpSHA      string
+	snapshotTags []string
 }
 
 // scanWarpSHATrailers scans the weft repo's current branch history for every
 // commit carrying a Warp-SHA trailer, via one `git log` invocation using
-// git's own trailers-extracting format placeholder (`%(trailers:...)`) —
-// the accepted one-pass implementation, rather than parsing each commit
-// message by hand. Commits are returned newest-first, matching `git log`'s
-// natural order; commits without a Warp-SHA trailer are omitted.
+// git's own trailers-extracting format placeholder (`%(trailers:...)`) — the
+// accepted one-pass implementation, rather than parsing each commit message
+// by hand. This is the single generalized scan the trailer-is-truth-no-new-
+// cache Shared Decision calls for: it captures the commit's Snapshot trailer
+// values alongside its Warp-SHA value in the same pass, so Fabric.SnapshotWarpSHA
+// (snapshot.go) and RebuildIndex share one git-log plumbing site, one copy of
+// the unit/record separator convention, and one copy of the unborn-HEAD
+// tolerance, rather than each spawning its own scan.
+//
+// Commits are returned in **topological order** (via --topo-order), never in
+// git's plain reverse-chronological default: a snapshot commit can arrive on
+// this weft branch from another machine through Pull, and that other
+// machine's wall-clock commit date is not trustworthy relative to this
+// history's own commits — a skewed clock could stamp an older baseline with a
+// newer date, and under either RebuildIndex's dedup or
+// Fabric.SnapshotWarpSHA's newest-wins lookup, a date-ordered scan would then
+// pick the older baseline and under-report staleness, the one failure
+// direction that loses data. Topological order guarantees no commit is ever
+// listed before one of its own descendants, so "first in the scan" reliably
+// means "newest, tie-broken by ancestry" regardless of clock skew. Commits
+// without a Warp-SHA trailer are omitted — see parseTrailerScanRecord.
 func (f *Fabric) scanWarpSHATrailers() ([]warpSHATrailerCommit, error) {
 	format := "%H" + warpSHATrailerFormatUnitSep +
-		"%(trailers:key=" + WarpSHATrailerKey + ",valueonly)" +
+		"%(trailers:key=" + WarpSHATrailerKey + ",valueonly)" + warpSHATrailerFormatUnitSep +
+		"%(trailers:key=" + SnapshotTrailerKey + ",valueonly)" +
 		warpSHATrailerFormatRecordSep
 
-	stdout, stderr, code, err := gitexec.RunGit([]string{"log", "--format=" + format}, f.weftPath)
+	stdout, stderr, code, err := gitexec.RunGit([]string{"log", "--topo-order", "--format=" + format}, f.weftPath)
 	if err != nil {
 		return nil, err
 	}
@@ -206,34 +227,73 @@ func (f *Fabric) scanWarpSHATrailers() ([]warpSHATrailerCommit, error) {
 
 	var commits []warpSHATrailerCommit
 	for _, record := range strings.Split(stdout, warpSHATrailerFormatRecordSep) {
-		// Each record is bracketed by newlines the trailers placeholder and
-		// git log's own per-entry formatting insert; trim them before
-		// splitting the fields.
-		record = strings.Trim(record, "\n")
-		if record == "" {
+		weftSHA, warpSHA, snapshotTags, ok := parseTrailerScanRecord(record)
+		if !ok {
 			continue
 		}
-
-		parts := strings.SplitN(record, warpSHATrailerFormatUnitSep, 2)
-		weftSHA := strings.TrimSpace(parts[0])
-		if weftSHA == "" {
-			continue
-		}
-		var warpSHA string
-		if len(parts) > 1 {
-			warpSHA = strings.TrimSpace(parts[1])
-		}
-		if warpSHA == "" {
-			// No Warp-SHA trailer on this commit — not every weft commit
-			// carries one (e.g. history predating fabric, or a manual
-			// commit), so it is simply omitted rather than treated as an
-			// error.
-			continue
-		}
-
-		commits = append(commits, warpSHATrailerCommit{weftSHA: weftSHA, warpSHA: warpSHA})
+		commits = append(commits, warpSHATrailerCommit{weftSHA: weftSHA, warpSHA: warpSHA, snapshotTags: snapshotTags})
 	}
 	return commits, nil
+}
+
+// parseTrailerScanRecord parses one warpSHATrailerFormatRecordSep-delimited
+// record produced by scanWarpSHATrailers's git-log format string into its
+// three unit-separated fields — the commit's own SHA, its Warp-SHA trailer
+// value, and its Snapshot trailer value(s) — with no I/O and no git spawn, so
+// it is unit-testable in Tier 1 the way the git-spawning scan loop around it
+// is not.
+//
+// record is trimmed of surrounding newlines first: git's own per-entry
+// formatting inserts one, and the trailers placeholder inserts more whenever
+// a trailer value itself spans lines. The trimmed record is then split on
+// warpSHATrailerFormatUnitSep into at most three fields via
+// strings.SplitN(record, sep, 3); a record shorter than three fields (e.g. a
+// commit with no trailers at all, or an empty record) still parses whichever
+// fields it does have rather than panicking on a missing slice index.
+//
+// A commit carrying more than one "Snapshot:" trailer renders as a
+// MULTI-LINE value for that one placeholder — one line per trailer
+// occurrence — so the snapshot field is itself split on "\n" into individual
+// tags, each trimmed of surrounding whitespace, with empty lines dropped.
+//
+// ok reports false, and weftSHA/warpSHA/snapshotTags are left at their zero
+// values, for an empty record or one whose Warp-SHA field is empty: a
+// snapshot record with no recorded baseline is not usable by
+// Fabric.SnapshotWarpSHA any more than an index record with no warp SHA is
+// usable by RebuildIndex, so the same rule skips the record for both
+// consumers rather than each re-deriving it.
+func parseTrailerScanRecord(record string) (weftSHA, warpSHA string, snapshotTags []string, ok bool) {
+	record = strings.Trim(record, "\n")
+	if record == "" {
+		return "", "", nil, false
+	}
+
+	parts := strings.SplitN(record, warpSHATrailerFormatUnitSep, 3)
+	weftSHA = strings.TrimSpace(parts[0])
+	if weftSHA == "" {
+		return "", "", nil, false
+	}
+
+	if len(parts) > 1 {
+		warpSHA = strings.TrimSpace(parts[1])
+	}
+	if warpSHA == "" {
+		// No Warp-SHA trailer on this commit — not every weft commit carries
+		// one (e.g. history predating fabric, or a manual commit) — so it is
+		// skipped rather than treated as an error.
+		return "", "", nil, false
+	}
+
+	if len(parts) > 2 {
+		for _, line := range strings.Split(parts[2], "\n") {
+			tag := strings.TrimSpace(line)
+			if tag != "" {
+				snapshotTags = append(snapshotTags, tag)
+			}
+		}
+	}
+
+	return weftSHA, warpSHA, snapshotTags, true
 }
 
 // refreshCorrIndexAfterSwitch discards and rebuilds the pair's correspondence
@@ -280,11 +340,52 @@ func (f *Fabric) RebuildIndex() error {
 		return err
 	}
 
-	// scanWarpSHATrailers returns newest-first; walk oldest-to-newest so a
-	// warp SHA recorded by more than one weft commit (a rare but legal
-	// history shape) converges on the same "last recorded wins" result an
-	// incremental RecordCorrespondence build would have produced, matching
+	// scanWarpSHATrailers returns commits in TOPOLOGICAL order (newest-first,
+	// no commit ever listed before one of its own descendants — see its doc
+	// comment for why --topo-order matters over git's date-ordered default);
+	// walk oldest-to-newest so a warp SHA recorded by more than one weft
+	// commit converges on the same "last recorded wins" result an incremental
+	// RecordCorrespondence build would have produced, matching
 	// corrIndex.record's own upsert semantics.
+	//
+	// A warp SHA recorded by more than one weft commit is no longer a rare
+	// edge case once the empty-commit rule (tags-force-a-weft-commit) exists:
+	// the warp SHA does not move between a content commit and a subsequent
+	// tags-only or unchanged-content call at the same warp HEAD, so an empty
+	// commit's RecordCorrespondence(warpSHA, emptyWeftSHA) routinely upserts
+	// over the entry a preceding content commit wrote for that same warp SHA.
+	// WeftSHAForWarpSHA(warpSHA) and RevertWithWeft(warpSHA) then resolve to
+	// the empty commit — accepted, not worked around, because an empty
+	// commit's tree is identical to its parent's by construction, so
+	// resolving a revert target to it restores the same weft tree the
+	// content commit produced; RevertWithWeft/resolveRevertTarget use the
+	// resolved weft SHA only as a reset target (f.Weft.SHAExists,
+	// f.Weft.ResetHard) and do nothing else with it, so the overwrite changes
+	// no other observable behaviour. Two alternatives were rejected rather
+	// than merely unconsidered. Skipping RecordCorrespondence for empty
+	// commits would make the incremental and rebuilt indexes diverge, since
+	// this very rebuild reads trailers (not this call site's choices) and
+	// would record the commit anyway. Special-casing the index to keep the
+	// content commit as the winner would make the index disagree with a
+	// plain trailer scan, breaking the trailer-is-truth/index-is-a-
+	// rebuildable-cache layering the whole design rests on — "last recorded
+	// wins" is already corrIndex.record's own documented upsert rule, so this
+	// is existing semantics meeting a newly-common input, not new semantics.
+	//
+	// Two order-sensitivities fall out of this walk and are worth stating
+	// rather than leaving implicit. First, the dedup below is
+	// last-assignment-wins
+	// over this reversed (oldest-to-newest) walk of a topologically-ordered
+	// scan, so for a warp SHA recorded by more than one weft commit, the
+	// winner is whichever commit the (newest-first) scan listed FIRST — i.e.
+	// the topologically newest one. Second, sort.SliceStable below preserves
+	// insertion order among entries sharing the same WarpSeq, which covers
+	// both the seq = 0 dangling sentinel entries assigned in the loop below
+	// and genuine side-branch commits sitting at equal first-parent depth.
+	// In both cases the intended outcome is the same: the newest commit in
+	// topological order wins — the identical rule Fabric.SnapshotWarpSHA
+	// applies to its own scan, which is what keeps the index and the reader
+	// in agreement over the same trailer history.
 	byWarpSHA := make(map[string]corrEntry, len(commits))
 	var order []string
 	for i := len(commits) - 1; i >= 0; i-- {

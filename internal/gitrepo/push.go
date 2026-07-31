@@ -55,9 +55,10 @@ var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"
 // commits it replays, so any SHA captured before Push — StageAndCommit's
 // return value in particular — may no longer name a commit on the branch
 // after a SUCCESSFUL push. SHAExists does not catch this (the pre-rebase
-// object survives locally via the reflog), so a stale SHA recorded via
-// SetSnapshotSHA would push an off-history snapshot. Callers must re-read
-// CurrentSHA after a successful Push before recording any SHA.
+// object survives locally via the reflog), so a caller that records a SHA
+// captured before Push as its new baseline would silently point at an
+// off-history commit. Callers must re-read CurrentSHA after a successful
+// Push before recording any SHA.
 func (r *Repo) Push() error {
 	return r.pushWithRebaseRetry()
 }

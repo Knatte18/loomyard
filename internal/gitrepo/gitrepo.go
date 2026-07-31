@@ -1,6 +1,6 @@
 // gitrepo.go defines the Repo type and its read/commit primitives: New, the
 // shared run helper over gitexec.RunGit, CurrentSHA, StageAndCommit,
-// StageAllAndCommit, ChangedFilesSince, and SHAExists.
+// CommitEmpty, StageAllAndCommit, ChangedFilesSince, and SHAExists.
 
 package gitrepo
 
@@ -25,13 +25,21 @@ import (
 // typed signal instead of an ambiguous empty SHA string.
 var ErrNoCommits = errors.New("gitrepo: repository has no commits")
 
-// ErrInvalidSHA is returned by ChangedFilesSince and SetSnapshotSHA (and
-// folded into false by SHAExists, per its bool-swallowing posture) when a
-// caller-supplied SHA argument is not a plain hex object name — surfaced
-// before the string ever reaches git, where an option-shaped value would be
-// parsed as a flag (`update-ref <ref> -d` deletes the ref instead of setting
-// it).
+// ErrInvalidSHA is returned by ChangedFilesSince, CheckoutDetached, and
+// ResetHard (and folded into false by SHAExists, per its bool-swallowing
+// posture) when a caller-supplied SHA argument is not a plain hex object
+// name — surfaced before the string ever reaches git, where an
+// option-shaped value (e.g. a leading "-") would be parsed as a flag rather
+// than a target commit.
 var ErrInvalidSHA = errors.New("gitrepo: invalid SHA")
+
+// ErrIndexNotEmpty is returned by CommitEmpty when its pre-check finds the
+// index already carrying staged changes, checkable via errors.Is. CommitEmpty
+// has no pathspec to scope an empty commit with, so refusing on a dirty index
+// is the only way it can avoid silently sweeping up somebody else's staged
+// work — see CommitEmpty's own doc for the residual race this refusal does
+// and does not close.
+var ErrIndexNotEmpty = errors.New("gitrepo: index is not empty")
 
 // shaPattern matches a plain abbreviated-or-full hex object name: 4 hex
 // digits (git's minimum abbreviation) up to 64 (a full SHA-256 name). It
@@ -227,6 +235,102 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 		return "", false, err
 	}
 	return sha, true, nil
+}
+
+// CommitEmpty records an empty commit — one whose tree is identical to its
+// parent's, carrying no content beyond msg — via `git commit --allow-empty`.
+// It exists for the one shape StageAndCommit and StageAllAndCommit cannot be
+// coaxed into: a commit whose whole meaning lives in msg (and, from
+// fabricengine's callers, the trailers already folded into msg) rather than
+// in any file content. Unlike those two, CommitEmpty never no-ops — an empty
+// commit is the entire point, so there is no "nothing changed" case for it to
+// signal — and it returns no committed bool: it always commits when it
+// commits at all.
+//
+// CommitEmpty refuses if the index is dirty when checked, returning
+// ErrIndexNotEmpty (checkable via errors.Is) without committing. This is the
+// one place in the package that still validates caller state before acting,
+// and it is a real refusal, not misuse-handling: an empty commit built with
+// --allow-empty has no pathspec to scope itself with the way StageAndCommit's
+// `commit ... -- <files>` does, so this method is check-then-commit rather
+// than structurally safe. The guarantee here is correspondingly weaker than
+// StageAndCommit's: StageAndCommit cannot ever sweep an unlisted path, race
+// or no race, because its commit is pathspec-scoped at the git level itself;
+// CommitEmpty only refuses when its pre-check happens to observe a dirty
+// index, so an index write landing in the milliseconds between that check and
+// the commit spawn below is still swept into the commit. fabric's own callers
+// serialize their writes under the combined write lock, which keeps this
+// window closed in practice, but the contract documented here must not claim
+// the guarantee StageAndCommit actually has.
+//
+// The pre-check branches on whether HEAD is born, using CurrentSHA's typed
+// ErrNoCommits result (via errors.Is) rather than matching git's stderr text
+// — see CurrentSHA's own doc for why that distinction matters. On a **born**
+// HEAD, `git diff --cached --quiet` is read with the same exit-code mapping
+// StageAndCommit's own check uses, just unscoped since there is no pathspec
+// list here: exit 0 means the index matches HEAD (proceed), exit 1 means
+// staged differences exist (ErrIndexNotEmpty), and any other exit is a
+// genuine git failure returned with its stderr. On an **unborn** HEAD there
+// is no HEAD tree to diff against, so `git diff --cached` is not used at all
+// — `git ls-files --cached` is run instead, and any listed path at all means
+// something is staged (ErrIndexNotEmpty); empty output means proceed. That
+// form is exact, needs no empty-tree object constant (hash-algorithm-
+// dependent, and so a latent SHA-256 bug), and does not bet the contract on
+// diff --cached's unborn-HEAD semantics. The unborn path is reachable in
+// production, not hypothetical: fabricengine's empty-commit rule lands here
+// whenever weft has no commits yet.
+func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
+	_, err = r.CurrentSHA()
+	switch {
+	case err == nil:
+		// Born HEAD: an unscoped `diff --cached --quiet` reports via exit
+		// code alone, exactly like StageAndCommit's own pathspec-scoped
+		// check, just without a pathspec to scope to.
+		_, stderr, code, runErr := r.run("diff", "--cached", "--quiet")
+		if runErr != nil {
+			return "", runErr
+		}
+		switch code {
+		case 0:
+			// Index matches HEAD; nothing staged, so it is safe to proceed.
+		case 1:
+			return "", ErrIndexNotEmpty
+		default:
+			return "", fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
+		}
+	case errors.Is(err, ErrNoCommits):
+		// Unborn HEAD: there is no HEAD tree for `diff --cached` to compare
+		// against, so `git ls-files --cached` is the exact substitute —
+		// any listed path names something staged.
+		stdout, stderr, code, runErr := r.run("ls-files", "--cached")
+		if runErr != nil {
+			return "", runErr
+		}
+		if code != 0 {
+			return "", fmt.Errorf("gitrepo: git ls-files --cached: %s", stderr)
+		}
+		if strings.TrimSpace(stdout) != "" {
+			return "", ErrIndexNotEmpty
+		}
+	default:
+		// A genuine CurrentSHA failure (not the unborn-HEAD signal) — surface
+		// it unchanged rather than guessing at the index state.
+		return "", err
+	}
+
+	_, stderr, code, err := r.run("commit", "--allow-empty", "-m", msg)
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "", fmt.Errorf("gitrepo: git commit --allow-empty: %s", stderr)
+	}
+
+	sha, err = r.CurrentSHA()
+	if err != nil {
+		return "", err
+	}
+	return sha, nil
 }
 
 // hasPathspecMagic reports whether files contains at least one git pathspec
@@ -426,8 +530,10 @@ func (r *Repo) RestoreBranch(ref string) error {
 
 // ChangedFilesSince returns the repo-relative paths that differ between sha
 // and HEAD, considering committed history only — uncommitted working-tree
-// or staged edits are never inspected, matching the snapshot model's
-// SHA-to-SHA determinism. A missing or invalid sha is a genuine failure
+// or staged edits are never inspected, since sha and HEAD are the only two
+// points this comparison is defined over: a diff against an uncommitted
+// state would have no stable SHA to compare against later. A missing or
+// invalid sha is a genuine failure
 // here (unlike SHAExists' bool-swallowing posture): callers are expected to
 // check SHAExists first and treat a missing SHA as staleness. A non-hex sha
 // returns ErrInvalidSHA (checkable via errors.Is) without ever opening the
