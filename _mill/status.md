@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-07-31T19:00:16Z'
+discussion-fix-r4  '2026-07-31T20:12:59Z'
+discussed  '2026-07-31T20:12:59Z'
 ```
