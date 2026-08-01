@@ -13,29 +13,37 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and writes a
-// _lyx/config/fabric.yaml config so RunCLI can resolve topology-verb configuration
-// from the cwd. Returns the hub path. Stays serial (no t.Parallel) because t.Chdir
-// is required for RunCLI.
+// _lyx/config/fabric.yaml config at the repo-wide board dir so RunCLI's
+// migrated topology-verb sites (LoadConfig(hubgeometry.BoardDir(l.Hub))) can
+// resolve it. f.Hub is the fixture's host worktree root, i.e.
+// hubgeometry.Layout.WorktreeRoot once resolved — the real hubgeometry Hub
+// (WorktreeRoot's parent) is filepath.Dir(f.Hub), matching the established
+// idiom in internal/boardcli's own cli_test.go/notes_test.go fixtures.
+// Returns the hub path. Stays serial (no t.Parallel) because t.Chdir is
+// required for RunCLI.
 func setupCLIRepo(t *testing.T) string {
 	t.Helper()
 	f := lyxtest.CopyHostHub(t)
 	t.Chdir(f.Hub)
 
-	if err := os.MkdirAll(hubgeometry.ConfigDir(f.Hub), 0o755); err != nil {
+	boardDir := hubgeometry.BoardDir(filepath.Dir(f.Hub))
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(f.Hub, "fabric"), []byte("branch_prefix: wt-\npathspec: _lyx\n"), 0o644); err != nil {
+	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: wt-\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write fabric.yaml: %v", err)
 	}
 	return f.Hub
@@ -179,10 +187,18 @@ func TestRunCLI_CommitHelp(t *testing.T) {
 func TestRunCLI_EnvMapToOption(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 
-	// Seed the weft-prime fixture with the fabric config template needed for RunCLI.
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
+	// Fabric config is a repo-wide fact read from the board dir (weft_verbs.go's
+	// migrated PersistentPreRunE), not from the weft-prime fixture's own _lyx —
+	// CopyPaired never materializes a _board dir, so seed it directly here.
+	// fixture.Container is the real hubgeometry Hub (fixture.Hub's parent; see
+	// CopyPaired's own doc comment), matching hubgeometry.Resolve(fixture.Hub).Hub.
+	boardDir := hubgeometry.BoardDir(fixture.Container)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("create board config dir: %v", err)
+	}
+	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("write board fabric.yaml: %v", err)
+	}
 
 	// Change to the hub directory so hubgeometry.Resolve can locate the repo from cwd;
 	// t.Chdir restores the original cwd automatically after the test.
@@ -252,4 +268,182 @@ func TestRunCLI_CloneRequiresExactlyTwoArgs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// makeCLICloneHostBare creates a bare host remote at <dir>/<name>.git seeded
+// with a README and a committed "backend" subdirectory, so a clone --subpath
+// backend test has a real subpath to anchor at. This package has no existing
+// two-repo clone fixture helper (CopyHostHub/CopyPaired both pre-materialize
+// an already-paired hub, not raw clone sources), so it is built minimally
+// inline, mirroring internal/fabricengine/clone_adopt_test.go's
+// makeBareRemoteWithSubdir.
+func makeCLICloneHostBare(t *testing.T, dir, name string) string {
+	t.Helper()
+
+	bare := filepath.Join(dir, name+".git")
+	if err := os.Mkdir(bare, 0o755); err != nil {
+		t.Fatalf("mkdir bare: %v", err)
+	}
+	lyxtest.MustRun(t, bare, "git", "init", "--bare")
+
+	scratch := filepath.Join(dir, "scratch-"+name)
+	if err := os.Mkdir(scratch, 0o755); err != nil {
+		t.Fatalf("mkdir scratch: %v", err)
+	}
+	lyxtest.MustRun(t, scratch, "git", "init", "-b", "main")
+	lyxtest.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, scratch, "git", "config", "user.name", "Test")
+	lyxtest.MustRun(t, scratch, "git", "remote", "add", "origin", filepath.ToSlash(bare))
+
+	if err := os.WriteFile(filepath.Join(scratch, "README.md"), []byte("# "+name), 0o644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	backendDir := filepath.Join(scratch, "backend")
+	if err := os.Mkdir(backendDir, 0o755); err != nil {
+		t.Fatalf("mkdir backend: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(backendDir, "marker.txt"), []byte("backend content"), 0o644); err != nil {
+		t.Fatalf("write backend marker: %v", err)
+	}
+
+	lyxtest.MustRun(t, scratch, "git", "add", "README.md", "backend")
+	lyxtest.MustRun(t, scratch, "git", "commit", "-m", "init")
+	lyxtest.MustRun(t, scratch, "git", "push", "-u", "origin", "main")
+
+	return bare
+}
+
+// makeCLICloneWeftBare creates a genuinely empty (no commits) bare weft
+// remote at <dir>/<name>.git — the state a brand-new weft repo is in before
+// its first clone, exercising CloneHub's orphan _board path end-to-end
+// through the CLI.
+func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
+	t.Helper()
+
+	bare := filepath.Join(dir, name+".git")
+	lyxtest.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
+	return bare
+}
+
+// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <host>
+// <weft>" against a local two-repo fixture and asserts the end-to-end
+// clone-does-everything contract: the JSON envelope, the wired host
+// junctions, the anchor marker and repo-wide config committed onto
+// weft:main, and per-worktree module config reconciliation — i.e. that the
+// card-16 CLI orchestration actually ran, not just fabricengine.CloneHub's
+// own git-level clone.
+func TestRunCLI_CloneEndToEnd(t *testing.T) {
+	fixtures := t.TempDir()
+	hostBare := makeCLICloneHostBare(t, fixtures, "clonecli-host")
+	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-weft")
+
+	cloneParent := t.TempDir()
+	t.Chdir(cloneParent)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{
+		"clone", "--subpath", "backend",
+		filepath.ToSlash(hostBare), filepath.ToSlash(weftBare),
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(clone --subpath backend) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Fatalf("RunCLI(clone) ok = %v; want true; output: %s", result["ok"], out.String())
+	}
+	hubPath, _ := result["hub"].(string)
+	if hubPath == "" {
+		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", result)
+	}
+	if anchor, _ := result["anchor"].(string); anchor != "backend" {
+		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, "backend")
+	}
+
+	// The prime host worktree's _lyx/_pattern junctions must be wired.
+	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
+	for _, name := range []string{hubgeometry.LyxDirName, hubgeometry.PatternDirName} {
+		link := filepath.Join(primeCwd, name)
+		isLink, err := fslink.IsLink(link)
+		if err != nil {
+			t.Errorf("fslink.IsLink(%s): %v", link, err)
+			continue
+		}
+		if !isLink {
+			t.Errorf("%s is not wired as a junction after clone", link)
+		}
+	}
+
+	// The .fabric-anchor marker and repo-wide fabric.yaml must be committed
+	// onto weft:main (the board worktree), not merely present on disk. This
+	// checks tracked-ness directly (git ls-files) rather than a blanket
+	// `git status --porcelain` cleanliness assertion: CommitWeftAt/PushWeftAt
+	// bypass ensureWeftLockDir's exclude-seeding (by design — see
+	// weftgit.go's CommitWeftAt doc comment), so gitrepo's own
+	// .gitrepo-push.lock can legitimately surface as untracked dirt on the
+	// board worktree; that is a pre-existing gap in boardengine.Sync's own
+	// identical CommitWeftAt/PushWeftAt pairing, not something this batch's
+	// clone orchestration introduces or is responsible for fixing.
+	boardDir := hubgeometry.BoardDir(hubPath)
+	for _, relPath := range []string{
+		hubgeometry.FabricAnchorName,
+		filepath.Join(hubgeometry.LyxDirName, "config", "fabric.yaml"),
+	} {
+		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
+		if tracked == "" {
+			t.Errorf("%s is not tracked on weft:main at %s", relPath, boardDir)
+		}
+	}
+
+	// Per-worktree module configs (e.g. "board") must have been reconciled
+	// on the weft side.
+	weftBase := filepath.Join(hubgeometry.WeftSiblingPath(hubPath, "clonecli-host"), "backend")
+	boardConfigPath := hubgeometry.ConfigFile(weftBase, "board")
+	if _, err := os.Stat(boardConfigPath); err != nil {
+		t.Errorf("per-worktree board config missing at %s: %v", boardConfigPath, err)
+	}
+}
+
+// TestRunCLI_CloneDefaultSubpathAnchorsAtRoot asserts that "fabric clone" with
+// no --subpath flag echoes anchor "." — the default root anchor.
+func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
+	fixtures := t.TempDir()
+	hostBare := makeCLICloneHostBare(t, fixtures, "clonecli-root-host")
+	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-root-weft")
+
+	cloneParent := t.TempDir()
+	t.Chdir(cloneParent)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{
+		"clone", filepath.ToSlash(hostBare), filepath.ToSlash(weftBare),
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Fatalf("RunCLI(clone) ok = %v; want true; output: %s", result["ok"], out.String())
+	}
+	if anchor, _ := result["anchor"].(string); anchor != "." {
+		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, ".")
+	}
+}
+
+// gitOutputCLI runs a git command in dir and returns its trimmed stdout,
+// failing the test on any error — this package's capture-variant sibling of
+// lyxtest.MustRun, which discards output. Named distinctly from
+// internal/fabricengine's own gitOutput test helper since the two packages
+// share no test code.
+func gitOutputCLI(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %s in %s: %v", strings.Join(args, " "), dir, err)
+	}
+	return string(out)
 }
