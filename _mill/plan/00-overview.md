@@ -30,7 +30,7 @@ batches:
     name: configsync-fabric-repowide
     file: 03-configsync-fabric-repowide.md
     depends-on: []
-    verify: go test ./internal/configsync/...
+    verify: go test -tags integration ./internal/configsync/... ./internal/initengine/...
   - number: 4
     name: clone-does-everything
     file: 04-clone-does-everything.md
@@ -39,7 +39,7 @@ batches:
   - number: 5
     name: worktree-add-eager-wiring
     file: 05-worktree-add-eager-wiring.md
-    depends-on: [1]
+    depends-on: [1, 2]
     verify: go test -tags integration ./internal/fabricengine/...
   - number: 6
     name: init-dissolution-and-unwire
@@ -103,19 +103,27 @@ _Cross-cutting decisions every batch inherits._
 - `internal/fabriccli/unwire.go`
 - `internal/fabriccli/weft_verbs.go`
 - `internal/fabricengine/add.go`
+- `internal/fabricengine/add_branch_exists_test.go`
 - `internal/fabricengine/add_rollback_adopt_test.go`
 - `internal/fabricengine/checkout.go`
+- `internal/fabricengine/checkout_index_refresh_test.go`
+- `internal/fabricengine/checkout_rollback_test.go`
 - `internal/fabricengine/clone.go`
 - `internal/fabricengine/clone_adopt_test.go`
 - `internal/fabricengine/config.go`
+- `internal/fabricengine/config_driven_junctions_integration_test.go`
 - `internal/fabricengine/doc.go`
 - `internal/fabricengine/drift.go`
 - `internal/fabricengine/hostlayout.go`
 - `internal/fabricengine/junction.go`
+- `internal/fabricengine/junction_pattern_integration_test.go`
+- `internal/fabricengine/junction_repoint_test.go`
 - `internal/fabricengine/junctionnames.go`
 - `internal/fabricengine/reconcile.go`
-- `internal/fabricengine/remove.go`
+- `internal/fabricengine/reconcile_stale_registration_test.go`
 - `internal/fabricengine/reconcile_stale_removal_test.go`
+- `internal/fabricengine/remove.go`
+- `internal/fabricengine/remove_junctions_integration_test.go`
 - `internal/fabricengine/status.go`
 - `internal/fabricengine/unwire.go`
 - `internal/fabricengine/unwire_test.go`
@@ -124,6 +132,8 @@ _Cross-cutting decisions every batch inherits._
 - `internal/hubgeometry/anchor_test.go`
 - `internal/hubgeometry/hubgeometry.go`
 - `internal/hubgeometry/siblinglayout_test.go`
+- `internal/initengine/init_test.go`
+- `internal/initengine/undo_test.go`
 - `internal/loomengine/config.go`
 - `internal/loomengine/config_test.go`
 - `internal/perchengine/config.go`

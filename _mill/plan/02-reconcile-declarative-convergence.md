@@ -95,18 +95,24 @@ Batch-local decision: introduce `repoWideFabricBase(l *hubgeometry.Layout) strin
 
 - **Context:**
   - `internal/fabricengine/reconcile.go`
-  - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/config.go`
   - `internal/fabricengine/template.yaml`
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/lyxtest/lyxtest.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/fabricengine/reconcile_stale_registration_test.go`
+  - `internal/fabricengine/junction_pattern_integration_test.go`
+  - `internal/fabricengine/remove_junctions_integration_test.go`
+  - `internal/fabricengine/checkout_rollback_test.go`
+  - `internal/fabricengine/checkout_index_refresh_test.go`
+  - `internal/fabricengine/junction_repoint_test.go`
+  - `internal/fabricengine/config_driven_junctions_integration_test.go`
 - **Creates:**
   - `internal/fabricengine/reconcile_stale_removal_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `internal/fabricengine/reconcile_stale_removal_test.go` (first line `//go:build integration`) covering the new convergence:
+- **Requirements:** **First, migrate the shared fabricengine test fixtures to seed fabric config at the repo-wide `BoardDir`** — this is mandatory because card 7 migrates `checkJunctionHealth`/`PairInSync`/`Reconcile`/`Checkout`/`Remove`/`junctionRepointedDetail` to read from `hubgeometry.BoardDir(l.Hub)`, so any fixture seeding fabric config only at the per-pair weft base now yields "cannot load fabric.yaml" and fails this batch's whole-package verify. Update the shared `newFabricFixture` helper (`reconcile_stale_registration_test.go:102-108`, currently `lyxtest.SeedConfig(t, fixture.WeftPrime, {"fabric": …})`) to ALSO materialize the repo-wide config at `hubgeometry.ConfigFile(hubgeometry.BoardDir(fixture.Hub), "fabric")` (i.e. `<BoardDir>/_lyx/config/fabric.yaml`); `lyxtest.CopyPaired`/`CopyPairedLocal` do not create a `_board` dir, so create it and its `_lyx/config/` first. Then sweep every other fabricengine `*_test.go` that seeds fabric config at a per-pair weft base and exercises a migrated read (checkout, reconcile-repoint, remove, pattern-junction health) and seed the same config at `BoardDir` — the listed Edits files (`junction_pattern_integration_test.go`, `remove_junctions_integration_test.go`, `checkout_rollback_test.go`, `checkout_index_refresh_test.go`, `junction_repoint_test.go`, `config_driven_junctions_integration_test.go`) are the known sites; grep the package for the per-pair `SeedConfig(…, "fabric": …)` pattern to confirm none is missed (the whole-package `verify` surfaces any miss as a `cannot load fabric.yaml` failure). Add-path fixtures (`add_*_test.go`) are migrated separately in batch 5 (card 22), which depends on this batch. Then, create `internal/fabricengine/reconcile_stale_removal_test.go` (first line `//go:build integration`) covering the new convergence:
   - a junction in the repo-wide `pathspec` but missing on disk is wired (add-missing, existing behavior still holds);
   - a junction on disk but absent from the repo-wide `pathspec` is **removed** (new stale-removal behavior);
   - a correct junction is a no-op;

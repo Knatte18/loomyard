@@ -5,7 +5,7 @@ task: 'fabric: clone-does-everything + subpath-in-weft + init dissolution'
 batch: configsync-fabric-repowide
 number: 3
 cards: 3
-verify: go test ./internal/configsync/...
+verify: go test -tags integration ./internal/configsync/... ./internal/initengine/...
 depends-on: []
 ```
 
@@ -24,13 +24,17 @@ Batch-local decision: fabric is skipped in the general `ReconcileAll` loop by na
 - **Context:**
   - `internal/configreg/configreg.go`
   - `internal/hubgeometry/hubgeometry.go`
+  - `internal/initengine/init.go`
 - **Edits:**
   - `internal/configsync/configsync.go`
+  - `internal/initengine/init_test.go`
+  - `internal/initengine/undo_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `ReconcileAll(baseDir string, apply bool) ([]Result, error)` (configsync.go:116), skip fabric in the per-module loop over `configreg.Modules()` (configsync.go:119): at the top of the loop body, `if m.Name == "fabric" { continue }` — a worktree base no longer materializes its own `fabric.yaml`, because `pathspec`/`branch_prefix` are now the repo-wide facts materialized by `ReconcileFabricAt` (card 12). Remove the now-dead fabric special-case at configsync.go:138-140 (`if fileAbsent && m.Name == "fabric" { existing, migratedFrom = legacyFabricConfig(baseDir) }`) since fabric never reaches that code after the skip — but KEEP `legacyFabricConfig` itself (card 12 relocates the migration call, not the function). Add a comment at the skip explaining fabric's config is repo-wide (materialized once at clone via `ReconcileFabricAt`), not per-worktree. (The initengine-referencing doc comment at configsync.go:99 describes the seed-only "created" heuristic, not fabric — leave it to batch 6 card 28's init-reference sweep, which rewords it after the init packages are deleted.)
-- **Commit:** `refactor(configsync): drop fabric from per-worktree ReconcileAll`
+  **Neutralize the now-broken initengine tests in the same batch** (they are not deleted until batch 6 card 25, and no batch verify between batch 3 and batch 6 would otherwise catch this broken intermediate state): once fabric is skipped, `initengine.Init` can no longer materialize a per-worktree `fabric.yaml` (its `WiredNames(weftBase)` load fails), so `init_test.go`'s `TestInit_FirstRun` (asserting `len(result.Modules) == len(configreg.Modules())` at init_test.go:93-94 and `fabricengine.LoadConfig(f.Layout.WorktreeRoot)` succeeds at init_test.go:105-107), `TestInit_Idempotent`, and `undo_test.go`'s `Undo`-exercising tests all break. Add a `t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")` at the top of each initengine test that exercises `Init`/`Undo`'s fabric-materialization or wiring path (the whole-suite skip is acceptable here — the package is deleted outright in card 25, so these tests have no future). Do not attempt to fix `Init`/`Undo` themselves — they are dead code being removed.
+- **Commit:** `refactor(configsync): drop fabric from per-worktree ReconcileAll; skip superseded init tests`
 
 ### Card 12: Add repo-wide `ReconcileFabricAt` carrying the legacy migration
 
