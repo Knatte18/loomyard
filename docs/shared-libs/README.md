@@ -22,7 +22,7 @@ The following libraries ship in code and tests; their mechanics are documented t
 - `internal/gitexec` — windowless `RunGit` primitive
 - `internal/gitignore` — shared `.gitignore` block manager for multiple modules
 - `internal/lock` — cross-process file locking
-- `internal/logger` — thin log/slog wrapper (Debug/Info/Warn), silent by default; `-v`/`-vv` wires to it in `cmd/lyx/main.go`, and `LYX_LOG_LEVEL`/`LYX_LOG_FILE` env vars activate it for entry points (e.g. `go test`) that never reach that CLI flag parsing
+- `internal/logger` — thin log/slog wrapper (Debug/Info/Warn), silent by default; `-v`/`-vv` wires to it in `cmd/lyx/main.go`, and `LYX_LOG_LEVEL`/`LYX_LOG_FILE` env vars activate it for entry points (e.g. `go test`) that never reach that CLI flag parsing; every line also carries a process trace ID (`TraceID()`, adopted/exported via `LYX_TRACE_ID` so a spawned child continues its parent's trace) and, for callers that hold one, an explicit-parent diagnostic span (`StartSpan`/`Child`/`End`) stamping `trace=`/`span=`; independent of stderr verbosity, every Info+ record also lands in a second, durable, worktree-anchored sink (`.lyx/logs`, lazily opened, retained by age and count, capped at 8 MiB per file), which under `go test` requires the `LYX_TRACE=1` opt-in (alongside `LYX_LOG_LEVEL`/`LYX_LOG_FILE`) to activate
 - `internal/proc` — cross-OS child-process window-hide (`HideWindow`) and detached-spawn (`Detach`) primitives
 - `internal/state` — generic locked typed JSON I/O
 - `internal/modelspec` — model-spec parser + models.yaml registry loader; the pinned contract is `docs/reference/model-spec.md`, the as-built API lives in the package doc
