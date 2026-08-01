@@ -527,6 +527,13 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
 
+	// Shrink the timeout for this test so it proves the seam engages without
+	// paying the real 5s production wait -- same save/override/restore shape
+	// withFakeGHAuthToken uses above for runGHAuthToken.
+	origTimeout := ghAuthTokenTimeout
+	ghAuthTokenTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { ghAuthTokenTimeout = origTimeout })
+
 	// A well-behaved fake -- like the real `gh auth token` subprocess it
 	// stands in for -- respects ctx's deadline instead of running forever.
 	withFakeGHAuthToken(t, func(ctx context.Context) (string, error) {
@@ -544,7 +551,11 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	if elapsed < ghAuthTokenTimeout {
 		t.Errorf("resolveToken() returned after %v; want at least ghAuthTokenTimeout (%v) -- an early return here would mean this test is not exercising the timeout at all", elapsed, ghAuthTokenTimeout)
 	}
-	const slack = 5 * time.Second
+	// 200ms is 20x the shrunk 10ms timeout -- generous against scheduling
+	// jitter while still tight enough to catch a regression where the
+	// override silently fails to apply (which would make the real call take
+	// ~5s and trip this check).
+	const slack = 200 * time.Millisecond
 	if elapsed > ghAuthTokenTimeout+slack {
 		t.Errorf("resolveToken() took %v; want close to ghAuthTokenTimeout (%v), not an unbounded hang", elapsed, ghAuthTokenTimeout)
 	}
