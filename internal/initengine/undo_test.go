@@ -99,6 +99,7 @@ func snapshotDir(t *testing.T, dir string) string {
 // committed (push is exercised via WEFT_SKIP_PUSH, not asserted here — the
 // real push path is covered separately by TestUndo_PartialRecovery/b).
 func TestUndo_HappyPath(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	f := lyxtest.CopyPairedLocal(t)
 	// CopyPairedLocal's weft-prime origin is left pointing at the shared
 	// template bare (never rewritten); skip push so Undo cannot reach it.
@@ -179,6 +180,7 @@ func TestUndo_HappyPath(t *testing.T) {
 // hand-authored invariants — is left untouched on disk, and no deletion of it
 // is ever committed.
 func TestUndo_PreservesPatternContent(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	f := lyxtest.CopyPairedLocal(t)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -297,6 +299,7 @@ func TestUndo_NoWeftPairing(t *testing.T) {
 // (after a prior Init and a first successful Undo) is a clean no-op,
 // matching TestUndo_NeverInitialized's expected output shape.
 func TestUndo_Idempotent(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	f := lyxtest.CopyPairedLocal(t)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -331,6 +334,7 @@ func TestUndo_Idempotent(t *testing.T) {
 // everything untouched when the host _lyx path has been externally
 // corrupted into a real directory after a prior Init.
 func TestUndo_RealDirectoryGuard(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	f := lyxtest.CopyPairedLocal(t)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -389,6 +393,7 @@ func TestUndo_RealDirectoryGuard(t *testing.T) {
 // everything untouched when the host junction has been externally
 // re-pointed at an unrelated directory after a prior Init.
 func TestUndo_TargetMismatch(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	f := lyxtest.CopyPairedLocal(t)
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -458,6 +463,7 @@ func TestUndo_TargetMismatch(t *testing.T) {
 // simulates a crash right after the weft-side deletion was committed but
 // before it was pushed (the "Push runs unconditionally" Shared Decision).
 func TestUndo_PartialRecovery(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	t.Run("a", func(t *testing.T) {
 		f := lyxtest.CopyPairedLocal(t)
 		t.Setenv("WEFT_SKIP_PUSH", "1")

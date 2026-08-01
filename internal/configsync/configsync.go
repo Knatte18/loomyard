@@ -102,14 +102,11 @@ func legacyFabricConfig(baseDir string) (existing []byte, migratedFrom []string)
 //
 // When apply is false, files are never written and Applied is always false.
 //
-// "fabric" carries one more special case, the fabric-cutover's one-shot config
-// migration: when fabric.yaml is absent, legacyFabricConfig folds in whatever
-// the pre-cutover warp.yaml/weft.yaml files still carry (branch_prefix,
-// pathspec) instead of writing the bare template default, reports which
-// legacy files contributed via Result.MigratedFrom, and — only when apply is
-// true and the write lands — prunes those legacy files so the migration does
-// not re-fire. See legacyFabricConfig's doc comment for exactly which legacy
-// files count as migrated.
+// "fabric" is skipped entirely: its config (pathspec, branch_prefix) is a
+// single repo-wide fact on weft:main, not a per-worktree file, so it never
+// reaches this loop's body. See ReconcileFabricAt for the repo-wide
+// counterpart, which carries the fabric-cutover's one-shot legacy
+// warp.yaml/weft.yaml migration (legacyFabricConfig) that used to live here.
 //
 // The function returns the slice of results and any error encountered during
 // reconciliation (I/O or YAML parsing).
@@ -117,6 +114,13 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 	var results []Result
 
 	for _, m := range configreg.Modules() {
+		if m.Name == "fabric" {
+			// fabric's config is repo-wide, not per-worktree: pathspec/branch_prefix
+			// are materialized once at clone via ReconcileFabricAt, keyed on the
+			// board dir at hubgeometry.BoardDir(Hub), never on a worktree baseDir.
+			continue
+		}
+
 		cfgPath := hubgeometry.ConfigFile(baseDir, m.Name)
 
 		// Read existing config file (missing file → empty bytes)
@@ -129,15 +133,11 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 			existing = []byte{}
 		}
 
-		// One-shot fabric-cutover migration: when fabric.yaml is absent,
-		// fold in whatever the pre-cutover warp.yaml/weft.yaml carry instead
-		// of writing the bare template default. Fires only for "fabric" --
-		// this is inherently a one-off migration for this one cutover, not a
-		// generic legacy-config mechanism other modules should inherit.
+		// fabric is skipped above, so no per-module migratedFrom ever fires
+		// here now; the one-shot fabric-cutover migration lives in
+		// ReconcileFabricAt instead, which is the sole caller of
+		// legacyFabricConfig going forward.
 		var migratedFrom []string
-		if fileAbsent && m.Name == "fabric" {
-			existing, migratedFrom = legacyFabricConfig(baseDir)
-		}
 
 		if m.SeedOnly {
 			if !fileAbsent {

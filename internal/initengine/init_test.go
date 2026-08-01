@@ -23,6 +23,7 @@ import (
 )
 
 func TestInit_FirstRun(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	// Use a paired fixture (host + weft) so Init has a weft pairing to activate.
 	f := lyxtest.CopyPairedLocal(t)
 
@@ -110,6 +111,7 @@ func TestInit_FirstRun(t *testing.T) {
 }
 
 func TestInit_Idempotent(t *testing.T) {
+	t.Skip("lyx init is superseded by fabric clone/add + fabric unwire and is deleted in the fabric-clone-subpath task's batch 6; ReconcileAll no longer materializes a per-worktree fabric.yaml as of this batch")
 	// Use a paired fixture (host + weft) so Init has a weft pairing to activate.
 	f := lyxtest.CopyPairedLocal(t)
 
