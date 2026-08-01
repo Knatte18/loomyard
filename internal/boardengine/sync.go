@@ -6,7 +6,7 @@
 // across the whole loop, and repeatedly calls a step closure that commits any
 // dirty working-tree state via fabricengine.CommitWeftAt and, unless skipPush
 // is set, pushes anything unpushed via fabricengine.PushWeftAt (which owns
-// the hasUnpushed guard and the rebase-retry, so a fully-pushed board never
+// the HasUnpushed guard and the rebase-retry, so a fully-pushed board never
 // touches the network) — looping while the step reports a commit landed, so a
 // burst of writes coalesces into as few pushes as possible. Board still
 // supplies the commit+push step and its own board.lock (via commitDirty) and

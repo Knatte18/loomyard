@@ -497,7 +497,7 @@ type linkedParityFixture struct {
 // linked worktree on branch "feature" with its own commit, also pushed with
 // tracking; then a second clone advances "feature" further on the remote and
 // the linked worktree fetches (without merging) — its own branch never gains
-// a commit the upstream lacks, giving the "strictly behind" hasUnpushed
+// a commit the upstream lacks, giving the "strictly behind" HasUnpushed
 // state the naive single-hash exclusion gets wrong.
 func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
 	t.Helper()
@@ -547,7 +547,7 @@ func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
 // runLinkedWorktreeParityChecks runs the read-side parity checks shared by
 // both a direct and a junction-reached run against the linked worktree
 // fixture: CurrentSHA, CurrentBranch (on-branch), SHAExists, and
-// ChangedFilesSince. hasUnpushed is CLI-bound (see push.go's card-21
+// ChangedFilesSince. HasUnpushed is CLI-bound (see push.go's card-21
 // reversal doc) and carries no go-git parity case here for that reason. dir
 // is the path under test — the worktree's real path, or a junction pointing
 // at it.

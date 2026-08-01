@@ -361,7 +361,7 @@ func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 }
 
 // TestPushCoalesced_NoRemoteConfigured_SurfacesGitError is PushCoalesced's
-// counterpart to TestPush_NoRemoteConfigured_SurfacesGitError: hasUnpushed
+// counterpart to TestPush_NoRemoteConfigured_SurfacesGitError: HasUnpushed
 // treats the missing upstream as "unpushed" regardless of the missing
 // remote, so PushCoalesced proceeds to the same pushWithRebaseRetry path and
 // must surface the same unwrapped git error rather than the lock machinery
