@@ -1,3 +1,0 @@
-- Stale reference to deleted initengine/init.go in a WireJunctions doc comment: Location internal/fabricengine/junction.go:36 -- doc comment for WireJunctions still named initengine/init.go as one of three callers; already fixed in round 1's fix pass.
-- configreg.go package doc still mentions "init" CLI commands: Location internal/configreg/configreg.go:4 -- package doc mentioned init CLI commands; already fixed in round 1's fix pass.
-- runUnwire silently discards the Getwd() error, unlike every sibling handler: Location internal/fabriccli/unwire.go:23 -- cwd, _ := hubgeometry.Getwd() discarded the error; already fixed in round 1's fix pass.
