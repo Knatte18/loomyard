@@ -61,6 +61,18 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	const slug = "stale-removal-add-remove-noop"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
+	boardDir := hubgeometry.BoardDir(l.Hub)
+	cfgPath := hubgeometry.ConfigFile(boardDir, "fabric")
+
+	// Narrow the repo-wide pathspec to "_lyx" alone before Add: batch 5 card
+	// 20 makes Add eagerly wire the repo-wide pathspec it sees at call time
+	// (RepoWiredNames(l)), so leaving the fixture's default "_lyx _pattern"
+	// pathspec in place would have Add itself wire _pattern too, leaving
+	// nothing for Reconcile's own add-missing branch to genuinely add below.
+	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+		t.Fatalf("narrow repo-wide pathspec: %v", err)
+	}
+
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
@@ -71,12 +83,18 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
 
-	// Wire _lyx (a desired, correct junction) and _extra (on disk but not in
-	// the repo-wide default pathspec "_lyx _pattern") — Add itself wires
-	// nothing, so _pattern is genuinely missing on disk, matching the
-	// add-missing shape.
+	// Wire _extra (on disk but not in the repo-wide pathspec) alongside the
+	// _lyx junction Add already wired above — this test's stale-removal case.
 	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
+	}
+
+	// Widen the repo-wide pathspec back to the default "_lyx _pattern" so
+	// _pattern is genuinely missing on disk relative to the desired set
+	// Reconcile is about to converge against — the add-missing shape this
+	// test's name promises.
+	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _pattern\n"), 0o644); err != nil {
+		t.Fatalf("widen repo-wide pathspec: %v", err)
 	}
 
 	result, err := topology.Reconcile(l)
@@ -170,8 +188,13 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 		}
 	}
 
-	// First Reconcile: add-missing wires the default "_lyx _pattern"
-	// pathspec on both pairs (Add itself wires nothing).
+	// First Reconcile: Add's own eager wiring (RepoWiredNames, card 20)
+	// already wired the default "_lyx _pattern" pathspec on both pairs at
+	// Add time, so this call converges to a no-op here — included for
+	// realism (a pair reconciled before ever being widened), not because it
+	// changes anything on disk. The genuine add-missing convergence this
+	// test proves is the second Reconcile call below, against the widened
+	// pathspec.
 	if _, err := topology.Reconcile(l); err != nil {
 		t.Fatalf("Reconcile (initial): %v", err)
 	}
