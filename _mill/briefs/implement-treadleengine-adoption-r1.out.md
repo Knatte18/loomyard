@@ -1,0 +1,8 @@
+Both cards (36 and 37) are committed, working tree is clean of tracked in-scope modifications, and `go test ./internal/treadleengine/...` passes. Card count: 2 of 2 cards declared in this batch committed (600ad53d for Card 36, 2ab65d5b... for Card 37).
+
+Summary of changes:
+- `/home/knatte/Code/loomyard/wts/trace-logging/internal/treadleengine/seam_enforcement_test.go` — reworded the "geometry-blind"/"excludes internal/hubgeometry" comment blocks to clarify the exclusion applies to direct imports only (no allowlist map change).
+- `/home/knatte/Code/loomyard/wts/trace-logging/CONSTRAINTS.md` — same qualification applied to the Treadle Runner-Seam Invariant entry.
+- `/home/knatte/Code/loomyard/wts/trace-logging/internal/treadleengine/run.go` — added `logger.Warn` calls at the three specified unlogged sites: (1) the gate-command error masked by a subsequent `saveState` failure (before the `return Result{}, saveErr` at the former lines 224-227), (2) both `moveStaleArtifacts` call sites (former lines 183 and 426-429), and (3) the died/timeout attempt-1 retry fall-through (former lines 486-490), immediately before the implicit `continue`. Instrumentation only; no behavior change. Re-audited the rest of `run.go`'s error-return sites — the remaining `saveState`/`p.validate`/lock-acquire propagation sites all already carry stage-level context via their own wrapping (`e.errf` or the `internal/state` package's own `fmt.Errorf` wraps) and are not swallowed/retried, so no further sites qualified under `adoption-scope`.
+
+{"status":"success","commit_sha":"2ab65d5ba1da19f60af3981d09e7bf539893e9e2","session_id":"26ef27e7-0e47-4c7c-acd4-34802a95b9f9","cards_done":[36,37]}
