@@ -1,7 +1,0 @@
-5 of 5 cards committed and verified successfully. All work is complete.
-
-{"status":"success","commit_sha":"c650273848737c9b9163d95bdae02153e1397eb5","session_id":"043c51ad-e615-4edd-ab03-cf83f6b4b1ba","cards_done":[40,41,42,43,44]}
-
-Summary: implemented batch 13 (scoutengine-logger-conversion) — 4 of 4 non-skipped cards (5 total cards, all committed): widened the leaf allowlist to admit `internal/logger` (Card 40, commit `9996b88a`), added an unexported `lang` field to `lspClient` set only at production construction sites (Card 41, commit `18e0a85c`), converted `lspclient.go`'s five stderr writes to `logger.Warn` (Card 42, commit `b0285d89`), converted `ensureserver.go`'s wedged-daemon-kill stderr write to `logger.Warn` (Card 43, commit `967e8cc3`), and added spawn observability via `logger.Info` at the supervised daemon's `cmd.Start()` success path (Card 44, commit `c6502738`). `go test ./internal/scoutengine/...` passes. Files touched: `/home/knatte/Code/loomyard/wts/trace-logging/CONSTRAINTS.md`, `/home/knatte/Code/loomyard/wts/trace-logging/internal/scoutengine/leaf_enforcement_test.go`, `/home/knatte/Code/loomyard/wts/trace-logging/internal/scoutengine/lspclient.go`, `/home/knatte/Code/loomyard/wts/trace-logging/internal/scoutengine/ensureserver.go`, `/home/knatte/Code/loomyard/wts/trace-logging/internal/scoutengine/refs.go`.
-
-{"status":"success","commit_sha":"c650273848737c9b9163d95bdae02153e1397eb5","session_id":"043c51ad-e615-4edd-ab03-cf83f6b4b1ba","cards_done":[40,41,42,43,44]}
