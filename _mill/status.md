@@ -117,5 +117,7 @@ batches:
     start_sha: 4e745df7357ced83ba4d9ef7b6059a6049dec468
     commit_sha: c650273848737c9b9163d95bdae02153e1397eb5
   - name: docs-and-constraints-wrapup
-    state: pending
+    state: running
+    implementer_session: 5fd9e06a-7765-49ec-8ab0-88a6ee4fce60
+    start_sha: 1d46adc0fc28ba22ae1c4b401097f65c702763b9
 ```
