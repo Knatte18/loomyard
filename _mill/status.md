@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-treadleengine-adoption
+phase: approved-burler-fabric-shuttle-adoption
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-logger-dual-handler-fanout  '2026-08-01T07:50:56Z'
 approved-logger-spans  '2026-08-01T07:53:37Z'
 approved-reedengine-adoption  '2026-08-01T07:57:50Z'
 approved-treadleengine-adoption  '2026-08-01T08:01:48Z'
+approved-burler-fabric-shuttle-adoption  '2026-08-01T08:04:05Z'
 ```
 
 ## Batches
@@ -93,9 +94,10 @@ batches:
     start_sha: 56ea77ca8db2a2bf3b5e9f6a5985772724fcedd6
     commit_sha: 2ab65d5ba1da19f60af3981d09e7bf539893e9e2
   - name: burler-fabric-shuttle-adoption
-    state: running
+    state: approved
     implementer_session: b8b7acdf-c032-4d66-919e-325e59eb7539
     start_sha: 6d39c1a4f592dd472dc6366e97540fe3edaffcea
+    commit_sha: 81b3a70455a23277d609bfcc7344dbf9fc8ecaaf
   - name: perchengine-adoption
     state: pending
   - name: cmd-lyx-root-wiring
