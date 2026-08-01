@@ -198,12 +198,15 @@ func ensureDurableSink() (io.Writer, bool) {
 			return
 		}
 
-		if _, err := f.WriteString(headerLine()); err != nil {
+		line := headerLine()
+		if _, err := f.WriteString(line); err != nil {
+			_ = f.Close()
 			sinkOK = false
 			return
 		}
 
 		sinkWriter = f
+		sinkBytesWritten = int64(len(line))
 		sinkOK = true
 	})
 	return sinkWriter, sinkOK
