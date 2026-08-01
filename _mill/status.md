@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: webster-bisect-fabric-migrate
 branch: webster-bisect-fabric-migrate
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-01T17:59:56Z'
+discussion-fix-r2  '2026-08-01T18:34:08Z'
+discussed  '2026-08-01T18:34:08Z'
 ```
