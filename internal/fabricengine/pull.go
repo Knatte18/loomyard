@@ -12,6 +12,12 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
+
+	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lock"
 )
 
 // PullResult reports what Fabric.Pull actually did, on both sides
@@ -109,3 +115,294 @@ var ErrWarpDivergedUnpushed = errors.New("fabricengine: warp remote diverged and
 // from the new upstream tip — leaving no safe baseline to re-anchor weft
 // against. Fabric.Pull makes no change to either repo when this is returned.
 var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and no recorded correspondence survives; aborting, no changes")
+
+// warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
+// ref (`@{u}`) to a plain hex SHA, via `git rev-parse @{u}` in f.warpPath.
+// Fabric.Pull calls this AFTER f.Warp.Fetch has refreshed the remote-tracking
+// ref, so the SHA it returns is the freshly fetched upstream tip — usable
+// directly by ResetHard and IsAncestor, which both require a plain commit
+// SHA rather than symbolic revision syntax.
+func (f *Fabric) warpUpstreamSHA() (string, error) {
+	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "@{u}"}, f.warpPath)
+	if err != nil {
+		return "", fmt.Errorf("fabricengine: rev-parse @{u} in %s: %w", f.warpPath, err)
+	}
+	if code != 0 {
+		return "", fmt.Errorf("fabricengine: git rev-parse @{u} in %s: %s", f.warpPath, stderr)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// Pull is fabric's unified pull entry point: it pulls weft first (a plain
+// fast-forward via PullWeft), then fetches and inspects warp, reconciling
+// weft's correspondence when warp's history has been rewritten out from
+// under it. See the weft-first-ordering / report-not-rollback Shared
+// Decision for why weft always runs first and why a warp-side failure
+// reports the accumulated result rather than unwinding the weft pull, and
+// the reachability-never-object-existence Shared Decision for why every
+// rewrite/anchor check below uses f.Warp.IsAncestor, never f.Warp.SHAExists.
+//
+// Flow:
+//  1. opts.SkipGit short-circuits to a zero PullResult, matching PullWeft.
+//  2. Weft pulls first; a weft failure returns immediately with warp
+//     untouched.
+//  3. Local-unpushed is captured BEFORE the fetch, so `@{u}` still names the
+//     PRE-fetch upstream tip while classifying it.
+//  4. Warp is fetched (remote-tracking refs only; the local branch does not
+//     move yet).
+//  5. The fetched upstream tip and the pre-fetch local HEAD are resolved to
+//     plain SHAs.
+//  6. If they are already equal, there is nothing to advance.
+//  7. Otherwise the pull is classified as a clean fast-forward or a history
+//     rewrite via IsAncestor(localHEAD, upstreamSHA).
+//  8. A clean fast-forward resets warp straight to the upstream tip; no
+//     rewrite, no reconcile — a clean ff can never orphan a recorded
+//     Warp-SHA.
+//  9. A rewrite aborts loudly (ErrWarpDivergedUnpushed) if local warp already
+//     has unpushed commits — the double-conflict case Pull refuses to
+//     resolve unattended. Otherwise it walks the correspondence index for
+//     the nearest-older-reachable anchor (reachableAnchor): an empty index
+//     advances warp with no reconcile; no surviving anchor aborts loudly
+//     (ErrNoSurvivingAnchor); a surviving anchor resets warp to the new tip
+//     and writes a re-anchor empty weft commit under the weft write lock,
+//     recording the new correspondence and enumerating PATTERN residue over
+//     the orphaned range.
+func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
+	if opts.SkipGit {
+		return PullResult{}, nil
+	}
+
+	var result PullResult
+
+	// Weft first: a weft-side failure means warp is never touched at all, per
+	// the weft-first-ordering Shared Decision — this is the one path that
+	// returns a zero PullResult rather than the accumulated one, since
+	// nothing warp-side has been attempted yet.
+	if err := f.PullWeft(opts); err != nil {
+		return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
+	}
+	result.WeftPulled = true
+
+	// Capture local-unpushed BEFORE the fetch: HasUnpushed reads `@{u}`, and
+	// that must still name the PRE-fetch upstream tip so the double-conflict
+	// check below reflects local state as of before this call started
+	// touching the remote-tracking ref.
+	hadUnpushed, err := f.Warp.HasUnpushed()
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "unpushed-check", Err: err}
+	}
+
+	if err := f.Warp.Fetch(); err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "fetch", Err: err}
+	}
+	result.WarpFetched = true
+
+	upstreamSHA, err := f.warpUpstreamSHA()
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "resolve", Err: err}
+	}
+	localHEAD, err := f.Warp.CurrentSHA()
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "resolve", Err: err}
+	}
+
+	// Already up to date: nothing to advance, no rewrite, no reconcile.
+	if localHEAD == upstreamSHA {
+		return result, nil
+	}
+
+	isFF, err := f.Warp.IsAncestor(localHEAD, upstreamSHA)
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "classify", Err: err}
+	}
+
+	if isFF {
+		// Clean fast-forward: local HEAD is still an ancestor of the new
+		// upstream tip, so no recorded Warp-SHA can have been orphaned —
+		// advance and return, no reconcile needed.
+		if err := f.Warp.ResetHard(upstreamSHA); err != nil {
+			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
+		}
+		result.WarpAdvanced = true
+		result.NewWarpHEAD = upstreamSHA
+		return result, nil
+	}
+
+	// History rewritten: local HEAD is no longer an ancestor of the new
+	// upstream tip (rebase or force-push upstream).
+	result.RewriteDetected = true
+
+	if hadUnpushed {
+		// Double conflict: local warp has its own unpushed work AND upstream
+		// has rewritten history. Resolving this automatically would require
+		// deciding what happens to the caller's unpushed commits, so Pull
+		// aborts loudly instead, making no change to either repo.
+		return result, ErrWarpDivergedUnpushed
+	}
+
+	path, err := f.corrIndexPath()
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
+	}
+	ix, err := loadCorrIndex(path)
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
+	}
+	entries := ix.entries()
+
+	if len(entries) == 0 {
+		// No recorded history to orphan at all — advance only, no reconcile.
+		if err := f.Warp.ResetHard(upstreamSHA); err != nil {
+			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
+		}
+		result.WarpAdvanced = true
+		result.NewWarpHEAD = upstreamSHA
+		return result, nil
+	}
+
+	anchor, found, err := reachableAnchor(entries, func(sha string) (bool, error) {
+		return f.Warp.IsAncestor(sha, upstreamSHA)
+	})
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "anchor-walk", Err: err}
+	}
+	if !found {
+		// Nothing recorded survives the rewrite at all — there is no safe
+		// baseline to re-anchor against, so Pull aborts loudly, making no
+		// change to either repo.
+		return result, ErrNoSurvivingAnchor
+	}
+
+	// A surviving anchor exists: reconcile. Reset warp to the new upstream
+	// tip first, then re-anchor weft's correspondence to it.
+	if err := f.Warp.ResetHard(upstreamSHA); err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
+	}
+	result.WarpAdvanced = true
+	result.NewWarpHEAD = upstreamSHA
+	result.AnchorWarpSHA = anchor.WarpSHA
+	result.AnchorWeftSHA = anchor.WeftSHA
+
+	// Capture weft HEAD before the reconcile commit lands, so the
+	// PATTERN-residue range below is exclusive of the re-anchor commit
+	// itself. A failure here is not fatal to the residue scan — an empty
+	// weftHEADBeforeAnchor simply yields no residue.
+	weftHEADBeforeAnchor, _ := f.Weft.CurrentSHA()
+
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "reanchor", Err: err}
+	}
+	l, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "reanchor", Err: fmt.Errorf("fabricengine: acquire weft write lock: %w", err)}
+	}
+	defer func() { _ = l.Release() }()
+
+	msg := appendWarpSHATrailer("fabric: re-anchor weft after warp rebase", upstreamSHA)
+	reanchorSHA, _, err := f.commitEmptySnapshot(msg, upstreamSHA)
+	if err != nil {
+		// Report-not-rollback (mirrors Fabric.Commit's own convention): warp
+		// already advanced above, and that advance is not undone here. The
+		// error is reported with the accumulated result rather than unwound,
+		// per the weft-first / report-not-rollback Shared Decision.
+		return result, &PartialPullError{WeftPulled: true, Stage: "reanchor", Err: err}
+	}
+	result.Reconciled = true
+	result.ReanchorWeftSHA = reanchorSHA
+
+	residue, err := f.patternResidueCommits(anchor.WeftSHA, weftHEADBeforeAnchor)
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "residue", Err: err}
+	}
+	result.PatternResidue = residue
+
+	return result, nil
+}
+
+// patternResidueCommits enumerates the weft commits in the exclusive range
+// fromWeftSHA..toWeftSHA that touch _pattern/... paths, via one
+// `git log --name-only` invocation in f.weftPath. This is Fabric.Pull's
+// reconcile-branch helper: after a re-anchor, every weft commit between the
+// old anchor and weft HEAD at reconcile time was written against a warp
+// baseline that no longer exists on the rewritten upstream, and any of them
+// touching _pattern/... is exactly the content a caller must treat as
+// potentially stale.
+//
+// The pathspec is hubgeometry.PatternDirName, NEVER a "_pattern" string
+// literal — the Hub Geometry Invariant reserves that token to hubgeometry.
+//
+// Separator placement: unlike scanWarpSHATrailers (which uses no
+// --name-only), --name-only appends each commit's changed-file list as
+// separate lines AFTER that commit's --format output, so a trailing record
+// separator would land between one commit's own SHA and its own file list,
+// misassigning paths to the wrong commit. The record separator is therefore
+// placed at the START of the --format string, delimiting the boundary BEFORE
+// each commit's SHA rather than after it. warpSHATrailerFormatUnitSep and
+// warpSHATrailerFormatRecordSep (index.go) are reused unchanged, so the split
+// can never be confused by ordinary commit content.
+//
+// RelPath-blind scope (documented limitation): the pathspec is the bare
+// hubgeometry.PatternDirName at the weft worktree root, matching the slice's
+// relpath-is-dot-for-slice-2 precedent (the same simplification Fabric.Commit
+// already accepts). A subpath-anchored hub whose _pattern lives at
+// RelPath/_pattern in a shared weft checkout is out of scope for this slice.
+//
+// If fromWeftSHA == toWeftSHA there are no post-anchor commits at all, so
+// this returns (nil, nil) without spawning git. A non-zero git exit returns a
+// wrapped error; a real range with zero _pattern-touching commits (empty
+// git-log output) also returns (nil, nil).
+func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]PatternResidueEntry, error) {
+	if fromWeftSHA == toWeftSHA {
+		return nil, nil
+	}
+
+	format := warpSHATrailerFormatRecordSep + "%H" + warpSHATrailerFormatUnitSep
+	rangeArg := fromWeftSHA + ".." + toWeftSHA
+	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--", hubgeometry.PatternDirName}
+
+	stdout, stderr, code, err := gitexec.RunGit(args, f.weftPath)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: git log --name-only %s in %s: %w", rangeArg, f.weftPath, err)
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("fabricengine: git log --name-only %s in %s: %s", rangeArg, f.weftPath, stderr)
+	}
+
+	return parsePatternResidueRecords(stdout), nil
+}
+
+// parsePatternResidueRecords parses patternResidueCommits' git-log output —
+// one warpSHATrailerFormatRecordSep-delimited block per commit, each block
+// starting with "<SHA><unitSep>" followed by that commit's changed
+// _pattern/... paths (one per line, from --name-only) — into one
+// PatternResidueEntry per commit. Factored out as a pure helper so the
+// record-boundary parsing itself is easy to reason about independently of
+// the git spawn around it.
+func parsePatternResidueRecords(output string) []PatternResidueEntry {
+	var entries []PatternResidueEntry
+	for _, record := range strings.Split(output, warpSHATrailerFormatRecordSep) {
+		record = strings.Trim(record, "\n")
+		if record == "" {
+			continue
+		}
+
+		parts := strings.SplitN(record, warpSHATrailerFormatUnitSep, 2)
+		sha := strings.TrimSpace(parts[0])
+		if sha == "" {
+			continue
+		}
+
+		var paths []string
+		if len(parts) > 1 {
+			for _, line := range strings.Split(parts[1], "\n") {
+				path := strings.TrimSpace(line)
+				if path != "" {
+					paths = append(paths, path)
+				}
+			}
+		}
+		entries = append(entries, PatternResidueEntry{WeftSHA: sha, Paths: paths})
+	}
+	return entries
+}
