@@ -1,11 +1,11 @@
 // fabric.go — the Fabric handle: fabric's cross-repo coordination point over
 // two internal/gitrepo.Repo instances, plus the sync-options/pathspec plumbing
-// SyncWeft (a later batch) needs. Fabric exposes Warp and Weft directly as
+// its cross-repo operations need. Fabric exposes Warp and Weft directly as
 // exported fields rather than a forwarding method per gitrepo operation —
 // consumers call f.Warp.StageAndCommit(...) / f.Weft.ChangedFilesSince(...) for
 // anything repo-specific and uncoordinated; only the genuinely cross-repo
-// operations (SyncWeft, RevertWithWeft, added in later batches) get their own
-// method on Fabric.
+// operations (Commit, SyncWeft, RevertWithWeft, Pull) get their own method on
+// Fabric.
 
 package fabricengine
 

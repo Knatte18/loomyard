@@ -144,6 +144,18 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 ---
 
+### F6 -- Rebased-warp pull recovery
+
+**Covers:** fabric
+
+**Goal:** "Drive `lyx fabric pull` against a warp remote whose history was rebased or force-pushed underneath your local clone, and confirm fabric detects the drift and re-aligns rather than silently fast-forwarding or erroring." Discover the surface via `lyx fabric pull --help`.
+
+**Watch:** `pull` now touches **both** warp and weft, not weft-only -- confirm both sides move where expected. A clean local warp (no unpushed commits of its own) should auto-reconcile: warp resets to the new remote history, and weft's own correspondence re-anchors to it, with no operator intervention needed. A local warp carrying unpushed commits of its own, run against the same rewritten remote, should instead abort loudly and make no changes to either repo -- confirm neither warp nor weft moved after the abort. In the auto-reconciled case, inspect the JSON output: it should report which `_pattern/`-touching weft commits need review, since they were written against a warp baseline that no longer exists on the rewritten remote.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -158,6 +170,7 @@ F2: <OK|WARN|FAIL> -- <one-line note if not OK>
 F3: <OK|WARN|FAIL> -- <one-line note if not OK>
 F4: <OK|WARN|FAIL> -- <one-line note if not OK>
 F5: <OK|WARN|FAIL> -- <one-line note if not OK>
+F6: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

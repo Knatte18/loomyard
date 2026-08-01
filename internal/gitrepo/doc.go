@@ -18,9 +18,9 @@
 // ref access (see gogit.go), bypassing run and gitexec.RunGit completely.
 // Everything that authenticates to a remote or mutates the working tree
 // stays CLI-bound through run: StageAndCommit, StageAllAndCommit, Push,
-// PushCoalesced, Pull, ResetHard, CheckoutDetached, RestoreBranch, and
-// hasUnpushed (measured and reverted from a go-git ancestry walk; see
-// hasUnpushed's own godoc in push.go for the reversal criterion). See
+// PushCoalesced, Pull, Fetch, ResetHard, CheckoutDetached, RestoreBranch,
+// IsAncestor, and HasUnpushed (measured and reverted from a go-git ancestry
+// walk; see HasUnpushed's own godoc in push.go for the reversal criterion). See
 // CONSTRAINTS.md's gitrepo Client Boundary Invariant for the enforced,
 // exhaustive version of this split and the review obligation any new CLI
 // call inside this package carries. gitexec itself stays a zero-dependency
@@ -52,7 +52,13 @@
 //   - CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit,
 //     ChangedFilesSince, and SHAExists are the core read/write primitives.
 //   - Push and PushCoalesced are the push surface (see below).
-//   - Pull is the fast-forward-only pull surface (see below).
+//   - Pull is the fast-forward-only pull surface (see below); Fetch is its
+//     fetch-without-merge sibling, refreshing remote-tracking refs without
+//     ever moving the local branch.
+//   - IsAncestor is the ancestry/reachability primitive: it answers "is sha
+//     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
+//     tri-state exit code directly rather than folding any non-zero exit
+//     into failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - CurrentBranch, CheckoutDetached, and RestoreBranch are the in-place
 //     bisect exception (see Scope boundaries below).

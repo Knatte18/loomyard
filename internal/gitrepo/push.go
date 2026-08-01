@@ -72,7 +72,7 @@ func (r *Repo) Push() error {
 // Every push attempt passes -c push.autoSetupRemote=true so a checkout with
 // no upstream configured yet (the very first push of a branch) still
 // succeeds and establishes the tracking branch, matching the no-upstream
-// treated-as-unpushed contract documented on hasUnpushed — without
+// treated-as-unpushed contract documented on HasUnpushed — without
 // gitrepo needing to know the branch or remote name to set it explicitly.
 func (r *Repo) pushWithRebaseRetry() error {
 	_, stderr, code, err := r.run("-c", "push.autoSetupRemote=true", "push")
@@ -163,9 +163,9 @@ func containsAny(s string, substrs []string) bool {
 // coalescing is a single guarded push per lock acquisition, not an internal
 // retry loop; git push itself sends every commit ahead of upstream
 // atomically, and the lock queue is what turns a burst of writers into as
-// few pushes as possible. An unbounded loop on hasUnpushed would spin
+// few pushes as possible. An unbounded loop on HasUnpushed would spin
 // forever if a push ever succeeded without configuring an upstream, since
-// hasUnpushed would keep reporting true. The guarded push shares Push's
+// HasUnpushed would keep reporting true. The guarded push shares Push's
 // rebase-retry, including its SHA
 // invalidation caveat: re-read CurrentSHA after a successful call before
 // recording any pre-call SHA (see Push).
@@ -176,7 +176,7 @@ func (r *Repo) PushCoalesced() error {
 	}
 	defer l.Release()
 
-	unpushed, err := r.hasUnpushed()
+	unpushed, err := r.HasUnpushed()
 	if err != nil {
 		return err
 	}
@@ -187,13 +187,14 @@ func (r *Repo) PushCoalesced() error {
 	return r.pushWithRebaseRetry()
 }
 
-// hasUnpushed reports whether HEAD is ahead of its upstream. When no
+// HasUnpushed reports whether HEAD is ahead of its upstream. When no
 // upstream is configured yet it returns true, so the first push — which
 // establishes the upstream tracking branch — still happens rather than
 // being skipped as "nothing to do". A spawn failure returns (false, err);
 // any other non-zero rev-list exit (no upstream, an upstream configured but
 // never fetched, or any other rev-list failure) folds into (true, nil), so
-// the caller still attempts the push.
+// the caller still attempts the push. It is exported so
+// fabricengine.Fabric.Pull can check local-unpushed state before a fetch.
 //
 // # Stays CLI-bound — measured, not migrated (card 21's reversal criterion)
 //
@@ -202,7 +203,7 @@ func (r *Repo) PushCoalesced() error {
 // NewCommitPreorderIter's seenExternal for the HEAD walk) and reverted here
 // after measuring it against the CLI spawn it replaced, per the Shared
 // Decision's reversal criterion: if go-git is slower than the spawn it
-// replaces, hasUnpushed reverts to the CLI, because it is one cheap command
+// replaces, HasUnpushed reverts to the CLI, because it is one cheap command
 // on PushCoalesced's hottest path and no principle here is worth a
 // regression there.
 //
@@ -226,11 +227,11 @@ func (r *Repo) PushCoalesced() error {
 // --count` is a single optimized C-level walk, while go-git's
 // NewCommitPreorderIter decodes and parses every commit object it visits in
 // Go, with no early exit across the upstream side of the walk regardless of
-// how quickly the HEAD side would otherwise terminate. hasUnpushed therefore
+// how quickly the HEAD side would otherwise terminate. HasUnpushed therefore
 // stays on the CLI, rejoining the pinned r.run list the boundary guard
 // asserts and the CLI-bound set CONSTRAINTS.md's gitrepo Client Boundary
 // Invariant names.
-func (r *Repo) hasUnpushed() (bool, error) {
+func (r *Repo) HasUnpushed() (bool, error) {
 	stdout, _, code, err := r.run("rev-list", "--count", "@{u}..HEAD")
 	if err != nil {
 		return false, err
