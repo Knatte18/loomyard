@@ -1,9 +1,11 @@
 // junctionnames.go implements the fabric-config-to-junction-name-set bridge:
-// loading a pair's fabric.yaml pathspec and turning it into the wired
+// loading the repo-wide fabric.yaml pathspec and turning it into the wired
 // name-set the junction primitives operate on, with the hub-reserved-name
 // wiring guard applied. Every wiring caller sources names through
-// junctionNames/WiredNames — never applies filterHubReserved itself — so the
-// guard cannot be forgotten at a call site.
+// junctionNames/WiredNames/RepoWiredNames — never applies filterHubReserved
+// itself — so the guard cannot be forgotten at a call site. reconcile/status
+// callers read the name-set from the repo-wide `weft:main` base
+// (repoWideFabricBase), not each pair's own weft base.
 
 package fabricengine
 
@@ -63,4 +65,25 @@ func junctionNames(baseDir string) ([]string, error) {
 // not, in the set a new slug cannot claim) — never by WiredNames.
 func WiredNames(baseDir string) ([]string, error) {
 	return junctionNames(baseDir)
+}
+
+// repoWideFabricBase returns the single named source of the repo-wide fabric
+// config base: the `weft:main` checkout at hubgeometry.BoardDir(l.Hub) that
+// holds `_lyx/config/fabric.yaml`. It exists so every reconcile/status call
+// site names the same base instead of re-deriving BoardDir(l.Hub) inline.
+func repoWideFabricBase(l *hubgeometry.Layout) string {
+	return hubgeometry.BoardDir(l.Hub)
+}
+
+// RepoWiredNames loads the repo-wide fabric config at
+// repoWideFabricBase(l) and returns its wired name-set — the pathspec
+// directory names with hub-reserved names filtered out. It is the
+// Layout-taking convenience for callers that already hold a
+// *hubgeometry.Layout and want the repo-wide junction name-set without
+// re-deriving the base themselves: checkJunctionHealth, Reconcile's inline
+// wiring load, junctionRepointedDetail, PairInSync, Topology.Checkout, and
+// Topology.Remove all read through this rather than the pair's own weft
+// base, so every worktree converges to the one repo-wide pathspec.
+func RepoWiredNames(l *hubgeometry.Layout) ([]string, error) {
+	return WiredNames(repoWideFabricBase(l))
 }
