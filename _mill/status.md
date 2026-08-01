@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-scoutengine-logger-conversion
+phase: approved-docs-and-constraints-wrapup
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -45,6 +45,7 @@ approved-burler-fabric-shuttle-adoption  '2026-08-01T08:04:05Z'
 approved-perchengine-adoption  '2026-08-01T08:06:18Z'
 approved-cmd-lyx-root-wiring  '2026-08-01T08:12:23Z'
 approved-scoutengine-logger-conversion  '2026-08-01T08:17:16Z'
+approved-docs-and-constraints-wrapup  '2026-08-01T08:19:54Z'
 ```
 
 ## Batches
@@ -117,7 +118,8 @@ batches:
     start_sha: 4e745df7357ced83ba4d9ef7b6059a6049dec468
     commit_sha: c650273848737c9b9163d95bdae02153e1397eb5
   - name: docs-and-constraints-wrapup
-    state: running
+    state: approved
     implementer_session: 5fd9e06a-7765-49ec-8ab0-88a6ee4fce60
     start_sha: 1d46adc0fc28ba22ae1c4b401097f65c702763b9
+    commit_sha: 2011b10917577c5e13d1ca051a969f3bac7595b5
 ```
