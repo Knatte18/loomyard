@@ -26,7 +26,7 @@ No new mis-tiering fix cards appear in this batch because the sweep found none o
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In the `## Test Tier Purity Invariant` section, add one new bullet immediately after the **Statement** bullet (Card 3 in batch 1 already edited this bullet's wording; do not re-edit it here) and before **Mechanics**, titled `**Substrate definition.**`, reading: the full substrate definition this invariant enforces — real `git` subprocess spawning, real filesystem junctions/symlinks, real `tmux` sessions, real cross-compilation, and real external-binary spawn (the `scout` tag's category) — lives in `docs/benchmarks/running-tests.md`'s "## The two tiers" section; this entry is the terse index pointer, not a duplicate of the explanation.
+- **Requirements:** In the `## Test Tier Purity Invariant` section, add one new bullet immediately after the **Statement** bullet (Card 5 in batch 1 already edited this bullet's wording; do not re-edit it here) and before **Mechanics**, titled `**Substrate definition.**`, reading: the full substrate definition this invariant enforces — real `git` subprocess spawning, real filesystem junctions/symlinks, real `tmux` sessions, real cross-compilation, and real external-binary spawn (the `scout` tag's category) — lives in `docs/benchmarks/running-tests.md`'s "## The two tiers" section; this entry is the terse index pointer, not a duplicate of the explanation.
 - **Commit:** `docs(CONSTRAINTS): add a pointer from Test Tier Purity Invariant to running-tests.md's substrate rule`
 
 ### Card 15: Rewrite running-tests.md's "## The two tiers" section with the full substrate rule
