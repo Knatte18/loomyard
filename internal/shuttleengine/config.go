@@ -56,7 +56,7 @@ type Config struct {
 // hardcoded to "shuttle" here), mirroring reedengine.LoadConfig.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx init\"".
+// "not initialized here; run \"lyx fabric reconcile\"".
 func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
@@ -64,7 +64,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		// hint, matching reedengine's shape so every module surfaces the same
 		// recovery instruction.
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
 		}
 		return Config{}, err
 	}
