@@ -15,7 +15,7 @@ Before starting a session:
 
    **Re-clone adoption.** When a clone runs against a weft remote that already carries the suffixed primary branch (a fresh machine, or `clone --reset`), the weft prime adopts `origin/main-weft` as a tracking branch — inheriting the previously synced weft state — rather than forking a new, untracked `main-weft` at `main`'s HEAD. After any re-clone, confirm the weft prime's `main-weft` has an upstream (`git -C <weft-prime> branch -vv`) and contains the previously synced `_lyx/` content.
 3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
-4. **Weft `_lyx/` must be seeded before `lyx init`.** `lyx init` wires the host `_lyx` junction to the weft worktree's `_lyx/` directory via fabricengine. On a truly empty weft repo that directory does not exist yet, so `init` creates a dangling junction and then fails (`mkdir _lyx: file exists`). The dedicated `lyx-fabric-test-weft` repo must therefore have an `_lyx/` directory committed on its primary branch (the operator seeds it once). Until then, treat an `init` failure on a freshly-cloned fabric hub as this known precondition gap, not a fabric defect — fabric's own verbs read their config from that same `_lyx/config/`.
+4. **Weft `_lyx/` must be seeded before `lyx fabric clone`.** `lyx init` is gone; `lyx fabric clone` now wires the host `_lyx` junction to the weft worktree's `_lyx/` directory via fabricengine as part of clone itself. On a truly empty weft repo that directory does not exist yet, so clone creates a dangling junction and then fails (`mkdir _lyx: file exists`). The dedicated `lyx-fabric-test-weft` repo must therefore have an `_lyx/` directory committed on its primary branch (the operator seeds it once). Until then, treat a `clone` failure on this dedicated fabric hub as this known precondition gap, not a fabric defect — fabric's own verbs read their config from that same `_lyx/config/`.
 
 ### PowerShell JSON-quoting
 
@@ -70,7 +70,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`F0`-`F4`).
+- `ref` is the scenario id (`F0`-`F5`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -82,7 +82,7 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Goal:** "You have `lyx` on PATH and nothing else inside this repo. Find out what `lyx fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all 14 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`)? Does each `--help` explain itself? Is each description accurate and useful?
+**Watch:** Does `lyx fabric` list all 15 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `unwire`)? Does each `--help` explain itself? Is each description accurate and useful?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -132,6 +132,18 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 ---
 
+### F5 -- Junction deactivation (`lyx fabric unwire`)
+
+**Covers:** fabric
+
+**Goal:** "Deactivate a wired worktree with `lyx fabric unwire`, confirm it tears down exactly what it should and nothing more, then confirm `lyx fabric reconcile` re-wires it afterward."
+
+**Watch:** Run `lyx fabric unwire` on a wired worktree (the fabric prime, or a pair added in F2). Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `_pattern`) — `ls`/`git -C <host> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone. Confirm it clears the weft-side `_lyx` content (`_lyx/` under the paired weft worktree should be empty or absent) while leaving `_pattern` content on the weft side untouched — `_pattern` is deliberately never touched by unwire. Confirm it reverts the managed `.gitignore` block's `.lyx/` entry. Run `lyx fabric unwire` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error. Finally, confirm the repo-wide records survive unwire — `.fabric-anchor` and `<BoardDir>/_lyx/config/fabric.yaml` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -145,6 +157,7 @@ F1: <OK|WARN|FAIL> -- <one-line note if not OK>
 F2: <OK|WARN|FAIL> -- <one-line note if not OK>
 F3: <OK|WARN|FAIL> -- <one-line note if not OK>
 F4: <OK|WARN|FAIL> -- <one-line note if not OK>
+F5: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
