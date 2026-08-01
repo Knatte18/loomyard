@@ -1,13 +1,13 @@
-//go:build integration
+//go:build scout
 
 // toolchain_integration_test.go exercises resolveGoToolchain against a real
 // `go install`, mirroring refs_integration_test.go's header-comment style:
-// it is //go:build integration-tagged and therefore excluded from the plain
+// it is //go:build scout-tagged and therefore excluded from the plain
 // `go test` verify (the Test Tier Purity Invariant); it is run separately
-// with `-tags integration`. Unlike refs_integration_test.go's gopls-presence
+// with `-tags scout`. Unlike refs_integration_test.go's gopls-presence
 // skip gate, this test has no natural skip condition — it needs only the go
 // toolchain itself, which is guaranteed present in any environment where
-// `go test -tags integration` can even run — so it runs unconditionally
+// `go test -tags scout` can even run — so it runs unconditionally
 // under the tag; there is deliberately no t.Skip here. This test spawns
 // `go install` and the freshly installed gopls binary, never git, so no
 // TestMain/lyxtest.HermeticGitEnv is required per the Hermetic Git Test
