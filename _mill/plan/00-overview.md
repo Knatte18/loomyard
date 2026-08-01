@@ -138,6 +138,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/initengine/undo_test.go`
 - `internal/loomengine/config.go`
 - `internal/loomengine/config_test.go`
+- `internal/loomengine/preflight_integration_test.go`
 - `internal/perchengine/config.go`
 - `internal/reedengine/config.go`
 - `internal/shuttleengine/config.go`
