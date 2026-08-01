@@ -608,6 +608,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	// split in the whole engine that needs -b.
 	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.Cwd, "-P", "-F", "#{pane_id}")
 	if err != nil {
+		logger.Warn("reed: failed to split header pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)
 	}
 	paneID := strings.TrimSpace(out)
@@ -618,14 +619,19 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	// destroying the session's panes wholesale (see
 	// validateSplitCreatedNewPane).
 	if err := validateSplitCreatedNewPane(paneID, live, target); err != nil {
+		logger.Warn("reed: header split created no new pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)
 	}
 
 	if corpseID != "" {
 		// The sole-pane corpse the new header was split off of: now that a
 		// second pane exists, killing it can no longer end the session.
-		// Best-effort — a corpse that somehow vanished already is fine.
-		_ = e.tmux.run("kill-pane", "-t", corpseID)
+		// Best-effort — a corpse that somehow vanished already is fine; the
+		// discard is still worth a Debug line so the step is observable at
+		// the trace level without upgrading routine cleanup to a Warn.
+		if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
+			logger.Debug("reed: best-effort kill of header corpse pane failed", "socket", e.Socket(), "pane", corpseID, "err", err)
+		}
 	}
 
 	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, testing.Testing())
@@ -641,9 +647,11 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		// -l so tmux never reinterprets any part of the launch line, then a
 		// separate Enter to submit it.
 		if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+			logger.Warn("reed: failed to send header launch command", "socket", e.Socket(), "pane", paneID, "err", err)
 			return fmt.Errorf("send header launch command: %w", err)
 		}
 		if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+			logger.Warn("reed: failed to submit header launch command", "socket", e.Socket(), "pane", paneID, "err", err)
 			return fmt.Errorf("submit header launch command: %w", err)
 		}
 	}
@@ -866,7 +874,12 @@ func (e *Engine) Down() (DownResult, error) {
 		// on exactly this ignored-error path: a bare -t name would PREFIX
 		// match once this session is gone, so a second down would kill a
 		// prefix-sharing sibling worktree's session (see exactSessionTarget).
-		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName()))
+		// Still worth a Debug line so the discard is observable at the
+		// step-trace level without upgrading routine idempotent-teardown
+		// noise to a Warn.
+		if err := e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName())); err != nil {
+			logger.Debug("reed: best-effort kill-session failed (session may already be gone)", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
 
 		// Tidy the server only if no sessions remain. An EMPTY list-sessions
 		// covers both "zero sessions" and "no server" (tmux does not
@@ -880,7 +893,13 @@ func (e *Engine) Down() (DownResult, error) {
 		var serverErr error
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
 			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
-			_ = e.tmux.run("kill-server")
+			// Best-effort — the more significant "server did not confirm
+			// gone" outcome is already covered at Warn by ensureServerGoneLocked
+			// below; this earlier, routine kill-server discard only needs a
+			// Debug line, not a duplicate Warn.
+			if err := e.tmux.run("kill-server"); err != nil {
+				logger.Debug("reed: best-effort kill-server failed", "socket", e.Socket(), "serverPID", serverPID, "err", err)
+			}
 			serverErr = e.ensureServerGoneLocked(serverPID)
 			if serverErr != nil {
 				logger.Warn("reed: server did not confirm gone after kill-server", "socket", e.Socket(), "serverPID", serverPID, "err", serverErr)
