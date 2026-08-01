@@ -284,7 +284,7 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 // a terminal escalation and extends summary.md, falling back to "unknown"
 // for both the offending card and SHA instead of indexing into the empty
 // slice. bisect returns before ever touching repo when shas is empty, so
-// this needs no real git repo — a nil *gitrepo.Repo is never dereferenced.
+// this needs no real git repo — a nil WarpBisector is never dereferenced.
 func TestBisectAndEscalate_EmptySHAsDegradesGracefully(t *testing.T) {
 	websterDir := t.TempDir()
 	summaryPath := websterengine.SummaryPath(websterDir)

@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -281,6 +282,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		ReportsDir:   t.TempDir(),
 		PromptsDir:   t.TempDir(),
 		WorktreeRoot: worktree,
+		Bisector:     gitrepo.New(worktree),
 	}
 
 	return &runFixture{Deps: deps, Reed: reed, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
