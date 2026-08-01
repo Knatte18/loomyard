@@ -50,5 +50,7 @@ batches:
     start_sha: 24ed717427fbb25171e54f1ed645adfa4f5c5b5f
     commit_sha: d2fa6947aab3555bfff13206ecb99b1954912766
   - name: regression-guard-and-constraints
-    state: pending
+    state: running
+    implementer_session: f48d3556-4bcb-4336-94ab-c669e8b9361b
+    start_sha: 7825da648c631ca956d13a50edd51de7e59b89fc
 ```
