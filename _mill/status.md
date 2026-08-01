@@ -99,7 +99,9 @@ batches:
     start_sha: 6d39c1a4f592dd472dc6366e97540fe3edaffcea
     commit_sha: 81b3a70455a23277d609bfcc7344dbf9fc8ecaaf
   - name: perchengine-adoption
-    state: pending
+    state: running
+    implementer_session: eb6f91f8-7484-48dc-90d6-a0819a338e72
+    start_sha: 43183285566ad126e35f85feda40b2370b769475
   - name: cmd-lyx-root-wiring
     state: pending
   - name: scoutengine-logger-conversion
