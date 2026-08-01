@@ -55,7 +55,9 @@ batches:
     start_sha: a276ff1dd9e838334ea97e8222f2eab594f8996e
     commit_sha: d65b6027707cbe94e0070414c5adccfd199c66c4
   - name: reconcile-declarative-convergence
-    state: pending
+    state: running
+    implementer_session: 29c2822e-9cee-4a2a-bed7-0860ccbde7da
+    start_sha: 300de954541cddb35c1631d9b2513175f685537a
   - name: clone-does-everything
     state: pending
   - name: worktree-add-eager-wiring
