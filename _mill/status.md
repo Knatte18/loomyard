@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
-plan: null
+plan: _mill/plan
 parent: main
 task: Formalize the Tier 1/2 substrate rule and re-tier mis-tagged tests
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-01T10:51:55Z'
 discussion-fix-r3  '2026-08-01T11:25:54Z'
 discussed  '2026-08-01T11:25:54Z'
+planning  '2026-08-01T11:46:37Z'
 ```
