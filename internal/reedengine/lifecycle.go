@@ -336,6 +336,15 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// Claude Code session identity (CleanClaudeEnv is the single documented
 	// chokepoint for that decision).
 	clean, stripped := CleanClaudeEnv(os.Environ())
+	// The tmux server is a long-lived singleton later invocations reattach
+	// to, unlike a one-shot child (board/fabric spawn) that belongs to a
+	// single invocation and should keep inheriting the trace ID. Filtering
+	// LYX_TRACE_ID is therefore kept as its own explicitly-named step, not
+	// folded into CleanClaudeEnv: CleanClaudeEnv's stripped-keys return
+	// value is persisted verbatim into ReedState.StrippedEnv as a
+	// Claude-injected-variable diagnostic, and LYX_TRACE_ID is neither
+	// Claude-injected nor meant to be recorded there.
+	clean = stripTraceID(clean)
 	spawnSession := func() error {
 		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
 		// -L/new-session on the argv; -c pins new-session's pane default cwd
@@ -436,6 +445,25 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	return true, stripped, nil
+}
+
+// stripTraceID removes any LYX_TRACE_ID entry from env before it is handed
+// to a spawned tmux server's cmd.Env. This is deliberately separate from
+// CleanClaudeEnv: the tmux server is a long-lived singleton that later,
+// unrelated invocations reattach to, so it must not inherit this
+// invocation's trace ID, but CleanClaudeEnv's stripped-keys return value is
+// persisted verbatim into ReedState.StrippedEnv as a Claude-injected-env
+// diagnostic — LYX_TRACE_ID must never appear there. Follows the same
+// SplitN-then-compare shape CleanClaudeEnv uses.
+func stripTraceID(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		if strings.SplitN(entry, "=", 2)[0] == "LYX_TRACE_ID" {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // ensureHeaderPaneLocked ensures this hub's always-present header pane
