@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: fabric-rebase-reconcile
 branch: fabric-rebase-reconcile
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-08-01T16:22:59Z'
 planning  '2026-08-01T16:43:29Z'
 plan-review-r1  '2026-08-01T16:55:31Z'
 plan-fix-r1  '2026-08-01T16:55:31Z'
+plan-fix-r2  '2026-08-01T17:08:18Z'
 ```

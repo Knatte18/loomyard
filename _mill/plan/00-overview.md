@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: warp-rebase / remote-reconcile recovery'
 slug: fabric-rebase-reconcile
-approved: false
+approved: true
 started: 20260801-163350
 parent: main
 root: ""
@@ -87,6 +87,7 @@ batches:
 - `internal/fabricengine/anchor.go`
 - `internal/fabricengine/anchor_test.go`
 - `internal/fabricengine/doc.go`
+- `internal/fabricengine/fabric.go`
 - `internal/fabricengine/pull.go`
 - `internal/fabricengine/pull_integration_test.go`
 - `internal/gitrepo/ancestry.go`
