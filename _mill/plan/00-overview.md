@@ -3,7 +3,7 @@
 ```yaml
 task: Formalize the Tier 1/2 substrate rule and re-tier mis-tagged tests
 slug: test-tier-substrate-audit
-approved: false
+approved: true
 started: 20260801-113818
 parent: main
 root: ""
