@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reedengine-trace-env-filter
+phase: approved-logger-durable-sink
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-hubgeometry-worktree-logs-dir  '2026-08-01T07:16:07Z'
 approved-logger-trace-identity  '2026-08-01T07:32:06Z'
 approved-logger-retention-sweep  '2026-08-01T07:37:12Z'
 approved-reedengine-trace-env-filter  '2026-08-01T07:39:54Z'
+approved-logger-durable-sink  '2026-08-01T07:43:44Z'
 ```
 
 ## Batches
@@ -63,9 +64,10 @@ batches:
     start_sha: e1b398036843d9478846f3feab60b2923af8c03f
     commit_sha: 29974c145727168fd363df40e931dbdf36b571a7
   - name: logger-durable-sink
-    state: running
+    state: approved
     implementer_session: 5de817e9-55e2-4d9f-ba7d-84001070515c
     start_sha: d27be824a26e2bdb302959695b2106c63d8e19ec
+    commit_sha: a0a4eb0dfd294897d070889d016fc74b70fe259e
   - name: logger-dual-handler-fanout
     state: pending
   - name: logger-spans
