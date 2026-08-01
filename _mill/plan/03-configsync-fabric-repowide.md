@@ -5,7 +5,7 @@ task: 'fabric: clone-does-everything + subpath-in-weft + init dissolution'
 batch: configsync-fabric-repowide
 number: 3
 cards: 3
-verify: go test -tags integration ./internal/configsync/... ./internal/initengine/...
+verify: go test -tags integration ./internal/configsync/...
 depends-on: []
 ```
 
@@ -76,4 +76,4 @@ Batch-local decision: fabric is skipped in the general `ReconcileAll` loop by na
 
 ## Batch Tests
 
-`verify: go test -tags integration ./internal/configsync/... ./internal/initengine/...` covers both packages this batch edits. `configsync` (white-box `package configsync`, untagged — the `-tags integration` superset still runs it): the flipped `TestReconcileAll_ApplyCreatesFiles`, the relocated `TestReconcileFabricAt_MigratesLegacyFabricConfig`, and the unchanged reconcile subtests. `internal/initengine` is included with `-tags integration` because card 11 adds `t.Skip(...)` to the initengine tests (which are integration-tagged, so they only compile/run under that flag) — running them here confirms the skip-neutralized `init_test.go`/`undo_test.go` still compile and pass (skipped) in this intermediate state, closing the verify gap that would otherwise let a compile break there hide until batch 6 deletes the package. The repo-wide `done_gate` catches any downstream caller (clone in batch 4 is the first).
+`verify: go test -tags integration ./internal/configsync/...` covers the package this batch edits: `configsync` (white-box `package configsync`, untagged — the `-tags integration` superset still runs it): the flipped `TestReconcileAll_ApplyCreatesFiles`, the relocated `TestReconcileFabricAt_MigratesLegacyFabricConfig`, and the unchanged reconcile subtests. `internal/initengine` was originally included here with `-tags integration` because card 11 added `t.Skip(...)` to the initengine tests (which are integration-tagged, so they only compiled/ran under that flag) — running them confirmed the skip-neutralized `init_test.go`/`undo_test.go` still compiled and passed (skipped) in this intermediate state, closing the verify gap that would otherwise let a compile break there hide until batch 6 deleted the package. Batch 6 (card 25) has since deleted `internal/initengine` outright, so its verify reference is dropped in this holistic-fix round — the package no longer exists on disk, and its former coverage (junction teardown, `_lyx` clear, `.gitignore` revert) now lives in `fabricengine/unwire_test.go` (card 30), exercised by batch 6's own verify. The repo-wide `done_gate` catches any downstream caller (clone in batch 4 is the first).

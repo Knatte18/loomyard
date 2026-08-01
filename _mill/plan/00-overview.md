@@ -30,7 +30,7 @@ batches:
     name: configsync-fabric-repowide
     file: 03-configsync-fabric-repowide.md
     depends-on: []
-    verify: go test -tags integration ./internal/configsync/... ./internal/initengine/...
+    verify: go test -tags integration ./internal/configsync/...
   - number: 4
     name: clone-does-everything
     file: 04-clone-does-everything.md
