@@ -39,6 +39,8 @@ Batch-local decision: the four methods live in a new file `warpforward.go` rathe
 ### Card 2: Tier-2 test covering the four Fabric warp methods
 
 - **Context:**
+  - `internal/fabricengine/fabric.go`
+  - `internal/fabricengine/warpforward.go`
   - `internal/fabricengine/checkout_rollback_test.go`
   - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/testmain_test.go`

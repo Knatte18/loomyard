@@ -35,6 +35,7 @@ Migrate `internal/websterengine`'s in-process bisect/verify path off the raw `gi
 ### Card 4: Construct the Fabric handle inline in runIntegrationStage via a nil-defaulted RunDeps seam
 
 - **Context:**
+  - `internal/websterengine/integration.go`
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/webstercli/weft.go`
   - `internal/fabricengine/fabric.go`
@@ -50,22 +51,22 @@ Migrate `internal/websterengine`'s in-process bisect/verify path off the raw `gi
   - Reference pattern for the construction call: `internal/webstercli/weft.go`'s `weftCommit` builds `fabricengine.New(layout.WorktreeRoot, weftWorktree)` from a `*hubgeometry.Layout` the same way; `Layout.WeftWorktree()` (`internal/hubgeometry/hubgeometry.go`) derives the weft path from the layout. In production every hub-managed webster worktree has a paired weft on disk, so `New` succeeds; a missing weft would surface as a real error here (accepted behavior change — bisect previously never constructed a weft-aware handle).
 - **Commit:** `refactor(websterengine): construct bisect Fabric handle inline via RunDeps.Bisector seam`
 
-### Card 5: Inject a gitrepo bisector in the real-git integration test
+### Card 5: Inject a gitrepo bisector at the newRunFixture level
 
 - **Context:**
-  - `internal/websterengine/runlevel_test.go`
   - `internal/gitrepo/gitrepo.go`
 - **Edits:**
+  - `internal/websterengine/runlevel_test.go`
   - `internal/websterengine/integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  - In `TestIntegrationStage_FailingForkTriggersBisectAndEscalates`, set `fx.Deps.Bisector = gitrepo.New(fx.Worktree)` after `newRunFixture` / `fx.Starter.handle = handle` and before `websterengine.Run(fx.Deps, ...)`. Without this, the migrated `runIntegrationStage` would construct `fabricengine.New(...)` against the fixture's empty-`Hub` Layout and fail its weft stat-check. Injecting the real `*gitrepo.Repo` over `fx.Worktree` keeps this test exercising real detached-checkout + in-process verify + branch-restore against the three real commits it sets up (the HEAD-restored assertion at the end must still pass).
-  - Add the `github.com/Knatte18/loomyard/internal/gitrepo` import to `integration_test.go`. This file is `//go:build integration`, so it is exempt from the Test Tier Purity guard and from the new production-source regression guard (which scans non-`_test.go` files only).
-  - `TestBisectAndEscalate_EmptySHAsDegradesGracefully` calls `websterengine.BisectAndEscalate(nil, nil, nil, ...)`: an untyped `nil` still satisfies the new `WarpBisector` parameter and is never dereferenced (bisect returns on the empty-shas guard before touching `repo`), so the call still compiles and passes unchanged. Update its doc comment's "a nil `*gitrepo.Repo` is never dereferenced" phrasing to "a nil `WarpBisector` is never dereferenced" for accuracy; no code change to that test.
-  - Do not weaken or delete any existing assertion in either test.
-- **Commit:** `test(websterengine): inject a gitrepo WarpBisector into the bisect integration test`
+  - In `newRunFixture` (`internal/websterengine/runlevel_test.go`), add `Bisector: gitrepo.New(worktree)` to the `websterengine.RunDeps{...}` struct literal it builds (the `worktree` scratch-repo path is already in scope there). This gives EVERY test built on `newRunFixture` a real warp-only `WarpBisector` over its scratch worktree — so both integration-stage tests that reach `runIntegrationStage`'s handle construction, `TestIntegrationStage_FailingForkTriggersBisectAndEscalates` AND `TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud`, exercise real detached-checkout + in-process verify + branch-restore instead of hitting `fabricengine.New`'s weft stat-check against the fixture's empty-`Hub` Layout. This is the fixture-level analog of builder Card 9's `Resetter` injection in `newSpawnFixture` — inject once, cover every consumer, rather than per-test. Add the `github.com/Knatte18/loomyard/internal/gitrepo` import to `runlevel_test.go`.
+  - The other `newRunFixture` consumers never reach the bisect handle construction: `TestIntegrationStage_SkipsWhenPlanHasNoVerify` returns on the no-verify branch, `TestIntegrationStage_PassingForkFinishesNormally` returns on the OK-report branch, and the two `MissingReport` tests return before the construction at runlevel.go:845 — so the injected handle is simply unused there. Harmless.
+  - In `integration_test.go`, `TestBisectAndEscalate_EmptySHAsDegradesGracefully` calls `websterengine.BisectAndEscalate(nil, nil, nil, ...)`: an untyped `nil` still satisfies the new `WarpBisector` parameter and is never dereferenced (bisect returns on the empty-shas guard before touching `repo`), so it compiles and passes unchanged. Update only its doc comment's "a nil `*gitrepo.Repo` is never dereferenced" phrasing to "a nil `WarpBisector` is never dereferenced". This doc-comment change is the ONLY edit to `integration_test.go` (the Bisector injection now lives in `runlevel_test.go`), so `integration_test.go` needs no new import.
+  - Do not weaken or delete any existing assertion in either file. Both files are `//go:build integration`, so they are exempt from the Test Tier Purity guard and the batch-4 production-source regression guard (which scans non-`_test.go` files only).
+- **Commit:** `test(websterengine): inject a gitrepo WarpBisector at the newRunFixture level`
 
 ## Batch Tests
 
