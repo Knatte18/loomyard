@@ -53,16 +53,25 @@ func ChainEndFor(plan *Plan, batch int) int {
 	return 0
 }
 
+// WarpResetter is the warp-only hard-reset surface RestartChain drives: a
+// single ResetHard(sha) verb, structurally satisfied by both
+// *gitrepo.Repo (tests, driving their scratch worktree directly) and
+// *fabricengine.Fabric (production, which forwards to its warp repo). It
+// exists so RestartChain never depends on a concrete git-handle type.
+type WarpResetter interface {
+	ResetHard(sha string) error
+}
+
 // RestartChain performs the chain-rollback act: it verifies
 // st.ChainStartSHAs[chainEnd] is recorded (error if absent — that
 // recorded SHA is the only reset target, so an unrecorded chain can never
-// be rolled back to a hallucinated one), resets worktree's host repo to
-// it via ResetHard, deletes every chain member's batch-report file from
-// reportsDir (named NN-<slug>.yaml, per plan-format.md's batch-report
-// filename contract), and resets each member's BatchState entry plus
-// st.CurrentBatch. The caller is responsible for persisting st via
-// SaveState afterward.
-func RestartChain(worktree string, st *State, plan *Plan, chainEnd int, reportsDir string) error {
+// be rolled back to a hallucinated one), resets resetter's host repo to
+// it via WarpResetter.ResetHard, deletes every chain member's batch-report
+// file from reportsDir (named NN-<slug>.yaml, per plan-format.md's
+// batch-report filename contract), and resets each member's BatchState
+// entry plus st.CurrentBatch. The caller is responsible for persisting st
+// via SaveState afterward.
+func RestartChain(resetter WarpResetter, st *State, plan *Plan, chainEnd int, reportsDir string) error {
 	startSHA, ok := st.ChainStartSHAs[chainEnd]
 	if !ok || startSHA == "" {
 		return fmt.Errorf("builder: no chain-start SHA recorded for chain-end batch %d", chainEnd)
@@ -73,7 +82,7 @@ func RestartChain(worktree string, st *State, plan *Plan, chainEnd int, reportsD
 		return fmt.Errorf("builder: batch %d names no deferred-verify chain", chainEnd)
 	}
 
-	if err := ResetHard(worktree, startSHA); err != nil {
+	if err := resetter.ResetHard(startSHA); err != nil {
 		return err
 	}
 
