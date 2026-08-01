@@ -6,6 +6,7 @@ slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Formalize the Tier 1/2 substrate rule and re-tier mis-tagged tests
 task_description: |
   Formalize the Tier 1/2 substrate rule and re-tier mis-tagged tests
@@ -34,7 +35,9 @@ implementing  '2026-08-01T14:36:32Z'
 ```yaml
 batches:
   - name: tierpurity-guard-generalization
-    state: pending
+    state: running
+    implementer_session: 4f25dffd-76eb-4c73-9535-59f372e5dfc0
+    start_sha: 8689bad83fbc4efd7eb4c4121cccb73c7557b826
   - name: scoutengine-scout-tag
     state: pending
   - name: substrate-rule-docs-and-sweep
