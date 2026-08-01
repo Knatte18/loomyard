@@ -403,3 +403,49 @@ func junctionRepointedDetail(hostLayout *hubgeometry.Layout) string {
 	}
 	return "junction re-pointed: " + strings.Join(parts, "; ")
 }
+
+// scanOnDiskJunctionNames lists the names of link entries directly under
+// filepath.Join(worktreeRoot, relPath), excluding every name in
+// hubgeometry.HubReservedNames() (_board/_portals/_launchers/_raddle) —
+// those are hub-structural, never per-worktree junctions, and must never be
+// swept by stale-removal. It is the read-only enumeration half of
+// declarative convergence: the desired set comes from RepoWiredNames, the
+// actual set comes from here, and stale-removal (Reconcile) computes the
+// difference.
+//
+// Modeled on fslink.RemoveLinksIn (fslink.go:50), but read-only — it never
+// removes anything, only reports which immediate children are links. Like
+// weftwiring.go's removeJunctionRecords doc notes, this scans only the
+// immediate children of worktreeRoot/relPath: the correct granularity for
+// fabric junctions, which are direct children of the anchored subpath.
+//
+// Returns (nil, err) if the directory cannot be read (e.g. does not exist);
+// callers must treat a scan error as "skip removal", never as "the on-disk
+// set is empty" (which would look like everything is stale).
+func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
+	dir := filepath.Join(worktreeRoot, relPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	reserved := make(map[string]bool)
+	for _, r := range hubgeometry.HubReservedNames() {
+		reserved[r] = true
+	}
+
+	var names []string
+	for _, entry := range entries {
+		if reserved[entry.Name()] {
+			continue
+		}
+		isLink, err := fslink.IsLink(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if isLink {
+			names = append(names, entry.Name())
+		}
+	}
+	return names, nil
+}
