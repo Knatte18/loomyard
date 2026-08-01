@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-webster-bisect-migrate
+phase: approved-builder-resethard-migrate
 slug: webster-bisect-fabric-migrate
 branch: webster-bisect-fabric-migrate
 plan: _mill/plan
@@ -27,6 +27,7 @@ planned  '2026-08-01T19:18:21Z'
 implementing  '2026-08-01T19:18:47Z'
 approved-fabric-warp-methods  '2026-08-01T19:22:38Z'
 approved-webster-bisect-migrate  '2026-08-01T19:25:56Z'
+approved-builder-resethard-migrate  '2026-08-01T19:29:34Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     start_sha: c3136abedf558d5e18d659dc4103150362ffd437
     commit_sha: 40a7cf585939913545fcb2d1dc96dc835a127798
   - name: builder-resethard-migrate
-    state: running
+    state: approved
     implementer_session: b9bf886e-4c0d-4acf-a477-2c56b569493d
     start_sha: 24ed717427fbb25171e54f1ed645adfa4f5c5b5f
+    commit_sha: d2fa6947aab3555bfff13206ecb99b1954912766
   - name: regression-guard-and-constraints
     state: pending
 ```
