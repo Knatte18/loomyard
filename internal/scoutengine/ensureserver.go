@@ -556,6 +556,12 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		// fd; this process's handle must not be held open for the rest of
 		// this call's (or the daemon's) lifetime.
 		logFile.Close()
+		// CONSTRAINTS.md's Live-Substrate Spawn Observability entry requires
+		// a spawn-side log line for a live-substrate spawn point; cmd.Process
+		// is guaranteed non-nil here since cmd.Start() has already succeeded
+		// (the line 548 error path above returns before ever reaching this
+		// point).
+		logger.Info("scoutengine: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
 
 		// Step 5: write the state file *before* releasing the lock, so a
 		// losing caller that acquires the lock immediately after release
