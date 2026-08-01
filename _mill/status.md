@@ -105,7 +105,9 @@ batches:
     start_sha: 43183285566ad126e35f85feda40b2370b769475
     commit_sha: 547a9b63eb096a599183e32538d74f027733421c
   - name: cmd-lyx-root-wiring
-    state: pending
+    state: running
+    implementer_session: 50be3cfd-9742-424b-bed8-fcb1eddfa747
+    start_sha: f96be123d30c25c2a9df33798810316bf70730b9
   - name: scoutengine-logger-conversion
     state: pending
   - name: docs-and-constraints-wrapup
