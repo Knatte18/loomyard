@@ -91,6 +91,7 @@ _Cross-cutting decisions every batch inherits._
 
 - `CONSTRAINTS.md`
 - `cmd/lyx/helptree_test.go`
+- `cmd/lyx/jsonhelp_test.go`
 - `cmd/lyx/main.go`
 - `docs/overview.md`
 - `internal/boardengine/config.go`
