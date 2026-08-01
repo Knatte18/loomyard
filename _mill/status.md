@@ -75,7 +75,9 @@ batches:
     start_sha: 4b33629dbcffd52f7dc67f0b9831527009dfd2ac
     commit_sha: 542016dd9c922473255c5e493d8b9910449bac32
   - name: logger-spans
-    state: pending
+    state: running
+    implementer_session: b7c1ddcc-e85a-4000-b1cf-6269185ca5bb
+    start_sha: 70b875031e89fb773a94f8135d2b65e2d2f20b07
   - name: reedengine-adoption
     state: pending
   - name: treadleengine-adoption
