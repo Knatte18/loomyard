@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-init-dissolution-and-unwire
+phase: approved-docs-and-sandbox-suites
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-reconcile-declarative-convergence  '2026-08-01T09:52:17Z'
 approved-clone-does-everything  '2026-08-01T10:05:07Z'
 approved-worktree-add-eager-wiring  '2026-08-01T10:11:24Z'
 approved-init-dissolution-and-unwire  '2026-08-01T10:32:10Z'
+approved-docs-and-sandbox-suites  '2026-08-01T10:37:12Z'
 ```
 
 ## Batches
@@ -79,7 +80,8 @@ batches:
     start_sha: 2cd9f171aab9e65d5f43dbcec9b0c136debae619
     commit_sha: e8fe28edd7d13580eb61a4637f6dc093d3700502
   - name: docs-and-sandbox-suites
-    state: running
+    state: approved
     implementer_session: dc44d257-da15-48ea-a223-0912cbf9b11e
     start_sha: 11384db467483f5977782811ef27d2b8b4933c15
+    commit_sha: 9f947322ae519edc08fb43d9ea5bb3a866a6d7cf
 ```
