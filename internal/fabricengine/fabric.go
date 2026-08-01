@@ -5,7 +5,13 @@
 // consumers call f.Warp.StageAndCommit(...) / f.Weft.ChangedFilesSince(...) for
 // anything repo-specific and uncoordinated; only the genuinely cross-repo
 // operations (Commit, SyncWeft, RevertWithWeft, Pull) get their own method on
-// Fabric.
+// Fabric. A single-sided, uncoordinated op also earns a named Fabric method —
+// rather than staying direct field access — precisely when it must be
+// callable from OUTSIDE this package, so the one-repo illusion holds at the
+// public API boundary; f.Warp/f.Weft field access remains correct for
+// uncoordinated ops used only inside internal/fabricengine. See
+// warpforward.go's CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard for
+// the warp-only examples of this carve-out.
 
 package fabricengine
 
@@ -37,8 +43,13 @@ func (e *ErrMissingPath) Error() string {
 // Fabric is the cross-repo coordination handle over a paired warp (host) and
 // weft checkout, each wrapped as an internal/gitrepo.Repo. Fabric is the only
 // type in this module that knows both repos exist; Warp and Weft are exported
-// so uncoordinated, repo-specific operations go straight through gitrepo with
-// no forwarding-method boilerplate on Fabric itself.
+// so uncoordinated, repo-specific operations used only inside
+// internal/fabricengine go straight through gitrepo with no forwarding-method
+// boilerplate on Fabric itself. A single-sided, uncoordinated op instead gets
+// a named Fabric method precisely when an out-of-package caller needs it —
+// preserving the one-repo illusion at the public API boundary — as
+// warpforward.go's CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard do
+// for warp.
 type Fabric struct {
 	Warp *gitrepo.Repo
 	Weft *gitrepo.Repo

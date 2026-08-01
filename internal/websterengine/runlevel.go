@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -142,6 +142,14 @@ type RunDeps struct {
 	// missing-integration-report wait replays instantly instead of blocking
 	// a real DefaultAwaitWaitS window.
 	Clock Clock
+
+	// Bisector is the integration stage's bisect-repo seam: nil (the
+	// production default) makes runIntegrationStage construct a real
+	// *fabricengine.Fabric inline via
+	// fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree()),
+	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
+	// so the bisect path never requires a paired weft fixture.
+	Bisector WarpBisector
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices. Fresh
@@ -842,8 +850,20 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 
 	shas, labels := accumulatedCardSHAs(batches, st)
 
-	repo := gitrepo.New(deps.WorktreeRoot)
-	if err := BisectAndEscalate(repo, shas, labels, plan.Verify, deps.WorktreeRoot, deps.WebsterDir, st); err != nil {
+	// deps.Bisector is nil in production: construct the real paired-repo
+	// Fabric handle inline, the same way webstercli's weftCommit does from a
+	// *hubgeometry.Layout. A test instead injects a warp-only *gitrepo.Repo
+	// over its own scratch worktree (the WarpBisector seam), so the bisect
+	// path never requires a paired weft fixture.
+	bisector := deps.Bisector
+	if bisector == nil {
+		f, err := fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree())
+		if err != nil {
+			return err
+		}
+		bisector = f
+	}
+	if err := BisectAndEscalate(bisector, shas, labels, plan.Verify, deps.WorktreeRoot, deps.WebsterDir, st); err != nil {
 		return err
 	}
 

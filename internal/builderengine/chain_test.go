@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
 func TestChainMembers(t *testing.T) {
@@ -95,7 +96,7 @@ func TestRestartChain(t *testing.T) {
 		ChainStartSHAs: map[int]string{4: anchor},
 	}
 
-	if err := builderengine.RestartChain(worktree, st, plan, 4, reportsDir); err != nil {
+	if err := builderengine.RestartChain(gitrepo.New(worktree), st, plan, 4, reportsDir); err != nil {
 		t.Fatalf("RestartChain() error = %v; want nil", err)
 	}
 
@@ -136,7 +137,7 @@ func TestRestartChain_ChainlessErrors(t *testing.T) {
 	// The anchor IS recorded for chainEnd 1, isolating the chainless check
 	// from the unrecorded-anchor check exercised below.
 	st := &builderengine.State{ChainStartSHAs: map[int]string{1: anchor}}
-	if err := builderengine.RestartChain(worktree, st, plan, 1, t.TempDir()); err == nil {
+	if err := builderengine.RestartChain(gitrepo.New(worktree), st, plan, 1, t.TempDir()); err == nil {
 		t.Errorf("RestartChain(chainEnd=1) error = nil; want error (batch 1 names no chain)")
 	}
 }
@@ -154,7 +155,7 @@ func TestRestartChain_UnrecordedAnchorErrors(t *testing.T) {
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
 	st := &builderengine.State{ChainStartSHAs: map[int]string{}}
-	if err := builderengine.RestartChain(worktree, st, plan, 4, t.TempDir()); err == nil {
+	if err := builderengine.RestartChain(gitrepo.New(worktree), st, plan, 4, t.TempDir()); err == nil {
 		t.Errorf("RestartChain with no recorded anchor error = nil; want error")
 	}
 }
