@@ -81,7 +81,9 @@ batches:
     start_sha: 70b875031e89fb773a94f8135d2b65e2d2f20b07
     commit_sha: 3f092afae4912e5e60926b808830f01f275bc251
   - name: reedengine-adoption
-    state: pending
+    state: running
+    implementer_session: c697e1d4-a8bd-4da6-b3c3-70f9070568b1
+    start_sha: 941667e07cc66ca41eae6336af4009c222e9636a
   - name: treadleengine-adoption
     state: pending
   - name: burler-fabric-shuttle-adoption
