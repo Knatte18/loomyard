@@ -17,18 +17,19 @@ import (
 var traceIDHexPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // resetTraceState clears the package-level traceOnce/traceID white-box
-// state before a test that needs a fresh resolution, and restores it at
-// test end so later tests in the same process are unaffected. traceOnce is
-// a sync.Once with no reset method, so the only way to force a fresh
-// resolution is to replace it with a zero-value sync.Once.
+// state before a test that needs a fresh resolution. traceOnce is a
+// sync.Once with no reset method, so the only way to force a fresh
+// resolution is to replace it with a zero-value sync.Once; sync.Once
+// contains a noCopy marker, so it is reset forward-only (never saved and
+// restored by value, which would fail go vet's copylocks check) — every
+// test that needs a fresh resolution already calls resetTraceState itself
+// before running, so no cleanup restore of traceOnce is required.
 func resetTraceState(t *testing.T) {
 	t.Helper()
-	savedOnce := traceOnce
 	savedID := traceID
 	traceOnce = sync.Once{}
 	traceID = ""
 	t.Cleanup(func() {
-		traceOnce = savedOnce
 		traceID = savedID
 	})
 }
