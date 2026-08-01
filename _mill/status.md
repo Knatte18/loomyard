@@ -41,7 +41,9 @@ batches:
     start_sha: 8689bad83fbc4efd7eb4c4121cccb73c7557b826
     commit_sha: b1b8e6bbcc808863b51cf3f65c760a15f0903d3d
   - name: scoutengine-scout-tag
-    state: pending
+    state: running
+    implementer_session: e082c301-7f61-433d-8d9a-8e993d909bc0
+    start_sha: 42899ca50c867c5a1fc5d38e925989d3f99c034d
   - name: substrate-rule-docs-and-sweep
     state: pending
 ```
