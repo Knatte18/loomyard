@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-burler-fabric-shuttle-adoption
+phase: approved-perchengine-adoption
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-logger-spans  '2026-08-01T07:53:37Z'
 approved-reedengine-adoption  '2026-08-01T07:57:50Z'
 approved-treadleengine-adoption  '2026-08-01T08:01:48Z'
 approved-burler-fabric-shuttle-adoption  '2026-08-01T08:04:05Z'
+approved-perchengine-adoption  '2026-08-01T08:06:18Z'
 ```
 
 ## Batches
@@ -99,9 +100,10 @@ batches:
     start_sha: 6d39c1a4f592dd472dc6366e97540fe3edaffcea
     commit_sha: 81b3a70455a23277d609bfcc7344dbf9fc8ecaaf
   - name: perchengine-adoption
-    state: running
+    state: approved
     implementer_session: eb6f91f8-7484-48dc-90d6-a0819a338e72
     start_sha: 43183285566ad126e35f85feda40b2370b769475
+    commit_sha: 547a9b63eb096a599183e32538d74f027733421c
   - name: cmd-lyx-root-wiring
     state: pending
   - name: scoutengine-logger-conversion
