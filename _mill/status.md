@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-scoutengine-scout-tag
+phase: approved-substrate-rule-docs-and-sweep
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-08-01T14:36:03Z'
 implementing  '2026-08-01T14:36:32Z'
 approved-tierpurity-guard-generalization  '2026-08-01T14:42:15Z'
 approved-scoutengine-scout-tag  '2026-08-01T14:47:18Z'
+approved-substrate-rule-docs-and-sweep  '2026-08-01T14:50:14Z'
 ```
 
 ## Batches
@@ -47,7 +48,8 @@ batches:
     start_sha: 42899ca50c867c5a1fc5d38e925989d3f99c034d
     commit_sha: 9ce859554f47231a8163500d40d7e0d06021e2c1
   - name: substrate-rule-docs-and-sweep
-    state: running
+    state: approved
     implementer_session: 364c3116-1564-4a79-a793-94c58f321c98
     start_sha: 99f98d656fb5c49f686ef9198180ac087400134e
+    commit_sha: 5b1ee40162419b97b29c9f47066f8a3ef9d7fdbf
 ```
