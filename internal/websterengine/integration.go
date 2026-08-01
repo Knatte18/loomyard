@@ -24,9 +24,21 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
+
+// WarpBisector is the warp-only git surface the in-process bisect drives:
+// capturing the current branch, checking out a candidate SHA detached, and
+// restoring the captured branch afterwards. It is structurally satisfied by
+// both `*gitrepo.Repo` (tests, over their own scratch worktree) and
+// `*fabricengine.Fabric` (production, whose three methods each delegate to
+// the same verbs on its own warp repo) — bisect and its callers depend on
+// this interface, never a concrete type.
+type WarpBisector interface {
+	CurrentBranch() (string, error)
+	CheckoutDetached(sha string) error
+	RestoreBranch(ref string) error
+}
 
 // IntegrationReportFileName is the integration fork's own fixed report file
 // name inside a webster reports dir — distinct from ReportFileName's
@@ -130,7 +142,7 @@ const integrationBatchKey = -1
 // indexing into the empty slice); a single-element shas is by construction
 // the only candidate, so offendingIndex is 0 unconditionally (the
 // sole/HEAD card).
-func bisect(repo *gitrepo.Repo, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
+func bisect(repo WarpBisector, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
 	if len(shas) == 0 {
 		return -1, nil
 	}
@@ -167,7 +179,7 @@ func bisect(repo *gitrepo.Repo, shas []string, verifyCmd string, worktree string
 
 // checkoutAndVerify checks out sha detached in repo, then runs verifyCmd
 // in-process at worktree, reporting whether it passed.
-func checkoutAndVerify(repo *gitrepo.Repo, sha, verifyCmd, worktree string) (bool, error) {
+func checkoutAndVerify(repo WarpBisector, sha, verifyCmd, worktree string) (bool, error) {
 	if err := repo.CheckoutDetached(sha); err != nil {
 		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
 	}
@@ -238,7 +250,7 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 // both offendingSHA/offendingCard fall back to "unknown" rather than
 // indexing into the empty slice. The caller persists st via SaveState under
 // the state-mutation lease.
-func BisectAndEscalate(repo *gitrepo.Repo, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
+func BisectAndEscalate(repo WarpBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
 	idx, err := bisect(repo, shas, verifyCmd, worktree)
 	if err != nil {
 		return err
