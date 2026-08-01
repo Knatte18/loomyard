@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-githubclient-timeout-seam
+phase: approved-webstercli-await-wait-window
 slug: test-suite-overhaul
 branch: test-suite-overhaul
 plan: _mill/plan
@@ -22,6 +22,7 @@ plan-fix-r1  '2026-08-01T10:16:02Z'
 planned  '2026-08-01T10:16:17Z'
 implementing  '2026-08-01T10:18:44Z'
 approved-githubclient-timeout-seam  '2026-08-01T10:21:01Z'
+approved-webstercli-await-wait-window  '2026-08-01T10:23:16Z'
 ```
 
 ## Batches
@@ -34,9 +35,10 @@ batches:
     start_sha: 2d5c0b89789c2aa0df77b90e5bce540f71debcfd
     commit_sha: 120d112a7e61d1193509b0bbb425b3ca2e09aa56
   - name: webstercli-await-wait-window
-    state: running
+    state: approved
     implementer_session: 5941ba38-12f3-4b50-aa87-cf5917157b1b
     start_sha: 004d74f85f4cb0afe7b938123a4f46d57247ee3c
+    commit_sha: 2e779a9021af3d6892a6f49e41717bc3cf023841
   - name: benchmark-doc-update
     state: pending
 ```
