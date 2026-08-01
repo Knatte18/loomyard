@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-fabric-warp-methods
 slug: webster-bisect-fabric-migrate
 branch: webster-bisect-fabric-migrate
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-01T19:06:46Z'
 plan-fix-r3  '2026-08-01T19:18:09Z'
 planned  '2026-08-01T19:18:21Z'
 implementing  '2026-08-01T19:18:47Z'
+approved-fabric-warp-methods  '2026-08-01T19:22:38Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-08-01T19:18:47Z'
 ```yaml
 batches:
   - name: fabric-warp-methods
-    state: running
+    state: approved
     implementer_session: 0396449a-2466-4d00-aac6-cc6078a2e5a0
     start_sha: 0a60e434926dd138fdeb15122437b7e14e3adc0a
+    commit_sha: 1ef9ee0a7472ef54f5d1d26c9e6cd8b6786abf77
   - name: webster-bisect-migrate
     state: pending
   - name: builder-resethard-migrate
