@@ -40,5 +40,7 @@ batches:
     start_sha: 004d74f85f4cb0afe7b938123a4f46d57247ee3c
     commit_sha: 2e779a9021af3d6892a6f49e41717bc3cf023841
   - name: benchmark-doc-update
-    state: pending
+    state: running
+    implementer_session: 09c6f338-c238-4fa0-a077-6e103fd7c9ae
+    start_sha: 37a12aa625f18936a8ab76bd97d418c71858d619
 ```
