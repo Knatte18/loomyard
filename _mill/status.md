@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-pull
+phase: approved-docs-sandbox
 slug: fabric-rebase-reconcile
 branch: fabric-rebase-reconcile
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-01T17:09:05Z'
 approved-gitrepo-primitives  '2026-08-01T17:17:28Z'
 approved-fabric-pull  '2026-08-01T17:26:34Z'
 approved-cli-pull  '2026-08-01T17:29:45Z'
+approved-docs-sandbox  '2026-08-01T17:33:34Z'
 ```
 
 ## Batches
@@ -48,7 +49,8 @@ batches:
     start_sha: 8f145611a385297e5b82cbf9a6a42b4800e84e4e
     commit_sha: 4c3a4a177f962cfc9e51873aae0fa96d1f8934b6
   - name: docs-sandbox
-    state: running
+    state: approved
     implementer_session: 46419307-fa4a-4ec0-a96a-24f411534ff9
     start_sha: 38c7330050d43700df178cceec30e2736a56cb2f
+    commit_sha: 80afe130fc5de0185fcee194d535300c39879fb5
 ```
