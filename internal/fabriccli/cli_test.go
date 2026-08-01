@@ -3,9 +3,9 @@
 // cli_test.go covers the fabric CLI cobra surface: no-arg listing of all 14 verbs,
 // unknown-subcommand cobra error, the --weft-path push-only gate, pairs with a
 // minimal topology fixture, commit --help's fixed-message/Warp-SHA-trailer prose,
-// and the WEFT_SKIP_PUSH env-to-SyncOptions mapping on push — this package
-// exercises both the topology and content-sync verb families against the one
-// fabric command tree.
+// pull --help's both-sides/reconcile prose, and the WEFT_SKIP_PUSH env-to-SyncOptions
+// mapping on push — this package exercises both the topology and content-sync verb
+// families against the one fabric command tree.
 
 package fabriccli_test
 
@@ -178,6 +178,34 @@ func TestRunCLI_CommitHelp(t *testing.T) {
 	}
 	if strings.Contains(got, "--message") {
 		t.Errorf("commit --help output unexpectedly contains --message flag; got:\n%s", got)
+	}
+}
+
+// TestRunCLI_PullHelp asserts that "fabric pull --help" documents the
+// both-sides pull/reconcile behaviour — a help-accuracy assertion in the same
+// style as TestRunCLI_CommitHelp, guarding against the CLI/Cobra Invariant's
+// "stale help is review-blocking" obligation now that pull drives the
+// unified Fabric.Pull instead of the weft-only PullWeft.
+func TestRunCLI_PullHelp(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"pull", "--help"})
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI(pull --help) = %d; want 0", exitCode)
+	}
+
+	got := out.String()
+
+	if !strings.Contains(got, "pull warp and weft, reconciling a rebased warp") {
+		t.Errorf("pull --help output missing both-sides Short text; got:\n%s", got)
+	}
+	if !strings.Contains(got, "reconcile") {
+		t.Errorf("pull --help output missing reconcile wording; got:\n%s", got)
+	}
+	if !strings.Contains(got, "rewrite") {
+		t.Errorf("pull --help output missing warp-history-rewrite wording; got:\n%s", got)
 	}
 }
 

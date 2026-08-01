@@ -6,7 +6,7 @@
 // closure state. The PersistentPreRunE splits normal mode (resolve cwd → layout →
 // config → pathspec → Fabric handle) from bypass mode (either hidden path flag
 // injected by the detached push child, push-only gate), driving fabricengine.Fabric's
-// StatusWeft/CommitWeft/PushWeft/PullWeft in normal mode and
+// StatusWeft/CommitWeft/PushWeft/Pull in normal mode and
 // fabricengine.CoalescePushBothAt's loop-until-clean coalescing push directly in
 // bypass mode.
 
@@ -232,20 +232,40 @@ Related commands:
 		},
 	}
 
-	// pull subcommand: fast-forwards from the remote.
+	// pull subcommand: drives fabricengine.Fabric's unified Pull, fast-forwarding
+	// weft, then fetching and inspecting warp, reconciling a rewritten warp
+	// history when it is safe to do so.
 	pullCmd := &cobra.Command{
 		Use:   "pull",
-		Short: "pull weft changes from remote",
+		Short: "pull warp and weft, reconciling a rebased warp",
+		Long: `Pulls both sides of the pair. Weft is fast-forwarded first via a plain
+git pull. Warp is then fetched and inspected against its upstream tracking ref:
+
+  - A clean fast-forward (local warp HEAD is still an ancestor of the fetched
+    upstream tip) simply advances warp — no reconcile needed.
+  - A detected warp history rewrite (rebase or force-push upstream, so local
+    warp HEAD is no longer an ancestor of the fetched tip) is auto-reconciled
+    when it is safe: weft's correspondence is re-anchored to the nearest
+    surviving Warp-SHA, warp is reset to the new tip, and a new empty weft
+    anchor commit records the fresh correspondence. The result reports which
+    post-anchor weft commits touch _pattern/ and need review, since they were
+    written against a warp baseline that no longer exists upstream.
+  - Two cases abort loudly and make no change to either repo: local warp
+    already carries unpushed commits of its own AND the remote diverged (the
+    double-conflict case pull refuses to resolve unattended), or the warp
+    rewrite is so thorough that no recorded correspondence survives (no safe
+    baseline to re-anchor against).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			if err := fab.PullWeft(fabricengine.EnvSyncOptions()); err != nil {
+			result, err := fab.Pull(fabricengine.EnvSyncOptions())
+			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{}))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, pullResultMap(result)))
 			return nil
 		},
 	}
@@ -273,4 +293,31 @@ Related commands:
 	}
 
 	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd)
+}
+
+// pullResultMap converts a fabricengine.PullResult into the map[string]any
+// shape pullCmd's RunE surfaces through output.Ok — mirroring the
+// map[string]any style the status/commit verbs already use, so the pull
+// result reaches the caller through the same one-JSON-object-per-line
+// envelope. patternResidueMap flattens each PatternResidueEntry the same way.
+func pullResultMap(result fabricengine.PullResult) map[string]any {
+	residue := make([]map[string]any, 0, len(result.PatternResidue))
+	for _, entry := range result.PatternResidue {
+		residue = append(residue, map[string]any{
+			"weft_sha": entry.WeftSHA,
+			"paths":    entry.Paths,
+		})
+	}
+	return map[string]any{
+		"weft_pulled":       result.WeftPulled,
+		"warp_fetched":      result.WarpFetched,
+		"warp_advanced":     result.WarpAdvanced,
+		"new_warp_head":     result.NewWarpHEAD,
+		"rewrite_detected":  result.RewriteDetected,
+		"reconciled":        result.Reconciled,
+		"anchor_warp_sha":   result.AnchorWarpSHA,
+		"anchor_weft_sha":   result.AnchorWeftSHA,
+		"reanchor_weft_sha": result.ReanchorWeftSHA,
+		"pattern_residue":   residue,
+	}
 }
