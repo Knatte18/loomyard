@@ -45,7 +45,7 @@ const (
 
 	// ReconcileActionRawAdopted means a host worktree created outside lyx had its weft
 	// side created (branch + worktree) as a dormant counterpart. No junction is wired;
-	// that is lyx init's responsibility.
+	// re-running Reconcile is what wires it once the pair exists.
 	ReconcileActionRawAdopted ReconcileAction = "raw_adopted"
 
 	// ReconcileActionUnmanagedReported means a host worktree is on an unmanaged branch
@@ -96,7 +96,7 @@ type ReconcileResult struct {
 //     worktree (has a _lyx entry in its git config) → already handled by rules 1/2.
 //  4. Weft worktree absent and weft branch absent, host worktree is a raw (non-lyx)
 //     worktree → adopt it by creating the weft branch and worktree dormant (no junction
-//     wiring; call `lyx init` to activate).
+//     wiring; re-run Reconcile to activate).
 //  5. Host worktree is on an unmanaged branch (no weft sibling, raw worktree rule does
 //     not apply, or branch is not managed) → report, touch nothing.
 //
@@ -239,21 +239,24 @@ func (t *Topology) reconcileMissingWeft(
 
 	// Rule 2: weft branch absent — check whether this is a raw (non-lyx) host worktree.
 	// A raw worktree has no weft counterpart at all; we adopt it by creating the weft branch
-	// and worktree dormant. The host _lyx junction is NOT wired here; lyx init handles that.
+	// and worktree dormant. The host _lyx junction is NOT wired here; a subsequent
+	// Reconcile call wires it once the pair exists (rule 2's "weft exists but junction
+	// missing" branch in Reconcile above).
 	isRaw := isRawHostWorktree(hostPath)
 	if isRaw {
 		if err := createDormantWeftForRawHost(hostLayout, slug, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("adopt raw host worktree: %v", err)
 			return ReconcileActionRawAdopted
 		}
-		pr.Detail = fmt.Sprintf("adopted raw host worktree at %s; weft branch %s created dormant (run lyx init to activate)", hostPath, weftBranch)
+		pr.Detail = fmt.Sprintf("adopted raw host worktree at %s; weft branch %s created dormant (re-run lyx fabric reconcile to wire it)", hostPath, weftBranch)
 		return ReconcileActionRawAdopted
 	}
 
 	// Rule 3: no weft branch and not identifiable as raw — report without touching anything.
-	// The caller should run `lyx fabric add` or `lyx init` explicitly.
+	// The caller should run `lyx fabric add` (to create a new pair) or `lyx fabric reconcile`
+	// (to converge an existing but unmanaged branch) explicitly.
 	pr.Detail = fmt.Sprintf(
-		"host worktree %s is on branch %s with no weft sibling; run `lyx fabric add` or `lyx init`",
+		"host worktree %s is on branch %s with no weft sibling; run `lyx fabric add` or `lyx fabric reconcile`",
 		hostPath, hostBranch,
 	)
 	return ReconcileActionUnmanagedReported
@@ -294,8 +297,8 @@ func isRawHostWorktree(hostPath string) bool {
 // createDormantWeftForRawHost creates a weft branch (an already-suffixed weft branch
 // name, i.e. the result of WeftBranchName) and worktree for a raw host worktree,
 // leaving it dormant (no junction wiring). The weft branch forks from the current weft
-// HEAD (parallel to Add's adopt-or-create logic). The caller must run lyx init to wire
-// junctions.
+// HEAD (parallel to Add's adopt-or-create logic). A subsequent Reconcile call wires
+// the junctions once the pair exists.
 func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, slug, weftBranch string) error {
 	weftRoot := hostLayout.WeftRepoRoot()
 

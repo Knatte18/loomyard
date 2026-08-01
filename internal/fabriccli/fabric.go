@@ -66,7 +66,7 @@ Example:
 		Long: `Clone two repositories into a new hub directory (<parent>/<host-name>-HUB)
 and wire everything: the host prime, weft prime, _board worktree, lyx-anchor
 subpath, repo-wide config, host junctions, .gitignore, and per-worktree module
-configs — a single command, no follow-up "lyx init" required.
+configs — a single command, no follow-up activation step required.
 
   <host-name>            — host prime (the main working repo)
   <host-name>` + hubgeometry.WeftSuffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
@@ -91,7 +91,8 @@ _board is then materialized as a second worktree of the weft repo, on the
 host's unsuffixed default branch — adopted if the weft remote already carries
 board history, freshly orphan-created otherwise.
 
-After cloning, run "lyx init" inside the host worktree to activate junctions and config.
+Clone wires everything automatically — no follow-up command is needed to
+activate junctions or config.
 
 Example:
   lyx fabric clone https://github.com/user/repo https://github.com/user/repo-weft

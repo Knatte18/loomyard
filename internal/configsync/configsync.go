@@ -96,9 +96,9 @@ func legacyFabricConfig(baseDir string) (existing []byte, migratedFrom []string)
 // (Applied: false, no Added/Removed — the file is never parsed, diffed, or
 // written). When the file is absent, the template is written VERBATIM via
 // fsx.AtomicWriteBytes (when apply) and every template leaf key-path is
-// reported as Added via yamlengine.MissingKeys, so initengine's
+// reported as Added via yamlengine.MissingKeys, so a caller's own
 // Applied && len(Added) > 0 && len(Removed) == 0 "created" heuristic still
-// fires correctly.
+// fires correctly for a seed-only module.
 //
 // When apply is false, files are never written and Applied is always false.
 //

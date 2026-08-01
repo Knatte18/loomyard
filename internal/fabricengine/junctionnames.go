@@ -56,9 +56,9 @@ func junctionNames(baseDir string) ([]string, error) {
 // WiredNames loads the fabric config at baseDir and returns its wired
 // name-set — the pathspec directory names with hub-reserved names filtered
 // out — for callers outside this package. It is a thin wrapper over
-// junctionNames so out-of-package callers (internal/initengine's init and
-// undo) obtain the same filtered name-set the in-package sites use, without
-// duplicating the filterHubReserved guard themselves.
+// junctionNames so out-of-package callers (internal/fabriccli's clone and
+// add handlers) obtain the same filtered name-set the in-package sites use,
+// without duplicating the filterHubReserved guard themselves.
 //
 // The raw, unfiltered Config.Dirs() is used only by Topology.Add's
 // reserved-name union (which must include every pathspec name, filtered or

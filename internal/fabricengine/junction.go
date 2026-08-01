@@ -149,7 +149,7 @@ func seedLyxJunction(l *hubgeometry.Layout, slug string, names []string) error {
 			// makes "create _pattern/ in the repo and start writing" the
 			// natural operator mistake this guard exists to catch.
 			return fmt.Errorf(
-				"host repo already contains a real %s at %s; it predates weft — move its content into the paired weft worktree's own %s, or remove this directory, then re-run `lyx init` to create the junction",
+				"host repo already contains a real %s at %s; it predates weft — move its content into the paired weft worktree's own %s, or remove this directory, then re-run `lyx fabric reconcile` to create the junction",
 				filepath.Base(link),
 				link,
 				filepath.Base(link),
