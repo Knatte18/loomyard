@@ -299,6 +299,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// sessions would list) — so force-reaping it before spawning is safe.
 	if e.sessionlessSocketHolderPersists() {
 		if err := e.reapSocketProcesses(); err != nil {
+			logger.Warn("reed: failed to reap stale tmux socket-holder", "socket", e.Socket(), "err", err)
 			return false, nil, fmt.Errorf("stale tmux socket-holder: %w", err)
 		}
 	}
@@ -311,6 +312,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// lands in a directory that already exists and is already pruned.
 	logsDir := e.layout.HubLogsDir()
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		logger.Warn("reed: failed to create hub logs dir", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("create %s: %w", logsDir, err)
 	}
 	// Prune to the newest 2 pre-existing logs before this boot's own log is
@@ -320,15 +322,18 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// debug-armed boot can leave (server, client — see clientLogNamePrefix)
 	// are pruned, independently bounded, so neither accumulates unbounded.
 	if err := pruneServerLogsLocked(logsDir, serverLogNamePrefix, serverLogPruneKeep); err != nil {
+		logger.Warn("reed: failed to prune server logs", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("prune server logs: %w", err)
 	}
 	if err := pruneServerLogsLocked(logsDir, clientLogNamePrefix, serverLogPruneKeep); err != nil {
+		logger.Warn("reed: failed to prune client logs", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("prune client logs: %w", err)
 	}
 	// The -vv-only tmux-out-<pid>.log protocol log is the third shape a
 	// debug-armed boot can leave; prune it on the same newest-3 budget so it
 	// does not accumulate unbounded across repeated debug_log: 2 boots.
 	if err := pruneServerLogsLocked(logsDir, outLogNamePrefix, serverLogPruneKeep); err != nil {
+		logger.Warn("reed: failed to prune out logs", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("prune out logs: %w", err)
 	}
 
@@ -364,6 +369,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		cmd.Env = clean
 		proc.Detach(cmd)
 		if err := cmd.Start(); err != nil {
+			logger.Warn("reed: failed to start tmux server", "socket", e.Socket(), "session", session, "err", err)
 			return fmt.Errorf("start tmux: %w", err)
 		}
 		logger.Info("reed: spawned tmux server", "socket", e.Socket(), "session", session, "pid", cmd.Process.Pid)
@@ -386,7 +392,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// then reports the truly unexpected state instead. A genuine
 	// never-boots regression still fails, at bootOverallTimeout instead of
 	// after two attempts.
-	bootDeadline := time.Now().Add(bootOverallTimeout)
+	bootStart := time.Now()
+	bootDeadline := bootStart.Add(bootOverallTimeout)
 	attempt := 0
 	for {
 		attempt++
@@ -400,6 +407,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		for time.Now().Before(attemptDeadline) {
 			up, err := e.tmux.hasSession(session)
 			if err != nil {
+				// hasSession's error path returns immediately (the poll loop
+				// never retries an errored check itself — only the outer
+				// attempt loop above does), so this Warn fires at most once
+				// per boot attempt rather than once per poll: there is no
+				// per-iteration spam to guard against here.
+				logger.Warn("reed: boot poll has-session check failed", "socket", e.Socket(), "session", session, "attempt", attempt, "err", err)
 				return false, nil, fmt.Errorf("check session: %w", err)
 			}
 			if up {
@@ -413,6 +426,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		}
 
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+			logger.Warn("reed: tmux server up but session did not materialize", "socket", e.Socket(), "session", session, "attempt", attempt)
 			return false, nil, fmt.Errorf("tmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
 		logger.Warn("reed: zombie boot, reaping socket before retry", "socket", e.Socket(), "session", session, "attempt", attempt)
@@ -420,9 +434,11 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			return false, nil, fmt.Errorf("reap zombie tmux boot: %w", err)
 		}
 		if attempt >= maxBootAttempts {
+			logger.Warn("reed: boot gave up after fast-failure spiral guard", "socket", e.Socket(), "session", session, "attempts", attempt, "elapsed", time.Since(bootStart))
 			return false, nil, fmt.Errorf("tmux session did not start after %d attempts (fast-failure spiral guard; see maxBootAttempts)", attempt)
 		}
 		if time.Now().After(bootDeadline) {
+			logger.Warn("reed: boot gave up after overall timeout", "socket", e.Socket(), "session", session, "attempts", attempt, "elapsed", time.Since(bootStart))
 			return false, nil, fmt.Errorf("tmux session did not start within %s", bootOverallTimeout)
 		}
 	}
