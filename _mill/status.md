@@ -47,5 +47,7 @@ batches:
     start_sha: 42899ca50c867c5a1fc5d38e925989d3f99c034d
     commit_sha: 9ce859554f47231a8163500d40d7e0d06021e2c1
   - name: substrate-rule-docs-and-sweep
-    state: pending
+    state: running
+    implementer_session: 364c3116-1564-4a79-a793-94c58f321c98
+    start_sha: 99f98d656fb5c49f686ef9198180ac087400134e
 ```
