@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-rebase-reconcile
 branch: fabric-rebase-reconcile
 plan: _mill/plan
@@ -22,4 +22,19 @@ plan-review-r1  '2026-08-01T16:55:31Z'
 plan-fix-r1  '2026-08-01T16:55:31Z'
 plan-fix-r2  '2026-08-01T17:08:18Z'
 planned  '2026-08-01T17:08:32Z'
+implementing  '2026-08-01T17:09:05Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: gitrepo-primitives
+    state: pending
+  - name: fabric-pull
+    state: pending
+  - name: cli-pull
+    state: pending
+  - name: docs-sandbox
+    state: pending
 ```
