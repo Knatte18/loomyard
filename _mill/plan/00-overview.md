@@ -112,6 +112,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/fabricengine/clone.go`
 - `internal/fabricengine/clone_adopt_test.go`
 - `internal/fabricengine/config.go`
+- `internal/fabricengine/config_test.go`
 - `internal/fabricengine/config_driven_junctions_integration_test.go`
 - `internal/fabricengine/doc.go`
 - `internal/fabricengine/drift.go`

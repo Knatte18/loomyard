@@ -107,10 +107,11 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/loomengine/config.go`
   - `internal/websterengine/config.go`
   - `internal/loomengine/config_test.go`
+  - `internal/fabricengine/config_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In each of the eight `config.go` files, replace the message string `not initialized here; run "lyx init"` (constructed via `fmt.Errorf("not initialized here; run \"lyx init\"")` at fabricengine/config.go:47, boardengine/config.go:66, shuttleengine/config.go:67, reedengine/config.go:101, perchengine/config.go:105, builderengine/config.go:83, loomengine/config.go:64, websterengine/config.go:79) with `not initialized here; run "lyx fabric reconcile"`. These messages fire when a module's config base lacks `_lyx/` (an existing-but-unwired worktree), whose correct remedy is converging wiring via `reconcile`, not re-cloning the hub. Update each accompanying doc-comment line that quotes the old string (fabricengine:40, boardengine:53, shuttleengine:59, reedengine:93, perchengine:97+138, builderengine:75, loomengine:56, websterengine:71) to the new wording. In `internal/loomengine/config_test.go`, update the assertion at config_test.go:113 (`want := \`not initialized here; run "lyx init"\``) to the new string. (The other seven engines have no test asserting this exact string per the exploration; the `done_gate` full-suite run is the backstop.)
+- **Requirements:** In each of the eight `config.go` files, replace the message string `not initialized here; run "lyx init"` (constructed via `fmt.Errorf("not initialized here; run \"lyx init\"")` at fabricengine/config.go:47, boardengine/config.go:66, shuttleengine/config.go:67, reedengine/config.go:101, perchengine/config.go:105, builderengine/config.go:83, loomengine/config.go:64, websterengine/config.go:79) with `not initialized here; run "lyx fabric reconcile"`. These messages fire when a module's config base lacks `_lyx/` (an existing-but-unwired worktree), whose correct remedy is converging wiring via `reconcile`, not re-cloning the hub. Update each accompanying doc-comment line that quotes the old string (fabricengine:40, boardengine:53, shuttleengine:59, reedengine:93, perchengine:97+138, builderengine:75, loomengine:56, websterengine:71) to the new wording. In `internal/loomengine/config_test.go`, update the assertion at config_test.go:113 (`want := \`not initialized here; run "lyx init"\``) to the new string. `internal/fabricengine/config_test.go`'s own `TestLoadConfig_NotInitialized` (found during implementation, missed by the original exploration alongside loomengine's) has the same `strings.Contains(errMsg, "lyx init")` assertion at config_test.go:138-139 — update it to assert `"lyx fabric reconcile"` instead. (The other six engines have no test asserting this exact string per the exploration; the `done_gate` full-suite run is the backstop.)
 - **Commit:** `refactor: retarget "run lyx init" config messages to lyx fabric reconcile`
 
 ### Card 28: Sweep remaining `lyx init` reference strings and comments
@@ -124,6 +125,7 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/fabricengine/weftgit.go`
   - `internal/fabriccli/fabric.go`
   - `internal/configsync/configsync.go`
+  - `internal/fabricengine/junction_pattern_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -133,7 +135,8 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/fabricengine/junction.go:152`: the `seedLyxJunction` error text ending `…then re-run \`lyx init\` to create the junction` — change to `…then re-run \`lyx fabric reconcile\` to create the junction`.
   - `internal/fabricengine/junctionnames.go:57` and `internal/fabricengine/weftgit.go:233,269,271`: comments referencing the deleted init packages or `lyx init`/`lyx init --undo` — update to reference `fabricengine.Unwire`/clone-add eager wiring as appropriate (these are comments; keep them accurate, do not delete load-bearing rationale).
   - `internal/fabriccli/fabric.go:85`: the clone `Long` line `After cloning, run "lyx init" inside the host worktree to activate junctions and config.` — remove it (clone now does everything) or reword to state clone wires everything automatically.
-  Do not touch integration-test comment references that document historical behavior unless they assert a live string (none do per the exploration).
+  - `internal/fabricengine/junction_pattern_integration_test.go`: found during implementation, missed by the original exploration — `TestWireJunctions_RefusesRealHostDirectory` asserts `strings.Contains(msg, "lyx init")` (junction_pattern_integration_test.go:148-149) against `seedLyxJunction`'s real-directory-guard error text, whose remedy card 28's own junction.go edit above retargets to `lyx fabric reconcile`. Update the assertion (and its doc comment at line 111 naming "the re-run-`lyx init` remedy") to `lyx fabric reconcile`.
+  Do not touch integration-test comment references that document historical behavior unless they assert a live string.
 - **Commit:** `refactor(fabricengine): sweep stale lyx init references to fabric verbs`
 
 ### Card 29: Update CONSTRAINTS.md CLI/Cobra Invariant for the command-tree change
