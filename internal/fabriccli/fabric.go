@@ -260,6 +260,25 @@ reported but never deleted here, since they are not fabric-managed.`,
 	cleanupCmd.Flags().Bool("force", false, "also delete gate-protected task branches (requires --apply)")
 	cmd.AddCommand(cleanupCmd)
 
+	// unwire
+	cmd.AddCommand(&cobra.Command{
+		Use:   "unwire",
+		Short: "fully deactivate fabric wiring for this worktree",
+		Long: `unwire is a full per-host-worktree deactivation: it removes every host
+junction (_lyx and _pattern), clears the weft-side _lyx content, and reverts
+the managed .gitignore ".lyx/" entry.
+
+This is distinct from "lyx fabric reconcile", which converges wiring toward
+the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
+always tears wiring down. It leaves the repo's anchor and repo-wide config
+(.fabric-anchor, fabric.yaml on weft:main) intact, so a later
+"lyx fabric reconcile" can re-wire this worktree.
+
+Example:
+  lyx fabric unwire`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runUnwire(out, args) }),
+	})
+
 	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their
 	// own --weft-path bypass flag, and their scoped PersistentPreRunE.
 	addWeftVerbs(cmd)
