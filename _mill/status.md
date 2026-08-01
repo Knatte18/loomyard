@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: _mill/plan
@@ -26,4 +26,17 @@ plan-review-r3  '2026-08-01T12:10:59Z'
 plan-fix-r3  '2026-08-01T12:10:59Z'
 plan-fix-r4  '2026-08-01T14:35:48Z'
 planned  '2026-08-01T14:36:03Z'
+implementing  '2026-08-01T14:36:32Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: tierpurity-guard-generalization
+    state: pending
+  - name: scoutengine-scout-tag
+    state: pending
+  - name: substrate-rule-docs-and-sweep
+    state: pending
 ```
