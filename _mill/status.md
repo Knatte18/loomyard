@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: _mill/plan
@@ -35,4 +35,25 @@ plan-fix-r7  '2026-08-01T09:08:03Z'
 plan-review-r8  '2026-08-01T09:21:40Z'
 plan-fix-r8  '2026-08-01T09:21:40Z'
 planned  '2026-08-01T09:25:58Z'
+implementing  '2026-08-01T09:27:13Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: hubgeometry-recorded-anchor
+    state: pending
+  - name: configsync-fabric-repowide
+    state: pending
+  - name: reconcile-declarative-convergence
+    state: pending
+  - name: clone-does-everything
+    state: pending
+  - name: worktree-add-eager-wiring
+    state: pending
+  - name: init-dissolution-and-unwire
+    state: pending
+  - name: docs-and-sandbox-suites
+    state: pending
 ```
