@@ -108,9 +108,10 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 // TestWireJunctions_RefusesRealHostDirectory is card 7's regression guard: a
 // real, non-link directory sitting at the host junction path is still
 // refused — fabric never moves or deletes user content — and the returned
-// error names both the offending path and the re-run-`lyx init` remedy this
-// card's reworded message introduces, replacing the old "migrate via the
-// hub-creator" clause that pointed at a tool that does not address this case.
+// error names both the offending path and the re-run-`lyx fabric reconcile`
+// remedy this card's reworded message introduces, replacing the old
+// "migrate via the hub-creator" clause that pointed at a tool that does not
+// address this case.
 func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -145,8 +146,8 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 	if !strings.Contains(msg, link) {
 		t.Errorf("error %q does not name the offending path %q", msg, link)
 	}
-	if !strings.Contains(msg, "lyx init") {
-		t.Errorf("error %q does not name the re-run-`lyx init` remedy", msg)
+	if !strings.Contains(msg, "lyx fabric reconcile") {
+		t.Errorf("error %q does not name the re-run-`lyx fabric reconcile` remedy", msg)
 	}
 
 	// The real directory and its content must be untouched: fabric never
