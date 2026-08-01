@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: test-suite-overhaul
 branch: test-suite-overhaul
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-githubclient-timeout-seam  '2026-08-01T10:21:01Z'
 approved-webstercli-await-wait-window  '2026-08-01T10:23:16Z'
 approved-benchmark-doc-update  '2026-08-01T10:27:21Z'
 holistic-reviewing  '2026-08-01T10:27:29Z'
+holistic-approved  '2026-08-01T10:30:12Z'
 ```
 
 ## Batches
