@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: webster-bisect-fabric-migrate
 branch: webster-bisect-fabric-migrate
 plan: _mill/plan
@@ -24,4 +24,19 @@ plan-review-r2  '2026-08-01T19:06:46Z'
 plan-fix-r2  '2026-08-01T19:06:46Z'
 plan-fix-r3  '2026-08-01T19:18:09Z'
 planned  '2026-08-01T19:18:21Z'
+implementing  '2026-08-01T19:18:47Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fabric-warp-methods
+    state: pending
+  - name: webster-bisect-migrate
+    state: pending
+  - name: builder-resethard-migrate
+    state: pending
+  - name: regression-guard-and-constraints
+    state: pending
 ```
