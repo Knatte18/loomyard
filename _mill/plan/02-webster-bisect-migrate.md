@@ -54,6 +54,7 @@ Migrate `internal/websterengine`'s in-process bisect/verify path off the raw `gi
 ### Card 5: Inject a gitrepo bisector at the newRunFixture level
 
 - **Context:**
+  - `internal/websterengine/runlevel.go`
   - `internal/gitrepo/gitrepo.go`
 - **Edits:**
   - `internal/websterengine/runlevel_test.go`

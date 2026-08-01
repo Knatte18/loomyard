@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: webster-bisect-fabric-migrate
 branch: webster-bisect-fabric-migrate
 plan: _mill/plan
@@ -20,4 +20,6 @@ discussed  '2026-08-01T18:34:08Z'
 planning  '2026-08-01T18:50:15Z'
 plan-review-r1  '2026-08-01T19:00:09Z'
 plan-fix-r1  '2026-08-01T19:00:09Z'
+plan-review-r2  '2026-08-01T19:06:46Z'
+plan-fix-r2  '2026-08-01T19:06:46Z'
 ```
