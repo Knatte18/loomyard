@@ -1,18 +1,17 @@
-// supervised_test.go covers ensureSupervised's state-file/lock/retry-
-// exhaustion decision logic, mostly offline (no gopls spawn) — the
-// readDaemonState+daemonStale combination itself is already covered by
-// daemonstate_test.go and is not duplicated here. Its second sub-test is the
-// exception: it needs a real bind attempt to prove the stale-socket cleanup
-// step actually avoids EADDRINUSE, not just in a mocked scenario, so it is
-// skip-gated on exec.LookPath("gopls") via t.Skip rather than build-tag-
-// gated like supervised_integration_test.go — it still runs as part of a
-// plain `go test` whenever gopls happens to be on $PATH.
+// supervised_test.go now covers exactly ensureSupervised's state-file/lock/
+// retry-exhaustion decision logic across its three remaining subtests —
+// TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout,
+// TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout,
+// TestEnsureSupervised_WedgedEscalationReuseReleasesLock — entirely offline
+// (no gopls spawn); the two previously gopls-gated subtests
+// (TestEnsureSupervised_StaleSocketCleanupAllowsRebind,
+// TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr) have moved to
+// the new //go:build scout-tagged supervised_scout_test.go in this same
+// package.
 //
-// Both sub-tests below spawn a real, short-lived child process (one to
-// obtain a confirmed-alive PID fixture for the retry-exhaustion path, one a
-// real gopls for the stale-socket-cleanup bind proof), tripping the Test
-// Tier Purity Invariant guard; this file is allowlisted at the file level in
-// cmd/lyx/tierpurity_test.go's allowedSpawners map.
+// Each remaining subtest spawns one real short-lived child process via
+// spawnAndHoldSubprocess only as a PID-liveness fixture (allowlisted in
+// cmd/lyx/tierpurity_test.go's allowedSpawners map), never gopls itself.
 
 package scoutengine
 
@@ -355,122 +354,5 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 		t.Error("lock.TryAcquireWriteLock() after ensureSupervised()'s reuse-success return acquired = false; want true (lock released)")
 	} else {
 		_ = freshLock.Release()
-	}
-}
-
-// TestEnsureSupervised_StaleSocketCleanupAllowsRebind asserts that a
-// leftover non-socket regular file at the deterministic socketPath (e.g.
-// left behind by a daemon that crashed without cleaning up after itself)
-// does not block a fresh spawn's bind. This exercises ensureSupervised's
-// unconditional os.Remove(socketPath) cleanup against a real gopls listen
-// socket, not a mocked scenario — only a real bind attempt can prove
-// EADDRINUSE was actually avoided, which is the trade-off for needing gopls
-// on $PATH to run at all.
-func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
-	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
-	}
-
-	worktreeRoot := t.TempDir()
-	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
-	statePath := layout.ScoutDaemonStateFile(lang)
-	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
-
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
-		t.Fatalf("os.MkdirAll(%s) failed: %v", filepath.Dir(socketPath), err)
-	}
-	// A leftover empty regular file, not a real socket — exactly what
-	// ensureSupervised's unconditional os.Remove(socketPath) must clear
-	// before the fresh gopls process binds, or the bind fails with
-	// EADDRINUSE.
-	if err := os.WriteFile(socketPath, nil, 0o644); err != nil {
-		t.Fatalf("os.WriteFile(%s) failed: %v", socketPath, err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second)
-	if err != nil {
-		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
-	}
-	if client == nil {
-		t.Fatal("ensureSupervised() returned a nil client with a nil error")
-	}
-	// The daemon is meant to outlive this call; per the connKindSupervised
-	// teardown rule a real caller must never close()/kill() it, but a test
-	// must still reap the process it spawned so repeated test runs don't
-	// accumulate stray gopls processes.
-	t.Cleanup(func() {
-		if state, found, _ := readDaemonState(statePath); found {
-			if p, err := os.FindProcess(state.PID); err == nil {
-				_ = p.Kill()
-			}
-		}
-	})
-
-	state, found, err := readDaemonState(statePath)
-	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
-	}
-	if !found {
-		t.Fatal("readDaemonState() found = false after ensureSupervised() succeeded; want true")
-	}
-	if want := "unix;" + socketPath; state.Address != want {
-		t.Errorf("state.Address = %q; want %q (the deterministic socket path, successfully rebound after cleanup)", state.Address, want)
-	}
-}
-
-// TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr is the regression
-// test for the fd-leak this task fixed: a DetachBreakaway'd daemon whose
-// Stderr is wired to the spawning process's own os.Stderr inherits that
-// process's fds, including any pipe it happens to be part of. A reader on
-// the other end of that pipe exiting before the daemon does (e.g. a caller
-// piped through "| head") leaves the daemon holding a write end nobody
-// reads — the daemon's next stderr write raises SIGPIPE and kills it,
-// silently defeating DetachBreakaway's entire point (reproduced live: a
-// spawn behind "2>&1 | tail -5" hung until "tail" was killed, at which
-// point the daemon itself crashed on its next log line). Proving the
-// daemon's diagnostics land in its own log file — never in this test
-// process's os.Stderr — is what a caller-fd-independence regression test
-// can assert deterministically; SIGPIPE-on-a-dead-reader is not something
-// this suite reproduces directly.
-func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
-	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
-	}
-
-	worktreeRoot := t.TempDir()
-	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
-	statePath := layout.ScoutDaemonStateFile(lang)
-	logPath := filepath.Join(filepath.Dir(statePath), "daemon.log")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second)
-	if err != nil {
-		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
-	}
-	if client == nil {
-		t.Fatal("ensureSupervised() returned a nil client with a nil error")
-	}
-	t.Cleanup(func() {
-		if state, found, _ := readDaemonState(statePath); found {
-			if p, err := os.FindProcess(state.PID); err == nil {
-				_ = p.Kill()
-			}
-		}
-	})
-
-	info, err := os.Stat(logPath)
-	if err != nil {
-		t.Fatalf("os.Stat(%s) failed: %v; want the daemon's own log file to exist beside its state file", logPath, err)
-	}
-	if info.Size() == 0 {
-		// gopls always logs at least its own "listening on" banner on
-		// startup — an empty file means nothing was ever routed there,
-		// exactly the symptom of stderr going to the wrong fd instead.
-		t.Errorf("daemon log file %s is empty; want gopls's startup diagnostics to have been written to it", logPath)
 	}
 }

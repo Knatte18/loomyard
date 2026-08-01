@@ -1,11 +1,11 @@
-//go:build integration
+//go:build scout
 
 // ensureserver_integration_test.go exercises ensureNative against a real,
 // network-installed gopls, mirroring refs_integration_test.go's and
-// toolchain_integration_test.go's //go:build integration-tagged,
+// toolchain_integration_test.go's //go:build scout-tagged,
 // t.Skip(builtins()["go"].InstallHint)-gated style: it is excluded from the
 // plain `go test` verify (the Test Tier Purity Invariant) and run
-// separately with `-tags integration`. Even though ensureNative itself
+// separately with `-tags scout`. Even though ensureNative itself
 // ignores $PATH and resolves its own toolchain-managed binary, the skip
 // gate here is about whether this machine can plausibly run a real gopls at
 // all (network + `go install` capability), which exec.LookPath("gopls") is
@@ -159,7 +159,7 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 
 	root := repoRoot(t)
 	// A fresh temp worktreeRoot per test run keeps this test's daemon
-	// isolated from any other integration test's own supervised daemon,
+	// isolated from any other scout test's own supervised daemon,
 	// matching TestEnsureSupervised_Integration's own isolation.
 	worktreeRoot := t.TempDir()
 	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
