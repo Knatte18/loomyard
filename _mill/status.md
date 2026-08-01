@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-logger-dual-handler-fanout
+phase: approved-logger-spans
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-logger-retention-sweep  '2026-08-01T07:37:12Z'
 approved-reedengine-trace-env-filter  '2026-08-01T07:39:54Z'
 approved-logger-durable-sink  '2026-08-01T07:43:44Z'
 approved-logger-dual-handler-fanout  '2026-08-01T07:50:56Z'
+approved-logger-spans  '2026-08-01T07:53:37Z'
 ```
 
 ## Batches
@@ -75,9 +76,10 @@ batches:
     start_sha: 4b33629dbcffd52f7dc67f0b9831527009dfd2ac
     commit_sha: 542016dd9c922473255c5e493d8b9910449bac32
   - name: logger-spans
-    state: running
+    state: approved
     implementer_session: b7c1ddcc-e85a-4000-b1cf-6269185ca5bb
     start_sha: 70b875031e89fb773a94f8135d2b65e2d2f20b07
+    commit_sha: 3f092afae4912e5e60926b808830f01f275bc251
   - name: reedengine-adoption
     state: pending
   - name: treadleengine-adoption
