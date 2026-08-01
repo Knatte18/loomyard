@@ -95,7 +95,10 @@ _Cross-cutting decisions every batch inherits._
 - `cmd/lyx/main.go`
 - `docs/overview.md`
 - `internal/boardengine/config.go`
+- `internal/boardengine/config_test.go`
 - `internal/builderengine/config.go`
+- `internal/builderengine/config_test.go`
+- `internal/configreg/configreg.go`
 - `internal/configsync/configsync.go`
 - `internal/configsync/configsync_test.go`
 - `internal/fabriccli/cli_test.go`
@@ -140,9 +143,13 @@ _Cross-cutting decisions every batch inherits._
 - `internal/loomengine/config_test.go`
 - `internal/loomengine/preflight_integration_test.go`
 - `internal/perchengine/config.go`
+- `internal/perchengine/config_test.go`
 - `internal/reedengine/config.go`
+- `internal/reedengine/config_test.go`
 - `internal/shuttleengine/config.go`
+- `internal/shuttleengine/config_test.go`
 - `internal/websterengine/config.go`
+- `internal/websterengine/config_test.go`
 - `manifest/designs/fabric-unified-view.md`
 - `tools/sandbox/SANDBOX-BUILDER-SUITE.md`
 - `tools/sandbox/SANDBOX-BURLER-SUITE.md`

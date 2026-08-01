@@ -108,6 +108,12 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/websterengine/config.go`
   - `internal/loomengine/config_test.go`
   - `internal/fabricengine/config_test.go`
+  - `internal/boardengine/config_test.go`
+  - `internal/shuttleengine/config_test.go`
+  - `internal/reedengine/config_test.go`
+  - `internal/perchengine/config_test.go`
+  - `internal/builderengine/config_test.go`
+  - `internal/websterengine/config_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -126,6 +132,7 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/fabriccli/fabric.go`
   - `internal/configsync/configsync.go`
   - `internal/fabricengine/junction_pattern_integration_test.go`
+  - `internal/configreg/configreg.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
