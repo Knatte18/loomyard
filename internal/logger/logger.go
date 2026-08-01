@@ -7,14 +7,62 @@
 // to emit.
 
 // Package logger is a minimal log/slog wrapper shared across lyx's internal
-// packages. It keeps stdout free of log noise (reed and other commands write
-// their JSON envelope to stdout via internal/output) by routing all log
-// output to a dedicated stderr sink, which defaults to os.Stderr and is
-// silent unless the caller opts in via SetVerbosity. Every Debug/Info/Warn
-// call also fans out to a second, durable trace-file sink (sink.go),
-// independently gated at Info and above regardless of the stderr
-// threshold -- see dualHandler's doc comment for the composite's exact
-// semantics.
+// packages, extended with a process-wide trace identity, explicit-parent
+// diagnostic spans, and a durable per-process trace-file sink. It keeps
+// stdout free of log noise (reed and other commands write their JSON
+// envelope to stdout via internal/output) by routing all log output to a
+// dedicated stderr sink, which defaults to os.Stderr and is silent unless
+// the caller opts in via SetVerbosity. Every Debug/Info/Warn call also fans
+// out to the durable trace-file sink (sink.go), independently gated at Info
+// and above regardless of the stderr threshold -- see dualHandler's doc
+// comment for the composite's exact semantics.
+//
+// # Trace identity and spans
+//
+// Every process has exactly one trace identity: a 16-lowercase-hex-character
+// ID, minted or adopted once and stamped as trace=<id> on every emitted log
+// line regardless of level. TraceID() (trace.go) is the lazy accessor any
+// code path can call before cmd/lyx's root hook has run; it resolves on
+// first use via a fixed precedence -- a value already set by
+// MintOrAdoptAndExport, then an inherited LYX_TRACE_ID (see below), then a
+// fresh mint. MintOrAdoptAndExport is the root hook's own explicit call: it
+// resolves the same value and additionally exports it into the process
+// environment as LYX_TRACE_ID so every spawned child inherits it at any
+// spawn site that does not override cmd.Env, giving a whole process tree the
+// same trace ID.
+//
+// A Span (span.go) is a plain value carrying a dotted path built up via
+// StartSpan (root) and Child (append a segment), with its own
+// Debug/Info/Warn methods that additionally stamp span=<path> alongside
+// trace=. There is no ambient "current span" global -- a caller always
+// holds and threads its own *Span explicitly. A span's open (StartSpan/
+// Child) and successful close (End(nil)) log at Debug; a close with a
+// non-nil error logs at Warn, carrying the error as a field, so a failing
+// span's close is the one open/close record that reaches the durable sink
+// even on an otherwise-quiet run.
+//
+// # The durable sink and its retention
+//
+// Alongside the stderr sink above, every Info+ record also lands in a
+// second, durable sink (sink.go): one plain-text trace file per process,
+// under the current worktree's hubgeometry.Layout.WorktreeLogsDir()
+// (<WorktreeRoot>/.lyx/logs/), never constructed from a literal path inside
+// this package. The file opens lazily on whichever of two triggers fires
+// first: (a) the first Info-or-above log record in the process, or (b) the
+// process exiting with a non-zero code, via NotifyExit -- so a run that logs
+// nothing above Debug but still fails leaves a reconstructable trace file
+// behind. The file's first line is a header record naming the command,
+// argv, trace ID, PID, and worktree root. Each file is capped at 8 MiB;
+// once a write would cross the cap, a single truncation-marker line is
+// written and further writes to that file become silent no-ops rather than
+// growing it further.
+//
+// A background-free sweep (retention.go's Sweep, run once per sink open)
+// keeps the logs directory bounded: files older than 14 days are deleted,
+// then only the newest 50 (by filename timestamp) of what remains are kept.
+// A file whose PID belongs to a currently-running process (including the
+// sweeping process itself) is never deleted and never counts toward the
+// newest-50 bound, regardless of age.
 //
 // # Activation outside the lyx CLI
 //
@@ -43,6 +91,48 @@
 // SetOutput call after that always wins (this is exactly how the existing
 // -v/-vv CLI flag continues to take precedence over any env var left set in
 // the shell).
+//
+// Two further environment variables govern trace identity and the durable
+// sink specifically, independent of LYX_LOG_LEVEL/LYX_LOG_FILE above:
+//
+//   - LYX_TRACE_ID: an inherited trace identity. When set to a
+//     non-whitespace-only value, both TraceID()'s lazy resolution and
+//     MintOrAdoptAndExport adopt it instead of minting a fresh one, so a
+//     child process continues its parent's trace rather than starting a new
+//     one. cmd/lyx's root hook is what exports this variable for children in
+//     the first place (see "Trace identity and spans" above); nothing else
+//     in this package ever calls os.Setenv.
+//   - LYX_TRACE=1: the test-entry-activation gate for the durable sink only.
+//     Under `go test` (testing.Testing() true), the durable sink stays
+//     closed for the whole process unless LYX_TRACE=1 is explicitly set,
+//     regardless of how many Info+ records are logged or how the process
+//     exits -- this is what keeps ordinary `go test` runs from littering a
+//     worktree's .lyx/logs with test-process trace files. It has no effect
+//     on trace-ID resolution itself: TraceID() and the trace=/span= fields
+//     stamped on stderr output are computed the same way whether or not
+//     LYX_TRACE is set.
+//
+// Note that an Info+ record reaching both LYX_LOG_FILE (if set) and the
+// durable trace file is correct behavior, not a bug to "fix" by suppressing
+// one or the other: the two are different artifacts with different
+// lifetimes and different audiences (an operator-chosen, unmanaged,
+// whole-verbosity file vs. a lyx-managed, Info+-only, retention-swept one),
+// and neither should suppress the other.
+//
+// # Level policy
+//
+// Every call site in this codebase that logs through this package follows
+// one policy for choosing a level:
+//
+//   - Warn: a notable-but-recoverable failure -- a retry, an unconfirmed
+//     teardown, an error swallowed on a fallback path.
+//   - Info: a real OS-process spawn/teardown lifecycle event.
+//   - Debug: everything else worth a line.
+//
+// Hard rule: nothing logs at Warn inside a loop body that can iterate more
+// than roughly 10 times without an intervening state change -- a Warn inside
+// such a loop turns one notable condition into a flood, both on stderr at
+// -v/-vv and, since Warn also reaches the durable sink, in the trace file.
 package logger
 
 import (
