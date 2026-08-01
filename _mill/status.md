@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: test-suite-overhaul
 branch: test-suite-overhaul
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-benchmark-doc-update  '2026-08-01T10:27:21Z'
 holistic-reviewing  '2026-08-01T10:27:29Z'
 holistic-approved  '2026-08-01T10:30:12Z'
 done  '2026-08-01T10:30:39Z'
+pr-pending  '2026-08-01T10:31:14Z'
 ```
 
 ## Batches
