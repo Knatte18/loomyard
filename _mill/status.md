@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: _mill/plan
@@ -46,6 +46,7 @@ approved-docs-and-sandbox-suites  '2026-08-01T10:37:12Z'
 holistic-reviewing  '2026-08-01T10:37:38Z'
 holistic-fixing  '2026-08-01T10:43:08Z'
 holistic-reviewing  '2026-08-01T10:49:27Z'
+holistic-fixing  '2026-08-01T10:58:11Z'
 ```
 
 ## Batches
