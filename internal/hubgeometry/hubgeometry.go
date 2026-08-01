@@ -217,23 +217,35 @@ func deriveRepo(prime, worktreeRoot string) string {
 //
 // Precondition: worktreeRoot must be an actual worktree root as returned by
 // hubgeometry.List (not an arbitrary subpath) and must be a direct child of l.Hub.
-// RelPath is hardcoded to "." here, which is only correct for a root; callers must
-// guard the non-sibling case (filepath.Dir(worktreeRoot) != l.Hub) themselves, since
-// SiblingLayout performs no such check and will silently reuse l.Hub even when it is
-// wrong for a worktree outside the hub.
+// RelPath follows the recorded .fabric-anchor marker read from l.Hub (defaulting to
+// "." when the marker is absent); callers must guard the non-sibling case
+// (filepath.Dir(worktreeRoot) != l.Hub) themselves, since SiblingLayout performs no
+// such check and will silently reuse l.Hub even when it is wrong for a worktree
+// outside the hub. No cwd-legitimacy check is applied here: SiblingLayout derives
+// another worktree's geometry from its root, which sits above any subpath anchor, so
+// it must never hard-error the way Resolve's entry-point cwd gate does.
 //
 // For any worktreeRoot where filepath.Dir(worktreeRoot) == l.Hub, this is byte-for-byte
-// equivalent to Resolve(worktreeRoot): both set Cwd and WorktreeRoot to
-// filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to ".", and Prime and Repo to
-// the receiver's already-resolved Prime and Repo (every hub-sibling worktree shares the
-// same Prime, so Repo — derived from Prime — is identical too).
+// equivalent to ResolveWorktree(worktreeRoot) (the gate-free resolver): both set Cwd and
+// WorktreeRoot to filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to the same
+// recorded-anchor-or-"." value, and Prime and Repo to the receiver's already-resolved
+// Prime and Repo (every hub-sibling worktree shares the same Prime, so Repo — derived
+// from Prime — is identical too).
 func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 	c := filepath.Clean(worktreeRoot)
+
+	// The recorded anchor is truth when present, matching resolveCore's "record
+	// wins" rule; SiblingLayout applies no cwd gate, only the RelPath lookup.
+	relPath := "."
+	if anchor, found := readRecordedAnchor(l.Hub); found {
+		relPath = anchor
+	}
+
 	return &Layout{
 		Cwd:          c,
 		WorktreeRoot: c,
 		Hub:          l.Hub,
-		RelPath:      ".",
+		RelPath:      relPath,
 		Prime:        l.Prime,
 		Repo:         l.Repo,
 	}
