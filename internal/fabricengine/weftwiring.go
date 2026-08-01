@@ -127,7 +127,7 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions
 // unseedLyxJunction/unseedJunctionRecords in junction.go).
 //
 // names is caller-supplied; removeHostJunction loads no config itself. Its
-// caller (Remove) sources names from the removed slug's own weft base,
+// caller (Remove) sources names from the repo-wide `BoardDir` base,
 // best-effort — see Remove's godoc for why an unreadable config there yields
 // names == nil rather than a hard failure, and the residual risk that
 // accepts for a nested (RelPath != ".") junction.

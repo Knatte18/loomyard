@@ -26,11 +26,32 @@ import (
 // inject errors into fabric's own clone-orchestration teardown path.
 var RemoveAll = os.RemoveAll
 
+// CloneResult carries the resolved geometry CloneHub hands back to the caller
+// once the git-level clone, board-worktree materialization, and anchor
+// resolution are done. It is deliberately git/geometry-only — the CLI layer
+// (internal/fabriccli) drives config materialization, weft:main commit, and
+// junction wiring from these fields, because those calls route through
+// internal/configsync, which fabricengine must never import (see the
+// fabricengine → configsync → configreg → fabricengine cycle documented in
+// this file's clone-does-everything batch scope).
+type CloneResult struct {
+	HubPath  string // HubPath is the created <name>-HUB container directory.
+	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
+	BoardDir string // BoardDir is hubgeometry.BoardDir(HubPath), the weft:main checkout.
+	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
+	PrimeCwd string // PrimeCwd is the resolved prime host worktree path at Anchor.
+}
+
 // CloneHub orchestrates the cloning of host and weft repositories, then
 // materializes <Hub>/_board as a second weft worktree, into a Hub directory.
+// It clones + checks out + materializes the board worktree + resolves/records
+// the lyx-anchor subpath, and returns the resolved geometry for the CLI layer
+// to drive config materialization and wiring — CloneHub deliberately does NOT
+// do that itself, to avoid the fabricengine → configsync import cycle.
 //
-// It takes cwd (current working directory) and two repository URLs: hostURL
-// and weftURL. It returns the path to the created Hub directory and any error
+// It takes cwd (current working directory), two repository URLs (hostURL and
+// weftURL), and subpath (the lyx-anchor subpath to resolve; see the anchor
+// resolution step below). It returns the resolved CloneResult and any error
 // encountered.
 //
 // The operation proceeds in phases:
@@ -47,38 +68,41 @@ var RemoveAll = os.RemoveAll
 //     adopted onto the captured host branch if it already exists locally from
 //     step 6's clone, freshly orphan-created otherwise; on failure, teardown
 //     and return the error.
-//  8. Return the Hub path and nil error.
+//  8. Resolve the lyx-anchor subpath adopt-or-create (adopt: read the marker
+//     already committed on weft:main; create: validate subpath exists in the
+//     host worktree, then write the marker to the board worktree on disk —
+//     the CLI commits it), and return the resolved CloneResult.
 //
 // Any clone OR worktree-add failure triggers teardownHub, which removes the
 // entire Hub directory; if removal also fails, the error mentions both the
 // original failure and the residual Hub path.
-func CloneHub(cwd, hostURL, weftURL string) (hubPath string, err error) {
+func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// Normalize cwd to an absolute path
 	cwd = filepath.Clean(cwd)
 
 	// Step 1: Derive host repo name
 	name := DeriveHostName(hostURL)
 	if name == "" {
-		return "", fmt.Errorf("could not derive repo name from host URL %s", hostURL)
+		return CloneResult{}, fmt.Errorf("could not derive repo name from host URL %s", hostURL)
 	}
 
 	// Step 2: Compute Hub path
-	hubPath = hubgeometry.HubPath(cwd, name)
+	hubPath := hubgeometry.HubPath(cwd, name)
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
-		return "", fmt.Errorf("hub already exists at %s", hubPath)
+		return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
 	}
 
 	// Step 4: Create Hub directory
 	if err := os.MkdirAll(hubPath, 0o755); err != nil {
-		return "", err
+		return CloneResult{}, err
 	}
 
 	// Step 5: Clone host repo
 	hostWorktreePath := filepath.Join(hubPath, name)
 	if err := cloneRepo(hostURL, hostWorktreePath); err != nil {
-		return "", teardownHub(hubPath, err)
+		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
 	// Install the post-checkout hook after the host worktree exists so drift
@@ -96,7 +120,7 @@ func CloneHub(cwd, hostURL, weftURL string) (hubPath string, err error) {
 	// Step 6: Clone weft repo
 	weftPath := hubgeometry.WeftSiblingPath(hubPath, name)
 	if err := cloneRepo(weftURL, weftPath); err != nil {
-		return "", teardownHub(hubPath, err)
+		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
 	// Step 6b: Rename the weft primary's freshly-cloned branch onto its
@@ -107,19 +131,68 @@ func CloneHub(cwd, hostURL, weftURL string) (hubPath string, err error) {
 	// after the rename (which would incorrectly see the suffixed branch).
 	hostBranch, err := suffixWeftPrimaryBranch(weftPath)
 	if err != nil {
-		return "", teardownHub(hubPath, err)
+		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
 	// Step 7: Materialize <Hub>/_board as a second weft worktree, checked out
 	// on hostBranch — adopted if that branch already exists locally from
 	// step 6's clone, freshly orphan-created otherwise (a genuinely empty
 	// weft remote).
-	if err := ensureBoardWorktree(weftPath, hostBranch, hubgeometry.BoardDir(hubPath)); err != nil {
-		return "", teardownHub(hubPath, err)
+	boardDir := hubgeometry.BoardDir(hubPath)
+	if err := ensureBoardWorktree(weftPath, hostBranch, boardDir); err != nil {
+		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
-	// Step 8: Success
-	return hubPath, nil
+	// Step 8: Resolve the lyx-anchor subpath adopt-or-create, and write the
+	// marker to the board worktree ON DISK. The CLI layer commits it onto
+	// weft:main (config materialization and the commit both live in
+	// internal/fabriccli to avoid the fabricengine → configsync import cycle).
+	markerPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	var anchor string
+	if data, statErr := os.ReadFile(markerPath); statErr == nil {
+		// Adopt path: ensureBoardWorktree checked out weft:main, which already
+		// carries a committed marker from a prior clone — this is a re-clone.
+		recorded := strings.TrimSpace(string(data))
+		if requested := filepath.Clean(subpath); subpath != "" && requested != "." && requested != recorded {
+			// A non-default requested subpath disagrees with the recorded
+			// anchor: never silently re-anchor, the record is authoritative.
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
+				"requested --subpath %q does not match the recorded anchor %q for this hub", requested, recorded))
+		}
+		anchor = recorded
+	} else {
+		// Create path: first-ever clone of this weft, no marker committed yet.
+		// Validate the requested subpath exists in the host worktree before
+		// recording it, so a typo like "backedn" fails loudly instead of
+		// silently anchoring to a directory that was never there.
+		anchor = filepath.Clean(subpath)
+		if subpath == "" {
+			anchor = "."
+		}
+		if info, statErr := os.Stat(filepath.Join(hostWorktreePath, anchor)); statErr != nil || !info.IsDir() {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist in the cloned host repo", anchor))
+		}
+		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("write %s: %w", markerPath, err))
+		}
+	}
+
+	// Resolve the prime layout now that the marker exists on disk, so
+	// RelPath — and therefore WeftBase — reflects the resolved anchor.
+	primeCwd := filepath.Join(hostWorktreePath, anchor)
+	l, err := hubgeometry.Resolve(primeCwd)
+	if err != nil {
+		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
+	}
+	weftBase := filepath.Join(l.WeftWorktree(), l.RelPath)
+
+	return CloneResult{
+		HubPath:  hubPath,
+		Anchor:   anchor,
+		BoardDir: boardDir,
+		WeftBase: weftBase,
+		PrimeCwd: primeCwd,
+	}, nil
 }
 
 // suffixWeftPrimaryBranch reads the branch checked out at weftPath (the weft

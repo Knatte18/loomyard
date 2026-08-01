@@ -159,9 +159,13 @@ func TestReconcile_Apply(t *testing.T) {
 		t.Error("applied is false; want true")
 	}
 
-	// Verify fabric.yaml was created on disk.
-	fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
-	if _, err := os.Stat(fabricPath); err != nil {
-		t.Errorf("fabric.yaml not created: %v", err)
+	// Verify board.yaml was created on disk. "fabric" is deliberately excluded
+	// from this assertion: since configsync.ReconcileAll skips "fabric"
+	// entirely (its config is repo-wide at hubgeometry.BoardDir, materialized
+	// via ReconcileFabricAt at clone time, never per-worktree), "board" is the
+	// generic module this reconcile-writes-to-disk assertion exercises instead.
+	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
+	if _, err := os.Stat(boardPath); err != nil {
+		t.Errorf("board.yaml not created: %v", err)
 	}
 }

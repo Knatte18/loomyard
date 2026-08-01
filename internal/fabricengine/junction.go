@@ -33,12 +33,12 @@ import (
 //   - Appends the junction Name to the host worktree's .git/info/exclude (line-exact idempotent)
 //
 // Materialising the weft-side target is what lets every WireJunctions caller leave
-// a resolvable junction behind: initengine/init.go, fabricengine/checkout.go, and
-// fabricengine/reconcile.go all call WireJunctions, but of the three only Init
-// materialises the weft directory itself. Before this, fslink.CreateDirLink would
+// a resolvable junction behind: fabricengine/checkout.go, fabricengine/reconcile.go,
+// fabricengine/add.go, and the fabriccli clone handler all call WireJunctions.
+// Before WireJunctions materialised the target itself, fslink.CreateDirLink would
 // happily create a link to a nonexistent target (a raw reparse point on Windows, a
-// dangling symlink elsewhere), leaving checkout's and reconcile's junctions
-// dangling until some other path created the target.
+// dangling symlink elsewhere), leaving a caller's junctions dangling until some
+// other path created the target.
 //
 // The two operations are sequenced such that if either fails, the junction may be
 // left partially wired; the caller is responsible for rollback if needed. The
@@ -149,7 +149,7 @@ func seedLyxJunction(l *hubgeometry.Layout, slug string, names []string) error {
 			// makes "create _pattern/ in the repo and start writing" the
 			// natural operator mistake this guard exists to catch.
 			return fmt.Errorf(
-				"host repo already contains a real %s at %s; it predates weft — move its content into the paired weft worktree's own %s, or remove this directory, then re-run `lyx init` to create the junction",
+				"host repo already contains a real %s at %s; it predates weft — move its content into the paired weft worktree's own %s, or remove this directory, then re-run `lyx fabric reconcile` to create the junction",
 				filepath.Base(link),
 				link,
 				filepath.Base(link),
