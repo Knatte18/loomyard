@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-tierpurity-guard-generalization
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r3  '2026-08-01T12:10:59Z'
 plan-fix-r4  '2026-08-01T14:35:48Z'
 planned  '2026-08-01T14:36:03Z'
 implementing  '2026-08-01T14:36:32Z'
+approved-tierpurity-guard-generalization  '2026-08-01T14:42:15Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-01T14:36:32Z'
 ```yaml
 batches:
   - name: tierpurity-guard-generalization
-    state: running
+    state: approved
     implementer_session: 4f25dffd-76eb-4c73-9535-59f372e5dfc0
     start_sha: 8689bad83fbc4efd7eb4c4121cccb73c7557b826
+    commit_sha: b1b8e6bbcc808863b51cf3f65c760a15f0903d3d
   - name: scoutengine-scout-tag
     state: pending
   - name: substrate-rule-docs-and-sweep
