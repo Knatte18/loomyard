@@ -38,7 +38,9 @@ batches:
     start_sha: 0a60e434926dd138fdeb15122437b7e14e3adc0a
     commit_sha: 1ef9ee0a7472ef54f5d1d26c9e6cd8b6786abf77
   - name: webster-bisect-migrate
-    state: pending
+    state: running
+    implementer_session: 80abb721-2d36-4ca4-b66e-2c799f75a568
+    start_sha: c3136abedf558d5e18d659dc4103150362ffd437
   - name: builder-resethard-migrate
     state: pending
   - name: regression-guard-and-constraints
