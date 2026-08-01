@@ -61,7 +61,9 @@ batches:
     start_sha: 300de954541cddb35c1631d9b2513175f685537a
     commit_sha: 2fe80d7767ab69f1ca3a4481e8d5ad8a665425a2
   - name: clone-does-everything
-    state: pending
+    state: running
+    implementer_session: ff407fb2-9f1a-4c5b-995a-2d031eb78e5f
+    start_sha: 33761f76d90ece1ca46995be5cd6bbe9263cc3ae
   - name: worktree-add-eager-wiring
     state: pending
   - name: init-dissolution-and-unwire
