@@ -28,7 +28,9 @@ implementing  '2026-08-01T10:18:44Z'
 ```yaml
 batches:
   - name: githubclient-timeout-seam
-    state: pending
+    state: running
+    implementer_session: 9c424b23-be29-4584-96c8-71faeda43604
+    start_sha: 2d5c0b89789c2aa0df77b90e5bce540f71debcfd
   - name: webstercli-await-wait-window
     state: pending
   - name: benchmark-doc-update
