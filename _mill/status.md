@@ -69,7 +69,9 @@ batches:
     start_sha: d27be824a26e2bdb302959695b2106c63d8e19ec
     commit_sha: a0a4eb0dfd294897d070889d016fc74b70fe259e
   - name: logger-dual-handler-fanout
-    state: pending
+    state: running
+    implementer_session: 58188492-84a0-46a4-8ded-60b6b69c001e
+    start_sha: 4b33629dbcffd52f7dc67f0b9831527009dfd2ac
   - name: logger-spans
     state: pending
   - name: reedengine-adoption
