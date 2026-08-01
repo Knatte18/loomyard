@@ -61,14 +61,23 @@ Example:
 	// clone [--reset] <host-url> <weft-url> [board-url]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] <host-url> <weft-url>",
-		Short: "bootstrap a new hub (host prime + weft prime, with _board as a second weft worktree)",
-		Long: `Clone two repositories into a new hub directory (<parent>/<host-name>-HUB):
+		Use:   "clone [--reset] [--subpath <rel>] <host-url> <weft-url>",
+		Short: "bootstrap a new hub, wiring the entire topology in one shot",
+		Long: `Clone two repositories into a new hub directory (<parent>/<host-name>-HUB)
+and wire everything: the host prime, weft prime, _board worktree, lyx-anchor
+subpath, repo-wide config, host junctions, .gitignore, and per-worktree module
+configs — a single command, no follow-up activation step required.
 
   <host-name>            — host prime (the main working repo)
   <host-name>` + hubgeometry.WeftSuffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
+
+Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the host
+repo instead of its root — e.g. --subpath backend for a monorepo where lyx
+only manages the backend/ tree. On a re-clone, the previously recorded
+subpath is adopted from weft:main; an explicit --subpath that disagrees with
+it is a hard error.
 
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
 "main` + hubgeometry.WeftSuffix + `" for default branch "main") — fabric's
@@ -82,17 +91,21 @@ _board is then materialized as a second worktree of the weft repo, on the
 host's unsuffixed default branch — adopted if the weft remote already carries
 board history, freshly orphan-created otherwise.
 
-After cloning, run "lyx init" inside the host worktree to activate junctions and config.
+Clone wires everything automatically — no follow-up command is needed to
+activate junctions or config.
 
 Example:
-  lyx fabric clone https://github.com/user/repo https://github.com/user/repo-weft`,
+  lyx fabric clone https://github.com/user/repo https://github.com/user/repo-weft
+  lyx fabric clone --subpath backend https://github.com/user/mono https://github.com/user/mono-weft`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			// Read the --reset flag from the cobra flag set via closure over cloneCmd.
+			// Read --reset/--subpath from the cobra flag set via closure over cloneCmd.
 			reset, _ := cloneCmd.Flags().GetBool("reset")
-			return runCloneWithReset(out, args, reset)
+			subpath, _ := cloneCmd.Flags().GetString("subpath")
+			return runCloneWithReset(out, args, reset, subpath)
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
+	cloneCmd.Flags().String("subpath", ".", "anchor lyx at this subdirectory of the host repo")
 	cmd.AddCommand(cloneCmd)
 
 	// add <slug>
@@ -248,6 +261,25 @@ reported but never deleted here, since they are not fabric-managed.`,
 	cleanupCmd.Flags().Bool("force", false, "also delete gate-protected task branches (requires --apply)")
 	cmd.AddCommand(cleanupCmd)
 
+	// unwire
+	cmd.AddCommand(&cobra.Command{
+		Use:   "unwire",
+		Short: "fully deactivate fabric wiring for this worktree",
+		Long: `unwire is a full per-host-worktree deactivation: it removes every host
+junction (_lyx and _pattern), clears the weft-side _lyx content, and reverts
+the managed .gitignore ".lyx/" entry.
+
+This is distinct from "lyx fabric reconcile", which converges wiring toward
+the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
+always tears wiring down. It leaves the repo's anchor and repo-wide config
+(.fabric-anchor, fabric.yaml on weft:main) intact, so a later
+"lyx fabric reconcile" can re-wire this worktree.
+
+Example:
+  lyx fabric unwire`,
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runUnwire(out, args) }),
+	})
+
 	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their
 	// own --weft-path bypass flag, and their scoped PersistentPreRunE.
 	addWeftVerbs(cmd)
@@ -277,7 +309,10 @@ func runAdd(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd (see the fabric
+	// clone-does-everything Shared Decision).
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -309,12 +344,14 @@ func runList(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	_, err = hubgeometry.Resolve(cwd)
+	l, err := hubgeometry.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd.
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -375,7 +412,9 @@ func runCheckout(out io.Writer, args []string) int {
 		}
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd.
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -408,7 +447,9 @@ func runPairs(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd.
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -440,7 +481,9 @@ func runReconcile(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd.
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -469,7 +512,9 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd.
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -498,7 +543,9 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd.
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -528,7 +575,9 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(cwd)
+	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+	// file: load it from the board dir, never from cwd.
+	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

@@ -46,6 +46,14 @@ func TestE2ESyncIntegration(t *testing.T) {
 	// step has no "main-weft" ref to fork the new pair's weft branch from.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
+	// Seed the repo-wide fabric config at hubgeometry.BoardDir(f.Layout.Hub):
+	// batch 5's eager wiring makes Topology.Add read the wired junction
+	// name-set via fabricengine.RepoWiredNames, which loads fabric.yaml from
+	// the repo-wide board dir, not this fixture's per-worktree weft config
+	// seeded above. Without this, Add below fails with "load fabric config:
+	// not initialized here" before it ever wires a junction.
+	seedRepoWideFabricConfig(t, f.Layout.Hub)
+
 	// FIRST: Create the host worktree via fabricengine.NewTopology().Add() (which is dormant).
 	// Then wire the host _lyx junction via WireJunctions.
 	// Without this the host worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
@@ -166,6 +174,14 @@ func TestE2ESyncIntegration(t *testing.T) {
 // planted by --set is then correctly reported by reconcile's own
 // drift-detection, proving reconcile never gets a chance to look once --set
 // stops silently destroying the key first.
+//
+// Uses "board" rather than "fabric": since configsync.ReconcileAll now skips
+// "fabric" entirely (its config is repo-wide at hubgeometry.BoardDir, never
+// per-worktree — see ReconcileAll's doc comment), a module RunCLI(reconcile)
+// still processes generically is needed to exercise this drift-detection
+// path; "board" is that generic module, and the scenario under test (a
+// preserved orphan key surviving --set, then reported by reconcile) is not
+// module-specific.
 func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -176,14 +192,14 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	seedModuleConfig(t, tmpDir, "fabric", "branch_prefix: old-\nlegacy_key: keepme\n")
+	seedModuleConfig(t, tmpDir, "board", "design_prefix: old-\nlegacy_key: keepme\n")
 
 	// Run --set via dispatch, exactly as
 	// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning does, using an
 	// explicit *hubgeometry.Layout (dispatch takes one directly, unlike
 	// RunCLI which resolves it from cwd).
 	var setOut bytes.Buffer
-	setCode := dispatch(makeLayoutAt(tmpDir), nil, &setOut, []string{"fabric"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"branch_prefix=new-"})
+	setCode := dispatch(makeLayoutAt(tmpDir), nil, &setOut, []string{"board"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"design_prefix=new-"})
 	if setCode != 0 {
 		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 	}
@@ -213,23 +229,23 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	if !ok {
 		t.Fatalf("modules is not an array; got %v", result)
 	}
-	var fabricMod map[string]any
+	var boardMod map[string]any
 	for _, m := range modules {
 		mod, ok := m.(map[string]any)
 		if !ok {
 			continue
 		}
-		if mod["module"] == "fabric" {
-			fabricMod = mod
+		if mod["module"] == "board" {
+			boardMod = mod
 			break
 		}
 	}
-	if fabricMod == nil {
-		t.Fatalf("no modules entry for \"fabric\"; got %v", modules)
+	if boardMod == nil {
+		t.Fatalf("no modules entry for \"board\"; got %v", modules)
 	}
-	removed, ok := fabricMod["removed"].([]any)
+	removed, ok := boardMod["removed"].([]any)
 	if !ok {
-		t.Fatalf("fabric module entry missing \"removed\" field or wrong type; got %v", fabricMod)
+		t.Fatalf("board module entry missing \"removed\" field or wrong type; got %v", boardMod)
 	}
 	found := false
 	for _, r := range removed {
@@ -239,6 +255,28 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("fabric module's removed = %v; want it to contain \"legacy_key\"", removed)
+		t.Errorf("board module's removed = %v; want it to contain \"legacy_key\"", removed)
+	}
+}
+
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
+// hubgeometry.BoardDir(hub) -- <hub>/_board/_lyx/config/fabric.yaml -- the
+// base fabricengine.RepoWiredNames (and every migrated call site downstream
+// of it, including Topology.Add's eager wiring) reads from. lyxtest.CopyPaired
+// does not create a _board dir, so this creates it (and its _lyx/config/)
+// first; unlike lyxtest.SeedConfig, _board is not a git repository, so the
+// file is written directly with no git add/commit step. Mirrors the
+// identically-named helper in internal/fabricengine's and
+// internal/loomengine's own test packages.
+func seedRepoWideFabricConfig(t testing.TB, hub string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(hub)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }

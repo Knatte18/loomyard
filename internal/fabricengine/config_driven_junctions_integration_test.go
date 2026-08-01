@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -82,11 +83,12 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 }
 
 // TestPairInSync_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy
-// proof: PairInSync loads its junction name-set from the pair's own weft-base
-// fabric.yaml, so a worktree whose pathspec names only "_lyx" — narrower than
-// the "_lyx _pattern" default — is reported in sync once "_lyx" alone is
-// wired. A narrow pathspec is a legitimate, unenforced reality (doc.go's
-// narrow-pathspec asymmetry note), not a drift shape PairInSync should flag.
+// proof: PairInSync loads its junction name-set from the repo-wide
+// hubgeometry.BoardDir(l.Hub) fabric.yaml (card 7), so a worktree whose
+// pathspec names only "_lyx" — narrower than the "_lyx _pattern" default —
+// is reported in sync once "_lyx" alone is wired. A narrow pathspec is a
+// legitimate, unenforced reality (doc.go's narrow-pathspec asymmetry note),
+// not a drift shape PairInSync should flag.
 //
 // PairInSync checks weft-branch correspondence (weftBranch ==
 // WeftBranchName(hostBranch), drift.go:69-72) before the junction loop, and
@@ -97,9 +99,18 @@ func TestPairInSync_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 
 	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": "branch_prefix: \"\"\npathspec: _lyx\n",
-	})
+	// The repo-wide pathspec (not fixture.WeftPrime's own weft base) is what
+	// PairInSync reads after card 7; lyxtest.CopyPairedLocal does not create
+	// a _board dir, so create it and its _lyx/config/ first, mirroring
+	// seedRepoWideFabricConfig but with this test's narrow "_lyx"-only
+	// pathspec instead of the default template.
+	boardDir := hubgeometry.BoardDir(fixture.Layout.Hub)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	l := fixture.Layout

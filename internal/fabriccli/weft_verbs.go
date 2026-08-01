@@ -13,8 +13,6 @@
 package fabriccli
 
 import (
-	"path/filepath"
-
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -116,12 +114,10 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		// weftBaseDir is the RelPath-aware base: the fabric config governing
-		// weft-git verbs lives inside the weft worktree, scoped to the same
-		// subdirectory the caller is working in.
-		weftBaseDir := filepath.Join(l.WeftWorktree(), l.RelPath)
-
-		loadedCfg, err := fabricengine.LoadConfig(weftBaseDir)
+		// Fabric config is a repo-wide fact on weft:main, not a per-worktree
+		// file: load it from the board dir, never from the weft worktree.
+		// pathspec scoping below is unchanged — only the config's home moves.
+		loadedCfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)

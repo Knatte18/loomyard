@@ -9,6 +9,11 @@
 //
 // readBranch and checkJunctionHealth are also used by Status; they live here because
 // Reconcile needs them first and both verbs share the same package.
+//
+// The junction name-set checkJunctionHealth/Reconcile/junctionRepointedDetail consult
+// is sourced from the repo-wide fabric.yaml at hubgeometry.BoardDir(l.Hub) — via
+// RepoWiredNames — not from any individual pair's own weft base, so reconcile
+// converges every worktree to the same repo-wide pathspec.
 
 package fabricengine
 
@@ -40,7 +45,7 @@ const (
 
 	// ReconcileActionRawAdopted means a host worktree created outside lyx had its weft
 	// side created (branch + worktree) as a dormant counterpart. No junction is wired;
-	// that is lyx init's responsibility.
+	// re-running Reconcile is what wires it once the pair exists.
 	ReconcileActionRawAdopted ReconcileAction = "raw_adopted"
 
 	// ReconcileActionUnmanagedReported means a host worktree is on an unmanaged branch
@@ -49,6 +54,13 @@ const (
 
 	// ReconcileActionAlreadyHealthy means the pair required no corrective action.
 	ReconcileActionAlreadyHealthy ReconcileAction = "already_healthy"
+
+	// ReconcileActionStaleRemoved means the pair's junction/repoint check found
+	// nothing to add or re-point, but declarative stale-removal deleted at least
+	// one on-disk junction absent from the repo-wide pathspec. It is reported
+	// instead of ReconcileActionAlreadyHealthy so consumers keying off Action —
+	// not just Detail — see that convergence altered the pair.
+	ReconcileActionStaleRemoved ReconcileAction = "stale_removed"
 )
 
 // ReconcilePairResult describes the outcome for one host↔weft pair.
@@ -84,7 +96,7 @@ type ReconcileResult struct {
 //     worktree (has a _lyx entry in its git config) → already handled by rules 1/2.
 //  4. Weft worktree absent and weft branch absent, host worktree is a raw (non-lyx)
 //     worktree → adopt it by creating the weft branch and worktree dormant (no junction
-//     wiring; call `lyx init` to activate).
+//     wiring; re-run Reconcile to activate).
 //  5. Host worktree is on an unmanaged branch (no weft sibling, raw worktree rule does
 //     not apply, or branch is not managed) → report, touch nothing.
 //
@@ -152,13 +164,11 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 				// Re-point the junction(s) by running WireJunctions. WireJunctions is idempotent
 				// and handles both the missing-junction and the wrong-target cases, for every
 				// junction in one call — not just the one checkJunctionHealth found unhealthy.
-				// Source the wired name-set from THIS pair's own weft base — the
-				// same per-pair base checkJunctionHealth just consulted — never
-				// from the acting worktree's t.cfg: Reconcile iterates many
-				// pairs, each of which may carry its own pathspec, and using the
-				// wrong worktree's name-set here could loop Reconcile forever
-				// against the per-pair health check.
-				names, namesErr := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+				// Source the wired name-set from the repo-wide BoardDir base — the
+				// same repo-wide base checkJunctionHealth just consulted — never
+				// from the acting worktree's t.cfg: Reconcile iterates many pairs
+				// and must converge every one of them to the one repo-wide pathspec.
+				names, namesErr := RepoWiredNames(hostLayout)
 				if namesErr != nil {
 					pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
 					pr.Action = ReconcileActionJunctionRepointed
@@ -172,6 +182,15 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 			} else {
 				pr.Action = ReconcileActionAlreadyHealthy
 			}
+
+			// Declarative stale-removal: converge this pair to the repo-wide
+			// pathspec by removing any on-disk junction absent from it. Runs
+			// after add-missing/re-point above, for every pair reaching this
+			// weft-exists branch (both the already-healthy and the
+			// just-repaired outcomes) — never in the weft-missing branches
+			// (reconcileMissingWeft), which have no established host↔weft
+			// junctions yet to converge.
+			applyStaleRemoval(hostLayout, slug, &pr)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
@@ -220,21 +239,24 @@ func (t *Topology) reconcileMissingWeft(
 
 	// Rule 2: weft branch absent — check whether this is a raw (non-lyx) host worktree.
 	// A raw worktree has no weft counterpart at all; we adopt it by creating the weft branch
-	// and worktree dormant. The host _lyx junction is NOT wired here; lyx init handles that.
+	// and worktree dormant. The host _lyx junction is NOT wired here; a subsequent
+	// Reconcile call wires it once the pair exists (rule 2's "weft exists but junction
+	// missing" branch in Reconcile above).
 	isRaw := isRawHostWorktree(hostPath)
 	if isRaw {
 		if err := createDormantWeftForRawHost(hostLayout, slug, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("adopt raw host worktree: %v", err)
 			return ReconcileActionRawAdopted
 		}
-		pr.Detail = fmt.Sprintf("adopted raw host worktree at %s; weft branch %s created dormant (run lyx init to activate)", hostPath, weftBranch)
+		pr.Detail = fmt.Sprintf("adopted raw host worktree at %s; weft branch %s created dormant (re-run lyx fabric reconcile to wire it)", hostPath, weftBranch)
 		return ReconcileActionRawAdopted
 	}
 
 	// Rule 3: no weft branch and not identifiable as raw — report without touching anything.
-	// The caller should run `lyx fabric add` or `lyx init` explicitly.
+	// The caller should run `lyx fabric add` (to create a new pair) or `lyx fabric reconcile`
+	// (to converge an existing but unmanaged branch) explicitly.
 	pr.Detail = fmt.Sprintf(
-		"host worktree %s is on branch %s with no weft sibling; run `lyx fabric add` or `lyx init`",
+		"host worktree %s is on branch %s with no weft sibling; run `lyx fabric add` or `lyx fabric reconcile`",
 		hostPath, hostBranch,
 	)
 	return ReconcileActionUnmanagedReported
@@ -275,8 +297,8 @@ func isRawHostWorktree(hostPath string) bool {
 // createDormantWeftForRawHost creates a weft branch (an already-suffixed weft branch
 // name, i.e. the result of WeftBranchName) and worktree for a raw host worktree,
 // leaving it dormant (no junction wiring). The weft branch forks from the current weft
-// HEAD (parallel to Add's adopt-or-create logic). The caller must run lyx init to wire
-// junctions.
+// HEAD (parallel to Add's adopt-or-create logic). A subsequent Reconcile call wires
+// the junctions once the pair exists.
 func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, slug, weftBranch string) error {
 	weftRoot := hostLayout.WeftRepoRoot()
 
@@ -322,9 +344,9 @@ func readBranch(dir string) (string, error) {
 // checkJunctionHealth verifies that every junction in
 // hostLayout.HostJunctionsHere(names) is a link resolving to its own Target,
 // reporting the first unhealthy one found (first-unhealthy-wins). names is
-// loaded internally from the pair's weft base — the same durable,
+// loaded internally from the repo-wide BoardDir base — the same durable,
 // junction-health-independent base junctionRepointedDetail and PairInSync use —
-// via junctionNames; checkJunctionHealth's own signature is unchanged.
+// via RepoWiredNames; checkJunctionHealth's own signature is unchanged.
 //
 // A junction is unhealthy if its Link is missing, is not a link, or resolves
 // somewhere other than its Target. Every reason string names the junction (by
@@ -338,7 +360,7 @@ func readBranch(dir string) (string, error) {
 // Returns (ok, reason) where ok is true only if every junction is correctly
 // configured; reason is empty in that case.
 func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
-	names, err := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+	names, err := RepoWiredNames(hostLayout)
 	if err != nil {
 		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err)
 	}
@@ -383,11 +405,12 @@ func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
 // "Link → Target" — not just the one checkJunctionHealth found unhealthy,
 // since WireJunctions repairs (or verifies) all of them in the single call
 // that produced this outcome. names is loaded internally from the same
-// weft base checkJunctionHealth uses. This function only runs after
-// checkJunctionHealth found the pair unhealthy AND WireJunctions succeeded,
-// so config is present in practice; the error branch below is defensive.
+// repo-wide BoardDir base checkJunctionHealth uses. This function only runs
+// after checkJunctionHealth found the pair unhealthy AND WireJunctions
+// succeeded, so config is present in practice; the error branch below is
+// defensive.
 func junctionRepointedDetail(hostLayout *hubgeometry.Layout) string {
-	names, err := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+	names, err := RepoWiredNames(hostLayout)
 	if err != nil {
 		return "junction re-pointed: cannot load fabric.yaml: " + err.Error()
 	}
@@ -398,4 +421,132 @@ func junctionRepointedDetail(hostLayout *hubgeometry.Layout) string {
 		parts[i] = fmt.Sprintf("%s → %s", j.Link, j.Target)
 	}
 	return "junction re-pointed: " + strings.Join(parts, "; ")
+}
+
+// scanOnDiskJunctionNames lists the names of link entries directly under
+// filepath.Join(worktreeRoot, relPath), excluding every name in
+// hubgeometry.HubReservedNames() (_board/_portals/_launchers/_raddle) —
+// those are hub-structural, never per-worktree junctions, and must never be
+// swept by stale-removal. It is the read-only enumeration half of
+// declarative convergence: the desired set comes from RepoWiredNames, the
+// actual set comes from here, and stale-removal (Reconcile) computes the
+// difference.
+//
+// Modeled on fslink.RemoveLinksIn (fslink.go:50), but read-only — it never
+// removes anything, only reports which immediate children are links. Like
+// weftwiring.go's removeJunctionRecords doc notes, this scans only the
+// immediate children of worktreeRoot/relPath: the correct granularity for
+// fabric junctions, which are direct children of the anchored subpath.
+//
+// Returns (nil, err) if the directory cannot be read (e.g. does not exist);
+// callers must treat a scan error as "skip removal", never as "the on-disk
+// set is empty" (which would look like everything is stale).
+func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
+	dir := filepath.Join(worktreeRoot, relPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	reserved := make(map[string]bool)
+	for _, r := range hubgeometry.HubReservedNames() {
+		reserved[r] = true
+	}
+
+	var names []string
+	for _, entry := range entries {
+		if reserved[entry.Name()] {
+			continue
+		}
+		isLink, err := fslink.IsLink(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if isLink {
+			names = append(names, entry.Name())
+		}
+	}
+	return names, nil
+}
+
+// applyStaleRemoval converges hostLayout's on-disk junctions to the
+// repo-wide pathspec by removing any junction present on disk but absent
+// from RepoWiredNames(hostLayout) — the declarative "remove" half of
+// convergence (WireJunctions, called earlier in Reconcile's weft-exists
+// branch, already handled "add"/"re-point"). It mutates pr in place:
+// Detail is appended to, never overwritten, since the just-repaired path
+// may have already set it via junctionRepointedDetail; Action is upgraded
+// from ReconcileActionAlreadyHealthy to ReconcileActionStaleRemoved when a
+// removal actually occurred, so a consumer keying off Action alone still
+// sees the pair changed.
+//
+// Fail-closed: if the repo-wide fabric.yaml cannot be loaded, or the
+// on-disk scan fails, stale-removal is aborted for this pair and nothing is
+// touched — an errored/empty pathspec must never be interpreted as "remove
+// every junction." Both failure modes are recorded in Detail so an operator
+// can see convergence was skipped, not silently no-op'd.
+func applyStaleRemoval(hostLayout *hubgeometry.Layout, slug string, pr *ReconcilePairResult) {
+	appendDetail := func(text string) {
+		if pr.Detail == "" {
+			pr.Detail = text
+		} else {
+			pr.Detail = pr.Detail + "; " + text
+		}
+	}
+
+	// Fail-closed: an unreadable/unparseable repo-wide fabric.yaml must never
+	// be interpreted as an empty pathspec — that would blanket-remove every
+	// junction on disk. Abort stale-removal for this pair only; add-missing
+	// above may already have run against a valid set even when this later
+	// load fails (config can be edited between the two calls).
+	desired, err := RepoWiredNames(hostLayout)
+	if err != nil {
+		appendDetail(fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
+		return
+	}
+
+	onDisk, err := scanOnDiskJunctionNames(hostLayout.WorktreeRoot, hostLayout.RelPath)
+	if err != nil {
+		appendDetail(fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
+		return
+	}
+
+	desiredSet := make(map[string]bool, len(desired))
+	for _, name := range desired {
+		desiredSet[name] = true
+	}
+
+	var stale []string
+	for _, name := range onDisk {
+		if !desiredSet[name] {
+			stale = append(stale, name)
+		}
+	}
+	if len(stale) == 0 {
+		return
+	}
+
+	// Unwire each stale junction via the existing single-junction
+	// primitives: best-effort host-link removal (mirroring
+	// removeHostJunction's own best-effort posture elsewhere in this
+	// package), then its git-exclude entry — the same two steps
+	// UnwireJunctions performs, applied one name at a time so a failure on
+	// one stale name does not block the others.
+	var removed []string
+	for _, name := range stale {
+		_ = removeHostJunction(hostLayout, slug, []string{name})
+		_, _ = unseedGitExclude(hostLayout, slug, []string{name})
+		removed = append(removed, name)
+	}
+
+	appendDetail(fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
+
+	// A pair that removed a stale junction was not truly healthy even when
+	// nothing needed to be added/re-pointed; upgrade AlreadyHealthy so
+	// consumers keying off Action alone see the pair changed. A pair that
+	// was already re-pointed (or errored re-pointing) keeps its own Action —
+	// Detail above already carries both facts for that case.
+	if pr.Action == ReconcileActionAlreadyHealthy {
+		pr.Action = ReconcileActionStaleRemoved
+	}
 }

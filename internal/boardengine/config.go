@@ -50,7 +50,7 @@ func (c Config) Outputs() Outputs {
 // return resolved bytes. Unmarshals the resolved bytes into a Config struct.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx init\"".
+// "not initialized here; run \"lyx fabric reconcile\"".
 //
 // LoadConfig no longer resolves a data-dir path. Config.Path is always empty
 // on return; the caller is responsible for setting it (boardcli sets it via
@@ -63,7 +63,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		// surface a consistent "not initialized here" phrase rather than the
 		// lower-level configengine phrasing.
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
 		}
 		return Config{}, err
 	}

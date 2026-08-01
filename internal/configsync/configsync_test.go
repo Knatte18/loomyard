@@ -97,24 +97,20 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 		t.Error("board.Applied is false; want true (changes should be applied)")
 	}
 
-	// Fabric result should show creation
-	var fabricResult *Result
+	// fabric is skipped in ReconcileAll's per-worktree loop: its config is a
+	// repo-wide fact materialized once via ReconcileFabricAt, not a
+	// per-worktree file, so no fabric result is ever reported here.
 	for i := range results {
 		if results[i].Module == "fabric" {
-			fabricResult = &results[i]
+			t.Errorf("ReconcileAll returned a fabric result %+v; want none (fabric is skipped)", results[i])
 			break
 		}
 	}
-	if fabricResult == nil {
-		t.Error("fabric result not found")
-	} else if !fabricResult.Applied {
-		t.Error("fabric.Applied is false; want true (absent file should be created)")
-	}
 
-	// Verify fabric.yaml was created
+	// Verify fabric.yaml was NOT created under the per-worktree base.
 	fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
-	if _, err := os.Stat(fabricPath); err != nil {
-		t.Errorf("fabric.yaml was not created: %v", err)
+	if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
+		t.Errorf("fabric.yaml was created under the per-worktree base; want absent (stat err = %v)", err)
 	}
 
 	// Verify board.yaml was rewritten: stale_key removed and path: also removed
@@ -391,37 +387,35 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 	})
 }
 
-// TestReconcileAll_MigratesLegacyFabricConfig pins the fabric-cutover's
+// TestReconcileFabricAt_MigratesLegacyFabricConfig pins the fabric-cutover's
 // one-shot migration (F-D): a pre-cutover hub's warp.yaml/weft.yaml values
 // must be folded into fabric.yaml's first write instead of silently
 // discarded in favor of the bare template default, and the legacy files must
-// be pruned afterward so the migration does not re-fire.
-func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
+// be pruned afterward so the migration does not re-fire. Routed through
+// ReconcileFabricAt(boardDir, apply), the repo-wide counterpart now that
+// ReconcileAll skips fabric entirely (see TestReconcileAll_ApplyCreatesFiles).
+func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 	t.Run("both legacy files present, both values migrate, both files pruned", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		boardDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
-		weftPath := hubgeometry.ConfigFile(tmpDir, "weft")
+		weftPath := hubgeometry.ConfigFile(boardDir, "weft")
 		if err := os.WriteFile(weftPath, []byte("pathspec: _lyx custom-dir\n"), 0o644); err != nil {
 			t.Fatalf("write weft.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		fabricResult, err := ReconcileFabricAt(boardDir, true)
 		if err != nil {
-			t.Fatalf("ReconcileAll(true): %v", err)
+			t.Fatalf("ReconcileFabricAt(true): %v", err)
 		}
 
-		fabricResult := findResult(results, "fabric")
-		if fabricResult == nil {
-			t.Fatal("fabric result not found")
-		}
 		if !fabricResult.Applied {
 			t.Error("fabric.Applied is false; want true (absent file should be created)")
 		}
@@ -435,7 +429,7 @@ func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
 			}
 		}
 
-		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
 		got, err := os.ReadFile(fabricPath)
 		if err != nil {
 			t.Fatalf("read fabric.yaml: %v", err)
@@ -456,31 +450,27 @@ func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
 	})
 
 	t.Run("only warp.yaml present, pathspec falls back to template default", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		boardDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		fabricResult, err := ReconcileFabricAt(boardDir, true)
 		if err != nil {
-			t.Fatalf("ReconcileAll(true): %v", err)
+			t.Fatalf("ReconcileFabricAt(true): %v", err)
 		}
 
-		fabricResult := findResult(results, "fabric")
-		if fabricResult == nil {
-			t.Fatal("fabric result not found")
-		}
 		if len(fabricResult.MigratedFrom) != 1 || fabricResult.MigratedFrom[0] != "warp" {
 			t.Errorf("fabric.MigratedFrom = %v; want exactly [warp]", fabricResult.MigratedFrom)
 		}
 
-		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
 		got, err := os.ReadFile(fabricPath)
 		if err != nil {
 			t.Fatalf("read fabric.yaml: %v", err)
@@ -498,26 +488,22 @@ func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
 	})
 
 	t.Run("dry run reports the pending migration but writes and deletes nothing", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		boardDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, false)
+		fabricResult, err := ReconcileFabricAt(boardDir, false)
 		if err != nil {
-			t.Fatalf("ReconcileAll(false): %v", err)
+			t.Fatalf("ReconcileFabricAt(false): %v", err)
 		}
 
-		fabricResult := findResult(results, "fabric")
-		if fabricResult == nil {
-			t.Fatal("fabric result not found")
-		}
 		if fabricResult.Applied {
 			t.Error("fabric.Applied is true; want false (dry-run)")
 		}
@@ -525,7 +511,7 @@ func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Errorf("fabric.MigratedFrom = %v; want exactly [warp] even on a dry run", fabricResult.MigratedFrom)
 		}
 
-		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
 		if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
 			t.Errorf("fabric.yaml was written on a dry run; want absent (stat err = %v)", err)
 		}
@@ -535,30 +521,26 @@ func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
 	})
 
 	t.Run("fabric.yaml already present, legacy files untouched and not migrated", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		boardDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
 		if err := os.WriteFile(fabricPath, []byte("branch_prefix: existing/\npathspec: _lyx\n"), 0o644); err != nil {
 			t.Fatalf("write fabric.yaml: %v", err)
 		}
-		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: stale/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		fabricResult, err := ReconcileFabricAt(boardDir, true)
 		if err != nil {
-			t.Fatalf("ReconcileAll(true): %v", err)
+			t.Fatalf("ReconcileFabricAt(true): %v", err)
 		}
 
-		fabricResult := findResult(results, "fabric")
-		if fabricResult == nil {
-			t.Fatal("fabric result not found")
-		}
 		if len(fabricResult.MigratedFrom) != 0 {
 			t.Errorf("fabric.MigratedFrom = %v; want empty (fabric.yaml already present)", fabricResult.MigratedFrom)
 		}
@@ -576,26 +558,22 @@ func TestReconcileAll_MigratesLegacyFabricConfig(t *testing.T) {
 	})
 
 	t.Run("unparseable legacy file is skipped, left on disk, and not migrated", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		boardDir := t.TempDir()
+		configDir := hubgeometry.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(tmpDir, "warp")
+		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: [unterminated\n"), 0o644); err != nil {
 			t.Fatalf("write corrupt warp.yaml: %v", err)
 		}
 
-		results, err := ReconcileAll(tmpDir, true)
+		fabricResult, err := ReconcileFabricAt(boardDir, true)
 		if err != nil {
-			t.Fatalf("ReconcileAll(true): %v", err)
+			t.Fatalf("ReconcileFabricAt(true): %v", err)
 		}
 
-		fabricResult := findResult(results, "fabric")
-		if fabricResult == nil {
-			t.Fatal("fabric result not found")
-		}
 		if len(fabricResult.MigratedFrom) != 0 {
 			t.Errorf("fabric.MigratedFrom = %v; want empty (warp.yaml is unparseable)", fabricResult.MigratedFrom)
 		}

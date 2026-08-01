@@ -3,11 +3,12 @@
 // PairInSync derives the weft sibling deterministically and checks that the weft
 // worktree is on WeftBranchName(hostBranch), and that every host junction
 // (l.HostJunctionsHere(names)) is valid and points to its own weft directory. It
-// loads fabric.yaml for the junction name-set; it still consults no
-// registry/status.md: fabric's correspondence check compares the weft branch
-// against WeftBranchName(hostBranch). A config-load failure is reported as a
-// junction-check-unavailable reason (not a hard error), deliberately containing
-// the "junction" substring the loom preflight classifier keys on — see below.
+// loads the repo-wide fabric.yaml at hubgeometry.BoardDir(l.Hub) for the junction
+// name-set; it still consults no registry/status.md: fabric's correspondence
+// check compares the weft branch against WeftBranchName(hostBranch). A
+// config-load failure is reported as a junction-check-unavailable reason (not a
+// hard error), deliberately containing the "junction" substring the loom
+// preflight classifier keys on — see below.
 //
 // PairInSync and HostClean (hostclean.go) are wired into the loom preflight
 // via internal/loomengine.
@@ -31,8 +32,8 @@ import (
 //   - The weft worktree is on WeftBranchName(hostBranch) (via rev-parse --abbrev-ref HEAD
 //     on both worktrees)
 //   - Every host junction in l.HostJunctionsHere(names) exists and points to its own
-//     weft directory, where names is the wired name-set loaded from the pair's
-//     weft-base fabric.yaml
+//     weft directory, where names is the wired name-set loaded from the repo-wide
+//     BoardDir fabric.yaml
 //
 // The weft sibling is derived deterministically as <worktree-base>-weft (via paths geometry).
 // No registry or status.md is consulted; PairInSync is stateless.
@@ -75,21 +76,20 @@ func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 		return false, fmt.Sprintf("host on %s, weft on %s (want %s)", hostBranch, weftBranch, expectedWeftBranch), nil
 	}
 
-	// Load the wired name-set from the weft base — durable and independent of
-	// the host junction whose health this function checks, per the
-	// internal/fabriccli/weft_verbs.go:112 convention (the same base
-	// checkJunctionHealth in reconcile.go uses). A load failure is reported as
-	// a determinable "pair unhealthy: bad config" verdict REASON, not a hard
-	// Go error: internal/loomengine/preflight.go:120-123 propagates a non-nil
-	// err straight into an infra-escalating `return Report{}, err`, which a
-	// missing/corrupt fabric.yaml does not warrant. The reason string must
-	// also contain the substring "junction": preflight.go:125-148's check-3
-	// classifier sets check3BlocksSeed = true only when
-	// strings.Contains(reason, "junction") (its own godoc warns any reword
-	// must keep that substring), and an undeterminable junction set is
+	// Load the wired name-set from the repo-wide BoardDir base — durable and
+	// independent of the host junction whose health this function checks, and
+	// the same repo-wide base checkJunctionHealth in reconcile.go uses. A load
+	// failure is reported as a determinable "pair unhealthy: bad config"
+	// verdict REASON, not a hard Go error: internal/loomengine/preflight.go:
+	// 120-123 propagates a non-nil err straight into an infra-escalating
+	// `return Report{}, err`, which a missing/corrupt fabric.yaml does not
+	// warrant. The reason string must also contain the substring "junction":
+	// preflight.go:125-148's check-3 classifier sets check3BlocksSeed = true
+	// only when strings.Contains(reason, "junction") (its own godoc warns any
+	// reword must keep that substring), and an undeterminable junction set is
 	// exactly the case that must block seed so check 4 reports
 	// CheckSeedUnreadable rather than a phantom CheckSeedMissing.
-	names, err := junctionNames(filepath.Join(weftWorktree, l.RelPath))
+	names, err := RepoWiredNames(l)
 	if err != nil {
 		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err), nil
 	}

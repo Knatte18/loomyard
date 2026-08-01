@@ -95,7 +95,7 @@ func ResolveModelSpec(spec string, reg modelspec.Registry) (model, effort string
 // would NOT have rejected an old file.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx init\"".
+// "not initialized here; run \"lyx fabric reconcile\"".
 func LoadConfigWithRegistry(baseDir, module string, reg modelspec.Registry) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
@@ -103,7 +103,7 @@ func LoadConfigWithRegistry(baseDir, module string, reg modelspec.Registry) (Con
 		// hint, matching reedengine/shuttleengine's shape so every module
 		// surfaces the same recovery instruction.
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
 		}
 		return Config{}, err
 	}
@@ -136,7 +136,7 @@ func LoadConfigWithRegistry(baseDir, module string, reg modelspec.Registry) (Con
 // "perch" here), mirroring reedengine.LoadConfig and shuttleengine.LoadConfig.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx init\"".
+// "not initialized here; run \"lyx fabric reconcile\"".
 func LoadConfig(baseDir, module string) (Config, error) {
 	reg, err := modelspec.LoadRegistry(baseDir)
 	if err != nil {

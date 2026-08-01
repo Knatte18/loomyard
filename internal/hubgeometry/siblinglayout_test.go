@@ -4,11 +4,17 @@
 // spawn-free sibling-layout deriver, is byte-for-byte equivalent to Resolve
 // for hub-sibling worktree roots, and documents where the two diverge for a
 // worktree that lives outside the hub (the guard case card 3's
-// hostLayoutFor helper exists to cover).
+// hostLayoutFor helper exists to cover). It also covers the recorded-anchor
+// split for a subpath-anchored hub: SiblingLayout and the gate-free
+// ResolveWorktree must agree at RelPath="backend", while the gated entry
+// Resolve hard-errors for the same worktree root since it sits above the
+// anchor.
 
 package hubgeometry_test
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -71,6 +77,51 @@ func TestSiblingLayout_EquivalentToResolve(t *testing.T) {
 			}
 		})
 	}
+
+	// A non-root recorded anchor ("backend") is the case the plan's gate-scope
+	// split exists for: the worktree root sits ABOVE the anchor, so the gated
+	// entry Resolve(root) must hard-error, while SiblingLayout(root) and the
+	// gate-free ResolveWorktree(root) must both agree at RelPath="backend" —
+	// SiblingLayout and hostLayoutFor's internal fallback share that gate-free
+	// contract. This uses its own fixture (not fix/l above) so writing the
+	// anchor file cannot race the still-pending t.Parallel() subtests in the
+	// loop above, which are deferred until this outer test function returns.
+	t.Run("subpath anchor", func(t *testing.T) {
+		subFix := lyxtest.CopyHostHub(t)
+		subL, err := hubgeometry.Resolve(subFix.Hub)
+		if err != nil {
+			t.Fatalf("Resolve(subFix.Hub) error = %v; want nil", err)
+		}
+
+		boardDir := hubgeometry.BoardDir(subL.Hub)
+		if err := os.MkdirAll(boardDir, 0o755); err != nil {
+			t.Fatalf("mkdir board dir: %v", err)
+		}
+		anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+		if err := os.WriteFile(anchorPath, []byte("backend"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", anchorPath, err)
+		}
+
+		got := subL.SiblingLayout(subFix.Hub)
+		if got.RelPath != "backend" {
+			t.Errorf("SiblingLayout(%q).RelPath = %q; want %q", subFix.Hub, got.RelPath, "backend")
+		}
+
+		want, err := hubgeometry.ResolveWorktree(subFix.Hub)
+		if err != nil {
+			t.Fatalf("ResolveWorktree(%q) error = %v; want nil", subFix.Hub, err)
+		}
+		if !reflect.DeepEqual(*got, *want) {
+			t.Errorf("SiblingLayout(%q) = %+v; want %+v (ResolveWorktree result)", subFix.Hub, *got, *want)
+		}
+
+		// Pin the intended split: Resolve(root), unlike ResolveWorktree(root),
+		// applies the cwd gate and must error because the worktree root sits
+		// above the "backend" anchor.
+		if _, err := hubgeometry.Resolve(subFix.Hub); !errors.Is(err, hubgeometry.ErrCwdOutsideAnchor) {
+			t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", subFix.Hub, err)
+		}
+	})
 }
 
 // TestSiblingLayout_NonSiblingDiverges documents why hostLayoutFor's guard

@@ -105,9 +105,9 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 }
 
 // TestCommitWeft_IndexOnlyDeletionCountsAsMatch covers the "index-only must
-// count" predicate clause: internal/initengine/undo.go's `lyx init --undo`
-// commits a "_lyx" path that os.RemoveAll has just deleted from the
-// worktree, surviving only in the index at that point. A
+// count" predicate clause: fabricengine.Unwire's (unwire.go) `_lyx`
+// clear-and-commit step commits a "_lyx" path that os.RemoveAll has just
+// deleted from the worktree, surviving only in the index at that point. A
 // worktree-existence-only predicate would silently break that deletion
 // commit — this test seeds a tracked file, deletes it from disk only (never
 // staged), then asserts CommitWeft still commits the deletion.

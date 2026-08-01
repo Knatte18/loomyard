@@ -103,6 +103,80 @@ func gitOutput(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// makeBareRemoteWithSubdir behaves exactly like makeBareRemote, but seeds an
+// additional committed file at <subdir>/marker.txt so the host repo carries a
+// real subdirectory a lyx-anchor subpath test can point at.
+func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
+	t.Helper()
+
+	bare := filepath.Join(dir, name+".git")
+	if err := os.Mkdir(bare, 0o755); err != nil {
+		t.Fatalf("mkdir bare: %v", err)
+	}
+
+	lyxtest.MustRun(t, bare, "git", "init", "--bare")
+
+	tempWork := filepath.Join(dir, "temp-work-"+name)
+	if err := os.Mkdir(tempWork, 0o755); err != nil {
+		t.Fatalf("mkdir temp work: %v", err)
+	}
+
+	lyxtest.MustRun(t, tempWork, "git", "init", "-b", "main")
+	lyxtest.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+
+	bareURL := filepath.ToSlash(bare)
+	lyxtest.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
+
+	readmePath := filepath.Join(tempWork, "README.md")
+	if err := os.WriteFile(readmePath, []byte("# "+name), 0o644); err != nil {
+		t.Fatalf("write README: %v", err)
+	}
+	subdirPath := filepath.Join(tempWork, subdir)
+	if err := os.MkdirAll(subdirPath, 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(subdirPath, "marker.txt"), []byte("subdir content"), 0o644); err != nil {
+		t.Fatalf("write subdir marker: %v", err)
+	}
+
+	lyxtest.MustRun(t, tempWork, "git", "add", "README.md", subdir)
+	lyxtest.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	lyxtest.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
+
+	if err := os.RemoveAll(tempWork); err != nil {
+		t.Fatalf("remove temp work: %v", err)
+	}
+
+	return bare
+}
+
+// commitFileOnBranch clones bareRemote into a scratch dir, checks out branch
+// (creating it if absent, seeded from the remote's default branch tip),
+// writes relPath with contents, commits, and pushes it back — used to seed a
+// weft remote fixture with a pre-committed .fabric-anchor marker for the
+// adopt-path tests, mirroring how a real prior clone would have left it.
+func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents string) {
+	t.Helper()
+
+	scratch := filepath.Join(dir, "scratch-"+branch+"-"+filepath.Base(relPath))
+	lyxtest.MustRun(t, dir, "git", "clone", filepath.ToSlash(bareRemote), filepath.Base(scratch))
+	lyxtest.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, scratch, "git", "config", "user.name", "Test")
+	lyxtest.MustRun(t, scratch, "git", "checkout", branch)
+
+	target := filepath.Join(scratch, relPath)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", relPath, err)
+	}
+	if err := os.WriteFile(target, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write %s: %v", relPath, err)
+	}
+	lyxtest.MustRun(t, scratch, "git", "add", relPath)
+	lyxtest.MustRun(t, scratch, "git", "commit", "-m", "seed "+relPath)
+	lyxtest.MustRun(t, scratch, "git", "push", "origin", branch)
+}
+
 // makeEmptyBareRemote creates a bare git repository with no commits at all —
 // a genuinely empty remote, unlike makeBareRemote's seed-and-push. It exists
 // to exercise ensureBoardWorktree's orphan path, which only fires when clone
@@ -195,14 +269,16 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 
 	// Clone the hub fresh, as a second machine (or clone --reset) would.
 	cloneParent := t.TempDir()
-	hubPath, err := fabricengine.CloneHub(
+	res, err := fabricengine.CloneHub(
 		cloneParent,
 		filepath.ToSlash(hostBare),
 		filepath.ToSlash(weftBare),
+		".",
 	)
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
+	hubPath := res.HubPath
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
 	// The weft prime directory is the host name's weft sibling — resolved via
@@ -249,14 +325,16 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "fresh-weft")
 
 	cloneParent := t.TempDir()
-	hubPath, err := fabricengine.CloneHub(
+	res, err := fabricengine.CloneHub(
 		cloneParent,
 		filepath.ToSlash(hostBare),
 		filepath.ToSlash(weftBare),
+		".",
 	)
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
+	hubPath := res.HubPath
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
 	if _, err := os.Stat(filepath.Join(hubPath, "fresh-host", ".git")); err != nil {
@@ -297,7 +375,7 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	cloneParent := t.TempDir()
 	expectedHubPath := hubgeometry.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
 
-	_, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(hostBare), filepath.ToSlash(nonExistentWeft))
+	_, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(hostBare), filepath.ToSlash(nonExistentWeft), ".")
 	if err == nil {
 		t.Fatalf("CloneHub should have failed with a non-existent weft remote")
 	}
@@ -321,14 +399,16 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	weftBare := makeEmptyBareRemote(t, fixtures, "orphan-weft")
 
 	cloneParent := t.TempDir()
-	hubPath, err := fabricengine.CloneHub(
+	res, err := fabricengine.CloneHub(
 		cloneParent,
 		filepath.ToSlash(hostBare),
 		filepath.ToSlash(weftBare),
+		".",
 	)
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
+	hubPath := res.HubPath
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
 	weftPrime := hubgeometry.WeftSiblingPath(hubPath, "orphan-host")
@@ -346,5 +426,173 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	boardPath := hubgeometry.BoardDir(hubPath)
 	if !hasNoCommits(t, boardPath) {
 		t.Errorf("_board at %s has commits; want an unborn HEAD (fresh orphan branch)", boardPath)
+	}
+}
+
+// TestCloneHub_AnchorCreatePath asserts the create path: a first-ever clone
+// with an existing "backend" subdirectory in the host writes the marker to
+// disk and returns a fully-populated CloneResult naming it.
+func TestCloneHub_AnchorCreatePath(t *testing.T) {
+	fixtures := t.TempDir()
+
+	hostBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-create-host", "backend")
+	weftBare := makeBareRemote(t, fixtures, "anchor-create-weft")
+
+	cloneParent := t.TempDir()
+	res, err := fabricengine.CloneHub(
+		cloneParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		"backend",
+	)
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+
+	if res.Anchor != "backend" {
+		t.Errorf("res.Anchor = %q; want %q", res.Anchor, "backend")
+	}
+	if filepath.Base(res.BoardDir) != "_board" {
+		t.Errorf("res.BoardDir = %q; want it to end in _board", res.BoardDir)
+	}
+	if filepath.Base(res.PrimeCwd) != "backend" {
+		t.Errorf("res.PrimeCwd = %q; want it to end in .../backend", res.PrimeCwd)
+	}
+	if res.WeftBase == "" {
+		t.Errorf("res.WeftBase is empty; want a resolved weft-side base directory")
+	}
+
+	markerPath := filepath.Join(res.BoardDir, hubgeometry.FabricAnchorName)
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("read marker %s: %v", markerPath, err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "backend" {
+		t.Errorf(".fabric-anchor content = %q; want %q", got, "backend")
+	}
+}
+
+// TestCloneHub_AnchorTypoPathHardErrors asserts that a create-path clone
+// against a subpath that does not exist in the host worktree (a typo like
+// "backedn") is a hard error, and that teardownHub removes the hub — mirroring
+// TestCloneHub_StrictAbortRemovesHubOnFailure's coverage for the anchor guard.
+func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
+	fixtures := t.TempDir()
+
+	hostBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-typo-host", "backend")
+	weftBare := makeBareRemote(t, fixtures, "anchor-typo-weft")
+
+	cloneParent := t.TempDir()
+	expectedHubPath := hubgeometry.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+
+	_, err := fabricengine.CloneHub(
+		cloneParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		"backedn",
+	)
+	if err == nil {
+		t.Fatalf("CloneHub() with a nonexistent subpath should have failed")
+	}
+	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
+		t.Errorf("hub directory %s should have been removed by teardownHub after the anchor guard failure", expectedHubPath)
+	}
+}
+
+// TestCloneHub_AnchorRootDefaultPath asserts the create path with an explicit
+// "." subpath writes "." to the marker and returns Anchor == ".".
+func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
+	fixtures := t.TempDir()
+
+	hostBare := makeBareRemote(t, fixtures, "anchor-root-host")
+	weftBare := makeBareRemote(t, fixtures, "anchor-root-weft")
+
+	cloneParent := t.TempDir()
+	res, err := fabricengine.CloneHub(
+		cloneParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		".",
+	)
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+
+	if res.Anchor != "." {
+		t.Errorf("res.Anchor = %q; want %q", res.Anchor, ".")
+	}
+
+	markerPath := filepath.Join(res.BoardDir, hubgeometry.FabricAnchorName)
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("read marker %s: %v", markerPath, err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "." {
+		t.Errorf(".fabric-anchor content = %q; want %q", got, ".")
+	}
+}
+
+// TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote
+// already carrying a committed .fabric-anchor="backend" on its default
+// branch (mirroring what CloneHub's own create path would have left, had the
+// CLI layer committed it onto weft:main): a re-clone with no --subpath reads
+// the recorded value; a conflicting non-default --subpath hard-errors; a
+// matching --subpath succeeds.
+func TestCloneHub_AnchorAdoptPath(t *testing.T) {
+	fixtures := t.TempDir()
+
+	hostBare := makeBareRemoteWithSubdir(t, fixtures, "anchor-adopt-host", "backend")
+	weftBare := makeBareRemote(t, fixtures, "anchor-adopt-weft")
+
+	// Seed the weft remote's main branch with a committed .fabric-anchor, the
+	// same file _board's checkout will already carry once cloned — this is
+	// what "adopt" means: the marker arrives via git history, not a write.
+	commitFileOnBranch(t, fixtures, weftBare, "main", hubgeometry.FabricAnchorName, "backend\n")
+
+	// No --subpath: the recorded anchor is read and returned as-is.
+	cloneParent := t.TempDir()
+	res, err := fabricengine.CloneHub(
+		cloneParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		"",
+	)
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+	if res.Anchor != "backend" {
+		t.Errorf("res.Anchor = %q; want %q (adopted from the recorded marker)", res.Anchor, "backend")
+	}
+
+	// A conflicting non-default --subpath must hard-error rather than
+	// silently re-anchor: the record is authoritative on adopt.
+	conflictParent := t.TempDir()
+	_, err = fabricengine.CloneHub(
+		conflictParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		"frontend",
+	)
+	if err == nil {
+		t.Fatalf("CloneHub() with --subpath frontend against a recorded backend anchor should have failed")
+	}
+
+	// A matching --subpath succeeds identically to the no-flag case.
+	matchParent := t.TempDir()
+	matchRes, err := fabricengine.CloneHub(
+		matchParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		"backend",
+	)
+	if err != nil {
+		t.Fatalf("CloneHub() with matching --subpath backend error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(matchRes.HubPath) })
+	if matchRes.Anchor != "backend" {
+		t.Errorf("matchRes.Anchor = %q; want %q", matchRes.Anchor, "backend")
 	}
 }

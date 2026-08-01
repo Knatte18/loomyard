@@ -71,21 +71,12 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("setup: nested _pattern junction %s not wired: isLink=%v err=%v", nestedPatternLink, isLink, err)
 	}
 
-	// Remove loads the removed slug's own config (best-effort) to know which
-	// nested junctions to tear down. This fixture wired the nested pair
-	// directly via Add+WireJunctions with no `lyx init`, so
-	// <slug>-weft/sub/_lyx/config/fabric.yaml does not exist yet; seed it here
-	// so Remove's name-load finds "_lyx _pattern" and the happy-path nested
-	// teardown below is actually exercised, not just the degraded
-	// nothing-removed path.
-	nestedWeftBase := filepath.Join(l.WeftWorktreePath(slug), "sub")
-	if err := os.MkdirAll(hubgeometry.ConfigDir(nestedWeftBase), 0o755); err != nil {
-		t.Fatalf("mkdir nested weft config dir: %v", err)
-	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(nestedWeftBase, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
-		t.Fatalf("write nested weft fabric config: %v", err)
-	}
-
+	// Remove loads the repo-wide config (best-effort) to know which nested
+	// junctions to tear down — newFabricFixture already materialized it at
+	// hubgeometry.BoardDir(l.Hub) via seedRepoWideFabricConfig, so Remove's
+	// name-load finds "_lyx _pattern" (the default pathspec) regardless of
+	// this pair's RelPath, and the happy-path nested teardown below is
+	// actually exercised, not just the degraded nothing-removed path.
 	if _, err := topology.Remove(nestedLayout, slug, true); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}

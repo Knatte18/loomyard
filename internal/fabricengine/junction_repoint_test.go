@@ -45,6 +45,7 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -96,6 +97,7 @@ func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -145,6 +147,7 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -193,6 +196,7 @@ func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)

@@ -65,12 +65,16 @@ type AddResult struct {
 //  9. Create portal junction to _lyx/ in the new host worktree.
 //
 // 10. Write per-worktree launchers.
+// 10b. Wire the new worktree's host junctions (_lyx/_pattern) eagerly, using
+// the repo-wide wired name-set (RepoWiredNames). No dormant state: the pair
+// is fully wired the moment Add succeeds, with no separate `lyx init` step.
 // 11. Push host branch: git push -u origin <hostBranch> (LAST step for host).
 // 12. Push weft branch: git push -u origin <weftBranch> to weft remote (respects opts).
 //
 // On ANY error at or after step 7, performs a best-effort full paired rollback:
 //   - removeWeftWorktree — tear down the weft worktree (and the weft branch only
 //     when Add created it; an adopted pre-existing branch is never deleted)
+//   - removeHostJunction — unwire the host junctions wired by step 10b
 //   - removePortal(l, slug)
 //   - removeLaunchers(l, slug)
 //   - git worktree remove --force <host-target>
@@ -257,6 +261,22 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		return AddResult{}, err
 	}
 
+	// (10b) Wire the new worktree's host junctions eagerly, sourcing the wired
+	// name-set from the repo-wide BoardDir base (not any per-pair weft base or
+	// acting-worktree config) — every worktree must converge to the same
+	// repo-wide pathspec, matching Checkout's re-point call. The weft worktree
+	// already exists from step 8, so junction targets resolve. On failure, roll
+	// back the whole pair via the existing post-step-7 path.
+	names, err := RepoWiredNames(l)
+	if err != nil {
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		return AddResult{}, fmt.Errorf("wire junctions: load fabric config: %w", err)
+	}
+	if err := WireJunctions(l, slug, names); err != nil {
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
+	}
+
 	// (11) Push host branch (LAST step for host)
 	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", hostBranch}, l.WorktreeRoot)
 	if err != nil {
@@ -289,6 +309,7 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 // Steps (best-effort, errors collected but not masked):
 //  1. removeWeftWorktree — tear down the weft worktree (and the weft branch
 //     only when Add created it — see weftBranchAdopted below)
+//     1b. removeHostJunction — unwire the host junctions wired by Add's step 10b
 //  2. removePortal — remove host portal junction
 //  3. removeLaunchers — remove host launchers
 //  4. git worktree remove --force <host-target>
@@ -300,8 +321,9 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 // unpushed history it carries — predates this Add and is never deleted by its
 // rollback; only a branch Add itself created is torn down.
 //
-// Note: Add does not wire the host _lyx junction (it is dormant), so rollback
-// does not remove it. The junction is wired by lyx init via WireJunctions.
+// Since step 10b wires the host _lyx/_pattern junctions eagerly (no dormant
+// state — see Add's godoc), rollback unwires them too: a partially-wired
+// worktree must not leave dangling junctions behind.
 // All errors are collected; the original error passed to the caller is preserved.
 func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBranch, target string, weftBranchAdopted bool) error {
 	var firstErr error
@@ -309,6 +331,21 @@ func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBran
 	// (1) Remove the weft worktree; delete the weft branch only when this Add
 	// created it, so a rollback never destroys pre-existing weft history.
 	if err := removeWeftWorktree(l, slug, weftBranch, true, !weftBranchAdopted); err != nil {
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	// (1b) Remove host junctions wired by step 10b, best-effort. Source names
+	// from the repo-wide BoardDir base, mirroring Remove's step 5: a rollback
+	// must not hard-fail when the repo-wide config is unreadable (Add is
+	// failing already), so a load error falls back to names == nil, which
+	// removes nothing rather than guessing a wiring set.
+	names, namesErr := RepoWiredNames(l)
+	if namesErr != nil {
+		names = nil
+	}
+	if err := removeHostJunction(l, slug, names); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}

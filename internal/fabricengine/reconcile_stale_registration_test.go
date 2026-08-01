@@ -99,6 +99,13 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 // ("main") — mirroring CloneHub's post-clone state so a fresh Add/Checkout
 // fork has the suffixed primary branch it expects. Shared setup for every
 // standalone regression guard in this file.
+//
+// Card 7 migrated checkJunctionHealth/PairInSync/Reconcile/Checkout/Remove/
+// junctionRepointedDetail to read the junction name-set from the repo-wide
+// hubgeometry.BoardDir(Hub) base rather than each pair's own weft base, so
+// this fixture also materializes the repo-wide config via
+// seedRepoWideFabricConfig — otherwise every migrated read fails with
+// "cannot load fabric.yaml".
 func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	t.Helper()
 
@@ -106,8 +113,31 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 	return fixture
+}
+
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
+// hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
+// base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
+// PairInSync, Reconcile, Topology.Checkout, Topology.Remove,
+// junctionRepointedDetail) now read from. lyxtest.CopyPaired/CopyPairedLocal
+// do not create a _board dir, so this creates it (and its _lyx/config/)
+// first; unlike lyxtest.SeedConfig, _board is not a git repository, so the
+// file is written directly with no git add/commit step. Shared by every
+// fabricengine_test fixture that exercises a migrated read.
+func seedRepoWideFabricConfig(t testing.TB, hub string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(hub)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
 }
 
 // currentBranchOf returns the branch currently checked out at dir via

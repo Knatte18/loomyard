@@ -32,19 +32,33 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// seedFabricConfig seeds the fabric config into the weft fixture so
-// WiredNames(weftPath) resolves the pathspec Fabric.Commit's classifier
-// needs — every Fabric.Commit test requires this.
-func seedFabricConfig(t *testing.T, weftPath string) {
+// seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's
+// classify step now reads via RepoWiredNames — the `weft:main` base at
+// hubgeometry.BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's
+// classifier needs. warpPath is a bare t.TempDir() plain-git checkout (this
+// file's newPlainWarpRepo/newUnbornWarpRepo fixtures, not a real hub tree),
+// so hubgeometry.ResolveWorktree(warpPath)'s Hub — warpPath's parent
+// directory — stands in for the hub; _board is not itself a git repository,
+// so the file is written directly with no git add/commit step. Mirrors
+// reconcile_stale_registration_test.go's seedRepoWideFabricConfig, which
+// this file cannot call directly (package fabricengine here, vs.
+// fabricengine_test there). Every Fabric.Commit test requires this.
+func seedFabricConfig(t *testing.T, warpPath string) {
 	t.Helper()
 
-	lyxtest.SeedConfig(t, weftPath, map[string]string{
-		"fabric": "branch_prefix: \"\"\npathspec: _lyx _pattern\n",
-	})
+	boardDir := hubgeometry.BoardDir(filepath.Dir(warpPath))
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx _pattern\n"), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
 }
 
 // writeWarpFile overwrites (without staging or committing) name inside the
@@ -88,7 +102,7 @@ func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 
 	warpPath = newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
-	seedFabricConfig(t, weftFixture.WeftPath)
+	seedFabricConfig(t, warpPath)
 	f = newFabric(t, warpPath, weftFixture.WeftPath)
 	return f, warpPath, weftFixture.WeftPath
 }
@@ -577,7 +591,7 @@ func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testi
 func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftPath := newUnbornWeftRepo(t)
-	seedFabricConfig(t, weftPath)
+	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftPath)
 	swapPushRecorder(t)
 
@@ -617,7 +631,7 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
-	seedFabricConfig(t, weftFixture.WeftPath)
+	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 	swapPushRecorder(t)
 

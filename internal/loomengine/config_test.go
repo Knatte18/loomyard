@@ -110,7 +110,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	if err == nil {
 		t.Fatal("LoadConfig() = _, nil; want non-nil error for uninitialized baseDir")
 	}
-	want := `not initialized here; run "lyx init"`
+	want := `not initialized here; run "lyx fabric reconcile"`
 	if err.Error() != want {
 		t.Errorf("LoadConfig() error = %q; want %q", err.Error(), want)
 	}

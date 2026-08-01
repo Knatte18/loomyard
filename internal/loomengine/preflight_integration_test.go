@@ -24,15 +24,18 @@ import (
 // the weft base (PairInSync/checkJunctionHealth now load fabric.yaml for the
 // wired junction name-set, so a fixture without one would see every junction
 // health check fail as "cannot load fabric.yaml" instead of exercising the
-// scenario under test — mirroring fabricengine's own newFabricFixture), moves
-// the weft primary onto fabric's suffixed branch naming (CopyPaired's raw
-// fixture leaves both sides on "main", the warp-era equality convention;
-// fabric's PairInSync requires the weft branch to be WeftBranchName(hostBranch)),
-// wires the host-weft _lyx junction (CopyPaired does not wire it — see
-// WireJunctions' host-pristine invariant), and seeds a fresh, coherent
-// status.json through the wired junction. Returns the fixture and the slug
-// WireJunctions was keyed on, since several scenarios (junction removal)
-// need the slug to rebuild the host link path.
+// scenario under test — mirroring fabricengine's own newFabricFixture), seeds
+// the repo-wide fabric config at <hub>/_board/_lyx/config/fabric.yaml
+// (checkJunctionHealth/PairInSync's wired-junction name-set read is migrated
+// there — see seedRepoWideFabricConfig), moves the weft primary onto fabric's
+// suffixed branch naming (CopyPaired's raw fixture leaves both sides on
+// "main", the warp-era equality convention; fabric's PairInSync requires the
+// weft branch to be WeftBranchName(hostBranch)), wires the host-weft _lyx
+// junction (CopyPaired does not wire it — see WireJunctions' host-pristine
+// invariant), and seeds a fresh, coherent status.json through the wired
+// junction. Returns the fixture and the slug WireJunctions was keyed on,
+// since several scenarios (junction removal) need the slug to rebuild the
+// host link path.
 func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	t.Helper()
 
@@ -42,6 +45,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	lyxtest.SeedConfig(t, f.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, f.Layout.Hub)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
@@ -51,6 +55,27 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	seedValidStatus(t, f.Layout)
 
 	return f, slug
+}
+
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
+// hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
+// base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
+// PairInSync) now read from. lyxtest.CopyPaired does not create a _board
+// dir, so this creates it (and its _lyx/config/) first; unlike
+// lyxtest.SeedConfig, _board is not a git repository, so the file is
+// written directly with no git add/commit step. Mirrors fabricengine's own
+// seedRepoWideFabricConfig (reconcile_stale_registration_test.go).
+func seedRepoWideFabricConfig(t testing.TB, hub string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(hub)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
 }
 
 // seedValidStatus writes a fresh, coherent status.json seed at

@@ -37,14 +37,14 @@ func (c Config) Dirs() []string {
 // return resolved bytes. Unmarshals the resolved bytes into a Config struct.
 //
 // If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx init\"".
+// "not initialized here; run \"lyx fabric reconcile\"".
 func LoadConfig(baseDir string) (Config, error) {
 	// Load and resolve the config file using the template
 	resolved, err := configengine.Load(baseDir, "fabric", []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic error with a fabric-specific, actionable message.
 		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx init\"")
+			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
 		}
 		return Config{}, err
 	}

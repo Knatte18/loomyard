@@ -96,15 +96,43 @@ func Getwd() (string, error) {
 //  3. Normalize the output via filepath.FromSlash + filepath.Clean → WorktreeRoot
 //  4. Set Cwd = filepath.Clean(cwd)
 //  5. Set Hub = filepath.Dir(WorktreeRoot)
-//  6. Set RelPath = filepath.Rel(WorktreeRoot, Cwd)
+//  6. Read the recorded .fabric-anchor marker (record wins) and set RelPath from it;
+//     validate cwd is at or below <WorktreeRoot>/<anchor>, returning ErrCwdOutsideAnchor
+//     when it is not. When the marker is absent, RelPath falls back to
+//     filepath.Rel(WorktreeRoot, Cwd), today's cwd-derived behavior.
 //  7. Call List(cwd) and set Prime to the Main==true entry's Path
 //
 // Resolve does NOT check for _lyx/ (that authority stays in internal/configengine).
 //
 // Returns the Layout on success, ErrNotAGitRepo (wrapped with exec-layer context) when
-// the git subprocess itself fails to spawn, or the bare ErrNotAGitRepo sentinel (with
-// no appended text) when git ran but reported a non-zero exit.
+// the git subprocess itself fails to spawn, the bare ErrNotAGitRepo sentinel (with
+// no appended text) when git ran but reported a non-zero exit, or ErrCwdOutsideAnchor
+// (wrapped with the offending paths) when a recorded anchor is present and cwd sits
+// outside its subtree.
 func Resolve(cwd string) (*Layout, error) {
+	return resolveCore(cwd, true)
+}
+
+// ResolveWorktree builds a Layout for worktreeRoot exactly like Resolve, including
+// reading the recorded .fabric-anchor marker for RelPath, but applies NO cwd
+// at-or-below gate. It exists for internal callers that already hold a worktree
+// root — not an acting cwd — and need that worktree's geometry: the gate is
+// meaningless (and would spuriously fire) when the input is definitionally a
+// worktree root sitting above a subpath anchor. This is the resolver
+// fabricengine's hostLayoutFor must use for its non-sibling fallback, matching the
+// discussion's gate-scope caveat: the cwd hard-error gate applies only to the
+// entry Resolve(cwd), never to internal sibling-layout construction above a
+// subpath anchor.
+func ResolveWorktree(worktreeRoot string) (*Layout, error) {
+	return resolveCore(worktreeRoot, false)
+}
+
+// resolveCore is the shared body behind Resolve and ResolveWorktree: it runs
+// git rev-parse --show-toplevel, reads the recorded anchor for RelPath, and
+// optionally applies the cwd at-or-below gate. applyGate is true only for
+// Resolve's entry-point cwd; ResolveWorktree passes false because its input is
+// a worktree root, not an acting cwd, and must never be gated against itself.
+func resolveCore(cwd string, applyGate bool) (*Layout, error) {
 	// Step 1-2: Run git rev-parse --show-toplevel. stderr is discarded: it is git's raw,
 	// unwrapped text and must never leak into our JSON error envelope.
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
@@ -121,10 +149,26 @@ func Resolve(cwd string) (*Layout, error) {
 	workTreeRoot := filepath.FromSlash(strings.TrimSpace(stdout))
 	workTreeRoot = filepath.Clean(workTreeRoot)
 
-	// Step 4-6: Set layout fields
+	// Step 4-5: Set layout fields
 	cleanCwd := filepath.Clean(cwd)
 	hub := filepath.Dir(workTreeRoot)
 	relPath, _ := filepath.Rel(workTreeRoot, cleanCwd)
+
+	// Step 6: The recorded anchor is truth when present; cwd is demoted to a
+	// validated at-or-below gate (entry Resolve only) with a cwd-derived
+	// fallback when the marker is absent (mid-clone, lyxtest synthetic hubs,
+	// non-fabric repos).
+	if anchor, found := readRecordedAnchor(hub); found {
+		relPath = anchor
+
+		if applyGate {
+			anchorAbs := filepath.Join(workTreeRoot, anchor)
+			rel, err := filepath.Rel(anchorAbs, cleanCwd)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return nil, fmt.Errorf("%w: cwd %s is not at or below %s", ErrCwdOutsideAnchor, cleanCwd, anchorAbs)
+			}
+		}
+	}
 
 	// Step 7: Get Prime from List
 	entries, err := List(cwd)
@@ -173,23 +217,35 @@ func deriveRepo(prime, worktreeRoot string) string {
 //
 // Precondition: worktreeRoot must be an actual worktree root as returned by
 // hubgeometry.List (not an arbitrary subpath) and must be a direct child of l.Hub.
-// RelPath is hardcoded to "." here, which is only correct for a root; callers must
-// guard the non-sibling case (filepath.Dir(worktreeRoot) != l.Hub) themselves, since
-// SiblingLayout performs no such check and will silently reuse l.Hub even when it is
-// wrong for a worktree outside the hub.
+// RelPath follows the recorded .fabric-anchor marker read from l.Hub (defaulting to
+// "." when the marker is absent); callers must guard the non-sibling case
+// (filepath.Dir(worktreeRoot) != l.Hub) themselves, since SiblingLayout performs no
+// such check and will silently reuse l.Hub even when it is wrong for a worktree
+// outside the hub. No cwd-legitimacy check is applied here: SiblingLayout derives
+// another worktree's geometry from its root, which sits above any subpath anchor, so
+// it must never hard-error the way Resolve's entry-point cwd gate does.
 //
 // For any worktreeRoot where filepath.Dir(worktreeRoot) == l.Hub, this is byte-for-byte
-// equivalent to Resolve(worktreeRoot): both set Cwd and WorktreeRoot to
-// filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to ".", and Prime and Repo to
-// the receiver's already-resolved Prime and Repo (every hub-sibling worktree shares the
-// same Prime, so Repo — derived from Prime — is identical too).
+// equivalent to ResolveWorktree(worktreeRoot) (the gate-free resolver): both set Cwd and
+// WorktreeRoot to filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to the same
+// recorded-anchor-or-"." value, and Prime and Repo to the receiver's already-resolved
+// Prime and Repo (every hub-sibling worktree shares the same Prime, so Repo — derived
+// from Prime — is identical too).
 func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 	c := filepath.Clean(worktreeRoot)
+
+	// The recorded anchor is truth when present, matching resolveCore's "record
+	// wins" rule; SiblingLayout applies no cwd gate, only the RelPath lookup.
+	relPath := "."
+	if anchor, found := readRecordedAnchor(l.Hub); found {
+		relPath = anchor
+	}
+
 	return &Layout{
 		Cwd:          c,
 		WorktreeRoot: c,
 		Hub:          l.Hub,
-		RelPath:      ".",
+		RelPath:      relPath,
 		Prime:        l.Prime,
 		Repo:         l.Repo,
 	}
