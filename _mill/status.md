@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-pull
+phase: approved-cli-pull
 slug: fabric-rebase-reconcile
 branch: fabric-rebase-reconcile
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-08-01T17:08:32Z'
 implementing  '2026-08-01T17:09:05Z'
 approved-gitrepo-primitives  '2026-08-01T17:17:28Z'
 approved-fabric-pull  '2026-08-01T17:26:34Z'
+approved-cli-pull  '2026-08-01T17:29:45Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     start_sha: b7e7d50e7712b7f509616f94ad6075585e622742
     commit_sha: 154ca80b59ff0f43b5438bd5e0a640026f4e610f
   - name: cli-pull
-    state: running
+    state: approved
     implementer_session: 7fc21325-684b-4f68-ad47-376ecda198c2
     start_sha: 8f145611a385297e5b82cbf9a6a42b4800e84e4e
+    commit_sha: 4c3a4a177f962cfc9e51873aae0fa96d1f8934b6
   - name: docs-sandbox
     state: pending
 ```
