@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: clone-does-everything + subpath-in-weft + init dissolution'
 slug: fabric-clone-subpath
-approved: false
+approved: true
 started: 2026-08-01T07:21:03Z
 parent: main
 root: ""
