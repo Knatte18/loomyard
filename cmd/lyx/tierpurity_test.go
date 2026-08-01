@@ -4,11 +4,14 @@
 // no lyxtest.Copy* fixture-tree copy. This is the repo-wide grep-guard that keeps the
 // offline Tier 1 loop's premise from rotting silently again, machine-enforcing what was
 // previously review discipline only. See CONSTRAINTS.md's Test Tier Purity Invariant.
+// It also flags an untagged file containing a long literal time.Sleep(...) (see
+// cmd/lyx/tiersleep_test.go).
 
 package main
 
 import (
 	"fmt"
+	"go/token"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -124,18 +127,27 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 			return nil
 		}
 
-		token, bad := firstBannedToken(data)
-		if !bad {
-			return nil
-		}
-		if spawnerAllowed(relPath) {
-			return nil
+		bannedTok, bad := firstBannedToken(data)
+		if bad && !pathAllowlisted(relPath, allowedSpawners) {
+			failures = append(failures, fmt.Sprintf(
+				"%s: contains banned token %q in an untagged test file — move it behind `//go:build integration` (or `smoke`), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
+				relPath, bannedTok,
+			))
 		}
 
-		failures = append(failures, fmt.Sprintf(
-			"%s: contains banned token %q in an untagged test file — move it behind `//go:build integration` (or `smoke`), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
-			relPath, token,
-		))
+		// The banned-token check above may already have flagged this file, but the
+		// Sleep guard is an independent check and must still run for every file:
+		// isTierTagged(data) is already known false at this point (the walk
+		// returned above otherwise), so there is no need to re-test it here.
+		if !pathAllowlisted(relPath, allowedLongSleepers) {
+			if evidence, found := findLongLiteralSleep(token.NewFileSet(), path, data); found {
+				failures = append(failures, fmt.Sprintf(
+					"%s: contains a literal time.Sleep(...) of >= 1s in an untagged test file (%s) — move it behind a build tag, shrink the duration, or add an allowedLongSleepers entry in cmd/lyx/tiersleep_test.go with a reason",
+					relPath, evidence,
+				))
+			}
+		}
+
 		return nil
 	})
 	if walkErr != nil {
@@ -216,11 +228,12 @@ func firstBannedToken(data []byte) (string, bool) {
 	return "", false
 }
 
-// spawnerAllowed reports whether relPath (module-relative, slash-separated) is covered
-// by an allowedSpawners entry: an exact file match, or a match under a directory-prefix
-// entry.
-func spawnerAllowed(relPath string) bool {
-	for prefix := range allowedSpawners {
+// pathAllowlisted reports whether relPath (module-relative, slash-separated) is covered
+// by an entry of allowlist: an exact file match, or a match under a directory-prefix
+// entry. Shared by both the banned-token allowlist (allowedSpawners) and the
+// literal-Sleep allowlist (allowedLongSleepers).
+func pathAllowlisted(relPath string, allowlist map[string]string) bool {
+	for prefix := range allowlist {
 		if relPath == prefix || strings.HasPrefix(relPath, prefix+"/") {
 			return true
 		}
