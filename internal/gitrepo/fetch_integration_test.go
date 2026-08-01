@@ -8,8 +8,11 @@
 package gitrepo_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD asserts
@@ -72,17 +75,37 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 }
 
 // TestFetch_NoRemoteConfigured_ErrorNamesRepoPath mirrors
-// TestPull_NoRemoteConfigured_ErrorNamesRepoPath: a repo with no remote at
-// all must still fail loudly, with an error naming the repo path and never
-// leaking git's raw "fatal:"-prefixed stderr.
-func TestFetch_NoRemoteConfigured_ErrorNamesRepoPath(t *testing.T) {
+// TestPull_NoRemoteConfigured_ErrorNamesRepoPath. Measured directly against
+// git 2.53 (see this task's implementation notes): bare `git fetch` with
+// zero remotes configured enumerates the repo's configured remotes and,
+// finding none, exits 0 having done nothing — it never needs a merge target
+// the way `git pull --ff-only` does, so it cannot fail this way at all.
+// Fetch()'s error path is instead exercised below against a remote whose
+// URL cannot be reached, the closest real analogue to Pull's no-remote
+// error-path test.
+func TestFetch_NoRemoteConfigured_Succeeds(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "content")
 	commitAll(t, dir, "init")
 
+	if err := repo.Fetch(); err != nil {
+		t.Fatalf("Fetch() with no remote configured error = %v; want nil (bare `git fetch` is a documented no-op with zero remotes)", err)
+	}
+}
+
+// TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak asserts
+// Fetch's error-path style — mirroring Pull's no-stderr-leak error-path
+// test — against a remote git genuinely cannot reach: the error must name
+// the repo path and must never leak git's raw "fatal:"-prefixed stderr.
+func TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak(t *testing.T) {
+	dir, repo := newRepo(t)
+	writeFile(t, dir, "a.txt", "content")
+	commitAll(t, dir, "init")
+	lyxtest.MustRun(t, dir, "git", "remote", "add", "origin", filepath.Join(dir, "does-not-exist.git"))
+
 	err := repo.Fetch()
 	if err == nil {
-		t.Fatal("Fetch() with no remote configured error = nil; want an error")
+		t.Fatal("Fetch() against an unreachable remote error = nil; want an error")
 	}
 	if !strings.Contains(err.Error(), dir) {
 		t.Errorf("Fetch() error = %q; want it to name the repo path %q", err, dir)
