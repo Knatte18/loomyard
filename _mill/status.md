@@ -44,7 +44,9 @@ batches:
     start_sha: c3136abedf558d5e18d659dc4103150362ffd437
     commit_sha: 40a7cf585939913545fcb2d1dc96dc835a127798
   - name: builder-resethard-migrate
-    state: pending
+    state: running
+    implementer_session: b9bf886e-4c0d-4acf-a477-2c56b569493d
+    start_sha: 24ed717427fbb25171e54f1ed645adfa4f5c5b5f
   - name: regression-guard-and-constraints
     state: pending
 ```
