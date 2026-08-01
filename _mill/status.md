@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: _mill/plan
@@ -22,4 +22,6 @@ plan-review-r1  '2026-08-01T07:55:26Z'
 plan-fix-r1  '2026-08-01T07:55:26Z'
 plan-review-r2  '2026-08-01T08:06:48Z'
 plan-fix-r2  '2026-08-01T08:06:48Z'
+plan-review-r3  '2026-08-01T08:18:08Z'
+plan-fix-r3  '2026-08-01T08:18:08Z'
 ```
