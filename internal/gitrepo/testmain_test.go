@@ -4,7 +4,13 @@
 // environment: lyxtest.HermeticGitEnv() runs once before any test, so
 // gitrepo's git-spawning fixtures never inherit the operator's global
 // gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment Invariant).
-// This mirrors internal/gitexec/testmain_test.go exactly.
+// Only the TestMain function body below is identical to
+// internal/gitexec/testmain_test.go's; that file carries no //go:build tag at
+// all (untagged, runs in Tier 1) while this file is //go:build
+// integration-tagged (Tier 2-only), because gitrepo's one untagged test file
+// (keyvalidation_test.go) does no git spawning and so needs no
+// HermeticGitEnv() call, unlike every one of gitrepo's other (tagged) test
+// files.
 
 package gitrepo_test
 
