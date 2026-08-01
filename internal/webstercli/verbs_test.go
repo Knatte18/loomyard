@@ -399,15 +399,18 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 
 // TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two
 // envelopes: {"report": true} the moment the batch's report file exists,
-// and {"report": false} once the bounded wait (PollWaitS = 1s in this
-// fixture) elapses with no report — with no state.json ever read or
-// written, since the verb is deliberately stateless.
+// and {"report": false} once the bounded wait elapses with no report --
+// NoReport_WindowElapses passes --wait 1ns explicitly to keep the window
+// near-instant, versus the production default
+// (websterengine.DefaultAwaitWaitS, ~30s) used whenever --wait is omitted --
+// with no state.json ever read or written, since the verb is deliberately
+// stateless.
 func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	fx := newVerbsFixture(t)
 
 	t.Run("NoReport_WindowElapses", func(t *testing.T) {
 		var out strings.Builder
-		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1"})
+		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1", "--wait", "1ns"})
 		if exitCode != 0 {
 			t.Fatalf("await-batch 1 = %d; want 0, output: %s", exitCode, out.String())
 		}
