@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hubgeometry-worktree-logs-dir
+phase: approved-logger-trace-identity
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-fix-r6  '2026-07-31T20:11:56Z'
 planned  '2026-07-31T20:12:42Z'
 implementing  '2026-07-31T20:17:53Z'
 approved-hubgeometry-worktree-logs-dir  '2026-08-01T07:16:07Z'
+approved-logger-trace-identity  '2026-08-01T07:32:06Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     start_sha: 1f688d7c9fe9fcad1d0057fcc691dc3d972c944e
     commit_sha: ac58e4217cdb62f1d6d5ec1ddd69ee5e6383bdc0
   - name: logger-trace-identity
-    state: running
+    state: approved
     implementer_session: 7b2a7d44-8b4a-49f7-8fc7-47294b6897f9
     start_sha: 788a34413cbcc75e5ec4bf501ee29c24afe46ad2
+    commit_sha: eecb1deb42f3da172ce4c5062423a03409a5d243
   - name: logger-retention-sweep
     state: pending
   - name: reedengine-trace-env-filter
