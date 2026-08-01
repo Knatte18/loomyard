@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-regression-guard-and-constraints
+phase: holistic-reviewing
 slug: webster-bisect-fabric-migrate
 branch: webster-bisect-fabric-migrate
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-fabric-warp-methods  '2026-08-01T19:22:38Z'
 approved-webster-bisect-migrate  '2026-08-01T19:25:56Z'
 approved-builder-resethard-migrate  '2026-08-01T19:29:34Z'
 approved-regression-guard-and-constraints  '2026-08-01T19:31:58Z'
+holistic-reviewing  '2026-08-01T19:32:18Z'
 ```
 
 ## Batches
