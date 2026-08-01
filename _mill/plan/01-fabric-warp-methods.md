@@ -22,9 +22,10 @@ Batch-local decision: the four methods live in a new file `warpforward.go` rathe
 - **Context:**
   - `internal/gitrepo/gitrepo.go`
   - `internal/gitrepo/reset.go`
-  - `manifest/designs/fabric-unified-view.md`
+  - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/fabricengine/fabric.go`
+  - `manifest/designs/fabric-unified-view.md`
 - **Creates:**
   - `internal/fabricengine/warpforward.go`
 - **Deletes:** none
@@ -34,6 +35,7 @@ Batch-local decision: the four methods live in a new file `warpforward.go` rathe
   - Each method carries a doc comment stating it operates on warp exclusively (the host repo), that it is a thin delegation to the underlying `gitrepo.Repo` verb, and — for `CurrentBranch` — that it inherits `gitrepo.Repo.CurrentBranch`'s documented rejection of a detached HEAD; for `CheckoutDetached`/`ResetHard`, that the underlying method validates `sha` (`ErrInvalidSHA`) before any git spawn.
   - In `internal/fabricengine/fabric.go`, update the package doc comment (the file-leading comment block, currently ending with "only the genuinely cross-repo operations (Commit, SyncWeft, RevertWithWeft, Pull) get their own method on Fabric") AND the `Fabric` struct doc comment (currently "Warp and Weft are exported so uncoordinated, repo-specific operations go straight through gitrepo with no forwarding-method boilerplate on Fabric itself"). The revised wording must state the actual rule going forward: a single-sided, uncoordinated op gets a named `Fabric` method (rather than direct `f.Warp`/`f.Weft` field access) precisely when it must be callable from OUTSIDE the internal/fabricengine package — preserving the one-repo illusion at the public API boundary — while `f.Warp`/`f.Weft` field access remains correct for uncoordinated ops used only INSIDE the package. Name `CheckoutDetached`/`RestoreBranch`/`CurrentBranch`/`ResetHard` as the warp-only examples of this carve-out. Do not delete the existing description of `Commit`/`SyncWeft`/`RevertWithWeft`/`Pull` as the cross-repo methods; extend the doc, don't replace it wholesale.
   - Do not change `New`, `requireDir`, `SyncOptions`, `EnvSyncOptions`, `ScopedPathspec`, or the `Fabric` struct fields.
+  - Add a one-line addendum to `manifest/designs/fabric-unified-view.md`'s `## Scope boundary — still not a general-purpose git wrapper` section (line ~94-96) so a future reader does not read it as contradicting the four new forwarding methods. The section currently frames "routing every git verb through Fabric ... reprises the already-rejected 'forwarding method per operation' pattern ... and is not the goal", enumerating the wrapped set as commit/push/pull/sync + topology + unified diff/status. The addendum states that a narrow, explicitly-CONSTRAINTS-directed exception now exists: single-sided warp-only *mutating* verbs (`CheckoutDetached`/`RestoreBranch`/`CurrentBranch`/`ResetHard`) that an out-of-package caller needs get a named `Fabric` method precisely because CONSTRAINTS.md's Fabric Git Invariant requires all mutating warp git to dispatch through the internal/fabricengine package — not a widening toward a general-purpose wrapper. Forward-point to CONSTRAINTS.md's Fabric Git Invariant as the authoritative directive. Keep it to one or two sentences; do not rewrite the section. Write it as one line per paragraph (no hard-wrap), matching the doc's style.
 - **Commit:** `feat(fabricengine): add warp-only CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard methods`
 
 ### Card 2: Tier-2 test covering the four Fabric warp methods

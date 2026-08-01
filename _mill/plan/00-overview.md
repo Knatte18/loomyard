@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: audit and migrate all remaining direct git mutations onto Fabric'
 slug: webster-bisect-fabric-migrate
-approved: false
+approved: true
 started: 20260801-184107
 parent: main
 root: ""
@@ -82,3 +82,4 @@ batches:
 - `internal/websterengine/integration_test.go`
 - `internal/websterengine/runlevel.go`
 - `internal/websterengine/runlevel_test.go`
+- `manifest/designs/fabric-unified-view.md`
