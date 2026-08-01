@@ -17,6 +17,8 @@ Depends on batch 1 (the `hubgeometry.FabricAnchorName` constant clone writes, an
 
 Batch-local decision: adopt-vs-create is detected by whether `.fabric-anchor` already exists in the freshly-materialized board worktree (adopt: read it; create: validate `--subpath` and write it) — mirroring `suffixWeftPrimaryBranch`'s adopt-or-create shape.
 
+Batch-local decision (accepted limitation): because the `--subpath` CLI flag defaults to `"."` and the adopt-path mismatch check treats `subpath == "" || subpath == "."` as "unset/default" (never erroring), a re-clone with an explicit `--subpath .` against a repo actually anchored at a subpath will silently adopt the recorded subpath rather than error. This is accepted: the mismatch guard's job is to catch a wrong NON-default value (a typo'd real subpath), and `anchor-value-always-explicit` means the record is authoritative on adopt. Precise "explicit-root-vs-unset" detection (a distinct sentinel default) is deliberately not added — it is extra machinery for a benign edge, and root-vs-subpath re-clones read the record either way.
+
 ## Cards
 
 ### Card 14: `CloneHub` grows a subpath parameter and anchor return
@@ -74,20 +76,24 @@ Batch-local decision: adopt-vs-create is detected by whether `.fabric-anchor` al
   Run `configsync.ReconcileAll` exactly once for the per-worktree modules (fabric is already skipped by batch 3). Keep config ownership in `configsync` — clone only invokes it. Order matters: weft worktree exists → wire → ReconcileAll → gitignore.
 - **Commit:** `feat(fabricengine): clone wires junctions, _lyx, .gitignore, and reconciles config`
 
-### Card 17: CLI clone handler gains `--subpath` and echoes the anchor
+### Card 17: fabriccli reads repo-wide fabric config + clone `--subpath` echoes the anchor
 
 - **Context:**
-  - `internal/fabriccli/fabric.go`
   - `internal/output/output.go`
   - `internal/hubgeometry/hubgeometry.go`
+  - `internal/fabricengine/topology.go`
+  - `internal/fabricengine/config.go`
 - **Edits:**
   - `internal/fabriccli/clone.go`
   - `internal/fabriccli/fabric.go`
+  - `internal/fabriccli/weft_verbs.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `internal/fabriccli/fabric.go`, add a `--subpath` string flag (default `"."`) to the `cloneCmd` alongside the existing `--reset` flag (`cloneCmd.Flags().String("subpath", ".", "...")` after the `Bool("reset", ...)` call, ~fabric.go:89), and read it inside the `cloneCmd` RunE closure (`subpath, _ := cloneCmd.Flags().GetString("subpath")`), passing it to `runCloneWithReset`. In `internal/fabriccli/clone.go`, change `runCloneWithReset(out io.Writer, args []string, reset bool) int` to also take `subpath string`; forward it to `fabricengine.CloneHub(cwd, hostURL, weftURL, subpath)` (now returning `(hubPath, anchor, err)`); on success emit `output.Ok(out, map[string]any{"hub": hubPath, "anchor": anchor})`. Update the clone `Use`/`Long` help prose (fabric.go:64,66-88) to document `--subpath <rel>` (default `.`) and that clone now wires everything (no separate `lyx init`); leave the fabric.go:85 "run lyx init" line for batch 6 (it is retargeted there) OR update it here if it falls naturally in the same edit — prefer leaving cross-cutting message retargets to batch 6 to keep this batch's diff focused. Every command still carries a non-empty `Short` (CLI/Cobra Invariant).
-- **Commit:** `feat(fabriccli): clone --subpath flag echoes resolved anchor`
+- **Requirements:** Two coupled changes to the fabric CLI layer.
+  **(a) Migrate every CLI config-read to the repo-wide `BoardDir`.** Batch 3 stops `configsync.ReconcileAll` from materializing a per-worktree `fabric.yaml`, and batch 4's clone writes `pathspec`/`branch_prefix` only to `<BoardDir>/_lyx/config/fabric.yaml` — so every CLI site that builds a `Topology` from `fabricengine.LoadConfig(cwd)` would break (`configengine.Load`'s `"config file … not found"`) on a freshly-cloned/wired worktree, including `reconcile` itself (the exact remedy batch 6's retargeted messages point users to). Update all eight topology-verb sites in `internal/fabriccli/fabric.go` — `runAdd`/`runList`/`runCheckout`/`runPairs`/`runReconcile`/`runPruneWithFlag`/`runCleanupWithFlags`/`runRemoveWithFlag` (fabric.go:280,317,378,411,443,472,501,531) — each of which currently does `cfg, err := fabricengine.LoadConfig(cwd)` then `top := fabricengine.NewTopology(cfg)`: resolve the layout first (`l, err := hubgeometry.Resolve(cwd)`) and load from the repo-wide base — `cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))`. Apply the same migration to the ninth site in `internal/fabriccli/weft_verbs.go:124` (`loadedCfg, err := fabricengine.LoadConfig(weftBaseDir)`), which reads `pathspec` to scope the weft commit: switch its base to `hubgeometry.BoardDir(l.Hub)` (a layout `l` is already resolved in that PersistentPreRunE/handler — reuse it). Keep the `pathspec`-scoping semantics unchanged; only the config's home moves.
+  **(b) clone `--subpath`.** In `fabric.go`, add a `--subpath` string flag (default `"."`) to `cloneCmd` alongside the existing `--reset` flag (`cloneCmd.Flags().String("subpath", ".", "...")` after the `Bool("reset", ...)` call, ~fabric.go:89), read it in the `cloneCmd` RunE closure (`subpath, _ := cloneCmd.Flags().GetString("subpath")`), and pass it to `runCloneWithReset`. In `clone.go`, change `runCloneWithReset(out io.Writer, args []string, reset bool) int` to also take `subpath string`; forward to `fabricengine.CloneHub(cwd, hostURL, weftURL, subpath)` (now `(hubPath, anchor, err)`); on success emit `output.Ok(out, map[string]any{"hub": hubPath, "anchor": anchor})`. Update the clone `Use`/`Long` help prose (fabric.go:64,66-88) to document `--subpath <rel>` (default `.`) and that clone wires everything; leave the fabric.go:85 "run lyx init" line for batch 6's retarget. Every command keeps a non-empty `Short` (CLI/Cobra Invariant).
+- **Commit:** `feat(fabriccli): read repo-wide fabric config and add clone --subpath`
 
 ### Card 18: Clone create/adopt/mismatch tests
 
@@ -123,8 +129,8 @@ Batch-local decision: adopt-vs-create is detected by whether `.fabric-anchor` al
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add a subtest in `internal/fabriccli/cli_test.go` (`//go:build integration`) driving `RunCLI` with `fabric clone --subpath backend <host-url> <weft-url>` against a local two-repo fixture (host with a `backend/` dir, empty-but-existing weft remote), asserting the JSON envelope contains `"ok":true`, a `"hub"` path, and `"anchor":"backend"`. Add a second subtest asserting the default (`fabric clone <host> <weft>` with no `--subpath`, host has a usable root) echoes `"anchor":"."`. Reuse the package's existing local-fixture helpers and `HermeticGitEnv` `TestMain`; if the package lacks a two-repo clone fixture helper, build a minimal one inline (init a bare host repo with a `backend/` committed and a bare weft repo). Keep the existing `cli_test.go` verb-surface subtests green — note the no-arg verb listing will change verb count only in batch 6 (unwire), not here.
-- **Commit:** `test(fabriccli): cover clone --subpath anchor echo in JSON envelope`
+- **Requirements:** Add a subtest in `internal/fabriccli/cli_test.go` (`//go:build integration`) driving `RunCLI` with `fabric clone --subpath backend <host-url> <weft-url>` against a local two-repo fixture (host with a `backend/` dir, empty-but-existing weft remote), asserting the JSON envelope contains `"ok":true`, a `"hub"` path, and `"anchor":"backend"`. Add a second subtest asserting the default (`fabric clone <host> <weft>` with no `--subpath`, host has a usable root) echoes `"anchor":"."`. **Also update the `setupCLIRepo` fixture (cli_test.go:30-40)** so it writes the fabric config to the repo-wide `BoardDir` base — `os.WriteFile(hubgeometry.ConfigFile(hubgeometry.BoardDir(f.Hub), "fabric"), …)` (materializing `<hub>/_board/_lyx/config/fabric.yaml`) instead of `hubgeometry.ConfigFile(f.Hub, "fabric")` — so the topology-verb subtests (which exercise the card-17-migrated `LoadConfig(BoardDir(l.Hub))` sites) resolve config from where the CLI now reads it; without this fix the migrated verbs would fail `not found` and this masked-regression (called out in the round-1 review) would surface. Reuse the package's existing local-fixture helpers and `HermeticGitEnv` `TestMain`; if the package lacks a two-repo clone fixture helper, build a minimal one inline (init a bare host repo with a `backend/` committed and a bare weft repo). Keep the existing verb-surface subtests green — the no-arg verb listing changes verb count only in batch 6 (unwire), not here.
+- **Commit:** `test(fabriccli): cover clone --subpath and repo-wide config CLI reads`
 
 ## Batch Tests
 

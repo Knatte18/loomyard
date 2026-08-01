@@ -45,7 +45,7 @@ Batch-local decision: fabric is skipped in the general `ReconcileAll` loop by na
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `configsync.go`, add `func ReconcileFabricAt(boardDir string, apply bool) (Result, error)` that materializes the single repo-wide `fabric.yaml` at `hubgeometry.ConfigFile(boardDir, "fabric")`:
-  - resolve the fabric template via `configreg.Template("fabric")` (or `fabricengine.ConfigTemplate` if already imported) — reuse whatever `ReconcileAll` uses to avoid a new import cycle;
+  - resolve the fabric template via `configreg.Template("fabric")` ONLY — do NOT import `fabricengine.ConfigTemplate` directly. `configsync` must not import `fabricengine`: batch 4 (card 16) establishes `fabricengine -> configsync` (clone calls `configsync.ReconcileAll`/`ReconcileFabricAt`), so a `configsync -> fabricengine` edge would close an import cycle. `configreg.Template("fabric")` is the already-imported, cycle-safe accessor (`configreg` is the neutral registry `ReconcileAll` already uses);
   - read the existing file at `hubgeometry.ConfigFile(boardDir, "fabric")` (`fileAbsent` on `os.IsNotExist`);
   - when absent, seed migration input via `existing, migratedFrom = legacyFabricConfig(boardDir)` (the same one-shot warp/weft→fabric migration, now keyed on `boardDir`);
   - `merged := yamlengine.Reconcile([]byte(template), existing)` and, when `apply && (fileAbsent || hasChanges)`, `os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755)` then `fsx.AtomicWriteBytes(cfgPath, merged)`, and prune migrated legacy files with `os.Remove(hubgeometry.ConfigFile(boardDir, legacy))` for each `legacy` in `migratedFrom` (mirroring configsync.go:199-204);
