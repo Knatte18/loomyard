@@ -1,13 +1,20 @@
 // logger.go provides a thin log/slog wrapper for lyx: a package-level level
-// threshold, an injectable io.Writer sink (defaulting to os.Stderr), and
-// Debug/Info/Warn helpers. Callers never see slog directly; they call
-// SetVerbosity to raise the threshold and Debug/Info/Warn to emit.
+// threshold, an injectable io.Writer stderr sink (defaulting to os.Stderr),
+// and Debug/Info/Warn helpers that fan every call out to that stderr sink
+// and, independently, to the durable trace-file sink (sink.go) via the
+// composite dualHandler defined below. Callers never see slog directly;
+// they call SetVerbosity to raise the stderr threshold and Debug/Info/Warn
+// to emit.
 
 // Package logger is a minimal log/slog wrapper shared across lyx's internal
 // packages. It keeps stdout free of log noise (reed and other commands write
 // their JSON envelope to stdout via internal/output) by routing all log
-// output to a dedicated sink, which defaults to os.Stderr and is silent
-// unless the caller opts in via SetVerbosity.
+// output to a dedicated stderr sink, which defaults to os.Stderr and is
+// silent unless the caller opts in via SetVerbosity. Every Debug/Info/Warn
+// call also fans out to a second, durable trace-file sink (sink.go),
+// independently gated at Info and above regardless of the stderr
+// threshold -- see dualHandler's doc comment for the composite's exact
+// semantics.
 //
 // # Activation outside the lyx CLI
 //
@@ -39,6 +46,7 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -53,17 +61,196 @@ import (
 // reach that flag parsing (see the package doc).
 var levelVar slog.LevelVar
 
-// out is the sink log lines are written to. It defaults to os.Stderr,
-// overridable at init via LYX_LOG_FILE, and otherwise only replaced via
-// SetOutput, which exists as a test seam so tests can capture output into a
-// buffer instead of touching the real stderr.
+// out is the stderr-half sink log lines are written to. It defaults to
+// os.Stderr, overridable at init via LYX_LOG_FILE, and otherwise only
+// replaced via SetOutput, which exists as a test seam so tests can capture
+// stderr-half output into a buffer instead of touching the real stderr. It
+// never affects the durable sink (sink.go), which opens its own file
+// independently of this var.
 var out io.Writer = os.Stderr
 
-// log is the slog.Logger built over out and levelVar. It is rebuilt whenever
-// SetOutput changes the sink, since slog.NewTextHandler captures its writer
-// by value at construction time; the level itself lives in levelVar and
-// survives the rebuild.
-var log = newLogger(out)
+// currentStderr is the composite handler's stderr-half inner handler.
+// SetOutput rebuilds it in place from a new out (Card 19/20); dualHandler
+// reads it fresh via stderrHandlerSnapshot on every Enabled/Handle/WithAttrs
+// call rather than caching it, so the rebind is visible without ever
+// rebuilding the package-level log var itself. Both the write here (in
+// SetOutput) and the read (in stderrHandlerSnapshot) go under sinkMu
+// (sink.go), the same mutex guarding the durable sink's state, per
+// discussion.md's concurrency-contract decision.
+var currentStderr slog.Handler = slog.NewTextHandler(out, &slog.HandlerOptions{Level: &levelVar})
+
+// stderrHandlerSnapshot returns the composite handler's current stderr-half
+// inner handler under a narrow, self-contained critical section. Callers
+// must not hold sinkMu across the Enabled/Handle call that follows: the
+// durable handler's own Handle path (via writeDurable) independently
+// acquires sinkMu, and sync.Mutex is not reentrant, so holding the lock
+// across both inner handlers' calls would self-deadlock the moment a record
+// reaches both.
+func stderrHandlerSnapshot() slog.Handler {
+	sinkMu.Lock()
+	h := currentStderr
+	sinkMu.Unlock()
+	return h
+}
+
+// log is the slog.Logger built over the composite dualHandler (see
+// dual_handler in this file), which fans every record out to the stderr
+// half (gated by levelVar, exactly as before) and the durable-sink half
+// (batch 4's ensureDurableSink/writeDurable, gated at Info+ unconditionally
+// of levelVar). log itself is never reassigned by SetOutput; only
+// currentStderr, which dualHandler reads dynamically, changes.
+var log = slog.New(newDualHandler())
+
+// dualHandler is the composite slog.Handler discussion.md's
+// dual-handler-fan-out decision requires: Enabled is the OR of the stderr
+// and durable halves' own Enabled, so an Info record is accepted by the
+// composite even when the stderr half alone would reject it at the default
+// Warn threshold (this is what lets an Info record reach the durable sink
+// regardless of -v/-vv). Handle independently re-checks each half's own
+// Enabled before delegating to it -- it never forwards to one half just
+// because the composite's own Enabled, or the other half's Enabled, already
+// returned true. Getting that independent re-check wrong would leak an Info
+// record to stderr at the default Warn threshold, even though stderr's own
+// Enabled(Info) is false there.
+type dualHandler struct {
+	// transform accumulates the WithAttrs/WithGroup chain applied to a
+	// logger derived via slog.Logger.With/WithGroup, applied in order to a
+	// freshly read stderr snapshot at Enabled/Handle time rather than baked
+	// into a stored handler value -- this is what lets a rebind via
+	// SetOutput remain visible even to a dualHandler value produced by an
+	// earlier .With() call, since Card 19 keeps the package-level log var,
+	// and therefore any handler value derived from it earlier in the same
+	// call chain, unchanged across the rebind.
+	transform func(slog.Handler) slog.Handler
+	durable   durableHandler
+}
+
+// newDualHandler builds the root dualHandler with no accumulated
+// WithAttrs/WithGroup transform.
+func newDualHandler() dualHandler {
+	return dualHandler{transform: func(h slog.Handler) slog.Handler { return h }, durable: newDurableHandler()}
+}
+
+// stderr resolves this dualHandler's stderr-half handler by reading the
+// current package-level inner handler and applying this handler's
+// accumulated WithAttrs/WithGroup transform on top of it.
+func (d dualHandler) stderr() slog.Handler {
+	return d.transform(stderrHandlerSnapshot())
+}
+
+// Enabled implements slog.Handler as the OR of the stderr and durable
+// halves' own Enabled -- see the dualHandler doc comment for why this must
+// be OR, not stderr's gate alone.
+func (d dualHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return d.stderr().Enabled(ctx, level) || d.durable.Enabled(ctx, level)
+}
+
+// Handle implements slog.Handler by independently re-checking each half's
+// own Enabled and delegating only to the halves that pass -- see the
+// dualHandler doc comment for why this independent re-check, rather than a
+// single shared gate, is load-bearing. record.Clone() is used for all but
+// the last delegate because slog.Record documents that a Record passed to
+// more than one Handler must be cloned for each use beyond the first, since
+// its internal small-attrs storage may otherwise be shared.
+func (d dualHandler) Handle(ctx context.Context, record slog.Record) error {
+	stderr := d.stderr()
+	stderrEnabled := stderr.Enabled(ctx, record.Level)
+	durableEnabled := d.durable.Enabled(ctx, record.Level)
+
+	var firstErr error
+	if stderrEnabled {
+		if err := stderr.Handle(ctx, record.Clone()); err != nil {
+			firstErr = err
+		}
+	}
+	if durableEnabled {
+		if err := d.durable.Handle(ctx, record.Clone()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// WithAttrs implements slog.Handler by extending both halves' accumulated
+// transform with the same attrs, so a logger built via slog.Logger.With
+// keeps fanning out to both halves rather than collapsing to one.
+func (d dualHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	prevTransform := d.transform
+	return dualHandler{
+		transform: func(h slog.Handler) slog.Handler { return prevTransform(h).WithAttrs(attrs) },
+		durable:   d.durable.withAttrs(attrs),
+	}
+}
+
+// WithGroup implements slog.Handler by extending both halves' accumulated
+// transform with the same group, mirroring WithAttrs.
+func (d dualHandler) WithGroup(name string) slog.Handler {
+	prevTransform := d.transform
+	return dualHandler{
+		transform: func(h slog.Handler) slog.Handler { return prevTransform(h).WithGroup(name) },
+		durable:   d.durable.withGroup(name),
+	}
+}
+
+// durableWriter adapts the durable sink's ensureDurableSink/writeDurable
+// pair (sink.go) to an io.Writer so durableHandler can format records with
+// an ordinary slog.NewTextHandler -- "formats the record as
+// slog.NewTextHandler would" per the batch plan -- while the actual bytes
+// still flow through the sink's lazy-open and size-cap machinery.
+type durableWriter struct{}
+
+// Write opens the durable sink on first use (a no-op on every call after
+// the first, via sinkOnce) and writes p to it. A closed/unarmed sink
+// (sinkOK false) is not an error here -- per sink.go's lazy-sink-open rule,
+// a diagnostic sink that never opens must never surface as a write failure
+// to the logging call site, so Write reports success and discards p.
+func (durableWriter) Write(p []byte) (int, error) {
+	if _, ok := ensureDurableSink(); !ok {
+		return len(p), nil
+	}
+	return writeDurable(p)
+}
+
+// durableHandler is dualHandler's durable-sink half. Its Enabled is
+// unconditional at Info and above -- never gated by levelVar -- which is
+// the property that lets an Info record reach the durable sink at the
+// default Warn verbosity even though the stderr half alone would reject it
+// there.
+type durableHandler struct {
+	inner slog.Handler
+}
+
+// newDurableHandler builds the durable half over durableWriter, formatting
+// exactly as slog.NewTextHandler would.
+func newDurableHandler() durableHandler {
+	return durableHandler{inner: slog.NewTextHandler(durableWriter{}, &slog.HandlerOptions{Level: slog.LevelInfo})}
+}
+
+// Enabled reports whether level is Info or above, unconditionally of
+// levelVar -- see the durableHandler doc comment.
+func (d durableHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= slog.LevelInfo
+}
+
+// Handle formats and writes record via the wrapped text handler, which in
+// turn writes through durableWriter into the durable sink.
+func (d durableHandler) Handle(ctx context.Context, record slog.Record) error {
+	return d.inner.Handle(ctx, record)
+}
+
+// withAttrs returns a copy of d with attrs bound into the wrapped handler.
+// Kept unexported and typed (durableHandler, not slog.Handler) so
+// dualHandler.WithAttrs can store it back into its durable field without a
+// type assertion.
+func (d durableHandler) withAttrs(attrs []slog.Attr) durableHandler {
+	return durableHandler{inner: d.inner.WithAttrs(attrs)}
+}
+
+// withGroup returns a copy of d with name bound into the wrapped handler,
+// mirroring withAttrs.
+func (d durableHandler) withGroup(name string) durableHandler {
+	return durableHandler{inner: d.inner.WithGroup(name)}
+}
 
 func init() {
 	levelVar.Set(slog.LevelWarn)
@@ -94,29 +281,32 @@ func configureFromEnv() {
 	}
 }
 
-// newLogger builds a text-handler slog.Logger writing to w, gated by the
-// package's shared levelVar so verbosity changes take effect without
-// rebuilding the logger.
-func newLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: &levelVar}))
-}
-
-// Debug logs msg at debug level with the given key/value args. It is a
-// no-op unless SetVerbosity(2) or higher has been called.
+// Debug logs msg at debug level with the given key/value args, stamping a
+// trace key with TraceID()'s current value (batch 2) on every line as every
+// level does. Debug never reaches the durable sink -- durableHandler.Enabled
+// only accepts Info and above -- so a Debug record is a no-op sink-wise
+// regardless of trace stamping; it reaches the stderr half only once
+// SetVerbosity(2) or higher has been called. Calling TraceID() here is also
+// what triggers the trace-ID's own first resolution if nothing has resolved
+// it yet.
 func Debug(msg string, args ...any) {
-	log.Debug(msg, args...)
+	log.With("trace", TraceID()).Debug(msg, args...)
 }
 
-// Info logs msg at info level with the given key/value args. It is a no-op
-// unless SetVerbosity(1) or higher has been called.
+// Info logs msg at info level with the given key/value args, stamping
+// trace= as Debug does. It reaches the durable sink unconditionally
+// (durableHandler.Enabled never consults levelVar), and reaches the stderr
+// half only once SetVerbosity(1) or higher has been called.
 func Info(msg string, args ...any) {
-	log.Info(msg, args...)
+	log.With("trace", TraceID()).Info(msg, args...)
 }
 
-// Warn logs msg at warn level with the given key/value args. Warn is the
-// default threshold, so Warn calls are emitted even without SetVerbosity.
+// Warn logs msg at warn level with the given key/value args, stamping
+// trace= as Debug does. Warn is the default threshold, so a Warn call
+// reaches both halves -- stderr and the durable sink -- even without
+// SetVerbosity.
 func Warn(msg string, args ...any) {
-	log.Warn(msg, args...)
+	log.With("trace", TraceID()).Warn(msg, args...)
 }
 
 // SetVerbosity maps a -v repeat count to a log level: count<=0 keeps the
@@ -134,10 +324,30 @@ func SetVerbosity(count int) {
 	}
 }
 
-// SetOutput rebinds the log sink to w and rebuilds the underlying handler.
-// It exists as a test seam so tests can assert on captured output without
-// writing to the real os.Stderr; production code never calls it.
+// SetOutput rebinds the stderr half of the log sink to w and rebuilds the
+// composite handler's stderr-half inner handler in place; the durable half
+// (sink.go's ensureDurableSink/writeDurable) is untouched, per
+// discussion.md's dual-handler-fan-out decision -- redirecting stderr must
+// never silently detach the durable sink. It is a seam both tests
+// (withCapturedOutput in logger_test.go, so tests can assert on captured
+// output without writing to the real os.Stderr) and production code use:
+// configureFromEnv already calls SetOutput for LYX_LOG_FILE, independent of
+// anything this package's trace/sink work adds. LYX_LOG_FILE redirects only
+// the stderr half to an operator-chosen, unmanaged, whole-verbosity file;
+// the durable sink independently opens its own Info+-only, lyx-managed,
+// retention-swept trace file under hubgeometry.Layout.WorktreeLogsDir(). An
+// Info+ line therefore lands in both files when LYX_LOG_FILE is set -- that
+// duplication is intended, not a bug to reconcile: the two are different
+// artifacts with different lifetimes, and neither should suppress the
+// other.
+//
+// The write to out and the rebuild of currentStderr happen under sinkMu
+// (sink.go), the same mutex guarding the durable sink's state, per
+// discussion.md's concurrency-contract decision: SetOutput can race with an
+// in-flight Handle call reading currentStderr via stderrHandlerSnapshot.
 func SetOutput(w io.Writer) {
+	sinkMu.Lock()
 	out = w
-	log = newLogger(out)
+	currentStderr = slog.NewTextHandler(w, &slog.HandlerOptions{Level: &levelVar})
+	sinkMu.Unlock()
 }
