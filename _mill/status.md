@@ -49,7 +49,9 @@ batches:
     start_sha: 04861f834a3f74736730fb376fc96a3fe508772b
     commit_sha: cfeefcc7a962541d5b9ce45ca0ed61a15a2577b7
   - name: configsync-fabric-repowide
-    state: pending
+    state: running
+    implementer_session: 97ee880d-3cf0-4516-9bc7-1bc70efd6bb6
+    start_sha: a276ff1dd9e838334ea97e8222f2eab594f8996e
   - name: reconcile-declarative-convergence
     state: pending
   - name: clone-does-everything
