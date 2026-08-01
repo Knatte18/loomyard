@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-perchengine-adoption
+phase: approved-cmd-lyx-root-wiring
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-reedengine-adoption  '2026-08-01T07:57:50Z'
 approved-treadleengine-adoption  '2026-08-01T08:01:48Z'
 approved-burler-fabric-shuttle-adoption  '2026-08-01T08:04:05Z'
 approved-perchengine-adoption  '2026-08-01T08:06:18Z'
+approved-cmd-lyx-root-wiring  '2026-08-01T08:12:23Z'
 ```
 
 ## Batches
@@ -105,9 +106,10 @@ batches:
     start_sha: 43183285566ad126e35f85feda40b2370b769475
     commit_sha: 547a9b63eb096a599183e32538d74f027733421c
   - name: cmd-lyx-root-wiring
-    state: running
+    state: approved
     implementer_session: 50be3cfd-9742-424b-bed8-fcb1eddfa747
     start_sha: f96be123d30c25c2a9df33798810316bf70730b9
+    commit_sha: b25498bb6edb28f7979bd0ee9ac5f8492c50a61c
   - name: scoutengine-logger-conversion
     state: pending
   - name: docs-and-constraints-wrapup
