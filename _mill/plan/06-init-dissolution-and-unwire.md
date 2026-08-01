@@ -133,6 +133,7 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/configsync/configsync.go`
   - `internal/fabricengine/junction_pattern_integration_test.go`
   - `internal/configreg/configreg.go`
+  - `internal/fabricengine/weftgit_pathspec_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -143,6 +144,7 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/fabricengine/junctionnames.go:57` and `internal/fabricengine/weftgit.go:233,269,271`: comments referencing the deleted init packages or `lyx init`/`lyx init --undo` — update to reference `fabricengine.Unwire`/clone-add eager wiring as appropriate (these are comments; keep them accurate, do not delete load-bearing rationale).
   - `internal/fabriccli/fabric.go:85`: the clone `Long` line `After cloning, run "lyx init" inside the host worktree to activate junctions and config.` — remove it (clone now does everything) or reword to state clone wires everything automatically.
   - `internal/fabricengine/junction_pattern_integration_test.go`: found during implementation, missed by the original exploration — `TestWireJunctions_RefusesRealHostDirectory` asserts `strings.Contains(msg, "lyx init")` (junction_pattern_integration_test.go:148-149) against `seedLyxJunction`'s real-directory-guard error text, whose remedy card 28's own junction.go edit above retargets to `lyx fabric reconcile`. Update the assertion (and its doc comment at line 111 naming "the re-run-`lyx init` remedy") to `lyx fabric reconcile`.
+  - `internal/fabricengine/weftgit_pathspec_integration_test.go`: found during round-3 review, missed by the original sweep — `TestCommitWeft_IndexOnlyDeletionCountsAsMatch`'s doc comment (line 108) names the deleted `internal/initengine/undo.go`'s `lyx init --undo` as the rationale for the "index-only must count" predicate. Reword to reference `fabricengine.Unwire` (`unwire.go`)'s `_lyx` clear-and-commit step instead.
   Do not touch integration-test comment references that document historical behavior unless they assert a live string.
 - **Commit:** `refactor(fabricengine): sweep stale lyx init references to fabric verbs`
 
