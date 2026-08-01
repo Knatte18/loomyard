@@ -63,7 +63,9 @@ batches:
     start_sha: e1b398036843d9478846f3feab60b2923af8c03f
     commit_sha: 29974c145727168fd363df40e931dbdf36b571a7
   - name: logger-durable-sink
-    state: pending
+    state: running
+    implementer_session: 5de817e9-55e2-4d9f-ba7d-84001070515c
+    start_sha: d27be824a26e2bdb302959695b2106c63d8e19ec
   - name: logger-dual-handler-fanout
     state: pending
   - name: logger-spans
