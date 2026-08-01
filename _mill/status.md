@@ -30,7 +30,9 @@ implementing  '2026-08-01T17:09:05Z'
 ```yaml
 batches:
   - name: gitrepo-primitives
-    state: pending
+    state: running
+    implementer_session: 1e6268ca-0f3b-41f7-89a8-532b40027dcb
+    start_sha: b133189f0f005fa8cfe94f4eb03eb6aac9a023dd
   - name: fabric-pull
     state: pending
   - name: cli-pull
