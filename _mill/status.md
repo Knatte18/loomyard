@@ -57,7 +57,9 @@ batches:
     start_sha: 7ae65ef852ce8d19416b54444d97f5939771b508
     commit_sha: b290056564765d7c7ad970be6688ba246827da95
   - name: reedengine-trace-env-filter
-    state: pending
+    state: running
+    implementer_session: b69f001a-99af-48e6-9ccb-b5f8cbc05f2f
+    start_sha: e1b398036843d9478846f3feab60b2923af8c03f
   - name: logger-durable-sink
     state: pending
   - name: logger-dual-handler-fanout
