@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
@@ -151,6 +152,7 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 
 	result, err := te.Run(tp, runDir)
 	if err != nil {
+		logger.Warn("perch: round loop failed", "profileHash", hash, "runDir", runDir, "err", err)
 		return Result{}, err
 	}
 	return mapResult(result), nil

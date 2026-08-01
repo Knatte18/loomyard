@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -202,6 +203,7 @@ func ensureNative(ctx context.Context, lang string, entry Entry, targetDir strin
 		}
 		return nil, fmt.Errorf("scoutengine: start language server for %q: %w", lang, err)
 	}
+	client.lang = lang
 
 	rootURI, err := rootURIFor(targetDir)
 	if err != nil {
@@ -361,6 +363,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		if found && !daemonStale(state) {
 			if network, address, ok := strings.Cut(state.Address, ";"); ok {
 				if client, dialErr := newLSPClientDial(ctx, network, address); dialErr == nil {
+					client.lang = lang
 					if finalizeErr := finalizeConnection(ctx, client, rootURI, timeout); finalizeErr == nil {
 						return client, nil
 					}
@@ -462,7 +465,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 			// call's own failure.
 			if escalationFound {
 				if err := proc.KillPID(escalationState.PID); err != nil {
-					fmt.Fprintf(os.Stderr, "scoutengine: kill wedged supervised daemon pid %d for %q: %v\n", escalationState.PID, lang, err)
+					logger.Warn("scoutengine: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
 				}
 			}
 			// Fall through to step 4 below to respawn — the lock acquired
@@ -553,6 +556,12 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		// fd; this process's handle must not be held open for the rest of
 		// this call's (or the daemon's) lifetime.
 		logFile.Close()
+		// CONSTRAINTS.md's Live-Substrate Spawn Observability entry requires
+		// a spawn-side log line for a live-substrate spawn point; cmd.Process
+		// is guaranteed non-nil here since cmd.Start() has already succeeded
+		// (the line 548 error path above returns before ever reaching this
+		// point).
+		logger.Info("scoutengine: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
 
 		// Step 5: write the state file *before* releasing the lock, so a
 		// losing caller that acquires the lock immediately after release
@@ -584,6 +593,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		if dialErr != nil {
 			return nil, fmt.Errorf("scoutengine: ensureSupervised dial newly spawned daemon for %q: %w", lang, dialErr)
 		}
+		client.lang = lang
 
 		// Step 7.
 		if err := finalizeConnection(ctx, client, rootURI, timeout); err != nil {
