@@ -164,7 +164,7 @@ roles:
 
   implementer:
     self_fix_rounds: 2
-    model: sonnethigh
+    model: sonnetmedium
 
   fixer:
     model: sonnethigh
