@@ -114,6 +114,29 @@ The floor is still `internal/warpengine`, now at ~96.0 s in the median run (roug
 
 First Linux run of the suite (2026-07-13), recorded in parallel with the Windows numbers above — **compare down each OS's own column, never across OSes** (the two machines differ in CPU, core count, and, decisively, endpoint-AV load). The Windows numbers were measured with **Cortex XDR** live, which throttles every file-heavy operation; the Linux box has no equivalent tax, so a faster Linux number is *expected* and mostly measures the absence of AV, while a *slower* Linux number would flag a genuine Linux pathology.
 
+### 2026-08-01 — timeout/window seams shrunk
+
+Both real-time-wait tests the block below identified as "almost entirely" responsible for Tier 1's and Tier 2's growth are now fixed: `ghAuthTokenTimeout` (`internal/githubclient/token.go`) became a `var` so `TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout` can override it to milliseconds instead of blocking the real 5 s production timeout, and `TestAwaitBatchCmd_ReportPresenceEnvelope/NoReport_WindowElapses` (`internal/webstercli/verbs_test.go`) now passes `--wait 1ns` instead of relying on `websterengine.DefaultAwaitWaitS`'s ~30 s default. Same machine as the block below, so this is a direct down-column comparison.
+
+- Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs
+- Go 1.26.0, default GC, `GOMAXPROCS` = NumCPU (12)
+- Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]` (`-count=1` set by the harness; `go build ./...` run first to warm the build cache)
+
+#### Headline
+
+| Loop | Command | Linux wall-clock | 2026-08-01 (before this fix) | 2026-07-13 (pre-regression floor) |
+|------|---------|------------------|-------------------------------|-------------------------------------|
+| **Tier 1** — offline, default | `go test ./... -count=1` | **~3.86 s** (spread 3.77–5.25 s) | ~6.23 s — **~38 % faster** | ~1.03 s |
+| **Tier 2** — integration, opt-in | `go test -tags integration ./... -count=1` | **~6.48 s** (spread 6.11–8.35 s) | ~33.40 s — **~81 % faster** | ~4.97 s |
+
+All 3 + 3 runs recorded `RESULT: all packages passed`.
+
+#### Cause
+
+- **Tier 1's ~6.23 s → ~3.86 s is the `ghAuthTokenTimeout` var-seam.** `ghAuthTokenTimeout` (`internal/githubclient/token.go`) changed from an unexported `const` to a `var`, following the same save/override/`t.Cleanup`-restore pattern the file's existing `runGHAuthToken` seam already used. `TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout` now overrides it to a few milliseconds instead of blocking the real production 5 s, so the test still proves `resolveToken()` honours whatever timeout is configured — same assertion, no 5 s wall-clock wait. `internal/githubclient`'s own elapsed dropped from ~5.02 s to ~0.04 s in this run.
+- **Tier 2's ~33.40 s → ~6.48 s is the `--wait 1ns` flag.** `TestAwaitBatchCmd_ReportPresenceEnvelope/NoReport_WindowElapses` (`internal/webstercli/verbs_test.go`) now calls `awaitBatchCmd()` with `--wait 1ns` instead of omitting `--wait` entirely, so it no longer falls through to `websterengine.DefaultAwaitWaitS` (~30 s) to prove the window-elapses code path. `--wait` was already a wired cobra flag (`internal/webstercli/awaitbatch.go`), so this needed no product-code change. `internal/webstercli`'s own elapsed dropped from ~30.27 s to ~0.72 s in this run.
+- **Both tiers land above the 2026-07-13 pre-regression floor (~1.03 s / ~4.97 s), and that gap is expected, not a shortfall in this task's fixes.** `internal/scoutengine` — a module that did not exist on 2026-07-13 — now contributes the largest remaining Tier 1/Tier 2 package cost (~1.9 s / ~3.9 s this run), from its own real-time supervision/retry/timeout tests (`daemonstate_test.go`, `supervised_test.go`, `refs_test.go` — 5 s contexts and 300 ms retry-timeout constants unrelated to this task's two fixes) — out of this task's scope per its Batch Scope (only `internal/githubclient` and `internal/webstercli` are touched). `cmd/lyx`'s `TestCrossCompileLinux` (~2.9 s, a real `GOOS=linux go build` of the whole module) and `internal/buildercli`'s poll-deadline/grace tests (`TestPollCmd_*`, ~1 s each, real-time waits) are the next-largest contributors, both pre-existing and both untouched by this task. This is the same pattern the block below itself documented: once the dominant wait is fixed, the next-slowest real-time-bound tests become the new floor by default.
+
 ### 2026-08-01 — githubclient + webstercli now the floor (was "Current Linux numbers")
 
 Both tiers grew well past noise since 2026-07-13 — not from any fabric/warp regression, but from two **new, deliberately real-time-wait tests** in packages that didn't exist on 2026-07-13 (`internal/githubclient`, `internal/webstercli`/`internal/websterengine` landed since). Same machine as the 2026-07-13 block below, so this is a direct down-column comparison.
