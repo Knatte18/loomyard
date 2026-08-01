@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-sandbox
+phase: holistic-reviewing
 slug: fabric-rebase-reconcile
 branch: fabric-rebase-reconcile
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-gitrepo-primitives  '2026-08-01T17:17:28Z'
 approved-fabric-pull  '2026-08-01T17:26:34Z'
 approved-cli-pull  '2026-08-01T17:29:45Z'
 approved-docs-sandbox  '2026-08-01T17:33:34Z'
+holistic-reviewing  '2026-08-01T17:33:50Z'
 ```
 
 ## Batches
