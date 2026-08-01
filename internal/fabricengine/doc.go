@@ -4,7 +4,33 @@
 // knows both repos exist: the `Fabric` handle exposes `Warp *gitrepo.Repo` and
 // `Weft *gitrepo.Repo` directly for anything repo-specific and uncoordinated, and
 // adds a small set of genuinely cross-repo operations (`SyncWeft`,
-// `RevertWithWeft`) on top of what gitrepo deliberately doesn't know about.
+// `RevertWithWeft`, `Pull`) on top of what gitrepo deliberately doesn't know about.
+//
+// `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded
+// first via a plain `PullWeft`, then warp is fetched and inspected against its
+// upstream tracking ref. A clean fast-forward (local warp HEAD still an
+// ancestor of the fetched upstream tip) simply advances warp. A detected warp
+// history rewrite (rebase or force-push upstream — local warp HEAD is no
+// longer an ancestor of the fetched tip) is auto-reconciled whenever it is
+// safe to do so: when local warp carries no unpushed commits of its own, weft's
+// correspondence is re-anchored to the nearest surviving `Warp-SHA` — via the
+// same empty-commit-with-trailer mechanism `commitWeftLocked`'s snapshot rule
+// already uses (see below) — warp is reset to the new tip, and the fresh
+// correspondence is recorded. Two cases abort loudly and make no change to
+// either repo: local warp already has unpushed commits AND the remote
+// diverged (the double-conflict case `Pull` refuses to resolve unattended,
+// `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded
+// correspondence survives it at all (`ErrNoSurvivingAnchor`). Every
+// rewrite/anchor determination is ancestry-based — `f.Warp.IsAncestor`, via
+// `git merge-base --is-ancestor` — never `f.Warp.SHAExists`: `git fetch` never
+// prunes objects, so a rebased-away commit's object survives fetch and
+// `SHAExists` would report true post-fetch, meaning detection would never
+// fire (see the reachability-never-object-existence Shared Decision). The
+// call's result is `PullResult`, a PATTERN-residue report naming which
+// post-anchor weft commits touch `_pattern/...` paths and therefore need
+// review, since they were written against a warp baseline that no longer
+// exists upstream — see pull.go's own doc comment for the full flow and the
+// `*PartialPullError` weft-succeeded/warp-failed contract.
 //
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a host
 // branch `<branch>` is always paired with weft branch `<branch>-weft`, including
