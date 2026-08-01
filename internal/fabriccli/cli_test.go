@@ -198,14 +198,36 @@ func TestRunCLI_PullHelp(t *testing.T) {
 
 	got := out.String()
 
-	if !strings.Contains(got, "pull warp and weft, reconciling a rebased warp") {
-		t.Errorf("pull --help output missing both-sides Short text; got:\n%s", got)
+	if !strings.Contains(got, "Pulls both sides of the pair") {
+		t.Errorf("pull --help output missing both-sides Long text; got:\n%s", got)
 	}
 	if !strings.Contains(got, "reconcile") {
 		t.Errorf("pull --help output missing reconcile wording; got:\n%s", got)
 	}
 	if !strings.Contains(got, "rewrite") {
 		t.Errorf("pull --help output missing warp-history-rewrite wording; got:\n%s", got)
+	}
+}
+
+// TestRunCLI_PullShortNonEmpty asserts pullCmd's Short summary is non-empty
+// and itself names the both-sides/reconcile behaviour, building the command
+// tree via the fabriccli.Command() seam (the CLI/Cobra Invariant's "Short on
+// every command" obligation, checked directly against pull's own Short
+// rather than via --help output, where Long supersedes Short).
+func TestRunCLI_PullShortNonEmpty(t *testing.T) {
+	t.Parallel()
+
+	root := fabriccli.Command()
+	pull, _, err := root.Find([]string{"pull"})
+	if err != nil {
+		t.Fatalf("root.Find([pull]) error: %v", err)
+	}
+
+	if pull.Short == "" {
+		t.Errorf("pullCmd.Short is empty; want a non-empty both-sides summary")
+	}
+	if !strings.Contains(pull.Short, "reconcil") {
+		t.Errorf("pullCmd.Short = %q; want it to mention reconcile behaviour", pull.Short)
 	}
 }
 
