@@ -20,7 +20,10 @@ import (
 // the managed .gitignore block's ".lyx/" entry. On success it emits a JSON
 // object mirroring the deleted initcli runUndo's output keys.
 func runUnwire(out io.Writer, _ []string) int {
-	cwd, _ := hubgeometry.Getwd()
+	cwd, err := hubgeometry.Getwd()
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
 
 	res, err := fabricengine.Unwire(cwd)
 	if err != nil {
