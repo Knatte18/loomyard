@@ -68,7 +68,10 @@ type CloneResult struct {
 //     adopted onto the captured host branch if it already exists locally from
 //     step 6's clone, freshly orphan-created otherwise; on failure, teardown
 //     and return the error.
-//  8. Return the resolved CloneResult and nil error.
+//  8. Resolve the lyx-anchor subpath adopt-or-create (adopt: read the marker
+//     already committed on weft:main; create: validate subpath exists in the
+//     host worktree, then write the marker to the board worktree on disk —
+//     the CLI commits it), and return the resolved CloneResult.
 //
 // Any clone OR worktree-add failure triggers teardownHub, which removes the
 // entire Hub directory; if removal also fails, the error mentions both the
@@ -140,14 +143,56 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
-	// Step 8: Success. Anchor resolution/recording is added in a later step of
-	// clone-does-everything; for now default Anchor to the cleaned subpath (or
-	// "." when unset) so the signature compiles.
-	anchor := filepath.Clean(subpath)
-	if subpath == "" {
-		anchor = "."
+	// Step 8: Resolve the lyx-anchor subpath adopt-or-create, and write the
+	// marker to the board worktree ON DISK. The CLI layer commits it onto
+	// weft:main (config materialization and the commit both live in
+	// internal/fabriccli to avoid the fabricengine → configsync import cycle).
+	markerPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	var anchor string
+	if data, statErr := os.ReadFile(markerPath); statErr == nil {
+		// Adopt path: ensureBoardWorktree checked out weft:main, which already
+		// carries a committed marker from a prior clone — this is a re-clone.
+		recorded := strings.TrimSpace(string(data))
+		if requested := filepath.Clean(subpath); subpath != "" && requested != "." && requested != recorded {
+			// A non-default requested subpath disagrees with the recorded
+			// anchor: never silently re-anchor, the record is authoritative.
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
+				"requested --subpath %q does not match the recorded anchor %q for this hub", requested, recorded))
+		}
+		anchor = recorded
+	} else {
+		// Create path: first-ever clone of this weft, no marker committed yet.
+		// Validate the requested subpath exists in the host worktree before
+		// recording it, so a typo like "backedn" fails loudly instead of
+		// silently anchoring to a directory that was never there.
+		anchor = filepath.Clean(subpath)
+		if subpath == "" {
+			anchor = "."
+		}
+		if info, statErr := os.Stat(filepath.Join(hostWorktreePath, anchor)); statErr != nil || !info.IsDir() {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist in the cloned host repo", anchor))
+		}
+		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("write %s: %w", markerPath, err))
+		}
 	}
-	return CloneResult{HubPath: hubPath, Anchor: anchor, BoardDir: boardDir}, nil
+
+	// Resolve the prime layout now that the marker exists on disk, so
+	// RelPath — and therefore WeftBase — reflects the resolved anchor.
+	primeCwd := filepath.Join(hostWorktreePath, anchor)
+	l, err := hubgeometry.Resolve(primeCwd)
+	if err != nil {
+		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
+	}
+	weftBase := filepath.Join(l.WeftWorktree(), l.RelPath)
+
+	return CloneResult{
+		HubPath:  hubPath,
+		Anchor:   anchor,
+		BoardDir: boardDir,
+		WeftBase: weftBase,
+		PrimeCwd: primeCwd,
+	}, nil
 }
 
 // suffixWeftPrimaryBranch reads the branch checked out at weftPath (the weft
