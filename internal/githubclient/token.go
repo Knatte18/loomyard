@@ -63,8 +63,9 @@ func (s tokenSource) envName() string {
 
 // ghAuthTokenTimeout bounds the `gh auth token` shell-out so a hung or
 // unexpectedly prompting `gh` process can never block an autonomous lyx run
-// indefinitely.
-const ghAuthTokenTimeout = 5 * time.Second
+// indefinitely. It is a var, not a const, specifically so tests can shrink it
+// via a save/override/restore seam, mirroring runGHAuthToken below.
+var ghAuthTokenTimeout = 5 * time.Second
 
 // runGHAuthToken is the seam through which the `gh auth token` shell-out
 // runs. Tests replace it with a fake — including one that hangs — to assert
