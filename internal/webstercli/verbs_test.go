@@ -399,15 +399,18 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 
 // TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two
 // envelopes: {"report": true} the moment the batch's report file exists,
-// and {"report": false} once the bounded wait (PollWaitS = 1s in this
-// fixture) elapses with no report — with no state.json ever read or
-// written, since the verb is deliberately stateless.
+// and {"report": false} once the bounded wait elapses with no report --
+// NoReport_WindowElapses passes --wait 1ns explicitly to keep the window
+// near-instant, versus the production default
+// (websterengine.DefaultAwaitWaitS, ~30s) used whenever --wait is omitted --
+// with no state.json ever read or written, since the verb is deliberately
+// stateless.
 func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	fx := newVerbsFixture(t)
 
 	t.Run("NoReport_WindowElapses", func(t *testing.T) {
 		var out strings.Builder
-		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1"})
+		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1", "--wait", "1ns"})
 		if exitCode != 0 {
 			t.Fatalf("await-batch 1 = %d; want 0, output: %s", exitCode, out.String())
 		}
@@ -441,87 +444,88 @@ func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	}
 }
 
-// TestRecordBatchCmd_DigestEnvelope proves the terminal success envelope is
-// the digest verbatim plus warnings, once one new fork transcript and a
-// matching batch report are both present.
-func TestRecordBatchCmd_DigestEnvelope(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
-	startSHA := commitFile(t, fx.Worktree, "internal/only/impl.go", "package only\n", "01.1: add impl")
-	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
-	st.CurrentBatch = 1
-	if err := websterengine.SaveState(fx.CLI.websterDir, st); err != nil {
-		t.Fatalf("SaveState() error = %v", err)
-	}
-	fx.Engine.auditForks = shuttleengine.ForkAudit{
-		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
-	}
-	writeBatchReport(t, fx.CLI.reportsDir, startSHA)
-
-	var out strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"})
-
-	if exitCode != 0 {
-		t.Fatalf("record-batch 1 = %d; want 0, output: %s", exitCode, out.String())
-	}
-	got := out.String()
-	for _, want := range []string{`"batch":"01-only"`, `"status":"done"`, fmt.Sprintf(`"head_sha":%q`, startSHA)} {
-		if !strings.Contains(got, want) {
-			t.Errorf("output missing %q; got %q", want, got)
-		}
+// TestRecordBatchCmd_Envelope proves record-batch's two envelopes over an
+// identical fixture (one new fork transcript already present): the terminal
+// success envelope -- the digest verbatim plus warnings -- once a matching
+// batch report has also landed, and the {"no_report": true} ladder signal
+// (not an error) when the report has not landed yet.
+func TestRecordBatchCmd_Envelope(t *testing.T) {
+	tests := []struct {
+		name          string
+		writeReport   bool
+		wantSubstrs   []string
+		wantTerminal  bool
+		wantDigestSet bool
+	}{
+		{
+			name:          "DigestEnvelope",
+			writeReport:   true,
+			wantSubstrs:   []string{`"batch":"01-only"`, `"status":"done"`},
+			wantTerminal:  true,
+			wantDigestSet: true,
+		},
+		{
+			name:          "NoReportEnvelope",
+			writeReport:   false,
+			wantSubstrs:   []string{`"no_report":true`, `"batch":"01-only"`},
+			wantTerminal:  false,
+			wantDigestSet: false,
+		},
 	}
 
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir)
-	if err != nil || loaded == nil {
-		t.Fatalf("LoadState() after record-batch = %v, %v; want a state, nil", loaded, err)
-	}
-	if !loaded.Batches[1].Terminal {
-		t.Error("loaded.Batches[1].Terminal = false; want true after a done digest")
-	}
-	if loaded.Batches[1].Digest == nil {
-		t.Error("loaded.Batches[1].Digest = nil; want a persisted digest")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("WEFT_SKIP_GIT", "1")
+			fx := newVerbsFixture(t)
+			st := fx.initState(t, "master-model")
+			startSHA := commitFile(t, fx.Worktree, "internal/only/impl.go", "package only\n", "01.1: add impl")
+			st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
+			st.CurrentBatch = 1
+			if err := websterengine.SaveState(fx.CLI.websterDir, st); err != nil {
+				t.Fatalf("SaveState() error = %v", err)
+			}
+			fx.Engine.auditForks = shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
+			}
+			if tt.writeReport {
+				writeBatchReport(t, fx.CLI.reportsDir, startSHA)
+			}
+			// Else: deliberately never call writeBatchReport, since the
+			// no-report scenario proves the report-not-landed-yet ladder.
 
-// TestRecordBatchCmd_NoReportEnvelope proves a call with a new fork
-// transcript but no report file yet is a ladder signal, not an error:
-// {"no_report": true, "batch": ...}, exit 0.
-func TestRecordBatchCmd_NoReportEnvelope(t *testing.T) {
-	t.Setenv("WEFT_SKIP_GIT", "1")
-	fx := newVerbsFixture(t)
-	st := fx.initState(t, "master-model")
-	startSHA := commitFile(t, fx.Worktree, "internal/only/impl.go", "package only\n", "01.1: add impl")
-	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
-	st.CurrentBatch = 1
-	if err := websterengine.SaveState(fx.CLI.websterDir, st); err != nil {
-		t.Fatalf("SaveState() error = %v", err)
-	}
-	fx.Engine.auditForks = shuttleengine.ForkAudit{
-		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
-	}
-	// Deliberately never call writeBatchReport: the report has not landed yet.
+			var out strings.Builder
+			exitCode := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"})
 
-	var out strings.Builder
-	exitCode := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"})
+			if exitCode != 0 {
+				t.Fatalf("record-batch 1 = %d; want 0, output: %s", exitCode, out.String())
+			}
+			got := out.String()
+			for _, want := range tt.wantSubstrs {
+				if !strings.Contains(got, want) {
+					t.Errorf("output missing %q; got %q", want, got)
+				}
+			}
+			// Only the digest-envelope row's report carries a real head_sha
+			// to cross-check; the no-report row never reaches that code path.
+			if tt.writeReport {
+				want := fmt.Sprintf(`"head_sha":%q`, startSHA)
+				if !strings.Contains(got, want) {
+					t.Errorf("output missing %q; got %q", want, got)
+				}
+			}
 
-	if exitCode != 0 {
-		t.Fatalf("record-batch 1 with no report = %d; want 0, output: %s", exitCode, out.String())
-	}
-	got := out.String()
-	if !strings.Contains(got, `"no_report":true`) {
-		t.Errorf("output missing no_report:true; got %q", got)
-	}
-	if !strings.Contains(got, `"batch":"01-only"`) {
-		t.Errorf("output missing batch identifier; got %q", got)
-	}
-
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir)
-	if err != nil || loaded == nil {
-		t.Fatalf("LoadState() after no-report record-batch = %v, %v; want a state, nil", loaded, err)
-	}
-	if loaded.Batches[1].Terminal {
-		t.Error("loaded.Batches[1].Terminal = true; want false — no report has landed yet")
+			loaded, err := websterengine.LoadState(fx.CLI.websterDir)
+			if err != nil || loaded == nil {
+				t.Fatalf("LoadState() after record-batch = %v, %v; want a state, nil", loaded, err)
+			}
+			if loaded.Batches[1].Terminal != tt.wantTerminal {
+				t.Errorf("loaded.Batches[1].Terminal = %v; want %v", loaded.Batches[1].Terminal, tt.wantTerminal)
+			}
+			gotDigestSet := loaded.Batches[1].Digest != nil
+			if gotDigestSet != tt.wantDigestSet {
+				t.Errorf("loaded.Batches[1].Digest set = %v; want %v", gotDigestSet, tt.wantDigestSet)
+			}
+		})
 	}
 }
 

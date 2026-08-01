@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"gopkg.in/yaml.v3"
 )
@@ -139,6 +140,7 @@ func LoadConfigWithRegistry(baseDir, module string, reg modelspec.Registry) (Con
 func LoadConfig(baseDir, module string) (Config, error) {
 	reg, err := modelspec.LoadRegistry(baseDir)
 	if err != nil {
+		logger.Warn("perch: load model registry failed", "baseDir", baseDir, "err", err)
 		return Config{}, err
 	}
 	return LoadConfigWithRegistry(baseDir, module, reg)

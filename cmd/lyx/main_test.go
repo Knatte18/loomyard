@@ -10,8 +10,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // These tests cover main's own responsibility — module routing — not the board
@@ -75,6 +78,56 @@ func TestRunDispatchesToIDE(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"ok":false`) {
 		t.Fatalf("expected error JSON on out, got %q", out.String())
+	}
+}
+
+// TestRootHookSuppressedUnderTest pins that the root command's
+// PersistentPreRunE (main.go's Card 27 wiring) mints/exports nothing and
+// never opens the durable sink when testing.Testing() is true, mirroring
+// TestHeaderLaunchLine's shape (internal/reedengine/headerpane_test.go): a
+// known-empty LYX_TRACE_ID starting state must stay unchanged, and a
+// SetDurableSinkDir-pointed temp directory must stay empty, after invoking
+// the hook in-process.
+func TestRootHookSuppressedUnderTest(t *testing.T) {
+	// Pin a known starting environment state via t.Setenv so the assertion
+	// below proves the hook left LYX_TRACE_ID untouched, not merely absent
+	// by chance ordering of other tests in this package.
+	t.Setenv("LYX_TRACE_ID", "")
+	before := os.Getenv("LYX_TRACE_ID")
+
+	// Point the durable sink's test seam at a temp dir and reset all sink
+	// package state on cleanup, per SetDurableSinkDir's documented contract
+	// (internal/logger/sink.go) — otherwise this test's state could leak
+	// into any test that runs after it in the same binary.
+	sinkDir := t.TempDir()
+	logger.SetDurableSinkDir(sinkDir)
+	t.Cleanup(func() { logger.SetDurableSinkDir("") })
+
+	root := newRoot()
+	if root.PersistentPreRunE == nil {
+		t.Fatal("newRoot() root command has no PersistentPreRunE")
+	}
+	if err := root.PersistentPreRunE(root, nil); err != nil {
+		t.Fatalf("PersistentPreRunE(root, nil) returned error: %v", err)
+	}
+
+	if after := os.Getenv("LYX_TRACE_ID"); after != before {
+		t.Errorf("LYX_TRACE_ID = %q after running the root hook under testing.Testing(); want unchanged %q", after, before)
+	}
+
+	entries, err := os.ReadDir(sinkDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q) after root hook: %v", sinkDir, err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("durable sink dir has %d entries after root hook under testing.Testing(); want 0 — the sink must never open", len(entries))
+	}
+
+	// Pin the precondition itself, like TestHeaderLaunchLine's final
+	// assertion: the suppression wiring's testing.Testing() gate cannot
+	// silently decay into a constant false without this test catching it.
+	if !testing.Testing() {
+		t.Fatalf("testing.Testing() = false inside a test binary; the root hook's suppression wiring relies on it being true here")
 	}
 }
 

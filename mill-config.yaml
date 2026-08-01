@@ -167,7 +167,7 @@ roles:
     model: sonnetmedium
 
   fixer:
-    model: sonnethigh
+    model: sonnetmedium
 
 # ---------------------------------------------------------------------------
 # Notifications

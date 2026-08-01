@@ -16,6 +16,7 @@ package main
 import (
 	"io"
 	"os"
+	"testing"
 
 	"github.com/spf13/cobra"
 
@@ -43,7 +44,14 @@ func main() {
 	// parse all error output from a single stream.
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
-	os.Exit(clihelp.RunRoot(root, os.Stdout))
+	code := clihelp.RunRoot(root, os.Stdout)
+	// Force-open the durable sink on a non-zero exit even if no Info+ line
+	// was ever logged, so a failing invocation always leaves a trace file
+	// behind for post-mortem inspection (trigger (b) from discussion.md's
+	// sink-open-triggers decision). NotifyExit is a no-op under
+	// testing.Testing() with LYX_TRACE unset, so this call is always safe.
+	logger.NotifyExit(code)
+	os.Exit(code)
 }
 
 // run is the testable seam: it builds a fresh root via newRoot(), merges stdout
@@ -58,7 +66,13 @@ func run(args []string, out io.Writer) int {
 	root.SetOut(out)
 	root.SetErr(out)
 	root.SetArgs(args)
-	return clihelp.RunRoot(root, out)
+	code := clihelp.RunRoot(root, out)
+	// See main()'s matching call: force-open the durable sink on a non-zero
+	// exit. Safe to call unconditionally here too — testing.Testing() is
+	// true for every in-process call to run(), so NotifyExit stays a no-op
+	// unless LYX_TRACE=1 is explicitly set.
+	logger.NotifyExit(code)
+	return code
 }
 
 // newRoot builds and returns the lyx cobra root command with all module
@@ -93,6 +107,16 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		// hook is guaranteed to fire before every module's own guard.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			logger.SetVerbosity(verbosity)
+			// Suppress trace minting/export and durable-sink arming under
+			// testing.Testing() so unit and integration tests never write
+			// LYX_TRACE_ID into the process environment or open a real
+			// trace file, mirroring internal/reedengine/headerpane.go's
+			// headerLaunchLine precedent for gating a production code path
+			// on test detection.
+			if !testing.Testing() {
+				logger.MintOrAdoptAndExport()
+				logger.Arm()
+			}
 			return nil
 		},
 	}

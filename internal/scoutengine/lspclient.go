@@ -30,6 +30,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // lspError is the LSP/JSON-RPC error object shape, present on a response
@@ -148,6 +150,13 @@ type lspClient struct {
 	closed   bool
 	caps     capabilities
 	incoming chan lspReadResult
+	// lang is the language identifier this client's server was launched or
+	// dialed for (e.g. "go"), set only at production construction call
+	// sites where a language identifier is already in scope — every
+	// test-constructed client via newLSPClientFromRW leaves this at its
+	// zero value "". It exists solely so close()/kill()'s diagnostic
+	// logger.Warn calls can name which language server misbehaved.
+	lang string
 }
 
 // lspReadResult is one readLoop iteration's outcome, delivered to whichever
@@ -593,15 +602,15 @@ func (c *lspClient) close() {
 	defer cancel()
 
 	if _, err := c.call(ctx, "shutdown", "shutdown", nil); err != nil {
-		fmt.Fprintf(os.Stderr, "scoutengine: lsp shutdown request: %v\n", err)
+		logger.Warn("scoutengine: lsp shutdown request", "lang", c.lang, "err", err)
 	}
 	if err := c.notify("exit", nil); err != nil {
-		fmt.Fprintf(os.Stderr, "scoutengine: lsp exit notification: %v\n", err)
+		logger.Warn("scoutengine: lsp exit notification", "lang", c.lang, "err", err)
 	}
 	c.closer.Close()
 	if c.cmd != nil {
 		if err := c.cmd.Wait(); err != nil {
-			fmt.Fprintf(os.Stderr, "scoutengine: lsp process exit: %v\n", err)
+			logger.Warn("scoutengine: lsp process exit", "lang", c.lang, "err", err)
 		}
 	}
 }
@@ -624,9 +633,9 @@ func (c *lspClient) kill() {
 		return
 	}
 	if err := c.cmd.Process.Kill(); err != nil {
-		fmt.Fprintf(os.Stderr, "scoutengine: kill lsp process: %v\n", err)
+		logger.Warn("scoutengine: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 	if err := c.cmd.Wait(); err != nil {
-		fmt.Fprintf(os.Stderr, "scoutengine: lsp process exit after kill: %v\n", err)
+		logger.Warn("scoutengine: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 }

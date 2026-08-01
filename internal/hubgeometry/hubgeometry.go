@@ -636,6 +636,21 @@ func (l *Layout) HubLogsDir() string {
 	return filepath.Join(l.Hub, dotLyxDirName, "logs")
 }
 
+// WorktreeLogsDir returns the path to the worktree-level directory where
+// internal/logger's durable trace sink writes one file per process. It is
+// WorktreeRoot-anchored, NOT Cwd-anchored: a caller invoked from a
+// subdirectory (Cwd != WorktreeRoot) must still resolve the one true logs
+// directory for the worktree, matching LoomStatusFile's anchoring
+// rationale above. It lives under the ephemeral, machine-bound ".lyx"
+// (dot) directory — the same lifecycle rationale DotLyxDir documents:
+// trace files are runtime forensic artifacts, never weft-synced.
+// WorktreeLogsDir returns the path only; it never creates the directory.
+//
+// Returns filepath.Join(WorktreeRoot, dotLyxDirName, "logs").
+func (l *Layout) WorktreeLogsDir() string {
+	return filepath.Join(l.WorktreeRoot, dotLyxDirName, "logs")
+}
+
 // WorktreePath returns the path to a sibling worktree with the given slug.
 //
 // Returns filepath.Join(Hub, slug).
