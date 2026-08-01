@@ -42,7 +42,9 @@ batches:
     start_sha: b7e7d50e7712b7f509616f94ad6075585e622742
     commit_sha: 154ca80b59ff0f43b5438bd5e0a640026f4e610f
   - name: cli-pull
-    state: pending
+    state: running
+    implementer_session: 7fc21325-684b-4f68-ad47-376ecda198c2
+    start_sha: 8f145611a385297e5b82cbf9a6a42b4800e84e4e
   - name: docs-sandbox
     state: pending
 ```
