@@ -43,7 +43,9 @@ implementing  '2026-08-01T09:27:13Z'
 ```yaml
 batches:
   - name: hubgeometry-recorded-anchor
-    state: pending
+    state: running
+    implementer_session: 03e638c5-4027-4067-82e2-3c8c9be3c64a
+    start_sha: 04861f834a3f74736730fb376fc96a3fe508772b
   - name: configsync-fabric-repowide
     state: pending
   - name: reconcile-declarative-convergence
