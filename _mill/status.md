@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: planned
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: _mill/plan
@@ -25,4 +25,5 @@ plan-fix-r2  '2026-08-01T12:01:40Z'
 plan-review-r3  '2026-08-01T12:10:59Z'
 plan-fix-r3  '2026-08-01T12:10:59Z'
 plan-fix-r4  '2026-08-01T14:35:48Z'
+planned  '2026-08-01T14:36:03Z'
 ```
