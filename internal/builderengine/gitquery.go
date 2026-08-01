@@ -1,10 +1,8 @@
 // gitquery.go implements builder's thin git query layer over
 // internal/gitexec: HeadSHA (batch start-SHA capture), ChangedFiles (the
-// drift computation's diff source), Dirty (the half-done-work signal), and
-// ResetHard (the chain-rollback act — consumed only by chain.go's
-// RestartChain, per the discussion's correctness-by-tool-design decision
-// that no other caller ever performs a destructive reset). Every helper
-// takes an explicit worktree cwd; none resolves geometry itself.
+// drift computation's diff source), and Dirty (the half-done-work signal).
+// Every helper takes an explicit worktree cwd; none resolves geometry
+// itself.
 
 package builderengine
 
@@ -67,19 +65,4 @@ func Dirty(worktree string) (bool, error) {
 		return false, fmt.Errorf("builder: git status --porcelain in %s failed: %s", worktree, strings.TrimSpace(stderr))
 	}
 	return strings.TrimSpace(stdout) != "", nil
-}
-
-// ResetHard resets worktree's host repo to sha via `git reset --hard <sha>`.
-// It is consumed only by chain.go's RestartChain: the recorded chain-start
-// SHA is the ONLY reset target builder ever uses, never a caller-supplied
-// SHA string typed elsewhere.
-func ResetHard(worktree, sha string) error {
-	_, stderr, exitCode, err := gitexec.RunGit([]string{"reset", "--hard", sha}, worktree)
-	if err != nil {
-		return fmt.Errorf("builder: git reset --hard %s in %s: %w", sha, worktree, err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("builder: git reset --hard %s in %s failed: %s", sha, worktree, strings.TrimSpace(stderr))
-	}
-	return nil
 }
