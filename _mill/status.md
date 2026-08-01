@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hubgeometry-recorded-anchor
+phase: approved-configsync-fabric-repowide
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: _mill/plan
@@ -37,6 +37,7 @@ plan-fix-r8  '2026-08-01T09:21:40Z'
 planned  '2026-08-01T09:25:58Z'
 implementing  '2026-08-01T09:27:13Z'
 approved-hubgeometry-recorded-anchor  '2026-08-01T09:32:29Z'
+approved-configsync-fabric-repowide  '2026-08-01T09:37:31Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     start_sha: 04861f834a3f74736730fb376fc96a3fe508772b
     commit_sha: cfeefcc7a962541d5b9ce45ca0ed61a15a2577b7
   - name: configsync-fabric-repowide
-    state: running
+    state: approved
     implementer_session: 97ee880d-3cf0-4516-9bc7-1bc70efd6bb6
     start_sha: a276ff1dd9e838334ea97e8222f2eab594f8996e
+    commit_sha: d65b6027707cbe94e0070414c5adccfd199c66c4
   - name: reconcile-declarative-convergence
     state: pending
   - name: clone-does-everything
