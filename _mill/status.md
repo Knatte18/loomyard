@@ -45,7 +45,9 @@ batches:
     start_sha: 1f688d7c9fe9fcad1d0057fcc691dc3d972c944e
     commit_sha: ac58e4217cdb62f1d6d5ec1ddd69ee5e6383bdc0
   - name: logger-trace-identity
-    state: pending
+    state: running
+    implementer_session: 7b2a7d44-8b4a-49f7-8fc7-47294b6897f9
+    start_sha: 788a34413cbcc75e5ec4bf501ee29c24afe46ad2
   - name: logger-retention-sweep
     state: pending
   - name: reedengine-trace-env-filter
