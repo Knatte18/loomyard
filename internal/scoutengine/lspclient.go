@@ -148,6 +148,13 @@ type lspClient struct {
 	closed   bool
 	caps     capabilities
 	incoming chan lspReadResult
+	// lang is the language identifier this client's server was launched or
+	// dialed for (e.g. "go"), set only at production construction call
+	// sites where a language identifier is already in scope — every
+	// test-constructed client via newLSPClientFromRW leaves this at its
+	// zero value "". It exists solely so close()/kill()'s diagnostic
+	// logger.Warn calls can name which language server misbehaved.
+	lang string
 }
 
 // lspReadResult is one readLoop iteration's outcome, delivered to whichever

@@ -202,6 +202,7 @@ func ensureNative(ctx context.Context, lang string, entry Entry, targetDir strin
 		}
 		return nil, fmt.Errorf("scoutengine: start language server for %q: %w", lang, err)
 	}
+	client.lang = lang
 
 	rootURI, err := rootURIFor(targetDir)
 	if err != nil {
@@ -361,6 +362,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		if found && !daemonStale(state) {
 			if network, address, ok := strings.Cut(state.Address, ";"); ok {
 				if client, dialErr := newLSPClientDial(ctx, network, address); dialErr == nil {
+					client.lang = lang
 					if finalizeErr := finalizeConnection(ctx, client, rootURI, timeout); finalizeErr == nil {
 						return client, nil
 					}
@@ -584,6 +586,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 		if dialErr != nil {
 			return nil, fmt.Errorf("scoutengine: ensureSupervised dial newly spawned daemon for %q: %w", lang, dialErr)
 		}
+		client.lang = lang
 
 		// Step 7.
 		if err := finalizeConnection(ctx, client, rootURI, timeout); err != nil {
