@@ -23,6 +23,7 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
 
 - **Context:**
   - `internal/initengine/undo.go`
+  - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/weftwiring.go`
   - `internal/fabricengine/weftgit.go`
@@ -154,6 +155,7 @@ Depends on batch 2 (the on-disk scan helper + reconcile is the re-wire path refe
   - `internal/fabricengine/reconcile.go`
   - `internal/fabricengine/junction.go`
   - `internal/hubgeometry/hubgeometry.go`
+  - `internal/hubgeometry/anchor.go`
   - `internal/lyxtest/lyxtest.go`
 - **Edits:** none
 - **Creates:**

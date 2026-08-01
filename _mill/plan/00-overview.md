@@ -34,7 +34,7 @@ batches:
   - number: 4
     name: clone-does-everything
     file: 04-clone-does-everything.md
-    depends-on: [1, 3]
+    depends-on: [1, 2, 3]
     verify: go test -tags integration ./internal/fabricengine/... ./internal/fabriccli/...
   - number: 5
     name: worktree-add-eager-wiring

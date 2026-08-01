@@ -6,7 +6,7 @@ batch: clone-does-everything
 number: 4
 cards: 6
 verify: go test -tags integration ./internal/fabricengine/... ./internal/fabriccli/...
-depends-on: [1, 3]
+depends-on: [1, 2, 3]
 ```
 
 ## Batch Scope
@@ -15,7 +15,7 @@ This batch makes `lyx fabric clone` do the whole topology job in one shot: clone
 
 **Import-cycle constraint (drives the layering).** The config-materialization calls (`configsync.ReconcileFabricAt`, `configsync.ReconcileAll`) must NOT be made from inside `internal/fabricengine`: `configsync` imports `internal/configreg` (configsync.go:13) and `configreg` imports `internal/fabricengine` (configreg.go:12,51 — for `fabricengine.ConfigTemplate`), so a `fabricengine → configsync` edge would close the cycle `fabricengine → configsync → configreg → fabricengine`, which Go rejects. The current orchestrator `internal/initengine` imports both `configsync` and `fabricengine` safely precisely because it sits *above* both. This batch preserves that layering: **`fabricengine.CloneHub` stays git/geometry-focused** (clone, checkout, board worktree, anchor resolve/validate, write the `.fabric-anchor` marker to disk) and returns the paths the caller needs; the **`internal/fabriccli` clone handler** (which already imports `fabricengine` and may import `configsync` without cycling) drives the config-materialization + weft:main commit + junction wiring + reconcile sequence. This keeps "clone does everything" true at the command level while respecting the import graph.
 
-Depends on batch 1 (the `hubgeometry.FabricAnchorName` constant clone writes, and correct anchor-based `Resolve`) and batch 3 (`configsync.ReconcileFabricAt`). The junction name-set is read via `WiredNames(BoardDir)`. The two `weft:main` writes route through `fabricengine.CommitWeftAt`/`PushWeftAt` per the Weft Git Invariant.
+Depends on batch 1 (the `hubgeometry.FabricAnchorName` constant clone writes, and correct anchor-based `Resolve`), batch 2, and batch 3 (`configsync.ReconcileFabricAt`). **The dependency on batch 2 is load-bearing:** clone creates a hub whose `fabric.yaml` lives ONLY at the repo-wide `BoardDir`, never at the per-pair weft base — so `reconcile`/`checkout`/`remove`/`pairs`/`PairInSync` must already read the name-set from `BoardDir` (batch 2 card 7's `RepoWiredNames` migration) before a clone-created hub is exercised, or those verbs break package-wide on every clone. Without the edge, a DAG scheduler could land batch 4 before batch 2 (both otherwise gated only on 1/3), producing exactly that regression. The junction name-set is read via `WiredNames(BoardDir)`. The two `weft:main` writes route through `fabricengine.CommitWeftAt`/`PushWeftAt` per the Weft Git Invariant.
 
 Batch-local decision: adopt-vs-create is detected by whether `.fabric-anchor` already exists in the freshly-materialized board worktree (adopt: read it; create: validate `--subpath` and write it) — mirroring `suffixWeftPrimaryBranch`'s adopt-or-create shape.
 
