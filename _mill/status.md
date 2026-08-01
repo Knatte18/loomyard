@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
-plan: null
+plan: _mill/plan
 parent: main
 task: 'fabric: clone-does-everything + subpath-in-weft + init dissolution'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-07-31T19:00:16Z'
 discussion-fix-r4  '2026-07-31T20:12:59Z'
 discussed  '2026-07-31T20:12:59Z'
+planning  '2026-08-01T07:36:03Z'
 ```
