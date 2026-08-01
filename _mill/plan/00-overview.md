@@ -3,7 +3,7 @@
 ```yaml
 task: Audit and overhaul engine test suites
 slug: test-suite-overhaul
-approved: false
+approved: true
 started: 20260801-100527
 parent: main
 root: ""
