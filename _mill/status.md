@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reconcile-declarative-convergence
+phase: approved-clone-does-everything
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: _mill/plan
@@ -39,6 +39,7 @@ implementing  '2026-08-01T09:27:13Z'
 approved-hubgeometry-recorded-anchor  '2026-08-01T09:32:29Z'
 approved-configsync-fabric-repowide  '2026-08-01T09:37:31Z'
 approved-reconcile-declarative-convergence  '2026-08-01T09:52:17Z'
+approved-clone-does-everything  '2026-08-01T10:05:07Z'
 ```
 
 ## Batches
@@ -61,9 +62,10 @@ batches:
     start_sha: 300de954541cddb35c1631d9b2513175f685537a
     commit_sha: 2fe80d7767ab69f1ca3a4481e8d5ad8a665425a2
   - name: clone-does-everything
-    state: running
+    state: approved
     implementer_session: ff407fb2-9f1a-4c5b-995a-2d031eb78e5f
     start_sha: 33761f76d90ece1ca46995be5cd6bbe9263cc3ae
+    commit_sha: e8a46b36c0035766c10d86593cb8e7cd9d0b97b4
   - name: worktree-add-eager-wiring
     state: pending
   - name: init-dissolution-and-unwire
