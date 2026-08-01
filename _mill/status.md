@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-hubgeometry-worktree-logs-dir
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r5  '2026-07-31T20:05:07Z'
 plan-fix-r6  '2026-07-31T20:11:56Z'
 planned  '2026-07-31T20:12:42Z'
 implementing  '2026-07-31T20:17:53Z'
+approved-hubgeometry-worktree-logs-dir  '2026-08-01T07:16:07Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ implementing  '2026-07-31T20:17:53Z'
 ```yaml
 batches:
   - name: hubgeometry-worktree-logs-dir
-    state: running
+    state: approved
     implementer_session: 13e656c9-5683-433c-818e-b07c7b3cb274
     start_sha: 1f688d7c9fe9fcad1d0057fcc691dc3d972c944e
+    commit_sha: ac58e4217cdb62f1d6d5ec1ddd69ee5e6383bdc0
   - name: logger-trace-identity
     state: pending
   - name: logger-retention-sweep
