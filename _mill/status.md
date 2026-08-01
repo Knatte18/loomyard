@@ -67,7 +67,9 @@ batches:
     start_sha: 33761f76d90ece1ca46995be5cd6bbe9263cc3ae
     commit_sha: e8a46b36c0035766c10d86593cb8e7cd9d0b97b4
   - name: worktree-add-eager-wiring
-    state: pending
+    state: running
+    implementer_session: 08044e46-1828-463d-ad47-f8eb09a0c20a
+    start_sha: 3a9a0bf29fc7179d1e91a7d60852115d395b9f46
   - name: init-dissolution-and-unwire
     state: pending
   - name: docs-and-sandbox-suites
