@@ -73,7 +73,9 @@ batches:
     start_sha: 3a9a0bf29fc7179d1e91a7d60852115d395b9f46
     commit_sha: 0f5891af0cde44f949e8ccf6b43140f7ae803ca5
   - name: init-dissolution-and-unwire
-    state: pending
+    state: running
+    implementer_session: 462f1f92-70bb-41c3-9de2-df4de0e13107
+    start_sha: 2cd9f171aab9e65d5f43dbcec9b0c136debae619
   - name: docs-and-sandbox-suites
     state: pending
 ```
