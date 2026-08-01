@@ -54,6 +54,13 @@ const (
 
 	// ReconcileActionAlreadyHealthy means the pair required no corrective action.
 	ReconcileActionAlreadyHealthy ReconcileAction = "already_healthy"
+
+	// ReconcileActionStaleRemoved means the pair's junction/repoint check found
+	// nothing to add or re-point, but declarative stale-removal deleted at least
+	// one on-disk junction absent from the repo-wide pathspec. It is reported
+	// instead of ReconcileActionAlreadyHealthy so consumers keying off Action —
+	// not just Detail — see that convergence altered the pair.
+	ReconcileActionStaleRemoved ReconcileAction = "stale_removed"
 )
 
 // ReconcilePairResult describes the outcome for one host↔weft pair.
@@ -175,6 +182,15 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 			} else {
 				pr.Action = ReconcileActionAlreadyHealthy
 			}
+
+			// Declarative stale-removal: converge this pair to the repo-wide
+			// pathspec by removing any on-disk junction absent from it. Runs
+			// after add-missing/re-point above, for every pair reaching this
+			// weft-exists branch (both the already-healthy and the
+			// just-repaired outcomes) — never in the weft-missing branches
+			// (reconcileMissingWeft), which have no established host↔weft
+			// junctions yet to converge.
+			applyStaleRemoval(hostLayout, slug, &pr)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
@@ -448,4 +464,86 @@ func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// applyStaleRemoval converges hostLayout's on-disk junctions to the
+// repo-wide pathspec by removing any junction present on disk but absent
+// from RepoWiredNames(hostLayout) — the declarative "remove" half of
+// convergence (WireJunctions, called earlier in Reconcile's weft-exists
+// branch, already handled "add"/"re-point"). It mutates pr in place:
+// Detail is appended to, never overwritten, since the just-repaired path
+// may have already set it via junctionRepointedDetail; Action is upgraded
+// from ReconcileActionAlreadyHealthy to ReconcileActionStaleRemoved when a
+// removal actually occurred, so a consumer keying off Action alone still
+// sees the pair changed.
+//
+// Fail-closed: if the repo-wide fabric.yaml cannot be loaded, or the
+// on-disk scan fails, stale-removal is aborted for this pair and nothing is
+// touched — an errored/empty pathspec must never be interpreted as "remove
+// every junction." Both failure modes are recorded in Detail so an operator
+// can see convergence was skipped, not silently no-op'd.
+func applyStaleRemoval(hostLayout *hubgeometry.Layout, slug string, pr *ReconcilePairResult) {
+	appendDetail := func(text string) {
+		if pr.Detail == "" {
+			pr.Detail = text
+		} else {
+			pr.Detail = pr.Detail + "; " + text
+		}
+	}
+
+	// Fail-closed: an unreadable/unparseable repo-wide fabric.yaml must never
+	// be interpreted as an empty pathspec — that would blanket-remove every
+	// junction on disk. Abort stale-removal for this pair only; add-missing
+	// above may already have run against a valid set even when this later
+	// load fails (config can be edited between the two calls).
+	desired, err := RepoWiredNames(hostLayout)
+	if err != nil {
+		appendDetail(fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
+		return
+	}
+
+	onDisk, err := scanOnDiskJunctionNames(hostLayout.WorktreeRoot, hostLayout.RelPath)
+	if err != nil {
+		appendDetail(fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
+		return
+	}
+
+	desiredSet := make(map[string]bool, len(desired))
+	for _, name := range desired {
+		desiredSet[name] = true
+	}
+
+	var stale []string
+	for _, name := range onDisk {
+		if !desiredSet[name] {
+			stale = append(stale, name)
+		}
+	}
+	if len(stale) == 0 {
+		return
+	}
+
+	// Unwire each stale junction via the existing single-junction
+	// primitives: best-effort host-link removal (mirroring
+	// removeHostJunction's own best-effort posture elsewhere in this
+	// package), then its git-exclude entry — the same two steps
+	// UnwireJunctions performs, applied one name at a time so a failure on
+	// one stale name does not block the others.
+	var removed []string
+	for _, name := range stale {
+		_ = removeHostJunction(hostLayout, slug, []string{name})
+		_, _ = unseedGitExclude(hostLayout, slug, []string{name})
+		removed = append(removed, name)
+	}
+
+	appendDetail(fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
+
+	// A pair that removed a stale junction was not truly healthy even when
+	// nothing needed to be added/re-pointed; upgrade AlreadyHealthy so
+	// consumers keying off Action alone see the pair changed. A pair that
+	// was already re-pointed (or errored re-pointing) keeps its own Action —
+	// Detail above already carries both facts for that case.
+	if pr.Action == ReconcileActionAlreadyHealthy {
+		pr.Action = ReconcileActionStaleRemoved
+	}
 }
