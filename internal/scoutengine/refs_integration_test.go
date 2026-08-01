@@ -1,10 +1,10 @@
-//go:build integration
+//go:build scout
 
 // refs_integration_test.go exercises References against a real, held-open
 // gopls subprocess — the one test in this package that actually launches a
-// language server. It is //go:build integration-tagged and therefore
+// language server. It is //go:build scout-tagged and therefore
 // excluded from the plain `go test` verify (the Test Tier Purity
-// Invariant); it is run separately with `-tags integration` on a machine
+// Invariant); it is run separately with `-tags scout` on a machine
 // with gopls installed. Only the gopls-spawning subtest is guarded on
 // exec.LookPath("gopls") (via t.Skip); the ErrServerNotFound subtest never
 // launches gopls and always runs, even on a machine without it. This test

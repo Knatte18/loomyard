@@ -1,14 +1,17 @@
 // tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files
-// (the ones that run in every plain `go test`, without `-tags integration`/`smoke`)
+// (the ones that run in every plain `go test`, without `-tags integration`/`smoke`/`scout`)
 // perform no expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, and
 // no lyxtest.Copy* fixture-tree copy. This is the repo-wide grep-guard that keeps the
 // offline Tier 1 loop's premise from rotting silently again, machine-enforcing what was
 // previously review discipline only. See CONSTRAINTS.md's Test Tier Purity Invariant.
+// It also flags an untagged file containing a long literal time.Sleep(...) (see
+// cmd/lyx/tiersleep_test.go).
 
 package main
 
 import (
 	"fmt"
+	"go/token"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -22,16 +25,22 @@ import (
 // a banned spawn token in an untagged test file, each with a one-line reason —
 // mirroring sandbox_coverage_test.go's excludedModules style.
 var allowedSpawners = map[string]string{
-	"internal/proc":                                 "process control is the package's subject — its tests must spawn",
+	"internal/proc": "process control is the package's subject — its tests must spawn",
 	"internal/scoutengine/daemonstate_test.go": "spawns a short-lived child process to obtain a confirmed-dead PID for the daemon-staleness fixture, mirroring internal/proc's own liveness-test technique",
-	"internal/scoutengine/supervised_test.go":  "spawns short-lived test subprocesses for the retry-exhaustion PID-liveness fixture and the stale-socket-cleanup bind proof",
-	"cmd/lyx/tierpurity_test.go":                   "contains the banned token strings as its own test data",
-	"cmd/lyx/hermeticenv_test.go":                  "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
-	"tools/sandbox/pathresolve_guard_test.go":      "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
-	"cmd/lyx/ghguard_test.go":                      "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
-	"cmd/lyx/gitrepoboundary_test.go":              "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
-	"cmd/lyx/boardguard_test.go":                   "contains `exec.Command` to resolve the module root via `go env GOMOD` (mirrors ghguard_test.go/gitrepoboundary_test.go's identical pattern, both already allowlisted here) — the Weft Git Invariant board-guard",
+	"internal/scoutengine/supervised_test.go":  "spawns a short-lived test subprocess via spawnAndHoldSubprocess for its three remaining subtests' PID-liveness fixture (retry-exhaustion, uncontended-lock, and wedged-escalation-reuse)",
+	"cmd/lyx/tierpurity_test.go":               "contains the banned token strings as its own test data",
+	"cmd/lyx/hermeticenv_test.go":              "contains the banned token strings as its own test data (Hermetic Git Test Environment Invariant guard)",
+	"tools/sandbox/pathresolve_guard_test.go":  "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Dev/Prod Binary Separation guard)",
+	"cmd/lyx/ghguard_test.go":                  "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
+	"cmd/lyx/gitrepoboundary_test.go":          "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
+	"cmd/lyx/boardguard_test.go":               "contains `exec.Command` to resolve the module root via `go env GOMOD` (mirrors ghguard_test.go/gitrepoboundary_test.go's identical pattern, both already allowlisted here) — the Weft Git Invariant board-guard",
 }
+
+// knownTierTags are the `//go:build` constraint substrings that mark a *_test.go file
+// as tagged (i.e. excluded from a plain `go test` run) for Test Tier Purity purposes.
+// isTierTagged matches on any entry, so adding a new tier tag here is the single place
+// that both the purity guard and its doc comments need to stay in sync with.
+var knownTierTags = []string{"integration", "smoke", "scout"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also
@@ -59,7 +68,7 @@ var tierPuritySkipDirs = map[string]bool{
 
 // TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module
 // root and fails if any untagged file — one whose first non-empty line is not a
-// `//go:build` constraint mentioning "integration" or "smoke" — contains a banned spawn
+// `//go:build` constraint mentioning any of knownTierTags — contains a banned spawn
 // token as a raw substring, unless the file (or its containing directory) is on the
 // allowedSpawners allowlist. Platform-only constraints (e.g. `//go:build windows`)
 // count as untagged: they still run in Tier 1 on that platform.
@@ -118,18 +127,27 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 			return nil
 		}
 
-		token, bad := firstBannedToken(data)
-		if !bad {
-			return nil
-		}
-		if spawnerAllowed(relPath) {
-			return nil
+		bannedTok, bad := firstBannedToken(data)
+		if bad && !pathAllowlisted(relPath, allowedSpawners) {
+			failures = append(failures, fmt.Sprintf(
+				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration, smoke, or scout), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
+				relPath, bannedTok,
+			))
 		}
 
-		failures = append(failures, fmt.Sprintf(
-			"%s: contains banned token %q in an untagged test file — move it behind `//go:build integration` (or `smoke`), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
-			relPath, token,
-		))
+		// The banned-token check above may already have flagged this file, but the
+		// Sleep guard is an independent check and must still run for every file:
+		// isTierTagged(data) is already known false at this point (the walk
+		// returned above otherwise), so there is no need to re-test it here.
+		if !pathAllowlisted(relPath, allowedLongSleepers) {
+			if evidence, found := findLongLiteralSleep(token.NewFileSet(), path, data); found {
+				failures = append(failures, fmt.Sprintf(
+					"%s: contains a literal time.Sleep(...) of >= 1s in an untagged test file (%s) — move it behind a build tag, shrink the duration, or add an allowedLongSleepers entry in cmd/lyx/tiersleep_test.go with a reason",
+					relPath, evidence,
+				))
+			}
+		}
+
 		return nil
 	})
 	if walkErr != nil {
@@ -149,9 +167,9 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 }
 
 // isTierTagged reports whether data's first non-empty line is a `//go:build`
-// constraint mentioning "integration" or "smoke". A platform-only constraint (e.g.
-// `//go:build windows`) is NOT tagged — it still runs in Tier 1 on that platform, so
-// its spawns still count.
+// constraint mentioning any entry of `knownTierTags` ("integration", "smoke", "scout").
+// A platform-only constraint (e.g. `//go:build windows`) is NOT tagged — it still runs
+// in Tier 1 on that platform, so its spawns still count.
 func isTierTagged(data []byte) bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -161,9 +179,41 @@ func isTierTagged(data []byte) bool {
 		if !strings.HasPrefix(trimmed, "//go:build") {
 			return false
 		}
-		return strings.Contains(trimmed, "integration") || strings.Contains(trimmed, "smoke")
+		for _, tag := range knownTierTags {
+			if strings.Contains(trimmed, tag) {
+				return true
+			}
+		}
+		return false
 	}
 	return false
+}
+
+// TestIsTierTagged_RecognizesKnownTagsList verifies isTierTagged matches every entry of
+// knownTierTags (not just the two originally-hardcoded "integration"/"smoke" tags),
+// still treats a platform-only constraint as untagged, and still fires a substring
+// match against a compound constraint that combines a platform term with a tier tag.
+func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want bool
+	}{
+		{"integration", "//go:build integration", true},
+		{"smoke", "//go:build smoke", true},
+		{"scout", "//go:build scout", true},
+		{"platform_only_untagged", "//go:build windows", false},
+		{"compound_constraint_still_matches", "//go:build linux && scout", true},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isTierTagged([]byte(tt.line))
+			if got != tt.want {
+				t.Errorf("isTierTagged(%q) = %v; want %v", tt.line, got, tt.want)
+			}
+		})
+	}
 }
 
 // firstBannedToken returns the first entry of bannedTokens (in declared order) that
@@ -178,11 +228,12 @@ func firstBannedToken(data []byte) (string, bool) {
 	return "", false
 }
 
-// spawnerAllowed reports whether relPath (module-relative, slash-separated) is covered
-// by an allowedSpawners entry: an exact file match, or a match under a directory-prefix
-// entry.
-func spawnerAllowed(relPath string) bool {
-	for prefix := range allowedSpawners {
+// pathAllowlisted reports whether relPath (module-relative, slash-separated) is covered
+// by an entry of allowlist: an exact file match, or a match under a directory-prefix
+// entry. Shared by both the banned-token allowlist (allowedSpawners) and the
+// literal-Sleep allowlist (allowedLongSleepers).
+func pathAllowlisted(relPath string, allowlist map[string]string) bool {
+	for prefix := range allowlist {
 		if relPath == prefix || strings.HasPrefix(relPath, prefix+"/") {
 			return true
 		}
