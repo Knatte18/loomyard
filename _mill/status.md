@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: test-suite-overhaul
 branch: test-suite-overhaul
 plan: _mill/plan
@@ -20,4 +20,17 @@ discussed  '2026-08-01T10:01:36Z'
 planning  '2026-08-01T10:09:20Z'
 plan-fix-r1  '2026-08-01T10:16:02Z'
 planned  '2026-08-01T10:16:17Z'
+implementing  '2026-08-01T10:18:44Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: githubclient-timeout-seam
+    state: pending
+  - name: webstercli-await-wait-window
+    state: pending
+  - name: benchmark-doc-update
+    state: pending
 ```
