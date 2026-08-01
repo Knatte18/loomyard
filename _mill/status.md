@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-logger-spans
+phase: approved-reedengine-adoption
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-reedengine-trace-env-filter  '2026-08-01T07:39:54Z'
 approved-logger-durable-sink  '2026-08-01T07:43:44Z'
 approved-logger-dual-handler-fanout  '2026-08-01T07:50:56Z'
 approved-logger-spans  '2026-08-01T07:53:37Z'
+approved-reedengine-adoption  '2026-08-01T07:57:50Z'
 ```
 
 ## Batches
@@ -81,9 +82,10 @@ batches:
     start_sha: 70b875031e89fb773a94f8135d2b65e2d2f20b07
     commit_sha: 3f092afae4912e5e60926b808830f01f275bc251
   - name: reedengine-adoption
-    state: running
+    state: approved
     implementer_session: c697e1d4-a8bd-4da6-b3c3-70f9070568b1
     start_sha: 941667e07cc66ca41eae6336af4009c222e9636a
+    commit_sha: 9de239edc1ea8af187ba6cb8d7c640cc43576a46
   - name: treadleengine-adoption
     state: pending
   - name: burler-fabric-shuttle-adoption
