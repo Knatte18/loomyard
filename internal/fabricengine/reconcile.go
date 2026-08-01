@@ -9,6 +9,11 @@
 //
 // readBranch and checkJunctionHealth are also used by Status; they live here because
 // Reconcile needs them first and both verbs share the same package.
+//
+// The junction name-set checkJunctionHealth/Reconcile/junctionRepointedDetail consult
+// is sourced from the repo-wide fabric.yaml at hubgeometry.BoardDir(l.Hub) — via
+// RepoWiredNames — not from any individual pair's own weft base, so reconcile
+// converges every worktree to the same repo-wide pathspec.
 
 package fabricengine
 
@@ -152,13 +157,11 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 				// Re-point the junction(s) by running WireJunctions. WireJunctions is idempotent
 				// and handles both the missing-junction and the wrong-target cases, for every
 				// junction in one call — not just the one checkJunctionHealth found unhealthy.
-				// Source the wired name-set from THIS pair's own weft base — the
-				// same per-pair base checkJunctionHealth just consulted — never
-				// from the acting worktree's t.cfg: Reconcile iterates many
-				// pairs, each of which may carry its own pathspec, and using the
-				// wrong worktree's name-set here could loop Reconcile forever
-				// against the per-pair health check.
-				names, namesErr := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+				// Source the wired name-set from the repo-wide BoardDir base — the
+				// same repo-wide base checkJunctionHealth just consulted — never
+				// from the acting worktree's t.cfg: Reconcile iterates many pairs
+				// and must converge every one of them to the one repo-wide pathspec.
+				names, namesErr := RepoWiredNames(hostLayout)
 				if namesErr != nil {
 					pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
 					pr.Action = ReconcileActionJunctionRepointed
@@ -322,9 +325,9 @@ func readBranch(dir string) (string, error) {
 // checkJunctionHealth verifies that every junction in
 // hostLayout.HostJunctionsHere(names) is a link resolving to its own Target,
 // reporting the first unhealthy one found (first-unhealthy-wins). names is
-// loaded internally from the pair's weft base — the same durable,
+// loaded internally from the repo-wide BoardDir base — the same durable,
 // junction-health-independent base junctionRepointedDetail and PairInSync use —
-// via junctionNames; checkJunctionHealth's own signature is unchanged.
+// via RepoWiredNames; checkJunctionHealth's own signature is unchanged.
 //
 // A junction is unhealthy if its Link is missing, is not a link, or resolves
 // somewhere other than its Target. Every reason string names the junction (by
@@ -338,7 +341,7 @@ func readBranch(dir string) (string, error) {
 // Returns (ok, reason) where ok is true only if every junction is correctly
 // configured; reason is empty in that case.
 func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
-	names, err := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+	names, err := RepoWiredNames(hostLayout)
 	if err != nil {
 		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err)
 	}
@@ -383,11 +386,12 @@ func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
 // "Link → Target" — not just the one checkJunctionHealth found unhealthy,
 // since WireJunctions repairs (or verifies) all of them in the single call
 // that produced this outcome. names is loaded internally from the same
-// weft base checkJunctionHealth uses. This function only runs after
-// checkJunctionHealth found the pair unhealthy AND WireJunctions succeeded,
-// so config is present in practice; the error branch below is defensive.
+// repo-wide BoardDir base checkJunctionHealth uses. This function only runs
+// after checkJunctionHealth found the pair unhealthy AND WireJunctions
+// succeeded, so config is present in practice; the error branch below is
+// defensive.
 func junctionRepointedDetail(hostLayout *hubgeometry.Layout) string {
-	names, err := junctionNames(filepath.Join(hostLayout.WeftWorktree(), hostLayout.RelPath))
+	names, err := RepoWiredNames(hostLayout)
 	if err != nil {
 		return "junction re-pointed: cannot load fabric.yaml: " + err.Error()
 	}

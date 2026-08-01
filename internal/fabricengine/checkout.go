@@ -147,13 +147,13 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	}
 
 	// (5) Re-point the junction for the current worktree's slug. Source the wired
-	// name-set from the current worktree's own weft base (not any acting-worktree
-	// config): WireJunctions itself loads no config, so the caller must supply
-	// names, and this is the pair whose junctions are being re-pointed. On
-	// failure, roll back BOTH sides: the weft was already switched in step 4, so a
-	// host-only rollback would strand it on the new branch and leave a
-	// half-switched pair.
-	names, err := junctionNames(filepath.Join(l.WeftWorktreePath(slug), l.RelPath))
+	// name-set from the repo-wide BoardDir base (not any per-pair weft base or
+	// acting-worktree config): WireJunctions itself loads no config, so the
+	// caller must supply names, and every worktree must converge to the same
+	// repo-wide pathspec. On failure, roll back BOTH sides: the weft was
+	// already switched in step 4, so a host-only rollback would strand it on
+	// the new branch and leave a half-switched pair.
+	names, err := RepoWiredNames(l)
 	if err != nil {
 		t.rollbackSwitch(l, originalBranch, originalWeftBranch, forkedWeftBranch)
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: load fabric config: %w", err)

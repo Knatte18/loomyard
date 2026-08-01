@@ -7,7 +7,6 @@ package fabricengine
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -91,17 +90,17 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 	}
 
 	// (5) Explicitly remove host junctions (catches nested junctions that
-	// fslink.RemoveLinksIn misses). Source names from the REMOVED slug's own
-	// weft base, not t.cfg — the slug being torn down may differ from the
-	// acting worktree and carry its own pathspec. This is deliberately
+	// fslink.RemoveLinksIn misses). Source names from the repo-wide BoardDir
+	// base, not t.cfg or the removed slug's own weft base — every worktree
+	// converges to the one repo-wide pathspec. This is deliberately
 	// best-effort: Remove is a teardown and must not hard-fail when the
-	// target pair's config is absent or unreadable (a pair is often removed
+	// repo-wide config is absent or unreadable (a pair is often removed
 	// *because* it is broken). On a load error, names stays nil, so
 	// removeHostJunction removes nothing here; a nested (RelPath != ".")
 	// junction may then leak past step 6's root-level-only safety net — the
 	// accepted teardown-robustness trade-off (never hard-fail a teardown;
 	// never guess a wiring set).
-	names, namesErr := junctionNames(filepath.Join(l.WeftWorktreePath(slug), l.RelPath))
+	names, namesErr := RepoWiredNames(l)
 	if namesErr != nil {
 		names = nil
 	}
