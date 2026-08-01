@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: fabric-rebase-reconcile
 branch: fabric-rebase-reconcile
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-cli-pull  '2026-08-01T17:29:45Z'
 approved-docs-sandbox  '2026-08-01T17:33:34Z'
 holistic-reviewing  '2026-08-01T17:33:50Z'
 holistic-approved  '2026-08-01T17:36:34Z'
+done  '2026-08-01T17:37:04Z'
 ```
 
 ## Batches
