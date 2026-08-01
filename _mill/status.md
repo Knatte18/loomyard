@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-08-01T14:52:55Z'
 nits-fixed-holistic  '2026-08-01T14:54:59Z'
 holistic-approved  '2026-08-01T14:55:05Z'
 done  '2026-08-01T14:55:48Z'
+pr-pending  '2026-08-01T14:57:33Z'
 ```
 
 ## Batches
