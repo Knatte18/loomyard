@@ -68,7 +68,7 @@ var tierPuritySkipDirs = map[string]bool{
 
 // TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module
 // root and fails if any untagged file — one whose first non-empty line is not a
-// `//go:build` constraint mentioning "integration" or "smoke" — contains a banned spawn
+// `//go:build` constraint mentioning any of knownTierTags — contains a banned spawn
 // token as a raw substring, unless the file (or its containing directory) is on the
 // allowedSpawners allowlist. Platform-only constraints (e.g. `//go:build windows`)
 // count as untagged: they still run in Tier 1 on that platform.
@@ -130,7 +130,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		bannedTok, bad := firstBannedToken(data)
 		if bad && !pathAllowlisted(relPath, allowedSpawners) {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned token %q in an untagged test file — move it behind `//go:build integration` (or `smoke`), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
+				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (integration, smoke, or scout), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
 				relPath, bannedTok,
 			))
 		}
