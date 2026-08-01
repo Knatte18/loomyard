@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: _mill/plan
@@ -33,6 +33,8 @@ approved-scoutengine-scout-tag  '2026-08-01T14:47:18Z'
 approved-substrate-rule-docs-and-sweep  '2026-08-01T14:50:14Z'
 holistic-reviewing  '2026-08-01T14:50:36Z'
 holistic-fixing  '2026-08-01T14:52:55Z'
+nits-fixed-holistic  '2026-08-01T14:54:59Z'
+holistic-approved  '2026-08-01T14:55:05Z'
 ```
 
 ## Batches
