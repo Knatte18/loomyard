@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: test-tier-substrate-audit
 branch: test-tier-substrate-audit
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-01T10:51:55Z'
+discussion-fix-r3  '2026-08-01T11:25:54Z'
+discussed  '2026-08-01T11:25:54Z'
 ```
