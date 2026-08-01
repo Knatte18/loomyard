@@ -104,14 +104,17 @@ _Cross-cutting decisions every batch inherits._
 - `internal/fabriccli/weft_verbs.go`
 - `internal/fabricengine/add.go`
 - `internal/fabricengine/add_rollback_adopt_test.go`
+- `internal/fabricengine/checkout.go`
 - `internal/fabricengine/clone.go`
 - `internal/fabricengine/clone_adopt_test.go`
 - `internal/fabricengine/config.go`
 - `internal/fabricengine/doc.go`
+- `internal/fabricengine/drift.go`
 - `internal/fabricengine/hostlayout.go`
 - `internal/fabricengine/junction.go`
 - `internal/fabricengine/junctionnames.go`
 - `internal/fabricengine/reconcile.go`
+- `internal/fabricengine/remove.go`
 - `internal/fabricengine/reconcile_stale_removal_test.go`
 - `internal/fabricengine/status.go`
 - `internal/fabricengine/unwire.go`
