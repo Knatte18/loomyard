@@ -12,7 +12,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // retentionAgeBound is the maximum age, read from a candidate file's
@@ -35,9 +38,9 @@ const traceFileTimestampLayout = "20060102T150405Z"
 // traceFilePattern matches the trace-file grammar discussion.md's
 // `one-file-per-process` decision fixes:
 // trace-<YYYYMMDDTHHMMSSZ>-<16-hex-id>-<pid>.log. Capture groups extract the
-// timestamp segment (age bound) and the pid segment (liveness rule, Card 6).
-// A filename that does not match this pattern is never a sweep candidate —
-// it is neither deleted nor counted toward the count bound, per the
+// timestamp segment (age bound) and the pid segment (liveness rule). A
+// filename that does not match this pattern is never a sweep candidate — it
+// is neither deleted nor counted toward the count bound, per the
 // `retention` decision's sweep-scope rule.
 var traceFilePattern = regexp.MustCompile(`^trace-(\d{8}T\d{6}Z)-[0-9a-f]{16}-(\d+)\.log$`)
 
@@ -57,6 +60,13 @@ type retentionCandidate struct {
 // file in dir is left untouched. A per-file delete failure is skipped, not
 // propagated, so a locked file (Windows) or a sibling process racing this
 // sweep never fails the call. An empty or absent directory is a no-op.
+//
+// Liveness rule: a candidate whose filename pid segment belongs to a
+// currently-running process (per internal/proc.IsAlive), or to this process
+// itself, is never deleted by either bound and is excluded from the count
+// bound's ranking entirely — see the `retention` decision's live-skip
+// rationale for why unlinking a live sibling's open file is unsafe, and why
+// a live file must not consume one of the newest-50 slots.
 func Sweep(dir string) error {
 	// A missing directory is nothing to sweep, not an error: the sink that
 	// calls Sweep on open may run before the directory has ever been
@@ -68,6 +78,7 @@ func Sweep(dir string) error {
 
 	var candidates []retentionCandidate
 	now := time.Now()
+	selfPID := os.Getpid()
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -83,6 +94,20 @@ func Sweep(dir string) error {
 			// A filename that matched the regex's digit shape but is not a
 			// valid calendar timestamp (e.g. month 13) is not a real
 			// trace file; treat it the same as a grammar mismatch.
+			continue
+		}
+		pid, err := strconv.Atoi(match[2])
+		if err != nil {
+			// The grammar's \d+ group always parses as an int; this branch
+			// exists only to satisfy strconv's error return and is
+			// unreachable in practice.
+			continue
+		}
+		if pid == selfPID || proc.IsAlive(pid) {
+			// Liveness rule: a live process's file (including this one's
+			// own) is unconditionally kept and never enters the count
+			// bound's candidate set, so it cannot consume one of the
+			// newest-50 slots.
 			continue
 		}
 
