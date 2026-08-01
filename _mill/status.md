@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -48,6 +48,8 @@ approved-scoutengine-logger-conversion  '2026-08-01T08:17:16Z'
 approved-docs-and-constraints-wrapup  '2026-08-01T08:19:54Z'
 holistic-reviewing  '2026-08-01T08:20:19Z'
 holistic-fixing  '2026-08-01T08:24:47Z'
+nits-fixed-holistic  '2026-08-01T08:27:36Z'
+holistic-approved  '2026-08-01T08:27:44Z'
 ```
 
 ## Batches
