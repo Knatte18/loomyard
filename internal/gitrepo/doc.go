@@ -3,9 +3,9 @@
 // internal/gitexec's raw command runner for anything that authenticates to a
 // remote or mutates the working tree. It exposes the small set of semantic
 // operations (current SHA, stage+commit, changed-files-since, SHA existence,
-// push, pull, hard reset, snapshot tracking) that every consumer of a
-// git-backed repo (fabric, raddle, scout, webster) would otherwise
-// reimplement by parsing raw git stdout itself.
+// push, pull, hard reset) that every consumer of a git-backed repo (fabric,
+// raddle, scout, webster) would otherwise reimplement by parsing raw git
+// stdout itself.
 //
 // # Relationship to internal/gitexec — the two-backend boundary
 //
@@ -13,16 +13,14 @@
 // []string, cwd string) (stdout, stderr string, exitCode int, err error),
 // that shells out to git and returns raw output. gitrepo used to route every
 // method through it via a single unexported run helper; it no longer does.
-// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, CurrentBranch,
-// remoteName, isStrictDescendant, SnapshotSHA's ref read, and
-// SetSnapshotSHA's two inline local reads — resolves state entirely through
-// go-git's own object and ref access (see gogit.go), bypassing run and
-// gitexec.RunGit completely. Everything that authenticates to a remote or
-// mutates the working tree stays CLI-bound through run: StageAndCommit,
-// StageAllAndCommit, Push, PushCoalesced, Pull, ResetHard, CheckoutDetached,
-// RestoreBranch, SetSnapshotSHA's push, SnapshotSHA's fetch, and hasUnpushed
-// (measured and reverted from a go-git ancestry walk; see hasUnpushed's own
-// godoc in push.go for the reversal criterion). See
+// The read surface — CurrentSHA, SHAExists, ChangedFilesSince, and
+// CurrentBranch — resolves state entirely through go-git's own object and
+// ref access (see gogit.go), bypassing run and gitexec.RunGit completely.
+// Everything that authenticates to a remote or mutates the working tree
+// stays CLI-bound through run: StageAndCommit, StageAllAndCommit, Push,
+// PushCoalesced, Pull, ResetHard, CheckoutDetached, RestoreBranch, and
+// hasUnpushed (measured and reverted from a go-git ancestry walk; see
+// hasUnpushed's own godoc in push.go for the reversal criterion). See
 // CONSTRAINTS.md's gitrepo Client Boundary Invariant for the enforced,
 // exhaustive version of this split and the review obligation any new CLI
 // call inside this package carries. gitexec itself stays a zero-dependency
@@ -36,9 +34,9 @@
 // package's read surface migrated. CurrentSHA's unborn-HEAD detection is now
 // typed (plumbing.ErrReferenceNotFound, surfaced as ErrNoCommits) and no
 // longer depends on git's locale at all. The recoverable push-rejection
-// triggers behind Push's rebase-retry and SetSnapshotSHA's adopt-on-conflict,
-// and the benign "no rebase in progress" abort check, stay CLI-bound and
-// therefore still match git's untranslated stderr text: a git with
+// triggers behind Push's rebase-retry, and the benign "no rebase in
+// progress" abort check, stay CLI-bound and therefore still match git's
+// untranslated stderr text: a git with
 // translation catalogs installed, running under a non-English locale,
 // defeats those matches, and every affected path then degrades loudly — a
 // hard push error instead of a recovery — never a silent wrong success.
@@ -51,32 +49,56 @@
 // cannot fail, and it does not create, clone, or otherwise manage repo
 // topology; that is fabric's job, built directly on gitexec. From there:
 //
-//   - CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, and
-//     SHAExists are the core read/write primitives.
+//   - CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit,
+//     ChangedFilesSince, and SHAExists are the core read/write primitives.
 //   - Push and PushCoalesced are the push surface (see below).
 //   - Pull is the fast-forward-only pull surface (see below).
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
-//   - SnapshotSHA and SetSnapshotSHA are the snapshot-tracking surface (see
-//     below).
 //   - CurrentBranch, CheckoutDetached, and RestoreBranch are the in-place
 //     bisect exception (see Scope boundaries below).
 //
-// Caller-supplied SHA arguments (SHAExists, ChangedFilesSince,
-// SetSnapshotSHA, ResetHard) are validated as plain hex object names before
-// ever reaching git, so an option-shaped string (a value with a leading '-',
-// e.g. "--hard") can never be parsed as a git flag; invalid SHAs surface as
-// ErrInvalidSHA, or as false from SHAExists per its bool-swallowing posture.
+// Caller-supplied SHA arguments (SHAExists, ChangedFilesSince, ResetHard) are
+// validated as plain hex object names before ever reaching git, so an
+// option-shaped string (a value with a leading '-', e.g. "--hard") can never
+// be parsed as a git flag; invalid SHAs surface as ErrInvalidSHA, or as false
+// from SHAExists per its bool-swallowing posture.
 //
-// # The self-correcting snapshot pattern
+// # CommitEmpty — the empty-commit primitive
 //
-// SnapshotSHA/SetSnapshotSHA is the one pattern every consumer of gitrepo
-// (fabric's coordination, raddle's staleness tracking, scout's
-// per-language notification) reuses: a consumer only calls SetSnapshotSHA
-// after confirmed success. If a downstream step fails partway, the stored
-// SHA is not advanced, so the next attempt naturally recomputes the diff
-// from the old SHA and catches everything missed — including from earlier
-// failed attempts. No separate crash-recovery logic is needed; correctness
-// falls out of the "advance state only on confirmed success" rule.
+// CommitEmpty(msg) records a commit whose only content is msg itself — a
+// commit whose tree is identical to its parent's, carrying no file changes at
+// all. Neither existing primitive can be coaxed into that shape: StageAndCommit
+// returns its documented no-op signal, by design, on an empty file list, and
+// its `diff --cached --quiet` gate returns that same no-op the moment the
+// listed files' staged content matches HEAD — both are "commit this content,
+// or signal that there was none" primitives, and an empty commit has no
+// content to key either check on. CommitEmpty exists for the caller that
+// wants a commit to land regardless, with meaning carried entirely in msg.
+//
+// Because it has no content to check, CommitEmpty instead runs a pre-check on
+// the index itself, branching on whether HEAD is born or unborn. On a born
+// HEAD, an unscoped `git diff --cached --quiet` reports via exit code exactly
+// like StageAndCommit's own pathspec-scoped check does. On an unborn HEAD
+// there is no HEAD tree for `diff --cached` to compare against, so the
+// pre-check runs `git ls-files --cached` instead and treats any listed path
+// as "something is staged" — this avoids needing an empty-tree object
+// constant, which is hash-algorithm-dependent and would be a latent
+// SHA-256 bug the moment a repo's hash algorithm changes.
+//
+// This package's never-sweep norm — an automated commit must never absorb
+// content nobody asked it to commit — is what StageAndCommit enforces
+// structurally, through pathspec scoping: its `commit ... -- <files>` cannot
+// commit an unlisted path no matter what races it. CommitEmpty has no
+// pathspec to scope an empty commit with, so it can only approximate that
+// norm by refusing: finding the index dirty at the pre-check returns
+// ErrIndexNotEmpty (checkable via errors.Is) without committing. That leaves
+// an honest, narrower guarantee than StageAndCommit's — CommitEmpty is
+// check-then-commit across two separate git spawns, so an index write landing
+// in the milliseconds between the pre-check and the commit is still swept
+// into it, a window StageAndCommit's pathspec scoping closes structurally and
+// CommitEmpty cannot. This package makes no claim that CommitEmpty's callers
+// serialize their writes against that window; that discipline lives with the
+// caller.
 //
 // # SHAExists — history-rewrite safety
 //
@@ -97,7 +119,7 @@
 // gitrepo covers only the operations its consumers actually need
 // programmatically: stage+commit (explicit file list, never wildcard-stage),
 // diff-since-SHA, current-SHA, push, fast-forward pull, SHA-validated hard
-// reset, snapshot/correspondence tracking, and the CurrentBranch/CheckoutDetached/RestoreBranch
+// reset, and the CurrentBranch/CheckoutDetached/RestoreBranch
 // trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
 // opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
 // scout keep using explicit-list StageAndCommit (called via
@@ -138,7 +160,7 @@
 // captured before the push (StageAndCommit's return value in particular)
 // may afterwards name an off-history commit that SHAExists still reports
 // true for via the reflog — callers re-read CurrentSHA after a successful
-// push before recording a SHA anywhere, SetSnapshotSHA included.
+// push before recording that SHA anywhere.
 // PushCoalesced adds cross-process coalescing on top: it acquires a
 // single-pusher lock file, .gitrepo-push.lock, in the repo's
 // worktree root before checking whether anything is actually unpushed, so a
@@ -168,41 +190,6 @@
 // target commit — ResetHard rejects it as ErrInvalidSHA before any git
 // spawn, exactly like ChangedFilesSince. Non-zero-exit errors follow Pull's
 // no-stderr-leak style: the repo path and git's exit code, never raw stderr.
-//
-// # Snapshot remote model
-//
-// SnapshotSHA/SetSnapshotSHA store each key's value under
-// refs/loomyard/snapshot/<key>, pushed to the repo's remote so state is
-// shared across clones rather than confined to one worktree. SnapshotSHA
-// performs a best-effort fetch of the whole snapshot namespace before
-// reading; a fetch failure degrades to the last-known local ref rather than
-// surfacing as an error, since a slightly-stale snapshot at worst
-// reprocesses already-done work. SetSnapshotSHA writes are fast-forward-only
-// with adopt-on-conflict: a rejected push normally means another clone
-// already advanced the key past this value, so SetSnapshotSHA fetches and
-// adopts the remote's value into the local ref and returns nil rather than
-// an error — a key advances along a single monotonically-forward line, so a
-// rejection usually means someone else processed further and their SHA is
-// the correct one to take. The one exception is transient contention — a
-// remote-side creation race that rejects the loser regardless of ancestry
-// ("reference already exists"), or a lost ref-lock race under concurrent
-// writers; when the adopted value turns out to be a strict ancestor of the
-// value being set, SetSnapshotSHA re-advances and retries the push, looping
-// (bounded) until it lands or the remote genuinely moves past it, so a
-// strictly-newer value is not silently dropped by transient contention — not
-// even under three or more concurrent writers, where a single retry could
-// itself lose the race.
-//
-// The snapshot remote is resolved from the current branch's tracking
-// configuration, falling back to the conventional "origin" name. In a repo
-// that violates that assumption (its only remote named something else, no
-// branch tracking configured) the two surfaces degrade asymmetrically:
-// SnapshotSHA's best-effort fetch fails silently every call, so reads report
-// only the local ref — ("", nil) forever if nothing was ever set locally,
-// indistinguishable from "no snapshot" — while SetSnapshotSHA fails loudly
-// on its push. The loud write-path failure is what keeps the silence
-// acceptable: a misconfigured consumer cannot run long without its first
-// write surfacing the problem.
 //
 // # Evidence for the two-backend boundary
 //
@@ -249,13 +236,10 @@
 //     explicit transport.AuthMethod but has no mechanism to discover one from
 //     the environment. Against a real HTTPS remote resolved through Git
 //     Credential Manager (this repo's own remote), a go-git push would fail
-//     outright and a go-git fetch would fail on every call — the latter more
-//     dangerous, since SnapshotSHA's fetch already swallows failures by
-//     design, so snapshot refs would silently stop being shared across
-//     clones. Push, PushCoalesced, SetSnapshotSHA's push, and SnapshotSHA's
-//     fetch all stay CLI-bound for this reason. Push's rebase-retry is
-//     doubly CLI-bound regardless: go-git ships no rebase implementation at
-//     all.
+//     outright and a go-git fetch would fail on every call. Push,
+//     PushCoalesced, and Pull all stay CLI-bound for this reason. Push's
+//     rebase-retry is doubly CLI-bound regardless: go-git ships no rebase
+//     implementation at all.
 //
 // From the second probe (measuring the linked-worktree topology every real
 // checkout in this codebase uses — this checkout's own .git is a file,
@@ -266,9 +250,9 @@
 //     Against a linked worktree, the obvious call — git.PlainOpen, which
 //     defaults EnableDotGitCommonDir to false — returns NO error and hands
 //     back a handle that cannot read HEAD, cannot read any object, and
-//     reports every existing refs/loomyard/snapshot/* key as absent,
-//     forever, with no error anywhere. This is why goGit (gogit.go) opens
-//     with the option explicitly set rather than the convenience call.
+//     reports every ref stored in the shared common dir as absent, forever,
+//     with no error anywhere. This is why goGit (gogit.go) opens with the
+//     option explicitly set rather than the convenience call.
 //   - DetectDotGit is banned outright. Set true and pointed at a path that is
 //     not itself a repository, it walks up the directory tree and silently
 //     opens whatever ancestor repository it finds — proven, in the probe, to

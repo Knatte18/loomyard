@@ -37,7 +37,7 @@ import (
 // checkout's own shape — fabricengine's host and weft worktrees, reached
 // through internal/fslink junctions), PlainOpen returns NO error and hands
 // back a handle that cannot read HEAD, cannot read any object, and reports
-// every existing refs/loomyard/snapshot/* key as absent — forever, with no
+// every ref stored in the shared common dir as absent — forever, with no
 // error anywhere. EnableDotGitCommonDir defaults to false, so the
 // convenience call is the wrong one. DetectDotGit is worse than merely
 // wrong: pointed at a path that is not itself a repository, it walks *up*
@@ -78,15 +78,14 @@ import (
 // already been released by the time it returns. The package's locking
 // discipline, stated once here because every migrating card works from it:
 //
-//   - A plain ref read (Head, an unresolved Reference — CurrentSHA,
-//     CurrentBranch, remoteName, and both snapshot ref reads) acquires
-//     r.goGitMu.RLock for the duration of the go-git call it makes with the
-//     handle goGit returned, then releases it. go-git never caches refs, so
-//     there is no lazy-index mutation to protect against on this path —
-//     only the concurrent-map-style safety a plain read needs.
+//   - A plain ref read (Head, an unresolved Reference — CurrentSHA and
+//     CurrentBranch) acquires r.goGitMu.RLock for the duration of the go-git
+//     call it makes with the handle goGit returned, then releases it. go-git
+//     never caches refs, so there is no lazy-index mutation to protect
+//     against on this path — only the concurrent-map-style safety a plain
+//     read needs.
 //   - An object lookup (a commit, tree, or blob resolution — SHAExists,
-//     ChangedFilesSince, isStrictDescendant, hasUnpushed, and
-//     SetSnapshotSHA's ^{commit} canonicalization) never locks around the
+//     ChangedFilesSince, and hasUnpushed) never locks around the
 //     handle itself; it calls lookupObjectRetrying instead, which acquires
 //     r.goGitMu.Lock (not RLock) for its entire attempt-check-reindex-retry
 //     sequence as one unit — see that function's doc for why a read-only
@@ -105,8 +104,7 @@ import (
 //
 // Exercised by gogit_test.go and, as of batch 3, called from every migrated
 // read in this package: gitrepo.go's CurrentSHA, SHAExists, CurrentBranch,
-// and ChangedFilesSince, and snapshot.go's remoteName, SnapshotSHA,
-// isStrictDescendant, and SetSnapshotSHA all route through this accessor.
+// and ChangedFilesSince all route through this accessor.
 func (r *Repo) goGit() (*git.Repository, error) {
 	r.goGitMu.Lock()
 	defer r.goGitMu.Unlock()
@@ -180,8 +178,7 @@ func (r *Repo) goGit() (*git.Repository, error) {
 //
 // Exercised by gogit_test.go's concurrency and reindex-retry coverage and,
 // as of batch 3, called from every migrated object lookup in this package:
-// gitrepo.go's SHAExists and ChangedFilesSince, and snapshot.go's
-// isStrictDescendant and SetSnapshotSHA's ^{commit} canonicalization.
+// gitrepo.go's SHAExists and ChangedFilesSince.
 func lookupObjectRetrying[T any](r *Repo, repo *git.Repository, lookup func() (T, error)) (T, error) {
 	r.goGitMu.Lock()
 	defer r.goGitMu.Unlock()
