@@ -93,7 +93,9 @@ batches:
     start_sha: 56ea77ca8db2a2bf3b5e9f6a5985772724fcedd6
     commit_sha: 2ab65d5ba1da19f60af3981d09e7bf539893e9e2
   - name: burler-fabric-shuttle-adoption
-    state: pending
+    state: running
+    implementer_session: b8b7acdf-c032-4d66-919e-325e59eb7539
+    start_sha: 6d39c1a4f592dd472dc6366e97540fe3edaffcea
   - name: perchengine-adoption
     state: pending
   - name: cmd-lyx-root-wiring
