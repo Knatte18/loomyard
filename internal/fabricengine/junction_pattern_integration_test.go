@@ -118,6 +118,7 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -173,6 +174,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -225,6 +227,7 @@ func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -398,6 +401,7 @@ func TestPairInSync_JunctionDriftShapes(t *testing.T) {
 				lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 					"fabric": fabricengine.ConfigTemplate(),
 				})
+				seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 				lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 				l := fixture.Layout
@@ -563,6 +567,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
