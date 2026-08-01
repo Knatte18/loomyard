@@ -194,3 +194,67 @@ func TestSweep_EmptyOrAbsentDirectory(t *testing.T) {
 		}
 	})
 }
+
+// TestSweep_LivenessSkipsSelfProcess covers the retention decision's
+// liveness rule: a candidate whose <pid> segment names this test process's
+// own live PID is never deleted by either bound, even when its filename
+// timestamp is old enough to qualify for the age bound on its own.
+func TestSweep_LivenessSkipsSelfProcess(t *testing.T) {
+	dir := t.TempDir()
+	selfFile := writeTraceTestFile(t, dir, time.Now().Add(-15*24*time.Hour), hexID(1), os.Getpid())
+
+	if err := Sweep(dir); err != nil {
+		t.Fatalf("Sweep(%s) = %v; want nil", dir, err)
+	}
+
+	assertExists(t, selfFile)
+}
+
+// TestSweep_LivenessDeletesDeadPID covers the complementary half of the
+// liveness rule: a candidate whose <pid> segment is implausible-to-be-alive
+// (deadTestPID) and which is over-age is deleted exactly as any other
+// out-of-bound candidate. Per the Test Tier Purity Invariant, this uses a
+// large implausible PID rather than spawning and killing a real process to
+// obtain a guaranteed-dead one.
+func TestSweep_LivenessDeletesDeadPID(t *testing.T) {
+	dir := t.TempDir()
+	deadFile := writeTraceTestFile(t, dir, time.Now().Add(-15*24*time.Hour), hexID(1), deadTestPID)
+
+	if err := Sweep(dir); err != nil {
+		t.Fatalf("Sweep(%s) = %v; want nil", dir, err)
+	}
+
+	assertAbsent(t, deadFile)
+}
+
+// TestSweep_LiveSkipDoesNotConsumeCountBudget covers the retention
+// decision's live-skip budget exemption: a live-pid candidate is kept in
+// addition to whatever the count bound's own ranking keeps, never as one of
+// the retentionCountBound slots — seeding one live file alongside exactly
+// retentionCountBound dead-pid, in-bound files must not evict any of the
+// dead-pid files to make room for the live one.
+func TestSweep_LiveSkipDoesNotConsumeCountBudget(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Now().Add(-time.Minute)
+
+	// The live file's filename timestamp is the newest of all candidates,
+	// so if it wrongly consumed one of the count bound's slots it would be
+	// the dead-pid file at the tail (index retentionCountBound-1) that gets
+	// evicted to make room for it.
+	liveFile := writeTraceTestFile(t, dir, base.Add(time.Minute), hexID(0), os.Getpid())
+
+	var deadFiles []string
+	for i := 0; i < retentionCountBound; i++ {
+		ts := base.Add(-time.Duration(i) * time.Minute)
+		deadFiles = append(deadFiles, writeTraceTestFile(t, dir, ts, hexID(i+1), deadTestPID))
+	}
+
+	if err := Sweep(dir); err != nil {
+		t.Fatalf("Sweep(%s) = %v; want nil", dir, err)
+	}
+
+	assertExists(t, liveFile)
+	for _, path := range deadFiles {
+		assertExists(t, path)
+	}
+}
