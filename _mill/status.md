@@ -79,5 +79,7 @@ batches:
     start_sha: 2cd9f171aab9e65d5f43dbcec9b0c136debae619
     commit_sha: e8fe28edd7d13580eb61a4637f6dc093d3700502
   - name: docs-and-sandbox-suites
-    state: pending
+    state: running
+    implementer_session: dc44d257-da15-48ea-a223-0912cbf9b11e
+    start_sha: 11384db467483f5977782811ef27d2b8b4933c15
 ```
