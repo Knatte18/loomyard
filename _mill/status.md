@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -50,6 +50,7 @@ holistic-reviewing  '2026-08-01T08:20:19Z'
 holistic-fixing  '2026-08-01T08:24:47Z'
 nits-fixed-holistic  '2026-08-01T08:27:36Z'
 holistic-approved  '2026-08-01T08:27:44Z'
+done  '2026-08-01T08:28:25Z'
 ```
 
 ## Batches
