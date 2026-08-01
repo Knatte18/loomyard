@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-constraints-wrapup
+phase: holistic-reviewing
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -46,6 +46,7 @@ approved-perchengine-adoption  '2026-08-01T08:06:18Z'
 approved-cmd-lyx-root-wiring  '2026-08-01T08:12:23Z'
 approved-scoutengine-logger-conversion  '2026-08-01T08:17:16Z'
 approved-docs-and-constraints-wrapup  '2026-08-01T08:19:54Z'
+holistic-reviewing  '2026-08-01T08:20:19Z'
 ```
 
 ## Batches
