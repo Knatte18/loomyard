@@ -102,7 +102,7 @@ func Ensure(repoRoot string, entries ...string) (changed bool, err error) {
 // Remove reverses Ensure for the given entries: it deletes them from the
 // lyx-managed block in <repoRoot>/.gitignore, leaving any other module's
 // entries, the block itself, and all content outside the block untouched.
-// It exists so that `lyx init --undo` can revert only the entries it
+// It exists so that `lyx fabric unwire` can revert only the entries it
 // originally added via Ensure without disturbing a .gitignore that other
 // modules (or the user) have since added their own entries to.
 //

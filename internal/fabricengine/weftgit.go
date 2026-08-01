@@ -230,8 +230,8 @@ func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
 }
 
 // warpHeadSHA returns the warp repo's current HEAD SHA. On a host repo with
-// zero commits (a fresh `git init` -> `lyx init` -> `lyx config` first-run
-// path, before the operator's first host commit), it reports unborn=true
+// zero commits (a fresh `git init` -> `lyx fabric reconcile` -> `lyx config`
+// first-run path, before the operator's first host commit), it reports unborn=true
 // (sha="", err=nil) instead of propagating gitrepo.ErrNoCommits as a hard
 // failure: pre-cutover, weftengine.Commit never touched the host repo and
 // succeeded on exactly this path, and CommitWeft must not regress it just
@@ -266,9 +266,9 @@ func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 //     must count: a brand-new "_pattern/PATTERN.md" is untracked at the
 //     moment of its first commit, so a tracked-only check would drop the
 //     very first PATTERN commit. Index-only must count too:
-//     internal/initengine/undo.go commits a "_lyx" path that os.RemoveAll
+//     internal/fabricengine/unwire.go commits a "_lyx" path that os.RemoveAll
 //     has just deleted from the worktree, surviving only in the index, so a
-//     worktree-existence-only check would silently break `lyx init --undo`.
+//     worktree-existence-only check would silently break `lyx fabric unwire`.
 //
 // Returns the filtered entries and whether at least one non-magic (plain)
 // entry survived the filter. When positive is false, CommitWeft must not

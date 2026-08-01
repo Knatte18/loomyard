@@ -135,7 +135,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 	if !strings.Contains(errMsg, "not initialized") {
 		t.Errorf("expected error containing 'not initialized', got: %v", err)
 	}
-	if !strings.Contains(errMsg, "lyx init") {
-		t.Errorf("expected error containing 'lyx init', got: %v", err)
+	if !strings.Contains(errMsg, "lyx fabric reconcile") {
+		t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
 	}
 }

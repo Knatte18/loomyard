@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -80,10 +81,14 @@ var spawnDetachedPushFn = SpawnDetachedPush
 
 // Commit classifies files into warp-side and weft-side paths (via
 // classifyPaths, passing relPath == "." per the relpath-is-dot-for-slice-2
-// Shared Decision, against the wired name-set WiredNames(f.weftPath)
-// resolves), commits each side under commitBothSides, and — once that
-// returns, lock already released — fires the async both-sides push whenever
-// something landed. See the combined-commit-lock Shared Decision: the
+// Shared Decision, against the wired name-set RepoWiredNames resolves from
+// the repo-wide `weft:main` base at hubgeometry.BoardDir(Hub) — the same
+// base checkJunctionHealth, Reconcile, junctionRepointedDetail, PairInSync,
+// Topology.Checkout, and Topology.Remove all read through, never f.weftPath's
+// own per-pair base, so every worktree's commits classify against the one
+// repo-wide pathspec), commits each side under commitBothSides, and — once
+// that returns, lock already released — fires the async both-sides push
+// whenever something landed. See the combined-commit-lock Shared Decision: the
 // combined write lock (`.weft/weft.write.lock`, the existing
 // weftWriteLockFile) is acquired whenever the call will commit anything at
 // all, not only on the weft side — closing the warp-only race a weft-scoped
@@ -119,7 +124,11 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // WarpCommitted || WeftCommitted guard here is a separate "did anything
 // land" gate, not an opts gate.
 func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (CommitResult, error) {
-	wiredNames, err := WiredNames(f.weftPath)
+	l, err := hubgeometry.ResolveWorktree(f.warpPath)
+	if err != nil {
+		return CommitResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
+	}
+	wiredNames, err := RepoWiredNames(l)
 	if err != nil {
 		return CommitResult{}, err
 	}
