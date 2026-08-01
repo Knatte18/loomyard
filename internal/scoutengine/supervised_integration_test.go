@@ -1,4 +1,4 @@
-//go:build integration
+//go:build scout
 
 // supervised_integration_test.go is the central "prove supervised against a
 // plain gopls" deliverable: it drives ensureSupervised directly against a
@@ -9,9 +9,9 @@
 // ensureServer now dispatches Go to ensureSupervised as its live V1
 // strategy — TestEnsureServer_Integration_SupervisedDispatch in
 // ensureserver_integration_test.go additionally proves that dispatch path
-// end to end through ensureServer itself. //go:build integration-tagged
+// end to end through ensureServer itself. //go:build scout-tagged
 // and therefore excluded from the plain `go test` verify (the Test Tier
-// Purity Invariant); it is run separately with `-tags integration` on a
+// Purity Invariant); it is run separately with `-tags scout` on a
 // machine with gopls installed, alongside refs_integration_test.go and
 // ensureserver_integration_test.go.
 
