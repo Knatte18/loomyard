@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-logger-retention-sweep
+phase: approved-reedengine-trace-env-filter
 slug: trace-logging
 branch: trace-logging
 plan: _mill/plan
@@ -35,6 +35,7 @@ implementing  '2026-07-31T20:17:53Z'
 approved-hubgeometry-worktree-logs-dir  '2026-08-01T07:16:07Z'
 approved-logger-trace-identity  '2026-08-01T07:32:06Z'
 approved-logger-retention-sweep  '2026-08-01T07:37:12Z'
+approved-reedengine-trace-env-filter  '2026-08-01T07:39:54Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     start_sha: 7ae65ef852ce8d19416b54444d97f5939771b508
     commit_sha: b290056564765d7c7ad970be6688ba246827da95
   - name: reedengine-trace-env-filter
-    state: running
+    state: approved
     implementer_session: b69f001a-99af-48e6-9ccb-b5f8cbc05f2f
     start_sha: e1b398036843d9478846f3feab60b2923af8c03f
+    commit_sha: 29974c145727168fd363df40e931dbdf36b571a7
   - name: logger-durable-sink
     state: pending
   - name: logger-dual-handler-fanout
