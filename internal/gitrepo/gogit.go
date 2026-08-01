@@ -84,9 +84,9 @@ import (
 //     never caches refs, so there is no lazy-index mutation to protect
 //     against on this path — only the concurrent-map-style safety a plain
 //     read needs.
-//   - An object lookup (a commit, tree, or blob resolution — SHAExists,
-//     ChangedFilesSince, and hasUnpushed) never locks around the
-//     handle itself; it calls lookupObjectRetrying instead, which acquires
+//   - An object lookup (a commit, tree, or blob resolution — SHAExists and
+//     ChangedFilesSince) never locks around the handle itself; it calls
+//     lookupObjectRetrying instead, which acquires
 //     r.goGitMu.Lock (not RLock) for its entire attempt-check-reindex-retry
 //     sequence as one unit — see that function's doc for why a read-only
 //     lock is not enough there.

@@ -3,9 +3,9 @@
 // cli_test.go covers the fabric CLI cobra surface: no-arg listing of all 14 verbs,
 // unknown-subcommand cobra error, the --weft-path push-only gate, pairs with a
 // minimal topology fixture, commit --help's fixed-message/Warp-SHA-trailer prose,
-// and the WEFT_SKIP_PUSH env-to-SyncOptions mapping on push — this package
-// exercises both the topology and content-sync verb families against the one
-// fabric command tree.
+// pull --help's both-sides/reconcile prose, and the WEFT_SKIP_PUSH env-to-SyncOptions
+// mapping on push — this package exercises both the topology and content-sync verb
+// families against the one fabric command tree.
 
 package fabriccli_test
 
@@ -178,6 +178,56 @@ func TestRunCLI_CommitHelp(t *testing.T) {
 	}
 	if strings.Contains(got, "--message") {
 		t.Errorf("commit --help output unexpectedly contains --message flag; got:\n%s", got)
+	}
+}
+
+// TestRunCLI_PullHelp asserts that "fabric pull --help" documents the
+// both-sides pull/reconcile behaviour — a help-accuracy assertion in the same
+// style as TestRunCLI_CommitHelp, guarding against the CLI/Cobra Invariant's
+// "stale help is review-blocking" obligation now that pull drives the
+// unified Fabric.Pull instead of the weft-only PullWeft.
+func TestRunCLI_PullHelp(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"pull", "--help"})
+
+	if exitCode != 0 {
+		t.Errorf("RunCLI(pull --help) = %d; want 0", exitCode)
+	}
+
+	got := out.String()
+
+	if !strings.Contains(got, "Pulls both sides of the pair") {
+		t.Errorf("pull --help output missing both-sides Long text; got:\n%s", got)
+	}
+	if !strings.Contains(got, "reconcile") {
+		t.Errorf("pull --help output missing reconcile wording; got:\n%s", got)
+	}
+	if !strings.Contains(got, "rewrite") {
+		t.Errorf("pull --help output missing warp-history-rewrite wording; got:\n%s", got)
+	}
+}
+
+// TestRunCLI_PullShortNonEmpty asserts pullCmd's Short summary is non-empty
+// and itself names the both-sides/reconcile behaviour, building the command
+// tree via the fabriccli.Command() seam (the CLI/Cobra Invariant's "Short on
+// every command" obligation, checked directly against pull's own Short
+// rather than via --help output, where Long supersedes Short).
+func TestRunCLI_PullShortNonEmpty(t *testing.T) {
+	t.Parallel()
+
+	root := fabriccli.Command()
+	pull, _, err := root.Find([]string{"pull"})
+	if err != nil {
+		t.Fatalf("root.Find([pull]) error: %v", err)
+	}
+
+	if pull.Short == "" {
+		t.Errorf("pullCmd.Short is empty; want a non-empty both-sides summary")
+	}
+	if !strings.Contains(pull.Short, "reconcil") {
+		t.Errorf("pullCmd.Short = %q; want it to mention reconcile behaviour", pull.Short)
 	}
 }
 
