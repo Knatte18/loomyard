@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -464,7 +465,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir, wo
 			// call's own failure.
 			if escalationFound {
 				if err := proc.KillPID(escalationState.PID); err != nil {
-					fmt.Fprintf(os.Stderr, "scoutengine: kill wedged supervised daemon pid %d for %q: %v\n", escalationState.PID, lang, err)
+					logger.Warn("scoutengine: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
 				}
 			}
 			// Fall through to step 4 below to respawn — the lock acquired
