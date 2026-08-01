@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -62,7 +63,11 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 	cmd := exec.Command(exe, args...)
 	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
-	return cmd.Start() // intentionally not Wait()ed
+	if err := cmd.Start(); err != nil {
+		logger.Warn("fabricengine: spawn detached push failed", "exe", exe, "args", args, "error", err)
+		return err
+	}
+	return nil // intentionally not Wait()ed
 }
 
 // PushWarpAt pushes unpushed commits at warpPath directly, with no Fabric

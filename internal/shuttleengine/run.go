@@ -157,6 +157,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		// the strand and directory back down so the failure is honest rather
 		// than leaking a live, untracked agent pane — the same cleanup the
 		// AddStrand-failure path above performs.
+		logger.Warn("shuttle: save run state failed", "runDir", runDir, "strandGUID", strand.GUID, "error", err)
 		if _, rerr := r.reed.RemoveStrand(strand.GUID, false); rerr != nil {
 			log.Printf("shuttle: start run: remove strand %s after save-state failure (non-fatal): %v", strand.GUID, rerr)
 		}
