@@ -5,8 +5,11 @@ package logger
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -144,5 +147,199 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 
 	if !strings.Contains(buf.String(), "still goes to the captured sink") {
 		t.Errorf("output = %q; want the pre-existing sink to keep receiving log lines when LYX_LOG_FILE cannot be opened", buf.String())
+	}
+}
+
+// TestDualHandler_DebugReachesStderrOnlyNotDurableSink covers the
+// dual-handler-fan-out decision's Debug exclusion: a Debug record reaches
+// the stderr half once -vv is set, but durableHandler.Enabled never accepts
+// below Info, so no sink file is created at all for a Debug-only sequence.
+func TestDualHandler_DebugReachesStderrOnlyNotDurableSink(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+	buf := withCapturedOutput(t)
+	SetVerbosity(2)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	Debug("debug fan-out check")
+
+	if !strings.Contains(buf.String(), "debug fan-out check") {
+		t.Errorf("stderr output = %q; want it to contain the Debug message at -vv", buf.String())
+	}
+	if got := listSinkDirFiles(t, dir); len(got) != 0 {
+		t.Errorf("listSinkDirFiles(dir) = %v; want no durable sink file from a Debug-only sequence", got)
+	}
+}
+
+// TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV
+// covers the composite's OR-gate: an Info record reaches the durable sink
+// even at the default Warn threshold (verbosity 0), where the stderr half
+// alone would reject it, and reaches stderr only once -v (verbosity 1) or
+// above is set -- the exact property the motivating incident depends on.
+func TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+	buf := withCapturedOutput(t)
+	SetVerbosity(0)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	Info("info fan-out at default verbosity")
+
+	if buf.Len() != 0 {
+		t.Errorf("stderr output = %q; want 0 bytes for an Info record at the default Warn threshold", buf.String())
+	}
+	files := listSinkDirFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, files[0]))
+	if err != nil {
+		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
+	}
+	if !strings.Contains(string(data), "info fan-out at default verbosity") {
+		t.Errorf("durable sink content = %q; want it to contain the Info message even at the default verbosity", string(data))
+	}
+
+	buf.Reset()
+	SetVerbosity(1)
+	Info("info fan-out at -v")
+	if !strings.Contains(buf.String(), "info fan-out at -v") {
+		t.Errorf("stderr output = %q; want it to contain the Info message once -v is set", buf.String())
+	}
+}
+
+// TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity covers that Warn,
+// the default threshold, always reaches both the stderr half and the
+// durable sink regardless of -v/-vv.
+func TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity(t *testing.T) {
+	for _, verbosity := range []int{0, 1, 2} {
+		t.Run(fmt.Sprintf("verbosity=%d", verbosity), func(t *testing.T) {
+			dir := t.TempDir()
+			SetDurableSinkDir(dir)
+			buf := withCapturedOutput(t)
+			SetVerbosity(verbosity)
+			t.Cleanup(func() { SetVerbosity(0) })
+
+			Warn("warn fan-out check")
+
+			if !strings.Contains(buf.String(), "warn fan-out check") {
+				t.Errorf("stderr output = %q; want it to contain the Warn message at verbosity %d", buf.String(), verbosity)
+			}
+			files := listSinkDirFiles(t, dir)
+			if len(files) != 1 {
+				t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
+			}
+			data, err := os.ReadFile(filepath.Join(dir, files[0]))
+			if err != nil {
+				t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
+			}
+			if !strings.Contains(string(data), "warn fan-out check") {
+				t.Errorf("durable sink content = %q; want it to contain the Warn message", string(data))
+			}
+		})
+	}
+}
+
+// TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic covers
+// the case where the durable sink never activates (SetDurableSinkDir("")
+// falls through to the testing.Testing()/LYX_TRACE gate, keeping sinkOK
+// false): a Warn call must still reach stderr, produce no error, and not
+// panic -- durableWriter.Write silently discards the record rather than
+// surfacing the unarmed sink as a failure.
+func TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic(t *testing.T) {
+	SetDurableSinkDir("")
+	buf := withCapturedOutput(t)
+	SetVerbosity(0)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	Warn("warn with unarmed durable sink")
+
+	if !strings.Contains(buf.String(), "warn with unarmed durable sink") {
+		t.Errorf("stderr output = %q; want it to contain the Warn message even with the durable sink unarmed", buf.String())
+	}
+}
+
+// TestDualHandler_EveryLevelStampsCurrentTraceID covers Card 18's
+// trace-stamping requirement end-to-end through the dual-handler wiring:
+// every emitted line at every level -- stderr and durable sink alike --
+// carries trace= matching TraceID()'s current value.
+func TestDualHandler_EveryLevelStampsCurrentTraceID(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+	buf := withCapturedOutput(t)
+	SetVerbosity(2)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	wantTrace := "trace=" + TraceID()
+
+	Debug("debug trace stamp check")
+	Info("info trace stamp check")
+	Warn("warn trace stamp check")
+
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if !strings.Contains(line, wantTrace) {
+			t.Errorf("stderr line = %q; want it to contain %q", line, wantTrace)
+		}
+	}
+
+	files := listSinkDirFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one durable sink file", files)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, files[0]))
+	if err != nil {
+		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
+	}
+	// The header line and every subsequent Info/Warn record (Debug never
+	// reaches the durable sink) all carry trace=.
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if !strings.Contains(line, wantTrace) {
+			t.Errorf("durable sink line = %q; want it to contain %q", line, wantTrace)
+		}
+	}
+}
+
+// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker
+// pins the concurrency-contract decision: concurrent Warn calls across many
+// goroutines, run under go test -race, must still open exactly one sink
+// file (pins sinkOnce) and, when their combined bytes cross the size cap,
+// emit exactly one truncation-marker line (pins writeDurable's
+// mutex-guarded counter+cap-check+marker+write critical section).
+func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t *testing.T) {
+	dir := t.TempDir()
+	SetDurableSinkDir(dir)
+	withCapturedOutput(t)
+	SetVerbosity(0)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	const goroutines = 20
+	// 512 KiB per call, two calls per goroutine: 20 MiB combined, well past
+	// the 8 MiB cap, so the crossing is guaranteed to happen under real
+	// concurrent contention rather than a single sequential writer.
+	payload := strings.Repeat("x", 512*1024)
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(n int) {
+			defer wg.Done()
+			for j := 0; j < 2; j++ {
+				Warn("concurrent warn", "goroutine", n, "iteration", j, "payload", payload)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	files := listSinkDirFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("listSinkDirFiles(dir) = %v; want exactly one sink file even under concurrent first-write races", files)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, files[0]))
+	if err != nil {
+		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
+	}
+	if got := countMarkerLines(data); got != 1 {
+		t.Errorf("countMarkerLines(data) = %d; want exactly 1 truncation marker line even under concurrent writers crossing the cap", got)
 	}
 }

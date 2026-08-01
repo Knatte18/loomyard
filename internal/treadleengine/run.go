@@ -181,6 +181,10 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		// rejects a pre-existing output file). A later retry attempt's own
 		// stale artifacts are still handled inside runRound, per attempt.
 		if err := moveStaleArtifacts(e.name, runDir, round, 1); err != nil {
+			// moveStaleIfExists already wraps with name/path context only (no
+			// round/attempt) — a reader of the bare wrapped error knows which
+			// file failed to move but not which round was in progress.
+			logger.Warn(e.name+": moving stale artifacts aside before round failed", "name", e.name, "round", round, "attempt", 1, "err", err)
 			return Result{}, err
 		}
 
@@ -222,6 +226,13 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 				// safe direction.
 				st.Rounds = append(st.Rounds, record)
 				if saveErr := saveState(runDir, st); saveErr != nil {
+					// saveErr is the value actually returned below, but err — the
+					// real reason this round failed — is what gets lost: execution
+					// never reaches the e.errf return two lines down, so without
+					// this line the gate-command failure that triggered this whole
+					// branch would never surface anywhere, masked entirely by the
+					// unrelated persistence failure.
+					logger.Warn(e.name+": state persist failed after gate command error, original failure lost to caller", "runDir", runDir, "round", round, "err", err, "saveErr", saveErr)
 					return Result{}, saveErr
 				}
 				return Result{}, e.errf("round %d gate command: %w", round, err)
@@ -425,6 +436,9 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 		// an earlier interrupted resume still need clearing here.
 		if attempt > 1 {
 			if err := moveStaleArtifacts(e.name, runDir, round, attempt); err != nil {
+				// Same rationale as the pre-round clear above: the wrapped error
+				// names the file but not the round/attempt in progress.
+				logger.Warn(e.name+": moving stale artifacts aside before retry attempt failed", "name", e.name, "round", round, "attempt", attempt, "err", err)
 				return roundOutcome{}, err
 			}
 		}
@@ -488,6 +502,11 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 		if attempt == 2 {
 			return roundOutcome{}, e.errf("round %d failed twice (%s); session %s, kept run dir %s", round, result.Outcome, result.SessionID, result.RunDir)
 		}
+		// attempt 1 died/timed out: the retry itself is otherwise invisible
+		// until it either succeeds silently or fails twice (already errored
+		// with full context just above) — log it here so an operator can see
+		// the retry happening, not only its eventual outcome.
+		logger.Warn(e.name+": round attempt died or timed out, retrying", "round", round, "outcome", result.Outcome, "sessionID", result.SessionID)
 	}
 	// Unreachable: every path through the loop above returns by the end of
 	// attempt 2.

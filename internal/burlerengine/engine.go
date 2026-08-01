@@ -118,10 +118,12 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	// concurrent rounds in the same worktree.
 	burlerDir := filepath.Join(e.layout.DotLyxDir(), "burler")
 	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
+		logger.Warn("burler: create instruction dir failed", "burlerDir", burlerDir, "round", opts.Round, "error", err)
 		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 	}
 	roundDir, err := os.MkdirTemp(burlerDir, "round-")
 	if err != nil {
+		logger.Warn("burler: create round temp dir failed", "burlerDir", burlerDir, "round", opts.Round, "error", err)
 		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 	}
 

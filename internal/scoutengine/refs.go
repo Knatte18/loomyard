@@ -111,6 +111,7 @@ func acquireConnection(ctx context.Context, lang string, entry Entry, opts Optio
 		}
 		return nil, connKindLegacy, fmt.Errorf("scoutengine: start language server for %q: %w", lang, err)
 	}
+	client.lang = lang
 
 	rootURI, err := rootURIFor(opts.TargetDir)
 	if err != nil {

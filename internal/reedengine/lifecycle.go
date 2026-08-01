@@ -299,6 +299,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// sessions would list) — so force-reaping it before spawning is safe.
 	if e.sessionlessSocketHolderPersists() {
 		if err := e.reapSocketProcesses(); err != nil {
+			logger.Warn("reed: failed to reap stale tmux socket-holder", "socket", e.Socket(), "err", err)
 			return false, nil, fmt.Errorf("stale tmux socket-holder: %w", err)
 		}
 	}
@@ -311,6 +312,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// lands in a directory that already exists and is already pruned.
 	logsDir := e.layout.HubLogsDir()
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		logger.Warn("reed: failed to create hub logs dir", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("create %s: %w", logsDir, err)
 	}
 	// Prune to the newest 2 pre-existing logs before this boot's own log is
@@ -320,15 +322,18 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// debug-armed boot can leave (server, client — see clientLogNamePrefix)
 	// are pruned, independently bounded, so neither accumulates unbounded.
 	if err := pruneServerLogsLocked(logsDir, serverLogNamePrefix, serverLogPruneKeep); err != nil {
+		logger.Warn("reed: failed to prune server logs", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("prune server logs: %w", err)
 	}
 	if err := pruneServerLogsLocked(logsDir, clientLogNamePrefix, serverLogPruneKeep); err != nil {
+		logger.Warn("reed: failed to prune client logs", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("prune client logs: %w", err)
 	}
 	// The -vv-only tmux-out-<pid>.log protocol log is the third shape a
 	// debug-armed boot can leave; prune it on the same newest-3 budget so it
 	// does not accumulate unbounded across repeated debug_log: 2 boots.
 	if err := pruneServerLogsLocked(logsDir, outLogNamePrefix, serverLogPruneKeep); err != nil {
+		logger.Warn("reed: failed to prune out logs", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("prune out logs: %w", err)
 	}
 
@@ -336,6 +341,15 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// Claude Code session identity (CleanClaudeEnv is the single documented
 	// chokepoint for that decision).
 	clean, stripped := CleanClaudeEnv(os.Environ())
+	// The tmux server is a long-lived singleton later invocations reattach
+	// to, unlike a one-shot child (board/fabric spawn) that belongs to a
+	// single invocation and should keep inheriting the trace ID. Filtering
+	// LYX_TRACE_ID is therefore kept as its own explicitly-named step, not
+	// folded into CleanClaudeEnv: CleanClaudeEnv's stripped-keys return
+	// value is persisted verbatim into ReedState.StrippedEnv as a
+	// Claude-injected-variable diagnostic, and LYX_TRACE_ID is neither
+	// Claude-injected nor meant to be recorded there.
+	clean = stripTraceID(clean)
 	spawnSession := func() error {
 		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
 		// -L/new-session on the argv; -c pins new-session's pane default cwd
@@ -355,6 +369,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		cmd.Env = clean
 		proc.Detach(cmd)
 		if err := cmd.Start(); err != nil {
+			logger.Warn("reed: failed to start tmux server", "socket", e.Socket(), "session", session, "err", err)
 			return fmt.Errorf("start tmux: %w", err)
 		}
 		logger.Info("reed: spawned tmux server", "socket", e.Socket(), "session", session, "pid", cmd.Process.Pid)
@@ -377,7 +392,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// then reports the truly unexpected state instead. A genuine
 	// never-boots regression still fails, at bootOverallTimeout instead of
 	// after two attempts.
-	bootDeadline := time.Now().Add(bootOverallTimeout)
+	bootStart := time.Now()
+	bootDeadline := bootStart.Add(bootOverallTimeout)
 	attempt := 0
 	for {
 		attempt++
@@ -391,6 +407,12 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		for time.Now().Before(attemptDeadline) {
 			up, err := e.tmux.hasSession(session)
 			if err != nil {
+				// hasSession's error path returns immediately (the poll loop
+				// never retries an errored check itself — only the outer
+				// attempt loop above does), so this Warn fires at most once
+				// per boot attempt rather than once per poll: there is no
+				// per-iteration spam to guard against here.
+				logger.Warn("reed: boot poll has-session check failed", "socket", e.Socket(), "session", session, "attempt", attempt, "err", err)
 				return false, nil, fmt.Errorf("check session: %w", err)
 			}
 			if up {
@@ -404,6 +426,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		}
 
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err == nil && strings.TrimSpace(out) != "" {
+			logger.Warn("reed: tmux server up but session did not materialize", "socket", e.Socket(), "session", session, "attempt", attempt)
 			return false, nil, fmt.Errorf("tmux server is up but session %q did not materialize within %s", session, bootAttemptTimeout)
 		}
 		logger.Warn("reed: zombie boot, reaping socket before retry", "socket", e.Socket(), "session", session, "attempt", attempt)
@@ -411,9 +434,11 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			return false, nil, fmt.Errorf("reap zombie tmux boot: %w", err)
 		}
 		if attempt >= maxBootAttempts {
+			logger.Warn("reed: boot gave up after fast-failure spiral guard", "socket", e.Socket(), "session", session, "attempts", attempt, "elapsed", time.Since(bootStart))
 			return false, nil, fmt.Errorf("tmux session did not start after %d attempts (fast-failure spiral guard; see maxBootAttempts)", attempt)
 		}
 		if time.Now().After(bootDeadline) {
+			logger.Warn("reed: boot gave up after overall timeout", "socket", e.Socket(), "session", session, "attempts", attempt, "elapsed", time.Since(bootStart))
 			return false, nil, fmt.Errorf("tmux session did not start within %s", bootOverallTimeout)
 		}
 	}
@@ -436,6 +461,25 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	return true, stripped, nil
+}
+
+// stripTraceID removes any LYX_TRACE_ID entry from env before it is handed
+// to a spawned tmux server's cmd.Env. This is deliberately separate from
+// CleanClaudeEnv: the tmux server is a long-lived singleton that later,
+// unrelated invocations reattach to, so it must not inherit this
+// invocation's trace ID, but CleanClaudeEnv's stripped-keys return value is
+// persisted verbatim into ReedState.StrippedEnv as a Claude-injected-env
+// diagnostic — LYX_TRACE_ID must never appear there. Follows the same
+// SplitN-then-compare shape CleanClaudeEnv uses.
+func stripTraceID(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		if strings.SplitN(entry, "=", 2)[0] == "LYX_TRACE_ID" {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // ensureHeaderPaneLocked ensures this hub's always-present header pane
@@ -564,6 +608,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	// split in the whole engine that needs -b.
 	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.Cwd, "-P", "-F", "#{pane_id}")
 	if err != nil {
+		logger.Warn("reed: failed to split header pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)
 	}
 	paneID := strings.TrimSpace(out)
@@ -574,14 +619,19 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	// destroying the session's panes wholesale (see
 	// validateSplitCreatedNewPane).
 	if err := validateSplitCreatedNewPane(paneID, live, target); err != nil {
+		logger.Warn("reed: header split created no new pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)
 	}
 
 	if corpseID != "" {
 		// The sole-pane corpse the new header was split off of: now that a
 		// second pane exists, killing it can no longer end the session.
-		// Best-effort — a corpse that somehow vanished already is fine.
-		_ = e.tmux.run("kill-pane", "-t", corpseID)
+		// Best-effort — a corpse that somehow vanished already is fine; the
+		// discard is still worth a Debug line so the step is observable at
+		// the trace level without upgrading routine cleanup to a Warn.
+		if err := e.tmux.run("kill-pane", "-t", corpseID); err != nil {
+			logger.Debug("reed: best-effort kill of header corpse pane failed", "socket", e.Socket(), "pane", corpseID, "err", err)
+		}
 	}
 
 	launchCmd := headerLaunchLine(shell.ForGOOS(), exe, testing.Testing())
@@ -597,9 +647,11 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		// -l so tmux never reinterprets any part of the launch line, then a
 		// separate Enter to submit it.
 		if err := e.tmux.run("send-keys", "-t", paneID, "-l", sendKeysLiteralArg(launchCmd)); err != nil {
+			logger.Warn("reed: failed to send header launch command", "socket", e.Socket(), "pane", paneID, "err", err)
 			return fmt.Errorf("send header launch command: %w", err)
 		}
 		if err := e.tmux.run("send-keys", "-t", paneID, "Enter"); err != nil {
+			logger.Warn("reed: failed to submit header launch command", "socket", e.Socket(), "pane", paneID, "err", err)
 			return fmt.Errorf("submit header launch command: %w", err)
 		}
 	}
@@ -822,7 +874,12 @@ func (e *Engine) Down() (DownResult, error) {
 		// on exactly this ignored-error path: a bare -t name would PREFIX
 		// match once this session is gone, so a second down would kill a
 		// prefix-sharing sibling worktree's session (see exactSessionTarget).
-		_ = e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName()))
+		// Still worth a Debug line so the discard is observable at the
+		// step-trace level without upgrading routine idempotent-teardown
+		// noise to a Warn.
+		if err := e.tmux.run("kill-session", "-t", exactSessionTarget(e.SessionName())); err != nil {
+			logger.Debug("reed: best-effort kill-session failed (session may already be gone)", "socket", e.Socket(), "session", e.SessionName(), "err", err)
+		}
 
 		// Tidy the server only if no sessions remain. An EMPTY list-sessions
 		// covers both "zero sessions" and "no server" (tmux does not
@@ -836,7 +893,13 @@ func (e *Engine) Down() (DownResult, error) {
 		var serverErr error
 		if out, err := e.tmux.output("list-sessions", "-F", "#{session_name}"); err != nil || strings.TrimSpace(out) == "" {
 			logger.Info("reed: tearing down tmux server", "socket", e.Socket(), "serverPID", serverPID)
-			_ = e.tmux.run("kill-server")
+			// Best-effort — the more significant "server did not confirm
+			// gone" outcome is already covered at Warn by ensureServerGoneLocked
+			// below; this earlier, routine kill-server discard only needs a
+			// Debug line, not a duplicate Warn.
+			if err := e.tmux.run("kill-server"); err != nil {
+				logger.Debug("reed: best-effort kill-server failed", "socket", e.Socket(), "serverPID", serverPID, "err", err)
+			}
 			serverErr = e.ensureServerGoneLocked(serverPID)
 			if serverErr != nil {
 				logger.Warn("reed: server did not confirm gone after kill-server", "socket", e.Socket(), "serverPID", serverPID, "err", serverErr)

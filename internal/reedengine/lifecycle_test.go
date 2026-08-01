@@ -52,6 +52,39 @@ func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
 	}
 }
 
+// TestServerBootEnv_ExcludesTraceID pins the long-lived-child-env decision
+// on the computed env slice, not a real spawn — following CleanClaudeEnv's
+// own existing testability precedent. The tmux server is a singleton later,
+// unrelated invocations reattach to, so LYX_TRACE_ID set in this process
+// must not survive into the env reed's tmux-server-boot would hand to
+// cmd.Env, even though CleanClaudeEnv itself (a different, Claude-Code-only
+// concern) leaves it untouched.
+func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
+	t.Setenv("LYX_TRACE_ID", "somevalue")
+
+	clean, _ := CleanClaudeEnv(os.Environ())
+	sawBeforeStrip := false
+	for _, entry := range clean {
+		if strings.HasPrefix(entry, "LYX_TRACE_ID=") {
+			sawBeforeStrip = true
+			break
+		}
+	}
+	if !sawBeforeStrip {
+		// CleanClaudeEnv is not expected to strip this on its own — if it's
+		// already gone here, the fixture assumption (LYX_TRACE_ID surviving
+		// CleanClaudeEnv) is broken and the assertion below proves nothing.
+		t.Fatalf("CleanClaudeEnv(os.Environ()) does not contain LYX_TRACE_ID; test fixture assumption broken")
+	}
+
+	got := stripTraceID(clean)
+	for _, entry := range got {
+		if strings.HasPrefix(entry, "LYX_TRACE_ID=") {
+			t.Errorf("stripTraceID(clean) = %v, want no LYX_TRACE_ID entry", got)
+		}
+	}
+}
+
 func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 	tables := [][]Strand{
 		nil,

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
@@ -99,6 +100,9 @@ func sanitizeSlug(s string) string {
 // finished.
 func TerminalOutcome(runDir string) (Outcome, bool, error) {
 	outcome, ok, err := treadleengine.TerminalOutcome(runDir)
+	if err != nil {
+		logger.Warn("perch: read terminal outcome failed", "runDir", runDir, "err", err)
+	}
 	return Outcome(outcome), ok, err
 }
 
