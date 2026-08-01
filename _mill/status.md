@@ -111,7 +111,9 @@ batches:
     start_sha: f96be123d30c25c2a9df33798810316bf70730b9
     commit_sha: b25498bb6edb28f7979bd0ee9ac5f8492c50a61c
   - name: scoutengine-logger-conversion
-    state: pending
+    state: running
+    implementer_session: 043c51ad-e615-4edd-ab03-cf83f6b4b1ba
+    start_sha: 4e745df7357ced83ba4d9ef7b6059a6049dec468
   - name: docs-and-constraints-wrapup
     state: pending
 ```
