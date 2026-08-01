@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-worktree-add-eager-wiring
+phase: approved-init-dissolution-and-unwire
 slug: fabric-clone-subpath
 branch: fabric-clone-subpath
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-configsync-fabric-repowide  '2026-08-01T09:37:31Z'
 approved-reconcile-declarative-convergence  '2026-08-01T09:52:17Z'
 approved-clone-does-everything  '2026-08-01T10:05:07Z'
 approved-worktree-add-eager-wiring  '2026-08-01T10:11:24Z'
+approved-init-dissolution-and-unwire  '2026-08-01T10:32:10Z'
 ```
 
 ## Batches
@@ -73,9 +74,10 @@ batches:
     start_sha: 3a9a0bf29fc7179d1e91a7d60852115d395b9f46
     commit_sha: 0f5891af0cde44f949e8ccf6b43140f7ae803ca5
   - name: init-dissolution-and-unwire
-    state: running
+    state: approved
     implementer_session: 462f1f92-70bb-41c3-9de2-df4de0e13107
     start_sha: 2cd9f171aab9e65d5f43dbcec9b0c136debae619
+    commit_sha: e8fe28edd7d13580eb61a4637f6dc093d3700502
   - name: docs-and-sandbox-suites
     state: pending
 ```
