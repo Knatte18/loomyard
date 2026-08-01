@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -213,6 +214,7 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 		ShuttleCfg:   shuttleCfg,
 		Layout:       layout,
 		Reed:         reed,
+		Resetter:     gitrepo.New(worktree),
 	}
 
 	return &spawnFixture{Deps: deps, Engine: engine, Reed: reed, Worktree: worktree, ReportsDir: reportsDir}

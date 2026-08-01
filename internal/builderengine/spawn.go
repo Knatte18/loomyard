@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -98,6 +99,12 @@ type SpawnDeps struct {
 	// the same handle buildercli's poll verb already holds for its own
 	// classification gathers.
 	Reed shuttleengine.ReedOps
+	// Resetter is the chain-restart reset seam: nil (the production default)
+	// makes SpawnBatch construct a real *fabricengine.Fabric inline via
+	// fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree()),
+	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
+	// so the restart-chain path never requires a paired weft fixture.
+	Resetter WarpResetter
 }
 
 // SpawnBatchOptions carries one `spawn-batch` invocation's caller-supplied
@@ -386,7 +393,21 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 				}
 			}
 		}
-		if err := RestartChain(deps.WorktreeRoot, deps.State, deps.Plan, chainEnd, deps.ReportsDir); err != nil {
+		// deps.Resetter is nil in production: construct the real paired-repo
+		// Fabric handle inline, the same way buildercli's weftCommit does from
+		// a *hubgeometry.Layout. A test instead injects a warp-only
+		// *gitrepo.Repo over its own scratch worktree (the WarpResetter
+		// seam), so the restart-chain path never requires a paired weft
+		// fixture.
+		resetter := deps.Resetter
+		if resetter == nil {
+			f, err := fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree())
+			if err != nil {
+				return nil, err
+			}
+			resetter = f
+		}
+		if err := RestartChain(resetter, deps.State, deps.Plan, chainEnd, deps.ReportsDir); err != nil {
 			return nil, err
 		}
 		// The reset just hard-reset the host repo and deleted member reports

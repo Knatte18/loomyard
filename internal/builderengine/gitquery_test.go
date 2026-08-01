@@ -1,10 +1,9 @@
 //go:build integration
 
-// gitquery_test.go exercises HeadSHA, ChangedFiles, Dirty, and ResetHard
-// against a real scratch git repo (Tier 2 — see docs/benchmarks/running-
-// tests.md), per the discussion's "gitexec test pattern": t.TempDir(),
-// `git init`, committer identity configured, commits made via
-// gitexec.RunGit.
+// gitquery_test.go exercises HeadSHA, ChangedFiles, and Dirty against a
+// real scratch git repo (Tier 2 — see docs/benchmarks/running-tests.md),
+// per the discussion's "gitexec test pattern": t.TempDir(), `git init`,
+// committer identity configured, commits made via gitexec.RunGit.
 
 package builderengine_test
 
@@ -127,28 +126,5 @@ func TestDirty(t *testing.T) {
 	}
 	if !dirty {
 		t.Errorf("Dirty() = false with an untracked file present; want true")
-	}
-}
-
-func TestResetHard(t *testing.T) {
-	t.Parallel()
-
-	dir := newScratchRepo(t)
-	anchor := commitFile(t, dir, "a.txt", "one", "first")
-	commitFile(t, dir, "b.txt", "two", "second")
-
-	if err := builderengine.ResetHard(dir, anchor); err != nil {
-		t.Fatalf("ResetHard() error = %v; want nil", err)
-	}
-
-	head, err := builderengine.HeadSHA(dir)
-	if err != nil {
-		t.Fatalf("HeadSHA() error = %v; want nil", err)
-	}
-	if head != anchor {
-		t.Errorf("HeadSHA() after ResetHard = %q; want anchor %q", head, anchor)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "b.txt")); !os.IsNotExist(err) {
-		t.Errorf("b.txt still present after ResetHard to before its commit")
 	}
 }
