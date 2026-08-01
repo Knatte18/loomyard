@@ -36,7 +36,9 @@ batches:
     start_sha: b133189f0f005fa8cfe94f4eb03eb6aac9a023dd
     commit_sha: 99d79ebb4a8a031b32cdff70aa8a0d834d798668
   - name: fabric-pull
-    state: pending
+    state: running
+    implementer_session: faeaa771-1864-474e-b741-57d67e0b5568
+    start_sha: b7e7d50e7712b7f509616f94ad6075585e622742
   - name: cli-pull
     state: pending
   - name: docs-sandbox
