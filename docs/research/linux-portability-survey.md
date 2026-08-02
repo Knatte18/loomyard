@@ -1,6 +1,6 @@
 # Linux portability survey (kartlegging)
 
-> **Status: ALL FINDINGS RESOLVED (re-verified 2026-07-15).** Every failure this survey documented — B1, B2, B3, all three Category-A tests, and the Category-C perf pathology — currently **passes** on this Linux box (the perf test dropped from ~130s to ~0.02s). This is kept as the historical record of the original investigation, not as an open issue list; nothing below still needs action. The fix work landed across several subsequent tasks (including `reed-psmux-to-tmux-rename` for B3's path-resolution sub-issue); this file was not updated commit-by-commit as each finding closed, so no single commit reference is given per row — the point-in-time re-verification above is what's authoritative now.
+> **Status: ALL FINDINGS RESOLVED (re-verified 2026-07-15).** Every failure this survey documented — B1, B2, B3, all three Category-A tests, and the Category-C perf pathology — currently **passes** on this Linux box (the perf test dropped from ~130s to ~0.02s). Kept as the historical record of the original investigation, not an open issue list; nothing below still needs action. The fix work landed across several subsequent tasks (including `reed-psmux-to-tmux-rename` for B3's path-resolution sub-issue); this file was not updated commit-by-commit as each finding closed, so no single commit reference is given per row — the point-in-time re-verification above is authoritative now.
 
 Empirical map of what breaks when Loomyard's Go test suite is run on **Linux** for the first time. The codebase was written and exercised exclusively on Windows 11; nothing here had ever run on Linux before this survey. The trigger was the *"run the full benchmark suite on Linux, mark OS in results"* task — which was **blocked** until the suite went green on Linux, because you cannot record a comparable Linux baseline from a red suite. This file was that blocker, written down.
 
@@ -77,11 +77,9 @@ RunCLI(add) before up error = "check session: exec: \"tmux\": executable file no
   want "no reed session; run \"lyx reed up\""
 ```
 
-Two sub-issues (now addressed by the `reed-psmux-to-tmux-rename` task):
+Two sub-issues (addressed by the `reed-psmux-to-tmux-rename` task):
 - **Environment:** `tmux` is not installed on this box; the POSIX reed path shells out to `tmux` (Windows uses tmux via the psmux port). Any reed run needs tmux present.
-- **Robustness (path resolution):** the friendly-error path maps "session not found" but not "multiplexer binary missing" — older documentation and examples hardcoded specific absolute paths like `C:\Code\tools\bin\psmux.exe` / `pwsh.exe`, which are unverifiable across different machine setups. This has been fixed by the `reed-psmux-to-tmux-rename` rename task, which updated all examples to resolve tmux via PATH and use env-var overrides (e.g., `LYX_REED_TMUX`) for customization.
-
-**Direction (CLOSED):** the hardcoded-path problem is resolved by genericizing examples to use PATH-resolved binary names and documenting env-var overrides.
+- **Robustness (path resolution):** the friendly-error path maps "session not found" but not "multiplexer binary missing" — older documentation and examples hardcoded specific absolute paths like `C:\Code\tools\bin\psmux.exe` / `pwsh.exe`, unverifiable across different machine setups. Fixed by the rename task, which updated all examples to resolve tmux via PATH and use env-var overrides (e.g., `LYX_REED_TMUX`) for customization.
 
 ## Category A (RESOLVED) — Windows-only test assertions (test-level; no prod impact)
 

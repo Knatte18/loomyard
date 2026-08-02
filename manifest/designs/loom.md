@@ -45,7 +45,7 @@ Preflight is **built**, as `internal/loomengine.Preflight` — engine-only, no c
 
 ## The gate
 
-Each producing phase is guarded by a **review gate**, and from loom's view that gate is a **black box with two exits — `APPROVED` or `stuck`.** loom calls it, and on `APPROVED` advances to the next phase; on `stuck` it routes to the stuck handler (bounce back to an earlier phase, or escalate to a human) — never "keep fixing symptoms." loom does not see the rounds, the handler/fixer, the cluster reviewers, or the progress-judge inside.
+Each producing phase is guarded by a **review gate**, and from loom's view that gate is a **black box with two exits — `APPROVED` or `stuck`.** loom calls it, advances on `APPROVED`, and on `stuck` routes to the same stuck handler described above. loom does not see the rounds, the handler/fixer, the cluster reviewers, or the progress-judge inside.
 
 That black box is its **own module — `perch`** (`lyx perch run|pause`), a generic profile-driven gate engine reused for every phase (discussion / plan / builder) and standalone. The whole point of the black-box boundary is that loom drives all phases **identically** because the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase. See the `internal/perchengine` package documentation for the round-loop and stuck detection, and the `internal/burlerengine` package documentation for the combined handler/fixer round and the profile schema.
 
