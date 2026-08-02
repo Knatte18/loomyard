@@ -30,7 +30,7 @@ batches:
     name: remove-force-add
     file: 03-remove-force-add.md
     depends-on: [2]
-    verify: go test -tags integration ./internal/gitrepo/
+    verify: go test -tags integration ./internal/gitrepo/ ./internal/fabricengine/
   - number: 4
     name: clean-healthy-renames
     file: 04-clean-healthy-renames.md
@@ -111,11 +111,14 @@ batches:
 - `internal/fabricengine/revert.go`
 - `internal/fabricengine/revert_test.go`
 - `internal/fabricengine/snapshot.go`
+- `internal/fabricengine/snapshot_integration_test.go`
 - `internal/fabricengine/status.go`
 - `internal/fabricengine/syncweft_integration_test.go`
 - `internal/fabricengine/topology.go`
 - `internal/fabricengine/unwire.go`
 - `internal/fabricengine/weftgit.go`
+- `internal/fabricengine/weftgit_exclude_test.go`
+- `internal/fabricengine/weftgit_pathspec_integration_test.go`
 - `internal/fabricengine/weftgit_unborn_warp_test.go`
 - `internal/fabriccli/clone.go`
 - `internal/fabriccli/weft_verbs.go`

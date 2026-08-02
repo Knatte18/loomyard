@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
@@ -22,4 +22,6 @@ plan-review-r1  '2026-08-02T12:08:11Z'
 plan-fix-r1  '2026-08-02T12:08:11Z'
 plan-review-r2  '2026-08-02T12:19:10Z'
 plan-fix-r2  '2026-08-02T12:19:10Z'
+plan-review-r3  '2026-08-02T12:39:07Z'
+plan-fix-r3  '2026-08-02T12:39:07Z'
 ```
