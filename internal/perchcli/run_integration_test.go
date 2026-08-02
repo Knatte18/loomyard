@@ -23,6 +23,47 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml
+// Fabric.Commit's classify step reads via RepoWiredNames (the `weft:main`
+// base at hubgeometry.BoardDir(hub)) -- required now that perchcli's
+// block-exit commit moved onto Fabric.Commit, which resolves the wired
+// name-set itself rather than trusting the caller-built pathspec CommitWeft
+// used to accept directly. lyxtest.CopyPairedLocal's fixture carries no
+// repo-wide fabric config of its own, mirroring fabriccli/cli_test.go's
+// setupCLIRepo helper.
+func seedRepoWideFabricConfig(t *testing.T, hub string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(hub)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
+}
+
+// seedFabricAnchor records relPath as the .fabric-anchor marker under hub's
+// board directory, so Fabric.Commit's own hubgeometry.ResolveWorktree call
+// resolves l.RelPath to relPath instead of falling back to a cwd-derived
+// "." -- Commit re-resolves geometry from the warp path itself rather than
+// trusting any *hubgeometry.Layout a caller already holds, so a
+// nested-RelPath fixture must record the anchor for real git to classify
+// correctly.
+func seedFabricAnchor(t *testing.T, hub, relPath string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(hub)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
+	}
+}
+
 // TestRunCLI_Run_WeftSyncRunsOnEngineError verifies that Engine.Run
 // returning a hard error still gets the SAME weft commit+push treatment a
 // successful terminal outcome does, per the Weft Git Invariant: perchcli is
@@ -37,6 +78,7 @@ import (
 func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
+	seedRepoWideFabricConfig(t, fixture.Container)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
@@ -93,6 +135,7 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
+	seedRepoWideFabricConfig(t, fixture.Container)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
@@ -139,6 +182,79 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath is the regression
+// guard perch lacked: TestRunCLI_Run_WeftCommitExcludesLockFiles above only
+// exercises RelPath ".", where the retired ":(exclude)*.lock" pathspec entry
+// happened to still work (a single leading "*" catches the whole subtree at
+// the root). At a nested RelPath the retired pathspec's leading-wildcard bug
+// would silently drop the ENTIRE commit (see CONSTRAINTS.md's Cross-module
+// exclusions bullet); this test proves the deepened
+// "**/_lyx/*/**/*.lock" git-exclude pattern (card 7) keeps perch's two-deep
+// run.lock/state.json.lock out while still landing the rest of the block
+// state, with the worktree geometry itself anchored two segments deep.
+func TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+	fixture := lyxtest.CopyPairedLocal(t)
+	seedRepoWideFabricConfig(t, fixture.Container)
+
+	const relPath = "wts/some-task"
+	seedFabricAnchor(t, fixture.Container, relPath)
+
+	hostSubdir := filepath.Join(fixture.Hub, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(hostSubdir, 0o755); err != nil {
+		t.Fatalf("mkdir nested host subdir: %v", err)
+	}
+	// Module configs are seeded at the nested subdir itself: layout.Cwd is
+	// the anchor point every module config load resolves against, mirroring
+	// the real nested-initialized-repo shape a recorded anchor describes.
+	lyxtest.SeedConfig(t, hostSubdir, map[string]string{
+		"shuttle": shuttleengine.ConfigTemplate(),
+		"reed":    reedengine.ConfigTemplate(),
+		"perch":   perchengine.ConfigTemplate(),
+	})
+	t.Chdir(hostSubdir)
+
+	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
+	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
+		t.Fatalf("write profile fixture: %v", err)
+	}
+
+	// Stand in for a real block's run dir, nested under the recorded
+	// anchor's subpath exactly as the real weft junction would mirror it.
+	runDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), hubgeometry.LyxDirName, "perch", "nested-lock-exclusion")
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		t.Fatalf("mkdir placeholder run dir: %v", err)
+	}
+	for name, content := range map[string]string{
+		"state.json":        "{}",
+		"round-1-review.md": "placeholder",
+		"run.lock":          "",
+		"state.json.lock":   "",
+	} {
+		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write placeholder %s: %v", name, err)
+		}
+	}
+
+	var out bytes.Buffer
+	if exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "nested-lock-exclusion"}); exitCode != 1 {
+		t.Fatalf(`RunCLI([run]) = %d; want 1 (a bad round-caps ladder must fail Profile.validate), output: %s`, exitCode, out.String())
+	}
+
+	// The commit must carry the block state and nothing lock-shaped, even
+	// though the whole worktree is anchored two RelPath segments deep.
+	tracked := gitLsFiles(t, fixture.WeftPrime)
+	wantPresent := relPath + "/_lyx/perch/nested-lock-exclusion/state.json"
+	wantPresent2 := relPath + "/_lyx/perch/nested-lock-exclusion/round-1-review.md"
+	if !strings.Contains(tracked, wantPresent) || !strings.Contains(tracked, wantPresent2) {
+		t.Errorf("weft tracked files = %q; want %q and %q committed", tracked, wantPresent, wantPresent2)
+	}
+	if strings.Contains(tracked, ".lock") {
+		t.Errorf("weft tracked files = %q; want no *.lock file ever committed, even nested under %q", tracked, relPath)
+	}
+}
+
 // TestRunCLI_Run_BusyBlockSkipsWeftSync verifies that a run refused because
 // another invocation holds the block's run.lock does NOT run the block-exit
 // weft sync: the loser changed nothing on disk, and syncing would commit
@@ -149,6 +265,7 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
+	seedRepoWideFabricConfig(t, fixture.Container)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),

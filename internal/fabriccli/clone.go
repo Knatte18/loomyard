@@ -72,12 +72,13 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 	}
 
 	// Commit + push the .fabric-anchor marker and fabric.yaml onto weft:main
-	// through the choke point. StageAllAndCommit's wildcard `git add -A`
-	// stages both files; this is a clean no-op on the adopt path.
-	if _, _, err := fabricengine.CommitWeftAt(res.BoardDir, "fabric clone: record anchor + repo-wide config", fabricengine.SyncOptions{}); err != nil {
+	// through the Bolt handle. Its wildcard-stage commit covers both files;
+	// this is a clean no-op on the adopt path.
+	b := fabricengine.NewBolt(res.BoardDir)
+	if _, _, err := b.Commit("fabric clone: record anchor + repo-wide config", fabricengine.SyncOptions{}); err != nil {
 		return output.Err(out, err.Error())
 	}
-	if err := fabricengine.PushWeftAt(res.BoardDir, fabricengine.SyncOptions{}); err != nil {
+	if err := b.Push(fabricengine.SyncOptions{}); err != nil {
 		return output.Err(out, err.Error())
 	}
 

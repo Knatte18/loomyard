@@ -1,5 +1,5 @@
 // revert_test.go — untagged unit tests for classifyCorrespondence, the pure
-// gap-classification core RevertWithWeft's resolution step builds on. No
+// gap-classification core resolveRevertTarget's resolution step builds on. No
 // git spawn: every case works against a hand-built *corrIndex.
 
 package fabricengine

@@ -1,12 +1,12 @@
 // weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull,
-// sync) onto the "fabric" parent command built by fabric.go. addWeftVerbs installs
-// two hidden persistent flags — --weft-path and --warp-path — and a
-// PersistentPreRunE scoped to these five verb names only — the topology verbs built
+// sync, diff) onto the "fabric" parent command built by fabric.go. addWeftVerbs
+// installs two hidden persistent flags — --weft-path and --warp-path — and a
+// PersistentPreRunE scoped to these six verb names only — the topology verbs built
 // in fabric.go resolve their own layout per invocation and never touch this file's
 // closure state. The PersistentPreRunE splits normal mode (resolve cwd → layout →
 // config → pathspec → Fabric handle) from bypass mode (either hidden path flag
 // injected by the detached push child, push-only gate), driving fabricengine.Fabric's
-// StatusWeft/CommitWeft/PushWeft/Pull in normal mode and
+// Status/Commit/PushWeft/Pull/Diff in normal mode and
 // fabricengine.CoalescePushBothAt's loop-until-clean coalescing push directly in
 // bypass mode.
 
@@ -30,10 +30,11 @@ var weftVerbNames = map[string]bool{
 	"push":   true,
 	"pull":   true,
 	"sync":   true,
+	"diff":   true,
 }
 
 // addWeftVerbs installs the hidden --weft-path persistent flag, the weft-verb-scoped
-// PersistentPreRunE, and the status/commit/push/pull/sync subcommands onto cmd — the
+// PersistentPreRunE, and the status/commit/push/pull/sync/diff subcommands onto cmd — the
 // "fabric" parent command built by Command() in fabric.go.
 //
 // Normal mode (neither --weft-path nor --warp-path set) resolves cwd → layout →
@@ -138,21 +139,24 @@ func addWeftVerbs(cmd *cobra.Command) {
 		return nil
 	}
 
-	// status subcommand: reports content-sync state for the weft worktree.
+	// status subcommand: reports every currently-uncommitted change across
+	// both sides of the warp<->weft pair.
 	statusCmd := &cobra.Command{
 		Use:   "status",
-		Short: "show weft content-sync status",
+		Short: "show unified warp+weft uncommitted-change status",
+		Long: `Reports every currently-uncommitted path across both sides of the
+warp<->weft pair, each labelled with which side (warp or weft) it changed on.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			statusMap, err := fab.StatusWeft(pathspec)
+			entries, err := fab.Status()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, statusMap))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"changes": changeEntriesMap(entries)}))
 			return nil
 		},
 	}
@@ -180,12 +184,12 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			sha, committed, err := fab.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, fabricengine.EnvSyncOptions())
+			res, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"committed": committed, "sha": sha}))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"committed": res.WeftCommitted, "sha": res.WeftSHA}))
 			return nil
 		},
 	}
@@ -219,7 +223,7 @@ Related commands:
 
 			// Normal mode: commit first, then push.
 			opts := fabricengine.EnvSyncOptions()
-			if _, _, err := fab.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, opts); err != nil {
+			if _, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -279,7 +283,7 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			if _, _, err := fab.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, fabricengine.EnvSyncOptions()); err != nil {
+			if _, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions()); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -292,7 +296,51 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
 		},
 	}
 
-	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd)
+	// diff subcommand: reports the side-labelled unified diff since a warp SHA.
+	diffCmd := &cobra.Command{
+		Use:   "diff <since-warp-sha>",
+		Short: "show unified warp+weft diff since a warp SHA",
+		Long: `Reports what changed on both sides of the warp<->weft pair since the given
+warp SHA: warp-side changes are <since-warp-sha>..HEAD in the warp repo, and
+weft-side changes are computed against the nearest recorded weft
+correspondence at or before that warp SHA.
+
+If <since-warp-sha> predates any recorded correspondence, the weft side is
+empty and the result's no_weft_correspondence field is true.
+
+Example:
+  lyx fabric diff abc1234`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			out := cmd.OutOrStdout()
+			res, err := fab.Diff(args[0])
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+				"entries":                changeEntriesMap(res.Entries),
+				"no_weft_correspondence": res.NoWeftCorrespondence,
+			}))
+			return nil
+		},
+	}
+
+	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd, diffCmd)
+}
+
+// changeEntriesMap flattens a []fabricengine.ChangeEntry into the
+// map[string]any shape output.Ok's JSON envelope expects, since ChangeEntry
+// carries no json tags of its own.
+func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
+	out := make([]map[string]any, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, map[string]any{"path": e.Path, "side": string(e.Side)})
+	}
+	return out
 }
 
 // pullResultMap converts a fabricengine.PullResult into the map[string]any

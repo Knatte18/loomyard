@@ -14,7 +14,7 @@
 // reporting (F2/F3), Cleanup's primary-weft-branch protection when the
 // primary is parked off its branch (F1), its refusal to ever delete a
 // non-suffixed (not fabric-managed) weft branch, and its checked-out protection for
-// a pair whose host sits on a detached HEAD (R5); and PairInSync's "real
+// a pair whose host sits on a detached HEAD (R5); and Healthy's "real
 // directory in the junction's place" wording (R10). Each guards the same real
 // bug the differential file's subtest name/doc comment names — see git
 // history for reconcile_differential_test.go for the original differential
@@ -100,7 +100,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 // fork has the suffixed primary branch it expects. Shared setup for every
 // standalone regression guard in this file.
 //
-// Card 7 migrated checkJunctionHealth/PairInSync/Reconcile/Checkout/Remove/
+// Card 7 migrated checkJunctionHealth/Healthy/Reconcile/Checkout/Remove/
 // junctionRepointedDetail to read the junction name-set from the repo-wide
 // hubgeometry.BoardDir(Hub) base rather than each pair's own weft base, so
 // this fixture also materializes the repo-wide config via
@@ -121,7 +121,7 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
 // hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
-// PairInSync, Reconcile, Topology.Checkout, Topology.Remove,
+// Healthy, Reconcile, Topology.Checkout, Topology.Remove,
 // junctionRepointedDetail) now read from. lyxtest.CopyPaired/CopyPairedLocal
 // do not create a _board dir, so this creates it (and its _lyx/config/)
 // first; unlike lyxtest.SeedConfig, _board is not a git repository, so the
@@ -464,12 +464,12 @@ func TestCleanup_DetachedHostHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	}
 }
 
-// TestPairInSync_RealDirNotAJunction is the R10 fix: a real (non-link)
+// TestHealthy_RealDirNotAJunction is the R10 fix: a real (non-link)
 // directory sitting where the _lyx junction belongs must be reported as
 // "host _lyx is not a junction" — the wording checkJunctionHealth already
 // uses for the same drift shape — not as "junction missing". The loom
 // preflight will consume this reason string after cutover.
-func TestPairInSync_RealDirNotAJunction(t *testing.T) {
+func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	t.Parallel()
 
 	const slug = "pairinsync-realdir"
@@ -498,14 +498,14 @@ func TestPairInSync_RealDirNotAJunction(t *testing.T) {
 		t.Fatalf("mkdir real dir in junction's place: %v", err)
 	}
 
-	ok, reason, err := fabricengine.PairInSync(hostLayout)
+	ok, reason, err := fabricengine.Healthy(hostLayout)
 	if err != nil {
-		t.Fatalf("fabricengine.PairInSync: %v", err)
+		t.Fatalf("fabricengine.Healthy: %v", err)
 	}
 	if ok {
-		t.Errorf("PairInSync = true with a real _lyx directory; want false")
+		t.Errorf("Healthy = true with a real _lyx directory; want false")
 	}
 	if reason != "host _lyx is not a junction" {
-		t.Errorf("PairInSync reason = %q; want %q", reason, "host _lyx is not a junction")
+		t.Errorf("Healthy reason = %q; want %q", reason, "host _lyx is not a junction")
 	}
 }

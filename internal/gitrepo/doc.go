@@ -129,7 +129,7 @@
 // trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
 // opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
 // scout keep using explicit-list StageAndCommit (called via
-// fabricengine.CommitWeftAt on board's behalf, not boardengine calling
+// fabricengine.commitWeftAt on board's behalf, not boardengine calling
 // gitrepo directly). Rebase, interactive
 // staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are
 // explicitly not supported — a human can always use plain git directly in
@@ -187,8 +187,8 @@
 //
 // # ResetHard surface
 //
-// ResetHard is the primitive fabric's RevertWithWeft history-recovery flow
-// builds on: it points HEAD, the index, and the working tree at a
+// ResetHard is the primitive fabric's coordinated history-recovery flows
+// build on: it points HEAD, the index, and the working tree at a
 // caller-supplied SHA exactly, via `git reset --hard`, discarding any local
 // commits or uncommitted changes past that point. The SHA-shape validation
 // every caller-supplied SHA argument goes through (see above) guarantees an

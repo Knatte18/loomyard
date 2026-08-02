@@ -2,7 +2,7 @@
 
 // junction_pattern_integration_test.go covers the per-junction generalisation
 // this batch makes to seedLyxJunction, unseedLyxJunction, checkJunctionHealth,
-// and PairInSync's inline junction check. From card 15 onward, HostJunctions
+// and Healthy's inline junction check. From card 15 onward, HostJunctions
 // returns two entries (_lyx and _pattern), so this file's cases now exercise
 // a genuinely two-junction world: every generalisation from batch 3 — health
 // check (per-site: reconcile, status, drift), per-junction refusal/repoint,
@@ -313,16 +313,16 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	}
 }
 
-// TestPairInSync_JunctionDriftShapes is card 11's regression guard: each of
-// PairInSync's three junction-drift shapes — missing, not-a-link, and
+// TestHealthy_JunctionDriftShapes is card 11's regression guard: each of
+// Healthy's three junction-drift shapes — missing, not-a-link, and
 // points-elsewhere — produces reason wording naming the junction, aligned
 // with checkJunctionHealth's wording (card 10) for the same shape. From card
 // 15 onward, each drift shape is exercised against BOTH junctions (_lyx and
-// _pattern), proving PairInSync's HostJunctionsHere() loop — drift.go does
+// _pattern), proving Healthy's HostJunctionsHere() loop — drift.go does
 // not share checkJunctionHealth's code path, so this is not redundant with
 // reconcile.go's or status.go's own coverage — reports the correct wording
 // for the second, non-_lyx junction too.
-func TestPairInSync_JunctionDriftShapes(t *testing.T) {
+func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	shapes := []struct {
 		name       string
 		corrupt    func(t *testing.T, link, target string)
@@ -415,16 +415,16 @@ func TestPairInSync_JunctionDriftShapes(t *testing.T) {
 				target := j.targetFor(l)
 				tt.corrupt(t, link, target)
 
-				ok, reason, err := fabricengine.PairInSync(l)
+				ok, reason, err := fabricengine.Healthy(l)
 				if err != nil {
-					t.Fatalf("PairInSync: %v", err)
+					t.Fatalf("Healthy: %v", err)
 				}
 				if ok {
-					t.Errorf("PairInSync = true; want false (%s)", tt.name)
+					t.Errorf("Healthy = true; want false (%s)", tt.name)
 				}
 				wantReason := tt.wantReason(j.dirName)
 				if reason != wantReason {
-					t.Errorf("PairInSync reason = %q; want %q", reason, wantReason)
+					t.Errorf("Healthy reason = %q; want %q", reason, wantReason)
 				}
 			})
 		}
@@ -435,8 +435,8 @@ func TestPairInSync_JunctionDriftShapes(t *testing.T) {
 // per-site health-check coverage: with _lyx healthy and _pattern missing,
 // Reconcile must repair (ReconcileActionJunctionRepointed) rather than report
 // ReconcileActionAlreadyHealthy. reconcile.go does not share drift.go's
-// PairInSync code path (see checkJunctionHealth), so this is not redundant
-// with TestPairInSync_JunctionDriftShapes above.
+// Healthy code path (see checkJunctionHealth), so this is not redundant
+// with TestHealthy_JunctionDriftShapes above.
 func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 	t.Parallel()
 
@@ -495,7 +495,7 @@ func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 // mis-pointed, Status must report JunctionHealthy false, a JunctionReason
 // naming _pattern, and the pair not in sync. status.go computes its verdict
 // inline (see status.go's own doc comment) rather than sharing drift.go's
-// PairInSync, so this is not redundant with TestPairInSync_JunctionDriftShapes.
+// Healthy, so this is not redundant with TestHealthy_JunctionDriftShapes.
 func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 	t.Parallel()
 

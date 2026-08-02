@@ -1,4 +1,4 @@
-// coalesce_test.go covers CoalescePush's loop-exit contract with scripted
+// coalesce_test.go covers coalescePush's loop-exit contract with scripted
 // step closures: no real git is spawned, only a flock on a t.TempDir() path,
 // so this file stays untagged per the Test Tier Purity Invariant.
 
@@ -39,8 +39,8 @@ func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
 				return calls <= tt.progressCount, nil
 			}
 
-			if err := CoalescePush(lockPath, step); err != nil {
-				t.Fatalf("CoalescePush() error = %v; want nil", err)
+			if err := coalescePush(lockPath, step); err != nil {
+				t.Fatalf("coalescePush() error = %v; want nil", err)
 			}
 			if calls != tt.wantCalls {
 				t.Errorf("step call count = %d; want %d", calls, tt.wantCalls)
@@ -51,7 +51,7 @@ func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
 
 // TestCoalescePush_StepErrorAbortsImmediately asserts a step returning a
 // non-nil error stops the loop on that call — no further step calls — and
-// CoalescePush returns that exact error to the caller.
+// coalescePush returns that exact error to the caller.
 func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
 	wantErr := errors.New("boom")
@@ -62,29 +62,29 @@ func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 		return true, wantErr
 	}
 
-	err := CoalescePush(lockPath, step)
+	err := coalescePush(lockPath, step)
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("CoalescePush() error = %v; want %v", err, wantErr)
+		t.Fatalf("coalescePush() error = %v; want %v", err, wantErr)
 	}
 	if calls != 1 {
 		t.Errorf("step call count = %d; want 1 (loop must abort on the first error)", calls)
 	}
 }
 
-// TestCoalescePush_ReleasesLockOnReturn asserts CoalescePush releases its
+// TestCoalescePush_ReleasesLockOnReturn asserts coalescePush releases its
 // absorbing lock before returning: a second, independent AcquireWriteLock on
-// the same path must succeed without blocking once CoalescePush has returned.
+// the same path must succeed without blocking once coalescePush has returned.
 func TestCoalescePush_ReleasesLockOnReturn(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
 
 	step := func() (bool, error) { return false, nil }
-	if err := CoalescePush(lockPath, step); err != nil {
-		t.Fatalf("CoalescePush() error = %v; want nil", err)
+	if err := coalescePush(lockPath, step); err != nil {
+		t.Fatalf("coalescePush() error = %v; want nil", err)
 	}
 
 	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
-		t.Fatalf("AcquireWriteLock() after CoalescePush returned error = %v; want nil (lock must be released)", err)
+		t.Fatalf("AcquireWriteLock() after coalescePush returned error = %v; want nil (lock must be released)", err)
 	}
 	if err := l.Release(); err != nil {
 		t.Fatalf("Release() error = %v", err)

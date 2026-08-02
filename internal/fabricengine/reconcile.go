@@ -345,14 +345,14 @@ func readBranch(dir string) (string, error) {
 // hostLayout.HostJunctionsHere(names) is a link resolving to its own Target,
 // reporting the first unhealthy one found (first-unhealthy-wins). names is
 // loaded internally from the repo-wide BoardDir base — the same durable,
-// junction-health-independent base junctionRepointedDetail and PairInSync use —
+// junction-health-independent base junctionRepointedDetail and Healthy use —
 // via RepoWiredNames; checkJunctionHealth's own signature is unchanged.
 //
 // A junction is unhealthy if its Link is missing, is not a link, or resolves
 // somewhere other than its Target. Every reason string names the junction (by
 // Name) it describes, since with more than one junction a bare "junction
 // missing" no longer tells an operator which one is broken. A config-load
-// failure produces its own reason, worded identically to PairInSync's twin
+// failure produces its own reason, worded identically to Healthy's twin
 // (drift.go) — "host junction check unavailable: cannot load fabric.yaml:
 // <err>" — naming the config-load fault rather than misdirecting an operator
 // toward junction-drift repair.

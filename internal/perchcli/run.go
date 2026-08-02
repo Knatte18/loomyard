@@ -415,18 +415,14 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// pull. reed and shuttle keep this class of file in the
 			// non-synced .lyx for exactly that reason; perch's locks must
 			// live beside state.json inside the run dir (the engine is
-			// geometry-blind), so they are excluded at the commit pathspec
-			// instead. A git exclude pathspec's wildcard matches across
-			// directory separators, covering every lock file under the
-			// scoped _lyx.
-			pathspec := append(
-				fabricengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName}),
-				":(exclude)*.lock",
-			)
+			// geometry-blind), so they are excluded solely by the weft
+			// repo's .git/info/exclude (deepened to reach perch's
+			// two-deep locks) rather than a per-call pathspec.
+			files := fabricengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName})
 			// SkipGit is checked here, before fabricengine.New's stat-based
-			// path validation, mirroring CommitWeft's own top-level
+			// path validation, mirroring Commit's own top-level
 			// short-circuit: the CI/test bypass must never require a real
-			// weft worktree to exist on disk, but New (unlike CommitWeft
+			// weft worktree to exist on disk, but New (unlike Commit
 			// itself) validates both paths unconditionally.
 			var committed bool
 			var weftErr error
@@ -434,15 +430,15 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				var fab *fabricengine.Fabric
 				fab, weftErr = fabricengine.New(c.layout.WorktreeRoot, weftWorktree)
 				if weftErr == nil {
-					_, committed, weftErr = fab.CommitWeft(
-						pathspec,
+					var res fabricengine.CommitResult
+					res, weftErr = fab.Commit(
+						files,
 						fmt.Sprintf("perch: %s %s", id, outcomeLabel),
+						nil,
 						opts,
 					)
+					committed = res.WeftCommitted
 				}
-			}
-			if weftErr == nil {
-				weftErr = fabricengine.PushWeftAt(weftWorktree, opts)
 			}
 
 			if runErr != nil {

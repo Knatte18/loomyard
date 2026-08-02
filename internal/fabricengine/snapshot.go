@@ -1,14 +1,14 @@
-// snapshot.go — the snapshot-tracking read path: Fabric.SnapshotWarpSHA, the
-// sole exported entry point onto the Snapshot-trailer history the write path
-// (trailer.go's appendSnapshotTrailers, threaded through commitWeftLocked)
-// already records. Per the trailer-is-truth-no-new-cache Shared Decision,
-// this file adds no index and no cache of its own — it scans the same
-// generalized trailer history index.go's scanWarpSHATrailers already builds
-// for RebuildIndex, on demand, every call.
+// snapshot.go — the snapshot-tracking read path: Fabric.snapshotWarpSHA, the
+// entry point onto the Snapshot-trailer history the write path (trailer.go's
+// appendSnapshotTrailers, threaded through commitWeftLocked) already records.
+// Per the trailer-is-truth-no-new-cache Shared Decision, this file adds no
+// index and no cache of its own — it scans the same generalized trailer
+// history index.go's scanWarpSHATrailers already builds for RebuildIndex, on
+// demand, every call.
 
 package fabricengine
 
-// SnapshotWarpSHA returns the warp SHA recorded under tag by the newest weft
+// snapshotWarpSHA returns the warp SHA recorded under tag by the newest weft
 // commit (in scanWarpSHATrailers's topological order — see its doc comment)
 // carrying a "Snapshot: <tag>" trailer on the current weft branch. Because no
 // commit is ever listed before one of its own descendants in that order,
@@ -33,7 +33,7 @@ package fabricengine
 //     hiding a caller bug behind a false-positive convenience.
 //  3. A dangling Warp-SHA — the newest commit carrying tag names a warp SHA
 //     that no longer exists because warp history was rewritten — is returned
-//     RAW, with a nil error: SnapshotWarpSHA does not validate the SHA, does
+//     RAW, with a nil error: snapshotWarpSHA does not validate the SHA, does
 //     not skip back to an older tagged commit, and does not collapse the
 //     answer to ("", nil). This is the same validate-at-use posture
 //     RebuildIndex already takes for its own trailer values. Skipping to the
@@ -42,7 +42,7 @@ package fabricengine
 //     data; collapsing to absent would conflate "never recorded" with
 //     "recorded, then rewritten" for no benefit, since both drive the same
 //     consumer action. The intended three-step consumer idiom is: read the
-//     SHA via SnapshotWarpSHA, check f.Warp.SHAExists(sha), then call
+//     SHA via snapshotWarpSHA, check f.Warp.SHAExists(sha), then call
 //     f.Warp.ChangedFilesSince(sha) only if it exists — treating a missing
 //     SHA as total staleness. This is not a burden invented here:
 //     ChangedFilesSince's own doc comment already asks every caller to check
@@ -56,10 +56,10 @@ package fabricengine
 //     cross-branch baseline. Contrast this with refreshCorrIndexAfterSwitch:
 //     the correspondence index is a per-worktree FILE that survives a branch
 //     switch and can therefore go on answering cross-branch, which is
-//     exactly why Checkout must discard and rebuild it. SnapshotWarpSHA
+//     exactly why Checkout must discard and rebuild it. snapshotWarpSHA
 //     holds no state of its own to discard — it simply stops seeing the
 //     other branch's commits the moment the weft worktree switches.
-func (f *Fabric) SnapshotWarpSHA(tag string) (string, error) {
+func (f *Fabric) snapshotWarpSHA(tag string) (string, error) {
 	commits, err := f.scanWarpSHATrailers()
 	if err != nil {
 		return "", err

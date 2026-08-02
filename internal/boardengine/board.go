@@ -8,9 +8,9 @@
 // the sync. Read methods (Get/List) bypass the lock and load directly from
 // disk.
 //
-// The detached sync path talks to git through fabricengine.CommitWeftAt and
-// fabricengine.PushWeftAt, never hand-rolled gitexec calls, under board's own
-// board.lock/board.push.lock write and push locks.
+// The detached sync path talks to git through fabricengine.Bolt, never
+// hand-rolled gitexec calls, under board's own board.lock/board.push.lock
+// write and push locks.
 //
 // Storage: board lives at weft:main, never a separate repo. fabricengine
 // enforces one uniform branch-naming scheme with no exceptions: a host
@@ -38,7 +38,7 @@
 // the Warp-SHA trailer / correspondence-index machinery
 // (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not apply
 // to it — board's reads/writes to weft:main are a standalone concern, not
-// routed through fabric.SyncWeft/fabric.RevertWithWeft.
+// routed through fabric.Commit.
 //
 // Recorded for later, not acted on now: this repo's own manifest/roadmap.md
 // and the mill wiki's task list are both candidates to eventually fold

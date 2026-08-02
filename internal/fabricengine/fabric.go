@@ -4,8 +4,8 @@
 // exported fields rather than a forwarding method per gitrepo operation —
 // consumers call f.Warp.StageAndCommit(...) / f.Weft.ChangedFilesSince(...) for
 // anything repo-specific and uncoordinated; only the genuinely cross-repo
-// operations (Commit, SyncWeft, RevertWithWeft, Pull) get their own method on
-// Fabric. A single-sided, uncoordinated op also earns a named Fabric method —
+// operations (Commit, Pull, Diff, Status) get their own method on Fabric. A
+// single-sided, uncoordinated op also earns a named Fabric method —
 // rather than staying direct field access — precisely when it must be
 // callable from OUTSIDE this package, so the one-repo illusion holds at the
 // public API boundary; f.Warp/f.Weft field access remains correct for

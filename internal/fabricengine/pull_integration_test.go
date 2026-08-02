@@ -47,12 +47,12 @@ func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *Fabric, 
 	for i := 0; i < n; i++ {
 		warpSHA := commitWarp(t, warpPath, fmt.Sprintf("warp change %d", i))
 		writeWeftConfigContent(t, weftFixture.WeftPath, fmt.Sprintf("weft change %d", i))
-		weftSHA, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+		weftSHA, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 		if err != nil {
-			t.Fatalf("CommitWeft() round %d error = %v", i, err)
+			t.Fatalf("commitWeft() round %d error = %v", i, err)
 		}
 		if !committed {
-			t.Fatalf("CommitWeft() round %d committed = false; want true", i)
+			t.Fatalf("commitWeft() round %d committed = false; want true", i)
 		}
 		warpSHAs = append(warpSHAs, warpSHA)
 		weftSHAs = append(weftSHAs, weftSHA)
