@@ -64,7 +64,9 @@ batches:
     start_sha: 070f941c1af1394d674b3248f4d3df94b2036c60
     commit_sha: 7edfac802ab00cbb3b96b29dfa4b70c3a773af3e
   - name: delete-dead-methods
-    state: pending
+    state: running
+    implementer_session: 62a65aa5-838a-4be7-b75e-a0a1ca8a5893
+    start_sha: 925bbb332ac21c67434b1e9b221357ca9e693549
   - name: fabric-cli-collapse
     state: pending
 ```
