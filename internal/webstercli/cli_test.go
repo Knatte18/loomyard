@@ -2,14 +2,17 @@
 // listing, the unknown-subcommand JSON envelope, the PersistentPreRunE
 // group-command guard, and the help-tree Short completeness check --
 // mirroring buildercli's own cli_test.go (internal/buildercli/cli_test.go).
-// It also covers the three spawn-free verbs (validate/status/pause),
-// websterWeftPathspec's exclusion set, and weftCommit's SkipGit-before-New
-// guard ordering directly, since none of those need a live tmux/claude
-// substrate or even a git repository beyond a plain t.TempDir(). Every fixture here builds a *websterCLI literal directly,
-// bypassing Command()'s PersistentPreRunE, the package-local injection
-// point buildercli's own tests establish. Every other verb's own behavior
-// (begin-batch, record-batch, recover-batch, run) is covered by
-// verbs_test.go.
+// It also covers the three spawn-free verbs (validate/status/pause) and
+// weftCommit's SkipGit-before-New guard ordering directly, since none of
+// those need a live tmux/claude substrate or even a git repository beyond a
+// plain t.TempDir(). Pathspec-shape coverage now lives in
+// weft_integration_test.go, which proves the exclude-file transients stay
+// uncommitted through a real git repo rather than asserting a pathspec
+// string shape against a since-deleted helper. Every fixture here builds a
+// *websterCLI literal directly, bypassing Command()'s PersistentPreRunE, the
+// package-local injection point buildercli's own tests establish. Every
+// other verb's own behavior (begin-batch, record-batch, recover-batch, run)
+// is covered by verbs_test.go.
 package webstercli
 
 import (
@@ -20,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -137,57 +139,8 @@ func TestCommand_LongStringsHaveNoStaleV2Language(t *testing.T) {
 	walk(Command())
 }
 
-// TestWebsterWeftPathspec_ExcludesRuntimeArtifacts proves the pathspec every
-// webster weft commit stages under excludes the advisory *.lock files, the
-// pause flag, and every rendered fork prompt, at each layout.RelPath shape --
-// and that every exclusion is ANCHORED under the scoped _lyx base rather than
-// spelled with a leading wildcard. The anchoring is not cosmetic: git treats
-// a leading-"*" pattern with no further wildcard as a one-star pathspec that
-// false-positive-matches the intermediate directories leading to a
-// multi-segment positive pathspec, which prunes the whole subtree and turns
-// the weft commit into a silent no-op. Note this test can only prove the
-// SHAPE of the pathspec; that real git honours it is proved by
-// weft_integration_test.go's TestWeftCommit_CommitsAtEveryRelPathDepth.
-func TestWebsterWeftPathspec_ExcludesRuntimeArtifacts(t *testing.T) {
-	tests := []struct {
-		name    string
-		relPath string
-		base    string
-	}{
-		{name: "nested worktree (relPath set)", relPath: "wts/some-task", base: "wts/some-task/_lyx"},
-		{name: "worktree root (relPath dot)", relPath: ".", base: "_lyx"},
-		{name: "weft-root worktree (relPath empty)", relPath: "", base: "_lyx"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			pathspec := websterWeftPathspec(&hubgeometry.Layout{RelPath: tt.relPath})
-
-			wantExcludes := []string{
-				":(exclude)" + tt.base + "/*.lock",
-				":(exclude)" + tt.base + "/webster/" + websterengine.PauseFlagName,
-				":(exclude)" + tt.base + "/webster/prompts/*",
-				// Builder's pause flag is excluded too: both round-loop
-				// modules share one _lyx tree, so a webster commit stages
-				// whatever builder left on disk.
-				":(exclude)" + tt.base + "/builder/" + builderengine.PauseFlagName,
-			}
-			for _, want := range wantExcludes {
-				if !containsString(pathspec, want) {
-					t.Errorf("websterWeftPathspec(relPath=%q) = %v; want it to contain %q", tt.relPath, pathspec, want)
-				}
-			}
-
-			for _, entry := range pathspec {
-				if strings.HasPrefix(entry, ":(exclude)*") {
-					t.Errorf("websterWeftPathspec(relPath=%q) has unanchored exclusion %q; every exclusion must be anchored under %q", tt.relPath, entry, tt.base)
-				}
-			}
-		})
-	}
-}
-
-// containsString reports whether haystack contains needle.
+// containsString reports whether haystack contains needle. Shared with
+// weft_integration_test.go's exclude-file assertions.
 func containsString(haystack []string, needle string) bool {
 	for _, s := range haystack {
 		if s == needle {
