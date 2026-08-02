@@ -40,5 +40,7 @@ batches:
     start_sha: 41a00e767650b2b2bbd487ed5dd4f9f1faf31ad9
     commit_sha: 3d15d34ec3b97dfeaf7fd3243ff2d2a8f617c9fa
   - name: webster-prompt-split
-    state: pending
+    state: running
+    implementer_session: d3b69a4c-83f5-43ce-85d6-5e3bfb7ec3d7
+    start_sha: c6e5b422fabbcf4ca758351c12e4413ac6fb102a
 ```
