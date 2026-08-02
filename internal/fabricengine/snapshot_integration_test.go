@@ -35,12 +35,12 @@ func commitWeftTagged(t *testing.T, f *Fabric, warpPath, weftPath, content strin
 
 	warpSHA = commitWarp(t, warpPath, content)
 	writeWeftConfigContent(t, weftPath, content)
-	weftSHA, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{}, tags...)
+	weftSHA, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{}, tags...)
 	if err != nil {
-		t.Fatalf("CommitWeft(tags=%v) error = %v", tags, err)
+		t.Fatalf("commitWeft(tags=%v) error = %v", tags, err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft(tags=%v) committed = false; want true", tags)
+		t.Fatalf("commitWeft(tags=%v) committed = false; want true", tags)
 	}
 	return warpSHA, weftSHA
 }
@@ -483,15 +483,15 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 	// not advanced again here — so the empty-commit rule's `!positive`
 	// fall-through fires and RecordCorrespondence upserts over the entry the
 	// content commit just wrote for warpSHA.
-	emptyWeftSHA, committed, err := f.CommitWeft(nil, DefaultCommitMessage, SyncOptions{}, "raddle")
+	emptyWeftSHA, committed, err := f.commitWeft(nil, DefaultCommitMessage, SyncOptions{}, "raddle")
 	if err != nil {
-		t.Fatalf("CommitWeft() (tags-only, same warp HEAD) error = %v", err)
+		t.Fatalf("commitWeft() (tags-only, same warp HEAD) error = %v", err)
 	}
 	if !committed || emptyWeftSHA == "" {
-		t.Fatalf("CommitWeft() = (%q, %v); want an empty commit to have landed", emptyWeftSHA, committed)
+		t.Fatalf("commitWeft() = (%q, %v); want an empty commit to have landed", emptyWeftSHA, committed)
 	}
 	if emptyWeftSHA == contentWeftSHA {
-		t.Fatalf("CommitWeft() landed the same SHA as the content commit; want a distinct empty commit")
+		t.Fatalf("commitWeft() landed the same SHA as the content commit; want a distinct empty commit")
 	}
 
 	got, err := f.WeftSHAForWarpSHA(warpSHA)

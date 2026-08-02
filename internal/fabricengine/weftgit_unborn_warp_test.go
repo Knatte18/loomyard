@@ -48,12 +48,12 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, unborn warp")
 
-	sha, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() against an unborn warp HEAD error = %v; want nil", err)
+		t.Fatalf("commitWeft() against an unborn warp HEAD error = %v; want nil", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft() committed = false; want true")
+		t.Fatalf("commitWeft() committed = false; want true")
 	}
 
 	rawMessage := commitMessageAt(t, weftFixture.WeftPath, sha)
@@ -80,12 +80,12 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpSHA := commitWarp(t, warpPath, "warp's first commit")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, warp now born")
 
-	sha2, committed2, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha2, committed2, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() after warp's first commit error = %v; want nil", err)
+		t.Fatalf("commitWeft() after warp's first commit error = %v; want nil", err)
 	}
 	if !committed2 {
-		t.Fatalf("CommitWeft() after warp's first commit committed = false; want true")
+		t.Fatalf("commitWeft() after warp's first commit committed = false; want true")
 	}
 
 	rawMessage2 := commitMessageAt(t, weftFixture.WeftPath, sha2)

@@ -133,12 +133,12 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	warpSHA := commitWarp(t, warpPath, "warp change")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change")
 
-	preAmendSHA, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	preAmendSHA, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() error = %v", err)
+		t.Fatalf("commitWeft() error = %v", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft() committed = false; want true")
+		t.Fatalf("commitWeft() committed = false; want true")
 	}
 
 	got, err := f.WeftSHAForWarpSHA(warpSHA)
@@ -189,12 +189,12 @@ func staleCorrespondenceFixture(t *testing.T) (f *Fabric, warpSHA string) {
 
 	warpSHA = commitWarp(t, warpPath, "warp change")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change")
-	weftSHA, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	weftSHA, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() error = %v", err)
+		t.Fatalf("commitWeft() error = %v", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft() committed = false; want true")
+		t.Fatalf("commitWeft() committed = false; want true")
 	}
 	if got, err := f.WeftSHAForWarpSHA(warpSHA); err != nil || got != weftSHA {
 		t.Fatalf("WeftSHAForWarpSHA() (pre-rewrite) = %q, %v; want %q, nil", got, err, weftSHA)

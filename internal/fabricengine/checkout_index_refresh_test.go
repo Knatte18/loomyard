@@ -62,10 +62,11 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("warp CurrentSHA: %v", err)
 	}
-	weftSHA, committed, err := f.CommitWeft([]string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
-	if err != nil || !committed {
-		t.Fatalf("CommitWeft = (%q, %v, %v); want a real commit", weftSHA, committed, err)
+	result, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	if err != nil || !result.WeftCommitted {
+		t.Fatalf("Commit = (%+v, %v); want a real weft commit", result, err)
 	}
+	weftSHA := result.WeftSHA
 
 	// Sanity: the lookup answers while the recording branch is still current.
 	if got, err := f.WeftSHAForWarpSHA(warpSHA); err != nil || got != weftSHA {

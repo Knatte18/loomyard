@@ -192,8 +192,8 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	// Status is asked to filter them out.
 	commitWarp(t, warpPath, "warp change")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change")
-	if _, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{}); err != nil || !committed {
-		t.Fatalf("CommitWeft() committed=%v err=%v; want committed=true, err=nil", committed, err)
+	if _, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{}); err != nil || !committed {
+		t.Fatalf("commitWeft() committed=%v err=%v; want committed=true, err=nil", committed, err)
 	}
 
 	// Dirty both worktrees with genuinely uncommitted changes.

@@ -911,12 +911,12 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 	weftFixture := lyxtest.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
-	sha, committed, err := f.CommitWeft([]string{"doesnotexist"}, DefaultCommitMessage, SyncOptions{}, "raddle")
+	sha, committed, err := f.commitWeft([]string{"doesnotexist"}, DefaultCommitMessage, SyncOptions{}, "raddle")
 	if err != nil {
-		t.Fatalf("CommitWeft() error = %v", err)
+		t.Fatalf("commitWeft() error = %v", err)
 	}
 	if !committed || sha == "" {
-		t.Fatalf("CommitWeft() = (%q, %v); want an empty commit to have landed", sha, committed)
+		t.Fatalf("commitWeft() = (%q, %v); want an empty commit to have landed", sha, committed)
 	}
 
 	warpSHA := currentSHA(t, warpPath)
