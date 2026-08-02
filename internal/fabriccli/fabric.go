@@ -7,7 +7,7 @@
 // --weft-path bypass flag and its PersistentPreRunE.
 
 // Package fabriccli owns the unified host↔weft cobra surface for lyx: the flat
-// 14-verb "lyx fabric" tree combining host↔weft topology verbs and weft
+// 16-verb "lyx fabric" tree combining host↔weft topology verbs and weft
 // content-sync verbs over the fabricengine package. fabric is the sole
 // host↔weft git-coordination module (see docs/overview.md). Every fabric weft
 // branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).
