@@ -49,10 +49,11 @@ Collapse fabric's CLI status surface and finish unexporting `CommitWeft`. Wire a
   - `internal/fabriccli/weft_verbs.go`
 - **Edits:**
   - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/diff.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete the `Fabric.StatusWeft(pathspec []string) (map[string]any, error)` method (`weftgit.go:178`) — after card 23 its only caller (the `status` verb) is gone, and recon confirmed no other caller (prod or test). Grep to confirm zero residual references before deleting. Remove any now-unused helper or import that `StatusWeft` alone pulled in.
+- **Requirements:** Delete the `Fabric.StatusWeft(pathspec []string) (map[string]any, error)` method (`weftgit.go:178`) — after card 23 its only caller (the `status` verb) is gone, and recon confirmed no other caller (prod or test). Grep to confirm zero residual references before deleting. Remove any now-unused helper or import that `StatusWeft` alone pulled in. Strip the now-deleted `StatusWeft` from `weftgit.go`'s top-of-file enumeration comment (`weftgit.go:1`, "the weft-git content-sync verbs on Fabric: StatusWeft, …"). Also update the two `diff.go` doc-comment mentions of `StatusWeft` as a live surface (`diff.go:4` and `diff.go:57`, which describe it as a distinct dirty/ahead/behind view) so no comment names the deleted method — reword to the two surviving surfaces (`Topology.Status` / unified `Fabric.Status`). Trim edited comments to the `golang-comments` shape.
 - **Commit:** `refactor(fabric): remove weft-only StatusWeft`
 
 ### Card 25: Migrate fabriccli weft verbs onto Fabric.Commit
@@ -80,11 +81,12 @@ Collapse fabric's CLI status surface and finish unexporting `CommitWeft`. Wire a
 - **Edits:**
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/unwire.go`
+  - `CONSTRAINTS.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Rename the exported `Fabric.CommitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string)` (`weftgit.go:504`) to package-private `commitWeft`, same signature and body. After batches 2 and 5 and card 25, its only remaining callers are in-package: `unwire.go:121` (update to `commitWeft`) and the in-package `internal/fabricengine/*_test.go` files (which call it as a same-package method — update those call sites to the new casing too: grep the `fabricengine` package for `.CommitWeft(` and `CommitWeft` doc mentions and update every hit). Confirm via grep that no caller outside the `fabricengine` package references `CommitWeft` after this card. Update `doc.go`/`fabric.go`/`weftgit.go` doc-comment mentions of `CommitWeft` to `commitWeft` casing (the status-surface/diff `doc.go` prose is handled in card 27; here only fix the `CommitWeft`→`commitWeft` name occurrences).
-- **Commit:** `refactor(fabric): unexport commitWeft`
+- **Requirements:** Rename the exported `Fabric.CommitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string)` (`weftgit.go:504`) to package-private `commitWeft`, same signature and body. After batches 2 and 5 and card 25, its only remaining callers are in-package: `unwire.go:121` (update to `commitWeft`) and the in-package `internal/fabricengine/*_test.go` files (which call it as a same-package method — update those call sites to the new casing too: grep the `fabricengine` package for `.CommitWeft(` and `CommitWeft` doc mentions and update every hit). Confirm via grep that no caller outside the `fabricengine` package references `CommitWeft` after this card. Update `doc.go`/`fabric.go`/`weftgit.go` doc-comment mentions of `CommitWeft` to `commitWeft` casing (the status-surface/diff `doc.go` prose is handled in card 27; here only fix the `CommitWeft`→`commitWeft` name occurrences). Also reconcile `CONSTRAINTS.md`'s "Fabric Git Invariant" section, whose prose still names now-deleted/unexported symbols as current: in the "Orchestration, not agent" bullet (`CONSTRAINTS.md:92`) remove the deleted `SyncWeft` (from "`fabricengine`'s `SyncWeft`/`CommitWeft`") and fix every remaining exported-name casing in that section — `CommitWeft`→`commitWeft`, `CommitWeftAt`→`commitWeftAt`, `PushWeftAt`→`pushWeftAt` (the board carve-out clause "board's git flows through `fabricengine.CommitWeftAt`/`PushWeftAt`" now routes through `Bolt` over those unexported primitives — reflect that), and `commitWeftLocked`/`CommitWeft` machinery → `commitWeft`. Grep `CONSTRAINTS.md` for any remaining `SyncWeft`/`CommitWeft`/`CommitWeftAt`/`PushWeftAt`/`StatusWeft` name and reconcile it. One line per paragraph, no hard-wrap.
+- **Commit:** `refactor(fabric): unexport commitWeft; reconcile CONSTRAINTS invariant`
 
 ### Card 27: Revise doc.go status/diff prose and help-tree
 

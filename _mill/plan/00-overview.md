@@ -92,11 +92,14 @@ batches:
 - `internal/buildercli/weft_integration_test.go`
 - `internal/fabricengine/bolt.go`
 - `internal/fabricengine/bolt_integration_test.go`
+- `internal/fabricengine/checkout_index_refresh_test.go`
 - `internal/fabricengine/coalesce.go`
 - `internal/fabricengine/coalesce_test.go`
 - `internal/fabricengine/commit.go`
 - `internal/fabricengine/commit_integration_test.go`
+- `internal/fabricengine/commit_partial_integration_test.go`
 - `internal/fabricengine/commitweftat_test.go`
+- `internal/fabricengine/diff.go`
 - `internal/fabricengine/diff_integration_test.go`
 - `internal/fabricengine/doc.go`
 - `internal/fabricengine/drift.go`
@@ -106,6 +109,7 @@ batches:
 - `internal/fabricengine/junctionnames.go`
 - `internal/fabricengine/reconcile.go`
 - `internal/fabricengine/revert.go`
+- `internal/fabricengine/revert_test.go`
 - `internal/fabricengine/snapshot.go`
 - `internal/fabricengine/status.go`
 - `internal/fabricengine/syncweft_integration_test.go`
@@ -120,6 +124,7 @@ batches:
 - `internal/gitrepo/noforceadd_test.go`
 - `internal/gitrepo/reset.go`
 - `internal/loomengine/preflight.go`
+- `internal/loomengine/preflight_integration_test.go`
 - `internal/perchcli/run.go`
 - `internal/perchcli/run_integration_test.go`
 - `internal/webstercli/weft.go`
