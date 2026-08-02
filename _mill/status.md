@@ -6,6 +6,7 @@ slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'fabric: collapse external API surface onto Commit — stop leaking warp/weft'
 task_description: |
   fabric: collapse external API surface onto Commit — stop leaking warp/weft
@@ -39,7 +40,9 @@ implementing  '2026-08-02T13:25:04Z'
 ```yaml
 batches:
   - name: bolt-handle
-    state: pending
+    state: running
+    implementer_session: 26ae0d5d-4bde-4716-86cd-35d7f2bc55f2
+    start_sha: 55b76b8b727302e95969a1dc5e36a02f7c8d2504
   - name: commit-migration
     state: pending
   - name: remove-force-add
