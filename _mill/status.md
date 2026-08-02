@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-card-source-identity
+phase: approved-webster-prompt-split
 slug: webster-fork-context-hygiene
 branch: webster-fork-context-hygiene
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r4  '2026-08-02T14:25:12Z'
 planned  '2026-08-02T14:25:25Z'
 implementing  '2026-08-02T14:25:54Z'
 approved-planparser-card-source-identity  '2026-08-02T14:29:45Z'
+approved-webster-prompt-split  '2026-08-02T14:40:26Z'
 ```
 
 ## Batches
@@ -40,7 +41,8 @@ batches:
     start_sha: 41a00e767650b2b2bbd487ed5dd4f9f1faf31ad9
     commit_sha: 3d15d34ec3b97dfeaf7fd3243ff2d2a8f617c9fa
   - name: webster-prompt-split
-    state: running
+    state: approved
     implementer_session: d3b69a4c-83f5-43ce-85d6-5e3bfb7ec3d7
     start_sha: c6e5b422fabbcf4ca758351c12e4413ac6fb102a
+    commit_sha: dbacedffa9538ef549d9a62a8b8b755c9d4e56b0
 ```
