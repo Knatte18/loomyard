@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-bolt-handle
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-review-r6  '2026-08-02T13:24:08Z'
 plan-fix-r6  '2026-08-02T13:24:08Z'
 planned  '2026-08-02T13:24:32Z'
 implementing  '2026-08-02T13:25:04Z'
+approved-bolt-handle  '2026-08-02T13:34:42Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ implementing  '2026-08-02T13:25:04Z'
 ```yaml
 batches:
   - name: bolt-handle
-    state: running
+    state: approved
     implementer_session: 26ae0d5d-4bde-4716-86cd-35d7f2bc55f2
     start_sha: 55b76b8b727302e95969a1dc5e36a02f7c8d2504
+    commit_sha: de04de447516da3ee87552e4763a19cae54195e2
   - name: commit-migration
     state: pending
   - name: remove-force-add
