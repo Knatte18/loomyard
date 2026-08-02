@@ -1,12 +1,12 @@
 // weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull,
-// sync) onto the "fabric" parent command built by fabric.go. addWeftVerbs installs
-// two hidden persistent flags — --weft-path and --warp-path — and a
-// PersistentPreRunE scoped to these five verb names only — the topology verbs built
+// sync, diff) onto the "fabric" parent command built by fabric.go. addWeftVerbs
+// installs two hidden persistent flags — --weft-path and --warp-path — and a
+// PersistentPreRunE scoped to these six verb names only — the topology verbs built
 // in fabric.go resolve their own layout per invocation and never touch this file's
 // closure state. The PersistentPreRunE splits normal mode (resolve cwd → layout →
 // config → pathspec → Fabric handle) from bypass mode (either hidden path flag
 // injected by the detached push child, push-only gate), driving fabricengine.Fabric's
-// StatusWeft/CommitWeft/PushWeft/Pull in normal mode and
+// Status/Commit/PushWeft/Pull/Diff in normal mode and
 // fabricengine.CoalescePushBothAt's loop-until-clean coalescing push directly in
 // bypass mode.
 
@@ -34,7 +34,7 @@ var weftVerbNames = map[string]bool{
 }
 
 // addWeftVerbs installs the hidden --weft-path persistent flag, the weft-verb-scoped
-// PersistentPreRunE, and the status/commit/push/pull/sync subcommands onto cmd — the
+// PersistentPreRunE, and the status/commit/push/pull/sync/diff subcommands onto cmd — the
 // "fabric" parent command built by Command() in fabric.go.
 //
 // Normal mode (neither --weft-path nor --warp-path set) resolves cwd → layout →
@@ -184,12 +184,12 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			sha, committed, err := fab.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, fabricengine.EnvSyncOptions())
+			res, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"committed": committed, "sha": sha}))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"committed": res.WeftCommitted, "sha": res.WeftSHA}))
 			return nil
 		},
 	}
@@ -223,7 +223,7 @@ Related commands:
 
 			// Normal mode: commit first, then push.
 			opts := fabricengine.EnvSyncOptions()
-			if _, _, err := fab.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, opts); err != nil {
+			if _, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
@@ -283,7 +283,7 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			if _, _, err := fab.CommitWeft(pathspec, fabricengine.DefaultCommitMessage, fabricengine.EnvSyncOptions()); err != nil {
+			if _, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions()); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
