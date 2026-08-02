@@ -25,7 +25,7 @@ func NewBolt(repoPath string) *Bolt {
 // with no warp trailer and no correspondence recording — there is no paired
 // warp side to trail against.
 func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed bool, err error) {
-	return CommitWeftAt(b.path, message, opts)
+	return commitWeftAt(b.path, message, opts)
 }
 
 // Push pushes any unpushed commits in the Bolt's repo, honoring
@@ -40,5 +40,5 @@ func (b *Bolt) Push(opts SyncOptions) error {
 // board.push.lock path boardengine's Sync has always used, so existing
 // serialization behavior carries over unchanged.
 func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
-	return CoalescePush(filepath.Join(b.path, "board.push.lock"), step)
+	return coalescePush(filepath.Join(b.path, "board.push.lock"), step)
 }

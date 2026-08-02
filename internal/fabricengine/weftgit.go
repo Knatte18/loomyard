@@ -1,7 +1,7 @@
 // weftgit.go — the weft-git content-sync verbs on Fabric: StatusWeft,
 // CommitWeft, PushWeft, PullWeft, plus the package-level PushWeftAt and
-// CommitWeftAt for the detached-push child and board's warp-untethered
-// weft:main commit. CommitWeft's commit carries a Warp-SHA trailer and
+// commitWeftAt for the detached-push child and board's warp-untethered
+// weft:main commit (via Bolt). CommitWeft's commit carries a Warp-SHA trailer and
 // records the correspondence immediately — except on an unborn warp HEAD
 // (see warpHeadSHA), where both are skipped for that one commit.
 
@@ -27,7 +27,7 @@ const (
 	weftLockDirName   = ".weft"
 	weftWriteLockFile = "weft.write.lock"
 	// weftPushLockFile names the absorbing push lock the coalescing loop
-	// (CoalescePush, in coalesce.go) holds for the whole loop-until-clean push
+	// (coalescePush, in coalesce.go) holds for the whole loop-until-clean push
 	// window. It lives inside .weft/ alongside weftWriteLockFile — already
 	// git-excluded by seedWeftArtifactExcludes' whole-directory
 	// weftLockDirName + "/" entry, so no separate exclude entry is needed for
@@ -548,7 +548,7 @@ func PushWeftAt(weftPath string, opts SyncOptions) error {
 	return gitrepo.New(weftPath).PushCoalesced()
 }
 
-// CommitWeftAt is the warp-untethered, wildcard-stage commit primitive for
+// commitWeftAt is the warp-untethered, wildcard-stage commit primitive for
 // _board's weft:main checkout, which has no corresponding warp branch to
 // trailer a commit against. Unlike Fabric.CommitWeft, it wraps
 // gitrepo.StageAllAndCommit directly: no pathspec filtering, no Warp-SHA
@@ -556,12 +556,13 @@ func PushWeftAt(weftPath string, opts SyncOptions) error {
 // and no correspondence index entry to keep. It is PushWeftAt's natural
 // commit-side counterpart: package-level, no Fabric receiver, no warp path.
 // Returns ("", false, nil) immediately when opts.SkipGit is true, with no
-// git spawned. CommitWeftAt does not acquire ensureWeftLockDir's write lock
+// git spawned. commitWeftAt does not acquire ensureWeftLockDir's write lock
 // — that lock serializes CommitWeft callers sharing a pathspec-scoped
-// commit; CommitWeftAt's caller already holds its own write lock around the
-// equivalent critical section, so a second lock here would only add
-// contention with no correctness benefit.
-func CommitWeftAt(weftPath, message string, opts SyncOptions) (sha string, committed bool, err error) {
+// commit; commitWeftAt's caller (Bolt.Commit) already holds its own write
+// lock around the equivalent critical section, so a second lock here would
+// only add contention with no correctness benefit. It is unexported: Bolt is
+// its sole remaining caller now that board and clone route through it.
+func commitWeftAt(weftPath, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
 	}
