@@ -415,9 +415,10 @@ func parseCardBody(card *Card, lines []string) error {
 			card.HasWhat = true
 			// Collect the prose: the label line's own remainder plus every
 			// following line up to the next field label. The prose is the
-			// implementer's concrete instruction — RenderForkPrompt injects it
-			// verbatim, so it must survive parsing rather than being skipped
-			// (a cold recovery strand has no other source for it).
+			// implementer's concrete instruction — the fork/recovery strand
+			// reads it directly from the card file via SourcePath, so it
+			// must survive parsing rather than being skipped (a cold
+			// recovery strand has no other source for it).
 			proseLines := []string{strings.TrimSpace(strings.TrimPrefix(trimmed, whatLabel))}
 			i++
 			for i < len(lines) && !isCardLabelLine(lines[i]) {
