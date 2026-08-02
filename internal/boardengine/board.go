@@ -8,9 +8,9 @@
 // the sync. Read methods (Get/List) bypass the lock and load directly from
 // disk.
 //
-// The detached sync path talks to git through fabricengine.CommitWeftAt and
-// fabricengine.PushWeftAt, never hand-rolled gitexec calls, under board's own
-// board.lock/board.push.lock write and push locks.
+// The detached sync path talks to git through fabricengine.Bolt, never
+// hand-rolled gitexec calls, under board's own board.lock/board.push.lock
+// write and push locks.
 //
 // Storage: board lives at weft:main, never a separate repo. fabricengine
 // enforces one uniform branch-naming scheme with no exceptions: a host

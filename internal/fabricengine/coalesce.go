@@ -95,7 +95,7 @@ func pushRebaseFreeLogged(path string) error {
 // advances neither side's HEAD — the rebase-free, lock-free-per-side
 // entry point batch 3's CLI bypass handler wires in and board (batch 4)
 // reuses the generic coalescePush half of. It honors opts.SkipGit/SkipPush by
-// returning nil immediately, matching PushWeftAt/PushWarpAt's gating.
+// returning nil immediately, matching pushWeftAt/PushWarpAt's gating.
 //
 // weftPath must be non-empty: the absorbing push lock's only sanctioned home
 // is under weftPath's .weft/ (a host-root lock is forbidden by the
