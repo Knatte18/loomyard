@@ -95,9 +95,10 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 
 	var report Report
 
-	// Check 2: host worktree cleanliness. Collected, not short-circuited — a
-	// dirty host does not prevent the remaining checks from also reporting.
-	clean, reason, err := fabricengine.HostClean(l)
+	// Check 2: worktree pair cleanliness. Collected, not short-circuited — a
+	// dirty host or weft does not prevent the remaining checks from also
+	// reporting.
+	clean, reason, err := fabricengine.Clean(l)
 	if err != nil {
 		return Report{}, err
 	}
