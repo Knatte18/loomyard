@@ -1,0 +1,2 @@
+- Stale RevertWithWeft mention in a still-open design-doc passage: Location: manifest/designs/fabric-unified-view.md:84 (fixed in round 1 fix pass)
+- Doc-comment cascade left untouched in files outside the plan's edit lists: Location: internal/fabricengine/spawn.go:7,75,77, internal/fabricengine/gogit.go:147 (gitrepo package), internal/fabriccli/cli_test.go:431-436, internal/websterengine/audit.go:217 (deliberately not fixed — plan scopes comment trims to touched files only; optional future-task sweep)
