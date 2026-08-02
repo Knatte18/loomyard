@@ -77,11 +77,14 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 //
 // Each pattern is `**/` + hubgeometry.LyxDirName + "/*/" + <name>, matching
 // at ANY depth (multiple hubs at different RelPath depths share one weft
-// checkout) and at exactly one module-name segment. This is gitignore glob
-// syntax, not git pathspec syntax: a bare `*` here does NOT cross `/` (unlike
-// the leading-wildcard pathspec bug CONSTRAINTS.md's "Anchored exclusions"
-// bullet documents), so no per-RelPath anchoring is needed — `**/` alone
-// handles arbitrary depth.
+// checkout) and at exactly one module-name segment. The lock pattern instead
+// uses "/*/**/*.lock" — one more `**` segment — so it also reaches locks
+// nested two levels under the module (e.g. perch's
+// `_lyx/perch/<block>/run.lock`), not just directly inside it. This is
+// gitignore glob syntax, not git pathspec syntax: a bare `*` here does NOT
+// cross `/` (unlike the leading-wildcard pathspec bug CONSTRAINTS.md's
+// "Anchored exclusions" bullet documents), so no per-RelPath anchoring is
+// needed — `**/` alone handles arbitrary depth.
 //
 // "pause" and "prompts" are not sourced from hubgeometry — hubgeometry owns
 // directory geometry, not the filenames a module chooses to write inside its
@@ -95,7 +98,7 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // future module adopting either convention is covered with no fabricengine
 // change.
 var crossModuleMachineLocalExcludes = []string{
-	"**/" + hubgeometry.LyxDirName + "/*/*.lock",
+	"**/" + hubgeometry.LyxDirName + "/*/**/*.lock",
 	"**/" + hubgeometry.LyxDirName + "/*/pause",
 	"**/" + hubgeometry.LyxDirName + "/*/prompts/",
 }
