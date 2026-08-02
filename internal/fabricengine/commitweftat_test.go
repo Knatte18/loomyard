@@ -1,6 +1,6 @@
 //go:build integration
 
-// commitweftat_test.go — integration coverage for CommitWeftAt, the
+// commitweftat_test.go — integration coverage for commitWeftAt, the
 // package-level, warp-untethered commit primitive: a real commit on a dirty
 // worktree, a no-op on a clean one, and the SkipGit early return. Package
 // fabricengine (internal), reusing index_integration_test.go's
@@ -35,10 +35,10 @@ func gitStatusPorcelain(t *testing.T, dir string) string {
 	return string(out)
 }
 
-// TestCommitWeftAt_CommitsDirtyWorktree asserts that CommitWeftAt commits an
+// TestCommitWeftAt_CommitsDirtyWorktree asserts that commitWeftAt commits an
 // untracked file via a real wildcard-stage commit, with the exact message
 // passed through verbatim — no Warp-SHA trailer, unlike Fabric.CommitWeft,
-// since CommitWeftAt's caller (_board's weft:main checkout) has no
+// since commitWeftAt's caller (_board's weft:main checkout) has no
 // corresponding warp branch to trailer against.
 func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 	t.Parallel()
@@ -48,15 +48,15 @@ func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	sha, committed, err := CommitWeftAt(dir, "board sync", SyncOptions{})
+	sha, committed, err := commitWeftAt(dir, "board sync", SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeftAt() error = %v; want nil", err)
+		t.Fatalf("commitWeftAt() error = %v; want nil", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeftAt() committed = false; want true")
+		t.Fatalf("commitWeftAt() committed = false; want true")
 	}
 	if sha == "" {
-		t.Fatalf("CommitWeftAt() sha = %q; want a non-empty new HEAD SHA", sha)
+		t.Fatalf("commitWeftAt() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
 	rawMessage := commitMessageAt(t, dir, sha)
@@ -64,11 +64,11 @@ func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 		t.Errorf("commit message = %q; want exactly %q", got, "board sync")
 	}
 	if strings.Contains(rawMessage, WarpSHATrailerKey+":") {
-		t.Errorf("commit message = %q; want no %s trailer (CommitWeftAt is warp-untethered)", rawMessage, WarpSHATrailerKey)
+		t.Errorf("commit message = %q; want no %s trailer (commitWeftAt is warp-untethered)", rawMessage, WarpSHATrailerKey)
 	}
 }
 
-// TestCommitWeftAt_NoopOnCleanWorktree asserts that CommitWeftAt is a true
+// TestCommitWeftAt_NoopOnCleanWorktree asserts that commitWeftAt is a true
 // no-op — committed=false, err=nil — when the worktree has nothing new to
 // stage, called twice in a row with no changes in between.
 func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
@@ -76,19 +76,19 @@ func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 
 	dir := newPlainWarpRepo(t)
 
-	if _, _, err := CommitWeftAt(dir, "board sync 1", SyncOptions{}); err != nil {
-		t.Fatalf("CommitWeftAt() first call error = %v; want nil", err)
+	if _, _, err := commitWeftAt(dir, "board sync 1", SyncOptions{}); err != nil {
+		t.Fatalf("commitWeftAt() first call error = %v; want nil", err)
 	}
 
-	sha, committed, err := CommitWeftAt(dir, "board sync 2", SyncOptions{})
+	sha, committed, err := commitWeftAt(dir, "board sync 2", SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeftAt() second call error = %v; want nil", err)
+		t.Fatalf("commitWeftAt() second call error = %v; want nil", err)
 	}
 	if committed {
-		t.Fatalf("CommitWeftAt() second call committed = true; want false (nothing changed since the first call)")
+		t.Fatalf("commitWeftAt() second call committed = true; want false (nothing changed since the first call)")
 	}
 	if sha != "" {
-		t.Errorf("CommitWeftAt() second call sha = %q; want empty", sha)
+		t.Errorf("commitWeftAt() second call sha = %q; want empty", sha)
 	}
 }
 
@@ -103,15 +103,15 @@ func TestCommitWeftAt_SkipGitReturnsImmediately(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	sha, committed, err := CommitWeftAt(dir, "msg", SyncOptions{SkipGit: true})
+	sha, committed, err := commitWeftAt(dir, "msg", SyncOptions{SkipGit: true})
 	if err != nil {
-		t.Fatalf("CommitWeftAt(SkipGit) error = %v; want nil", err)
+		t.Fatalf("commitWeftAt(SkipGit) error = %v; want nil", err)
 	}
 	if committed {
-		t.Fatalf("CommitWeftAt(SkipGit) committed = true; want false")
+		t.Fatalf("commitWeftAt(SkipGit) committed = true; want false")
 	}
 	if sha != "" {
-		t.Errorf("CommitWeftAt(SkipGit) sha = %q; want empty", sha)
+		t.Errorf("commitWeftAt(SkipGit) sha = %q; want empty", sha)
 	}
 
 	if status := gitStatusPorcelain(t, dir); status == "" {
