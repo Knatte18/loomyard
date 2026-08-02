@@ -6,10 +6,11 @@
 // and Status's live worktree merge (including that it genuinely honors the
 // weft repo's git-excluded artifacts, not merely asserts on an untested
 // assumption). Package fabricengine (internal), reusing
-// index_integration_test.go's and syncweft_integration_test.go's fixture
-// helpers (newPlainWarpRepo, commitWarp, newFabric, currentSHA,
-// commitMessageAt, lyxtest.CopyWeft, writeWeftConfigContent) rather than
-// redefining them, since all three files share this package.
+// index_integration_test.go's, syncweft_integration_test.go's, and
+// commit_integration_test.go's fixture helpers (newPlainWarpRepo, commitWarp,
+// newFabric, currentSHA, commitMessageAt, lyxtest.CopyWeft,
+// writeWeftConfigContent, seedFabricConfig) rather than redefining them,
+// since all four files share this package.
 
 package fabricengine
 
@@ -46,26 +47,27 @@ func containsPath(paths []string, want string) bool {
 }
 
 // TestDiff_MergesWarpAndWeftSides covers the exact-correspondence path: two
-// SyncWeft rounds record correspondence for both warp SHAs, and diffing
+// Commit rounds record correspondence for both warp SHAs, and diffing
 // since the first must report both sides' changes made in the second round,
 // correctly side-labelled.
 func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
+	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHA1 := commitWarp(t, warpPath, "warp change 1")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change 1")
-	res1, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{})
-	if err != nil || !res1.Committed {
-		t.Fatalf("first SyncWeft: %+v, err=%v", res1, err)
+	res1, err := f.Commit([]string{"_lyx"}, DefaultCommitMessage, nil, SyncOptions{})
+	if err != nil || !res1.WeftCommitted {
+		t.Fatalf("first Commit: %+v, err=%v", res1, err)
 	}
 
 	commitWarp(t, warpPath, "warp change 2")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change 2")
-	res2, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{})
-	if err != nil || !res2.Committed {
-		t.Fatalf("second SyncWeft: %+v, err=%v", res2, err)
+	res2, err := f.Commit([]string{"_lyx"}, DefaultCommitMessage, nil, SyncOptions{})
+	if err != nil || !res2.WeftCommitted {
+		t.Fatalf("second Commit: %+v, err=%v", res2, err)
 	}
 
 	got, err := f.Diff(warpSHA1)
@@ -88,8 +90,7 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 
 // TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline
 // covers the nearest-older bridge: a warp SHA advanced past the last synced
-// round (à la TestRevertWithWeft_Gap_ResetsToNearestOlderAndReportsRange)
-// has no correspondence of its own, so Diff must anchor the weft side to
+// round has no correspondence of its own, so Diff must anchor the weft side to
 // the nearest older synced weft SHA — proven by a manual, unrecorded weft
 // commit made ahead of that baseline showing up in the weft-side result,
 // rather than the weft side coming back empty (which is what a strictly
@@ -97,12 +98,13 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
+	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change 1")
-	res1, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{})
-	if err != nil || !res1.Committed {
-		t.Fatalf("SyncWeft: %+v, err=%v", res1, err)
+	res1, err := f.Commit([]string{"_lyx"}, DefaultCommitMessage, nil, SyncOptions{})
+	if err != nil || !res1.WeftCommitted {
+		t.Fatalf("Commit: %+v, err=%v", res1, err)
 	}
 
 	// A further warp commit with no corresponding weft sync at all.
@@ -142,6 +144,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	initialWarpSHA := currentSHA(t, warpPath)
 	weftFixture := lyxtest.CopyWeft(t)
+	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	// Advance warp and synchronize weft — this records correspondence for
@@ -149,9 +152,9 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	// recorded correspondence entirely.
 	commitWarp(t, warpPath, "warp change")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change")
-	res, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{})
-	if err != nil || !res.Committed {
-		t.Fatalf("SyncWeft: %+v, err=%v", res, err)
+	res, err := f.Commit([]string{"_lyx"}, DefaultCommitMessage, nil, SyncOptions{})
+	if err != nil || !res.WeftCommitted {
+		t.Fatalf("Commit: %+v, err=%v", res, err)
 	}
 
 	got, err := f.Diff(initialWarpSHA)
@@ -177,9 +180,8 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 // gitrepo push lock file) — a regression guard over the verified go-git
 // exclude behavior WorktreeChangedFiles' doc comment documents, not an
 // unexercised assumption. The push lock file is created explicitly here
-// because SyncWeft's in-process Weft.Push() never writes it — only
-// PushCoalesced does — so leaving it out would make the exclude assertion
-// vacuous.
+// because CommitWeft never writes it — only PushCoalesced does — so leaving
+// it out would make the exclude assertion vacuous.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
@@ -201,9 +203,9 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	}
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft dirty, uncommitted")
 
-	// SyncWeft/CommitWeft never create the push lock file — only
-	// PushCoalesced does — so it must be created explicitly to genuinely
-	// exercise the exclude mechanism rather than assert on an absent file.
+	// CommitWeft never creates the push lock file — only PushCoalesced
+	// does — so it must be created explicitly to genuinely exercise the
+	// exclude mechanism rather than assert on an absent file.
 	pushLockPath := filepath.Join(weftFixture.WeftPath, gitrepo.PushLockFileName)
 	if err := os.WriteFile(pushLockPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile(push lock): %v", err)
