@@ -1,5 +1,5 @@
-// weftgit.go — the weft-git content-sync verbs on Fabric: StatusWeft,
-// CommitWeft, PushWeft, PullWeft, plus the package-level pushWeftAt and
+// weftgit.go — the weft-git content-sync verbs on Fabric: CommitWeft,
+// PushWeft, PullWeft, plus the package-level pushWeftAt and
 // commitWeftAt for the detached-push child and board's warp-untethered
 // weft:main commit (via Bolt). CommitWeft's commit carries a Warp-SHA trailer and
 // records the correspondence immediately — except on an unborn warp HEAD
@@ -172,64 +172,6 @@ func seedWeftArtifactExcludes(weftPath string) error {
 		return fmt.Errorf("fabricengine: write weft exclude file: %w", err)
 	}
 	return nil
-}
-
-// StatusWeft returns a content-sync status report for the weft worktree:
-// weft_worktree, branch, dirty, ahead, behind — ahead/behind are nil rather
-// than a zero count when no upstream is configured, so a caller can
-// distinguish "not tracked" from "fully in sync".
-func (f *Fabric) StatusWeft(pathspec []string) (map[string]any, error) {
-	result := make(map[string]any)
-	result["weft_worktree"] = f.weftPath
-
-	branchOut, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, f.weftPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: rev-parse --abbrev-ref HEAD: %w", err)
-	}
-	if code != 0 {
-		return nil, fmt.Errorf("fabricengine: rev-parse --abbrev-ref HEAD in %s: %s", f.weftPath, stderr)
-	}
-	result["branch"] = strings.TrimSpace(branchOut)
-
-	statusArgs := append([]string{"status", "--porcelain", "--"}, pathspec...)
-	dirtyOut, stderr, code, err := gitexec.RunGit(statusArgs, f.weftPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: git status: %w", err)
-	}
-	if code != 0 {
-		return nil, fmt.Errorf("fabricengine: git status in %s: %s", f.weftPath, stderr)
-	}
-	result["dirty"] = strings.TrimSpace(dirtyOut) != ""
-
-	// A non-zero exit from rev-list here means no upstream is configured —
-	// a valid state, not a failure — so ahead/behind report nil rather than
-	// propagating an error.
-	aheadOut, _, code, err := gitexec.RunGit([]string{"rev-list", "--count", "@{u}..HEAD"}, f.weftPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: rev-list ahead: %w", err)
-	}
-	if code != 0 {
-		result["ahead"] = nil
-		result["behind"] = nil
-		return result, nil
-	}
-
-	var ahead int
-	_, _ = fmt.Sscanf(strings.TrimSpace(aheadOut), "%d", &ahead)
-	result["ahead"] = ahead
-
-	behindOut, stderr, code, err := gitexec.RunGit([]string{"rev-list", "--count", "HEAD..@{u}"}, f.weftPath)
-	if err != nil {
-		return nil, fmt.Errorf("fabricengine: rev-list behind: %w", err)
-	}
-	if code != 0 {
-		return nil, fmt.Errorf("fabricengine: rev-list behind in %s: %s", f.weftPath, stderr)
-	}
-	var behind int
-	_, _ = fmt.Sscanf(strings.TrimSpace(behindOut), "%d", &behind)
-	result["behind"] = behind
-
-	return result, nil
 }
 
 // warpHeadSHA returns the warp repo's current HEAD SHA. On a host repo with

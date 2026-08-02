@@ -1,12 +1,12 @@
-// diff.go implements the Go-internal unified Fabric.Diff and Fabric.Status:
-// two read-only, side-labelled views over what changed across a warp<->weft
-// pair, distinct from both status.go's Topology.Status (the paired
-// host<->weft topology/branch-drift view) and StatusWeft (a dirty/ahead/
-// behind bool view). Fabric.Diff answers "what changed since this warp SHA,
-// on both sides" via the correspondence index; Fabric.Status answers "what is
-// currently uncommitted, on both sides" via gitrepo.Repo.WorktreeChangedFiles.
-// Neither classifies paths or calls WiredNames — both are pure merges over
-// each repo's own changed-file primitive.
+// diff.go implements the unified Fabric.Diff and Fabric.Status: two
+// read-only, side-labelled views over what changed across a warp<->weft
+// pair, distinct from status.go's Topology.Status (the paired host<->weft
+// topology/branch-drift view). Fabric.Diff answers "what changed since this
+// warp SHA, on both sides" via the correspondence index; Fabric.Status
+// answers "what is currently uncommitted, on both sides" via
+// gitrepo.Repo.WorktreeChangedFiles. Neither classifies paths or calls
+// WiredNames — both are pure merges over each repo's own changed-file
+// primitive.
 
 package fabricengine
 
@@ -54,8 +54,8 @@ const (
 // warp<->weft pair, labelled with which side it changed on. Named
 // ChangeEntry (not reusing status.go's PairStatus/StatusResult, a different
 // paired-topology view) to keep this unified "what changed in my worktree"
-// surface distinct from both that view and StatusWeft's dirty/ahead/behind
-// bool view — three separate surfaces, not variations of one.
+// surface distinct from that paired-topology view — two separate surfaces,
+// not variations of one.
 type ChangeEntry struct {
 	Path string
 	Side ChangeSide
