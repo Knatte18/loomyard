@@ -7,7 +7,7 @@ approved: false
 started: '20260802-133803'
 parent: 'main'
 root: ""
-verify: go build ./... && go test ./internal/websterengine/... ./internal/planparser/...
+verify: go build ./... && go test ./internal/websterengine/... ./internal/planparser/... ./internal/hubgeometry/...
 ```
 
 ## Batch Index
@@ -25,7 +25,7 @@ batches:
     name: webster-prompt-split
     file: 02-webster-prompt-split.md
     depends-on: [1]
-    verify: go build ./... && go test ./internal/websterengine/...
+    verify: go build ./... && go test ./internal/websterengine/... ./internal/hubgeometry/...
 ```
 
 ## Shared Decisions
