@@ -3,7 +3,7 @@
 ```yaml
 task: 'webster: stop re-rendering already-inherited context into fork prompts'
 slug: 'webster-fork-context-hygiene'
-approved: false
+approved: true
 started: '20260802-133803'
 parent: 'main'
 root: ""

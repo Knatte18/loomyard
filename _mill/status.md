@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: webster-fork-context-hygiene
 branch: webster-fork-context-hygiene
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-review-r2  '2026-08-02T14:00:58Z'
 plan-fix-r2  '2026-08-02T14:00:58Z'
 plan-review-r3  '2026-08-02T14:12:08Z'
 plan-fix-r3  '2026-08-02T14:12:08Z'
+plan-fix-r4  '2026-08-02T14:25:12Z'
 ```
