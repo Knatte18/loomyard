@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-02T10:02:32Z'
+discussion-fix-r5  '2026-08-02T11:29:29Z'
+discussed  '2026-08-02T11:29:29Z'
 ```
