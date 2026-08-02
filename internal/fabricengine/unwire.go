@@ -118,10 +118,10 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 			return UnwireVerbResult{}, err
 		}
 		pathspec := ScopedPathspec(l.RelPath, []string{hubgeometry.LyxDirName})
-		if _, _, err := f.CommitWeft(pathspec, "lyx fabric unwire: clear _lyx", opts); err != nil {
+		if _, _, err := f.commitWeft(pathspec, "lyx fabric unwire: clear _lyx", opts); err != nil {
 			return UnwireVerbResult{}, err
 		}
-		// Push runs unconditionally, never gated on whether CommitWeft made
+		// Push runs unconditionally, never gated on whether commitWeft made
 		// a new commit this invocation.
 		if err := pushWeftAt(weftWorktree, opts); err != nil {
 			return UnwireVerbResult{}, err

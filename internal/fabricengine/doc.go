@@ -43,7 +43,7 @@
 // while the warp repo itself has no commits yet (an unborn HEAD, e.g. a fresh
 // `git init` before the operator's first host commit): that commit carries no
 // trailer and no correspondence entry, since there is no warp SHA yet to name —
-// see CommitWeft's warpHeadSHA. Normal trailer/record behavior resumes on the
+// see commitWeft's warpHeadSHA. Normal trailer/record behavior resumes on the
 // first weft commit made after warp's own first commit.
 //
 // fabric never calls gitrepo's `StageAllAndCommit` (board's opt-in wildcard-stage
@@ -53,7 +53,7 @@
 // board's wildcard-stage commit on its behalf — see `CommitWeftAt`'s own doc
 // comment.
 //
-// The default weft-staging pathspec (template.yaml's `pathspec:` key) is `_lyx _pattern`, so a `PATTERN.md` written through the `_pattern` junction is staged and committed alongside `_lyx` by the same `CommitWeft` call, rather than being inert content nothing ever pushes.
+// The default weft-staging pathspec (template.yaml's `pathspec:` key) is `_lyx _pattern`, so a `PATTERN.md` written through the `_pattern` junction is staged and committed alongside `_lyx` by the same `commitWeft` call, rather than being inert content nothing ever pushes.
 //
 // Two consequences of that default living only in the config template, never enforced or reconciled onto an existing worktree, are worth stating plainly rather than leaving an operator to discover them by surprise.
 //
@@ -73,7 +73,7 @@
 //
 // The detached child that spawn launches no longer runs one single push per side: its bypass handler (`internal/fabriccli`'s `push` verb, re-entered with `--warp-path`/`--weft-path`) now runs `CoalescePushBothAt`, a loop-until-clean coalescing push that holds a separate absorbing push lock — `fabric.push.lock`, under the weft worktree's `.weft/` directory, distinct from the commit lock below — for the whole loop, repeatedly rebase-free-pushing whichever side has commits and exiting once an iteration advances neither side's HEAD. This push is deliberately rebase-free: `gitrepo.PushRebaseFree` is a plain `git push`, never `git pull --rebase`, so a remote that has diverged simply leaves that side's commits unpushed and logs a warning (`gitrepo.ErrPushRejected`), rather than mutating the calling process's working tree out from under it. Reconciling a diverged remote is out of scope here (slice 6).
 //
-// The combined write lock `Fabric.Commit` takes — `.weft/weft.write.lock`, the same lock `CommitWeft` already used weft-side — is now acquired for ANY committing call, warp-only included (see the combined-commit-lock Shared Decision), not only when a weft-side commit is involved, closing the race two concurrent warp-only `Fabric.Commit` calls previously ran unlocked. The lock is released before the async push above is spawned, never held across it (the commit-lock-scoped-to-commit-only Shared Decision): the network push is a separate concern running under its own absorbing push lock in the detached child, not this commit-side lock.
+// The combined write lock `Fabric.Commit` takes — `.weft/weft.write.lock`, the same lock `commitWeft` already used weft-side — is now acquired for ANY committing call, warp-only included (see the combined-commit-lock Shared Decision), not only when a weft-side commit is involved, closing the race two concurrent warp-only `Fabric.Commit` calls previously ran unlocked. The lock is released before the async push above is spawned, never held across it (the commit-lock-scoped-to-commit-only Shared Decision): the network push is a separate concern running under its own absorbing push lock in the detached child, not this commit-side lock.
 //
 // The Go-internal `Fabric.Diff` (there is no CLI verb for it — resolved Go-internal-only in `fabric-unified-view.md`'s now-answered open question) answers "what changed since this warp SHA, on both sides" by bridging `sinceWarpSHA` to the nearest-at-or-before weft SHA the correspondence index resolves it to, via the same `resolveRevertTarget` resolver diff.go's `weftAnchorForWarpSHA` calls; a `sinceWarpSHA` older than the first recorded correspondence degrades to an empty weft side with `DiffResult.NoWeftCorrespondence` set, rather than an error, since a diff from before fabric started tracking this pair has no weft baseline to compare against. `Fabric.Status` answers a different question — "what is currently uncommitted, on both sides" — via a live worktree read (`gitrepo.Repo.WorktreeChangedFiles`, backed by go-git's `Worktree.Status()`) with no correspondence anchor involved at all.
 //

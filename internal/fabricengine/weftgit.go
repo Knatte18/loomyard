@@ -1,7 +1,7 @@
-// weftgit.go — the weft-git content-sync verbs on Fabric: CommitWeft,
+// weftgit.go — the weft-git content-sync verbs on Fabric: commitWeft,
 // PushWeft, PullWeft, plus the package-level pushWeftAt and
 // commitWeftAt for the detached-push child and board's warp-untethered
-// weft:main commit (via Bolt). CommitWeft's commit carries a Warp-SHA trailer and
+// weft:main commit (via Bolt). commitWeft's commit carries a Warp-SHA trailer and
 // records the correspondence immediately — except on an unborn warp HEAD
 // (see warpHeadSHA), where both are skipped for that one commit.
 
@@ -22,7 +22,7 @@ import (
 
 const (
 	// weftLockDirName and weftWriteLockFile name fabric's own write-lock
-	// location, so every concurrent CommitWeft caller contends on the
+	// location, so every concurrent commitWeft caller contends on the
 	// identical file rather than racing past each other.
 	weftLockDirName   = ".weft"
 	weftWriteLockFile = "weft.write.lock"
@@ -64,7 +64,7 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // crossModuleMachineLocalExcludes are gitignore-syntax patterns for every
 // round-loop module's machine-local, never-committed artifacts under
 // _lyx/<module> — not just the caller's own module. This is what actually
-// stops them from being tracked: CommitWeft's callers (builder's/webster's
+// stops them from being tracked: commitWeft's callers (builder's/webster's
 // own weftCommit, and fabric's own `lyx fabric sync`/`lyx config --set`)
 // each build a pathspec, but a caller can only exclude what it knows about,
 // and fabric's own sync pathspec (internal/fabriccli/weft_verbs.go) has no
@@ -114,7 +114,7 @@ var crossModuleMachineLocalExcludes = []string{
 // in the repo's common gitdir, so one seeding covers every linked weft
 // worktree, and — because excludes are evaluated at status time — it also
 // heals worktrees that already carry the artifacts as untracked (though not
-// ones where a prior sync already committed them; see CommitWeft's doc
+// ones where a prior sync already committed them; see commitWeft's doc
 // comment for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
 	stdout, stderr, exitCode, err := gitexec.RunGit(
@@ -179,7 +179,7 @@ func seedWeftArtifactExcludes(weftPath string) error {
 // first-run path, before the operator's first host commit), it reports unborn=true
 // (sha="", err=nil) instead of propagating gitrepo.ErrNoCommits as a hard
 // failure: pre-cutover, weftengine.Commit never touched the host repo and
-// succeeded on exactly this path, and CommitWeft must not regress it just
+// succeeded on exactly this path, and commitWeft must not regress it just
 // because it now reads warp HEAD for the Warp-SHA trailer. Any other
 // CurrentSHA failure still propagates as a genuine error.
 func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
@@ -200,12 +200,17 @@ func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 // one entry matches nothing at all.
 //
 // An entry is kept if either:
-//   - it begins with ":" — git pathspec magic (an ":(exclude)..." entry from
-//     internal/buildercli/weft.go, internal/webstercli/weft.go, or
-//     internal/perchcli/run.go's cross-module exclusions). Magic entries are
-//     always passed through untouched and NEVER evaluated for a match: they
-//     do not name a path to check, and treating one as a plain path would
-//     both mis-evaluate it and defeat its own purpose.
+//   - it begins with ":" — git pathspec magic. No production caller feeds an
+//     ":(exclude)..." entry any longer (builder's/webster's/perch's own
+//     weft-commit paths and fabric's own commit/push/sync all now build
+//     plain positive pathspecs, per the commit-takes-positive-path-list
+//     Shared Decision), so this branch is currently unreachable in
+//     production; it is left in place as gitrepo's general-layer pathspec
+//     magic passthrough, kept deliberately general rather than trimmed to
+//     today's callers. Magic entries are always passed through untouched and
+//     NEVER evaluated for a match: they do not name a path to check, and
+//     treating one as a plain path would both mis-evaluate it and defeat its
+//     own purpose.
 //   - it is a plain path that matches at least one path in the weft
 //     worktree OR the index (see entryMatchesWeft). Untracked-in-worktree
 //     must count: a brand-new "_pattern/PATTERN.md" is untracked at the
@@ -216,11 +221,11 @@ func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 //     worktree-existence-only check would silently break `lyx fabric unwire`.
 //
 // Returns the filtered entries and whether at least one non-magic (plain)
-// entry survived the filter. When positive is false, CommitWeft must not
+// entry survived the filter. When positive is false, commitWeft must not
 // call StageAndCommit at all, even with a non-empty filtered slice: handing
 // git a pathspec made up of only ":(exclude)" entries and no positive entry
 // is read by git as "everything except those," staging the entire weft
-// worktree — the opposite of the no-op CommitWeft already promises for
+// worktree — the opposite of the no-op commitWeft already promises for
 // "nothing of ours to stage."
 func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, positive bool, err error) {
 	for _, entry := range pathspec {
@@ -431,22 +436,23 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 	return sha, true, nil
 }
 
-// CommitWeft acquires the fabric-layer weft write lock and delegates to
+// commitWeft acquires the fabric-layer weft write lock and delegates to
 // commitWeftLocked to stage and commit pathspec-scoped changes in the weft
 // worktree. The trailing snapshotTags variadic lets a caller (fabric's
 // two-sided Fabric.Commit) attach one or more Snapshot: trailers to the
 // commit alongside its Warp-SHA trailer; every existing 3-argument call site
 // keeps compiling unchanged and passes zero tags. Returns ("", false, nil)
 // immediately when opts.SkipGit is true, with no lock taken and no git
-// spawned. CommitWeft is an exported entry point, not just an internal
-// dispatch target, so it inherits commitWeftLocked's full contract as its
+// spawned. commitWeft's sole remaining production caller is in-package
+// unwire.go now that fabriccli drives commits through the exported
+// Fabric.Commit; it still inherits commitWeftLocked's full contract as its
 // own: a non-empty snapshotTags forces an empty weft commit (the
 // tags-force-a-weft-commit Shared Decision) whenever there is otherwise
 // nothing to stage, except on an unborn warp HEAD, where tags are dropped
 // exactly as before. See commitWeftLocked's doc comment for the
 // staging-tolerance, trailer, empty-commit, and RecordCorrespondence
 // behavior this delegates to.
-func (f *Fabric) CommitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
+func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
 	}
@@ -495,14 +501,14 @@ func pushWeftAt(weftPath string, opts SyncOptions) error {
 
 // commitWeftAt is the warp-untethered, wildcard-stage commit primitive for
 // _board's weft:main checkout, which has no corresponding warp branch to
-// trailer a commit against. Unlike Fabric.CommitWeft, it wraps
+// trailer a commit against. Unlike Fabric.commitWeft, it wraps
 // gitrepo.StageAllAndCommit directly: no pathspec filtering, no Warp-SHA
 // trailer, and no RecordCorrespondence call — there is no warp SHA to name
 // and no correspondence index entry to keep. It is pushWeftAt's natural
 // commit-side counterpart: package-level, no Fabric receiver, no warp path.
 // Returns ("", false, nil) immediately when opts.SkipGit is true, with no
 // git spawned. commitWeftAt does not acquire ensureWeftLockDir's write lock
-// — that lock serializes CommitWeft callers sharing a pathspec-scoped
+// — that lock serializes commitWeft callers sharing a pathspec-scoped
 // commit; commitWeftAt's caller (Bolt.Commit) already holds its own write
 // lock around the equivalent critical section, so a second lock here would
 // only add contention with no correctness benefit. It is unexported: Bolt is
