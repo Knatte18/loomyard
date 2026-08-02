@@ -20,7 +20,7 @@ batches:
     name: planparser-card-source-identity
     file: 01-planparser-card-source-identity.md
     depends-on: []
-    verify: go build ./... && go test ./internal/planparser/...
+    verify: go build ./... && go test ./internal/planparser/... ./internal/hubgeometry/...
   - number: 2
     name: webster-prompt-split
     file: 02-webster-prompt-split.md
@@ -40,8 +40,8 @@ _Cross-cutting decisions every batch inherits._
 
 ### Decision: card pointer is a bare worktree-relative token owned by planparser
 
-- **Decision:** The card-file pointer rendered into both prompts is the bare worktree-relative token `_lyx/plan/NN-<slug>.md`, produced by `planparser` (via `hubgeometry.LyxDirName`) and stored on `planparser.Card`. `render.go` renders that stored token **verbatim** — it must NOT `filepath.Rel`/`filepath.Join`-compose the pointer against `Cwd`/`WorktreeRoot`, must NOT rebuild the `NN-<slug>.md` filename from `Card.Number`/`Slug`, and must NOT name a literal `_lyx`.
-- **Rationale:** Hub Geometry Invariant reserves the `_lyx` token to `hubgeometry`; Planparser Sole-Parser Invariant makes `_lyx/plan/NN-<slug>.md` planparser's domain. A bare token (not a cwd-relative composition) matches every other bare `_lyx/...`/`_pattern/...`/`CONSTRAINTS.md` token already in the webster prompts, all of which resolve from the session cwd. See `_mill/discussion.md` Decisions `card-pointer-relative-via-hubgeometry`, `card-source-identity-in-planparser`.
+- **Decision:** The card-file pointer rendered into both prompts is the bare worktree-relative token `_lyx/plan/NN-<slug>.md`, stored on `planparser.Card`. planparser builds it by joining a **new `hubgeometry.PlanDirRel()` accessor** (which returns the relative `_lyx/plan` token, so the `_lyx/plan` path is constructed inside `hubgeometry` per `PlanDir`'s own "no other package may construct this path" doc) with planparser's own `NN-<slug>.md` filename (the plan-file naming that the Sole-Parser Invariant reserves to planparser). planparser must NOT hardcode the literal `"plan"` segment or a literal `_lyx`. `render.go` renders the stored token **verbatim** — it must NOT `filepath.Rel`/`filepath.Join`-compose the pointer against `Cwd`/`WorktreeRoot`, must NOT rebuild the `NN-<slug>.md` filename from `Card.Number`/`Slug`, and must NOT name a literal `_lyx`.
+- **Rationale:** Hub Geometry Invariant reserves the `_lyx` token to `hubgeometry` and `PlanDir`'s doc reserves the `_lyx/plan` construction to `hubgeometry`; Planparser Sole-Parser Invariant makes the `NN-<slug>.md` filename planparser's domain — so the `_lyx/plan` segment comes from a hubgeometry accessor and the filename from planparser. A bare token (not a cwd-relative composition) matches every other bare `_lyx/...`/`_pattern/...`/`CONSTRAINTS.md` token already in the webster prompts, all of which resolve from the session cwd. See `_mill/discussion.md` Decisions `card-pointer-relative-via-hubgeometry`, `card-source-identity-in-planparser`.
 - **Applies to:** all batches.
 
 ### Decision: empty-What falls back to the Card Index intent, in the prompt
@@ -58,9 +58,11 @@ _Cross-cutting decisions every batch inherits._
 
 ## All Files Touched
 
+- `internal/hubgeometry/hubgeometry.go`
 - `internal/planparser/parse.go`
 - `internal/planparser/parse_test.go`
 - `internal/planparser/plan.go`
+- `internal/websterengine/beginbatch.go`
 - `internal/websterengine/doc.go`
 - `internal/websterengine/fork-prefix.md`
 - `internal/websterengine/implementer-body.md`
