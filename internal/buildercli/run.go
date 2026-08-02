@@ -65,11 +65,6 @@ Example:
 
 			result, runErr := builderengine.Run(deps, builderengine.RunOptions{Fresh: fresh})
 
-			// ErrRunBusy: another invocation owns the run right now; this
-			// call touched NOTHING on disk. Running the weft sync below
-			// would commit (and push) the winner's in-flight partial state
-			// under a misleading "run ERROR" label -- perchcli's
-			// ErrBlockBusy exemption applies verbatim.
 			if errors.Is(runErr, builderengine.ErrRunBusy) {
 				clihelp.SetExit(cmd.Context(), output.Err(out, runErr.Error()))
 				return nil

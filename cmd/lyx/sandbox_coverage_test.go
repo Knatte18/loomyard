@@ -31,13 +31,7 @@ var excludedModules = map[string]string{
 	"scout":      "requires an external language-server binary (gopls/pyright/csharp-ls) on $PATH; exercised by //go:build scout tests, not the black-box sandbox suite",
 }
 
-// TestSandboxCoverage_AllModulesCoveredOrExcluded discovers every module
-// registered in the live cobra root and every module declared covered by a
-// **Covers:** tag across all tools/sandbox/*SUITE.md suite files, then
-// asserts that every registered module is either covered or on the
-// excludedModules allowlist, and that every covered/excluded module name
-// actually corresponds to a live registered module (catching typos and stale
-// tags/allowlist entries left behind by a module rename or removal).
+// TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.
 func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 	// Build the live cobra root and collect every registered module name, skipping
 	// cobra's own infrastructure subtrees — mirrors longlist_test.go's skip pattern
@@ -54,9 +48,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 
 	covered := parseCoveredModules(t)
 
-	// Sanity sub-test: both sets must be non-empty, so a silently-broken cobra-root
-	// walk or doc parse (wrong directory, all lines skipped) cannot produce a
-	// vacuous all-pass result — mirrors registration_test.go's discovered_non_empty.
+	// Sanity sub-test: both sets must be non-empty.
 	t.Run("discovered_non_empty", func(t *testing.T) {
 		if len(registered) == 0 {
 			t.Error("sandbox coverage guard: no registered modules found via newRoot().Commands(); the cobra root may be misconfigured")
@@ -66,8 +58,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 		}
 	})
 
-	// Assert 1 (coverage): every registered module must be covered by a scenario
-	// or explicitly excluded with a reason.
+	// Assert 1: every registered module must be covered or excluded.
 	for m := range registered {
 		if len(covered[m]) > 0 {
 			continue
@@ -81,10 +72,7 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 		)
 	}
 
-	// Assert 2 (drift guard): every covered/excluded token must name a module that
-	// is actually registered today, catching stale tags or allowlist entries left
-	// behind by a rename or removal. Name the offending suite file(s) so the fix
-	// is a one-line diff away, not a grep exercise.
+	// Assert 2: every covered/excluded token must name a registered module (drift guard).
 	for m, files := range covered {
 		if !registered[m] {
 			t.Errorf(
@@ -103,17 +91,10 @@ func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
 	}
 }
 
-// parseCoveredModules scans every tools/sandbox/*SUITE.md suite file on disk
-// (resolving the repo root from this test file's own on-disk location, exactly as
-// registration_test.go does) and returns a map from module token to the sorted list
-// of suite-file basenames that declare it via a **Covers:** line — so Assert-2's
-// stale-tag error can name the offending file(s) instead of just the token.
+// parseCoveredModules scans tools/sandbox/*SUITE.md files and returns modules covered via **Covers:** tags.
 func parseCoveredModules(t *testing.T) map[string][]string {
 	t.Helper()
 
-	// This file lives at cmd/lyx/sandbox_coverage_test.go: three filepath.Dir
-	// walk-ups reach the repo root (cmd/lyx -> cmd -> repo root), matching the
-	// code (not the stale "two" comment) at registration_test.go:71.
 	_, testFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("could not determine test file location via runtime.Caller")
@@ -125,9 +106,7 @@ func parseCoveredModules(t *testing.T) map[string][]string {
 	if err != nil {
 		t.Fatalf("could not glob tools/sandbox/*SUITE.md: %v", err)
 	}
-	// Vacuous-glob guard: the repo ships at least SANDBOX-CORE-SUITE.md and
-	// SANDBOX-REED-SUITE.md, so fewer than two matches means the pattern or
-	// directory resolved wrong rather than the suite set having genuinely shrunk.
+	// Vacuous-glob guard: fewer than two suite files means misconfiguration.
 	if len(suitePaths) < 2 {
 		t.Fatalf(
 			"tools/sandbox/*SUITE.md glob matched %d file(s) (%v); expected at least 2 (the repo ships SANDBOX-CORE-SUITE.md and SANDBOX-REED-SUITE.md) — the pattern or directory is likely wrong",

@@ -72,21 +72,9 @@ type ClassifyInputs struct {
 	Dirty   bool
 }
 
-// Classify decides a batch's classification from ins, in the discussion's
-// pinned decision order, returning the Digest to report and whether that
-// classification is terminal:
-//
-//  1. Report present: terminal, via Distill(in.Report, in.Changed,
-//     in.Scope, in.Dirty) — status is done or stuck per the report itself.
-//  2. No report, TurnEnded: terminal dead, DeadReasonAsking — the
-//     implementer ended its turn without ever satisfying the file
-//     contract, which is respawn/recover material, same as a crash.
-//  3. No report, Elapsed > BatchTimeout: terminal dead, DeadReasonTimeout.
-//  4. No report, turn still in progress (TurnEnded false), strand pane
-//     gone (StrandLive false): terminal dead, DeadReasonDied.
-//  5. Otherwise: non-terminal running snapshot carrying only batch,
-//     status, and ElapsedS — no digest field beyond those three is
-//     populated, since a running snapshot never computes drift.
+// Classify decides a batch's terminal classification: report-present
+// (Distill), no-report-TurnEnded (dead/asking), elapsed>timeout (dead/timeout),
+// strand gone (dead/died), or running snapshot.
 func Classify(in ClassifyInputs) (Digest, bool) {
 	batch := fmt.Sprintf("%02d-%s", in.BatchNumber, in.BatchSlug)
 
@@ -109,21 +97,10 @@ func Classify(in ClassifyInputs) (Digest, bool) {
 	return Digest{Batch: batch, Status: DigestStatusRunning, ElapsedS: int(in.Elapsed.Seconds())}, false
 }
 
-// TurnEnded reports whether the implementer's turn has already ended
-// without ever satisfying the file contract: it reads eventsPath's raw
-// bytes and delegates all event-grammar parsing to engine.ParseEvents (the
-// Shuttle Provider-Seam Invariant — builderengine never parses event
-// grammar itself), reporting true only when at least one returned Event
-// carries Kind == shuttleengine.EventStop. A not-yet-created events file
-// (the implementer has not appended its first line yet) is not an error:
-// it reports (false, nil) unchanged. A ParseEvents error propagates — an
-// unreadable event grammar leaves no classifiable turn-end signal at all,
-// which the caller must treat as a poll-tick failure, never a silently
-// assumed "still running". Exported so buildercli's own `poll` verb — the
-// only caller of these gatherers, since Classify's inputs are always
-// assembled by poll's caller, never by builderengine itself — builds
-// ClassifyInputs from this exact implementation rather than a
-// byte-for-byte reimplementation of it.
+// TurnEnded reports whether the implementer's turn ended without
+// satisfying the file contract, by delegating event-grammar parsing to
+// engine.ParseEvents and checking for EventStop. Missing events file
+// reports (false, nil); ParseEvents errors propagate.
 func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	data, err := os.ReadFile(eventsPath)
 	if err != nil {
@@ -147,14 +124,8 @@ func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 }
 
 // StrandLive reports whether guid names a strand reed currently tracks as
-// live: it calls reed.Status() and scans the returned Strands for guid's
-// Live field. guid absent from the result reports (false, nil) — reed no
-// longer tracks it, which the caller treats identically to a pane that
-// died. Liveness is NEVER read from persisted reed state
-// (reedengine.LoadState carries no liveness field at all); only this live
-// Status() query can answer "is the pane actually there right now".
-// Exported for the same reason as TurnEnded above: buildercli's `poll`
-// verb calls this directly instead of carrying its own copy.
+// live, by calling reed.Status() and checking the Strands. guid absent
+// reports (false, nil).
 func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 	status, err := reed.Status()
 	if err != nil {
@@ -190,15 +161,9 @@ func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 // keeps the loop responsive without hammering gather's own I/O.
 const pollTick = 1 * time.Second
 
-// PollUntilTerminal repeatedly calls gather on pollTick's cadence until it
-// reports terminal or wait elapses, timing itself via clk (realClock{} in
-// production; a fake clock replays an entire poll sequence instantly under
-// test). A terminal gather result returns immediately. If wait elapses
-// first, PollUntilTerminal returns gather's last non-terminal ("running")
-// digest with a nil error — the snapshot the orchestrator's next poll call
-// re-polls from; a deadline is an ordinary long-poll return, never a
-// failure. A gather error propagates immediately: a tick that cannot even
-// determine whether the batch is terminal yet has nothing safe to report.
+// PollUntilTerminal repeatedly calls gather on pollTick cadence until
+// terminal or wait elapses. Terminal results return immediately. If wait
+// elapses, returns the last running digest. gather errors propagate.
 func PollUntilTerminal(gather func() (Digest, bool, error), wait time.Duration, clk clock) (Digest, error) {
 	deadline := clk.Now().Add(wait)
 

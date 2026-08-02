@@ -20,12 +20,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// statusCmd builds the `status` subcommand: LoadState, then for each
-// persisted BatchState (sorted by number) an on-disk report scan that can
-// promote a not-yet-Terminal batch to its real on-disk status without
-// mutating state.json itself -- status is a pure read, so classifying a
-// batch here never SaveStates the promotion back; poll's own terminal tick
-// is what durably persists it.
+// statusCmd builds the `status` subcommand, scanning reports to promote batches
+// to their real on-disk status without mutating state.json.
 func (c *builderCLI) statusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",

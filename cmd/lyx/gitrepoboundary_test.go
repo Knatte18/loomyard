@@ -94,9 +94,7 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the
-	// test's working directory, exactly as tierpurity_test.go does, so the
-	// walk is cwd-independent.
+	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
@@ -125,12 +123,7 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 		scanned++
 
 		path := filepath.Join(dir, entry.Name())
-		// Parsed with the default mode (no parser.ParseComments): the resulting
-		// AST carries no comment text at all, so printing it back out via
-		// go/printer below is what performs the "strip line and block comments"
-		// step the gitexec. assertion needs -- more robust than a hand-rolled
-		// comment stripper, since it cannot be confused by "//" or "/*" inside a
-		// string literal.
+		// Parse without comments, then print to strip comment text.
 		file, parseErr := parser.ParseFile(fset, path, nil, 0)
 		if parseErr != nil {
 			t.Fatalf("parse %s: %v", entry.Name(), parseErr)
@@ -167,8 +160,7 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 		gitexecTotal += strings.Count(rendered.String(), "gitexec.")
 	}
 
-	// Vacuous-scan protection: a mis-resolved root that still finds a handful
-	// of files must not pass.
+	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
 	if scanned < gitrepoBoundaryMinScannedFiles {
 		t.Fatalf("gitrepo boundary guard: only scanned %d non-test .go file(s) in %s; expected at least %d -- the directory resolution may be misconfigured", scanned, dir, gitrepoBoundaryMinScannedFiles)
 	}
@@ -188,8 +180,7 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 	}
 }
 
-// isRepoPointerMethod reports whether fn is declared with a single, pointer-to-Repo
-// receiver -- the shape every method on gitrepo's Repo type uses.
+// isRepoPointerMethod reports whether fn is a method with a pointer-to-Repo receiver.
 func isRepoPointerMethod(fn *ast.FuncDecl) bool {
 	if fn.Recv == nil || len(fn.Recv.List) != 1 {
 		return false
@@ -202,9 +193,7 @@ func isRepoPointerMethod(fn *ast.FuncDecl) bool {
 	return ok && ident.Name == "Repo"
 }
 
-// receiverName returns the declared receiver variable name for field, and false
-// when the receiver is unnamed (e.g. "func (*Repo) X()") -- a shape that cannot
-// call a method on itself by any name and is therefore never r.run-bound.
+// receiverName returns the receiver variable name for field, or false if unnamed.
 func receiverName(field *ast.Field) (string, bool) {
 	if len(field.Names) == 0 || field.Names[0].Name == "" || field.Names[0].Name == "_" {
 		return "", false
@@ -212,10 +201,7 @@ func receiverName(field *ast.Field) (string, bool) {
 	return field.Names[0].Name, true
 }
 
-// bodyCallsMethodOnReceiver reports whether body contains a call of the shape
-// <recvName>.<methodName>(...) anywhere within it, including inside nested
-// closures -- matching "every method containing an r.run( call" rather than
-// only a top-level statement.
+// bodyCallsMethodOnReceiver reports whether body calls recvName.methodName anywhere.
 func bodyCallsMethodOnReceiver(body *ast.BlockStmt, recvName, methodName string) bool {
 	found := false
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -238,9 +224,7 @@ func bodyCallsMethodOnReceiver(body *ast.BlockStmt, recvName, methodName string)
 	return found
 }
 
-// diffMethodSets returns a human-readable description of how got differs from
-// want -- missing and unexpected method names, each sorted for a deterministic
-// message -- or "" when the two sets are identical.
+// diffMethodSets returns a description of how got differs from want, or "" if identical.
 func diffMethodSets(want, got map[string]bool) string {
 	var missing, unexpected []string
 	for name := range want {

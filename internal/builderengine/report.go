@@ -59,18 +59,10 @@ type OutOfScopeEntry struct {
 	Why string `yaml:"why" json:"why"`
 }
 
-// ParseReport reads and strictly decodes the batch-report YAML file at
-// path (yaml.Decoder.KnownFields(true), so an unrecognized key is a fail-
-// loud error, not silently ignored), then enforces the schema's vocabulary
-// and cross-field rules:
-//   - batch: must be non-empty;
-//   - status: must be ReportStatusDone or ReportStatusStuck;
-//   - tests: must be ReportTestsGreen, ReportTestsRed, or ReportTestsSkipped;
-//   - status: stuck requires a non-empty stuck_reason;
-//   - every out_of_scope entry requires both path and why.
-//
-// Each violation is returned as its own distinct wrapped error naming path
-// and the offending field.
+// ParseReport reads and strictly decodes the batch-report YAML file at path,
+// enforcing the schema's vocabulary and cross-field rules. Each violation is
+// returned as its own distinct wrapped error naming path and the offending
+// field.
 func ParseReport(path string) (*Report, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

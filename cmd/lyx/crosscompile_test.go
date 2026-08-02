@@ -34,10 +34,7 @@ func TestCrossCompileLinux(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's
-	// working directory, so this gate works regardless of which package `go test`
-	// was invoked from. GOMOD prints os.DevNull (or empty) when no module applies,
-	// in which case there is nothing to cross-compile.
+	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
@@ -48,11 +45,7 @@ func TestCrossCompileLinux(t *testing.T) {
 	}
 	moduleRoot := filepath.Dir(goMod)
 
-	// Build every package under the module root with GOOS=linux, GOARCH=amd64, and
-	// CGO_ENABLED=0 (a static, dependency-free cross-compile), discarding the binary
-	// output since only the compile result matters here. This is the step that
-	// forces the compiler to see every `_linux.go` file, proving the whole module
-	// compiles for Linux even though it was authored and tested on Windows.
+	// Build every package for GOOS=linux, GOARCH=amd64, and CGO_ENABLED=0 (static cross-compile).
 	cmd := exec.Command("go", "build", "-o", os.DevNull, "./...")
 	cmd.Dir = moduleRoot
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")

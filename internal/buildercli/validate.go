@@ -20,14 +20,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// findingsEnvelope writes a single JSON error envelope carrying findings as
-// a structured array (check, batch, detail per entry), rather than a
-// flattened error string: a Planner or human triaging validate's output
-// needs each finding machine-parseable, and internal/output.Err's message
-// field has no room for that. This mirrors output.Err's envelope shape
-// (ok:false) and exit code (1) exactly, adding only the "findings" field --
-// validate, spawn-batch, and run's automatic gate all share it, since every
-// one of them surfaces the same Validate findings the same way.
+// findingsEnvelope writes a JSON error envelope carrying findings as a
+// structured array (check, batch, detail per entry), so that builders
+// triaging validate's output can parse each finding machine-readably.
 func findingsEnvelope(out io.Writer, findings []builderengine.ValidationError) int {
 	entries := make([]map[string]string, len(findings))
 	for i, f := range findings {
@@ -43,11 +38,7 @@ func findingsEnvelope(out io.Writer, findings []builderengine.ValidationError) i
 }
 
 // validateCmd builds the `validate` subcommand: ParsePlan followed by
-// Validate against the resolved caps (builder.yaml's
-// batch_context_cap_tokens/batch_card_cap), resolving Scope and every
-// card's typed file-op paths (Context/Edits/Creates/Deletes/Moves) against
-// layout.Cwd -- the same worktree-base anchoring every other builderCLI dir
-// uses.
+// Validate against builder.yaml's batch capacity caps.
 func (c *builderCLI) validateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate",

@@ -291,11 +291,8 @@ func ParsePlan(planDir string) (*Plan, error) {
 	}, nil
 }
 
-// parseOverviewFrontmatter extracts and strict-decodes 00-overview.md's
-// leading frontmatter block, enforcing that both format: and approved: are
-// present (a missing key is a fail-loud error, not a zero-valued default).
-// It returns the decoded frontmatter and the document body following the
-// closing fence.
+// parseOverviewFrontmatter extracts and strict-decodes the frontmatter,
+// enforcing that format and approved are both present.
 func parseOverviewFrontmatter(content, overviewPath string) (overviewFrontmatter, string, error) {
 	fmBlock, body, found, err := splitFrontmatter(content)
 	if err != nil {
@@ -321,12 +318,9 @@ func parseOverviewFrontmatter(content, overviewPath string) (overviewFrontmatter
 	return fm, body, nil
 }
 
-// splitFrontmatter separates a leading "---"-fenced YAML block (skipping
-// any blank lines before the opening fence) from the rest of a markdown
-// document. found is false when the document has no frontmatter at all
-// (the first non-blank line is not "---"); err is non-nil when an opening
-// fence is present but never closed, which is always malformed regardless
-// of whether frontmatter is optional for the caller.
+// splitFrontmatter separates a leading "---"-fenced YAML block from the rest
+// of the document. found is false when there is no frontmatter; err is
+// non-nil when an opening fence is not closed.
 func splitFrontmatter(content string) (frontmatter, body string, found bool, err error) {
 	lines := strings.Split(content, "\n")
 
@@ -346,10 +340,8 @@ func splitFrontmatter(content string) (frontmatter, body string, found bool, err
 	return "", "", false, fmt.Errorf("unterminated frontmatter fence")
 }
 
-// splitFraming locates the overview body's "## Batch Index" heading and
-// splits the body into the task-framing prose above it (with the document's
-// H1 title line dropped, since the title is not part of the framing prose)
-// and the raw index lines below it, up to the next "## " heading or EOF.
+// splitFraming locates "## Batch Index" and splits the body into framing
+// prose (excluding the H1 title) above and index lines below it.
 func splitFraming(body string) (framing string, indexLines []string, err error) {
 	lines := strings.Split(body, "\n")
 
@@ -367,8 +359,7 @@ func splitFraming(body string) (framing string, indexLines []string, err error) 
 	var framingLines []string
 	for _, l := range lines[:headingIdx] {
 		if strings.HasPrefix(strings.TrimSpace(l), "# ") {
-			// Drop the H1 title line: it identifies the plan, it is not
-			// itself framing prose.
+			// Skip the H1 title line (not framing prose).
 			continue
 		}
 		framingLines = append(framingLines, l)
@@ -386,10 +377,8 @@ func splitFraming(body string) (framing string, indexLines []string, err error) 
 }
 
 // parseBatchIndex parses every non-blank Batch Index line into an
-// indexEntry. Each line is expected as a markdown bullet ("- NN — slug —
-// intent"); the leading bullet marker is stripped before indexLineRe is
-// applied. A line that does not match the expected shape is a fail-loud
-// error naming the offending line, never a silently-skipped entry.
+// indexEntry. A line that does not match the expected shape is a fail-loud
+// error.
 func parseBatchIndex(lines []string) ([]indexEntry, error) {
 	var entries []indexEntry
 	for _, raw := range lines {
@@ -646,10 +635,8 @@ func decodeBatchFrontmatter(fmBlock, path string, batch *PlanBatch) error {
 	return nil
 }
 
-// extractSection returns the lines strictly between an exact heading match
-// (trimmed equality) and the next "## " heading or EOF, or nil when heading
-// is not present at all. Because the match requires a two-hash prefix, a
-// "### Card N" sub-heading inside "## Cards" never terminates that section.
+// extractSection returns lines between an exact heading and the next
+// "## " heading or EOF, or nil if heading is not present.
 func extractSection(body, heading string) []string {
 	lines := strings.Split(body, "\n")
 
@@ -674,10 +661,7 @@ func extractSection(body, heading string) []string {
 	return lines[start:end]
 }
 
-// hasHeading reports whether body contains a line matching heading by the
-// same trimmed-line equality extractSection uses to find a heading's start —
-// consulted where only a heading's presence matters, not its section body
-// (PlanBatch.HasRenameMechanic).
+// hasHeading reports whether body contains a line matching heading.
 func hasHeading(body, heading string) bool {
 	for _, l := range strings.Split(body, "\n") {
 		if strings.TrimSpace(l) == heading {
@@ -687,13 +671,8 @@ func hasHeading(body, heading string) bool {
 	return false
 }
 
-// parseScopeSection parses a batch file's "## Scope" bullet list into a
-// plain path list, per plan-format.md's "prefix semantics, no globs" rule:
-// any entry containing "*" is a fail-loud error rather than a silently
-// accepted glob the rest of builder cannot mechanically check. A batch
-// file with no "## Scope" section yields a nil slice, not an error — scope
-// well-formedness (empty, absolute, or ".."-escaping entries) is
-// Validate's scope-malformed check, not a parse-time rejection.
+// parseScopeSection parses "## Scope" bullet list into plain paths, rejecting
+// any entry containing "*" (globs are not allowed). No section yields nil.
 func parseScopeSection(body string) ([]string, error) {
 	section := extractSection(body, scopeHeading)
 	if section == nil {
@@ -718,14 +697,9 @@ func parseScopeSection(body string) ([]string, error) {
 	return scope, nil
 }
 
-// parseCardsSection splits a batch file's "## Cards" section at "### Card
-// NN.C — <title>" headings and parses each into a PlanCard, resolving
-// every card file-op path against root (batch.Root, empty when the batch
-// carries no root: frontmatter). A batch file with no "## Cards" section
-// yields a nil slice, not an error. A "### " line inside the section that
-// does not match cardHeadingRe's shape is document structure, not a
-// card-level defect, and fails loud naming the offending line
-// (lenient-card-parse decision).
+// parseCardsSection splits "## Cards" at "### Card NN.C — <title>"
+// headings and parses each into a PlanCard, resolving file-op paths
+// against root. No section yields nil.
 func parseCardsSection(body, root string) ([]PlanCard, error) {
 	section := extractSection(body, cardsHeading)
 	if section == nil {
@@ -737,8 +711,7 @@ func parseCardsSection(body, root string) ([]PlanCard, error) {
 	for i < len(section) {
 		trimmed := strings.TrimSpace(section[i])
 		if !strings.HasPrefix(trimmed, "### ") {
-			// Blank lines and any other prose between cards (or before the
-			// first one) are not structurally significant.
+			// Skip blank lines and prose between cards.
 			i++
 			continue
 		}
@@ -763,13 +736,8 @@ func parseCardsSection(body, root string) ([]PlanCard, error) {
 	return cards, nil
 }
 
-// parseCardBody parses one card's body lines (the lines strictly between
-// its own "### Card NN.C — <title>" heading and the next card heading or
-// the end of the "## Cards" section) into a PlanCard. headingMatch is
-// cardHeadingRe's submatch against the card's heading line. Card-level
-// defects (a missing field, a malformed Moves: bullet) are recorded
-// leniently, never returned as an error — only Validate turns them into
-// findings (lenient-card-parse decision).
+// parseCardBody parses one card's body into a PlanCard, recording
+// card-level defects leniently as per the lenient-card-parse decision.
 func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard, error) {
 	batchPrefix, err := strconv.Atoi(headingMatch[1])
 	if err != nil {
@@ -821,9 +789,7 @@ func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard
 			card.VerifyCommand = strings.TrimSpace(strings.TrimPrefix(trimmed, cardVerifyLabel))
 			i++
 		default:
-			// Any other line (stray prose outside a recognized field) is
-			// not structurally significant — card-level content beyond the
-			// pinned grammar is not this parser's concern.
+			// Stray prose is not structurally significant.
 			i++
 		}
 		if fieldErr != nil {
@@ -834,20 +800,9 @@ func parseCardBody(headingMatch []string, lines []string, root string) (PlanCard
 	return card, nil
 }
 
-// parseFileOpField parses one of a card's four non-Moves file-op fields
-// (Context/Edits/Creates/Deletes): labelLine is the field's own
-// "**Label:** ..." line, label is its exact bold-label prefix, and lines
-// starting at start are the remaining card body lines to scan for the
-// field's "- `path`" bullets. Returns the field's normalized path list
-// (empty non-nil for an inline "none", nil if no bullets followed a
-// non-none label) and the index of the first line not consumed. A non-empty
-// label-line value other than the "none" sentinel (e.g. an inline path) is
-// a fail-loud error, not a card-level finding: silently reading it as an
-// empty field would be exactly the silent degradation the none-sentinel
-// grammar exists to prevent — the field would look present to every check
-// while its paths vanished from validation and the context estimate. This
-// is document structure, the same class as parseScopeSection's glob
-// rejection, so it fails at parse time rather than waiting for Validate.
+// parseFileOpField parses one of a card's four non-Moves file-op fields,
+// returning the normalized path list and the index of the first unconsumed
+// line. An inline value other than "none" is a fail-loud error.
 func parseFileOpField(labelLine, label, root string, lines []string, start int) ([]string, int, error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
 	if strings.EqualFold(rest, noneSentinel) {
@@ -875,18 +830,15 @@ func parseFileOpField(labelLine, label, root string, lines []string, start int) 
 	return files, i, nil
 }
 
-// parseMovesField parses a card's "**Moves:**" field the same way
-// parseFileOpField parses the other four, except each bullet is matched
-// against moveLineRe: a well-formed "`old` -> `new`" bullet becomes a
-// normalized MovePair, and any other bullet is retained verbatim (not
-// normalized) in raw for Validate's move-format check.
+// parseMovesField parses "**Moves:**" the same way as parseFileOpField,
+// except each bullet is matched against moveLineRe or retained verbatim
+// in raw for Validate's move-format check.
 func parseMovesField(labelLine, root string, lines []string, start int) (pairs []MovePair, raw []string, next int, err error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, movesLabel))
 	if strings.EqualFold(rest, noneSentinel) {
 		return []MovePair{}, nil, start, nil
 	}
-	// Same inline-value rejection as parseFileOpField: an inline pair would
-	// silently vanish from move validation and the rename mechanics.
+	// Reject inline value like parseFileOpField does.
 	if rest != "" {
 		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `src` -> `dst`\" sub-bullets on the following lines", movesLabel, rest)
 	}
@@ -912,11 +864,8 @@ func parseMovesField(labelLine, root string, lines []string, start int) (pairs [
 	return pairs, raw, i, nil
 }
 
-// parseVerifySection parses a batch file's "## verify:" section, returning
-// its first non-empty line as the command. hasSection reports whether the
-// heading itself was present at all, distinct from an empty command — that
-// distinction is what lets parseBatchFile enforce plan-format.md's "one or
-// the other, never both" rule against VerifyDeferred.
+// parseVerifySection parses "## verify:", returning the first non-empty
+// line and whether the heading was present (distinct from an empty command).
 func parseVerifySection(body string) (command string, hasSection bool) {
 	section := extractSection(body, "## verify:")
 	if section == nil {

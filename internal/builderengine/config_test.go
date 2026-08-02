@@ -17,9 +17,7 @@ import (
 
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	fixture := lyxtest.CopyWeft(t)
-	// Seed the config file with the template itself: this is exactly the
-	// file "lyx config reconcile" would produce, so LoadConfig must accept
-	// it verbatim and every default must resolve.
+	// Seed the template itself, which "lyx config reconcile" would produce.
 	lyxtest.SeedConfig(t, fixture.WeftPath, map[string]string{
 		"builder": builderengine.ConfigTemplate(),
 	})

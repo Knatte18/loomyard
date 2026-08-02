@@ -94,9 +94,7 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's
-	// working directory, exactly as tierpurity_test.go does, so the walk is
-	// cwd-independent.
+	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
@@ -114,10 +112,7 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			// tierPuritySkipDirs (defined in tierpurity_test.go, same package) is
-			// reused rather than redeclared: both guards walk the identical
-			// module tree and must skip the identical non-Go-module overlay
-			// directories.
+			// Skip overlay directories per tierPuritySkipDirs.
 			if tierPuritySkipDirs[d.Name()] {
 				return filepath.SkipDir
 			}
@@ -131,17 +126,10 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 		if relErr != nil {
 			return relErr
 		}
-		// Normalize to slash-separated form before any comparison, exactly as
-		// tierpurity_test.go does: filepath.WalkDir yields backslash paths on
-		// Windows (the primary dev OS).
+		// Normalize to slash-separated form before any comparison.
 		relPath = filepath.ToSlash(relPath)
 
-		// This guard's own file is excluded from content-based evidence
-		// entirely — not just from the spawn-token check. It documents this
-		// check's tokens as literal test data, including the bare hermetic
-		// presence token itself; leaving it in the scan would let its own doc
-		// comment trivially satisfy cmd/lyx's requirement before cmd/lyx's real
-		// TestMain lands, defeating the guard's TDD-first-fails intent.
+		// This guard's own file is excluded from content-based evidence entirely.
 		if fileLevelExcluded(relPath) {
 			return nil
 		}
@@ -192,14 +180,10 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 			dir, status.spawningToken, status.spawningFile, hermeticPresenceToken,
 		))
 	}
-	// Deterministic ordering: map iteration order is randomized, and a
-	// non-deterministic failure message ordering makes the guard's output
-	// harder to diff between runs.
+	// Ensure deterministic failure message ordering.
 	sort.Strings(failures)
 
-	// Vacuous-scan protection: a walk that finds zero git-spawning packages is
-	// misconfigured (wrong root, every file mis-skipped) rather than the repo
-	// having genuinely stopped spawning git in its tests.
+	// Vacuous-scan protection: fewer than zero git-spawning packages means misconfiguration.
 	if gitSpawningCount == 0 {
 		t.Fatalf("hermetic git env guard: found zero git-spawning packages under %s — the walk may be misconfigured", moduleRoot)
 	}
@@ -220,10 +204,7 @@ func firstSpawnToken(content string) (string, bool) {
 	return "", false
 }
 
-// fileLevelExcluded reports whether relPath is an exact-match allowedNonHermetic
-// entry naming a single *_test.go file (the guard's own file) — as opposed to a
-// directory-prefix entry exempting a whole package. See allowedNonHermetic's doc
-// comment for the distinction.
+// fileLevelExcluded reports whether relPath is an exact-match file-level allowedNonHermetic entry.
 func fileLevelExcluded(relPath string) bool {
 	for key := range allowedNonHermetic {
 		if strings.HasSuffix(key, "_test.go") && relPath == key {
@@ -233,10 +214,7 @@ func fileLevelExcluded(relPath string) bool {
 	return false
 }
 
-// packageAllowed reports whether dir (module-relative, slash-separated package
-// directory) is covered by an allowedNonHermetic directory-prefix entry: an exact
-// directory match, or a match under a directory-prefix entry. File-level entries
-// (see fileLevelExcluded) never count as a package-level exemption.
+// packageAllowed reports whether dir is covered by an allowedNonHermetic directory-prefix entry.
 func packageAllowed(dir string) bool {
 	for key := range allowedNonHermetic {
 		if strings.HasSuffix(key, "_test.go") {

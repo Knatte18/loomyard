@@ -25,11 +25,7 @@ type Task struct {
 	ShortName string   `json:"short_name,omitempty"` // optional short display label; falls back to Slug via ShortNameOrSlug
 }
 
-// ShortNameOrSlug returns t.ShortName when non-empty, otherwise t.Slug. This is
-// the fallback a future display-label consumer (a VS Code window-title builder)
-// will use, mirroring mill-config.yaml's repo.short_name -> window.title pattern
-// one layer up; this method only adds and round-trips the field — the actual
-// consumer is future work.
+// ShortNameOrSlug returns t.ShortName when non-empty, otherwise t.Slug.
 func (t Task) ShortNameOrSlug() string {
 	if t.ShortName != "" {
 		return t.ShortName
@@ -37,10 +33,7 @@ func (t Task) ShortNameOrSlug() string {
 	return t.Slug
 }
 
-// maxSlugLength caps a slug's length. Slugs seed worktree/portal/launcher
-// directory names, and 32 chars gives headroom against Windows MAX_PATH issues
-// in nested paths while comfortably fitting this repo's own real slugs
-// (board, pattern-wiring, fabric-unified-view, codeintel-v1).
+// maxSlugLength caps a slug's length to fit in directory names without MAX_PATH issues.
 const maxSlugLength = 32
 
 // validateSlugLength returns an error when slug exceeds maxSlugLength characters.
@@ -55,7 +48,6 @@ func validateSlugLength(slug string) error {
 // Uses JSON round-trip so field types are validated exactly as they would be on disk.
 // Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
 func NewTask(fields map[string]any, nextID int) (Task, error) {
-	// Validate slug upfront
 	slugVal, hasSlug := fields["slug"]
 	if !hasSlug {
 		return Task{}, fmt.Errorf("slug key is missing")
@@ -70,7 +62,6 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 		return Task{}, err
 	}
 
-	// Create default task with all fields initialized
 	task := Task{
 		ID:        nextID,
 		DependsOn: []string{},
@@ -81,7 +72,6 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 		Status:    nil,
 	}
 
-	// Marshal fields to JSON and unmarshal directly into task
 	fieldsJSON, err := json.Marshal(fields)
 	if err != nil {
 		return Task{}, fmt.Errorf("marshal fields: %w", err)
@@ -92,7 +82,6 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 		return Task{}, fmt.Errorf("unmarshal fields: %w", err)
 	}
 
-	// Force ID and slug to their intended values
 	task.ID = nextID
 	task.Slug = slugStr
 
@@ -103,7 +92,6 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 // Uses JSON round-trip: existing → map → overlay fields → Task, preserving fields not in the patch.
 // Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
 func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
-	// Marshal existing task to map
 	existingJSON, err := json.Marshal(existing)
 	if err != nil {
 		return Task{}, fmt.Errorf("marshal existing: %w", err)
@@ -115,12 +103,10 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 		return Task{}, fmt.Errorf("unmarshal existing: %w", err)
 	}
 
-	// Overlay fields onto existing map
 	for k, v := range fields {
 		existingMap[k] = v
 	}
 
-	// Marshal back to JSON and unmarshal into Task
 	mergedJSON, err := json.Marshal(existingMap)
 	if err != nil {
 		return Task{}, fmt.Errorf("marshal merged: %w", err)
@@ -132,7 +118,6 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 		return Task{}, fmt.Errorf("unmarshal merged: %w", err)
 	}
 
-	// Check slug is still present
 	if result.Slug == "" {
 		return Task{}, fmt.Errorf("slug key is missing or empty after patch")
 	}

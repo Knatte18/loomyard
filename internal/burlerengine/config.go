@@ -38,17 +38,11 @@ var configTemplate string
 // upper bound on how many parallel fork reviewers one cluster round spawns.
 const maxClusterN = 16
 
-// Config is the decode shape of burler.yaml: a name->prose map of lenses and
-// a name->lens-list map of fans. Both maps are open-ended and operator-owned
-// — LoadConfig's strict decode rejects any OTHER top-level field, but places
-// no closed vocabulary on the map keys or list entries themselves, mirroring
-// modelspec.Registry's models.yaml precedent.
+// Config is the decode shape of burler.yaml.
 type Config struct {
-	// Lenses maps a lens name to its emphasis-steering review prose.
+	// Lenses maps a lens name to its review prose.
 	Lenses map[string]string `yaml:"lenses"`
-	// Fans maps a fan name to an ordered list of lens names. A lens name may
-	// repeat within one fan; ResolveFan preserves both the order and the
-	// repeats.
+	// Fans maps a fan name to an ordered list of lens names.
 	Fans map[string][]string `yaml:"fans"`
 }
 
@@ -60,39 +54,20 @@ type Lens struct {
 }
 
 // ConfigTemplate returns the seed content for burler.yaml: the standard lens
-// library and the standard/full fans, embedded verbatim from template.yaml.
-// configreg consumes this as the module's Template function; per the
-// seed-only reconcile decision (configsync.ReconcileAll), it is written to
-// disk ONCE, when burler.yaml is absent, and never rewritten afterward — every
-// lens or fan an operator adds, edits, or removes survives untouched.
+// library and standard/full fans, embedded from template.yaml.
 func ConfigTemplate() string {
 	return configTemplate
 }
 
-// LoadConfig reads burler.yaml at hubgeometry.ConfigFile(baseDir, "burler")
-// directly — never through configengine.Load, per this file's seed-only
-// rationale above. A file that does not exist (or exists but decodes to no
-// entries at all, e.g. a comments-only file) is NOT an error: LoadConfig
-// returns the zero Config, mirroring modelspec.LoadRegistry's optional-file
-// posture. A fresh hub with no burler.yaml at all thus loads cleanly; the
-// caller only hits a fail-loud error once it asks ResolveFan for a fan that
-// isn't there, at which point the message names `lyx config reconcile` as the
-// way to seed the file.
-//
-// When the file is present, it is decoded with a strict yaml.Decoder —
-// KnownFields(true) — against the two-field Config shape: any OTHER
-// top-level key is a loud error naming the file. The map keys and values
-// under lenses/fans are never validated for a closed vocabulary here; that is
-// ResolveFan's job at resolution time, once a specific fan is requested.
+// LoadConfig reads burler.yaml. A missing file returns zero Config.
+// When present, it is decoded with strict yaml.Decoder.
 func LoadConfig(baseDir string) (Config, error) {
 	path := hubgeometry.ConfigFile(baseDir, "burler")
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// burler.yaml is optional — no file means "nothing seeded yet",
-			// not a failure. Clustering fails later, at fan resolution, with
-			// a message naming lyx config reconcile.
+			// Optional file — no file means nothing seeded yet.
 			return Config{}, nil
 		}
 		return Config{}, fmt.Errorf("burler: read %s: %w", path, err)
@@ -102,9 +77,7 @@ func LoadConfig(baseDir string) (Config, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
-		// An empty or comments-only file yields io.EOF from Decode with no
-		// fields set — that is a valid "nothing configured" file, not
-		// malformed YAML.
+		// Empty or comments-only file yields io.EOF — valid "nothing configured".
 		if errors.Is(err, io.EOF) {
 			return Config{}, nil
 		}
@@ -114,21 +87,8 @@ func LoadConfig(baseDir string) (Config, error) {
 	return cfg, nil
 }
 
-// ResolveFan resolves a fan name against cfg into its ordered []Lens, the
-// input a cluster round fans its forks out from. It is fail-loud,
-// burler-prefixed, and never degrades to a shorter or reordered fan:
-//
-//   - Unknown fan name: the error lists every fan name cfg does define. When
-//     cfg.Fans is empty entirely (the common case for a hub that never ran
-//     `lyx config reconcile`), the message names that command as how to seed
-//     the standard library instead of listing an empty set.
-//   - A fan entry naming a lens not present in cfg.Lenses.
-//   - An empty fan (a fan name that resolves to zero entries).
-//   - A fan longer than maxClusterN entries.
-//
-// On success, the returned slice preserves the fan's entry order exactly,
-// including repeats — a lens name listed twice in the fan yields two separate
-// Lens entries with identical Name/Text, not a deduplicated one.
+// ResolveFan resolves a fan name against cfg into its ordered []Lens. It is
+// fail-loud and never degrades. The returned slice preserves fan order exactly.
 func ResolveFan(cfg Config, name string) ([]Lens, error) {
 	entries, ok := cfg.Fans[name]
 	if !ok {
@@ -155,8 +115,7 @@ func ResolveFan(cfg Config, name string) ([]Lens, error) {
 	return lenses, nil
 }
 
-// fanNames returns the sorted list of fan names in fans, used to render a
-// deterministic "known fans" list in ResolveFan's unknown-fan error.
+// fanNames returns the sorted list of fan names in fans.
 func fanNames(fans map[string][]string) []string {
 	names := make([]string, 0, len(fans))
 	for name := range fans {

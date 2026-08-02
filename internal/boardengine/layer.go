@@ -10,14 +10,10 @@ import (
 	"sort"
 )
 
-// ComputeLayers assigns each task a bucket string based on topological depth.
-// Special buckets: "__done__" (Status=="done"), "__deferred__" (Deferred), "Z" (Isolated).
-// Regular buckets: "A"–"Y" based on depth (depth 0 = A, depth 1 = B, ..., depth 24 = Y).
-// Returns error if any non-special task has depth >= 25.
+// ComputeLayers assigns each task a bucket based on topological depth.
 func ComputeLayers(tasks []Task) (map[string]string, error) {
 	layerMap := make(map[string]string)
 
-	// Fast path: assign special buckets.
 	for _, t := range tasks {
 		if t.Status != nil && *t.Status == "done" {
 			layerMap[t.Slug] = "__done__"
@@ -28,14 +24,12 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 		}
 	}
 
-	// Build slug → task index.
 	taskMap := make(map[string]*Task)
 	for i := range tasks {
 		taskMap[tasks[i].Slug] = &tasks[i]
 	}
 
-	// Phase 1: DFS to detect cycles (white/gray/black).
-	color := make(map[string]string) // "white", "gray", "black"
+	color := make(map[string]string)
 	for slug := range taskMap {
 		color[slug] = "white"
 	}
@@ -76,7 +70,6 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 		}
 	}
 
-	// Phase 2: Memoized depth calculation.
 	depth := make(map[string]int)
 
 	var getDepth func(slug string) (int, error)
@@ -90,7 +83,6 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			return 0, nil
 		}
 
-		// Skip tasks with special buckets already assigned.
 		if layerMap[slug] != "" {
 			depth[slug] = 0 // Special tasks don't contribute to depth.
 			return 0, nil
@@ -100,9 +92,8 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 		for _, dep := range t.DependsOn {
 			depTask, ok := taskMap[dep]
 			if !ok {
-				continue // Skip missing deps.
+				continue
 			}
-			// Exclude done tasks from depth calculation.
 			if depTask.Status != nil && *depTask.Status == "done" {
 				continue
 			}
@@ -133,7 +124,6 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Convert depth to letter: 0→A, 1→B, ..., 24→Y.
 		layerMap[slug] = string(rune('A' + d))
 	}
 
@@ -146,8 +136,7 @@ type TaskWithLayer struct {
 	Layer string
 }
 
-// RenderOrder returns tasks sorted by bucket order then by ID.
-// Bucket order: A–Y (alphabetical), then Z, then __deferred__, then __done__.
+// RenderOrder returns tasks sorted by bucket order, then by ID.
 func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	layerMap, err := ComputeLayers(tasks)
 	if err != nil {

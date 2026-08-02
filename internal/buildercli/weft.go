@@ -19,22 +19,15 @@ import (
 )
 
 // weftCommit stages and commits every change under layout's scoped _lyx
-// pathspec through the weft junction, then fires an async push, using
-// "builder: <label>" as the commit subject. Per Fabric.Commit's contract,
-// the weft commit also carries a "Warp-SHA: <host HEAD>" trailer in its own
-// blank-line-separated paragraph and records a warp<->weft correspondence
-// entry in the weft gitdir's index. It reports whether a weft commit was
-// actually made (false when there was nothing staged) and any error from
-// the commit step.
+// pathspec through the weft junction. It reports whether a commit was made
+// (false when nothing staged) and any error.
 func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	weftWorktree := layout.WeftWorktree()
 	opts := fabricengine.EnvSyncOptions()
 	files := fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName})
 
-	// SkipGit is checked here, before fabricengine.New's stat-based path
-	// validation: the CI/test bypass must never require a real weft
-	// worktree to exist on disk, but New (unlike Commit itself) validates
-	// both paths unconditionally.
+	// Check SkipGit before fabricengine.New's stat validation to avoid
+	// requiring a real weft worktree on disk in CI/test bypass mode.
 	var committed bool
 	if !opts.SkipGit {
 		f, err := fabricengine.New(layout.WorktreeRoot, weftWorktree)

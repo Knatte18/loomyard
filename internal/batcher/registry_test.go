@@ -13,16 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// probeBatcher is a minimal Batcher stand-in used only to exercise
-// register/lookup without depending on identityBatcher's own behavior.
+// probeBatcher is a minimal Batcher stand-in for testing register/lookup.
 type probeBatcher struct{ name string }
 
 func (p probeBatcher) Batch(cards []planparser.Card) []Batch { return nil }
 func (p probeBatcher) Name() string                          { return p.name }
 
-// withEmptyRegistry swaps the package-level registry for a fresh empty map for
-// the duration of the test, restoring the original via t.Cleanup so other tests
-// (and identity.go's own init() registration) are unaffected.
+// withEmptyRegistry temporarily replaces the registry for isolated testing.
 func withEmptyRegistry(t *testing.T) {
 	t.Helper()
 	original := registry
