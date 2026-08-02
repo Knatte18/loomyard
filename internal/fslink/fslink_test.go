@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// writeFile creates a file with the given content, failing the test on error.
+// writeFile creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -14,9 +14,7 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestCreate covers link creation: it creates links that resolve to their targets,
-// refuses to clobber existing regular files/directories, and creates missing
-// parent directories.
+// TestCreate exercises link creation across clobber refusal and parent directory creation.
 func TestCreate(t *testing.T) {
 	t.Parallel()
 
@@ -38,29 +36,24 @@ func TestCreate(t *testing.T) {
 				if err := os.Mkdir(target, 0o755); err != nil {
 					t.Fatalf("create target: %v", err)
 				}
-				// Try to create a test link to verify the platform supports it.
 				testLink := filepath.Join(tmpdir, "test-link")
 				if err := CreateDirLink(testLink, target); err != nil {
 					t.Skipf("link creation not permitted on this platform: %v", err)
 				}
-				// Clean up the test link.
 				Remove(testLink)
 				return link, target
 			},
 			verify: func(t *testing.T, link, target string) {
-				// The link should exist.
 				_, err := os.Lstat(link)
 				if err != nil {
 					t.Errorf("lstat link: %v", err)
 					return
 				}
-				// PointsTo should resolve to the target (absolute, no \??\ prefix).
 				resolved, err := PointsTo(link)
 				if err != nil {
 					t.Errorf("PointsTo: %v", err)
 					return
 				}
-				// Normalize paths for comparison (both should be absolute).
 				targetAbs, _ := filepath.Abs(target)
 				if filepath.Clean(resolved) != filepath.Clean(targetAbs) {
 					t.Errorf("PointsTo(%s) = %q; want %q", link, resolved, filepath.Clean(targetAbs))
@@ -93,7 +86,6 @@ func TestCreate(t *testing.T) {
 				if err := os.Mkdir(target, 0o755); err != nil {
 					t.Fatalf("create target: %v", err)
 				}
-				// Verify platform support
 				testLink := filepath.Join(tmpdir, "test-link")
 				if err := CreateDirLink(testLink, target); err != nil {
 					t.Skipf("link creation not permitted on this platform: %v", err)
@@ -102,7 +94,6 @@ func TestCreate(t *testing.T) {
 				return link, target
 			},
 			verify: func(t *testing.T, link, target string) {
-				// The link should exist.
 				if _, err := os.Lstat(link); err != nil {
 					t.Errorf("lstat link: %v", err)
 				}
@@ -134,8 +125,8 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-// TestIsLink covers link detection: returns true for created links, false for
-// regular files and real directories, and (false, nil) for missing paths.
+// TestIsLink exercises link detection across created links, regular files,
+// directories, and missing paths.
 func TestIsLink(t *testing.T) {
 	t.Parallel()
 
@@ -217,8 +208,8 @@ func TestIsLink(t *testing.T) {
 	}
 }
 
-// TestPointsTo covers target resolution: returns the resolved absolute target
-// for a valid link (no \??\ prefix), and errors for non-links and missing targets.
+// TestPointsTo exercises target resolution for valid links, non-links, and
+// dangling links.
 func TestPointsTo(t *testing.T) {
 	t.Parallel()
 
@@ -239,7 +230,6 @@ func TestPointsTo(t *testing.T) {
 				if err := CreateDirLink(link, target); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
-				// Want the absolute target
 				targetAbs, _ := filepath.Abs(target)
 				return link, filepath.Clean(targetAbs)
 			},
@@ -267,7 +257,6 @@ func TestPointsTo(t *testing.T) {
 				if err := CreateDirLink(link, target); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
-				// Delete the target directory to create a dangling link
 				if err := os.Remove(target); err != nil {
 					t.Fatalf("remove target: %v", err)
 				}
@@ -301,8 +290,7 @@ func TestPointsTo(t *testing.T) {
 	}
 }
 
-// TestRemove covers link removal: removes a link, leaves the target intact, and
-// is idempotent on a second call against an absent link.
+// TestRemove exercises link removal, target preservation, and idempotence.
 func TestRemove(t *testing.T) {
 	t.Parallel()
 
@@ -329,11 +317,9 @@ func TestRemove(t *testing.T) {
 			wantErr: false,
 			verify: func(t *testing.T, link string) {
 				targetDir := filepath.Join(filepath.Dir(link), "target")
-				// Verify link is gone
 				if _, err := os.Lstat(link); err == nil {
 					t.Error("Remove() did not delete the link")
 				}
-				// Verify target survives
 				if _, err := os.Stat(targetDir); err != nil {
 					t.Errorf("Remove() deleted target: %v", err)
 				}
@@ -346,7 +332,6 @@ func TestRemove(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(t *testing.T, link string) {
-				// Second call should also succeed
 				err := Remove(link)
 				if err != nil {
 					t.Fatalf("Remove() second call error = %v; want nil", err)
@@ -374,9 +359,8 @@ func TestRemove(t *testing.T) {
 	}
 }
 
-// TestRemoveLinksIn covers the link scanner: ignores regular files and real
-// directories, removes and counts links, and surfaces ReadDir errors for
-// missing directories.
+// TestRemoveLinksIn exercises the link scanner across regular files,
+// directories, link removal, and error handling.
 func TestRemoveLinksIn(t *testing.T) {
 	t.Parallel()
 
@@ -399,7 +383,6 @@ func TestRemoveLinksIn(t *testing.T) {
 			},
 			wantCount: 0,
 			verify: func(t *testing.T, dir string) {
-				// Neither the regular file nor the real directory may be touched.
 				if _, err := os.Stat(filepath.Join(dir, "regular.txt")); err != nil {
 					t.Errorf("regular.txt was removed: %v", err)
 				}
@@ -412,7 +395,6 @@ func TestRemoveLinksIn(t *testing.T) {
 			name: "RemovesSymlinks",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
-				// Create directory targets (required for Windows junctions)
 				target1 := filepath.Join(dir, "target1")
 				target2 := filepath.Join(dir, "target2")
 				if err := os.Mkdir(target1, 0o755); err != nil {
@@ -424,11 +406,9 @@ func TestRemoveLinksIn(t *testing.T) {
 				writeFile(t, filepath.Join(dir, "regular.txt"), "regular")
 				link1 := filepath.Join(dir, "link1")
 				link2 := filepath.Join(dir, "link2")
-				// Verify platform support
 				if err := CreateDirLink(link1, target1); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
-				// Now create the second link
 				if err := CreateDirLink(link2, target2); err != nil {
 					t.Skipf("link creation not permitted: %v", err)
 				}
@@ -436,8 +416,6 @@ func TestRemoveLinksIn(t *testing.T) {
 			},
 			wantCount: 2,
 			verify: func(t *testing.T, dir string) {
-				// The links must be gone but their targets and the control file
-				// must survive — RemoveLinksIn only deletes the link entries.
 				if _, err := os.Lstat(filepath.Join(dir, "link1")); err == nil {
 					t.Error("link1 still exists")
 				}

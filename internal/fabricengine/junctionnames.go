@@ -75,15 +75,10 @@ func repoWideFabricBase(l *hubgeometry.Layout) string {
 	return hubgeometry.BoardDir(l.Hub)
 }
 
-// RepoWiredNames loads the repo-wide fabric config at
-// repoWideFabricBase(l) and returns its wired name-set — the pathspec
-// directory names with hub-reserved names filtered out. It is the
-// Layout-taking convenience for callers that already hold a
-// *hubgeometry.Layout and want the repo-wide junction name-set without
-// re-deriving the base themselves: checkJunctionHealth, Reconcile's inline
-// wiring load, junctionRepointedDetail, Healthy, Topology.Checkout, and
-// Topology.Remove all read through this rather than the pair's own weft
-// base, so every worktree converges to the one repo-wide pathspec.
+// RepoWiredNames loads the repo-wide fabric config and returns its wired
+// name-set. It is a Layout-taking convenience for callers that want the
+// repo-wide junction name-set without re-deriving the base. Callers use this
+// so every worktree converges to the one repo-wide pathspec.
 func RepoWiredNames(l *hubgeometry.Layout) ([]string, error) {
 	return WiredNames(repoWideFabricBase(l))
 }

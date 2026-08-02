@@ -18,16 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// coalescePush drives a caller-supplied step to completion under one held
-// absorbing lock at lockPath: it acquires the lock once, then calls step
-// repeatedly, looping again each time step reports progressed == true and
-// exiting — releasing the lock — on the first progressed == false or on a
-// non-nil error, which propagates to the caller. coalescePush contains no
-// commit, stage, ensure-ignored, or push logic of its own; step supplies all
-// of that. It is unexported: Bolt.Sync and this file's own
-// CoalescePushBothAt are its only two callers, both in-package, now that
-// boardengine composes its coalescing loop through Bolt rather than calling
-// this primitive directly.
+// coalescePush drives a caller-supplied step to completion under one absorbing lock,
+// looping while progressed=true, exiting and releasing the lock on false or error.
+// The step function supplies all commit/stage/push policy.
 func coalescePush(lockPath string, step func() (progressed bool, err error)) error {
 	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
@@ -46,18 +39,9 @@ func coalescePush(lockPath string, step func() (progressed bool, err error)) err
 	}
 }
 
-// headOrEmpty returns the checkout at path's current HEAD SHA, mapping an
-// unborn HEAD (gitrepo.ErrNoCommits — a repo with no commits yet) to ("", nil)
-// rather than propagating it as a failure: an unborn side is a legitimate
-// "nothing to push (yet)" state for the fabric push step's before/after
-// comparison, not an error. An empty path is also a true no-op — ("", nil)
-// without ever opening a repo — rather than falling through to
-// gitrepo.New("").CurrentSHA(), which would resolve "" to the process's
-// inherited cwd (via filepath.Abs) and open whatever git checkout happens to
-// live there. That matters because CoalescePushBothAt's detached child is
-// spawned with no cmd.Dir override, so the weft-only "lyx fabric sync" path
-// (warpPath == "") would otherwise silently open (and read HEAD from) an
-// unrelated checkout instead of treating the absent warp side as stable.
+// headOrEmpty returns the current HEAD SHA, mapping unborn HEAD (no commits) to ("", nil).
+// Empty path is a true no-op, never resolving "" to the process's cwd, preserving
+// the empty-warp no-op contract for weft-only sync paths.
 func headOrEmpty(path string) (string, error) {
 	if path == "" {
 		return "", nil
@@ -72,12 +56,8 @@ func headOrEmpty(path string) (string, error) {
 	return "", err
 }
 
-// pushRebaseFreeLogged runs a single rebase-free push at path, mapping a
-// non-fast-forward rejection (gitrepo.ErrPushRejected) to a warning log line
-// plus a nil return — the fabric push step's contract is to leave a diverged
-// side's commits unpushed rather than reconcile them (reconciliation is slice
-// 6, out of scope here) — while propagating any other failure (network,
-// auth) as a genuine error.
+// pushRebaseFreeLogged runs a rebase-free push, mapping rejection to a warning
+// and nil return (commits left unpushed per fabric's contract); other errors propagate.
 func pushRebaseFreeLogged(path string) error {
 	err := gitrepo.New(path).PushRebaseFree()
 	if err == nil {
@@ -90,14 +70,9 @@ func pushRebaseFreeLogged(path string) error {
 	return err
 }
 
-// CoalescePushBothAt pushes both the warp and weft sides of a fabric hub
-// under fabric's own absorbing push lock, looping until a push iteration
-// advances neither side's HEAD — the rebase-free, lock-free-per-side
-// entry point batch 3's CLI bypass handler wires in and board (batch 4)
-// reuses the generic coalescePush half of. It honors opts.SkipGit/SkipPush by
-// returning nil immediately, matching pushWeftAt/PushWarpAt's gating.
-//
-// weftPath must be non-empty: the absorbing push lock's only sanctioned home
+// CoalescePushBothAt pushes both warp and weft under fabric's absorbing push lock,
+// looping until neither side advances — a rebase-free entry point honoring SkipGit/SkipPush.
+// weftPath must be non-empty: the absorbing push lock's only sanctioned home.
 // is under weftPath's .weft/ (a host-root lock is forbidden by the
 // lock-artifact-under-weft / no-host-root-gitrepo-push-lock Shared
 // Decisions), so an empty weftPath returns an error rather than falling back

@@ -17,19 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// menu presents an interactive picker of available config modules.
-//
-// It prints a numbered list of configreg.Names() -- the same registry order
-// every other config surface uses, so the menu's numbering agrees with
-// --print's section order and the "Known modules" help line -- each marked
-// "(configured)" when its config file is present on disk and "(default)" when
-// it is not. The path is resolved through hubgeometry.ConfigFile, never
-// assembled from _lyx/config literals here, per the Hub Geometry Invariant.
-//
-// Reads one line from in with bufio.NewReader.ReadString('\n').
-// Handles 'q' to quit (return 0).
-// Parses selection as 1-indexed number, validates range, routes to editOne on valid choice.
-// Returns the exit code from editOne or an error code (1) on invalid input.
+// menu presents an interactive picker of available config modules. It prints
+// a numbered list from configreg.Names(), with each marked "(configured)" or
+// "(default)" based on whether its config file exists. Reads one line from in,
+// handles 'q' to quit (return 0), parses selection as 1-indexed number, and
+// routes to editOne on valid choice or returns 1 on invalid input.
 func menu(l *hubgeometry.Layout, baseDir string, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc) int {
 	// Get the list of available modules.
 	names := configreg.Names()

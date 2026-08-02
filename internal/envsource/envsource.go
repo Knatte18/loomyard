@@ -12,17 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// Build reads the .env file at hubgeometry.DotEnv(baseDir) and overlays the OS environment,
-// returning a merged map where OS values take precedence over .env values.
-//
-// The .env file is parsed line-by-line, skipping blank lines and lines beginning with #.
-// Each line is split on the first = only, so = may appear in the value. Lines without = are skipped.
-// Values are not trimmed.
-//
-// If the .env file does not exist, Build returns a map containing only OS environment variables.
-// OS environment variables always override .env values for the same key.
-//
-// Returns the merged map on success, or an error if the .env file cannot be read.
+// Build reads the .env file at hubgeometry.DotEnv(baseDir) and overlays the
+// OS environment, with OS values taking precedence. The .env file is parsed
+// line-by-line, skipping blank lines and comments; each line is split on the
+// first = only. Absent .env files return only OS environment. Returns the
+// merged map, or an error if .env cannot be read.
 func Build(baseDir string) (map[string]string, error) {
 	// Read the .env file
 	dotEnvPath := hubgeometry.DotEnv(baseDir)
@@ -46,11 +40,9 @@ func Build(baseDir string) (map[string]string, error) {
 	return dotEnvMap, nil
 }
 
-// readDotEnv reads a .env file into a map.
-//
-// Returns an empty map if the file does not exist.
-// Skips empty lines, comment lines (starting with #), and lines without =.
-// Values are not trimmed; they are taken verbatim from the file.
+// readDotEnv reads a .env file into a map, returning an empty map if the file
+// does not exist. Skips empty lines, comments, and lines without =. Values are
+// taken verbatim (not trimmed).
 func readDotEnv(path string) (map[string]string, error) {
 	file, err := os.Open(path)
 	if os.IsNotExist(err) {
@@ -65,16 +57,13 @@ func readDotEnv(path string) (map[string]string, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		// Skip blank lines (not trimmed yet)
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 
-		// Split on the FIRST = only
 		idx := strings.Index(line, "=")
 		if idx == -1 {
-			// No = found, skip this line
 			continue
 		}
 

@@ -17,12 +17,8 @@ import (
 	"testing"
 )
 
-// sinkTestFilePattern matches the durable sink's trace-file grammar and
-// captures the pid segment, mirroring traceFilePattern in retention.go.
 var sinkTestFilePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-(\d+)\.log$`)
 
-// listSinkDirFiles returns the base names of every regular file in dir,
-// failing the test on a read error.
 func listSinkDirFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -38,8 +34,6 @@ func listSinkDirFiles(t *testing.T, dir string) []string {
 	return names
 }
 
-// readSinkFirstLine reads the first line of path, failing the test on a
-// read error.
 func readSinkFirstLine(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -54,10 +48,6 @@ func TestEnsureDurableSink_DebugOnlyNeverOpensFile(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 
-	// A Debug-only run never calls ensureDurableSink at all — this test
-	// proves traceOnce/sinkOnce are not merged by simply never invoking
-	// the sink's open path, mirroring what a Debug-level call site (wired
-	// by batch 5) would do: nothing that reaches ensureDurableSink.
 	if got := listSinkDirFiles(t, dir); len(got) != 0 {
 		t.Errorf("listSinkDirFiles(dir) = %v; want empty (no sink file from Debug-only activity)", got)
 	}
@@ -135,8 +125,6 @@ func TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields(t *testing.T) 
 
 	dir2 := t.TempDir()
 	SetDurableSinkDir(dir2)
-	// No explicit Arm() call here — ensureDurableSink's own fallback call
-	// to armHeader must reach the identical, idempotent capture logic.
 	ensureDurableSink()
 	implicit := header
 
@@ -181,8 +169,6 @@ func TestNotifyExit_NonZeroCodeOpensSinkWithHeaderOnly(t *testing.T) {
 	}
 }
 
-// countMarkerLines counts how many lines in data equal the truncation
-// marker text writeDurable appends once the size cap is crossed.
 func countMarkerLines(data []byte) int {
 	count := 0
 	for _, line := range strings.Split(string(data), "\n") {
@@ -205,9 +191,6 @@ func TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker(t *testing.T
 	}
 	path := filepath.Join(dir, files[0])
 
-	// Write a payload large enough to cross the 8 MiB cap in one call, then
-	// two more small payloads past the cap; only the first crossing should
-	// emit a marker.
 	big := make([]byte, sinkMaxBytes+1)
 	if _, err := writeDurable(big); err != nil {
 		t.Fatalf("writeDurable(big) error = %v; want nil", err)

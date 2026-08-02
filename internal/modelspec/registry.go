@@ -10,11 +10,7 @@ import (
 )
 
 // builtins returns the pinned, default-free fallback registry: sonnet, opus,
-// haiku, and fable, each resolving to the claude engine with the same-named
-// model string and NO parameter defaults. This is what every consumer gets
-// with zero models.yaml present — operator effort defaults live only in the
-// seeded models.yaml (see ConfigTemplate), never baked into Go, so changing a
-// default never needs a recompile.
+// haiku, and fable (operator effort defaults live only in models.yaml, not here).
 func builtins() Registry {
 	return Registry{
 		"sonnet": {Engine: "claude", Model: "sonnet"},
@@ -24,16 +20,10 @@ func builtins() Registry {
 	}
 }
 
-// Resolve resolves s against r and returns the fully realized Resolved. For
-// alias form, s.Alias is looked up in r (an unknown alias is a loud error
-// naming the alias and every known alias, sorted, so the operator sees valid
-// options); Resolved.Params starts as a copy of the entry's Defaults and is
-// then overlaid by s.Params — a bracket param wins over a registry default
-// for the same key (the contract's "bracket param > registry default"). For
-// escape form, r is never consulted: Resolved is built directly from s.Engine,
-// s.Model, and a copy of s.Params. Resolve never mutates s or r, and
-// Resolved.Params is never nil — an empty map represents "no params" so
-// callers can range over it unconditionally.
+// Resolve resolves s against r and returns the fully realized Resolved.
+// For alias form, s.Alias is looked up in r (unknown alias is an error);
+// Resolved.Params starts as the entry's Defaults overlaid by s.Params.
+// For escape form, r is unused. Resolved.Params is never nil.
 func (r Registry) Resolve(s Spec) (Resolved, error) {
 	// Escape form carries its own engine/model and bypasses the registry
 	// entirely — there is nothing to look up.
@@ -64,8 +54,7 @@ func (r Registry) Resolve(s Spec) (Resolved, error) {
 	}, nil
 }
 
-// copyParams returns a fresh, non-nil copy of m so callers never observe a nil
-// Params map and never share backing storage with the caller's own map.
+// copyParams returns a fresh, non-nil copy of m.
 func copyParams(m map[string]string) map[string]string {
 	out := make(map[string]string, len(m))
 	for k, v := range m {
@@ -74,8 +63,7 @@ func copyParams(m map[string]string) map[string]string {
 	return out
 }
 
-// sortedKeys returns the sorted alias keys of r, used to name the known-good
-// options in an unknown-alias error.
+// sortedKeys returns the sorted alias keys of r (for unknown-alias error messages).
 func sortedKeys(r Registry) []string {
 	keys := make([]string, 0, len(r))
 	for k := range r {

@@ -7,11 +7,9 @@ package fabricengine
 
 import "path/filepath"
 
-// Bolt is a handle over a single weft:main-backed repo path with no paired
-// warp side — the permanent exception to fabric's one-repo illusion (see
-// boardengine's doc comment for why weft:main is reserved for this). Bolt
-// receives its already-resolved path from the caller; it never constructs
-// any geometry token itself (Hub Geometry Invariant).
+// Bolt is a handle over a single weft:main-backed repo path with no paired warp
+// side — the exception to fabric's one-repo illusion. It never constructs any
+// geometry token itself.
 type Bolt struct {
 	path string
 }
@@ -22,23 +20,18 @@ func NewBolt(repoPath string) *Bolt {
 }
 
 // Commit stages and commits every change in the Bolt's repo under message,
-// with no warp trailer and no correspondence recording — there is no paired
-// warp side to trail against.
+// with no warp trailer and no correspondence recording.
 func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed bool, err error) {
 	return commitWeftAt(b.path, message, opts)
 }
 
-// Push pushes any unpushed commits in the Bolt's repo, honoring
-// opts.SkipGit/SkipPush.
+// Push pushes any unpushed commits in the Bolt's repo.
 func (b *Bolt) Push(opts SyncOptions) error {
 	return pushWeftAt(b.path, opts)
 }
 
-// Sync drives step to completion under the Bolt's own absorbing push lock,
-// looping while step reports progress — the same coalescing loop
-// CoalescePushBothAt uses for the paired case, held at the identical
-// board.push.lock path boardengine's Sync has always used, so existing
-// serialization behavior carries over unchanged.
+// Sync drives step to completion under an absorbing push lock, looping while
+// step reports progress.
 func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
 	return coalescePush(filepath.Join(b.path, "board.push.lock"), step)
 }

@@ -21,26 +21,21 @@ func (e PathError) Error() string {
 	return string(e)
 }
 
-// PathGuard validates a relative path for filesystem operations.
-// It rejects empty paths, absolute paths (both Unix and Windows style), and
-// any path containing ".." components, preventing directory-escape attacks.
-// It is used to gate untrusted path inputs before writing.
+// PathGuard validates a relative path, rejecting empty, absolute, and
+// parent-directory-reference paths.
 func PathGuard(relPath string) error {
 	if relPath == "" {
 		return PathError("empty path")
 	}
 
-	// Check for absolute paths (both Windows and Unix styles)
 	if filepath.IsAbs(relPath) || (len(relPath) > 0 && relPath[0] == '/') {
 		return PathError("absolute path not allowed")
 	}
 
-	// Check for Windows-style absolute paths on non-Windows systems
 	if len(relPath) > 1 && relPath[1] == ':' {
 		return PathError("absolute path not allowed")
 	}
 
-	// Split by both separators to preserve ".." for validation (before cleaning would remove it)
 	parts := strings.FieldsFunc(relPath, func(r rune) bool {
 		return r == '\\' || r == '/'
 	})
@@ -53,12 +48,8 @@ func PathGuard(relPath string) error {
 	return nil
 }
 
-// AtomicWriteBytes writes data to an absolute file path atomically.
-// It creates missing parent directories, writes to a temporary file via
-// os.CreateTemp, then atomically renames the temp file to the target path.
-// On error, the temporary file is cleaned up. The rename is the atomic swap;
-// concurrent readers are excluded from this instant by external synchronization,
-// ensuring they never see partial writes.
+// AtomicWriteBytes writes data to an absolute file path atomically via a temp
+// file and rename, ensuring concurrent readers never see partial writes.
 func AtomicWriteBytes(absPath string, data []byte) error {
 	dir := filepath.Dir(absPath)
 
@@ -81,20 +72,14 @@ func AtomicWriteBytes(absPath string, data []byte) error {
 		return fmt.Errorf("close: %w", err)
 	}
 
-	// The rename is the atomic swap. Concurrent readers are excluded from this
-	// instant by external synchronization (e.g. a swap lock in store.Save / store.Load),
-	// so on Windows the rename never loses a sharing-violation race against an open reader.
 	if err := os.Rename(tmpPath, absPath); err != nil {
 		return fmt.Errorf("rename: %w", err)
 	}
 	return nil
 }
 
-// AtomicWrite writes content to a file atomically using path validation and guarding.
-// It validates the relative path using PathGuard (rejecting unsafe paths),
-// then writes the content to dir/relPath using AtomicWriteBytes.
-// This is the guarded convenience function; callers use it when the relative path
-// is untrusted and the absolute base directory is controlled internally.
+// AtomicWrite writes content to dir/relPath atomically after validating the
+// relative path via PathGuard.
 func AtomicWrite(dir, relPath, content string) error {
 	if err := PathGuard(relPath); err != nil {
 		return err

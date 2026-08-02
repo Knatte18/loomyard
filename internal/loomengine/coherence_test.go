@@ -7,11 +7,7 @@ package loomengine
 
 import "testing"
 
-// validFreshStatus returns a Status that satisfies every coherence rule: a
-// fresh t=0 seed with all mandatory strings set, valid enum values, and every
-// fresh-start invariant at its zero value. Each test case mutates a copy of
-// this baseline to isolate exactly one rule violation (or none, for the
-// valid-seed case).
+// validFreshStatus returns a valid fresh Status baseline for testing.
 func validFreshStatus() Status {
 	return Status{
 		Slug:      "loom-contracts",
@@ -22,12 +18,7 @@ func validFreshStatus() Status {
 	}
 }
 
-// containsCheck reports whether failures includes at least one entry whose
-// Check equals want. Tests use this rather than exact-slice comparison
-// because a single mutation can legitimately trip more than one rule (e.g.
-// adding a bad history entry also makes History non-empty, tripping the
-// fresh-start invariant too) — the test only needs to confirm the rule under
-// test fired, not enumerate every incidental side effect.
+// containsCheck reports whether failures includes at least one entry whose Check equals want.
 func containsCheck(failures []Failure, want CheckID) bool {
 	for _, f := range failures {
 		if f.Check == want {

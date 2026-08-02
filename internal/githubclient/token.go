@@ -18,11 +18,7 @@ import (
 )
 
 // tokenSource identifies which resolution step produced a token. The
-// authenticating transport (transport.go) branches its 401 retry policy on
-// this value: an environment-sourced token must never be invalidated and
-// re-resolved, because re-resolution is guaranteed to reproduce the
-// identical value and a replay would be a guaranteed-identical second
-// failure.
+// authenticating transport branches its 401 retry policy on this value.
 type tokenSource int
 
 const (
@@ -39,17 +35,14 @@ const (
 	sourceGHCLI
 )
 
-// isEnvSource reports whether s is one of the environment-variable sources,
-// which outrank the cache by rule and must never be invalidated-and-replayed
-// on a 401.
+// isEnvSource reports whether s is environment-sourced, which must never be
+// invalidated-and-replayed.
 func (s tokenSource) isEnvSource() bool {
 	return s == sourceGHTokenEnv || s == sourceGitHubTokenEnv
 }
 
-// envName returns the environment variable name associated with an
-// environment-sourced tokenSource, for naming the rejected source in a 401
-// error message. It panics on a non-environment source, which would be an
-// internal logic error in the caller.
+// envName returns the environment variable name for an environment-sourced
+// tokenSource. Panics on non-environment sources.
 func (s tokenSource) envName() string {
 	switch s {
 	case sourceGHTokenEnv:
@@ -61,28 +54,19 @@ func (s tokenSource) envName() string {
 	}
 }
 
-// ghAuthTokenTimeout bounds the `gh auth token` shell-out so a hung or
-// unexpectedly prompting `gh` process can never block an autonomous lyx run
-// indefinitely. It is a var, not a const, specifically so tests can shrink it
-// via a save/override/restore seam, mirroring runGHAuthToken below.
+// ghAuthTokenTimeout bounds the `gh auth token` shell-out. Var not const
+// to allow test override.
 var ghAuthTokenTimeout = 5 * time.Second
 
-// runGHAuthToken is the seam through which the `gh auth token` shell-out
-// runs. Tests replace it with a fake — including one that hangs — to assert
-// that ghAuthTokenTimeout actually fires, without needing a real gh binary
-// or network access.
+// runGHAuthToken is the seam through which `gh auth token` runs. Tests
+// replace it with a fake.
 var runGHAuthToken = realRunGHAuthToken
 
-// realRunGHAuthToken runs `gh auth token` under ctx and returns the trimmed
-// stdout token, or an error. `gh auth token` itself fails fast when no
-// session exists rather than opening an interactive login flow, and
-// exec.CommandContext guarantees the process is killed if ctx's deadline
-// elapses first — this function never invokes `gh auth login`.
+// realRunGHAuthToken runs `gh auth token` and returns the trimmed token, or
+// an error. Never invokes `gh auth login`.
 func realRunGHAuthToken(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", "auth", "token")
 
-	// Suppress the console window on Windows; no-op on other platforms.
-	// The transport this replaces does exactly this today.
 	proc.HideWindow(cmd)
 
 	out, err := cmd.Output()
@@ -97,15 +81,10 @@ func realRunGHAuthToken(ctx context.Context) (string, error) {
 // waiting or prompting — there is no code path from here to `gh auth login`.
 var ErrTokenUnresolvable = errors.New("githubclient: no GitHub token available (set GH_TOKEN or GITHUB_TOKEN, or run `gh auth login`)")
 
-// resolveToken resolves a GitHub token by trying, in order: the GH_TOKEN
-// environment variable, GITHUB_TOKEN, the on-disk cache (cache.go), and
-// finally a bounded `gh auth token` shell-out. It returns the token alongside
-// the tokenSource that produced it, because the authenticating transport
-// branches its 401 retry policy on that source. Resolution never blocks
-// beyond ghAuthTokenTimeout and never invokes `gh auth login`; an
-// unresolvable token returns ErrTokenUnresolvable immediately.
+// resolveToken tries in order: GH_TOKEN, GITHUB_TOKEN, the on-disk cache, and
+// a bounded `gh auth token` shell-out. Never blocks beyond ghAuthTokenTimeout
+// and never invokes `gh auth login`.
 func resolveToken() (string, tokenSource, error) {
-	// Environment variables always win over the cache, in this fixed order.
 	if tok := strings.TrimSpace(os.Getenv("GH_TOKEN")); tok != "" {
 		return tok, sourceGHTokenEnv, nil
 	}
@@ -113,14 +92,10 @@ func resolveToken() (string, tokenSource, error) {
 		return tok, sourceGitHubTokenEnv, nil
 	}
 
-	// No environment override; a fresh cache entry avoids paying the
-	// `gh auth token` shell-out cost on every call.
 	if tok, ok := readCachedToken(); ok {
 		return tok, sourceCache, nil
 	}
 
-	// Fall through to `gh`, bounded so a hung or unexpectedly prompting
-	// process can never stall an autonomous run.
 	ctx, cancel := context.WithTimeout(context.Background(), ghAuthTokenTimeout)
 	defer cancel()
 
@@ -129,8 +104,6 @@ func resolveToken() (string, tokenSource, error) {
 		return "", sourceUnknown, ErrTokenUnresolvable
 	}
 
-	// Best-effort cache write: a failure to cache must not fail resolution,
-	// since the token itself is still valid and usable for this call.
 	writeCachedToken(tok)
 
 	return tok, sourceGHCLI, nil

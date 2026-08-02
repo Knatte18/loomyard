@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-// validPhases is the closed set of legal Status.Phase values, per
-// status-schema.md.
 var validPhases = map[string]bool{
 	"preflight":  true,
 	"discussion": true,
@@ -23,35 +21,21 @@ var validPhases = map[string]bool{
 	"done":       true,
 }
 
-// validStages is the closed set of legal Status.Stage values, per
-// status-schema.md.
 var validStages = map[string]bool{
 	"produce": true,
 	"gate":    true,
 }
 
-// validOutcomes is the closed set of legal HistoryEntry.Outcome values, per
-// status-schema.md.
 var validOutcomes = map[string]bool{
 	"approved": true,
 	"stuck":    true,
 }
 
-// checkCoherence validates a decoded Status against status-schema.md's
-// validation checklist plus Preflight's fresh-start invariants. It is pure
-// (no I/O, no git) so it can be exhaustively table-tested in isolation.
-//
-// It never short-circuits: every violated rule is collected into the
-// returned slice, so a caller sees every reason a seed is invalid in one
-// pass rather than fixing them one at a time. Returns nil when s is a valid
-// fresh seed.
+// checkCoherence validates a decoded Status against the validation checklist and fresh-start invariants.
+// It collects all violated rules into the returned slice.
 func checkCoherence(s Status) []Failure {
 	var failures []Failure
 
-	// Mandatory strings: strict decode zero-fills an absent JSON field to "",
-	// so an empty string here is the only signal a strict decode gives us that
-	// the field was missing or explicitly blank in the source — either way,
-	// status-schema.md's "required fields present" rule is violated.
 	mandatory := []struct {
 		name  string
 		value string
@@ -71,9 +55,6 @@ func checkCoherence(s Status) []Failure {
 		}
 	}
 
-	// Enum validity. An empty Phase/Stage was already reported above by the
-	// mandatory-string check; skip it here so the same root cause is not
-	// reported twice as both "missing" and "not a valid enum member".
 	if s.Phase != "" && !validPhases[s.Phase] {
 		failures = append(failures, Failure{
 			Check:  CheckSeedIncoherent,
@@ -87,9 +68,6 @@ func checkCoherence(s Status) []Failure {
 		})
 	}
 
-	// Per-history-entry checks: outcome enum, bounced_to gating, and timestamp
-	// format. Collected per entry so a multi-entry history with several bad
-	// entries surfaces every one, not just the first.
 	for i, h := range s.History {
 		if !validOutcomes[h.Outcome] {
 			failures = append(failures, Failure{
@@ -111,12 +89,6 @@ func checkCoherence(s Status) []Failure {
 		}
 	}
 
-	// Fresh-start invariants: Preflight is a stateless validator for a task at
-	// its t=0 seed, not a general-purpose status validator at any point in a
-	// task's life — any sign the task has already advanced (a non-empty
-	// history, a stamped start_sha, a set next_action, or a pending pause)
-	// means Preflight was invoked too late, and that is reported as
-	// half-finished rather than silently accepted.
 	if len(s.History) != 0 || s.StartSha != nil || s.NextAction != nil || s.PauseRequested {
 		failures = append(failures, Failure{
 			Check:  CheckHalfFinished,
@@ -127,12 +99,7 @@ func checkCoherence(s Status) []Failure {
 	return failures
 }
 
-// isRFC3339UTC reports whether ts parses as RFC3339 with a zero UTC offset.
-// time.Parse(time.RFC3339, ts) alone accepts any numeric offset (e.g.
-// "+02:00"); status-schema.md pins timestamps to UTC specifically, so this
-// additionally requires the parsed offset to be exactly zero seconds — which
-// accepts both the "Z" literal and an explicit "+00:00"/"-00:00" offset,
-// while rejecting any non-zero offset.
+// isRFC3339UTC reports whether ts parses as RFC3339 with UTC offset.
 func isRFC3339UTC(ts string) bool {
 	t, err := time.Parse(time.RFC3339, ts)
 	if err != nil {

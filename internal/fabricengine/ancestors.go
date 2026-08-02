@@ -10,21 +10,8 @@ import (
 )
 
 // pruneEmptyAncestors walks upward from start, removing empty directories up to
-// (but not including) stop. It is a void, best-effort helper: all errors
-// (filesystem failures, boundary violations) are silently swallowed.
-//
-// The boundary guard is checked at the top of each iteration: if cur is not
-// strictly under stop (checked by filepath.Rel), the walk halts without
-// attempting removal. This ensures stop is never a removal candidate.
-//
-// On each iteration:
-//  1. Compute rel, err := filepath.Rel(stop, cur)
-//  2. If err != nil, rel == ".", or rel starts with "..", halt the walk
-//  3. Otherwise, attempt os.Remove(cur) (succeeds only if empty)
-//  4. On success, set cur = filepath.Dir(cur) and continue
-//  5. On any error, halt and return
-//
-// The helper is idempotent: calling it on an already-pruned tree is safe.
+// (but not including) stop. All errors are silently swallowed. The helper is
+// idempotent: calling it on an already-pruned tree is safe.
 func pruneEmptyAncestors(start, stop string) {
 	cur := start
 

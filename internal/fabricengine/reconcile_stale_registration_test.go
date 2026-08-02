@@ -95,17 +95,9 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 }
 
 // newFabricFixture returns a lyxtest.CopyPairedLocal fixture seeded with a
-// fabric config and its weft prime already on fabricengine.WeftBranchName
-// ("main") — mirroring CloneHub's post-clone state so a fresh Add/Checkout
-// fork has the suffixed primary branch it expects. Shared setup for every
-// standalone regression guard in this file.
-//
-// Card 7 migrated checkJunctionHealth/Healthy/Reconcile/Checkout/Remove/
-// junctionRepointedDetail to read the junction name-set from the repo-wide
-// hubgeometry.BoardDir(Hub) base rather than each pair's own weft base, so
-// this fixture also materializes the repo-wide config via
-// seedRepoWideFabricConfig — otherwise every migrated read fails with
-// "cannot load fabric.yaml".
+// fabric config and its weft prime on the suffixed primary branch. It also
+// materializes the repo-wide config via seedRepoWideFabricConfig so migrated
+// reads succeed.
 func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	t.Helper()
 

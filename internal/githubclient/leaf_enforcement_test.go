@@ -19,25 +19,15 @@ import (
 	"testing"
 )
 
-// allowedImports are the only non-stdlib import paths production code in
-// this package may use. github.com/google/go-github/v75's importable
-// package is .../v75/github (not the bare module path), and the sys
-// dependency used is golang.org/x/sys/windows -- both entries are the exact
-// import strings the production files carry, not shorthand.
+// allowedImports are the only non-stdlib imports allowed in production code.
 var allowedImports = map[string]bool{
 	"github.com/google/go-github/v75/github":     true,
 	"golang.org/x/sys/windows":                   true,
 	"github.com/Knatte18/loomyard/internal/proc": true,
 }
 
-// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in
-// this package directory imports only stdlib (no '.' in the first path
-// segment) or an entry in allowedImports. It uses go/parser with
-// ImportsOnly so only real import declarations are inspected, never string
-// literals in doc comments. It walks the whole directory rather than a
-// single file so the allowlist covers the union of both cache_windows.go's
-// and cache_other.go's import sets, regardless of which one the local GOOS
-// happens to compile.
+// TestLeafInvariant_AllowlistOnly verifies every non-test .go file imports
+// only stdlib or allowedImports. Uses go/parser with ImportsOnly.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -68,9 +58,6 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 		for _, imp := range astFile.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 
-			// A stdlib import path has no '.' in its first path segment
-			// (e.g. "fmt", "os", "go/parser") -- a domain that would need a
-			// registered TLD (e.g. "github.com/...") always contains one.
 			firstSegment := importPath
 			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
 				firstSegment = importPath[:idx]

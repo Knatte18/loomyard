@@ -11,11 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// composePrompt builds the discussion producer's interview prompt by
-// composing each of the template's four top-level marker values (slug, the
-// two output-file paths, and the mode-specific instructions for how to
-// obtain answers) and filling discussionTemplate with them via
-// stencil.Fill.
+// composePrompt builds the discussion producer's interview prompt by filling
+// the discussion template with the four top-level marker values.
 func composePrompt(slug, decisionRecordPath, supportLogPath string, autonomous bool) ([]byte, error) {
 	values := map[string]string{
 		"slug":                 slug,
@@ -31,12 +28,7 @@ func composePrompt(slug, decisionRecordPath, supportLogPath string, autonomous b
 	return rendered, nil
 }
 
-// modeRules returns the {{.mode_rules}} block: autonomous mode tells the
-// agent no operator will answer, so it must make its own best-judgment
-// pick at every decision point and record it in the support log's Question
-// ledger; interactive mode tells the agent an operator is at the pane and
-// how to ask it questions there. Both branches return non-empty prose so
-// the mode_rules top-level marker is never left blank.
+// modeRules returns the {{.mode_rules}} block for autonomous or interactive mode.
 func modeRules(autonomous bool) string {
 	if autonomous {
 		return "This session is running in autonomous (`--auto`) mode: no operator will " +

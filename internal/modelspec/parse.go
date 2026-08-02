@@ -12,25 +12,19 @@ import (
 	"unicode"
 )
 
-// isIdentChar reports whether r is valid in an alias, a param key, or an
-// escape-form engine name: lowercase letters, digits, and dash only. Case
-// sensitivity is deliberate — an uppercase letter is a charset error, not a
-// normalization opportunity (Strict grammar decision).
+// isIdentChar reports whether r is valid in an alias, param key, or engine name:
+// lowercase letters, digits, and dash only (case-sensitive by design).
 func isIdentChar(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
 }
 
-// isModelIDChar reports whether r is valid in an escape-form model id or a
-// param value: everything isIdentChar allows, plus dot and underscore — the
-// wider charset a provider-side model string or a dotted version value
-// (e.g. "4.5") needs.
+// isModelIDChar reports whether r is valid in an escape-form model id or param value:
+// isIdentChar plus dot and underscore.
 func isModelIDChar(r rune) bool {
 	return isIdentChar(r) || r == '.' || r == '_'
 }
 
-// validateCharset walks s and returns an error naming the first rune that
-// fails allowed, or nil if every rune passes. kind describes the token's role
-// (e.g. "alias", "engine") for the error message.
+// validateCharset walks s and returns an error naming the first invalid rune, or nil.
 func validateCharset(s, kind string, allowed func(rune) bool) error {
 	for i, r := range s {
 		if !allowed(r) {
@@ -40,14 +34,10 @@ func validateCharset(s, kind string, allowed func(rune) bool) error {
 	return nil
 }
 
-// Parse checks s against the strict model-spec grammar and returns the parsed
-// Spec. It recognizes exactly four shapes: alias, alias[k=v,...],
-// engine:model-id, and engine:model-id[k=v,...]. Every other shape is
-// rejected with an error naming the offending token or character — Parse
-// never trims, lowercases, or otherwise tolerates a malformed spec, since
-// specs are YAML scalars an operator writes by hand (Strict grammar
-// decision). On success, Params is nil when s had no bracket part, or the
-// parsed key/value map otherwise.
+// Parse checks s against the strict model-spec grammar and returns the parsed Spec.
+// It recognizes four shapes: alias, alias[k=v,...], engine:model-id, and
+// engine:model-id[k=v,...]. On success, Params is nil when s had no bracket, or the
+// parsed map otherwise.
 func Parse(s string) (Spec, error) {
 	if s == "" {
 		return Spec{}, fmt.Errorf("modelspec: empty spec string")
@@ -131,11 +121,8 @@ func Parse(s string) (Spec, error) {
 	return spec, nil
 }
 
-// parseBracket parses the comma-separated key=value list inside a spec's
-// bracket. fullSpec is the original spec string, carried through only for
-// error messages. Every rejection — missing '=', empty key, empty value,
-// bad charset, duplicate key, unknown key — is its own named error, per the
-// fail-loud grammar contract.
+// parseBracket parses the comma-separated key=value list inside a spec's bracket.
+// Every rejection is its own named error per the fail-loud grammar contract.
 func parseBracket(inner, fullSpec string) (map[string]string, error) {
 	params := make(map[string]string)
 	for _, pair := range strings.Split(inner, ",") {

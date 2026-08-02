@@ -12,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// writeModelsYAML writes contents to the models.yaml path under baseDir,
-// creating the _lyx/config directory tree first.
+// writeModelsYAML writes contents to the models.yaml path under baseDir.
 func writeModelsYAML(t *testing.T, baseDir, contents string) {
 	t.Helper()
 	path := hubgeometry.ConfigFile(baseDir, "models")

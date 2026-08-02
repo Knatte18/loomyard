@@ -13,26 +13,10 @@ import (
 	"strings"
 )
 
-// IsAncestor reports whether sha is an ancestor of ref, via
-// `git merge-base --is-ancestor sha ref`. It maps git's tri-state exit code
-// directly rather than folding any non-zero exit into failure: exit 0 means
-// sha IS an ancestor of ref (true, nil); exit 1 means sha is NOT an ancestor
-// (false, nil) — a genuine, well-formed answer, not an error; any other
-// non-zero exit is a real failure (e.g. sha or ref does not exist in this
-// repo), returned as an error naming the repo path and git's exit code
-// without embedding raw stderr, matching Pull's no-stderr-leak error style.
-// A spawn failure wraps and returns the underlying error.
-//
-// sha is validated with validSHA before ever reaching git, returning
-// ErrInvalidSHA (checkable via errors.Is) on a non-hex value, exactly like
-// ResetHard. ref is validated only against a leading '-' — which git would
-// otherwise parse as a flag rather than a revision — and is deliberately NOT
-// required to be a plain hex SHA: callers of this primitive pass it a
-// resolved commit SHA today, but the primitive itself must stay usable with
-// symbolic refs (branch names, HEAD, etc.), so it uses this lighter guard
-// rather than validSHA. Both bad-argument shapes surface the same
-// ErrInvalidSHA, so a caller has one typed error to check regardless of
-// which argument was malformed.
+// IsAncestor reports whether sha is an ancestor of ref via
+// `git merge-base --is-ancestor`, returning its tri-state exit code: true if
+// an ancestor, false if not (both with nil error), or an error on failure.
+// sha and ref are validated before reaching git, returning ErrInvalidSHA.
 func (r *Repo) IsAncestor(sha, ref string) (bool, error) {
 	if !validSHA(sha) {
 		return false, ErrInvalidSHA

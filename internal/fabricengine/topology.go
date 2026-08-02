@@ -14,9 +14,8 @@
 
 package fabricengine
 
-// Topology is the high-level facade over hub-scoped worktree-topology
-// operations (add/remove/checkout/reconcile/status/prune/cleanup/list). It
-// holds the configuration needed by all topology methods.
+// Topology is the high-level facade over hub-scoped worktree-topology operations.
+// It holds the configuration needed by all topology methods.
 type Topology struct {
 	cfg Config
 }

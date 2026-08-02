@@ -14,9 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestResetHard_MovesToEarlierCommit asserts the ordinary case: resetting to
-// an earlier commit's SHA restores that commit's file state on disk and
-// moves CurrentSHA back to it.
+// TestResetHard_MovesToEarlierCommit asserts ResetHard restores an earlier
+// commit's file state and moves CurrentSHA back to it.
 func TestResetHard_MovesToEarlierCommit(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "v1")

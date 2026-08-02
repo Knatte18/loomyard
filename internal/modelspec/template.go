@@ -10,12 +10,9 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the seed content for models.yaml: the live-keys
-// registry (sonnet/opus/haiku/fable with their operator-owned effort
-// defaults) that configreg materializes when models.yaml is absent. Per the
-// seed-only reconcile decision, this template is written ONCE — reconcile
-// never rewrites an existing models.yaml, so every alias or default an
-// operator adds or removes after materialization survives untouched.
+// ConfigTemplate returns the seed content for models.yaml: the live-keys registry
+// (sonnet/opus/haiku/fable with effort defaults) that configreg materializes
+// when models.yaml is absent.
 func ConfigTemplate() string {
 	return configTemplate
 }

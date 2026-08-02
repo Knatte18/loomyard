@@ -17,10 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// FindBaseDir checks if <cwd>/_lyx exists and returns cwd, or an error if not found.
-//
-// It performs a strict check without walking up to parent directories.
-// Returns the cwd on success, empty string and an error on failure.
+// FindBaseDir checks if <cwd>/_lyx exists, performing a strict check without
+// walking up to parent directories. Returns cwd on success or an error on failure.
 func FindBaseDir(cwd string) (string, error) {
 	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
 	_, err := os.Stat(lyxDir)
@@ -33,26 +31,14 @@ func FindBaseDir(cwd string) (string, error) {
 }
 
 // Load loads and resolves configuration from a YAML file using a template.
-//
-// Flow:
-//  1. Call FindBaseDir(baseDir) and propagate its error.
-//  2. Compute cfgPath := hubgeometry.ConfigFile(baseDir, module) and read it.
-//     If the file is absent, return an error naming the path and instructing "lyx config reconcile".
-//  3. Check for missing keys in the file via yamlengine.MissingKeys(template, fileBytes).
-//     If keys are missing, return an error naming cfgPath, the missing key-paths, and "lyx config reconcile".
-//  4. Build the environment via envsource.Build(baseDir).
-//  5. Resolve fileBytes via yamlengine.Resolve(fileBytes, env).
-//  6. Return the resolved bytes.
-//
-// Errors from steps 3-5 wrap the underlying error with the config key/file context.
+// Returns the resolved bytes or an error if the file is absent, missing keys,
+// or cannot be resolved.
 func Load(baseDir, module string, template []byte) ([]byte, error) {
-	// Step 1: Check if _lyx/ directory exists
 	_, err := FindBaseDir(baseDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 2: Read the config file
 	cfgPath := hubgeometry.ConfigFile(baseDir, module)
 	fileBytes, err := os.ReadFile(cfgPath)
 	if os.IsNotExist(err) {
@@ -62,7 +48,6 @@ func Load(baseDir, module string, template []byte) ([]byte, error) {
 		return nil, fmt.Errorf("read config file %s: %w", cfgPath, err)
 	}
 
-	// Step 3: Check for missing keys
 	missing, err := yamlengine.MissingKeys(template, fileBytes)
 	if err != nil {
 		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
@@ -78,18 +63,15 @@ func Load(baseDir, module string, template []byte) ([]byte, error) {
 		return nil, fmt.Errorf("config file %s: missing keys: %s; run \"lyx config reconcile\"", cfgPath, missingStr)
 	}
 
-	// Step 4: Build the environment
 	env, err := envsource.Build(baseDir)
 	if err != nil {
 		return nil, fmt.Errorf("config file %s: build environment: %w", cfgPath, err)
 	}
 
-	// Step 5: Resolve environment variables
 	resolved, err := yamlengine.Resolve(fileBytes, env)
 	if err != nil {
 		return nil, fmt.Errorf("config file %s: %w", cfgPath, err)
 	}
 
-	// Step 6: Return resolved bytes
 	return resolved, nil
 }

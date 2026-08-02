@@ -25,13 +25,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Command builds the cobra command tree for the fabric module.
-//
-// The parent command carries no persistent flags or PersistentPreRunE for the
-// topology verbs built here — fabric's topology verbs have no shared cwd
-// pre-dispatch and each resolves its own layout and config. weft_verbs.go
-// extends the returned command with the weft-git verbs, their own hidden
-// --weft-path persistent flag, and a PersistentPreRunE scoped to those verbs only.
+// Command builds the cobra command tree for the fabric module. The parent
+// command carries no persistent flags for topology verbs; each resolves its own
+// layout and config. weft_verbs.go extends the command with weft-git verbs and
+// their scoped PersistentPreRunE.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fabric",
@@ -53,8 +50,6 @@ fabric is the sole host↔weft git-coordination module. See docs/overview.md.
 Example:
   lyx fabric add my-task
   lyx fabric checkout my-task`,
-		// RunE is set so that bare "lyx fabric" lists subcommands and "lyx fabric bogus"
-		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 	}
 
@@ -98,7 +93,6 @@ Example:
   lyx fabric clone https://github.com/user/repo https://github.com/user/repo-weft
   lyx fabric clone --subpath backend https://github.com/user/mono https://github.com/user/mono-weft`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
-			// Read --reset/--subpath from the cobra flag set via closure over cloneCmd.
 			reset, _ := cloneCmd.Flags().GetBool("reset")
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
 			return runCloneWithReset(out, args, reset, subpath)
@@ -163,7 +157,6 @@ Example:
 	removeCmd.Flags().Bool("force", false, "forcefully remove worktree with uncommitted changes")
 	cmd.AddCommand(removeCmd)
 
-	// checkout [branch]
 	cmd.AddCommand(&cobra.Command{
 		Use:   "checkout [branch]",
 		Short: "coordinated branch switch across host+weft with junction re-point",
@@ -231,7 +224,6 @@ missing junction and materialises its weft-side target.`,
 	pruneCmd.Flags().Bool("apply", false, "remove stale weft worktrees (default is dry-run/report)")
 	cmd.AddCommand(pruneCmd)
 
-	// cleanup [--apply] [--force]
 	var cleanupCmd *cobra.Command
 	cleanupCmd = &cobra.Command{
 		Use:   "cleanup [--apply] [--force]",
@@ -261,7 +253,6 @@ reported but never deleted here, since they are not fabric-managed.`,
 	cleanupCmd.Flags().Bool("force", false, "also delete gate-protected task branches (requires --apply)")
 	cmd.AddCommand(cleanupCmd)
 
-	// unwire
 	cmd.AddCommand(&cobra.Command{
 		Use:   "unwire",
 		Short: "fully deactivate fabric wiring for this worktree",
@@ -287,17 +278,14 @@ Example:
 	return cmd
 }
 
-// RunCLI is the public seam for the fabric module.
-//
-// It delegates to clihelp.Execute(Command(), out, args) so in-process tests can
-// capture all output via a single io.Writer. Returns the exit code (0 on success,
-// 1 on cobra-level error such as unknown command or bad flag).
+// RunCLI is the public seam for the fabric module. It delegates to
+// clihelp.Execute, allowing in-process tests to capture output. Returns the
+// exit code (0 on success, 1 on error).
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
 
-// runAdd parses and executes the fabric add subcommand.
-// Under cobra, args[0] is the slug (cobra has already stripped the "add" token).
+// runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
 func runAdd(out io.Writer, args []string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -309,9 +297,6 @@ func runAdd(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd (see the fabric
-	// clone-does-everything Shared Decision).
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -349,8 +334,6 @@ func runList(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd.
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -367,15 +350,9 @@ func runList(out io.Writer, _ []string) int {
 	})
 }
 
-// runCheckout parses and executes the fabric checkout subcommand.
-//
-// It resolves the layout and fabric config from the current working directory,
-// then calls Checkout with the supplied branch argument. When no branch is
-// supplied (e.g. when invoked from the fabric-checkout launcher shortcut),
-// the current host branch is resolved via git and used as the target — this
-// performs an in-place re-checkout that re-points junctions and re-syncs the
-// weft side without requiring the user to supply a branch name. On success it
-// emits a JSON object with branch and weft_worktree fields.
+// runCheckout executes the fabric checkout subcommand. When no branch is
+// supplied, it resolves the current host branch and performs an in-place
+// re-checkout, re-pointing junctions and re-syncing weft.
 func runCheckout(out io.Writer, args []string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -387,10 +364,6 @@ func runCheckout(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Resolve the branch: use the supplied argument when present; otherwise
-	// derive it from the current host HEAD so the launcher shortcut (which
-	// emits no branch argument) performs a valid in-place re-checkout.
-	// Under cobra, args[0] is the branch (cobra stripped the "checkout" token).
 	var branch string
 	if len(args) >= 1 {
 		branch = args[0]
@@ -412,8 +385,6 @@ func runCheckout(out io.Writer, args []string) int {
 		}
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd.
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -431,11 +402,8 @@ func runCheckout(out io.Writer, args []string) int {
 	})
 }
 
-// runPairs parses and executes the fabric pairs subcommand.
-//
-// Resolves the layout and fabric config from the current working directory,
-// calls Status to enumerate all host↔weft pairs with drift and pollution data,
-// and emits the result via output.Ok.
+// runPairs executes the fabric pairs subcommand, enumerating all host↔weft
+// pairs with drift and pollution data.
 func runPairs(out io.Writer, _ []string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -447,8 +415,6 @@ func runPairs(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd.
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -465,11 +431,8 @@ func runPairs(out io.Writer, _ []string) int {
 	})
 }
 
-// runReconcile parses and executes the fabric reconcile subcommand.
-//
-// Resolves the layout and fabric config from the current working directory,
-// calls Reconcile to walk and repair all host↔weft pairs, and emits the
-// result via output.Ok.
+// runReconcile executes the fabric reconcile subcommand, walking and repairing
+// all host↔weft pairs.
 func runReconcile(out io.Writer, _ []string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -481,8 +444,6 @@ func runReconcile(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd.
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -500,7 +461,6 @@ func runReconcile(out io.Writer, _ []string) int {
 }
 
 // runPruneWithFlag executes the prune logic with the resolved apply flag.
-// It is called from the pruneCmd RunE after reading --apply from the cobra flag set.
 func runPruneWithFlag(out io.Writer, apply bool) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -512,8 +472,6 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd.
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -530,8 +488,8 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 	})
 }
 
-// runCleanupWithFlags executes the cleanup logic with the resolved apply and force flags.
-// It is called from the cleanupCmd RunE after reading --apply and --force from the cobra flag set.
+// runCleanupWithFlags executes the cleanup logic with the resolved apply and
+// force flags.
 func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -543,8 +501,6 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd.
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -562,8 +518,6 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 }
 
 // runRemoveWithFlag executes the remove logic with the resolved force flag.
-// It is called from the removeCmd RunE after reading --force from the cobra flag set.
-// Under cobra, args[0] is the slug (cobra has already consumed "remove" from the list).
 func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -575,8 +529,6 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-	// file: load it from the board dir, never from cwd.
 	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -601,14 +553,9 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 	})
 }
 
-// addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`.
-//
-// It intentionally returns the zero value: `lyx fabric add` always pushes both the host
-// and weft branches — a paired worktree only exists once both remotes carry its
-// branch, so add does not honor the WEFT_SKIP_GIT / WEFT_SKIP_PUSH bypass gates
-// (those gate the weft-git verbs — commit/push/sync — via fabricengine.EnvSyncOptions,
-// not topology creation). Tests pass AddOptions directly rather than through the
-// environment, keeping t.Parallel() safe.
+// addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`,
+// always returning the zero value. The add subcommand always pushes both sides;
+// bypass gates do not apply.
 func addOptionsFromEnv() fabricengine.AddOptions {
 	return fabricengine.AddOptions{}
 }

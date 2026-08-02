@@ -133,40 +133,10 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
-// Pull is fabric's unified pull entry point: it pulls weft first (a plain
-// fast-forward via PullWeft), then fetches and inspects warp, reconciling
-// weft's correspondence when warp's history has been rewritten out from
-// under it. See the weft-first-ordering / report-not-rollback Shared
-// Decision for why weft always runs first and why a warp-side failure
-// reports the accumulated result rather than unwinding the weft pull, and
-// the reachability-never-object-existence Shared Decision for why every
-// rewrite/anchor check below uses f.Warp.IsAncestor, never f.Warp.SHAExists.
-//
-// Flow:
-//  1. opts.SkipGit short-circuits to a zero PullResult, matching PullWeft.
-//  2. Weft pulls first; a weft failure returns immediately with warp
-//     untouched.
-//  3. Local-unpushed is captured BEFORE the fetch, so `@{u}` still names the
-//     PRE-fetch upstream tip while classifying it.
-//  4. Warp is fetched (remote-tracking refs only; the local branch does not
-//     move yet).
-//  5. The fetched upstream tip and the pre-fetch local HEAD are resolved to
-//     plain SHAs.
-//  6. If they are already equal, there is nothing to advance.
-//  7. Otherwise the pull is classified as a clean fast-forward or a history
-//     rewrite via IsAncestor(localHEAD, upstreamSHA).
-//  8. A clean fast-forward resets warp straight to the upstream tip; no
-//     rewrite, no reconcile — a clean ff can never orphan a recorded
-//     Warp-SHA.
-//  9. A rewrite aborts loudly (ErrWarpDivergedUnpushed) if local warp already
-//     has unpushed commits — the double-conflict case Pull refuses to
-//     resolve unattended. Otherwise it walks the correspondence index for
-//     the nearest-older-reachable anchor (reachableAnchor): an empty index
-//     advances warp with no reconcile; no surviving anchor aborts loudly
-//     (ErrNoSurvivingAnchor); a surviving anchor resets warp to the new tip
-//     and writes a re-anchor empty weft commit under the weft write lock,
-//     recording the new correspondence and enumerating PATTERN residue over
-//     the orphaned range.
+// Pull is fabric's unified pull entry point: it pulls weft first, then fetches
+// and inspects warp, reconciling weft's correspondence when warp's history has
+// been rewritten. A warp-side failure reports the accumulated result rather than
+// unwinding the weft pull (weft-first-ordering / report-not-rollback).
 func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	if opts.SkipGit {
 		return PullResult{}, nil
@@ -174,19 +144,10 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 
 	var result PullResult
 
-	// Weft first: a weft-side failure means warp is never touched at all, per
-	// the weft-first-ordering Shared Decision — this is the one path that
-	// returns a zero PullResult rather than the accumulated one, since
-	// nothing warp-side has been attempted yet.
 	if err := f.PullWeft(opts); err != nil {
 		return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
 	}
 	result.WeftPulled = true
-
-	// Capture local-unpushed BEFORE the fetch: HasUnpushed reads `@{u}`, and
-	// that must still name the PRE-fetch upstream tip so the double-conflict
-	// check below reflects local state as of before this call started
-	// touching the remote-tracking ref.
 	hadUnpushed, err := f.Warp.HasUnpushed()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "unpushed-check", Err: err}
@@ -206,7 +167,6 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, &PartialPullError{WeftPulled: true, Stage: "resolve", Err: err}
 	}
 
-	// Already up to date: nothing to advance, no rewrite, no reconcile.
 	if localHEAD == upstreamSHA {
 		return result, nil
 	}
@@ -217,9 +177,6 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	}
 
 	if isFF {
-		// Clean fast-forward: local HEAD is still an ancestor of the new
-		// upstream tip, so no recorded Warp-SHA can have been orphaned —
-		// advance and return, no reconcile needed.
 		if err := f.Warp.ResetHard(upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
@@ -228,15 +185,9 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, nil
 	}
 
-	// History rewritten: local HEAD is no longer an ancestor of the new
-	// upstream tip (rebase or force-push upstream).
 	result.RewriteDetected = true
 
 	if hadUnpushed {
-		// Double conflict: local warp has its own unpushed work AND upstream
-		// has rewritten history. Resolving this automatically would require
-		// deciding what happens to the caller's unpushed commits, so Pull
-		// aborts loudly instead, making no change to either repo.
 		return result, ErrWarpDivergedUnpushed
 	}
 
@@ -251,7 +202,6 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	entries := ix.entries()
 
 	if len(entries) == 0 {
-		// No recorded history to orphan at all — advance only, no reconcile.
 		if err := f.Warp.ResetHard(upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
@@ -267,14 +217,9 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, &PartialPullError{WeftPulled: true, Stage: "anchor-walk", Err: err}
 	}
 	if !found {
-		// Nothing recorded survives the rewrite at all — there is no safe
-		// baseline to re-anchor against, so Pull aborts loudly, making no
-		// change to either repo.
 		return result, ErrNoSurvivingAnchor
 	}
 
-	// A surviving anchor exists: reconcile. Reset warp to the new upstream
-	// tip first, then re-anchor weft's correspondence to it.
 	if err := f.Warp.ResetHard(upstreamSHA); err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 	}
@@ -283,10 +228,6 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	result.AnchorWarpSHA = anchor.WarpSHA
 	result.AnchorWeftSHA = anchor.WeftSHA
 
-	// Capture weft HEAD before the reconcile commit lands, so the
-	// PATTERN-residue range below is exclusive of the re-anchor commit
-	// itself. A failure here is not fatal to the residue scan — an empty
-	// weftHEADBeforeAnchor simply yields no residue.
 	weftHEADBeforeAnchor, _ := f.Weft.CurrentSHA()
 
 	lockDir, err := f.ensureWeftLockDir()
@@ -302,10 +243,6 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	msg := appendWarpSHATrailer("fabric: re-anchor weft after warp rebase", upstreamSHA)
 	reanchorSHA, _, err := f.commitEmptySnapshot(msg, upstreamSHA)
 	if err != nil {
-		// Report-not-rollback (mirrors Fabric.Commit's own convention): warp
-		// already advanced above, and that advance is not undone here. The
-		// error is reported with the accumulated result rather than unwound,
-		// per the weft-first / report-not-rollback Shared Decision.
 		return result, &PartialPullError{WeftPulled: true, Stage: "reanchor", Err: err}
 	}
 	result.Reconciled = true

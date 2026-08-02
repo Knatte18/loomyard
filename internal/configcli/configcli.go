@@ -92,16 +92,6 @@ func printAll(baseDir string, out io.Writer) int {
 }
 
 // editOne edits a single config module and optionally syncs on success.
-//
-// Flow:
-// 1. Look up the template for the given module name via templateFor.
-// 2. If unknown, print an error message listing known modules and return 1.
-// 3. Call configengine.Edit to open the file in the editor and validate YAML.
-// 4. If configengine.Edit returns configengine.ErrAborted, print the abort message and return 1.
-// 5. If configengine.Edit returns any other error, print it and return 1.
-// 6. On success, call sync with a buffered writer to capture its output.
-// 7. If sync returns 0, discard the buffer and print the success message.
-// 8. If sync returns non-zero, print a failure message with the sync output and return 1.
 func editOne(baseDir string, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc) int {
 	// Look up the template for this module.
 	template, ok := configreg.Template(module)
@@ -155,18 +145,8 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 }
 
 // setModule writes pairs into a single config module's file and optionally
-// syncs on success, mirroring editOne's structure but with no editor
-// invocation: configengine.Set performs the whole non-interactive write in
-// one call.
-//
-// Flow:
-// 1. Look up the template for the given module name via configreg.Template.
-// 2. If unknown, print an error message listing known modules and return 1.
-// 3. Call configengine.Set to scaffold-if-missing and apply pairs.
-// 4. If Set returns an error (e.g. an unknown config key), print it and return 1.
-// 5. On success, call sync with a buffered writer to capture its output.
-// 6. If sync returns 0, discard the buffer and print the success message.
-// 7. If sync returns non-zero, print a failure message with the sync output and return 1.
+// syncs on success. Like editOne, but with no editor: configengine.Set performs
+// the write non-interactively in one call.
 func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc) int {
 	// Look up the template for this module.
 	template, ok := configreg.Template(module)
