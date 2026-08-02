@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: webster-fork-context-hygiene
 branch: webster-fork-context-hygiene
 plan: _mill/plan
@@ -25,4 +25,15 @@ plan-review-r3  '2026-08-02T14:12:08Z'
 plan-fix-r3  '2026-08-02T14:12:08Z'
 plan-fix-r4  '2026-08-02T14:25:12Z'
 planned  '2026-08-02T14:25:25Z'
+implementing  '2026-08-02T14:25:54Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: planparser-card-source-identity
+    state: pending
+  - name: webster-prompt-split
+    state: pending
 ```
