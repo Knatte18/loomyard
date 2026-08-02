@@ -82,7 +82,7 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Goal:** "You have `lyx` on PATH and nothing else inside this repo. Find out what `lyx fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all 15 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `unwire`)? Does each `--help` explain itself? Is each description accurate and useful?
+**Watch:** Does `lyx fabric` list all 16 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`)? Does each `--help` explain itself? Is each description accurate and useful?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -114,7 +114,7 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Goal:** "Make a small, clearly-marked change inside the weft-tracked scope and run it through `fabric status`, `commit`, `push`, `pull`, and `sync`."
 
-**Watch:** Does `fabric status` report the change accurately? Do `commit`/`push` mirror it to the weft remote? The commit message is always the fixed string `"weft sync"` -- it is not generated from changed files and there is no `-m` flag to customize it (confirm via `lyx fabric commit --help`). Every fabric weft commit also carries a trailing `Warp-SHA: <sha>` trailer naming the paired host repo's current HEAD -- inspect the commit body (e.g. `git -C <weft-worktree> log -1`) and confirm the trailer is present and names a real, resolvable warp commit. `fabric sync` pushes via a detached child process, so `status` immediately after `sync` may lag behind the actual push -- a confusing-but-expected rough edge to note as a `WARN`, not to pre-judge here. Staging is scoped to the directories listed in the fabric config (default `_lyx`), so the test change should land inside that scope to be picked up at all.
+**Watch:** `fabric status` now reports the unified both-sides uncommitted-change view: a side-labelled list of `{path, side}` entries (`side` is `"warp"` or `"weft"`), not the old weft-only branch/dirty/ahead/behind map -- confirm the test change to the weft-tracked scope shows up as an entry with `side: "weft"`. Do `commit`/`push` mirror it to the weft remote? The commit message is always the fixed string `"weft sync"` -- it is not generated from changed files and there is no `-m` flag to customize it (confirm via `lyx fabric commit --help`). Every fabric weft commit also carries a trailing `Warp-SHA: <sha>` trailer naming the paired host repo's current HEAD -- inspect the commit body (e.g. `git -C <weft-worktree> log -1`) and confirm the trailer is present and names a real, resolvable warp commit. `fabric sync` pushes via a detached child process, so `status` immediately after `sync` may lag behind the actual push -- a confusing-but-expected rough edge to note as a `WARN`, not to pre-judge here. Staging is scoped to the directories listed in the fabric config (default `_lyx`), so the test change should land inside that scope to be picked up at all.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

@@ -22,8 +22,8 @@ import (
 
 // TestCommit_PartialFailure_WarpLandsWeftCommitFails covers outcome (1): the
 // warp commit lands, but the weft commit itself fails (forced here by
-// pre-creating the weft gitdir's index.lock — the same lever
-// TestRevertWithWeft_WeftResetFailure_RollsWarpBack uses). The warp commit
+// pre-creating the weft gitdir's index.lock, the same way a `git reset
+// --hard` can be forced to fail). The warp commit
 // must stay, the returned error must be a *PartialCommitError naming the
 // warp SHA with WeftCommitted=false, and the durable warp commit must still
 // be pushed.

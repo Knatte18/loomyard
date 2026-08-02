@@ -48,12 +48,12 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, unborn warp")
 
-	sha, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() against an unborn warp HEAD error = %v; want nil", err)
+		t.Fatalf("commitWeft() against an unborn warp HEAD error = %v; want nil", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft() committed = false; want true")
+		t.Fatalf("commitWeft() committed = false; want true")
 	}
 
 	rawMessage := commitMessageAt(t, weftFixture.WeftPath, sha)
@@ -80,12 +80,12 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpSHA := commitWarp(t, warpPath, "warp's first commit")
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, warp now born")
 
-	sha2, committed2, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha2, committed2, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() after warp's first commit error = %v; want nil", err)
+		t.Fatalf("commitWeft() after warp's first commit error = %v; want nil", err)
 	}
 	if !committed2 {
-		t.Fatalf("CommitWeft() after warp's first commit committed = false; want true")
+		t.Fatalf("commitWeft() after warp's first commit committed = false; want true")
 	}
 
 	rawMessage2 := commitMessageAt(t, weftFixture.WeftPath, sha2)
@@ -101,51 +101,4 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	if _, ok := ix.exact(warpSHA); !ok {
 		t.Errorf("correspondence index has no entry for %q after the healed CommitWeft; want one", warpSHA)
 	}
-}
-
-// TestSyncWeft_UnbornWarpHEAD_SkipPushAndPush covers SyncWeft's two branches
-// against an unborn warp HEAD: the SkipPush (or SkipGit) early return and the
-// real-push path. Both must report Committed=true with WarpSHA left empty
-// (there is no warp SHA to report), never error.
-func TestSyncWeft_UnbornWarpHEAD_SkipPushAndPush(t *testing.T) {
-	t.Run("SkipPush", func(t *testing.T) {
-		warpPath := newUnbornWarpRepo(t)
-		weftFixture := lyxtest.CopyWeft(t)
-		f := newFabric(t, warpPath, weftFixture.WeftPath)
-
-		writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, unborn warp, skip push")
-
-		res, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{SkipPush: true})
-		if err != nil {
-			t.Fatalf("SyncWeft(SkipPush) against an unborn warp HEAD error = %v; want nil", err)
-		}
-		if !res.Committed || res.Pushed {
-			t.Fatalf("SyncWeft(SkipPush) = %+v; want Committed=true Pushed=false", res)
-		}
-		if res.WarpSHA != "" {
-			t.Errorf("SyncWeft(SkipPush) WarpSHA = %q; want empty (warp has no HEAD yet)", res.WarpSHA)
-		}
-	})
-
-	t.Run("RealPush", func(t *testing.T) {
-		warpPath := newUnbornWarpRepo(t)
-		weftFixture := lyxtest.CopyWeft(t)
-		f := newFabric(t, warpPath, weftFixture.WeftPath)
-
-		writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, unborn warp, real push")
-
-		res, err := f.SyncWeft(DefaultCommitMessage, []string{"_lyx"}, SyncOptions{})
-		if err != nil {
-			t.Fatalf("SyncWeft() against an unborn warp HEAD error = %v; want nil", err)
-		}
-		if !res.Committed || !res.Pushed {
-			t.Fatalf("SyncWeft() = %+v; want Committed=true Pushed=true", res)
-		}
-		if res.WarpSHA != "" {
-			t.Errorf("SyncWeft() WarpSHA = %q; want empty (warp has no HEAD yet)", res.WarpSHA)
-		}
-		if !f.Weft.SHAExists(res.WeftSHA) {
-			t.Errorf("SHAExists(%q) = false; want true (it is HEAD)", res.WeftSHA)
-		}
-	})
 }

@@ -80,13 +80,13 @@ func (e *PartialCommitError) Unwrap() error {
 var spawnDetachedPushFn = SpawnDetachedPush
 
 // Commit classifies files into warp-side and weft-side paths (via
-// classifyPaths, passing relPath == "." per the relpath-is-dot-for-slice-2
-// Shared Decision, against the wired name-set RepoWiredNames resolves from
-// the repo-wide `weft:main` base at hubgeometry.BoardDir(Hub) — the same
-// base checkJunctionHealth, Reconcile, junctionRepointedDetail, PairInSync,
-// Topology.Checkout, and Topology.Remove all read through, never f.weftPath's
-// own per-pair base, so every worktree's commits classify against the one
-// repo-wide pathspec), commits each side under commitBothSides, and — once
+// classifyPaths, passing the resolved worktree's l.RelPath, against the
+// wired name-set RepoWiredNames resolves from the repo-wide `weft:main` base
+// at hubgeometry.BoardDir(Hub) — the same base checkJunctionHealth,
+// Reconcile, junctionRepointedDetail, Healthy, Topology.Checkout, and
+// Topology.Remove all read through, never f.weftPath's own per-pair base, so
+// every worktree's commits classify against the one repo-wide pathspec),
+// commits each side under commitBothSides, and — once
 // that returns, lock already released — fires the async both-sides push
 // whenever something landed. See the combined-commit-lock Shared Decision: the
 // combined write lock (`.weft/weft.write.lock`, the existing
@@ -133,7 +133,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		return CommitResult{}, err
 	}
 
-	warpFiles, weftFiles := classifyPaths(".", wiredNames, files)
+	warpFiles, weftFiles := classifyPaths(l.RelPath, wiredNames, files)
 	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 
 	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)

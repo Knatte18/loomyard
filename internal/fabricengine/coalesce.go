@@ -1,5 +1,5 @@
 // coalesce.go hosts the generic loop-until-clean coalescing primitive
-// CoalescePush and fabric's own two-sided rebase-free push entry
+// coalescePush and fabric's own two-sided rebase-free push entry
 // CoalescePushBothAt built on top of it. The generic primitive stays
 // caller-agnostic — it owns only the absorbing lock and the loop, never any
 // commit/stage/push policy — while fabric's push step (and the small helpers
@@ -18,16 +18,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// CoalescePush drives a caller-supplied step to completion under one held
+// coalescePush drives a caller-supplied step to completion under one held
 // absorbing lock at lockPath: it acquires the lock once, then calls step
 // repeatedly, looping again each time step reports progressed == true and
 // exiting — releasing the lock — on the first progressed == false or on a
-// non-nil error, which propagates to the caller. CoalescePush contains no
+// non-nil error, which propagates to the caller. coalescePush contains no
 // commit, stage, ensure-ignored, or push logic of its own; step supplies all
-// of that. It is exported because boardengine, a separate package that
-// already imports fabricengine, calls it directly for its own commit-driven
-// coalescing loop.
-func CoalescePush(lockPath string, step func() (progressed bool, err error)) error {
+// of that. It is unexported: Bolt.Sync and this file's own
+// CoalescePushBothAt are its only two callers, both in-package, now that
+// boardengine composes its coalescing loop through Bolt rather than calling
+// this primitive directly.
+func coalescePush(lockPath string, step func() (progressed bool, err error)) error {
 	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return fmt.Errorf("fabricengine: acquire push lock: %w", err)
@@ -93,8 +94,8 @@ func pushRebaseFreeLogged(path string) error {
 // under fabric's own absorbing push lock, looping until a push iteration
 // advances neither side's HEAD — the rebase-free, lock-free-per-side
 // entry point batch 3's CLI bypass handler wires in and board (batch 4)
-// reuses the generic CoalescePush half of. It honors opts.SkipGit/SkipPush by
-// returning nil immediately, matching PushWeftAt/PushWarpAt's gating.
+// reuses the generic coalescePush half of. It honors opts.SkipGit/SkipPush by
+// returning nil immediately, matching pushWeftAt/PushWarpAt's gating.
 //
 // weftPath must be non-empty: the absorbing push lock's only sanctioned home
 // is under weftPath's .weft/ (a host-root lock is forbidden by the
@@ -159,5 +160,5 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) error {
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil
 	}
 
-	return CoalescePush(lockPath, step)
+	return coalescePush(lockPath, step)
 }

@@ -2,12 +2,12 @@
 // module. It builds the "fabric" parent command and its hub-scoped topology verbs
 // (add, list, remove, checkout, pairs, reconcile, prune, cleanup), each driving
 // fabricengine.Topology for the host↔weft worktree pairing. The weft-git
-// content-sync verbs (status, commit, push, pull, sync) are wired in by
+// content-sync verbs (status, commit, push, pull, sync, diff) are wired in by
 // weft_verbs.go, which also extends this file's Command() build with the
 // --weft-path bypass flag and its PersistentPreRunE.
 
 // Package fabriccli owns the unified host↔weft cobra surface for lyx: the flat
-// 14-verb "lyx fabric" tree combining host↔weft topology verbs and weft
+// 16-verb "lyx fabric" tree combining host↔weft topology verbs and weft
 // content-sync verbs over the fabricengine package. fabric is the sole
 // host↔weft git-coordination module (see docs/overview.md). Every fabric weft
 // branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).

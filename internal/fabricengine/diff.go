@@ -1,12 +1,12 @@
-// diff.go implements the Go-internal unified Fabric.Diff and Fabric.Status:
-// two read-only, side-labelled views over what changed across a warp<->weft
-// pair, distinct from both status.go's Topology.Status (the paired
-// host<->weft topology/branch-drift view) and StatusWeft (a dirty/ahead/
-// behind bool view). Fabric.Diff answers "what changed since this warp SHA,
-// on both sides" via the correspondence index; Fabric.Status answers "what is
-// currently uncommitted, on both sides" via gitrepo.Repo.WorktreeChangedFiles.
-// Neither classifies paths or calls WiredNames — both are pure merges over
-// each repo's own changed-file primitive.
+// diff.go implements the unified Fabric.Diff and Fabric.Status: two
+// read-only, side-labelled views over what changed across a warp<->weft
+// pair, distinct from status.go's Topology.Status (the paired host<->weft
+// topology/branch-drift view). Fabric.Diff answers "what changed since this
+// warp SHA, on both sides" via the correspondence index; Fabric.Status
+// answers "what is currently uncommitted, on both sides" via
+// gitrepo.Repo.WorktreeChangedFiles. Neither classifies paths or calls
+// WiredNames — both are pure merges over each repo's own changed-file
+// primitive.
 
 package fabricengine
 
@@ -17,8 +17,8 @@ import (
 
 // weftAnchorForWarpSHA resolves warpSHA to the weft SHA Fabric.Diff should
 // anchor its weft-side comparison to, via the same exact-then-nearest-older
-// resolution resolveRevertTarget already performs for RevertWithWeft — but
-// bridging, not reverting: nothing is reset here. A warpSHA older than the
+// resolveRevertTarget resolver — but bridging, not reverting: nothing is
+// reset here. A warpSHA older than the
 // first recorded correspondence is a valid pre-lyx state, not an error, so
 // that case is reported as found=false rather than propagating
 // ErrNoCorrespondence: a caller diffing since before fabric started tracking
@@ -54,8 +54,8 @@ const (
 // warp<->weft pair, labelled with which side it changed on. Named
 // ChangeEntry (not reusing status.go's PairStatus/StatusResult, a different
 // paired-topology view) to keep this unified "what changed in my worktree"
-// surface distinct from both that view and StatusWeft's dirty/ahead/behind
-// bool view — three separate surfaces, not variations of one.
+// surface distinct from that paired-topology view — two separate surfaces,
+// not variations of one.
 type ChangeEntry struct {
 	Path string
 	Side ChangeSide
@@ -74,9 +74,9 @@ type DiffResult struct {
 // sinceWarpSHA: warp-side changes are sinceWarpSHA..HEAD in the warp repo
 // (via Warp.ChangedFilesSince); weft-side changes are computed against the
 // nearest-at-or-before weft SHA correspondence resolves sinceWarpSHA to (via
-// weftAnchorForWarpSHA), not an exact match — the same nearest-older bridge
-// RevertWithWeft uses, since an exact correspondence entry for sinceWarpSHA
-// need not exist. When no weft correspondence exists at or before
+// weftAnchorForWarpSHA's underlying resolveRevertTarget resolver), not an
+// exact match, since an exact correspondence entry for sinceWarpSHA need not
+// exist. When no weft correspondence exists at or before
 // sinceWarpSHA at all, the weft side is empty and
 // DiffResult.NoWeftCorrespondence is true rather than an error: a diff since
 // before fabric started tracking this pair has no weft baseline, which is a

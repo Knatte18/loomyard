@@ -6,7 +6,7 @@
 // caller passes them, with no fabric/hubgeometry code change needed for a
 // future module to append its own junction name to pathspec — and (2) that a
 // worktree whose pathspec is narrower than the default (only "_lyx") is still
-// reported healthy by PairInSync, since a narrow pathspec is a legitimate,
+// reported healthy by Healthy(), since a narrow pathspec is a legitimate,
 // unenforced reality (see doc.go's narrow-pathspec asymmetry note), not a
 // drift shape.
 //
@@ -82,25 +82,25 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	}
 }
 
-// TestPairInSync_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy
-// proof: PairInSync loads its junction name-set from the repo-wide
+// TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy
+// proof: Healthy loads its junction name-set from the repo-wide
 // hubgeometry.BoardDir(l.Hub) fabric.yaml (card 7), so a worktree whose
 // pathspec names only "_lyx" — narrower than the "_lyx _pattern" default —
 // is reported in sync once "_lyx" alone is wired. A narrow pathspec is a
 // legitimate, unenforced reality (doc.go's narrow-pathspec asymmetry note),
-// not a drift shape PairInSync should flag.
+// not a drift shape Healthy should flag.
 //
-// PairInSync checks weft-branch correspondence (weftBranch ==
+// Healthy checks weft-branch correspondence (weftBranch ==
 // WeftBranchName(hostBranch), drift.go:69-72) before the junction loop, and
 // raw CopyPairedLocal leaves the weft prime on "main" (not "main-weft"), so
-// this checks out the weft branch first — the same TestPairInSync_JunctionDriftShapes
+// this checks out the weft branch first — the same TestHealthy_JunctionDriftShapes
 // pattern (junction_pattern_integration_test.go:~400).
-func TestPairInSync_NarrowPathspecIsHealthy(t *testing.T) {
+func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 
 	fixture := lyxtest.CopyPairedLocal(t)
 	// The repo-wide pathspec (not fixture.WeftPrime's own weft base) is what
-	// PairInSync reads after card 7; lyxtest.CopyPairedLocal does not create
+	// Healthy reads after card 7; lyxtest.CopyPairedLocal does not create
 	// a _board dir, so create it and its _lyx/config/ first, mirroring
 	// seedRepoWideFabricConfig but with this test's narrow "_lyx"-only
 	// pathspec instead of the default template.
@@ -120,11 +120,11 @@ func TestPairInSync_NarrowPathspecIsHealthy(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	ok, reason, err := fabricengine.PairInSync(l)
+	ok, reason, err := fabricengine.Healthy(l)
 	if err != nil {
-		t.Fatalf("PairInSync: %v", err)
+		t.Fatalf("Healthy: %v", err)
 	}
 	if !ok {
-		t.Errorf("PairInSync ok = false (reason %q); want true with only _lyx wired (narrow-pathspec reality)", reason)
+		t.Errorf("Healthy ok = false (reason %q); want true with only _lyx wired (narrow-pathspec reality)", reason)
 	}
 }

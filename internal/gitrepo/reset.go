@@ -1,7 +1,8 @@
-// reset.go implements ResetHard, the SHA-validated hard reset that
-// RevertWithWeft's history-recovery flow builds on: point HEAD (and the
-// working tree) at a caller-supplied commit exactly, discarding any local
-// commits or uncommitted changes the checkout previously had past that SHA.
+// reset.go implements ResetHard, the SHA-validated hard reset fabric's
+// coordinated history-recovery flows (Fabric.Pull's rebase-reconciliation
+// among them) build on: point HEAD (and the working tree) at a
+// caller-supplied commit exactly, discarding any local commits or
+// uncommitted changes the checkout previously had past that SHA.
 
 package gitrepo
 
@@ -17,7 +18,7 @@ import "fmt"
 // other non-zero exit (a well-formed sha not present in this repo's history)
 // the returned error names the repo path and git's exit code without
 // including raw stderr, matching Pull's no-stderr-leak error style.
-// ResetHard is the primitive RevertWithWeft's history recovery builds on.
+// ResetHard is the primitive fabric's coordinated history recovery builds on.
 func (r *Repo) ResetHard(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA

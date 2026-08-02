@@ -21,15 +21,15 @@ import (
 )
 
 // setupPreflightFixture builds a CopyPaired fixture, seeds a fabric config at
-// the weft base (PairInSync/checkJunctionHealth now load fabric.yaml for the
+// the weft base (Healthy/checkJunctionHealth now load fabric.yaml for the
 // wired junction name-set, so a fixture without one would see every junction
 // health check fail as "cannot load fabric.yaml" instead of exercising the
 // scenario under test — mirroring fabricengine's own newFabricFixture), seeds
 // the repo-wide fabric config at <hub>/_board/_lyx/config/fabric.yaml
-// (checkJunctionHealth/PairInSync's wired-junction name-set read is migrated
+// (checkJunctionHealth/Healthy's wired-junction name-set read is migrated
 // there — see seedRepoWideFabricConfig), moves the weft primary onto fabric's
 // suffixed branch naming (CopyPaired's raw fixture leaves both sides on
-// "main", the warp-era equality convention; fabric's PairInSync requires the
+// "main", the warp-era equality convention; fabric's Healthy requires the
 // weft branch to be WeftBranchName(hostBranch)), wires the host-weft _lyx
 // junction (CopyPaired does not wire it — see WireJunctions' host-pristine
 // invariant), and seeds a fresh, coherent status.json through the wired
@@ -54,13 +54,21 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 
 	seedValidStatus(t, f.Layout)
 
+	// The seeded status.json (and its .lock sidecar) materialize through the
+	// _lyx junction into the weft worktree's own git repo, where they start
+	// out untracked. Commit them so a freshly-built fixture is genuinely
+	// clean on both sides — required now that Clean checks the weft worktree
+	// too, not just the host.
+	lyxtest.MustRun(t, f.WeftPrime, "git", "add", "-A")
+	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
+
 	return f, slug
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
 // hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
-// PairInSync) now read from. lyxtest.CopyPaired does not create a _board
+// Healthy) now read from. lyxtest.CopyPaired does not create a _board
 // dir, so this creates it (and its _lyx/config/) first; unlike
 // lyxtest.SeedConfig, _board is not a git repository, so the file is
 // written directly with no git add/commit step. Mirrors fabricengine's own
@@ -95,6 +103,19 @@ func seedValidStatus(t *testing.T, l *hubgeometry.Layout) {
 	if err := state.WriteJSON(l.LoomStatusFile(), l.LoomStatusLock(), s); err != nil {
 		t.Fatalf("seed status.json: %v", err)
 	}
+}
+
+// commitWeftStatus commits the current state of the seeded status.json (and
+// its .lock sidecar) in the weft worktree, so a test that deliberately
+// rewrites or removes the seed after setupPreflightFixture's own baseline
+// commit stays weft-clean — isolating the scenario under test from the
+// unrelated CheckWorktreeClean failure Clean's weft-side check would
+// otherwise add.
+func commitWeftStatus(t *testing.T, f lyxtest.PairedFixture) {
+	t.Helper()
+
+	lyxtest.MustRun(t, f.WeftPrime, "git", "add", "-A")
+	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "update status")
 }
 
 // restoreCwd saves the process cwd and restores it via t.Cleanup. It exists
@@ -247,9 +268,10 @@ func TestPreflight_EmptyPrime(t *testing.T) {
 	assertCheckSet(t, report, CheckGeometry)
 }
 
-// TestPreflight_HostDirty covers all three ways HostClean can observe a dirty
-// host worktree: a tracked-and-modified file, a staged file, and an
-// untracked-only file.
+// TestPreflight_HostDirty covers all three ways Clean can observe a dirty
+// host worktree (a tracked-and-modified file, a staged file, and an
+// untracked-only file), plus the genuinely-new weft-dirty-only and
+// both-dirty shapes now that Clean also checks the weft side.
 func TestPreflight_HostDirty(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -280,6 +302,28 @@ func TestPreflight_HostDirty(t *testing.T) {
 				untracked := filepath.Join(f.Hub, "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked file: %v", err)
+				}
+			},
+		},
+		{
+			name: "DirtyWeftOnly",
+			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
+				untracked := filepath.Join(f.WeftPrime, "untracked.txt")
+				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked weft file: %v", err)
+				}
+			},
+		},
+		{
+			name: "BothDirty",
+			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
+				hostUntracked := filepath.Join(f.Hub, "untracked.txt")
+				if err := os.WriteFile(hostUntracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked host file: %v", err)
+				}
+				weftUntracked := filepath.Join(f.WeftPrime, "untracked.txt")
+				if err := os.WriteFile(weftUntracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked weft file: %v", err)
 				}
 			},
 		},
@@ -339,13 +383,13 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 	assertCheckSet(t, report, CheckWeftSync)
 }
 
-// TestPreflight_JunctionBroken asserts that all three of PairInSync's
+// TestPreflight_JunctionBroken asserts that all three of Healthy's
 // junction-drift shapes — missing, not-a-link, and points-elsewhere —
 // classify as junction (card 12's substring-match fix: a prefix match only
 // ever caught the missing shape). Each drift shape is exercised against BOTH
 // junctions (_lyx and _pattern, from card 15 onward) so the classification is
 // proven to hold for the second, non-_lyx junction too — not just the one
-// PairInSync's underlying loop was originally written and tested against.
+// Healthy's underlying loop was originally written and tested against.
 //
 // The seed-check expectation differs by junction, and deliberately so:
 // status.json lives under _lyx (l.LoomStatusFile() is _lyx-anchored), so a
@@ -514,6 +558,7 @@ func TestPreflight_SeedMissing(t *testing.T) {
 	if err := os.Remove(f.Layout.LoomStatusFile()); err != nil {
 		t.Fatalf("remove seed: %v", err)
 	}
+	commitWeftStatus(t, f)
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {
@@ -544,6 +589,7 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
 	if err := os.WriteFile(f.Layout.LoomStatusFile(), []byte(raw), 0o644); err != nil {
 		t.Fatalf("write malformed seed: %v", err)
 	}
+	commitWeftStatus(t, f)
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {
@@ -592,6 +638,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 			if err := state.WriteJSON(f.Layout.LoomStatusFile(), f.Layout.LoomStatusLock(), tt.seed()); err != nil {
 				t.Fatalf("overwrite seed: %v", err)
 			}
+			commitWeftStatus(t, f)
 
 			report, err := checkResolved(f.Layout)
 			if err != nil {

@@ -6,8 +6,8 @@
 // the SHAExists staleness check (their commits still exist on the other
 // branch's refs), so WeftSHAForWarpSHA served weft SHAs the current branch's
 // trailer history — the documented sole source of truth — would never produce,
-// and RevertWithWeft against such an answer would graft the current branches
-// onto the other branch's history.
+// and Fabric.Diff bridged against such an answer via weftAnchorForWarpSHA
+// would graft the current branches onto the other branch's history.
 //
 // Package fabricengine_test to reuse newFabricFixture/currentBranchOf from
 // reconcile_stale_registration_test.go; shares the TestMain in testmain_test.go.
@@ -62,10 +62,11 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("warp CurrentSHA: %v", err)
 	}
-	weftSHA, committed, err := f.CommitWeft([]string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
-	if err != nil || !committed {
-		t.Fatalf("CommitWeft = (%q, %v, %v); want a real commit", weftSHA, committed, err)
+	result, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	if err != nil || !result.WeftCommitted {
+		t.Fatalf("Commit = (%+v, %v); want a real weft commit", result, err)
 	}
+	weftSHA := result.WeftSHA
 
 	// Sanity: the lookup answers while the recording branch is still current.
 	if got, err := f.WeftSHAForWarpSHA(warpSHA); err != nil || got != weftSHA {

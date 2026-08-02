@@ -970,7 +970,7 @@ func (l *Layout) HostJunctions(slug string, names []string) []HostJunction {
 // It exists because HostJunctions(slug, names) is Hub/slug-anchored — the right shape for
 // wiring, unwiring, and remove, which always act on a named slug — while all three junction
 // health-check sites (internal/fabricengine/reconcile.go, status.go, and drift.go) have no
-// slug available and are Here-anchored instead. PairInSync(l *hubgeometry.Layout) in
+// slug available and are Here-anchored instead. Healthy(l *hubgeometry.Layout) in
 // particular takes no slug parameter at all and is documented as stateless; threading a
 // slug into it would break that contract.
 //

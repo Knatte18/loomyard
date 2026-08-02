@@ -87,15 +87,15 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "newmodule", "newfile.txt"), "brand new, never staged")
 
-	sha, committed, err := f.CommitWeft([]string{"doesnotexist", "newmodule"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := f.commitWeft([]string{"doesnotexist", "newmodule"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() error = %v; want nil", err)
+		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft() committed = false; want true")
+		t.Fatalf("commitWeft() committed = false; want true")
 	}
 	if sha == "" {
-		t.Errorf("CommitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
+		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
 	tracked := lsFilesWeft(t, weftFixture.WeftPath)
@@ -130,15 +130,15 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 		t.Fatalf("os.Remove(%q): %v", trackedPath, err)
 	}
 
-	sha, committed, err := f.CommitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() error = %v; want nil", err)
+		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft() committed = false; want true (the index-only deletion should count as a match)")
+		t.Fatalf("commitWeft() committed = false; want true (the index-only deletion should count as a match)")
 	}
 	if sha == "" {
-		t.Errorf("CommitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
+		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
 	tracked := lsFilesWeft(t, weftFixture.WeftPath)
@@ -164,15 +164,15 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "_lyx", "durable.txt"), "durable state")
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "_lyx", "run.lock"), "machine-local lock")
 
-	sha, committed, err := f.CommitWeft([]string{"_lyx", ":(exclude)_lyx/*.lock"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := f.commitWeft([]string{"_lyx", ":(exclude)_lyx/*.lock"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() error = %v; want nil", err)
+		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
 	if !committed {
-		t.Fatalf("CommitWeft() committed = false; want true")
+		t.Fatalf("commitWeft() committed = false; want true")
 	}
 	if sha == "" {
-		t.Errorf("CommitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
+		t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 	}
 
 	tracked := lsFilesWeft(t, weftFixture.WeftPath)
@@ -209,15 +209,15 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	writeWeftConfigContent(t, weftFixture.WeftPath, "dirtied but must stay unstaged")
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "_lyx", "run.lock"), "machine-local lock")
 
-	sha, committed, err := f.CommitWeft([]string{"doesnotexist", ":(exclude)_lyx/*.lock"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := f.commitWeft([]string{"doesnotexist", ":(exclude)_lyx/*.lock"}, DefaultCommitMessage, SyncOptions{})
 	if err != nil {
-		t.Fatalf("CommitWeft() error = %v; want nil", err)
+		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
 	if committed {
-		t.Fatalf("CommitWeft() committed = true; want false (the only positive entry matches nothing)")
+		t.Fatalf("commitWeft() committed = true; want false (the only positive entry matches nothing)")
 	}
 	if sha != "" {
-		t.Errorf("CommitWeft() sha = %q; want empty", sha)
+		t.Errorf("commitWeft() sha = %q; want empty", sha)
 	}
 
 	if !diffCachedQuietWeft(t, weftFixture.WeftPath) {
@@ -282,15 +282,15 @@ func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t 
 
 		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _pattern wholly absent")
 
-		sha, committed, err := f.CommitWeft(dirs, DefaultCommitMessage, SyncOptions{})
+		sha, committed, err := f.commitWeft(dirs, DefaultCommitMessage, SyncOptions{})
 		if err != nil {
-			t.Fatalf("CommitWeft() error = %v; want nil", err)
+			t.Fatalf("commitWeft() error = %v; want nil", err)
 		}
 		if !committed {
-			t.Fatalf("CommitWeft() committed = false; want true (the _lyx change must still commit)")
+			t.Fatalf("commitWeft() committed = false; want true (the _lyx change must still commit)")
 		}
 		if sha == "" {
-			t.Errorf("CommitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
+			t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 		}
 	})
 
@@ -309,15 +309,15 @@ func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t 
 
 		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _pattern present but empty")
 
-		sha, committed, err := f.CommitWeft(dirs, DefaultCommitMessage, SyncOptions{})
+		sha, committed, err := f.commitWeft(dirs, DefaultCommitMessage, SyncOptions{})
 		if err != nil {
-			t.Fatalf("CommitWeft() error = %v; want nil", err)
+			t.Fatalf("commitWeft() error = %v; want nil", err)
 		}
 		if !committed {
-			t.Fatalf("CommitWeft() committed = false; want true (the _lyx change must still commit)")
+			t.Fatalf("commitWeft() committed = false; want true (the _lyx change must still commit)")
 		}
 		if sha == "" {
-			t.Errorf("CommitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
+			t.Errorf("commitWeft() sha = %q; want a non-empty new HEAD SHA", sha)
 		}
 	})
 }

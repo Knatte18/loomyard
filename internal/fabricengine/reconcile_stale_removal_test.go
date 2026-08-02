@@ -10,7 +10,7 @@
 // _portals, _launchers, _raddle) permanently excluded from the sweep.
 //
 // It also proves the repo-wide-base regression: the sites card 7 migrated to
-// RepoWiredNames (PairInSync, Topology.Checkout, Topology.Remove, and
+// RepoWiredNames (Healthy, Topology.Checkout, Topology.Remove, and
 // transitively checkJunctionHealth via the add/no-op/stale-removal cases
 // above) resolve the junction name-set from hubgeometry.BoardDir(Hub) alone
 // — no per-pair weft-base fabric.yaml is ever seeded in this file.
@@ -320,7 +320,7 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 // repo-wide-base regression coverage card 10 calls for: with ONLY the
 // repo-wide fabric.yaml seeded (no per-pair weft-base fabric.yaml exists
 // anywhere in this fixture), the four sites card 7 migrated to
-// RepoWiredNames still function — PairInSync returns a real health verdict
+// RepoWiredNames still function — Healthy returns a real health verdict
 // rather than "junction check unavailable", Topology.Checkout succeeds
 // rather than hard-failing/rolling back on a name-set load error, and
 // Topology.Remove still tears down junctions.
@@ -342,18 +342,18 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 		t.Fatalf("WireJunctions(primary): %v", err)
 	}
 
-	// PairInSync must resolve the name-set from the repo-wide BoardDir base
+	// Healthy must resolve the name-set from the repo-wide BoardDir base
 	// and report a real verdict, not the "unavailable" degraded reason a
 	// per-pair-weft-base read would produce here (no such file exists).
-	ok, reason, err := fabricengine.PairInSync(l)
+	ok, reason, err := fabricengine.Healthy(l)
 	if err != nil {
-		t.Fatalf("PairInSync: %v", err)
+		t.Fatalf("Healthy: %v", err)
 	}
 	if !ok {
-		t.Errorf("PairInSync ok = false (reason %q); want true (repo-wide-only config)", reason)
+		t.Errorf("Healthy ok = false (reason %q); want true (repo-wide-only config)", reason)
 	}
 	if strings.Contains(reason, "unavailable") {
-		t.Errorf("PairInSync reason = %q; want a real verdict, not junction-check-unavailable", reason)
+		t.Errorf("Healthy reason = %q; want a real verdict, not junction-check-unavailable", reason)
 	}
 
 	// Topology.Checkout must not hard-fail/rollback re-pointing junctions

@@ -69,7 +69,7 @@ func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 			wantSubs: []string{
 				"clone", "add", "list", "remove", "checkout",
 				"pairs", "reconcile", "prune", "cleanup", "unwire",
-				"status", "commit", "push", "pull", "sync",
+				"status", "commit", "push", "pull", "sync", "diff",
 			},
 		},
 		{
