@@ -81,6 +81,7 @@ Collapse fabric's CLI status surface and finish unexporting `CommitWeft`. Wire a
 - **Edits:**
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/unwire.go`
+  - `internal/fabricengine/doc.go`
   - `CONSTRAINTS.md`
 - **Creates:** none
 - **Deletes:** none
