@@ -139,21 +139,24 @@ func addWeftVerbs(cmd *cobra.Command) {
 		return nil
 	}
 
-	// status subcommand: reports content-sync state for the weft worktree.
+	// status subcommand: reports every currently-uncommitted change across
+	// both sides of the warp<->weft pair.
 	statusCmd := &cobra.Command{
 		Use:   "status",
-		Short: "show weft content-sync status",
+		Short: "show unified warp+weft uncommitted-change status",
+		Long: `Reports every currently-uncommitted path across both sides of the
+warp<->weft pair, each labelled with which side (warp or weft) it changed on.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			statusMap, err := fab.StatusWeft(pathspec)
+			entries, err := fab.Status()
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, statusMap))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"changes": changeEntriesMap(entries)}))
 			return nil
 		},
 	}
