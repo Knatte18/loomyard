@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: webster-fork-context-hygiene
 branch: webster-fork-context-hygiene
 plan: _mill/plan
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-08-02T12:37:42Z'
 discussed  '2026-08-02T13:32:24Z'
 planning  '2026-08-02T13:42:04Z'
+plan-review-r1  '2026-08-02T13:50:02Z'
+plan-fix-r1  '2026-08-02T13:50:02Z'
 ```
