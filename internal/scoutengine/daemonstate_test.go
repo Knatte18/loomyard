@@ -22,8 +22,7 @@ import (
 	"time"
 )
 
-// TestDaemonState_WriteReadRoundTrip asserts writeDaemonState followed by
-// readDaemonState preserves every field exactly.
+// TestDaemonState_WriteReadRoundTrip verifies writeDaemonState/readDaemonState preserves all fields.
 func TestDaemonState_WriteReadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "daemon.json")
 	want := daemonState{
@@ -49,9 +48,7 @@ func TestDaemonState_WriteReadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestReadDaemonState_MissingFileIsNotAnError asserts readDaemonState on a
-// non-existent path returns (daemonState{}, false, nil), not an error — the
-// common case on a worktree's first EnsureServer call.
+// TestReadDaemonState_MissingFileIsNotAnError verifies missing files return zero values, not an error.
 func TestReadDaemonState_MissingFileIsNotAnError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.json")
 
@@ -67,9 +64,7 @@ func TestReadDaemonState_MissingFileIsNotAnError(t *testing.T) {
 	}
 }
 
-// spawnAndWaitForDeadPID spawns a short-lived child process, waits for it
-// to exit, and returns its now-dead PID. This is the one spawn this file
-// performs, mirroring internal/proc/isalive_test.go's own technique.
+// spawnAndWaitForDeadPID spawns a short-lived child process and returns its dead PID.
 func spawnAndWaitForDeadPID(t *testing.T) int {
 	t.Helper()
 	var cmd *exec.Cmd
@@ -88,9 +83,7 @@ func spawnAndWaitForDeadPID(t *testing.T) int {
 	return pid
 }
 
-// TestDaemonStale_DeadPIDIsStale asserts daemonStale reports true when the
-// recorded PID names a confirmed-dead process, even with a matching
-// ProtocolVersion — either half of the two-part check alone is sufficient.
+// TestDaemonStale_DeadPIDIsStale verifies a dead PID is considered stale.
 func TestDaemonStale_DeadPIDIsStale(t *testing.T) {
 	s := daemonState{
 		PID:             spawnAndWaitForDeadPID(t),
@@ -101,9 +94,7 @@ func TestDaemonStale_DeadPIDIsStale(t *testing.T) {
 	}
 }
 
-// TestDaemonStale_MismatchedProtocolVersionIsStale asserts daemonStale
-// reports true when PID is the test's own live PID but ProtocolVersion does
-// not match supervisedProtocolVersion.
+// TestDaemonStale_MismatchedProtocolVersionIsStale verifies a mismatched protocol version is stale.
 func TestDaemonStale_MismatchedProtocolVersionIsStale(t *testing.T) {
 	s := daemonState{
 		PID:             os.Getpid(),
@@ -114,9 +105,7 @@ func TestDaemonStale_MismatchedProtocolVersionIsStale(t *testing.T) {
 	}
 }
 
-// TestDaemonStale_LivePIDAndCurrentVersionIsNotStale asserts daemonStale
-// reports false when both halves of the check pass: a live PID and a
-// matching protocol version.
+// TestDaemonStale_LivePIDAndCurrentVersionIsNotStale verifies a live PID with matching version is not stale.
 func TestDaemonStale_LivePIDAndCurrentVersionIsNotStale(t *testing.T) {
 	s := daemonState{
 		PID:             os.Getpid(),
@@ -127,14 +116,7 @@ func TestDaemonStale_LivePIDAndCurrentVersionIsNotStale(t *testing.T) {
 	}
 }
 
-// TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite runs one
-// writer goroutine calling writeDaemonState in a loop alongside N reader
-// goroutines calling readDaemonState concurrently on the same path, and
-// asserts every read either finds no file yet (found=false) or parses
-// cleanly — never a truncated-JSON unmarshal error. This is exactly the
-// failure mode the temp-file-then-rename write sequence exists to prevent.
-// The iteration count is kept small and bounded so this stays fast enough
-// for the default go test run.
+// TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite verifies concurrent reads never see partial writes.
 func TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "daemon.json")
 

@@ -12,8 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// TestPickColor covers the palette picker, ensuring it selects unused non-green colors
-// and respects the RelPath directory structure when scanning sibling worktrees.
+// TestPickColor tests the palette picker for color selection.
 func TestPickColor(t *testing.T) {
 	tests := []struct {
 		name      string

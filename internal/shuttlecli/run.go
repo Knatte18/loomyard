@@ -17,16 +17,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runCmd builds the `run` subcommand: validates the --prompt/--prompt-file
-// XOR and the --output-file requirement before ever touching c.runner (so a
-// flag-shape mistake is reported as a flag error even when config
-// resolution has already aborted), builds a shuttleengine.Spec from the
-// remaining flags, and blocks on c.runner.Run(spec) until a terminal
-// outcome is reached. Every classified outcome (done/asking/died/timeout)
-// is data, not an error: run prints output.Ok and exits 0 regardless of
-// which outcome came back. Only a mechanism failure (reading --prompt-file,
-// spec validation inside the engine, or Run itself erroring) goes through
-// output.Err.
+// runCmd builds the `run` subcommand, validating flags and blocking on runner.Run
+// until a terminal outcome is reached. All outcomes (done/asking/died/timeout) report
+// success; only mechanism failures (flag errors, read errors, engine errors) report errors.
 func (c *shuttleCLI) runCmd() *cobra.Command {
 	var (
 		prompt      string

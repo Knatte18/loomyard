@@ -21,16 +21,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// JudgeVerdict is the progress judge's verdict, recorded in a judge verdict
-// file's frontmatter. Its legal spellings depend on which judgeFraming the
-// call used: the circling-check framing allows JudgeProgressing,
-// JudgeCircling, JudgeUncertain; the milestone framing allows
-// JudgeContinue, JudgeStop, JudgeUncertain.
+// JudgeVerdict is the progress judge's verdict. Its legal spellings depend on
+// which judgeFraming was used.
 type JudgeVerdict string
 
-// The five legal JudgeVerdict spellings across both framings. ParseJudgeVerdict
-// rejects any other spelling, including a different case or the wrong
-// framing's vocabulary, since the verdict file is machine-read.
+// The five legal JudgeVerdict spellings across both framings.
 const (
 	JudgeProgressing JudgeVerdict = "PROGRESSING"
 	JudgeCircling    JudgeVerdict = "CIRCLING"
@@ -43,9 +38,7 @@ const (
 // verdict file's frontmatter.
 type TriageVerdict string
 
-// The two legal TriageVerdict values. ParseTriageVerdict rejects any other
-// spelling, including a different case, since the verdict file is
-// machine-read.
+// The two legal TriageVerdict values.
 const (
 	TriageRetry  TriageVerdict = "RETRY"
 	TriageGiveUp TriageVerdict = "GIVE_UP"
@@ -70,17 +63,11 @@ type judgeHeader struct {
 	Rationale string `yaml:"rationale"`
 }
 
-// ParseJudgeVerdict parses the raw bytes of a progress-judge verdict file
-// into a JudgeVerdict and its rationale. The file must open with a "---"
-// line and contain a closing "---" line delimiting YAML frontmatter (CRLF
-// line endings are tolerated); prose after the closing delimiter, including
-// the required "## Themes" section, is unconstrained and ignored. Every
-// rule below is enforced fail-loud with a "treadle: "-prefixed error:
-//   - the frontmatter must be present, closed, and valid YAML;
-//   - verdict must be exactly one of framing's vocabulary (case-sensitive) —
-//     {PROGRESSING, CIRCLING, UNCERTAIN} for framingCircling, {CONTINUE,
-//     STOP, UNCERTAIN} for framingMilestone;
-//   - rationale must be non-empty.
+// ParseJudgeVerdict parses a progress-judge verdict file into a JudgeVerdict
+// and its rationale. The file must open and close with "---" delimiting
+// YAML frontmatter; prose after is unconstrained. Fails loud: frontmatter
+// must be valid YAML, verdict must match framing's vocabulary, and rationale
+// must be non-empty.
 func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {
@@ -104,10 +91,8 @@ func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, stri
 	return verdict, parsed.Rationale, nil
 }
 
-// ParseTriageVerdict parses the raw bytes of an asking-triage verdict file
-// into a TriageVerdict and its rationale, applying the same frontmatter and
-// non-empty-rationale rules as ParseJudgeVerdict, with the triage
-// vocabulary: verdict must be exactly RETRY or GIVE_UP (case-sensitive).
+// ParseTriageVerdict parses an asking-triage verdict file into a TriageVerdict
+// and its rationale, applying the same frontmatter and non-empty-rationale rules.
 func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {
@@ -131,21 +116,9 @@ func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
 	return verdict, parsed.Rationale, nil
 }
 
-// splitFrontmatter extracts the YAML header text between an agent-written
-// file's opening and closing "---" delimiter lines. This is a package-private
-// copy of burlerengine's splitFrontmatter (same three fail-loud checks:
-// opening "---", closing "---", non-empty header; CRLF-tolerant) rather than
-// an export of burler's, since the two parsers evolve independently. Each
-// line is compared with its trailing "\r" trimmed so CRLF content parses
-// identically to LF content.
-//
-// kind names the file being parsed ("verdict" or "handoff") and appears in
-// every error this function returns. It is a parameter rather than a
-// hardcoded word because two DIFFERENT agent contracts share this helper —
-// judge/triage verdicts here and the judge-maintained handoff in handoff.go
-// — and these errors surface to an operator as the cause of a Warn that
-// already names the file kind ("handoff file unparseable"). A fixed noun
-// made that one log line contradict itself about which file was at fault.
+// splitFrontmatter extracts the YAML header between opening and closing "---"
+// delimiter lines. kind names the file type for error messages ("verdict" or
+// "handoff").
 func splitFrontmatter(content []byte, kind string) (string, error) {
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
@@ -170,10 +143,7 @@ func splitFrontmatter(content []byte, kind string) (string, error) {
 	return header, nil
 }
 
-// parseJudgeVerdict validates raw against framing's legal JudgeVerdict
-// spellings, case-sensitively — the verdict file is machine-read, so a
-// lowercase, misspelled, or wrong-framing verdict must fail loud rather than
-// silently defaulting.
+// parseJudgeVerdict validates raw against framing's legal spellings, case-sensitively.
 func parseJudgeVerdict(raw string, framing judgeFraming) (JudgeVerdict, error) {
 	switch framing {
 	case framingCircling:
@@ -195,8 +165,7 @@ func parseJudgeVerdict(raw string, framing judgeFraming) (JudgeVerdict, error) {
 	}
 }
 
-// parseTriageVerdict validates raw against the two legal TriageVerdict
-// spellings, case-sensitively.
+// parseTriageVerdict validates raw against the two legal spellings, case-sensitively.
 func parseTriageVerdict(raw string) (TriageVerdict, error) {
 	switch TriageVerdict(raw) {
 	case TriageRetry, TriageGiveUp:

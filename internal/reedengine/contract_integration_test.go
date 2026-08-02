@@ -28,13 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// seedReedConfig writes <tmpDir>/_lyx/config/reed.yaml with the module's own
-// default template — the minimal on-disk shape LoadConfig needs to resolve a
-// Config. This duplicates (rather than imports) config_test.go's
-// seedLyxConfig fixture: that helper lives in the external reedengine_test
-// package, while this file is package reedengine so it can reach the real,
-// unexported listPanes/TmuxCmd helpers the contract assertions below drive
-// directly.
+// seedReedConfig writes the minimal on-disk config structure for LoadConfig.
 func seedReedConfig(t *testing.T, tmpDir string) {
 	t.Helper()
 	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
@@ -51,10 +45,7 @@ func seedReedConfig(t *testing.T, tmpDir string) {
 	}
 }
 
-// waitUntil polls cond every 100ms until it reports true or timeout elapses,
-// failing the test in the latter case. Pane state changes (a shell exiting,
-// remain-on-exit flipping pane_dead) are asynchronous from tmux's own CLI
-// return, so assertions on them must poll rather than check once.
+// waitUntil polls cond every 100ms until it reports true or timeout elapses.
 func waitUntil(t *testing.T, timeout time.Duration, msg string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -69,18 +60,7 @@ func waitUntil(t *testing.T, timeout time.Duration, msg string, cond func() bool
 	}
 }
 
-// TestMultiplexerContract loads the resolved reed Config via LoadConfig (so it
-// targets the *configured* binary, never a hardcoded path), skips cleanly
-// when that binary is not on this box, then spawns a real server on a
-// scratch -L socket and drives it through the exact subcommand set and
-// wire shapes doc.go documents: the list-panes -F output string and its
-// parsePaneList parse, the required subcommand set, and the load-bearing
-// behavioral assumptions (remain-on-exit dead-pane visibility, send-keys -l
-// literal handling of a leading-dash payload, select-layout succeeding
-// against the live pane set). The scratch server is always torn down via
-// t.Cleanup, and its socket name is derived from this test's own pid and a
-// timestamp — never from a hub path — so it can never collide with a real
-// per-hub server.
+// TestMultiplexerContract validates the multiplexer wire contract against a real binary.
 func TestMultiplexerContract(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -98,6 +78,7 @@ func TestMultiplexerContract(t *testing.T) {
 	}
 
 	socket := fmt.Sprintf("lyx-contract-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+
 	session := "contract-session"
 	reed := NewTmuxCmd(cfg.Tmux, socket)
 

@@ -14,11 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestSmokeUpAddStatusDown boots the substrate, adds one strand with a cheap
-// placeholder command, verifies status reports it tracked and live, then
-// tears the substrate back down. Skipped when tmux is not found in PATH or
-// LYX_REED_TMUX so a -tags=smoke run never hard-fails on a machine without
-// the tool installed.
+// TestSmokeUpAddStatusDown boots the substrate, adds a strand, checks status, and tears down.
 func TestSmokeUpAddStatusDown(t *testing.T) {
 	tmuxBinaryPath(t)
 
@@ -29,20 +25,16 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 	deferHubRelease(t, fixture.Hub)
 	t.Chdir(fixture.Hub)
 
-	// Always attempt to tear the server down, even if an assertion below
-	// fails partway through, so a failed run does not leak a live server.
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
 	})
 
-	// up: boots the substrate (server + session), no strand command runs yet.
 	var out bytes.Buffer
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 
-	// add: a cheap placeholder command instead of a real Claude session.
 	out.Reset()
 	if code := RunCLI(&out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"}); code != 0 {
 		t.Fatalf("add = %d; want 0, output: %s", code, out.String())
@@ -56,7 +48,6 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 		t.Fatalf("add result missing guid: %v", addResult)
 	}
 
-	// status: the added strand must be tracked and reported live.
 	out.Reset()
 	if code := RunCLI(&out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())

@@ -8,26 +8,9 @@
 
 package render
 
-// clampHeaderHeight returns headerRows clamped so the strand-stack region
-// never shrinks below minStackRows total rows — the window-split clamp,
-// distinct from clampToFit, which distributes rows AMONG strands inside an
-// already-shrunk box; this one instead decides how much of the WHOLE window
-// the header band itself may claim. minStackRows is floored at 1 (mirroring
-// clampToFit's own MinFullRows floor) so a misconfigured non-positive value
-// can never demand a zero-or-negative stack region. The header yields rows
-// first when the window is too short to satisfy both regions: an oversized
-// configured height_rows can never starve the strand stack below its floor,
-// even though that means the header itself may end up shorter than
-// configured. The result is never less than 1 row as long as windowRows
-// itself has at least 1 row to give — verified against a real tmux instance,
-// select-layout does not cleanly support a genuinely zero-height cell for an
-// always-on pane (it silently keeps a row for it anyway, overflowing the
-// window by one row rather than rendering "no header"; see
-// contract_integration_test.go's TestHeaderNeverGetsZeroHeightLayoutCell), so
-// this function must never hand bandHeader an H=0 header cell. When the
-// window is too short to give the header even that 1 row (windowRows itself
-// non-positive), there is nothing to give and the result is 0. A negative
-// headerRows is treated as zero, then floored the same as any other request.
+// clampHeaderHeight returns headerRows clamped to preserve the strand-stack
+// region's minStackRows floor, which the header yields first when the window
+// cannot fit both.
 func clampHeaderHeight(headerRows, windowRows, minStackRows int) int {
 	if headerRows < 0 {
 		headerRows = 0
@@ -60,17 +43,10 @@ func clampHeaderHeight(headerRows, windowRows, minStackRows int) int {
 	return headerRows
 }
 
-// stackHeights computes a height for every strand in stack (already ordered
-// by orderStack) within box: usable rows are box.H minus one divider row per
-// gap between panes. A shrink:true ancestor — a strand for which isAncestor
-// reports true and whose ShrinkWhenWaitingOnChild is set — collapses to
-// p.CollapsedStripRows. Every other strand, including the active/bottom
-// strand, is a "full" pane; full panes split whatever rows remain after the
-// strips equally, with the integer-division remainder assigned to the
-// active/bottom pane so heights always sum exactly to the usable rows. When
-// that natural split would leave any pane non-positive, clampToFit reclaims
-// rows in strict priority order. stackHeights never returns a non-positive
-// height.
+// stackHeights computes a height for every strand in stack within box.
+// Shrink:true ancestors collapse to a strip height, full panes split the
+// remainder equally (with the remainder to the active pane), and clampToFit
+// reclaims rows if any would be non-positive.
 func stackHeights(stack []Strand, box Box, p Params) []placement {
 	n := len(stack)
 	if n == 0 {
@@ -127,16 +103,8 @@ func stackHeights(stack []Strand, box Box, p Params) []placement {
 }
 
 // clampToFit repairs any non-positive height left by stackHeights' natural
-// split, reclaiming rows from donors in strict priority order so the total
-// stays conserved (heights[] must still sum to the same usable total the
-// natural split produced): (1) strips give back rows first, shrinking
-// toward 1 row — a strip is already a compact "waiting on child" indicator
-// and has the least to lose visually; (2) full panes other than the active
-// one give back rows next, shrinking toward p.MinFullRows, since the active
-// pane is where the running command actually lives and should be the last
-// to lose working room; (3) as a last resort the active pane itself gives
-// back whatever is still owed, and any remaining donor above 1 row clamps
-// to 1. clampToFit never leaves a height below 1.
+// split, reclaiming rows from donors in strict priority order: strips first,
+// then non-active full panes, then the active pane itself, all floored at 1.
 func clampToFit(heights []int, isStrip []bool, activeIdx int, p Params) []int {
 	minFull := p.MinFullRows
 	if minFull < 1 {

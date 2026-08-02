@@ -11,36 +11,20 @@ import (
 	"time"
 )
 
-// GateMode selects how a round's convergence is decided — treadle's own
-// vocabulary, spelled identically to perchengine's distinct GateMode so a
-// caller-side adapter (perchengine.Engine.Run) converts field-for-field with
-// no semantic drift. It is a safety-critical field (like burlerengine's
-// FixScope) and gets no silent default — validate rejects any value outside
-// the three named constants.
+// GateMode selects how a round's convergence is decided. It is safety-critical
+// and gets no silent default; validate rejects any unknown value.
 type GateMode string
 
 // The three legal GateMode values.
 const (
-	// GateLLMVerdict treats a fresh round's runner verdict as the sole
-	// convergence signal: clean means the round's AttemptResult.Verdict was
-	// VerdictApproved.
 	GateLLMVerdict GateMode = "llm-verdict"
-	// GateCommand ignores the runner verdict for convergence and instead
-	// runs Gate.Command after each round's attempt; a zero exit is clean.
-	GateCommand GateMode = "command"
-	// GateBoth requires both signals: the runner verdict must be
-	// VerdictApproved AND Gate.Command must exit zero.
-	GateBoth GateMode = "both"
+	GateCommand    GateMode = "command"
+	GateBoth       GateMode = "both"
 )
 
-// Gate describes the convergence check for a treadle block: which signal(s)
-// decide a round is clean (Mode), the argv to run when Mode consults a
-// command (Command — no shell, so argv is unambiguous and portable), and how
-// long that command may run before it is killed (Timeout). Exactly these
-// three fields — perchengine's exported Gate stays a distinct, identically
-// shaped struct rather than an alias of this one, so ProfileHash's JSON
-// encoding provably cannot drift between the two (see the
-// byte-identical-perch-api shared decision).
+// Gate describes the convergence check: which signal(s) decide a round is
+// clean (Mode), the argv to run when Mode consults a command (Command — no
+// shell, so argv is portable), and how long the command may run (Timeout).
 type Gate struct {
 	Mode    GateMode
 	Command []string
@@ -48,37 +32,21 @@ type Gate struct {
 }
 
 // Profile is treadle's per-block input: resolved plain data only. ProfileHash
-// is caller-computed identity — the caller hashes its own richer profile
-// value before calling Run, and treadle stamps this string into state.json
-// verbatim rather than computing it itself (treadle is geometry- and
-// content-blind about what the profile actually reviews). Gate/GateDir
-// select and locate the convergence check (GateDir is the absolute cwd the
-// gate command runs in — caller-supplied, keeping treadle geometry-blind, so
-// it never resolves a *hubgeometry.Layout itself). RoundCaps must already be
-// resolved and non-empty: unlike perchengine.Profile.validate, treadle does
-// NO default resolution here — a caller (perchengine) resolves
-// profile > perch.yaml > built-in BEFORE constructing this Profile.
-// JudgeModel/JudgeEffort tune the judge/triage calls; Model/Effort/Timeout
-// tune every round's RoundRunner attempt uniformly. PreRoundTargeting gates
-// the optional pre-round targeting capability (see the pre-round-targeting
-// shared decision); its zero value is off.
+// is caller-computed identity; treadle stamps it into state.json verbatim.
+// Gate/GateDir select and locate the convergence check. RoundCaps must be
+// resolved and non-empty; treadle does no default resolution. JudgeModel/
+// JudgeEffort tune judge/triage calls; Model/Effort/Timeout tune each round's
+// attempt. PreRoundTargeting gates the optional pre-round targeting capability.
 type Profile struct {
-	ProfileHash string
-	Gate        Gate
-	GateDir     string
-	RoundCaps   []int
-	JudgeModel  string
-	JudgeEffort string
-	Model       string
-	Effort      string
-	Timeout     time.Duration
-	// PreRoundTargeting, when true, runs a pre-round targeting call once per
-	// round, before attempt 1, whenever a valid handoff already exists to
-	// target from (see latestValidHandoff): the call reads that handoff and
-	// writes a short prose seed brief threaded into the round's
-	// AttemptInput.SeedPath. The zero value (false) is off, and perch's
-	// adapter never sets it — perch's behavior is unchanged by this
-	// capability's mere existence.
+	ProfileHash       string
+	Gate              Gate
+	GateDir           string
+	RoundCaps         []int
+	JudgeModel        string
+	JudgeEffort       string
+	Model             string
+	Effort            string
+	Timeout           time.Duration
 	PreRoundTargeting bool
 }
 

@@ -15,20 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ParseEvents parses data (a run's events.jsonl contents) into Events. It is
-// deliberately lenient: a run's events file is read while the run may still
-// be in progress, so a line can be truncated mid-append, and claude versions
-// differ on which fields a payload carries — neither case is fatal. Blank
-// lines are skipped. A line that fails to parse as JSON is skipped (a
-// partial append in progress). A line whose hook_event_name is "Stop"
-// becomes an EventStop, with Message set to its last_assistant_message field
-// ("" when absent or not a string). A line whose hook_event_name is
-// "PreToolUse" and whose tool_name is "AskUserQuestion" becomes an EventAsk,
-// with Message set to every tool_input.questions[].question string
-// newline-joined ("" when the shape is unexpected — stay lenient, do not
-// error). Any other line — a different hook_event_name, a PreToolUse for a
-// different tool, or no hook_event_name at all — is skipped, since it
-// cannot be confirmed as either signal this reader surfaces.
+// ParseEvents parses events.jsonl into Events: Stop lines become EventStop, PreToolUse+AskUserQuestion lines become EventAsk.
+// It is lenient: malformed or unrecognized lines are skipped, since the file may still be growing during the run.
 func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	var events []shuttleengine.Event
 
@@ -40,8 +28,6 @@ func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 
 		var fields map[string]any
 		if err := json.Unmarshal([]byte(trimmed), &fields); err != nil {
-			// A malformed or partially-written line: skip it rather than
-			// aborting the whole parse, since the file may still be growing.
 			continue
 		}
 
@@ -56,10 +42,7 @@ func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 			events = append(events, shuttleengine.Event{
 				Kind:    shuttleengine.EventStop,
 				Message: lastMessage,
-				// Raw preserves the original line bytes (not the trimmed copy
-				// used above for the blank check and JSON parse) so a
-				// byte-exact round-trip is possible if a caller ever needs it.
-				Raw: []byte(line),
+				Raw:     []byte(line),
 			})
 		case "PreToolUse":
 			toolName, _ := fields["tool_name"].(string)
@@ -77,12 +60,8 @@ func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	return events, nil
 }
 
-// askQuestionText extracts the newline-joined question text from a
-// PreToolUse(AskUserQuestion) payload's tool_input.questions[].question
-// entries. It stays lenient with an unexpected shape (a missing
-// tool_input/questions field, or a non-string question) — returning "" for
-// what it cannot confirm rather than erroring, since a live-ask line is read
-// mid-run just like a Stop line.
+// askQuestionText extracts the newline-joined question strings from tool_input.questions[].question.
+// It returns "" for unexpected shapes, staying lenient.
 func askQuestionText(fields map[string]any) string {
 	toolInput, ok := fields["tool_input"].(map[string]any)
 	if !ok {

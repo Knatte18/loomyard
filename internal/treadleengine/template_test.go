@@ -13,11 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// TestJudgeCirclingTemplate_StatesLoadBearingRules asserts the circling-check
-// template's bytes carry its load-bearing phrases in prose, so an edit that
-// silently waters down the vocabulary, the clear-evidence requirement, the
-// fail-safe direction, the Themes section, or the two-output-file/handoff
-// instructions fails this test rather than only a human review.
+// TestJudgeCirclingTemplate_StatesLoadBearingRules asserts the template's
+// load-bearing phrases are present.
 func TestJudgeCirclingTemplate_StatesLoadBearingRules(t *testing.T) {
 	text := string(judgeCirclingTemplate)
 

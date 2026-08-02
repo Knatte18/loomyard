@@ -10,13 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// sendCmd builds the `send <guid> <text>` subcommand: plays the engine's
-// compose-and-submit choreography into the strand identified by <guid>,
-// typing <text> as its next turn. text must be a single line — the file
-// contract carries multiline updates (write a file and send a one-line
-// pointer to it), and c.runner.Send enforces this. c.runner.Send also
-// confirms guid names a shuttle run before touching the pane; a miss
-// reports "not a shuttle strand" through output.Err.
+// sendCmd builds the `send <guid> <text>` subcommand, playing the engine's
+// compose-and-submit choreography into the identified strand (text must be single-line).
 func (c *shuttleCLI) sendCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "send <guid> <text>",

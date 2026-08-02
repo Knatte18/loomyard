@@ -21,14 +21,6 @@ import (
 )
 
 // ProfileHash returns the sha256 hex digest of p's canonical JSON encoding.
-// Engine.Run hashes the profile AS SUPPLIED by the caller — before default
-// resolution — so a block's identity is the caller's own content contract:
-// editing the profile (or changing a CLI tuning flag folded into it) changes
-// the hash and fails a resume loud, while a perch.yaml default change never
-// silently alters or invalidates an in-flight block (its resolved ladder is
-// stamped into state.json instead — see treadleengine's runState.RoundCaps).
-// The same rule holds for a loom-supplied Go struct: identity is what the
-// caller passed in.
 func ProfileHash(p Profile) (string, error) {
 	data, err := json.Marshal(p)
 	if err != nil {
@@ -38,28 +30,14 @@ func ProfileHash(p Profile) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// DeriveRunID returns the default run-id for a standalone `lyx perch run`
-// invocation: the profile file's basename with its extension stripped and
-// sanitized to lowercase alphanumerics and dashes, followed by the first 8
-// hex characters of hash. Sanitizing keeps the id filesystem-safe (it names
-// a directory under hubgeometry.PerchRunsDir) while the hash suffix keeps
-// two same-named profiles in different directories from colliding.
+// DeriveRunID returns the default run-id for a standalone invocation: the profile file's sanitized basename plus first 8 hex characters of hash.
 func DeriveRunID(profilePath string, hash string) string {
 	base := filepath.Base(profilePath)
 	base = strings.TrimSuffix(base, filepath.Ext(base))
 	return fmt.Sprintf("%s-%s", sanitizeSlug(base), hash[:8])
 }
 
-// ValidRunID reports whether id is a legal explicit --run-id: the exact
-// shape sanitizeSlug produces for a derived id (lowercase alphanumerics and
-// single dashes, no leading/trailing dash), non-empty. This is deliberately
-// stricter than "anything filepath.Join tolerates" — an operator-supplied
-// --run-id is joined directly into a directory path under
-// hubgeometry.PerchRunsDir, so anything containing a path separator or a
-// "." component could escape that directory (e.g. "../elsewhere") or land
-// on a Windows-illegal name; both perch verbs reject the flag outright
-// rather than let MkdirAll or a later git operation fail confusingly deep
-// inside the run.
+// ValidRunID reports whether id is a legal explicit --run-id: lowercase alphanumerics and single dashes, no leading/trailing dash, non-empty.
 func ValidRunID(id string) bool {
 	if id == "" {
 		return false
@@ -74,8 +52,7 @@ func ValidRunID(id string) bool {
 	return id[0] != '-' && id[len(id)-1] != '-'
 }
 
-// sanitizeSlug lowercases s and replaces every run of non-alphanumeric
-// characters with a single dash, trimming leading/trailing dashes.
+// sanitizeSlug lowercases s and replaces every run of non-alphanumeric characters with a single dash.
 func sanitizeSlug(s string) string {
 	var b strings.Builder
 	lastDash := false
@@ -92,12 +69,7 @@ func sanitizeSlug(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// TerminalOutcome reports the terminal Outcome recorded in runDir's
-// state.json, delegating to treadleengine's identical mechanics and
-// converting its Outcome vocabulary onto perch's own distinct (but
-// identically spelled) Outcome type. Exists for perchcli's pause verb,
-// which must refuse to write a pause flag against a block that already
-// finished.
+// TerminalOutcome reports the terminal Outcome recorded in runDir's state.json.
 func TerminalOutcome(runDir string) (Outcome, bool, error) {
 	outcome, ok, err := treadleengine.TerminalOutcome(runDir)
 	if err != nil {
@@ -106,47 +78,24 @@ func TerminalOutcome(runDir string) (Outcome, bool, error) {
 	return Outcome(outcome), ok, err
 }
 
-// PauseFlagPath returns the path to the pause flag file inside runDir,
-// delegating to treadleengine's identical mechanics so perchcli's pause
-// verb and the run loop's PauseRequested seam resolve the same path.
+// PauseFlagPath returns the path to the pause flag file inside runDir.
 func PauseFlagPath(runDir string) string {
 	return treadleengine.PauseFlagPath(runDir)
 }
 
-// PauseFlagName is the pause flag file's name inside a block's run dir,
-// re-exported from treadleengine.
+// PauseFlagName is the pause flag file's name inside a block's run dir.
 const PauseFlagName = treadleengine.PauseFlagName
 
-// ErrBlockBusy is treadleengine's busy-block sentinel, re-exported (not
-// copied) as the SAME instance so errors.Is matches across the two
-// packages — perchcli branches on this exact sentinel regardless of which
-// package's Run call produced it.
+// ErrBlockBusy is treadleengine's busy-block sentinel.
 var ErrBlockBusy = treadleengine.ErrBlockBusy
 
-// JudgeVerdict and TriageVerdict are type aliases onto treadleengine's
-// identically-named types (byte-identical-perch-api shared decision):
-// ParseJudgeVerdict/ParseTriageVerdict themselves move to treadleengine with
-// the judge/triage machinery that renders their files, and are NOT
-// re-exported, but perch-side code (including run_test.go) that names a
-// verdict value keeps compiling unchanged.
-//
-// The two functions are not equally droppable, and the distinction is worth
-// stating so nobody re-derives a wrong reason later. ParseJudgeVerdict took
-// an unexported judgeFraming parameter, so no caller outside this package
-// could ever have called it — dropping it is provably a no-op.
-// ParseTriageVerdict took only []byte and WAS externally callable; it is
-// dropped because nothing in this repo called it and its file contract now
-// belongs to treadleengine, which is a deliberate narrowing of perch's
-// exported surface rather than a no-op. See this package's doc comment,
-// which records it as one of the two exceptions to "perch's exported Go API
-// is unchanged".
+// JudgeVerdict and TriageVerdict are type aliases onto treadleengine's identically-named types.
 type (
 	JudgeVerdict  = treadleengine.JudgeVerdict
 	TriageVerdict = treadleengine.TriageVerdict
 )
 
-// The aliased JudgeVerdict/TriageVerdict constants, re-exported so
-// perch-side references compile unchanged.
+// The aliased JudgeVerdict/TriageVerdict constants.
 const (
 	JudgeProgressing = treadleengine.JudgeProgressing
 	JudgeCircling    = treadleengine.JudgeCircling

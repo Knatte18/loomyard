@@ -16,16 +16,6 @@ import (
 func HideWindow(cmd *exec.Cmd) {}
 
 // IsAlive reports whether the process identified by pid is currently alive.
-// On Unix, os.FindProcess always trivially succeeds regardless of whether
-// pid actually exists, so process.Signal(syscall.Signal(0)) — which sends
-// no actual signal, only checks deliverability/existence — is the real
-// liveness probe here.
-//
-// A false positive is possible only in the narrow window of pid being
-// reused by an unrelated process after the original one exited. This is
-// acceptable for a staleness check that is not the sole gate: the
-// protocol-version half of daemonStale, and the probe step downstream, both
-// catch what a stale-but-PID-reused daemon would miss.
 func IsAlive(pid int) bool {
 	process, err := os.FindProcess(pid)
 	if err != nil {
@@ -34,14 +24,7 @@ func IsAlive(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
-// KillPID force-kills the process identified by pid, with no graceful
-// handshake — it sends SIGKILL via os.Process.Kill(). It is distinct from
-// lspClient.kill(), which kills a spawned *exec.Cmd this process itself
-// started; KillPID instead has only a PID recovered from the daemon state
-// file, with no *exec.Cmd handle to it. As such it accepts the same
-// PID-reuse risk daemonStale's proc.IsAlive check already trusts (see
-// daemonstate.go): there is no identity/cmdline guard confirming pid still
-// refers to the daemon that recorded it.
+// KillPID force-kills the process identified by pid.
 func KillPID(pid int) error {
 	process, err := os.FindProcess(pid)
 	if err != nil {
@@ -51,20 +34,11 @@ func KillPID(pid int) error {
 }
 
 // Detach configures the command to run in a new session and survive parent exit.
-// On Linux, Setsid is the equivalent of Windows CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW:
-// it places the child in a new session with its own process group and no controlling terminal,
-// so the parent's Ctrl-C signal and exit do not reach it.
 func Detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
-// DetachBreakaway configures the command like Detach, additionally surviving
-// a Windows Job Object with kill-on-close closing. On Linux there is no Job
-// Object concept, and Setsid-based Detach already gives the process the
-// survive-parent-exit property CREATE_BREAKAWAY_FROM_JOB provides on
-// Windows, so this is a trivial alias for Detach — it exists purely so the
-// cross-platform call site that invokes it unconditionally compiles on every
-// OS this repo targets.
+// DetachBreakaway configures the command like Detach, additionally surviving a Windows Job Object.
 func DetachBreakaway(cmd *exec.Cmd) {
 	Detach(cmd)
 }

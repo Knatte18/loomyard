@@ -14,14 +14,8 @@ import (
 	"strings"
 )
 
-// CapabilityError reports that the configured multiplexer binary does not
-// meet this engine's minimum surface requirements — either its reported
-// version is below the pinned floor (minMultiplexerVersion) or its
-// list-commands output is missing one of requiredSubcommands. It is
-// returned as *CapabilityError so callers can distinguish a capability
-// failure from a plain exec/parse error via errors.As, and it propagates
-// unwrapped through Engine.Up() onto the existing output.Err JSON envelope
-// (the typed-errors-through-existing-envelope Shared Decision).
+// CapabilityError reports the multiplexer binary does not meet minimum
+// surface requirements (version floor or missing subcommands).
 type CapabilityError struct {
 	Reason string
 }
@@ -55,12 +49,8 @@ var requiredSubcommands = []string{
 	"kill-server",
 }
 
-// probeCapability runs the version and command-surface checks against the
-// multiplexer binary reachable through run, returning a *CapabilityError
-// describing the first failure found (version floor, then a missing
-// subcommand) or nil when both checks pass. run is injected so this
-// pure-logic core is host-testable with a fake — probeCapabilityLocked
-// binds it to a real exec.Command invocation for production use.
+// probeCapability checks version floor and required subcommands.
+// run is injected for testability; probeCapabilityLocked binds it to real exec.
 func probeCapability(run func(args ...string) (string, error)) error {
 	versionOut, err := run("-V")
 	if err != nil {
@@ -92,12 +82,8 @@ func probeCapability(run func(args ...string) (string, error)) error {
 	return nil
 }
 
-// parseCommandNames extracts the first whitespace-delimited token from each
-// line of list-commands output into a set. tmux appends aliases/descriptions
-// after the command name on the same line (e.g. "kill-server               -
-// Kill the tmux server"), so only the leading token is a stable command name
-// across list-commands formatting; blank lines and header text are harmless
-// extras in the returned set since callers only ever look up known names.
+// parseCommandNames extracts command names from list-commands output.
+// Returns a set of leading tokens (descriptions/aliases come after).
 func parseCommandNames(out string) map[string]bool {
 	names := make(map[string]bool)
 	for _, line := range strings.Split(out, "\n") {
@@ -110,14 +96,8 @@ func parseCommandNames(out string) map[string]bool {
 	return names
 }
 
-// probeCapabilityLocked runs the capability probe against this engine's
-// configured multiplexer binary (e.cfg.Tmux), invoking it directly rather
-// than through the overlay's -L <socket> prefix: -V and list-commands are
-// socket-free queries that must succeed even before any server exists, so
-// routing them through TmuxCmd's socket-bound run/output would be both
-// unnecessary and, before the first boot, meaningless (no socket to name
-// yet). It assumes the op lock is already held, matching every other
-// *Locked helper in this package.
+// probeCapabilityLocked runs the capability probe against the configured
+// multiplexer binary directly (bypassing TmuxCmd's -L socket prefix).
 func (e *Engine) probeCapabilityLocked() error {
 	run := func(args ...string) (string, error) {
 		out, err := exec.Command(e.cfg.Tmux, args...).Output()

@@ -19,7 +19,6 @@ func TestOk_EmitsValidJSON(t *testing.T) {
 		t.Errorf("expected exit code 0, got %d", exitCode)
 	}
 
-	// Parse the output
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse JSON output: %v", err)
@@ -62,18 +61,15 @@ func TestErr_EmitsValidJSON(t *testing.T) {
 		t.Errorf("expected exit code 1, got %d", exitCode)
 	}
 
-	// Parse the output
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse JSON output: %v", err)
 	}
 
-	// Check that ok is false
 	if ok, exists := result["ok"]; !exists || ok != false {
 		t.Errorf("expected ok=false in output, got: %v", result)
 	}
 
-	// Check that error message is present
 	if errField, exists := result["error"]; !exists || errField != errMsg {
 		t.Errorf("expected error='%s' in output, got: %v", errMsg, result)
 	}
@@ -110,7 +106,6 @@ func TestErr_TrimsTrailingNewline(t *testing.T) {
 		t.Fatalf("Err(newline msg) output is not valid JSON: %v; output: %q", err, buf.String())
 	}
 
-	// ok must be false.
 	if ok, exists := result["ok"]; !exists || ok != false {
 		t.Errorf("Err(newline msg) ok = %v; want false", result["ok"])
 	}
@@ -129,7 +124,6 @@ func TestOk_MutatesFieldsMap(t *testing.T) {
 
 	output.Ok(buf, fields)
 
-	// Check that the map was mutated (ok was added)
 	if ok, exists := fields["ok"]; !exists || ok != true {
 		t.Errorf("expected Ok to mutate fields map by adding ok=true, got: %v", fields)
 	}

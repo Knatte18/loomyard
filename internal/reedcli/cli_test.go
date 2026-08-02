@@ -14,10 +14,7 @@ import (
 	"testing"
 )
 
-// TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all
-// seven registered verbs and exits 0 — no git repo is needed, since the
-// PersistentPreRunE guard skips layout/config resolution for the group
-// command itself.
+// TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all seven registered verbs and exits 0.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -37,10 +34,7 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1
-// and emits a JSON error envelope with ok=false, without needing a git repo
-// (the PersistentPreRunE guard for cmd.Name() == "reed" fires before layout
-// resolution).
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error envelope.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -63,9 +57,7 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_NotAGitRepo verifies that a real verb (not the bare group)
-// invoked from a non-git directory surfaces hubgeometry's bare
-// ErrNotAGitRepo sentinel via the PersistentPreRunE abort path.
+// TestRunCLI_NotAGitRepo verifies that a real verb invoked from a non-git directory surfaces the ErrNotAGitRepo error.
 func TestRunCLI_NotAGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -85,13 +77,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestAttachArgv verifies the attach invocation targets the worktree
-// session by EXACT name: "-L <socket> attach-session -t =<session>" — the
-// "=" pins tmux's exact session matching so a bare name can never prefix
-// match a sibling worktree's session (see attachArgv's doc comment). This
-// is the built attach invocation's one assertable seam — the argv build,
-// not a JSON round-trip, since a real attach hands stdio to tmux (the
-// documented JSON-envelope exception).
+// TestAttachArgv verifies the attach invocation targets the worktree session by exact name using "-L <socket> attach-session -t =<session>".
 func TestAttachArgv(t *testing.T) {
 	got := attachArgv("hub-abc123", "my-worktree")
 	want := []string{"-L", "hub-abc123", "attach-session", "-t", "=my-worktree"}

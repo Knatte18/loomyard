@@ -10,11 +10,7 @@ import _ "embed"
 //go:embed header-template.md
 var headerTemplate []byte
 
-// HeaderTemplate returns the embedded default header-pane text template's raw
-// bytes: a leading `<!-- ... -->` banner comment (stripped by stencil.Fill)
-// followed by the one-line body `hub: {{.hub}}`. Engine.HeaderText renders
-// this template via tokenvocab.Render whenever Config.Header.Template is
-// empty.
+// HeaderTemplate returns the embedded default header-pane text template's raw bytes.
 func HeaderTemplate() []byte {
 	return headerTemplate
 }

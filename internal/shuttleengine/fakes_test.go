@@ -18,21 +18,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// fakeReed is a hermetic ReedOps double: it never touches tmux. CallLog
-// records every call across all six methods, in invocation order, as a
-// short formatted tag — the single source tests use to assert
-// cross-method choreography (e.g. Interrupt/Send's exact key/text
-// sequence). Status and CapturePane are scripted via a FIFO queue: each
-// call consumes the next queued value, and the last queued value sticks
-// once the queue is drained, so a script shorter than the actual number of
-// polls still returns a stable final answer. Every method's error is
-// injected independently via its own field, so a test can force exactly one
-// call to fail without touching the others.
+// fakeReed is a hermetic ReedOps double that never touches tmux.
+// CallLog records every call across all six methods as short formatted tags; Status and CapturePane are scripted via FIFO queues.
 type fakeReed struct {
 	mu sync.Mutex
 
-	// CallLog is the ordered, cross-method call log described above.
-	CallLog []string
+	CallLog []string // Ordered cross-method call log.
 
 	AddStrandCalls  []reedengine.AddSpec
 	AddStrandResult reedengine.Strand
@@ -44,14 +35,10 @@ type fakeReed struct {
 	}
 	RemoveStrandErr error
 
-	// StatusQueue is consumed FIFO by Status; see the type doc for the
-	// draining rule. StatusErr, when set, makes every Status call fail
-	// regardless of StatusQueue.
-	StatusQueue []reedengine.StatusResult
+	StatusQueue []reedengine.StatusResult // Consumed FIFO by Status; last value sticks once drained.
 	StatusErr   error
 
-	// CaptureQueue behaves like StatusQueue but for CapturePane.
-	CaptureQueue []string
+	CaptureQueue []string // Consumed FIFO by CapturePane, like StatusQueue.
 	CaptureErr   error
 
 	SendTextCalls []struct {

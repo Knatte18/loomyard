@@ -15,24 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pauseCmd builds the `pause` subcommand: validates that --run-id was
-// supplied (manually, mirroring runCmd's --profile validation rather than
-// cobra's MarkFlagRequired), then writes the pause flag file at
-// perchengine.PauseFlagPath(<run dir>). The running block's round loop
-// checks for this file only at the round boundary — never mid-round — and
-// exits PAUSED when it finds it; re-running "lyx perch run" against the
-// same profile resumes at the recorded round and clears the flag (Engine.Run
-// clears it at entry, so a resumed block never instantly re-pauses on a
-// flag left over from the run that requested this pause).
-//
-// pause never creates the run dir: if it does not already exist (the run-id
-// names a block that never started, or a typo), that is reported as its own
-// error rather than silently fabricating an empty run dir for a pause flag
-// with nothing to pause. A run dir whose state.json already records a
-// terminal outcome is refused the same loud way ("already finished") — a
-// finished block has no run loop left to honor the flag, so accepting the
-// pause would mislead the operator. Writing the flag when it already exists
-// is a no-op success (idempotent re-pause).
+// pauseCmd builds the `pause` subcommand: validates --run-id and writes the pause flag file.
 func (c *perchCLI) pauseCmd() *cobra.Command {
 	var runID string
 

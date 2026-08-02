@@ -31,10 +31,8 @@ import (
 // machine-global cache. Production leaves it at the stdlib default.
 var userCacheDir = os.UserCacheDir
 
-// goToolchainCacheDir returns the machine-global cache directory a pinned
-// gopls version's binary lives in: filepath.Join(userCacheDir(), "lyx",
-// "tools", "go", version). Every pinned version gets its own subdirectory so
-// two worktrees pinned to different gopls versions never collide.
+// goToolchainCacheDir returns the machine-global cache directory for a pinned
+// gopls version, ensuring different versions don't collide across worktrees.
 func goToolchainCacheDir(version string) string {
 	// userCacheDir() only fails when neither $XDG_CACHE_HOME nor $HOME (or
 	// their per-OS equivalents) is set; the error is ignored here because the
@@ -46,12 +44,9 @@ func goToolchainCacheDir(version string) string {
 	return filepath.Join(dir, "lyx", "tools", "go", version)
 }
 
-// goToolchainInstallLock returns the path to the advisory lock file fencing
-// a Go toolchain install: filepath.Join(userCacheDir(), "lyx", "tools", "go",
-// "install.lock"). Deliberately not version-scoped — one lock per language,
-// not per version — so two processes installing two different pinned
-// versions of the same language still serialize through the same lock file,
-// matching toolchain-manager-authority's "one per language" decision.
+// goToolchainInstallLock returns the path to the Go toolchain install lock file.
+// Deliberately one lock per language (not per version) so concurrent installs
+// serialize through the same lock, per toolchain-manager-authority's design.
 func goToolchainInstallLock() string {
 	// See goToolchainCacheDir's comment for why userCacheDir()'s error is
 	// ignored here.
@@ -89,18 +84,9 @@ func runGoInstall(ctx context.Context, version, destDir string) error {
 	return nil
 }
 
-// resolveGoToolchain resolves the on-disk path to the pinned gopls binary
-// for pinnedVersion, installing it into the toolchain cache on a cold cache.
-//
-// The fast path (binary already present) takes no lock at all — the common
-// case must not pay a lock round trip. On a cold cache it acquires the
-// blocking, per-language install lock (goToolchainInstallLock), double-checks
-// the binary's presence again now that the lock is held (a second caller
-// that was waiting may find the first lock holder already finished the
-// install), and only then calls installGoToolchain. There is no "loser
-// reconnects to a live server" shortcut here, unlike EnsureServer's daemon
-// strategies: an install either finished before this call reached the lock,
-// or this call must wait for one to finish before it exits.
+// resolveGoToolchain resolves the on-disk path to the pinned gopls binary,
+// installing it into the toolchain cache on a cold cache via per-language locking
+// with a fast path (no lock taken) for already-installed versions.
 func resolveGoToolchain(ctx context.Context, pinnedVersion string) (string, error) {
 	cacheDir := goToolchainCacheDir(pinnedVersion)
 	binName := "gopls"

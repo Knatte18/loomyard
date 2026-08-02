@@ -37,16 +37,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// errNoWorkspaceSymbolCandidates reports that a workspace/symbol query
-// returned zero candidates when the shared-daemon regression test below
-// requires at least one to compare across both connections.
+// errNoWorkspaceSymbolCandidates reports when workspace/symbol returns no candidates.
 var errNoWorkspaceSymbolCandidates = errors.New("workspace/symbol returned zero candidates; want at least one")
 
-// TestEnsureNative_Integration proves the toolchain-resolve -> argv-build ->
-// spawn -> initialize -> probe chain ensureNative wires together works end
-// to end against a real gopls, not just its individually-mocked pieces
-// (unit-tested separately in ensureserver_test.go and
-// toolchain_integration_test.go).
+// TestEnsureNative_Integration verifies ensureNative's chain works end-to-end against a real gopls.
 func TestEnsureNative_Integration(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip(builtins()["go"].InstallHint)
@@ -69,22 +63,7 @@ func TestEnsureNative_Integration(t *testing.T) {
 	}
 }
 
-// TestEnsureNative_Integration_SharedDaemonWireCompatibility ports the exact
-// empirical procedure _mill/discussion.md's
-// native-strategy-wire-compatibility decision already ran manually, as an
-// automated regression pin rather than a one-off manual check: two
-// independent ensureNative calls, spawned a moment apart, each rooted at
-// the same target directory. Both use -remote=auto under the hood, so both
-// end up talking to the same shared gopls daemon. Each connection queries
-// workspace/symbol for the literal, well-known, unique, package-level
-// symbol "Resolve" (the same hubgeometry.Resolve symbol
-// refs_integration_test.go's own findFuncPosition helper locates for its
-// own test). A merely-nonempty result from each connection would not, by
-// itself, be discriminating — two independent, unconnected gopls instances
-// would each resolve the query correctly in isolation too. What only a
-// genuinely shared index guarantees is that both connections resolve the
-// query to the exact same location on every run, which is the assertion
-// this test actually pins.
+// TestEnsureNative_Integration_SharedDaemonWireCompatibility verifies two ensureNative calls share the same daemon.
 func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip(builtins()["go"].InstallHint)

@@ -27,41 +27,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// fileSetYAML mirrors burlerengine.FileSet's YAML shape (the target/fasit
-// key of a profile file): a list of paths and/or free-form instructions.
-// It is identical to burlercli's own fileSetYAML, kept as a separate type
-// here (rather than a shared export) so perchcli and burlercli stay
-// decoupled — the same rationale that keeps their Profile seams package-local.
+// fileSetYAML mirrors burlerengine.FileSet's YAML shape.
 type fileSetYAML struct {
 	Paths        []string `yaml:"paths"`
 	Instructions string   `yaml:"instructions"`
 }
 
-// gateYAML mirrors a profile file's "gate" key: which signal(s) decide
-// convergence (Mode), the argv a command-mode gate runs (Command), and how
-// long that command may run (Timeout, a Go duration string such as "10m";
-// empty defers to perchengine's built-in default).
+// gateYAML mirrors a profile file's "gate" key.
 type gateYAML struct {
 	Mode    string   `yaml:"mode"`
 	Command []string `yaml:"command"`
 	Timeout string   `yaml:"timeout"`
 }
 
-// profileYAML mirrors a profile file's top-level shape 1:1 onto
-// perchengine.Profile's fields: the embedded burler content keys (Target,
-// Fasit, Rubric, FixScope, ToolUse, ClusterFan — burler's own kebab-case
-// vocabulary) plus the perch-owned loop keys (Gate, RoundCaps, JudgeModel,
-// Model, Timeout). It exists as a separate type (rather than decoding
-// straight into Profile) so the YAML key vocabulary stays decoupled from
-// Profile's Go field names, exactly like burlercli's profileYAML.
-//
-// JudgeEffort and Effort are DELETED — pre-migration split-key fields with
-// no home in the new model-spec shape. judge-model and model stay string
-// keys but now hold model-spec strings (docs/reference/model-spec.md); a
-// profile still carrying the old judge-effort/effort keys fails loud via
-// the strict KnownFields(true) decode below (yaml's unknown-field error),
-// which is the intended migration failure mode — no bespoke error text
-// needed.
+// profileYAML mirrors a profile file's top-level shape 1:1 onto perchengine.Profile's fields.
 type profileYAML struct {
 	Target     fileSetYAML `yaml:"target"`
 	Fasit      fileSetYAML `yaml:"fasit"`
@@ -76,30 +55,7 @@ type profileYAML struct {
 	Timeout    string      `yaml:"timeout"`
 }
 
-// decodeProfile strictly decodes a profile file's raw bytes into a
-// perchengine.Profile. Decoding uses yaml.v3's Decoder.KnownFields(true) per
-// the yaml-strictness-split decision: an operator typo in a profile key
-// (e.g. "fixscope:" for "fix-scope:") must fail loudly here rather than
-// silently zeroing a safety-critical field. The two Go-duration-string
-// fields (gate.timeout, timeout) are parsed via time.ParseDuration, also
-// fail-loud on a malformed value.
-//
-// For each of judge-model and model that is NON-EMPTY, decodeProfile
-// resolves the model-spec string against reg via card 12's shared
-// perchengine.ResolveModelSpec helper (Parse -> Resolve -> the perch-layer
-// effort-only params check), unpacking the result into
-// Profile.JudgeModel/JudgeEffort and Profile.Model/Effort respectively. An
-// EMPTY spec string stays empty — unchanged semantics deferring to
-// Profile.validate's profile > cfg > built-in default chain, which runs
-// later, inside Engine.Run, and is untouched by this migration. This runs
-// BEFORE ProfileHash is taken in deriveBlockRunID/resolveRunTarget (both
-// untouched), so a block's identity hash covers the resolved values — the
-// accepted fail-loud resume consequence the batch scope documents.
-//
-// decodeProfile performs no further content validation itself (RoundCaps
-// shape, Gate.Mode legality, and so on) — that stays perchengine.Profile's
-// job via its own validate step inside Engine.Run, so this function's
-// responsibility is the YAML-to-struct mapping plus model-spec resolution.
+// decodeProfile strictly decodes a profile file into a perchengine.Profile, resolving model-spec strings against reg.
 func decodeProfile(data []byte, reg modelspec.Registry) (perchengine.Profile, error) {
 	var parsed profileYAML
 
@@ -172,15 +128,7 @@ func decodeProfile(data []byte, reg modelspec.Registry) (perchengine.Profile, er
 	}, nil
 }
 
-// deriveBlockRunID returns the run identity for one `perch run` invocation:
-// the explicit --run-id when supplied, otherwise the stable id derived from
-// the profile path and fileProfile — the profile exactly as decoded from the
-// file, BEFORE any --model/--effort/--timeout overlay. Deriving from the
-// pre-overlay profile is load-bearing: it keeps the id stable across
-// invocations of the same file, so re-running with different tuning flags
-// resolves to the SAME run dir and is refused loud by the engine's identity
-// check (which covers the overlaid values) instead of silently forking a
-// fresh block in a new dir.
+// deriveBlockRunID returns the run identity: the explicit --run-id if supplied, otherwise the stable id derived from the profile path and content.
 func deriveBlockRunID(profilePath string, fileProfile perchengine.Profile, explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
@@ -192,20 +140,7 @@ func deriveBlockRunID(profilePath string, fileProfile perchengine.Profile, expli
 	return perchengine.DeriveRunID(profilePath, hash), nil
 }
 
-// resolveRunTarget maps a file-decoded profile and the run-tuning flags onto
-// the concrete block one `perch run` invocation drives: the stable run
-// identity id, its run dir under c.runDirBase, and the profile with the
-// tuning flags overlaid. The load-bearing ordering lives HERE, in one tested
-// function, rather than inlined in runCmd's RunE: the id is derived from
-// fileProfile — the profile exactly as the file decoded it, BEFORE the
-// --model/--effort/--timeout overlay — so the id is stable across tuning-flag
-// changes and a re-run with different flags resolves to the SAME run dir,
-// where the engine's identity check (which covers the overlaid values) refuses
-// it loud instead of silently forking a fresh block. Overlaying before
-// deriving would fold the flags into the id and defeat that; keeping the whole
-// sequence in one function lets a test pin the ordering so a later reorder
-// cannot slip through unnoticed (which an isolated deriveBlockRunID test
-// cannot catch, since it never exercises RunE's call ordering).
+// resolveRunTarget maps a file-decoded profile and tuning flags onto the concrete block's identity, run dir, and overlaid profile.
 func (c *perchCLI) resolveRunTarget(profilePath, explicitRunID string, fileProfile perchengine.Profile, model, effort string, timeout time.Duration) (id, runDir string, profile perchengine.Profile, err error) {
 	id, err = deriveBlockRunID(profilePath, fileProfile, explicitRunID)
 	if err != nil {
@@ -230,29 +165,7 @@ func (c *perchCLI) resolveRunTarget(profilePath, explicitRunID string, fileProfi
 	return id, runDir, profile, nil
 }
 
-// runCmd builds the `run` subcommand: validates that --profile was supplied
-// before ever touching c's PersistentPreRunE-populated state (matching
-// burlercli's run.go flag-shape pattern, so the flag error surfaces in its
-// own JSON line rather than racing a failing PersistentPreRunE's already-
-// recorded exit code), reads and strictly decodes the --profile file,
-// derives the block's run identity from the decoded file content (before
-// any flag overlay — see the identity comment in the body), overlays the
-// three run-tuning flags, constructs a fresh *perchengine.Engine per
-// invocation (its pause seam closes over the concrete runDir this call
-// resolves), and blocks on Engine.Run until the block reaches a terminal
-// outcome OR a hard engine error. Either way, the run dir's artifacts are
-// committed and pushed through weft exactly once, per the Weft Git
-// Invariant, before the JSON envelope is printed — an engine error can
-// still follow a completed round or two whose artifacts are already on
-// disk, and those must not be stranded uncommitted. The one exception is
-// perchengine.ErrBlockBusy: another invocation owns the block mid-round,
-// this one changed nothing, and syncing here would commit the winner's
-// in-flight state under a misleading ERROR label.
-//
-// --profile is validated manually here rather than via cobra's
-// MarkFlagRequired, for the same reason burlercli's run verb does: cobra's
-// own flag-required error bypasses SetExit/ShouldAbort and is wrapped by
-// clihelp.RunRoot's generic cobra-error path instead.
+// runCmd builds the `run` subcommand: validates --profile, reads and decodes it, derives the block identity, overlays tuning flags, and runs the block through Engine.
 func (c *perchCLI) runCmd() *cobra.Command {
 	var (
 		profilePath string

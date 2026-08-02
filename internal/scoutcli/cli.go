@@ -48,13 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/scoutengine"
 )
 
-// Command returns the cobra command tree for the scout module: a parent
-// "scout" group command and its "refs", "definition", and "symbol"
-// subcommands.
-//
-// The parent carries RunE: clihelp.GroupRunE so a bare "lyx scout" lists
-// subcommands and an unknown subcommand emits a JSON error, matching every other
-// module group in this repo (see internal/fabriccli.Command).
+// Command returns the scout module's cobra command tree.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scout",
@@ -69,10 +63,7 @@ func Command() *cobra.Command {
 	return cmd
 }
 
-// refsCommand builds the "refs" subcommand: it resolves the target directory and
-// language-server registry, parses the single positional argument into a
-// scoutengine.Query, calls scoutengine.References, and maps the result or
-// error to the internal/output JSON envelope.
+// refsCommand builds the "refs" subcommand.
 func refsCommand() *cobra.Command {
 	var targetDir string
 	var lang string
@@ -229,11 +220,7 @@ scoped to one package comes back both complete and precise:
 	return refs
 }
 
-// definitionCommand builds the "definition" subcommand: structurally
-// identical to refsCommand (same flags, cwd/registry-resolution preamble,
-// and parseQuery call), differing only in which scoutengine entry point
-// it calls (Definition instead of References) and the JSON key its results
-// are reported under ("definitions").
+// definitionCommand builds the "definition" subcommand.
 func definitionCommand() *cobra.Command {
 	var targetDir string
 	var lang string
@@ -379,11 +366,7 @@ structurally-identical interfaces in different packages).`,
 	return definition
 }
 
-// symbolCommand builds the "symbol" subcommand: it shares refsCommand's
-// flags and cwd/registry-resolution preamble, but — unlike refs/definition —
-// never calls parseQuery. Per the plan's symbol-semantics decision, the
-// positional argument is always a plain workspace/symbol search string,
-// never position-parsed, even when it happens to look like "file:line:col".
+// symbolCommand builds the "symbol" subcommand.
 func symbolCommand() *cobra.Command {
 	var targetDir string
 	var lang string
@@ -488,23 +471,9 @@ matches into an ambiguity failure. Example:
 	return symbol
 }
 
-// resolveWorktreeRoot resolves the scoutengine.Options.WorktreeRoot value
-// a lookup rooted at targetDir should carry, given the process's cwd. Inside
-// a lyx hub (hubgeometry.Resolve(cwd) succeeds), it is the resolved
-// layout.WorktreeRoot — the git repository root — exactly as every verb
-// already used before this helper existed. Outside a hub (the supported
-// degrade-to-BuiltinRegistry path), it falls back to the absolute form of
-// targetDir rather than leaving WorktreeRoot empty: see the plan's
-// "Supervised daemon anchoring outside a lyx hub" Shared Decision — once a
-// language flips to the supervised strategy, an empty WorktreeRoot would
-// resolve EnsureServer's daemon state/lock/socket files at a cwd-relative
-// ".lyx/scout/<lang>/" path, littering/colliding across cwds for the
-// same --target-dir. filepath.Abs falls back to targetDir itself on error
-// (an Abs failure here means the process's own cwd is unresolvable, an
-// already-degraded environment), so this helper never returns an empty
-// string. It is a separate named function, rather than inlined into each
-// verb's RunE, specifically so the outside-a-hub fallback is independently
-// unit-testable without a live daemon.
+// resolveWorktreeRoot resolves the scoutengine.Options.WorktreeRoot value a lookup
+// should use, returning the git repository root inside a lyx hub or the absolute
+// target directory otherwise.
 func resolveWorktreeRoot(cwd, targetDir string) string {
 	if layout, err := hubgeometry.Resolve(cwd); err == nil {
 		return layout.WorktreeRoot
@@ -517,18 +486,8 @@ func resolveWorktreeRoot(cwd, targetDir string) string {
 	return abs
 }
 
-// buildOptions constructs a scoutengine.Options value from its component
-// parts. It is the single call site every refs/definition/symbol RunE
-// (single-arg and batch-mode alike) goes through: before this helper
-// existed, each verb's batch-mode closure built its own Options{...} literal
-// by hand, and three of the six literals (the batch closures) silently
-// omitted WorktreeRoot while their single-arg sibling set it — a latent
-// drift that only mattered once a language's daemon strategy flips to
-// supervised (native never reads WorktreeRoot). Collapsing every
-// construction site through this one function makes that omission
-// structurally impossible: a batch closure can no longer forget a field its
-// single-arg sibling sets, since both now call the same function with the
-// same locals.
+// buildOptions constructs a scoutengine.Options value, ensuring all construction
+// sites thread WorktreeRoot consistently.
 func buildOptions(registry scoutengine.Registry, targetDir, worktreeRoot, lang string, query scoutengine.Query, timeout time.Duration) scoutengine.Options {
 	return scoutengine.Options{
 		Registry:     registry,
@@ -540,23 +499,13 @@ func buildOptions(registry scoutengine.Registry, targetDir, worktreeRoot, lang s
 	}
 }
 
-// symbolQuery builds a scoutengine.Query for the "symbol" verb's single
-// positional argument. Per the plan's symbol-semantics decision, arg is
-// always a plain workspace/symbol search string — unlike parseQuery (which
-// refs/definition use), symbolQuery never calls parsePosition, even when arg
-// happens to have a "file:line:col" shape. This is a separate named function
-// rather than an inline literal so the "never position-parsed" contract is
-// independently unit-testable without a live language server.
+// symbolQuery builds a scoutengine.Query for a bare symbol name, never position-parsed.
 func symbolQuery(arg string) scoutengine.Query {
 	return scoutengine.Query{Symbol: arg}
 }
 
-// assertNoCallersCommand builds the "assert-no-callers" subcommand: a CI-shaped
-// gate, not a lookup verb. It resolves the same symbol|file:line:col argument
-// refs/definition accept, then fails (exit 1) if any reference to it survives
-// after excluding its own declaration site and every --except path. Intended
-// for a mill batch's "verify:" step, so a plan's Deletes:/Moves: safety claim
-// becomes a deterministic CI check instead of a reviewer's manual judgment call.
+// assertNoCallersCommand builds the "assert-no-callers" subcommand, a CI gate that fails if
+// a symbol has any caller outside its declaration and --except paths.
 func assertNoCallersCommand() *cobra.Command {
 	var targetDir string
 	var lang string
@@ -714,13 +663,7 @@ involved — only interface methods are at risk of this conflation.`,
 	return cmd
 }
 
-// emitAmbiguousOrError maps a References/Definition error to the envelope,
-// identically to emitLookupResult's own error branch: *ErrAmbiguousSymbol
-// becomes exit 2 with candidates, everything else becomes exit 1 via
-// output.Err. It returns false in both cases (there is never a "handled but
-// continue" outcome) — the bool return exists only so a call site can use it
-// as a single-expression early-return guard without repeating the two-branch
-// body inline.
+// emitAmbiguousOrError maps References/Definition errors to the output envelope.
 func emitAmbiguousOrError(ctx context.Context, out io.Writer, err error) bool {
 	var ambiguous *scoutengine.ErrAmbiguousSymbol
 	if errors.As(err, &ambiguous) {
@@ -732,11 +675,7 @@ func emitAmbiguousOrError(ctx context.Context, out io.Writer, err error) bool {
 	return false
 }
 
-// filterUnexpectedCallers returns every entry in refs that is neither one of
-// declRefs (compared by exact file+line+character — both refs and declRefs
-// come from scoutengine's Reference type, so this is a same-coordinate-
-// system comparison, never a byte-column-vs-UTF-16 mismatch) nor whose File
-// is a key in exceptAbs (already filepath.Clean'd, absolute paths).
+// filterUnexpectedCallers returns entries in refs that are neither in declRefs nor in exceptAbs.
 func filterUnexpectedCallers(refs []scoutengine.Reference, declRefs []scoutengine.Reference, exceptAbs map[string]bool) []scoutengine.Reference {
 	declSet := make(map[scoutengine.Reference]bool, len(declRefs))
 	for _, d := range declRefs {
@@ -756,14 +695,8 @@ func filterUnexpectedCallers(refs []scoutengine.Reference, declRefs []scoutengin
 	return violations
 }
 
-// filterWithin returns every entry in refs whose File lies within (or is
-// exactly) within — both compared as absolute, filepath.Clean'd paths.
-// within is resolved against baseDir first when it isn't already absolute,
-// mirroring assertNoCallersCommand's own --except path-resolution rule.
-// This is the mitigation for gopls' documented interface-method reference
-// conflation (see refs/definition/assert-no-callers' own Long help text):
-// a caller who already knows the query is scoped to one package can use
-// this to discard every cross-package hit gopls conservatively included.
+// filterWithin returns entries in refs whose file lies within the specified directory,
+// mitigating gopls' interface-method reference conflation across packages.
 func filterWithin(refs []scoutengine.Reference, within, baseDir string) []scoutengine.Reference {
 	w := within
 	if !filepath.IsAbs(w) {
@@ -790,11 +723,7 @@ func filterWithin(refs []scoutengine.Reference, within, baseDir string) []scoute
 	return filtered
 }
 
-// isWithinDir reports whether target is dir itself or lies somewhere inside
-// it, computed via filepath.Rel rather than a plain string-prefix check —
-// a prefix check would wrongly accept a sibling directory whose name merely
-// starts with dir's name (e.g. dir "internal/builder" matching target
-// "internal/builderengine/poll.go").
+// isWithinDir reports whether target lies within or is exactly dir.
 func isWithinDir(dir, target string) bool {
 	rel, err := filepath.Rel(dir, target)
 	if err != nil {
@@ -803,10 +732,7 @@ func isWithinDir(dir, target string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-// symbolMatchFields converts each scoutengine.SymbolMatch into the
-// {name,kind,file,line,character} map shape the JSON envelope emits,
-// mirroring referenceFields's exact shape/style for Symbol's richer result
-// type.
+// symbolMatchFields converts SymbolMatch results to JSON-encodable maps.
 func symbolMatchFields(matches []scoutengine.SymbolMatch) []map[string]any {
 	fields := make([]map[string]any, len(matches))
 	for i, m := range matches {
@@ -821,17 +747,7 @@ func symbolMatchFields(matches []scoutengine.SymbolMatch) []map[string]any {
 	return fields
 }
 
-// emitLookupResult maps the result of a References/Definition call to the
-// internal/output JSON envelope, implementing the plan's 0/1/2 exit-code
-// contract: a nil error emits {resultsField: [...]} and exit 0; an
-// *scoutengine.ErrAmbiguousSymbol emits {"candidates": [...]} with exit 2
-// (found, but the caller must disambiguate — distinct from both success and
-// failure); every other non-nil error falls through to output.Err's plain
-// error-string envelope and hardcoded exit 1, which already serves as the
-// design's "not found" contract value (ErrSymbolNotFound included) with no
-// special-casing needed. resultsField is the caller-supplied JSON key
-// ("references" for refs, "definitions" for definition) so this one helper
-// serves both verbs, which differ only in that key name.
+// emitLookupResult maps References/Definition results to the output envelope.
 func emitLookupResult(ctx context.Context, out io.Writer, resultsField string, results []scoutengine.Reference, err error) {
 	if err != nil {
 		var ambiguous *scoutengine.ErrAmbiguousSymbol
@@ -858,8 +774,7 @@ func emitLookupResult(ctx context.Context, out io.Writer, resultsField string, r
 	clihelp.SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}))
 }
 
-// referenceFields converts each scoutengine.Reference into the
-// {file,line,character} map shape the JSON envelope emits.
+// referenceFields converts Reference results to JSON-encodable maps.
 func referenceFields(refs []scoutengine.Reference) []map[string]any {
 	fields := make([]map[string]any, len(refs))
 	for i, r := range refs {
@@ -872,9 +787,7 @@ func referenceFields(refs []scoutengine.Reference) []map[string]any {
 	return fields
 }
 
-// parseQuery converts the single "refs" positional argument into a
-// scoutengine.Query: an explicit "file:line:col" position when arg matches that
-// shape (see parsePosition), otherwise a bare symbol name.
+// parseQuery converts a string argument to a Query, parsing "file:line:col" positions or treating it as a symbol name.
 func parseQuery(arg string) (scoutengine.Query, error) {
 	pos, ok := parsePosition(arg)
 	if !ok {
@@ -894,15 +807,7 @@ func parseQuery(arg string) (scoutengine.Query, error) {
 	return scoutengine.Query{Pos: &pos}, nil
 }
 
-// inFileQuery converts a "--in-file" positional argument into a
-// scoutengine.Query carrying InFile: name is always treated as a bare
-// symbol name to search for exhaustively within inFilePath, never
-// position-parsed — even when name happens to have a "file:line:col" shape —
-// mirroring parseQuery's role for the flag-less form and symbolQuery's
-// never-position-parsed discipline. This is a separate named function,
-// rather than an inline literal at each of refsCommand/definitionCommand's
-// two call sites, specifically so the "--in-file" query-construction
-// contract is independently unit-testable without a live language server.
+// inFileQuery converts a bare symbol name to an InFile Query, never position-parsed.
 func inFileQuery(inFilePath, name string) (scoutengine.Query, error) {
 	// scoutengine.InFileQuery.File must be an absolute path — References
 	// turns it into a file:// URI directly, with no further resolution — so a
@@ -917,12 +822,7 @@ func inFileQuery(inFilePath, name string) (scoutengine.Query, error) {
 	return scoutengine.Query{InFile: &scoutengine.InFileQuery{File: absFile, Name: name}}, nil
 }
 
-// parsePosition reports whether arg has the "file:line:col" shape — a path
-// followed by two colon-separated positive integers — and if so returns the
-// parsed scoutengine.Position. It scans from the right (the last two colons)
-// rather than splitting on every colon, so a Windows drive-letter path such as
-// "C:\foo\bar.go:42:8" still parses correctly: only the trailing two segments are
-// required to be integers, and everything before them is taken as File verbatim.
+// parsePosition reports whether arg has the "file:line:col" shape and parses it.
 func parsePosition(arg string) (scoutengine.Position, bool) {
 	lastColon := strings.LastIndex(arg, ":")
 	if lastColon < 0 {
@@ -951,10 +851,7 @@ func parsePosition(arg string) (scoutengine.Position, bool) {
 	return scoutengine.Position{File: file, Line: line, Character: col}, true
 }
 
-// batchStatus is the per-symbol outcome batch mode reports for each entry in
-// a multi-argument refs/definition/symbol call. Its four values rank
-// strictly worst-to-best via statusRank, per the plan's batch-mode-cli
-// exit-code contract: found < not_found < ambiguous < error.
+// batchStatus is the per-symbol outcome in batch mode.
 type batchStatus string
 
 const (
@@ -964,11 +861,7 @@ const (
 	statusError     batchStatus = "error"
 )
 
-// statusRank orders batchStatus values from best (0) to worst (3) outcome,
-// so runBatch can pick the process exit code that reflects the worst status
-// present across an entire batch — a batch that finds every symbol exits 0,
-// one with any error anywhere exits 3, regardless of how many other symbols
-// succeeded.
+// statusRank maps batchStatus values to exit-code ranks.
 var statusRank = map[batchStatus]int{
 	statusFound:     0,
 	statusNotFound:  1,
@@ -976,18 +869,7 @@ var statusRank = map[batchStatus]int{
 	statusError:     3,
 }
 
-// classifyLookupError maps a References/Definition call's outcome to a
-// batchStatus and its extra JSON fields, shared by refs and definition's
-// batch-mode closures (card 39). A nil err is statusFound, carrying results
-// under resultsField. An *scoutengine.ErrAmbiguousSymbol is
-// statusAmbiguous, carrying the candidate list — batch mode surfaces the
-// same ambiguity emitLookupResult's exit-2 path already reports for
-// single-arg mode, just per-entry instead of for the whole call.
-// ErrSymbolNotFoundSentinel is statusNotFound with no extra fields — a
-// confirmed absence needs nothing more reported. Every other error
-// (ErrNoLanguage, ErrServerNotFound, ErrServerTimeout,
-// ErrResolverUnsupported, a toolchain-install failure, ...) is statusError,
-// since none of them mean "confirmed absent."
+// classifyLookupError maps a References/Definition outcome to a batchStatus and JSON fields.
 func classifyLookupError(err error, resultsField string, results []scoutengine.Reference) (batchStatus, map[string]any) {
 	if err == nil {
 		// Mirror emitLookupResult's single-arg "resolution":"complete" marker
@@ -1008,11 +890,7 @@ func classifyLookupError(err error, resultsField string, results []scoutengine.R
 	return statusError, map[string]any{"error": err.Error()}
 }
 
-// classifySymbolError is classifyLookupError's twin for Symbol's batch-mode
-// closure (card 40). It shares the same nil/not-found/else structure but has
-// no ambiguous branch at all — per the plan's symbol-semantics decision,
-// Symbol never collapses multiple candidates into ambiguity, so
-// classifySymbolError has no case that could ever produce statusAmbiguous.
+// classifySymbolError maps a Symbol outcome to a batchStatus and JSON fields.
 func classifySymbolError(err error, results []scoutengine.SymbolMatch) (batchStatus, map[string]any) {
 	if err == nil {
 		return statusFound, map[string]any{"symbols": symbolMatchFields(results)}
@@ -1025,17 +903,7 @@ func classifySymbolError(err error, results []scoutengine.SymbolMatch) (batchSta
 	return statusError, map[string]any{"error": err.Error()}
 }
 
-// runBatch drives batch mode for any of the three verbs: it calls lookupOne
-// once per entry in args, builds one {"symbol":..., "status":..., ...}
-// envelope entry per call (lookupOne's returned fields map merged in — a nil
-// fields map, the not-found case, merges nothing extra), emits
-// {"results": [...]} via output.Ok, and overrides the process exit code to
-// the worst statusRank seen across the batch. output.Ok's return value is
-// discarded — like emitLookupResult's own output.Ok call, it always returns
-// 0 — and clihelp.SetExit is only called when the worst rank is non-zero:
-// when every symbol is found, the rank is already 0 and SetExit(ctx, 0)
-// would be a no-op anyway. runBatch has no opinion on how lookupOne resolves
-// a symbol; that is each verb's own closure (cards 39, 40).
+// runBatch drives batch mode, calling lookupOne per entry and reporting results with exit code matching the worst status.
 func runBatch(ctx context.Context, out io.Writer, args []string, lookupOne func(symbol string) (batchStatus, map[string]any)) {
 	entries := make([]map[string]any, len(args))
 	worst := statusFound
@@ -1059,10 +927,6 @@ func runBatch(ctx context.Context, out io.Writer, args []string, lookupOne func(
 }
 
 // RunCLI is the public seam for the scout module CLI.
-//
-// It delegates to clihelp.Execute with the cobra command tree, passing out as the
-// capture writer for all output (including cobra's error text), matching every
-// other module's RunCLI seam.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

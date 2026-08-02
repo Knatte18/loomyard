@@ -40,10 +40,6 @@ func TestHeaderLaunchCmd(t *testing.T) {
 	}
 }
 
-// TestHeaderLaunchLine pins the underTest suppression: under go test the
-// header pane must NOT re-exec exe (a test binary given positional args runs
-// its entire suite — the 2026-07-30 recursion incident), and in production
-// the line is exactly headerLaunchCmd's composition.
 func TestHeaderLaunchLine(t *testing.T) {
 	sh := shell.Posix()
 	exe := "/opt/lyx/bin/lyx"
@@ -55,9 +51,6 @@ func TestHeaderLaunchLine(t *testing.T) {
 		t.Errorf("headerLaunchLine(underTest=false) = %q, want %q", got, want)
 	}
 
-	// The boot site passes testing.Testing() as underTest; pin that this
-	// process — a test binary — actually reports true, so the wiring cannot
-	// silently decay into a constant false.
 	if !testing.Testing() {
 		t.Fatalf("testing.Testing() = false inside a test binary; the boot site's underTest wiring relies on it being true here")
 	}

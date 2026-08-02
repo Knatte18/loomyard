@@ -38,35 +38,13 @@ const targetRepo = "Knatte18/loomyard"
 const createIssueTimeout = 30 * time.Second
 
 // NewGitHubClient is the seam through which CreateIssue obtains an
-// authenticated *github.Client. Tests replace it with a closure that returns
-// a real go-github client pointed at an httptest server, so no test ever
-// reaches real token resolution or the real GitHub API.
+// authenticated *github.Client, swappable for testing.
 var NewGitHubClient = githubclient.New
 
-// CreateIssue files a GitHub issue with the given title, optional body, and
-// labels via go-github's typed Issues.Create call against the hardcoded
-// targetRepo. It returns the issue's HTML URL and issue number on success.
-//
-// Error handling distinguishes three cases, carried over in spirit from the
-// gh-CLI transport this replaces:
-//   - the token cannot be resolved (formerly: gh binary not on PATH) --
-//     surfaces as errors.Is(err, githubclient.ErrTokenUnresolvable), reached
-//     either through NewGitHubClient itself or through the first request's
-//     401 handling
-//   - a transport or network failure (formerly: generic exec failure) --
-//     any other error Issues.Create returns that is not an *github.ErrorResponse
-//   - GitHub rejected the request with a non-2xx response (formerly: non-zero
-//     gh exit) -- an *github.ErrorResponse, whose Message is surfaced directly
-//
-// These three remain distinguishable because a network failure and an API
-// rejection call for different operator action: one is worth retrying, the
-// other names a rejected request that will not succeed on retry alone.
-//
-// The returned number is 0 only when go-github's Issue.Number itself comes
-// back nil. In practice a successful (2xx) response from Issues.Create always
-// carries a typed issue number, so this is a defensive fallback rather than
-// an expected parse outcome the way it was under the old URL-suffix parse --
-// callers must not read a live "issue number omitted" case into it.
+// CreateIssue files a GitHub issue with the given title, optional body, and labels.
+// It returns the issue's HTML URL and issue number on success.
+// Error handling distinguishes token-resolution failures (errors.Is(err, githubclient.ErrTokenUnresolvable)),
+// network failures (*github.ErrorResponse absent), and API rejections (*github.ErrorResponse present).
 func CreateIssue(title string, body *string, labels []string) (url string, number int, err error) {
 	client, err := NewGitHubClient()
 	if err != nil {

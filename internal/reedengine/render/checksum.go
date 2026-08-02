@@ -8,10 +8,8 @@ package render
 
 import "fmt"
 
-// layoutChecksum computes the tmux window-layout checksum for s (the layout
-// string following the leading "csum," field), returned as four lowercase
-// hex digits. Matches tmux's layout_checksum: a 16-bit rotate-right
-// accumulator.
+// layoutChecksum computes the tmux window-layout checksum (16-bit rotate-right).
+// Returns four lowercase hex digits.
 func layoutChecksum(s string) string {
 	var csum uint16
 	for i := 0; i < len(s); i++ {

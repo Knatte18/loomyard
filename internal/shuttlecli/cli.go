@@ -20,24 +20,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// shuttleCLI is the receiver every shuttle verb hangs off of, so each
-// subcommand's RunE reads the same PersistentPreRunE-populated state. runner
-// is the domain handle every verb calls into (Run/Interrupt/Send) — the
-// zero shuttleCLI is not valid until PersistentPreRunE has populated runner.
+// shuttleCLI is the receiver every shuttle verb hangs off of;
+// runner is populated by PersistentPreRunE.
 type shuttleCLI struct {
 	runner *shuttleengine.Runner
 }
 
 // Command returns the cobra command tree for the shuttle module.
-//
-// The parent "shuttle" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> reed engine -> claude
-// engine -> shuttleengine.Runner into c, skipping that resolution entirely
-// when the group command itself is invoked (bare "lyx shuttle" listing or an
-// unknown-subcommand error via GroupRunE) so neither path requires a git
-// repository. Every verb card creates its own (c *shuttleCLI) xCmd() builder
-// and registers it here via parent.AddCommand: run.go, interrupt.go, and
-// send.go.
+// The parent command carries a PersistentPreRunE that resolves geometry and engines,
+// skipping resolution when the group command itself is invoked (no git repo required).
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 
@@ -110,11 +101,8 @@ provider specifics.`,
 	return parent
 }
 
-// RunCLI is the public seam for the shuttle module CLI.
-//
-// It delegates to clihelp.Execute with the cobra command tree, passing out as
-// the capture writer for all output (including cobra's error text). This
-// preserves the existing call contract so that callers and tests are unchanged.
+// RunCLI is the public seam for the shuttle module CLI,
+// delegating to clihelp.Execute for output capture.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

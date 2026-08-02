@@ -11,16 +11,7 @@ import (
 	"strings"
 )
 
-// LivePane represents the state of a single tmux pane as reported by
-// list-panes: its id, whether it is dead (present but its command has
-// exited — tmux keeps a dead pane around under `remain-on-exit on` until
-// something explicitly kills it), its vertical position (pane_top, the row
-// its first line occupies — the key for deriving the window's actual
-// top-to-bottom pane order, which select-layout applies cells against), its
-// current width/height, and the OS pid of the pane's immediate child
-// process (#{pane_pid} — the launcher process, not the deeper descendant
-// that actually holds the worktree directory; see
-// paneProcessTreePIDsLocked).
+// LivePane represents the state of a single tmux pane from list-panes.
 type LivePane struct {
 	ID     string `json:"id"`
 	Dead   bool   `json:"dead"`
@@ -30,10 +21,8 @@ type LivePane struct {
 	PID    int    `json:"pid"`
 }
 
-// parsePaneList parses the output of
-// list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}"
-// into LivePane values. Returns nil, nil when the output is empty (no panes) —
-// this is the normal shape for a not-yet-created session, not an error.
+// parsePaneList parses list-panes output into LivePane values.
+// Returns nil, nil when output is empty (normal for uncreated session).
 func parsePaneList(out string) ([]LivePane, error) {
 	out = strings.TrimSpace(out)
 	if out == "" {
