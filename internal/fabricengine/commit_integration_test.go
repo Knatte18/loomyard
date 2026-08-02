@@ -409,7 +409,7 @@ func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
 // snapshot tag, at two different warp SHAs. Before the empty-commit rule,
 // the second call's weft-side StageAndCommit would report committed=false
 // (nothing changed against HEAD), no weft commit would land, and
-// SnapshotWarpSHA would keep answering with the first call's now-stale warp
+// snapshotWarpSHA would keep answering with the first call's now-stale warp
 // SHA forever — despite the second regeneration having just confirmed
 // itself current against a newer baseline. This test must fail before the
 // implementation and pass after; a pass before the implementation means the
@@ -428,12 +428,12 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 		t.Fatalf("Commit() round 1 = %+v; want both sides committed", result1)
 	}
 
-	got1, err := f.SnapshotWarpSHA("raddle")
+	got1, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() after round 1 error = %v", err)
+		t.Fatalf("snapshotWarpSHA() after round 1 error = %v", err)
 	}
 	if got1 != result1.WarpSHA {
-		t.Fatalf("SnapshotWarpSHA() after round 1 = %q; want %q", got1, result1.WarpSHA)
+		t.Fatalf("snapshotWarpSHA() after round 1 = %q; want %q", got1, result1.WarpSHA)
 	}
 
 	// Advance warp again, but write the IDENTICAL weft content: the
@@ -455,12 +455,12 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 		t.Errorf("Commit() round 2 WeftSHA = %q; want a NEW commit distinct from round 1's %q", result2.WeftSHA, result1.WeftSHA)
 	}
 
-	got2, err := f.SnapshotWarpSHA("raddle")
+	got2, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() after round 2 error = %v", err)
+		t.Fatalf("snapshotWarpSHA() after round 2 error = %v", err)
 	}
 	if got2 != result2.WarpSHA {
-		t.Errorf("SnapshotWarpSHA() after round 2 = %q; want the ADVANCED baseline %q, not the stale round-1 baseline %q", got2, result2.WarpSHA, result1.WarpSHA)
+		t.Errorf("snapshotWarpSHA() after round 2 = %q; want the ADVANCED baseline %q, not the stale round-1 baseline %q", got2, result2.WarpSHA, result1.WarpSHA)
 	}
 }
 
@@ -547,7 +547,7 @@ func newUnbornWeftRepo(t *testing.T) string {
 // shape (Commit(nil, msg, tags, opts)): a nil files list with a non-empty
 // snapshotTags still takes the combined write lock (proven here by
 // externally holding it and observing the call block until released),
-// lands an empty weft commit, and SnapshotWarpSHA resolves the tag to
+// lands an empty weft commit, and snapshotWarpSHA resolves the tag to
 // warp's current HEAD.
 func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
@@ -601,12 +601,12 @@ func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
 		t.Fatalf("Commit() = %+v; want an empty weft commit to have landed", result)
 	}
 
-	gotWarpSHA, err := f.SnapshotWarpSHA("raddle")
+	gotWarpSHA, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if gotWarpSHA != warpHEAD {
-		t.Errorf("SnapshotWarpSHA() = %q; want warp's current HEAD %q", gotWarpSHA, warpHEAD)
+		t.Errorf("snapshotWarpSHA() = %q; want warp's current HEAD %q", gotWarpSHA, warpHEAD)
 	}
 }
 
@@ -679,12 +679,12 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 		t.Errorf("root weft commit message = %q; want it to contain the Snapshot trailer", msg)
 	}
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != warpHEAD {
-		t.Errorf("SnapshotWarpSHA() = %q; want %q", got, warpHEAD)
+		t.Errorf("snapshotWarpSHA() = %q; want %q", got, warpHEAD)
 	}
 }
 
@@ -715,12 +715,12 @@ func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 		t.Errorf("weft HEAD changed from %q to %q; want unchanged (no commit)", preWeftSHA, postWeftSHA)
 	}
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != "" {
-		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (nothing was recorded)", got)
+		t.Errorf("snapshotWarpSHA() = %q; want \"\" (nothing was recorded)", got)
 	}
 }
 
@@ -747,12 +747,12 @@ func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
 		t.Errorf("Commit() = %+v; want the warp commit to still land (SkipGit is weft-scoped)", result)
 	}
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != "" {
-		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (SkipGit skips the weft side entirely)", got)
+		t.Errorf("snapshotWarpSHA() = %q; want \"\" (SkipGit skips the weft side entirely)", got)
 	}
 }
 

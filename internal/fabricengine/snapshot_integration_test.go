@@ -1,7 +1,7 @@
 //go:build integration
 
 // snapshot_integration_test.go — integration coverage for
-// Fabric.SnapshotWarpSHA: newest-tagged-commit-wins, tag isolation, the
+// Fabric.snapshotWarpSHA: newest-tagged-commit-wins, tag isolation, the
 // multi-tag-on-one-commit split, the absent-is-not-an-error miss path, the
 // unborn-weft-HEAD tolerance, untagged/no-baseline commits, a Snapshot
 // trailer with no Warp-SHA sibling, byte-exact tag matching, per-branch
@@ -48,7 +48,7 @@ func commitWeftTagged(t *testing.T, f *Fabric, warpPath, weftPath, content strin
 // commitWeftSnapshotOnlyTrailer commits content into weftPath's tracked
 // _lyx/config.yaml with a hand-crafted commit message carrying ONLY a
 // "Snapshot: <tag>" trailer and no "Warp-SHA:" trailer at all — the shape
-// SnapshotWarpSHA's reader must skip rather than mistake for an empty
+// snapshotWarpSHA's reader must skip rather than mistake for an empty
 // baseline. Built directly via git rather than through CommitWeft, since
 // CommitWeft only ever appends a Snapshot trailer alongside a Warp-SHA one
 // (and drops tags entirely on an unborn warp HEAD — see commitWeftLocked),
@@ -80,12 +80,12 @@ func TestSnapshotWarpSHA_Miss(t *testing.T) {
 
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "untagged change")
 
-	got, err := f.SnapshotWarpSHA("never-recorded")
+	got, err := f.snapshotWarpSHA("never-recorded")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v; want nil", err)
+		t.Fatalf("snapshotWarpSHA() error = %v; want nil", err)
 	}
 	if got != "" {
-		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (absent)", got)
+		t.Errorf("snapshotWarpSHA() = %q; want \"\" (absent)", got)
 	}
 }
 
@@ -103,12 +103,12 @@ func TestSnapshotWarpSHA_NewestTaggedCommitWins(t *testing.T) {
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 2", "raddle")
 	warpSHA3, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 3", "raddle")
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != warpSHA3 {
-		t.Errorf("SnapshotWarpSHA(\"raddle\") = %q; want the newest recorded %q", got, warpSHA3)
+		t.Errorf("snapshotWarpSHA(\"raddle\") = %q; want the newest recorded %q", got, warpSHA3)
 	}
 }
 
@@ -127,20 +127,20 @@ func TestSnapshotWarpSHA_TagIsolation(t *testing.T) {
 	warpRaddle2, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 2", "raddle")
 	warpTrace2, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "trace round 2", "trace")
 
-	gotRaddle, err := f.SnapshotWarpSHA("raddle")
+	gotRaddle, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA(\"raddle\") error = %v", err)
+		t.Fatalf("snapshotWarpSHA(\"raddle\") error = %v", err)
 	}
 	if gotRaddle != warpRaddle2 {
-		t.Errorf("SnapshotWarpSHA(\"raddle\") = %q; want %q", gotRaddle, warpRaddle2)
+		t.Errorf("snapshotWarpSHA(\"raddle\") = %q; want %q", gotRaddle, warpRaddle2)
 	}
 
-	gotTrace, err := f.SnapshotWarpSHA("trace")
+	gotTrace, err := f.snapshotWarpSHA("trace")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA(\"trace\") error = %v", err)
+		t.Fatalf("snapshotWarpSHA(\"trace\") error = %v", err)
 	}
 	if gotTrace != warpTrace2 {
-		t.Errorf("SnapshotWarpSHA(\"trace\") = %q; want %q", gotTrace, warpTrace2)
+		t.Errorf("snapshotWarpSHA(\"trace\") = %q; want %q", gotTrace, warpTrace2)
 	}
 }
 
@@ -156,20 +156,20 @@ func TestSnapshotWarpSHA_MultipleTagsOnOneCommit(t *testing.T) {
 
 	warpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "multi-tag commit", "raddle", "trace")
 
-	gotRaddle, err := f.SnapshotWarpSHA("raddle")
+	gotRaddle, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA(\"raddle\") error = %v", err)
+		t.Fatalf("snapshotWarpSHA(\"raddle\") error = %v", err)
 	}
 	if gotRaddle != warpSHA {
-		t.Errorf("SnapshotWarpSHA(\"raddle\") = %q; want %q", gotRaddle, warpSHA)
+		t.Errorf("snapshotWarpSHA(\"raddle\") = %q; want %q", gotRaddle, warpSHA)
 	}
 
-	gotTrace, err := f.SnapshotWarpSHA("trace")
+	gotTrace, err := f.snapshotWarpSHA("trace")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA(\"trace\") error = %v", err)
+		t.Fatalf("snapshotWarpSHA(\"trace\") error = %v", err)
 	}
 	if gotTrace != warpSHA {
-		t.Errorf("SnapshotWarpSHA(\"trace\") = %q; want %q", gotTrace, warpSHA)
+		t.Errorf("snapshotWarpSHA(\"trace\") = %q; want %q", gotTrace, warpSHA)
 	}
 }
 
@@ -184,12 +184,12 @@ func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 	lyxtest.MustRun(t, weftPath, "git", "init", "-q", "-b", "main")
 	f := newFabric(t, warpPath, weftPath)
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v; want nil (unborn weft HEAD)", err)
+		t.Fatalf("snapshotWarpSHA() error = %v; want nil (unborn weft HEAD)", err)
 	}
 	if got != "" {
-		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (unborn weft HEAD)", got)
+		t.Errorf("snapshotWarpSHA() = %q; want \"\" (unborn weft HEAD)", got)
 	}
 }
 
@@ -207,12 +207,12 @@ func TestSnapshotWarpSHA_UntaggedCommitsAreSkipped(t *testing.T) {
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "plain change 1")
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "plain change 2")
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != "" {
-		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (no commit carries this tag)", got)
+		t.Errorf("snapshotWarpSHA() = %q; want \"\" (no commit carries this tag)", got)
 	}
 }
 
@@ -228,12 +228,12 @@ func TestSnapshotWarpSHA_SnapshotWithNoWarpSHAIsSkipped(t *testing.T) {
 
 	commitWeftSnapshotOnlyTrailer(t, weftFixture.WeftPath, "no warp trailer", "raddle")
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != "" {
-		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (Snapshot trailer with no Warp-SHA sibling is unusable)", got)
+		t.Errorf("snapshotWarpSHA() = %q; want \"\" (Snapshot trailer with no Warp-SHA sibling is unusable)", got)
 	}
 }
 
@@ -251,12 +251,12 @@ func TestSnapshotWarpSHA_ByteExactMatching(t *testing.T) {
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "exact tag", "raddle")
 
 	for _, tag := range []string{"Raddle", "raddle "} {
-		got, err := f.SnapshotWarpSHA(tag)
+		got, err := f.snapshotWarpSHA(tag)
 		if err != nil {
-			t.Fatalf("SnapshotWarpSHA(%q) error = %v", tag, err)
+			t.Fatalf("snapshotWarpSHA(%q) error = %v", tag, err)
 		}
 		if got != "" {
-			t.Errorf("SnapshotWarpSHA(%q) = %q; want \"\" (byte-exact match only)", tag, got)
+			t.Errorf("snapshotWarpSHA(%q) = %q; want \"\" (byte-exact match only)", tag, got)
 		}
 	}
 }
@@ -264,13 +264,13 @@ func TestSnapshotWarpSHA_ByteExactMatching(t *testing.T) {
 // TestSnapshotWarpSHA_PerBranchScoping records a tag on a side branch, then
 // switches the weft worktree to a different branch (forked from the weft
 // worktree's ORIGINAL branch, before the tagged commit landed) via a plain
-// `git checkout -b`, and asserts SnapshotWarpSHA reads the tag as absent
+// `git checkout -b`, and asserts snapshotWarpSHA reads the tag as absent
 // rather than answering cross-branch — the reader's per-branch contract.
 //
 // Topology.Checkout is deliberately not used here: it needs a full
 // *hubgeometry.Layout, and the only fixture in this package building one
 // lives in the external fabricengine_test package, unreachable from this
-// internal-package file. It would also test the wrong thing — SnapshotWarpSHA
+// internal-package file. It would also test the wrong thing — snapshotWarpSHA
 // scans the weft worktree's CURRENT branch and nothing else, so a weft-side
 // branch switch by itself is the whole mechanism under test; the coordinated
 // host+weft checkout is only how that state arises in production.
@@ -289,15 +289,15 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 
 	// Fork "other" off "main" (NOT off "tagged"), so its history does not
 	// contain the tagged commit at all, and switch the weft worktree onto
-	// it — the branch SnapshotWarpSHA must now scan.
+	// it — the branch snapshotWarpSHA must now scan.
 	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "other", "main")
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != "" {
-		t.Errorf("SnapshotWarpSHA() = %q; want \"\" (tag recorded on another branch must read as absent)", got)
+		t.Errorf("snapshotWarpSHA() = %q; want \"\" (tag recorded on another branch must read as absent)", got)
 	}
 }
 
@@ -373,7 +373,7 @@ func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file,
 // it before its own ancestor; a plain date-ordered scan would get this
 // backwards and answer with the OLDER mainline baseline, under-reporting
 // staleness. Both assertions below run against this same history: first,
-// that SnapshotWarpSHA resolves to the topologically-newest (side) commit's
+// that snapshotWarpSHA resolves to the topologically-newest (side) commit's
 // warp SHA, not the date-newest (mainline) one; second, reusing
 // TestRebuildIndex_EqualsIncrementallyBuiltIndex's own comparison, that
 // RebuildIndex agrees with the incrementally-built index over the same
@@ -403,12 +403,12 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "main")
 	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "merge", "--no-ff", "-m", "merge side into main", "side")
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v", err)
+		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
 	if got != warpSHASide {
-		t.Errorf("SnapshotWarpSHA(\"raddle\") = %q; want the topologically-newest (side) baseline %q, not the date-newest mainline baseline %q", got, warpSHASide, warpSHAMainline)
+		t.Errorf("snapshotWarpSHA(\"raddle\") = %q; want the topologically-newest (side) baseline %q, not the date-newest mainline baseline %q", got, warpSHASide, warpSHAMainline)
 	}
 
 	path, err := f.corrIndexPath()
@@ -540,10 +540,10 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 // TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse pins the
 // reader's validate-at-use posture: a recorded Warp-SHA whose warp commit is
 // later rewritten away (rebase/amend/reset+prune) is returned RAW by
-// SnapshotWarpSHA, with a nil error — not collapsed to absent and not
+// snapshotWarpSHA, with a nil error — not collapsed to absent and not
 // resolved to an older baseline — and f.Warp.SHAExists on the returned SHA
 // reports false, demonstrating the "read, then check SHAExists" consumer
-// idiom SnapshotWarpSHA's own doc comment describes, in executable form.
+// idiom snapshotWarpSHA's own doc comment describes, in executable form.
 func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
@@ -559,12 +559,12 @@ func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing
 	lyxtest.MustRun(t, warpPath, "git", "reset", "--hard", baseWarpSHA)
 	expireAndPruneUnreachable(t, warpPath)
 
-	got, err := f.SnapshotWarpSHA("raddle")
+	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
-		t.Fatalf("SnapshotWarpSHA() error = %v; want nil (a dangling Warp-SHA is returned raw, not an error)", err)
+		t.Fatalf("snapshotWarpSHA() error = %v; want nil (a dangling Warp-SHA is returned raw, not an error)", err)
 	}
 	if got != danglingWarpSHA {
-		t.Errorf("SnapshotWarpSHA() = %q; want the dangling SHA %q returned raw", got, danglingWarpSHA)
+		t.Errorf("snapshotWarpSHA() = %q; want the dangling SHA %q returned raw", got, danglingWarpSHA)
 	}
 	if f.Warp.SHAExists(got) {
 		t.Errorf("Warp.SHAExists(%q) = true; want false (the warp commit was rewritten away)", got)
