@@ -16,33 +16,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// preservedKeyComment marks a root-level key that SetValues grafted from
-// existing onto templateNode because the template no longer (or never did)
-// declare it. It is always set via direct assignment, never concatenated
-// onto whatever HeadComment the key already carried, so repeat --set calls
-// against an already-preserved file stay idempotent instead of growing or
-// duplicating the comment.
+// preservedKeyComment marks a root-level key grafted from existing because
+// the template no longer declares it. Direct assignment keeps --set calls
+// idempotent.
 const preservedKeyComment = "# preserved (not in current template)"
 
-// KV is a single key=value pair to apply via SetValues. Key is a dotted
-// leaf key-path (the same shape collectLeafPaths produces, e.g.
-// "level1.level2.key"); Value is the raw string to store as the leaf's
-// scalar value.
+// KV is a single key=value pair. Key is a dotted leaf key-path;
+// Value is the scalar value.
 type KV struct {
 	Key   string
 	Value string
 }
 
-// SetResult is the outcome of a SetValues call.
-//
-// Merged holds the new file bytes and is only valid when Unknown is empty;
-// callers must not write Merged to disk otherwise. Unknown is the sorted,
-// deduplicated list of requested keys absent from the template's leaf-key
-// set. Known is the template's full sorted leaf-key set, included so callers
-// can build a helpful "known keys are..." error message without recomputing it.
-// Preserved is the sorted list of pre-existing top-level config keys not
-// present in the template that were carried through into Merged untouched
-// (nil/empty when none).
+// SetResult is the outcome of a SetValues call. Merged holds the new file
+// bytes and is only valid when Unknown is empty. Unknown lists requested
+// keys absent from the template's leaf-key set. Known is the template's full
+// sorted leaf-key set. Preserved lists pre-existing top-level keys carried
+// through (nil/empty when none).
 type SetResult struct {
 	Merged    []byte
 	Unknown   []string
@@ -51,33 +41,10 @@ type SetResult struct {
 }
 
 // SetValues applies pairs to a template-shaped YAML document, preserving
-// comments, key order, and any values from existing that already agree with
-// the template's structure.
-//
-// The working tree mutated and marshalled is always templateNode, never a
-// bare parse of existing: this guarantees every template leaf has a real,
-// settable node even when existing is a stale or partial file missing some of
-// the template's keys. When existing is non-empty its leaf values are first
-// copied onto the matching templateNode leaves (mirroring Reconcile's merge
-// step), so a --set call layers on top of whatever the user already
-// customized rather than clobbering it back to the template defaults.
-//
-// When existing is non-empty, SetValues also grafts any of existing's
-// top-level keys that have no counterpart in the template's top-level keys
-// onto templateNode's root mapping, whole (scalar, mapping, or sequence,
-// unmodified) and in sorted key order, marking each grafted key with the
-// fixed comment "# preserved (not in current template)". This is a
-// root-key-granularity operation independent of the leaf-path override step
-// above: it exists so a key the template has outgrown, or one a user hand-
-// added, is never silently dropped just because SetValues always marshals
-// from templateNode rather than existingNode. The grafted key names are
-// reported in SetResult.Preserved.
-//
-// If any pairs[i].Key is not present in the template's leaf-key set, no
-// mutation is performed at all: SetResult.Unknown is returned non-empty and
-// Merged is nil. Otherwise every pair is applied to the working tree in the
-// given order (a later pair for a repeated key wins) and the mutated tree is
-// marshalled into SetResult.Merged.
+// comments and key order. If any pairs[i].Key is absent from the template's
+// leaf-key set, SetResult.Unknown is returned non-empty and Merged is nil.
+// Otherwise every pair is applied to the working tree (later pairs for a
+// repeated key win) and the mutated tree is marshalled into SetResult.Merged.
 func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	// Parse the template into the tree we will mutate and ultimately marshal.
 	var templateNode yaml.Node
@@ -157,15 +124,8 @@ func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 
 // preserveOrphanRootKeys grafts every top-level key in existingNode's root
 // mapping that has no counterpart in templateNode's root mapping onto
-// templateNode's root mapping, whole (scalar, mapping, or sequence,
-// unmodified), in sorted key order, marking each grafted key with
-// preservedKeyComment. It returns the sorted list of grafted key names
-// (nil when none), for SetResult.Preserved.
-//
-// This is a root-key-granularity operation, deliberately separate from
-// applyExistingOverrides' flattened-leaf-path comparison: comparing at the
-// root avoids any need to special-case nested or indexed orphan structures,
-// since the whole subtree under an orphaned root key is grafted as-is.
+// templateNode, in sorted key order, marking each with preservedKeyComment.
+// It returns the sorted list of grafted key names (nil when none).
 func preserveOrphanRootKeys(templateNode, existingNode *yaml.Node) []string {
 	templateRoot := rootMappingNode(templateNode)
 	existingRoot := rootMappingNode(existingNode)
@@ -216,11 +176,7 @@ func preserveOrphanRootKeys(templateNode, existingNode *yaml.Node) []string {
 	return preserved
 }
 
-// rootMappingNode unwraps a parsed yaml.Node down to its root MappingNode,
-// mirroring how collectLeafPathsHelper's yaml.DocumentNode case descends
-// into Content[0]. A yaml.Unmarshal target is always a DocumentNode whose
-// single child is the document's root node; for a non-empty mapping
-// document that child is the MappingNode itself.
+// rootMappingNode unwraps a parsed yaml.Node down to its root MappingNode.
 func rootMappingNode(node *yaml.Node) *yaml.Node {
 	if node.Kind == yaml.DocumentNode {
 		if len(node.Content) == 0 {

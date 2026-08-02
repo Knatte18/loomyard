@@ -35,12 +35,9 @@ const browserNavigationTimeout = 30 * time.Second
 // content this fallback exists to capture needs a moment to run.
 const renderSettleDelay = 2 * time.Second
 
-// fetchWithBrowser renders url in headless Chrome and extracts its readable
-// content, for pages a static fetch cannot see (JS-rendered content, or
-// sites that specifically block non-browser clients). It reports ok=false
-// whenever no usable content could be produced — including when no Chrome
-// executable is available — so the caller can fall back to whatever static
-// extraction already produced rather than fail the whole fetch.
+// fetchWithBrowser renders url in headless Chrome and extracts readable
+// content, for pages a static fetch cannot see. It reports ok=false when no
+// usable content could be produced, including when no Chrome is available.
 func fetchWithBrowser(ctx context.Context, url string) (out string, ok bool) {
 	chromePath := findChromeExecutable()
 	if chromePath == "" {

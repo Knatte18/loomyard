@@ -14,8 +14,7 @@ import (
 	"time"
 )
 
-// fakeBinaryInfo returns a fixed binaryInfo used across fetchReport tests so
-// the expected fingerprint fields are known and stable.
+// fakeBinaryInfo returns a fixed binaryInfo for fetchReport tests.
 func fakeBinaryInfo() binaryInfo {
 	return binaryInfo{
 		Path:    "/fake/lyx.exe",
@@ -26,7 +25,7 @@ func fakeBinaryInfo() binaryInfo {
 	}
 }
 
-// writeHostReport writes body verbatim to <hostRepoDir>/sandbox-report.json.
+// writeHostReport writes body to <hostRepoDir>/sandbox-report.json.
 func writeHostReport(t *testing.T, hostRepoDir, body string) {
 	t.Helper()
 	path := filepath.Join(hostRepoDir, reportFileName)
@@ -35,8 +34,7 @@ func writeHostReport(t *testing.T, hostRepoDir, body string) {
 	}
 }
 
-// scratchIsEmpty reports whether loomyardRoot/.scratch is absent or contains
-// no files, used to assert that a rejected report fetch wrote nothing.
+// scratchIsEmpty reports whether loomyardRoot/.scratch is absent or empty.
 func scratchIsEmpty(t *testing.T, loomyardRoot string) bool {
 	t.Helper()
 	entries, err := os.ReadDir(filepath.Join(loomyardRoot, ".scratch"))
@@ -49,16 +47,12 @@ func scratchIsEmpty(t *testing.T, loomyardRoot string) bool {
 	return len(entries) == 0
 }
 
-// TestFetchReport_HappyPath verifies that a valid report is fetched into
-// .scratch, its meta.fingerprint is stamped from the passed binaryInfo, its
-// items are preserved, and any meta the agent wrote is overwritten.
+// TestFetchReport_HappyPath verifies a valid report is fetched and meta is stamped.
 func TestFetchReport_HappyPath(t *testing.T) {
 	hostRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
-	// The agent only writes source/items, but stamp a bogus meta here to prove
-	// fetchReport overwrites it rather than merging or preserving it.
 	writeHostReport(t, hostRepoDir, `{
 		"source": "sandbox-report",
 		"meta": {"fingerprint": {"path": "stale", "sha256": "stale", "size": 0, "modtime": "stale"}},
@@ -123,9 +117,7 @@ func TestFetchReport_EmptyItemsPresent(t *testing.T) {
 	}
 }
 
-// TestFetchReport_ItemsKeyAbsent verifies that a report missing the items key
-// entirely is rejected -- a plain []reportItem could not distinguish this
-// from the empty-items case, which is why Items is decoded as a pointer.
+// TestFetchReport_ItemsKeyAbsent verifies reports missing items are rejected.
 func TestFetchReport_ItemsKeyAbsent(t *testing.T) {
 	hostRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
@@ -238,8 +230,7 @@ func TestFetchReport_ScratchDirCreated(t *testing.T) {
 	}
 }
 
-// makeFetchHostRepo builds the Hub host-repo layout under a fresh temp dir and
-// returns both the parentDir that runFetch expects and the host repo path.
+// makeFetchHostRepo builds the Hub host-repo layout and returns parentDir and hostRepoDir.
 func makeFetchHostRepo(t *testing.T) (parentDir, hostRepoDir string) {
 	t.Helper()
 	parentDir = t.TempDir()
@@ -250,10 +241,7 @@ func makeFetchHostRepo(t *testing.T) (parentDir, hostRepoDir string) {
 	return parentDir, hostRepoDir
 }
 
-// stubLyxLookPath points lookPath at fakeLyx for "lyx" so runFetch can
-// fingerprint a real temp file, stubs devBinPath to a non-existent path so
-// resolveLyx falls through to that lookPath stub and resolves sourceProd,
-// and returns a restore function for both seams.
+// stubLyxLookPath stubs resolveLyx to return sourceProd.
 func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
@@ -271,13 +259,11 @@ func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
 	}
 }
 
-// TestRunFetch_HappyPath verifies that runFetch fingerprints the on-PATH lyx and
-// fetches a valid host report into <loomyardRoot>/.scratch under that fingerprint.
+// TestRunFetch_HappyPath verifies runFetch fetches a valid host report.
 func TestRunFetch_HappyPath(t *testing.T) {
 	parentDir, hostRepoDir := makeFetchHostRepo(t)
 	loomyardRoot := t.TempDir()
 
-	// binaryFingerprint stats and hashes the file, so it must really exist.
 	fakeLyx := filepath.Join(parentDir, "lyx.exe")
 	if err := os.WriteFile(fakeLyx, []byte("fake lyx binary"), 0o755); err != nil {
 		t.Fatalf("write fake lyx: %v", err)
@@ -310,9 +296,7 @@ func TestRunFetch_HappyPath(t *testing.T) {
 	}
 }
 
-// TestRunFetch_DevBinary verifies that runFetch resolves a dev binary when
-// devBinPath points at a file that exists, and stamps "dev" into the fetched
-// report's meta.fingerprint.source.
+// TestRunFetch_DevBinary verifies runFetch resolves a dev binary and stamps it.
 func TestRunFetch_DevBinary(t *testing.T) {
 	parentDir, hostRepoDir := makeFetchHostRepo(t)
 	loomyardRoot := t.TempDir()
@@ -361,8 +345,7 @@ func TestRunFetch_DevBinary(t *testing.T) {
 	}
 }
 
-// TestRunFetch_HubAbsent verifies that runFetch returns a clear, actionable
-// error and does not touch lookPath when the Hub host subdir does not exist.
+// TestRunFetch_HubAbsent verifies runFetch returns an error when Hub is absent.
 func TestRunFetch_HubAbsent(t *testing.T) {
 	parentDir := t.TempDir()
 	loomyardRoot := t.TempDir()
@@ -383,8 +366,7 @@ func TestRunFetch_HubAbsent(t *testing.T) {
 	}
 }
 
-// TestRunFetch_MissingHostReport verifies that runFetch surfaces fetchReport's
-// missing-report error when the agent produced no sandbox-report.json.
+// TestRunFetch_MissingHostReport verifies runFetch errors when no report exists.
 func TestRunFetch_MissingHostReport(t *testing.T) {
 	parentDir, _ := makeFetchHostRepo(t)
 	loomyardRoot := t.TempDir()
@@ -396,7 +378,6 @@ func TestRunFetch_MissingHostReport(t *testing.T) {
 	restore := stubLyxLookPath(t, fakeLyx)
 	defer restore()
 
-	// Deliberately do not write a host report.
 	err := runFetch(parentDir, loomyardRoot)
 	if err == nil {
 		t.Fatal("runFetch should return error when the host report is missing")

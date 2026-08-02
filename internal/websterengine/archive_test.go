@@ -13,9 +13,7 @@ import (
 	"time"
 )
 
-// archiveFixedClock returns a func() time.Time that always returns t,
-// letting a test pin an archive helper's timestamp deterministically
-// instead of racing the real clock.
+// archiveFixedClock returns a func() time.Time that always returns t.
 func archiveFixedClock(t time.Time) func() time.Time {
 	return func() time.Time { return t }
 }

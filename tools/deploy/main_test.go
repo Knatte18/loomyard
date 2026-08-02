@@ -11,8 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/tools/internal/devbin"
 )
 
-// TestResolveDest_DevAndDestMutuallyExclusive verifies that passing both -dev
-// and a non-empty -dest is rejected rather than silently preferring one.
+// TestResolveDest_DevAndDestMutuallyExclusive verifies -dev and -dest are mutually exclusive.
 func TestResolveDest_DevAndDestMutuallyExclusive(t *testing.T) {
 	_, err := resolveDest(true, "/x")
 	if err == nil {
@@ -20,8 +19,7 @@ func TestResolveDest_DevAndDestMutuallyExclusive(t *testing.T) {
 	}
 }
 
-// TestResolveDest_DevUsesDerivedDevBinDir verifies that -dev alone resolves
-// to devbin.Dir(), never a hardcoded path.
+// TestResolveDest_DevUsesDerivedDevBinDir verifies -dev resolves to devbin.Dir().
 func TestResolveDest_DevUsesDerivedDevBinDir(t *testing.T) {
 	want, err := devbin.Dir()
 	if err != nil {
@@ -37,8 +35,7 @@ func TestResolveDest_DevUsesDerivedDevBinDir(t *testing.T) {
 	}
 }
 
-// TestResolveDest_DestPassedThrough verifies that a non-empty -dest is
-// returned verbatim when -dev is not set.
+// TestResolveDest_DestPassedThrough verifies non-empty -dest is returned verbatim.
 func TestResolveDest_DestPassedThrough(t *testing.T) {
 	want := "/some/dir"
 

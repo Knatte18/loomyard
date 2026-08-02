@@ -11,12 +11,10 @@ import (
 
 // Launch launches VS Code for the given worktree directory on Windows.
 //
-// It uses exec.Command to run "cmd /c code <worktreeDir>", which allows PATH resolution
-// of code.cmd and applies the no-console-window flag pattern to prevent flashing.
+// It runs "code" via cmd /c for PATH resolution and hides the console window.
 func Launch(worktreeDir string) error {
 	cmd := exec.Command("cmd", "/c", "code", worktreeDir)
 
-	// Apply no-console-window flag pattern (see internal/proc)
 	proc.HideWindow(cmd)
 
 	if err := cmd.Start(); err != nil {

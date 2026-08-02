@@ -83,28 +83,19 @@ type BeginDeps struct {
 	PromptsDir   string
 }
 
-// BeginResult is what one successful BeginBatch call hands back to its
-// caller (internal/webstercli's begin-batch verb): exactly what that caller
-// needs to weft-commit state.json at the batch boundary without re-deriving
-// any of it from deps.State itself.
+// BeginResult is what one successful BeginBatch call returns to its caller.
 type BeginResult struct {
 	// BatchName is the batch's "NN-<batch-slug>" identifier.
 	BatchName string
-	// PromptPath is the absolute path of the fork prompt file BeginBatch
-	// just wrote — what the caller's Agent-tool fork call reads.
+	// PromptPath is the absolute path of the fork prompt file BeginBatch just wrote.
 	PromptPath string
-	// StartSHA is the host HEAD captured immediately before this call
-	// returns — the same value now recorded as this batch's
-	// BatchState.StartSHA.
+	// StartSHA is the host HEAD captured before this call returns.
 	StartSHA string
-	// AssertedModel is the model BeginBatch asserted Master's pane onto for
-	// this batch (State.AssertedModel's new value), regardless of whether
-	// an injection actually fired.
+	// AssertedModel is the model BeginBatch asserted Master's pane onto for this batch.
 	AssertedModel string
 }
 
-// findBatch returns the batcher.Batch in batches whose own identity (see
-// batchIdentity) matches number, or an error naming the missing number.
+// findBatch returns the batcher.Batch in batches whose identity matches number.
 func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	for _, b := range batches {
 		if n, _ := batchIdentity(b); n == number {
@@ -114,13 +105,7 @@ func findBatch(batches []batcher.Batch, number int) (batcher.Batch, error) {
 	return batcher.Batch{}, fmt.Errorf("webster: batch %d not found in the plan's execution batches", number)
 }
 
-// digestSummaryLine renders d into the fixed one-line summary
-// RenderForkPrompt's prevDigest parameter expects: batch name, status, and
-// head_sha always; deviations appended only when the digest actually
-// carries them. Returns "" for a nil d (no persisted digest yet), which
-// RenderForkPrompt itself turns into the "none (first batch)" sentinel —
-// this function never renders that sentinel itself, so the one
-// fallback-wording decision lives in exactly one place.
+// digestSummaryLine renders d into the one-line summary RenderForkPrompt's prevDigest parameter expects.
 func digestSummaryLine(d *Digest) string {
 	if d == nil {
 		return ""

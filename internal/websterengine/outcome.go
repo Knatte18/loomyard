@@ -46,14 +46,8 @@ type outcome struct {
 	BatchesDone int `yaml:"batches_done"`
 }
 
-// parseOutcome reads and strictly decodes the outcome.yaml file at path
-// (yaml.Decoder.KnownFields(true), so an unrecognized key is a fail-loud
-// error, never silently ignored), then enforces the schema's vocabulary
-// and cross-field rule: outcome must be one of outcomeDone, outcomeStuck,
-// or outcomePaused, and outcomeStuck requires a non-empty stuck_reason.
-// Every violation is its own distinct wrapped error naming path and the
-// offending field — the fail-loud verdict-parse discipline: an unparseable
-// outcome file is a hard error, never a guessed result.
+// parseOutcome reads and strictly decodes outcome.yaml. Enforces schema:
+// outcome must be one of done/stuck/paused; stuck requires non-empty stuck_reason.
 func parseOutcome(path string) (*outcome, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -80,23 +74,8 @@ func parseOutcome(path string) (*outcome, error) {
 	return &o, nil
 }
 
-// archiveStaleOutcome renames websterDir's outcome.yaml, if present, to
-// outcome-<UTC compact timestamp>.yaml in place — resume (re-running `lyx
-// webster run`) must never be blocked by a prior run's leftover outcome
-// file, and the prior run's own judgment stays on disk, auditable, rather
-// than being silently overwritten or deleted. now is a seam so tests can
-// pin the timestamp deterministically instead of racing the real clock;
-// production callers pass time.Now.
-//
-// Absent file: returns ("", nil) — not an error, since a fresh run has
-// never written one yet.
-//
-// Collision: a second archive attempt in the same second (two calls whose
-// now() truncates to an identical compact timestamp) would otherwise
-// silently overwrite the first archive's content; archiveStaleOutcome
-// instead appends a numeric suffix ("-1", "-2", ...) via
-// firstFreeArchivePath (archive.go, card 18) until it finds a target path
-// that does not yet exist, so no prior run's judgment is ever clobbered.
+// archiveStaleOutcome renames outcome.yaml to outcome-<timestamp>.yaml in place.
+// Absent file returns ("", nil). Collisions get numeric suffix ("-1", "-2", ...).
 func archiveStaleOutcome(websterDir string, now func() time.Time) (archivedTo string, err error) {
 	path := filepath.Join(websterDir, outcomeFileName)
 

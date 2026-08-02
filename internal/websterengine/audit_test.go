@@ -19,10 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeLayout returns a hubgeometry.Layout that resolves WeftWorktree() to a
-// deterministic, OS-native path without ever spawning git — the same
-// direct-construction pattern shuttleengine's own tests use for a fake
-// Layout (e.g. wait_test.go's newWaitTestRunner).
+// fakeLayout returns a hubgeometry.Layout that resolves WeftWorktree() without spawning git.
 func fakeLayout() *hubgeometry.Layout {
 	return &hubgeometry.Layout{
 		Hub:          "/hub",

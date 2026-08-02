@@ -9,15 +9,12 @@ import (
 	"time"
 )
 
-// browserUA is the User-Agent string presented on every static HTTP fetch.
-// It mirrors a recent desktop Chrome build so bot-detection heuristics that
-// key off User-Agent see an ordinary browser, not a scripted client.
+// browserUA is the User-Agent string presented on every static HTTP fetch,
+// designed to pass bot-detection checks.
 const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-// defaultHeaders returns the full header set applied to every static HTTP
-// fetch request in this package, Reddit's old.reddit.com strategy included.
-// The set mirrors a real browser's request headers closely enough to pass
-// simple bot-detection checks that key off User-Agent/Accept alone.
+// defaultHeaders returns the header set for every static HTTP fetch,
+// designed to pass simple bot-detection checks.
 func defaultHeaders() http.Header {
 	h := http.Header{}
 	h.Set("User-Agent", browserUA)
@@ -29,9 +26,8 @@ func defaultHeaders() http.Header {
 	return h
 }
 
-// httpClient is the shared transport for every static fetch in this package.
-// It follows redirects using the stdlib default policy and bounds total request
-// time to ~60s so one unresponsive host cannot stall a whole multi-URL run.
+// httpClient is the shared transport for static fetches, with a ~60s timeout
+// to prevent stalling on unresponsive hosts.
 var httpClient = &http.Client{
 	Timeout: 60 * time.Second,
 }

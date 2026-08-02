@@ -22,23 +22,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// realSleeper is webstercli's own production websterengine.Sleeper: a
-// genuine time.Sleep, mirroring buildercli's own pollRealClock pattern
-// (internal/buildercli/poll.go) of a package-local, production-only clock
-// seam satisfied structurally rather than by declared type identity.
+// realSleeper is webstercli's production websterengine.Sleeper using time.Sleep.
 type realSleeper struct{}
 
 func (realSleeper) Sleep(d time.Duration) { time.Sleep(d) }
 
 var _ websterengine.Sleeper = realSleeper{}
 
-// digestFields converts a websterengine.Digest into the map output.Ok
-// expects: Digest's own json tags already spell the pinned terse field set
-// the Master reads (batch/status/head_sha/deviations/dead_reason/elapsed_s),
-// so a marshal/unmarshal round trip through map[string]any reuses them
-// exactly rather than re-listing every field by hand here. RecordBatch only
-// ever returns a terminal digest (never a running one -- that classification
-// belongs to recover-batch), so head_sha is always populated here.
+// digestFields converts a websterengine.Digest into the map output.Ok expects via json marshaling.
 func digestFields(d websterengine.Digest) map[string]any {
 	data, _ := json.Marshal(d)
 	var fields map[string]any
@@ -121,19 +112,12 @@ Example:
 
 			result, err := websterengine.RecordBatch(deps, batchNumber)
 			if err != nil {
-				// ErrNoBeginRecord and every audit-policy violation are
-				// returned before RecordBatch ever mutates deps.State, so
-				// there is nothing to persist on this path; both are loud
-				// errors, never a distinct operational envelope.
 				_ = mutateLock.Release()
 				mutateHeld = false
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
-			// RecordBatch's own bracket-discipline check (ErrNoBeginRecord)
-			// already guarantees st.Batches[batchNumber] is present on this
-			// success path.
 			batchName := fmt.Sprintf("%02d-%s", batchNumber, st.Batches[batchNumber].Slug)
 
 			if err := websterengine.SaveState(c.websterDir, st); err != nil {

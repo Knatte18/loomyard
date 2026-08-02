@@ -17,8 +17,7 @@ import (
 	"github.com/andybalholm/brotli"
 )
 
-// stubResponses builds a fetcher whose do dispatches on the request URL to a
-// canned response, and whose browser is the given stub.
+// stubResponses builds a fetcher with canned URL-based responses and a stub browser.
 func stubResponses(t *testing.T, responses map[string]*http.Response, browser func(ctx context.Context, url string) (string, bool)) fetcher {
 	t.Helper()
 	return fetcher{
@@ -48,18 +47,14 @@ const readableArticleHTML = `<html><head><title>Ignored</title></head><body>
 
 const shortArticleHTML = `<html><body><article><h1>Tiny</h1><p>Too short.</p></article></body></html>`
 
-// noArticleButLongBodyHTML hides its text behind display:none. go-readability's
-// visibility check excludes it from scoring entirely (TextContent comes back
-// empty, i.e. Readability finds no article at all), while goquery's plain-text
-// extraction in stripToBodyText does not check visibility and still finds it —
-// exactly the "Readability fails, body text fallback succeeds" cascade branch.
+// noArticleButLongBodyHTML hides text behind display:none to test Readability
+// failure with body text fallback.
 const noArticleButLongBodyHTML = `<html><body><div style="display:none">` +
 	`This page has no article/semantic structure at all, just a long stretch of plain body text that is not wrapped in anything Readability recognizes as an article, but is still well over one hundred characters of readable prose for the body-text fallback to pick up.` +
 	`</div></body></html>`
 
-// noArticleShortBodyHTML uses the same display:none trick but with body text
-// too short to satisfy the body-text fallback's own threshold, so both
-// Readability and the body-text fallback fail and the browser fallback runs.
+// noArticleShortBodyHTML hides short text to test browser fallback when both
+// Readability and body-text fail.
 const noArticleShortBodyHTML = `<html><body><div style="display:none">short</div></body></html>`
 
 func TestFetchPage_ReadabilityUsable(t *testing.T) {
@@ -226,12 +221,8 @@ func TestFetchPage_RedditUrlRoutesThroughOldRedditAdapter(t *testing.T) {
 	}
 }
 
-// redditLikeHTMLWithComments mimics old.reddit.com's shape well enough to
-// exercise the property fetchOldRedditHTML exists for: the self-post text
-// and the comment thread sit in separate divs, neither of which is
-// nav/header/footer, so both must survive stripToBodyText's strip — unlike
-// Readability, which (verified empirically against the real page) keeps
-// only the post and silently discards the entire comment thread.
+// redditLikeHTMLWithComments mimics old.reddit.com structure with self-post
+// and comments to test that both survive stripToBodyText, unlike Readability.
 const redditLikeHTMLWithComments = `<html><head><title>Ignored</title></head><body>
 <nav>site nav — must not appear in output</nav>
 <div class="thing"><p>This is the original self-post text, long enough on its own to clear the usable-content threshold for this fallback path.</p></div>

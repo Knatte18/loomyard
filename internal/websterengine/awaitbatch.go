@@ -22,47 +22,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 )
 
-// awaitTick is the fixed re-check cadence AwaitBatch polls the report path
-// on: frequent enough that a fork's just-written report is seen within a
-// second, cheap enough that a full wait window costs nothing but stat calls.
+// awaitTick is the fixed re-check cadence AwaitBatch polls the report path on.
 const awaitTick = time.Second
 
-// DefaultAwaitWaitS is await-batch's default per-call block when --wait is
-// not given: deliberately SHORT (not poll_wait_s, unlike recover-batch),
-// because await-batch runs as Master's own FOREGROUND Bash tool call and
-// Claude Code auto-backgrounds a foreground command that runs much past ~2
-// minutes — a backgrounded await-batch stops keeping Master's turn alive,
-// which reintroduces the very asking-classification crash await-batch exists
-// to prevent (found live in round fable-r1). A ~30s block stays comfortably
-// under that threshold: each call returns quickly with report:false while
-// the fork is still running, Master re-calls in a foreground loop (per the
-// master template), and the turn stays alive across an arbitrarily long fork
-// without any single tool call ever getting backgrounded.
+// DefaultAwaitWaitS is await-batch's default per-call block when --wait is not given.
+// Deliberately SHORT to keep Master's foreground turn alive (Claude Code backgrounds commands after ~2 minutes).
 const DefaultAwaitWaitS = 30
 
-// AwaitResult is what one AwaitBatch call hands back to its caller
-// (internal/webstercli's await-batch verb): BatchName is the batch's
-// "NN-<batch-slug>" identifier, ReportPresent reports whether the batch's
-// report file existed by the time the call returned (true the instant it
-// appears — AwaitBatch never sleeps out the rest of its window once the
-// report is on disk), and ElapsedS is how many seconds this call actually
-// blocked.
+// AwaitResult is what one AwaitBatch call returns to its caller.
 type AwaitResult struct {
 	BatchName     string
 	ReportPresent bool
 	ElapsedS      int
 }
 
-// AwaitBatch blocks until batchNumber's batch-report file exists in
-// reportsDir or wait elapses, re-checking on a fixed one-second tick via
-// clk. It reads and mutates NOTHING but the report path's existence — no
-// state.json, no lease, no weft — so a zombie or manual caller can never
-// corrupt a run through it, and the caller (Master, per the master
-// template) simply re-calls it while its fork is still running. A missing
-// batch number is an error (the same findBatch refusal every other verb
-// applies); a report that never appears within wait is NOT an error — it
-// returns ReportPresent: false and the caller decides (re-call, or
-// record-batch's no_report ladder once the fork has finished).
+// AwaitBatch blocks until batchNumber's batch-report file exists in reportsDir or wait elapses.
+// It reads and mutates nothing but the report path's existence.
 func AwaitBatch(batches []batcher.Batch, reportsDir string, batchNumber int, wait time.Duration, clk Clock) (*AwaitResult, error) {
 	batch, err := findBatch(batches, batchNumber)
 	if err != nil {

@@ -76,12 +76,9 @@ func run(dev bool, destArg string) error {
 	return nil
 }
 
-// resolveDest picks the install directory for the built binary. -dev and a
-// non-empty dest are mutually exclusive: passing both is almost certainly a
-// mistake (the caller asked for two different destinations at once), so it
-// is rejected rather than silently preferring one. When dev is set, the
-// derived .dev-bin directory (see devbin.Dir) is used; otherwise dest is
-// used verbatim if non-empty, falling back to the Go bin dir.
+// resolveDest picks the install directory. -dev and non-empty dest are
+// mutually exclusive. When dev is set, uses .dev-bin; otherwise dest if
+// non-empty, or the Go bin dir.
 func resolveDest(dev bool, dest string) (string, error) {
 	if dev && dest != "" {
 		return "", fmt.Errorf("-dev and -dest are mutually exclusive")
@@ -95,7 +92,7 @@ func resolveDest(dev bool, dest string) (string, error) {
 	return goBinDir()
 }
 
-// goBinDir returns the default install directory: `go env GOBIN`, or GOPATH/bin.
+// goBinDir returns the default install directory: GOBIN or GOPATH/bin.
 func goBinDir() (string, error) {
 	if b := goEnv("GOBIN"); b != "" {
 		return b, nil
@@ -112,7 +109,7 @@ func goEnv(name string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// gitTag returns the short HEAD SHA, suffixed " (dirty)" when the tree is dirty.
+// gitTag returns the short HEAD SHA, suffixed " (dirty)" if tree is dirty.
 func gitTag(root string) string {
 	sha, err := gitOut(root, "rev-parse", "--short", "HEAD")
 	if err != nil {
@@ -131,8 +128,7 @@ func gitOut(root string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// onPath reports whether dir is one of the PATH entries (case-insensitive,
-// trailing-separator-insensitive).
+// onPath reports whether dir is on PATH (case- and separator-insensitive).
 func onPath(dir string) bool {
 	want := strings.ToLower(strings.TrimRight(dir, `\/`))
 	for _, p := range filepath.SplitList(os.Getenv("PATH")) {

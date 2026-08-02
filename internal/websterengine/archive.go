@@ -18,20 +18,10 @@ import (
 	"time"
 )
 
-// archiveTimestampFormat is the UTC compact timestamp format every webster
-// archive helper in this package shares (this file's own helpers, plus
-// outcome.go's archiveStaleOutcome), so every archived webster artifact
-// sorts and reads identically regardless of which one archived it.
-// Webster-owned rather than reusing builder's own unexported
-// archiveTimestampFormat const, per the builder-is-frozen-copy-not-move
-// decision.
+// archiveTimestampFormat is the UTC compact timestamp format webster archive helpers share.
 const archiveTimestampFormat = "20060102T150405Z"
 
-// firstFreeArchivePath returns the first path in the sequence
-// candidate(""), candidate("-1"), candidate("-2"), ... that does not
-// currently exist on disk — the same-second collision rule every archive
-// helper in this package shares, so no two archives landing in the same
-// clock-second ever clobber each other.
+// firstFreeArchivePath returns the first free path in the sequence candidate(""), candidate("-1"), ...
 func firstFreeArchivePath(candidate func(suffix string) string) (string, error) {
 	for n := 0; ; n++ {
 		suffix := ""
@@ -48,12 +38,7 @@ func firstFreeArchivePath(candidate func(suffix string) string) (string, error) 
 	}
 }
 
-// archiveStateFile renames websterDir's state.json (stateFileName, defined
-// in state.go), if present, to state-<UTC-compact-timestamp>.json in
-// place — the --fresh fingerprint-mismatch escape's first half. Absent
-// file: ("", nil), a no-op. now is a seam so tests can pin the timestamp
-// deterministically instead of racing the real clock; production callers
-// pass time.Now.
+// archiveStateFile renames websterDir's state.json with a UTC timestamp, if present.
 func archiveStateFile(websterDir string, now func() time.Time) (string, error) {
 	path := filepath.Join(websterDir, stateFileName)
 	if _, err := os.Stat(path); err != nil {
@@ -77,12 +62,7 @@ func archiveStateFile(websterDir string, now func() time.Time) (string, error) {
 	return target, nil
 }
 
-// archiveReportsDir renames reportsDir wholesale, if present, to
-// <reportsDir>-<UTC-compact-timestamp> — the --fresh escape's second half —
-// then recreates an empty reportsDir so the re-initialized run has
-// somewhere to write the first batch's report into. Absent dir: a no-op
-// (still recreates an empty one, since a fresh run needs it regardless of
-// whether a prior one ever existed).
+// archiveReportsDir renames reportsDir with a UTC timestamp and recreates an empty one.
 func archiveReportsDir(reportsDir string, now func() time.Time) error {
 	if _, err := os.Stat(reportsDir); err != nil {
 		if !os.IsNotExist(err) {

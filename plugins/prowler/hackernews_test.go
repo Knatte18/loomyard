@@ -37,15 +37,13 @@ func TestHackerNewsAdapterMatches(t *testing.T) {
 	}
 }
 
-// hnAlgoliaURL builds the Algolia API URL hackerNewsAdapter.Fetch requests
-// for the given item id, matching the stub keys below to the adapter's own
-// request construction.
+// hnAlgoliaURL builds the Algolia API URL for the given item id.
 func hnAlgoliaURL(id string) string {
 	return hackerNewsItemAPIBase + id
 }
 
-// hnFixtureWithComments builds an Algolia item JSON fixture with n
-// top-level comments, used to exercise the maxTopComments bound.
+// hnFixtureWithComments builds an Algolia item JSON fixture with n top-level
+// comments to exercise the maxTopComments bound.
 func hnFixtureWithComments(n int) string {
 	var b strings.Builder
 	b.WriteString(`{"title":"Story With Many Comments","points":10,"author":"alice","url":"","text":"Some story text.","children":[`)
