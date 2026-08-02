@@ -81,7 +81,7 @@ The naïve fear is "replay all of weft onto the rebased warp." That fear shrinks
 - **`_lyx` never propagates to parent** (finalize.md) — no re-alignment needed against a rebased parent.
 - **The residue is small:** genuinely hand/LLM-authored weft content (`PATTERN`). Rare, small. This is the only thing that needs real re-alignment.
 
-So rebase-recovery = re-anchor the correspondence (the `RevertWithWeft` "nearest-older" logic is the building block) + regenerate derived content + a small hand/LLM re-alignment for `PATTERN`. The layering keeps the shipped invariant intact: **`fabric` core detects and precomputes the diff; an orchestrator above it spawns the LLM** for genuine content conflicts, using finalize.md's document-driven mechanism (Go hands the agent a plain document, never git conflict markers across a junction). "Rebase is part of fabric" means the mechanics + detection are fabric's; the LLM resolution sits just above, in orchestration — never an LLM deciding weft-commit timing.
+So rebase-recovery = re-anchor the correspondence (the `resolveRevertTarget` "nearest-older" logic is the building block) + regenerate derived content + a small hand/LLM re-alignment for `PATTERN`. The layering keeps the shipped invariant intact: **`fabric` core detects and precomputes the diff; an orchestrator above it spawns the LLM** for genuine content conflicts, using finalize.md's document-driven mechanism (Go hands the agent a plain document, never git conflict markers across a junction). "Rebase is part of fabric" means the mechanics + detection are fabric's; the LLM resolution sits just above, in orchestration — never an LLM deciding weft-commit timing.
 
 ## Warp stays ordinary git — preserved, and it is why all this is feasible
 
