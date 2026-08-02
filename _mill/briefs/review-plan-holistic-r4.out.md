@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: collapse external API surface onto Commit — stop leaking warp/weft — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-02
+```
+
+## Findings
+
+### [BLOCKING] Batch 6 card numbers run out of order (26, 30, 27, 28, 29)
+**Location:** `06-fabric-cli-collapse.md`, Card headings
+**Issue:** The physical/file order of cards is `22,23,24,25,26,30,27,28,29` — after Card 26 the next heading is "Card 30", then it drops back to 27,28,29. Card 26 unexports `Fabric.CommitWeft`; `weftgit_exclude_test.go` (package `fabricengine_test`, external) still calls the exported `f.CommitWeft(...)` until Card 30 migrates it, so the package fails to *compile* between Card 26 and whichever card actually fixes it. If mill-go schedules cards by ascending number rather than file order, cards 27–29 (doc-only, don't touch this compile break) would run while `fabricengine_test` is broken, a multi-card broken-build window; only file order (as physically laid out) keeps every commit green. This also violates the "unique, sequential, no gaps" global step-numbering criterion on its face.
+**Fix:** Renumber so physical order and numeric order agree — make the current "Card 30" into Card 27, and shift the current Cards 27/28/29 to 28/29/30 — or explicitly document that mill-go executes cards in file order, not numeric order, and confirm that is in fact how scheduling works.
+
+### [BLOCKING] `fabriccli/fabric.go`'s "14-verb" doc comment goes stale, never fixed
+**Location:** Batch 6, Card 22 (adds `diff` verb) / Card 27 (doc revision)
+**Issue:** `internal/fabriccli/fabric.go:10` states "the flat 14-verb `lyx fabric` tree" in its package doc comment. Card 22 adds a `diff` subcommand, making the true count 15. No card in batch 6 (or anywhere in the plan) lists `internal/fabriccli/fabric.go` in its `Edits:`, and it is absent from `00-overview.md`'s `All Files Touched`. Card 27 revises `doc.go` and `helptree_test.go` for the same surface change but misses this file, even though the batch scope explicitly calls out revising "observable-surface docs" and the CLI/Cobra Invariant requires help/doc accuracy to be rechecked whenever observable behaviour changes.
+**Fix:** Add `internal/fabriccli/fabric.go` to Card 22's or Card 27's `Edits:`, updating the "14-verb" count (and any other verb-count prose in that file) to reflect the new `diff` verb.
+
+### [NIT] `CoalescePush`'s doc comment keeps a false "exported because…" rationale after unexport
+**Location:** Batch 1, Card 4
+**Issue:** `coalesce.go`'s doc comment on `CoalescePush` (`coalesce.go:27-29`) says "It is exported because boardengine, a separate package that already imports fabricengine, calls it directly for its own commit-driven coalescing loop." After Card 2 (board routes through `Bolt.Sync`) and Card 4 (unexport to `coalescePush`), this sentence becomes doubly false — boardengine no longer calls it directly, and it isn't exported. Card 4's instruction only says to "update any doc-comment mentions of `CoalescePush`/`CommitWeftAt`... to the new casing," which fixes the name but not the now-false rationale clause.
+**Fix:** Have Card 4 also reword the rationale sentence (e.g., "unexported once `Bolt` became the sole cross-package coalescing entry point") rather than just recasing the identifier.
+
+## Verdict
+
+REQUEST_CHANGES
+Two BLOCKING doc/ordering gaps to close; the rest of the plan (DAG, decisions, line citations) checked out accurately.
+MILL_REVIEW_END

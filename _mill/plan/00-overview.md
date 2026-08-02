@@ -121,6 +121,7 @@ batches:
 - `internal/fabricengine/weftgit_pathspec_integration_test.go`
 - `internal/fabricengine/weftgit_unborn_warp_test.go`
 - `internal/fabriccli/clone.go`
+- `internal/fabriccli/fabric.go`
 - `internal/fabriccli/weft_verbs.go`
 - `internal/gitrepo/doc.go`
 - `internal/gitrepo/gitrepo.go`
