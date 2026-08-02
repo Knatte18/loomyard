@@ -2,7 +2,7 @@
 // module. It builds the "fabric" parent command and its hub-scoped topology verbs
 // (add, list, remove, checkout, pairs, reconcile, prune, cleanup), each driving
 // fabricengine.Topology for the host↔weft worktree pairing. The weft-git
-// content-sync verbs (status, commit, push, pull, sync) are wired in by
+// content-sync verbs (status, commit, push, pull, sync, diff) are wired in by
 // weft_verbs.go, which also extends this file's Command() build with the
 // --weft-path bypass flag and its PersistentPreRunE.
 

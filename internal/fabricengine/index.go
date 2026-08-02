@@ -188,7 +188,7 @@ type warpSHATrailerCommit struct {
 // accepted one-pass implementation, rather than parsing each commit message
 // by hand. This is the single generalized scan the trailer-is-truth-no-new-
 // cache Shared Decision calls for: it captures the commit's Snapshot trailer
-// values alongside its Warp-SHA value in the same pass, so Fabric.SnapshotWarpSHA
+// values alongside its Warp-SHA value in the same pass, so snapshotWarpSHA
 // (snapshot.go) and RebuildIndex share one git-log plumbing site, one copy of
 // the unit/record separator convention, and one copy of the unborn-HEAD
 // tolerance, rather than each spawning its own scan.
@@ -199,7 +199,7 @@ type warpSHATrailerCommit struct {
 // machine's wall-clock commit date is not trustworthy relative to this
 // history's own commits — a skewed clock could stamp an older baseline with a
 // newer date, and under either RebuildIndex's dedup or
-// Fabric.SnapshotWarpSHA's newest-wins lookup, a date-ordered scan would then
+// snapshotWarpSHA's newest-wins lookup, a date-ordered scan would then
 // pick the older baseline and under-report staleness, the one failure
 // direction that loses data. Topological order guarantees no commit is ever
 // listed before one of its own descendants, so "first in the scan" reliably
@@ -259,7 +259,7 @@ func (f *Fabric) scanWarpSHATrailers() ([]warpSHATrailerCommit, error) {
 // ok reports false, and weftSHA/warpSHA/snapshotTags are left at their zero
 // values, for an empty record or one whose Warp-SHA field is empty: a
 // snapshot record with no recorded baseline is not usable by
-// Fabric.SnapshotWarpSHA any more than an index record with no warp SHA is
+// snapshotWarpSHA any more than an index record with no warp SHA is
 // usable by RebuildIndex, so the same rule skips the record for both
 // consumers rather than each re-deriving it.
 func parseTrailerScanRecord(record string) (weftSHA, warpSHA string, snapshotTags []string, ok bool) {
@@ -384,7 +384,7 @@ func (f *Fabric) RebuildIndex() error {
 	// both the seq = 0 dangling sentinel entries assigned in the loop below
 	// and genuine side-branch commits sitting at equal first-parent depth.
 	// In both cases the intended outcome is the same: the newest commit in
-	// topological order wins — the identical rule Fabric.SnapshotWarpSHA
+	// topological order wins — the identical rule snapshotWarpSHA
 	// applies to its own scan, which is what keeps the index and the reader
 	// in agreement over the same trailer history.
 	byWarpSHA := make(map[string]corrEntry, len(commits))

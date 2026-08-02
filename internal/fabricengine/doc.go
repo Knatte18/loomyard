@@ -3,8 +3,8 @@
 // commit/push/pull into the paired weft repo. fabric is the only module that
 // knows both repos exist: the `Fabric` handle exposes `Warp *gitrepo.Repo` and
 // `Weft *gitrepo.Repo` directly for anything repo-specific and uncoordinated, and
-// adds a small set of genuinely cross-repo operations (`Commit`, `Pull`) on
-// top of what gitrepo deliberately doesn't know about.
+// adds a small set of genuinely cross-repo operations (`Commit`, `Pull`,
+// `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
 // `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded
 // first via a plain `PullWeft`, then warp is fetched and inspected against its
@@ -49,8 +49,8 @@
 // fabric never calls gitrepo's `StageAllAndCommit` (board's opt-in wildcard-stage
 // exception, per gitrepo's doc.go) — all staging is explicit-list
 // `StageAndCommit`, scoped to a configured pathspec. The one exception is the
-// package-level `CommitWeftAt` function (not a `Fabric` method), which wraps
-// board's wildcard-stage commit on its behalf — see `CommitWeftAt`'s own doc
+// package-level `commitWeftAt` function (not a `Fabric` method), which wraps
+// board's wildcard-stage commit on its behalf — see `commitWeftAt`'s own doc
 // comment.
 //
 // The default weft-staging pathspec (template.yaml's `pathspec:` key) is `_lyx _pattern`, so a `PATTERN.md` written through the `_pattern` junction is staged and committed alongside `_lyx` by the same `commitWeft` call, rather than being inert content nothing ever pushes.
