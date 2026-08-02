@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-bolt-handle
+phase: approved-commit-migration
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-fix-r6  '2026-08-02T13:24:08Z'
 planned  '2026-08-02T13:24:32Z'
 implementing  '2026-08-02T13:25:04Z'
 approved-bolt-handle  '2026-08-02T13:34:42Z'
+approved-commit-migration  '2026-08-02T13:52:02Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     start_sha: 55b76b8b727302e95969a1dc5e36a02f7c8d2504
     commit_sha: de04de447516da3ee87552e4763a19cae54195e2
   - name: commit-migration
-    state: running
+    state: approved
     implementer_session: 35d7fccf-e2df-41ea-a58e-2bc43b0a7aa2
     start_sha: 08c0a2b80d9022067a8d6f16234dd78989226d0a
+    commit_sha: d2a32c19e5c2e8f8aee816cda1571d03b2c06e82
   - name: remove-force-add
     state: pending
   - name: clean-healthy-renames
