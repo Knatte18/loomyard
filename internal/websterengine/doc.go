@@ -14,9 +14,13 @@
 // webster consumes the pinned flat card-list plan format (see
 // docs/reference/plan-format-v3.md) through internal/planparser, the SOLE
 // parser of the on-disk `_lyx/plan/` tree — no code in this package or
-// anywhere else re-derives that grammar; every consumer here (RenderForkPrompt,
-// the integration-suite fork's own prompt) reads plan-level sections only
-// off the planparser.Plan model a caller (internal/webstercli) hands in.
+// anywhere else re-derives that grammar; the one remaining plan-level-section
+// consumer here, RenderIntegrationPrompt (the integration-suite fork's own
+// prompt), reads plan.Verify only off the planparser.Plan model a caller
+// (internal/webstercli) hands in. Neither RenderForkPrompt nor
+// RenderRecoveryPrompt takes a *planparser.Plan at all any more — per the
+// fork-context-hygiene Shared Decision, both render a card's content from its
+// SourcePath pointer, never from an inlined plan-level field.
 // A plan's flat, unordered Cards list is grouped into the execution units
 // Master actually forks by internal/batcher: a name-keyed registry of
 // Batcher implementations, selected once at config-load time via
@@ -136,9 +140,11 @@
 // The one place webster spawns a genuinely separate process is
 // recover-batch: a bounded, re-entrant long-poll verb that spawns a fresh
 // implementer as its own shuttle/reed strand at the recovery role when a
-// fork reports stuck or writes no report, rendering the SAME fork prompt
-// (RenderForkPrompt) a fork would have gotten, since the recovery strand
-// implements the same batch. Every call, including the first, blocks for at
+// fork reports stuck or writes no report, rendering the SEPARATE, full
+// cold-start recovery prompt (RenderRecoveryPrompt) — deliberately distinct
+// from a fork's own thin RenderForkPrompt, since the recovery strand
+// inherits no session context (see the fork-context-hygiene Shared
+// Decision). Every call, including the first, blocks for at
 // most poll_wait_s and returns either a terminal digest or a running
 // snapshot; a re-entrant call finds the strand already recorded in state
 // and skips straight to the bounded wait. This mirrors classify.go's

@@ -4,8 +4,8 @@
      written to a prompt file under _lyx/webster/prompts/; Master's own
      Agent-tool fork call is exactly the same "Read this file and follow it
      exactly: <this file's own path>" idiom used for a batch's own fork
-     prompt. Four markers below are top-level {{.X}} substitutions;
-     stencil.Fill requires all four non-empty. There are no
+     prompt. Three markers below are top-level {{.X}} substitutions;
+     stencil.Fill requires all three non-empty. There are no
      {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Webster integration-suite fork — run the plan-level verify once, no commits
@@ -15,12 +15,6 @@ You are the ONE dedicated integration-suite fork for this plan run, forked in-se
 ## You are the INTEGRATION fork, not a batch implementer — never run `lyx webster`, never poll
 
 Exactly like a batch's own fork, you inherit Master's own loop instructions — including Master's own "poll for the integration report" loop. Those are MASTER's actions, NOT yours. **NEVER run any `lyx webster` command** — not `await-batch`, not anything — and **NEVER poll or wait for the integration report file** (no `test -f`, no `sleep` loops): YOU are the one who WRITES that report, so waiting for it deadlocks the run (found live in round fable-r1: an integration fork continued Master's inherited poll loop instead of running the verify). Your only actions this turn are: run the command below on the HOST repo at `{{.worktree_root}}`, and write your own report file as your final action.
-
-## Shared Decisions
-
-{{.shared_decisions}}
-
-These are the plan's own cross-cutting decisions, injected here verbatim by Go. The literal value `none` means this plan carries no "## Shared Decisions" section.
 
 ## The plan-level verify command — run it once, exactly as written
 

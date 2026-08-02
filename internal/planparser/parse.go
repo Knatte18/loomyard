@@ -12,11 +12,13 @@ package planparser
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -283,31 +285,39 @@ var cardHeadingRe = regexp.MustCompile(`^#\s+Card\s+(\d+)\s*(?:—|-{1,2})\s*(.*
 // five typed file-op fields, Depends-on, Commit, verify:) is parsed by
 // parseCardBody, added in a later revision of this file.
 func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
+	fileName := cardFileName(entry.Number, entry.Slug)
+
 	card := Card{
 		Number: entry.Number,
 		Slug:   entry.Slug,
 		Intent: entry.Intent,
+		// SourcePath is built from hubgeometry.PlanDirRel() (the `_lyx/plan`
+		// segment) joined with fileName (planparser's own NN-<slug>.md), never
+		// from planDir (the absolute, t.TempDir()-in-tests argument) — the sole
+		// source of the card's worktree-relative path pointer. path.Join (not
+		// filepath.Join) so the token is always forward-slash, never
+		// OS-dependent.
+		SourcePath: path.Join(hubgeometry.PlanDirRel(), fileName),
 	}
 
-	fileName := cardFileName(entry.Number, entry.Slug)
-	path := filepath.Join(planDir, fileName)
-	data, err := os.ReadFile(path)
+	filePath := filepath.Join(planDir, fileName)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Card{}, fmt.Errorf("planparser: card file not found: %s", path)
+			return Card{}, fmt.Errorf("planparser: card file not found: %s", filePath)
 		}
-		return Card{}, fmt.Errorf("planparser: read card file %s: %w", path, err)
+		return Card{}, fmt.Errorf("planparser: read card file %s: %w", filePath, err)
 	}
 
 	lines := strings.Split(string(data), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-		return Card{}, fmt.Errorf("planparser: card file %s: missing card heading", path)
+		return Card{}, fmt.Errorf("planparser: card file %s: missing card heading", filePath)
 	}
 
 	headingLine := strings.TrimSpace(lines[0])
 	m := cardHeadingRe.FindStringSubmatch(headingLine)
 	if m == nil {
-		return Card{}, fmt.Errorf("planparser: card file %s: unrecognized card heading %q", path, headingLine)
+		return Card{}, fmt.Errorf("planparser: card file %s: unrecognized card heading %q", filePath, headingLine)
 	}
 	// The heading's own number is cross-checked against the Card Index's number
 	// only by Validate's card-numbering check — a mismatch here is a card-level
@@ -315,7 +325,7 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	card.Title = strings.TrimSpace(m[2])
 
 	if err := parseCardBody(&card, lines[1:]); err != nil {
-		return Card{}, fmt.Errorf("planparser: card file %s: %w", path, err)
+		return Card{}, fmt.Errorf("planparser: card file %s: %w", filePath, err)
 	}
 
 	return card, nil
@@ -405,9 +415,10 @@ func parseCardBody(card *Card, lines []string) error {
 			card.HasWhat = true
 			// Collect the prose: the label line's own remainder plus every
 			// following line up to the next field label. The prose is the
-			// implementer's concrete instruction — RenderForkPrompt injects it
-			// verbatim, so it must survive parsing rather than being skipped
-			// (a cold recovery strand has no other source for it).
+			// implementer's concrete instruction — the fork/recovery strand
+			// reads it directly from the card file via SourcePath, so it
+			// must survive parsing rather than being skipped (a cold
+			// recovery strand has no other source for it).
 			proseLines := []string{strings.TrimSpace(strings.TrimPrefix(trimmed, whatLabel))}
 			i++
 			for i < len(lines) && !isCardLabelLine(lines[i]) {

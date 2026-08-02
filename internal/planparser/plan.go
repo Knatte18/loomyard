@@ -90,14 +90,26 @@ type Card struct {
 
 	// What is the card file's own "**What:**" prose — the concrete instruction
 	// the implementer works from, verbatim (whitespace-normalized per line,
-	// possibly spanning multiple lines up to the next field label). It is what
-	// RenderForkPrompt injects into a fork/recovery prompt; Intent is only the
-	// index's one-line summary and never a substitute for it (a cold recovery
-	// strand inherits no session context, so the rendered prompt is its whole
-	// instruction — found in crucible round fable-r3, where the prompt rendered
-	// the one-liner under the "**What:**" label and dropped the prose).
-	// Empty when the label is present with no prose (HasWhat still true).
+	// possibly spanning multiple lines up to the next field label). The card
+	// file is read directly by the fork/recovery strand via the SourcePath
+	// pointer (see SourcePath below); What is no longer Go-inlined into the
+	// prompt. Intent is only the index's one-line summary and never a
+	// substitute for it (a cold recovery strand inherits no session context, so
+	// the recovery prompt's card-file read is its whole instruction — found in
+	// crucible round fable-r3, where the prompt rendered the one-liner under the
+	// "**What:**" label and dropped the prose). Empty when the label is present
+	// with no prose (HasWhat still true).
 	What string
+
+	// SourcePath is the card's bare worktree-relative source-identity token,
+	// `_lyx/plan/NN-<slug>.md` (NN zero-padded, slug the card's own Slug). The
+	// `_lyx/plan` segment comes from hubgeometry.PlanDirRel() and the
+	// `NN-<slug>.md` filename from planparser's own cardFileName — never from
+	// the absolute Plan.Dir (which is t.TempDir() in tests) and never from a
+	// literal `_lyx`/"plan" string. This is the sole source of the card's path
+	// pointer, rendered verbatim by webster's prompt renderers per the
+	// card-pointer-relative-via-hubgeometry decision.
+	SourcePath string
 
 	// HasWhat reports whether the card carried a "**What:**" label at all —
 	// distinct from What being empty prose under a present label.
