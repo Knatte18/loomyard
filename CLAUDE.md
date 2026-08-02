@@ -42,6 +42,10 @@ A task adding a module, changing observable CLI behavior, or introducing cross-c
 
 Write markdown prose as a single continuous line per paragraph/list item — never break a line at a fixed column width. Let the reader's own viewer soft-wrap. A hard-wrapped raw file reads badly (mid-phrase breaks) and diffs badly (an edit anywhere in a paragraph touches every wrapped line in it, not just the changed words). Applies to every `.md` file in this repo, not just newly-written ones.
 
+## Terminology: "Merriam" means webster's Master session
+
+In conversation, "Merriam" is a conversational nickname for webster's long-lived orchestrating session — today named "Master" throughout `internal/websterengine` (`master-template.md`, `RoleMaster`, etc.), paired with "Webster" after Merriam-Webster. It is shorthand for talking about the session, not an instruction to rename anything — don't rename identifiers, files, config keys, or docs to "Merriam" unless a separate, explicit instruction says so.
+
 ## Filesystem links (fslink)
 
 All cross-OS links go through `internal/fslink`. Windows uses directory junctions (no special privileges needed); other platforms use symlinks. The contract is directory-only — `CreateDirLink` is the entry point, `CreateFileLink` is reserved for later. Don't rely on Windows file symlinks (need admin/Developer Mode); junctions are the only link type guaranteed everywhere.
