@@ -87,7 +87,7 @@ Each card lives in its own file, and the file's content is, in this order:
 
 1. Human-readable context at escalation time (if card 5 fails, is card 6 known to depend on it?).
 2. Forward-compatible input for a future DAG mechanism (a cross-check layer once scout-derived edges exist, analogous to how `SHAExists` cross-checks a stored git reference — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
-3. **A cheap, mechanical, pre-review order-validation gate:** it powers the `depends-on-order` check — a card whose `Depends-on:` names a *later* card in the declared order, names itself, or names an id referencing no existing card is flagged before any LLM-based review runs, at zero LLM cost.
+3. **A cheap, mechanical, pre-review order-validation gate:** it powers the `depends-on-order` check — a card whose `Depends-on:` names a *later* card in the declared order, names itself, or names an id referencing no existing card is flagged before any LLM-based review runs, at zero cost.
 
 ## Card path resolution: `root:` and `//`
 

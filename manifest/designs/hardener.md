@@ -43,7 +43,7 @@ In the hand-run version (see [crucible/README.md](../../crucible/README.md)), **
 
 **Naming, fixed:** the pre/post role above is **`progress-judge`**, reusing the term perch's own module description already uses ("run `burler` rounds → `APPROVED`/`stuck` + `progress-judge` + cap") — not "handler." "Handler" already names a different thing in loom's existing vocabulary (the A-review→B-fix round worker itself, i.e. the "Reviewer" above) — reusing it for the targeting/validating role would collide with that.
 
-The handoff file is the sole accumulation vehicle; there is no live memory anywhere in the loop. The one cost this pays versus perch today: a `progress-judge` spawn on **both** sides of the reviewer, not just post-round — the pre-round targeting step (read handoff, decide focus, write the next round's seed prompt) is not something perch's `progress-judge` does for Discussion/Plan/Builder today; those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
+The handoff file is the sole accumulation vehicle; there is no live memory anywhere in the loop. The one cost this pays versus perch today: a `progress-judge` spawn on **both** sides of the reviewer, not just post-round — perch's `progress-judge` doesn't do this pre-round targeting for Discussion/Plan/Builder today; those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
 
 ### Pre-round targeting
 
@@ -62,7 +62,7 @@ The read-set is *instructions + handoff (always) + selective raw files (on deman
 
 The operator's role in the hand-run campaign was mostly **gating** — approve, ask for another round — not irreplaceable judgment. That is front-loadable into the seed instructions ("run until the gates are green or K rounds; do not ask"). So `Hardener` can run **autonomously, overnight**, with reed + Go handling **auto-compaction** (which, per the insight above, *is* per-round respawn). Model rotation across rounds (Opus / Fable / Sonnet) stays as a cheap diversity lens — convergence across *different* models is stronger evidence than N passes from one.
 
-`Hardener`'s own worktree-spawn (via `fabric`) and safe-merge-back-to-parent lifecycle is `Shed`'s job (see [shed.md](shed.md)) — the same lifecycle `loom` uses, with `Tenter` in the producer-slot instead of Discussion/Plan/Webster, and Hardener's own Preflight (below) instead of loom's.
+`Hardener`'s own worktree-spawn (via `fabric`) and safe-merge-back-to-parent lifecycle is `Shed`'s job (see [shed.md](shed.md)) — the same `loom`-shared lifecycle described above, with Hardener's own Preflight (below) instead of loom's.
 
 ### The sandbox dependency
 

@@ -11,7 +11,7 @@ Two modules, built in priority order:
 | **`reed`** | **One worktree at a time.** You open a terminal in the worktree you're working in (as today); reed runs the tmux session *for that worktree* — an **orchestrator claude plus the sub-agents it spawns**, stacked as visible panes you can watch and type in. | **Now** |
 | **`mplex`** | **Many worktrees.** One tmux instance with **a column per work-folder**, tiling several worktrees at once. | **Later / low** |
 
-This split is endorsed because the single-worktree agent stack is exactly where the hard parts are already **proven** (muxpoc: spawn, dominant-bottom layout, crash recovery) and where the exploration's event-driven model lands cleanly. `mplex` is additive layout work that can reuse `claude agents --json --cwd` and the supervisor for cross-worktree discovery — so it loses nothing by waiting.
+This split is endorsed because the single-worktree agent stack is where the hard parts are already **proven** (muxpoc: spawn, dominant-bottom layout, crash recovery) and where the exploration's event-driven model lands cleanly. `mplex` is additive layout work that can reuse `claude agents --json --cwd` and the supervisor for cross-worktree discovery — it loses nothing by waiting.
 
 The rest of this doc is **`reed` only**. `mplex` is sketched briefly at the end.
 
@@ -57,7 +57,7 @@ This is muxpoc's proven model, productionised and made **event-driven** with the
 - **Result out — the load-bearing part:** the child writes its **structured result to a file** (JSON / `<brief>.out.md`); the orchestrator reads that file. *This file hand-off is what makes the child "return" the way the Agent tool's return value does.* `capture-pane` is a **liveness fallback only**, never the result channel.
 - **Lifecycle:** the parent blocks on the child; while it runs the child is the active, dominant bottom pane; on the child's `Stop`, focus returns to the parent.
 
-This result contract is **the** thing to nail in a spike before building — it is what separates a robust `reed spawn` from a fragile one.
+This result contract is the thing to nail in a spike before building — it separates a robust `reed spawn` from a fragile one.
 
 ## Subcommands (v1)
 

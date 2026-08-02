@@ -18,7 +18,7 @@ This **overrides the board brief's "plain YAML."** The brief's real point was "s
 
 The **seed** is the t=0 contents of `_lyx/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting (see [status-single-schema-superset](#the-schema)).
 
-It is written by a **lyx Go command** at spawn time — the mill-spawn analogue, but Go, never an agent. This doc names the *role* ("the spawn-time lyx command"), not the exact subcommand; which one it binds to (`warp add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands. An optional thin `ly-spawn` skill may wrap it later for convenience, but the Go command is always the writer.
+It is written by a **lyx Go command** at spawn time — the mill-spawn analogue, but Go, never an agent. This doc names the *role* ("the spawn-time lyx command"), not the exact subcommand; which one it binds to (`warp add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands. An optional thin `ly-spawn` skill may wrap it later, but the Go command is always the writer.
 
 loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, weft pairing in sync, no half-finished prior run).
 

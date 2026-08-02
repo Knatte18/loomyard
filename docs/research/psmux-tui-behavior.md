@@ -1,6 +1,6 @@
 # psmux (Windows) + claude TUI behavior -- empirical findings
 
-> This research was conducted specifically against **psmux on Windows**, not native tmux — every finding below was observed running psmux, not verified against tmux directly. Native tmux is assumed to behave similarly (psmux is designed as a faithful tmux port), but that assumption is unconfirmed; treat any tmux-specific claim here as inherited-by-assumption, not independently verified.
+> This research was conducted specifically against **psmux on Windows**, not native tmux — every finding below was observed running psmux, not independently verified against tmux directly. Native tmux is assumed to behave similarly (psmux is designed as a faithful tmux port), but that assumption is unconfirmed.
 >
 > Provenance: copied from `millhouse/doc/psmux-tui-behavior.md` (sessions `replace-claude-p-with-psmux`, `smoke-test-psmux`). 100% relevant to the Loomyard reed design — it is the prior empirical record of driving a real `claude` TUI inside a psmux pane on this machine. The reed design and [`reed-exploration.md`](reed-exploration.md) draw on it directly. Bug-table line numbers refer to millhouse's Python implementation.
 

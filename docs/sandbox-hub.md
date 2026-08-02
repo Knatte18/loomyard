@@ -4,7 +4,7 @@
 
 > **Just want to run it?** See the operator runbook: [sandbox-howto.md](sandbox-howto.md) (deploy → clone Hub → run suite). This document is the reference for topology and design.
 
-The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the resolved `lyx` binary under test — the dev binary deployed via `deploy-dev` into the derived `.dev-bin` directory when present, else the production binary on PATH deployed via `deploy.cmd` — testing the real command surface, JSON output, and topology wiring that users encounter. Its purpose is **dogfooding** — running lyx against itself to catch regressions early.
+The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows. It exercises the resolved `lyx` binary under test — the dev binary deployed via `deploy-dev` into the derived `.dev-bin` directory when present, else the production binary on PATH deployed via `deploy.cmd` — against the real command surface, JSON output, and topology wiring users encounter. Its purpose is **dogfooding**: running lyx against itself to catch regressions early.
 
 The Hub consists of two dedicated GitHub repositories and a local working directory on disk:
 
@@ -16,7 +16,7 @@ The Hub consists of two dedicated GitHub repositories and a local working direct
 
 The Hub is cloned to `C:\Code\lyx-test-HUB` on this machine (the host basename `lyx-test` + `-HUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveHostName()`).
 
-**Important:** The Hub lives **outside `C:\Code\loomyard\`** so it is never mistaken for part of Loomyard itself. This separation keeps the sandbox separate from the orchestrator codebase.
+**Important:** The Hub lives **outside `C:\Code\loomyard\`**, so it is never mistaken for part of Loomyard itself and stays separate from the orchestrator codebase.
 
 The Hub directory structure mirrors the lyx topology model:
 
@@ -40,9 +40,7 @@ If the wiki does not exist or is not initialized, `lyx fabric clone` will fail w
 
 ### Current lyx Binary
 
-The sandbox tool invokes `lyx fabric clone` as a subprocess and resolves which `lyx` to run: the derived `.dev-bin/lyx` binary when it exists (deployed via `deploy-dev`), else the `lyx` on your system PATH as a fallback (deployed via `deploy.cmd`). Deploy one of the two before the Hub can be built.
-
-If neither is resolvable, the sandbox tool will fail with a clear error message.
+The sandbox tool invokes `lyx fabric clone` as a subprocess and resolves which `lyx` to run: the derived `.dev-bin/lyx` binary when it exists (deployed via `deploy-dev`), else `lyx` on PATH as a fallback (deployed via `deploy.cmd`). Deploy one of the two before the Hub can be built — if neither resolves, the sandbox tool fails with a clear error.
 
 ## Building and Rebuilding the Hub
 
@@ -72,7 +70,7 @@ The `-reset` flag:
 1. Removes the existing Hub directory at `C:\Code\lyx-test-HUB`.
 2. Clones a fresh Hub as above.
 
-**Caution:** `-reset` destroys the entire Hub directory, including any local changes or uncommitted work. Back up any work before using `-reset`.
+**Caution:** `-reset` destroys the entire Hub directory, including any local changes or uncommitted work — back up first.
 
 ## Running the Suite Agent
 
@@ -97,7 +95,7 @@ This command, run from the lyx repo directory:
 4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the copied file does not show up as an untracked change inside the host repo.
 5. Launches an interactive `claude --dangerously-skip-permissions` session with the host repo as the working directory and a single instruction: `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
 
-The agent works entirely as a black box: it sees only `lyx` on PATH and the copied scheme. It must not access the lyx source tree. Findings (WARN or FAIL verdicts) are written to `sandbox-report.json` in the host repo. The suite subcommand only launches the agent — it does **not** fetch the report. An interactive `claude` session never self-terminates and its manual exit gives a non-zero code, so gating a fetch on a clean exit would never fire. Collecting the report is a separate operator step (`fetch`, below).
+The agent works entirely as a black box: it sees only `lyx` on PATH and the copied scheme, and must not access the lyx source tree. Findings (WARN or FAIL verdicts) are written to `sandbox-report.json` in the host repo. The suite subcommand only launches the agent — it does **not** fetch the report: an interactive `claude` session never self-terminates and its manual exit gives a non-zero code, so gating a fetch on a clean exit would never fire. Collecting the report is a separate operator step (`fetch`, below).
 
 ### Optional flags
 
@@ -108,7 +106,7 @@ sandbox/core-suite.cmd -prompt <text>   # override the instruction string (defau
 
 ### Exit-code note
 
-The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox/fetch.cmd`. The claude session's precise exit code is not otherwise acted upon.
+The suite treats any exit code from the interactive `claude` session as normal — a manual exit is expected — so `runSuite` always returns success and prints a reminder to run `sandbox/fetch.cmd`.
 
 ## Fetching the report
 
@@ -126,7 +124,7 @@ This command:
 
 On success it prints the fetched path and, when there are findings, the exact `/mill-report-to-tasks "<path>"` triage command to run next (nothing is written to the wiki until you approve); a clean run says so and points at nothing.
 
-If the agent produced no report, `fetch` fails with a distinct "not found" error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage". Only `sandbox/fetch.cmd` passes `-loomyard` (as `"%~dp0..\."`, the loomyard repo root — the parent of the `sandbox/` folder the launcher lives in); it is required only by this subcommand.
+If the agent produced no report, `fetch` fails with a distinct "not found" error so the operator can tell "the agent wrote nothing" from "the agent wrote garbage". Only `sandbox/fetch.cmd` passes `-loomyard` (as `"%~dp0..\."`, the loomyard repo root), and only this subcommand needs it.
 
 ### Future: tmux launch
 
@@ -134,7 +132,7 @@ The direct `claude` launch used today will be replaced by a tmux interactive ses
 
 ## Running the reed suite
 
-Alongside the main suite, `sandbox/reed-suite.cmd` runs a dedicated black-box suite against `lyx reed`. It mirrors the main-suite flow: it copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes the copy the same way `SANDBOX-CORE-SUITE.md` is excluded, clears any stale `sandbox-report.json`, and launches the interactive agent there. Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) as a precondition beyond what the main suite requires. Findings land in the same `sandbox-report.json` in the host repo, so `sandbox/fetch.cmd` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
+Alongside the main suite, `sandbox/reed-suite.cmd` runs a dedicated black-box suite against `lyx reed`. It mirrors the main-suite flow: copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes it the same way, clears any stale `sandbox-report.json`, and launches the interactive agent there. Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) beyond what the main suite requires. Findings land in the same `sandbox-report.json`, so `sandbox/fetch.cmd` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
 
 ## Launchers and subcommands
 
@@ -158,11 +156,11 @@ The sandbox Hub serves as a **testbed for lyx's core agent-driven workflows**. P
 - Phased runs (Setup → Discussion → Plan → Builder → Finalize).
 - Review gates and agent dispatch.
 
-**If the orchestrator breaks on this known-good Hub, it is a LoomYard bug to be fixed.** The point of dogfooding is to catch regressions early and keep the real lyx surface tested.
+**If the orchestrator breaks on this known-good Hub, it is a LoomYard bug to be fixed.**
 
 ## Dedicated Use
 
-The two repositories (`lyx-test` and `lyx-test-weft`) are **dedicated to this sandbox use only**. They are not synced with any other project or use case. Do not use them for other purposes.
+The two repositories (`lyx-test` and `lyx-test-weft`) are **dedicated to this sandbox use only** — not synced with any other project, and not to be used for anything else.
 
 ## See Also
 

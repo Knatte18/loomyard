@@ -9,7 +9,7 @@
 - **`decision-record.md`** — the distilled record. The Plan producer's **sole** input: it never reads anything else out of `_lyx/discussion/`.
 - **`support-log.md`** — the raw support log. Read by the **Discussion-review gate**, **never** by the Plan producer.
 
-Two files, not two sections of one file, on purpose: this mirrors Builder's "distilled digest, never raw prose" rule (see [builder-contract.md](builder-contract.md)'s digest contract). A hard filesystem boundary is stronger than a convention about which section an agent is allowed to read — the Plan producer cannot accidentally ingest the raw interview transcript, or pay its token cost, because the file simply is not in its input set. Filenames are self-describing rather than terse, matching the existing `decision-record.md` / `support-log.md` naming.
+Two files, not two sections of one file, on purpose: this mirrors Builder's "distilled digest, never raw prose" rule (see [builder-contract.md](builder-contract.md)'s digest contract). A hard filesystem boundary is stronger than a convention about which section an agent may read — the Plan producer cannot accidentally ingest the raw interview transcript, or pay its token cost, because the file isn't in its input set. Filenames are self-describing rather than terse, matching the existing naming.
 
 Both paths are durable **weft-overlay state**: they live under `_lyx/` (git-synced via weft), not `.lyx/`'s ephemeral machine-local state — that is what makes them survive a resume across machines. Their paths resolve via `internal/hubgeometry` once code lands; this doc describes the files, it does not construct the paths.
 
