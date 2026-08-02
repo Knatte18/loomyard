@@ -123,6 +123,7 @@ batches:
 - `internal/gitrepo/gitrepo.go`
 - `internal/gitrepo/noforceadd_test.go`
 - `internal/gitrepo/reset.go`
+- `internal/hubgeometry/hubgeometry.go`
 - `internal/loomengine/preflight.go`
 - `internal/loomengine/preflight_integration_test.go`
 - `internal/perchcli/run.go`

@@ -1,0 +1,43 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: collapse external API surface onto Commit — stop leaking warp/weft — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude (Sonnet 5 / model id claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-02
+```
+
+## Findings
+
+### [BLOCKING] Card 4 omits bolt.go from Edits despite mandating its edit
+**Location:** batch 01-bolt-handle, Card 4 (Unexport CoalescePush and CommitWeftAt)
+**Issue:** Requirements says to update `Bolt.Sync`'s call to `CoalescePush` and `Bolt.Commit`'s call to `CommitWeftAt` (both in `bolt.go`) to the new lowercase names, but `bolt.go` is listed only under Context, not Edits. If Edits is the authoritative modification scope, `bolt.go` still references the now-unexported symbols and the package fails to compile, violating the batch's own "leaves the whole module green" guarantee.
+**Fix:** Add `internal/fabricengine/bolt.go` to Card 4's Edits list.
+
+### [BLOCKING] Card 11 omits bolt.go from Edits despite mandating its edit
+**Location:** batch 02-commit-migration, Card 11 (Unexport PushWeftAt)
+**Issue:** Requirements explicitly says "its only remaining callers are in-package: unwire.go:126 and Bolt.Push (bolt.go). Update both to the new casing" — but `bolt.go` appears only in Context, not Edits (only `weftgit.go`/`unwire.go` are). `Bolt.Push` still calls the exported `PushWeftAt` after this card's own rename, breaking the build the same way as Card 4's omission.
+**Fix:** Add `internal/fabricengine/bolt.go` to Card 11's Edits list.
+
+### [NIT] HostClean mention in drift.go never scheduled for repair
+**Location:** batch 04-clean-healthy-renames, Card 16 / Card 17
+**Issue:** Card 16's Requirements says to fix "any `HostClean` mention (e.g. `drift.go`'s header cross-reference)" but `drift.go` is not in Card 16's Edits. Card 17 does edit `drift.go` (for the `PairInSync`→`Healthy` rename touching the same header line) but its Requirements only says to grep/replace `PairInSync`, never `HostClean` — so the stale `HostClean` reference in that same sentence has no card that actually lands the fix.
+**Fix:** Add `internal/fabricengine/drift.go` to Card 16's Edits, or explicitly fold the `HostClean`→`Clean` wording fix into Card 17's Requirements.
+
+### [NIT] Stale PairInSync mention in hubgeometry.go never scheduled for update
+**Location:** batch 04-clean-healthy-renames, Card 17
+**Issue:** `internal/hubgeometry/hubgeometry.go:957` (HostJunctionsHere's doc comment) literally names `PairInSync(l *hubgeometry.Layout)`. Card 17's instruction to "grep for PairInSync and update every hit" implies this file too, but `hubgeometry.go` appears only in Context (never in any card's Edits across the whole plan), so this comment is left referencing a renamed-away symbol.
+**Fix:** Add `internal/hubgeometry/hubgeometry.go` to Card 17's Edits (a one-line comment fix), or explicitly except/reword this reference.
+
+### [NIT] StageAndCommit's own doc comment goes stale after force-add removal
+**Location:** batch 03-remove-force-add, Card 14
+**Issue:** `gitrepo.go`'s `StageAndCommit` doc comment (the paragraph ending "...the `add` step passes `-f`: see hasPathspecMagic's call site for why a plain add otherwise refuses outright...") describes the exact magic-entry/`-f` behavior Card 14 deletes, but Card 14's Requirements only mention deleting the code branch and the `hasPathspecMagic` function — not revising this now-inaccurate doc comment on the method itself.
+**Fix:** Extend Card 14's Requirements to trim/rewrite `StageAndCommit`'s doc comment so it no longer describes the removed pathspec-magic/`-f` behavior.
+
+## Verdict
+
+REQUEST_CHANGES
+Two compile-breaking Edits-list omissions (bolt.go in Cards 4 and 11) must be fixed before this plan is safe to execute.
+MILL_REVIEW_END

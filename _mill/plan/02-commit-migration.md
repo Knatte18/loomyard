@@ -91,13 +91,13 @@ Migrate the three round-loop CLIs (builder, webster, perch) off `CommitWeft` + s
 ### Card 11: Unexport PushWeftAt
 
 - **Context:**
-  - `internal/fabricengine/bolt.go`
   - `internal/buildercli/weft.go`
   - `internal/webstercli/weft.go`
   - `internal/perchcli/run.go`
 - **Edits:**
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/unwire.go`
+  - `internal/fabricengine/bolt.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none

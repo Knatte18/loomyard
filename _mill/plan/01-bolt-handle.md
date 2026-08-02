@@ -63,12 +63,12 @@ Introduce the Fabric-owned `Bolt` handle (methods `Commit`/`Push`/`Sync`) that n
 ### Card 4: Unexport CoalescePush and CommitWeftAt
 
 - **Context:**
-  - `internal/fabricengine/bolt.go`
   - `internal/boardengine/sync.go`
   - `internal/fabriccli/clone.go`
 - **Edits:**
   - `internal/fabricengine/coalesce.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/bolt.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
