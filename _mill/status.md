@@ -58,7 +58,9 @@ batches:
     start_sha: 56b7695ef6f8c8f4b3f13315ed1b359e0ae8ba17
     commit_sha: 4e6de6d83501fdc87faf9dce622afb8b8761add1
   - name: clean-healthy-renames
-    state: pending
+    state: running
+    implementer_session: 0eff3227-7c44-4c4d-bf19-3cd852bd7b18
+    start_sha: 070f941c1af1394d674b3248f4d3df94b2036c60
   - name: delete-dead-methods
     state: pending
   - name: fabric-cli-collapse
