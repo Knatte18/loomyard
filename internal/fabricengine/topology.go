@@ -6,7 +6,7 @@
 //
 // Topology is deliberately distinct from Fabric (fabric.go): Fabric is the
 // per-pair cross-repo handle over two already-existing checkouts (Warp/Weft
-// gitrepo.Repo fields, used by weft-git verbs like SyncWeft); Topology is the
+// gitrepo.Repo fields, used by weft-git verbs like Commit); Topology is the
 // hub-scoped holder that creates, removes, and reconciles the pairs
 // themselves. A pair does not exist yet when Topology.Add runs, so Topology
 // cannot hold a *Fabric — it only holds the Config needed to derive paths and

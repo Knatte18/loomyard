@@ -4,8 +4,8 @@
 // place in fabricengine that resolves the weft worktree's gitdir, computes a
 // warp SHA's ordering sequence, or scans weft history for Warp-SHA trailers.
 // It is also where the exported Fabric methods (RecordCorrespondence,
-// WeftSHAForWarpSHA, RebuildIndex) that SyncWeft and RevertWithWeft (a later
-// batch) build on live.
+// WeftSHAForWarpSHA, RebuildIndex) that Fabric.Commit and Fabric.Diff build
+// on live.
 
 package fabricengine
 
@@ -38,8 +38,8 @@ const (
 )
 
 // ErrNoCorrespondence is returned by WeftSHAForWarpSHA (and, via
-// classifyCorrespondence in a later batch, by RevertWithWeft) when the
-// correspondence index has no entry — exact or nearest-older — for a
+// classifyCorrespondence, by resolveRevertTarget's Fabric.Diff caller) when
+// the correspondence index has no entry — exact or nearest-older — for a
 // requested warp SHA at all, as opposed to ErrStaleSHA's "an entry exists but
 // no longer resolves" case.
 var ErrNoCorrespondence = errors.New("fabricengine: no recorded warp<->weft correspondence")
@@ -303,8 +303,9 @@ func parseTrailerScanRecord(record string) (weftSHA, warpSHA string, snapshotTag
 // exist on the other branch's refs), which means the stale-hit self-correction
 // in WeftSHAForWarpSHA/resolveRevertTarget never fires and lookups can serve
 // weft SHAs the current branch's trailer history (the sole source of truth)
-// would never produce — a RevertWithWeft against such an answer would graft
-// the current branches onto the other branch's history. Deleting the file
+// would never produce — a Fabric.Diff bridged against such an answer via
+// weftAnchorForWarpSHA would graft the current branches onto the other
+// branch's history. Deleting the file
 // first makes the refresh fail-safe: if the rebuild then errors, lookups miss
 // honestly (ErrNoCorrespondence) instead of answering cross-branch.
 func refreshCorrIndexAfterSwitch(worktreeRoot, weftWorktree string) error {
@@ -328,7 +329,7 @@ func refreshCorrIndexAfterSwitch(worktreeRoot, weftWorktree string) error {
 // replacing the on-disk index file with the result. A trailer value that
 // fails f.Warp.SHAExists (the warp commit it names no longer exists) is
 // still recorded, per the stale-SHA handling decision: staleness surfaces at
-// use (WeftSHAForWarpSHA, RevertWithWeft), never here at rebuild time.
+// use (WeftSHAForWarpSHA, resolveRevertTarget), never here at rebuild time.
 func (f *Fabric) RebuildIndex() error {
 	path, err := f.corrIndexPath()
 	if err != nil {
@@ -354,15 +355,15 @@ func (f *Fabric) RebuildIndex() error {
 	// tags-only or unchanged-content call at the same warp HEAD, so an empty
 	// commit's RecordCorrespondence(warpSHA, emptyWeftSHA) routinely upserts
 	// over the entry a preceding content commit wrote for that same warp SHA.
-	// WeftSHAForWarpSHA(warpSHA) and RevertWithWeft(warpSHA) then resolve to
-	// the empty commit — accepted, not worked around, because an empty
+	// WeftSHAForWarpSHA(warpSHA) and resolveRevertTarget(warpSHA) then resolve
+	// to the empty commit — accepted, not worked around, because an empty
 	// commit's tree is identical to its parent's by construction, so
-	// resolving a revert target to it restores the same weft tree the
-	// content commit produced; RevertWithWeft/resolveRevertTarget use the
-	// resolved weft SHA only as a reset target (f.Weft.SHAExists,
-	// f.Weft.ResetHard) and do nothing else with it, so the overwrite changes
-	// no other observable behaviour. Two alternatives were rejected rather
-	// than merely unconsidered. Skipping RecordCorrespondence for empty
+	// bridging a diff anchor to it reaches the same weft tree the content
+	// commit produced; resolveRevertTarget uses the resolved weft SHA only
+	// as a validation/bridge target (f.Weft.SHAExists) and does nothing else
+	// with it, so the overwrite changes no other observable behaviour. Two
+	// alternatives were rejected rather than merely unconsidered. Skipping
+	// RecordCorrespondence for empty
 	// commits would make the incremental and rebuilt indexes diverge, since
 	// this very rebuild reads trailers (not this call site's choices) and
 	// would record the commit anyway. Special-casing the index to keep the

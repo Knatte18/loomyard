@@ -38,7 +38,7 @@
 // the Warp-SHA trailer / correspondence-index machinery
 // (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not apply
 // to it — board's reads/writes to weft:main are a standalone concern, not
-// routed through fabric.SyncWeft/fabric.RevertWithWeft.
+// routed through fabric.Commit.
 //
 // Recorded for later, not acted on now: this repo's own manifest/roadmap.md
 // and the mill wiki's task list are both candidates to eventually fold

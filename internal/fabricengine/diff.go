@@ -17,8 +17,8 @@ import (
 
 // weftAnchorForWarpSHA resolves warpSHA to the weft SHA Fabric.Diff should
 // anchor its weft-side comparison to, via the same exact-then-nearest-older
-// resolution resolveRevertTarget already performs for RevertWithWeft — but
-// bridging, not reverting: nothing is reset here. A warpSHA older than the
+// resolveRevertTarget resolver — but bridging, not reverting: nothing is
+// reset here. A warpSHA older than the
 // first recorded correspondence is a valid pre-lyx state, not an error, so
 // that case is reported as found=false rather than propagating
 // ErrNoCorrespondence: a caller diffing since before fabric started tracking
@@ -74,9 +74,9 @@ type DiffResult struct {
 // sinceWarpSHA: warp-side changes are sinceWarpSHA..HEAD in the warp repo
 // (via Warp.ChangedFilesSince); weft-side changes are computed against the
 // nearest-at-or-before weft SHA correspondence resolves sinceWarpSHA to (via
-// weftAnchorForWarpSHA), not an exact match — the same nearest-older bridge
-// RevertWithWeft uses, since an exact correspondence entry for sinceWarpSHA
-// need not exist. When no weft correspondence exists at or before
+// weftAnchorForWarpSHA's underlying resolveRevertTarget resolver), not an
+// exact match, since an exact correspondence entry for sinceWarpSHA need not
+// exist. When no weft correspondence exists at or before
 // sinceWarpSHA at all, the weft side is empty and
 // DiffResult.NoWeftCorrespondence is true rather than an error: a diff since
 // before fabric started tracking this pair has no weft baseline, which is a
