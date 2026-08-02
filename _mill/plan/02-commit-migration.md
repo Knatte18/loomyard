@@ -69,10 +69,11 @@ Migrate the three round-loop CLIs (builder, webster, perch) off `CommitWeft` + s
   - `internal/buildercli/weft.go`
 - **Edits:**
   - `internal/webstercli/weft.go`
+  - `internal/webstercli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Mirror card 8 for `internal/webstercli/weft.go`: rewrite `weftCommit(layout, label)` (`weft.go:113`) onto `Fabric.Commit`, delete `websterWeftPathspec` (`weft.go:74`) and `weftPathspecBase` if now unused, build `files := fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName})`, keep the `SkipGit`-before-`New` guard, call `res, err := f.Commit(files, fmt.Sprintf("webster: %s", label), nil, opts)`, set `committed = res.WeftCommitted`, drop the standalone `PushWeftAt`. Remove now-unused imports. Trim touched comments.
+- **Requirements:** Mirror card 8 for `internal/webstercli/weft.go`: rewrite `weftCommit(layout, label)` (`weft.go:113`) onto `Fabric.Commit`, delete `websterWeftPathspec` (`weft.go:74`) and `weftPathspecBase` if now unused, build `files := fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName})`, keep the `SkipGit`-before-`New` guard, call `res, err := f.Commit(files, fmt.Sprintf("webster: %s", label), nil, opts)`, set `committed = res.WeftCommitted`, drop the standalone `PushWeftAt`. Remove now-unused imports. Trim touched comments. `internal/webstercli/cli_test.go`'s `TestWebsterWeftPathspec_ExcludesRuntimeArtifacts` unit-tests the deleted `websterWeftPathspec` directly (superseded by card 13's `weft_integration_test.go` exclude-file coverage) — remove that test function, keeping its `containsString` helper (shared with `weft_integration_test.go`) and every other test in the file intact, and drop the now-unused `builderengine`/`websterengine` imports if this was their only use in the file.
 - **Commit:** `refactor(webster): commit weft via Fabric.Commit, drop exclude magic`
 
 ### Card 10: Migrate perchcli block-exit commit onto Fabric.Commit
