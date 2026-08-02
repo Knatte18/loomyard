@@ -20,10 +20,7 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default YAML template for builder
-// configuration: the four role model-specs (orchestrator, implementer,
-// implementer_oversized, recovery) and the numeric knobs the batch loop and
-// its validation gate consult.
+// ConfigTemplate returns the default builder.yaml template.
 func ConfigTemplate() string {
 	return configTemplate
 }
@@ -31,12 +28,7 @@ func ConfigTemplate() string {
 //go:embed implementer-template.md
 var implementerTemplate []byte
 
-// ImplementerTemplate returns the embedded implementer prompt template's raw
-// bytes: the caller-required top-level markers are {{.batch_file}},
-// {{.batch_name}}, {{.report_path}}, {{.self_fix_cap}}, and
-// {{.worktree_root}} (see implementer-template.md's leading banner comment).
-// SpawnBatch fills it via stencil.Fill before handing it to shuttle as the
-// implementer's Prompt.
+// ImplementerTemplate returns the embedded implementer prompt template's raw bytes.
 func ImplementerTemplate() []byte {
 	return implementerTemplate
 }
@@ -44,12 +36,7 @@ func ImplementerTemplate() []byte {
 //go:embed orchestrator-template.md
 var orchestratorTemplate []byte
 
-// OrchestratorTemplate returns the embedded orchestrator prompt template's
-// raw bytes: the caller-required top-level markers are {{.batch_index}},
-// {{.progress}}, {{.outcome_path}}, {{.self_fix_cap}}, and
-// {{.poll_wait_s}} (see orchestrator-template.md's leading banner comment).
-// Run (runlevel.go) fills it via stencil.Fill before handing it to shuttle as
-// the orchestrator's Prompt.
+// OrchestratorTemplate returns the embedded orchestrator prompt template's raw bytes.
 func OrchestratorTemplate() []byte {
 	return orchestratorTemplate
 }

@@ -16,28 +16,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoadRegistry loads the models.yaml registry rooted at baseDir. The path is
-// always hubgeometry.ConfigFile(baseDir, "models") — never hand-joined, per
-// the Hub Geometry Invariant. An absent file is deliberately NOT an error
-// (unlike configengine.Load's pattern): models.yaml is optional, so a fresh
-// hub with no file at all still resolves every built-in alias. Any other
-// read error (permissions, a directory where a file is expected, …) is
-// wrapped with the path for context.
-//
-// When the file is present, its entries are decoded with
-// yaml.Decoder.KnownFields(true) into map[string]Entry — an unknown YAML
-// field anywhere in an entry is a loud error — and then validated: an alias
-// key must match [a-z0-9-]+; Engine must be non-empty and a known engine;
-// Model must be non-empty (a free-form string, never checked against any
-// model list, per the new-model-without-recompile requirement); every
-// Defaults key must be a known param with a non-empty value. Every failure
-// names the offending alias and the file path.
-//
-// The result is built from builtins(), with each file entry overlaid as a
-// WHOLE-ENTRY replacement: a file "sonnet:" block replaces the built-in
-// sonnet entry entirely (engine, model, and defaults together), never
-// merging field-by-field. An empty or comments-only file yields builtins()
-// unchanged.
+// LoadRegistry loads the models.yaml registry rooted at baseDir. An absent file
+// returns builtins() unchanged; a present file is decoded with strict validation
+// and merged onto builtins() by whole-entry replacement (no field-level merge).
 func LoadRegistry(baseDir string) (Registry, error) {
 	path := hubgeometry.ConfigFile(baseDir, "models")
 
@@ -78,8 +59,7 @@ func LoadRegistry(baseDir string) (Registry, error) {
 	return registry, nil
 }
 
-// validateAlias checks one decoded models.yaml entry against the closed
-// vocabularies and the alias charset, naming alias and path in every error.
+// validateAlias checks one models.yaml entry against closed vocabularies and charset.
 func validateAlias(alias string, entry Entry, path string) error {
 	if err := validateCharset(alias, "alias", isIdentChar); err != nil {
 		return fmt.Errorf("modelspec: %s: invalid alias %q: %w", path, alias, err)

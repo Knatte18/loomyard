@@ -34,18 +34,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// lspError is the LSP/JSON-RPC error object shape, present on a response
-// message when the server could not fulfil the request.
+// lspError is the LSP/JSON-RPC error object shape.
 type lspError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
 
-// lspMessage is the generic JSON-RPC-over-LSP envelope this client reads.
-// ID is kept as raw JSON (rather than decoded to int) so it can be echoed
-// back byte-for-byte when answering a server-initiated request, and so its
-// presence/absence (nil vs set) distinguishes a notification from a request
-// or response without a second bespoke type.
+// lspMessage is the generic JSON-RPC-over-LSP envelope this client reads and sends.
 type lspMessage struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id,omitempty"`
@@ -54,29 +49,14 @@ type lspMessage struct {
 	Error   *lspError       `json:"error,omitempty"`
 }
 
-// symbolInformation is the LSP wire shape for one workspace/symbol result:
-// the symbol's display name, its declaration location, and its kind (a
-// 1-indexed LSP SymbolKind enum, e.g. File=1, Module=2, Function=12 — this
-// package only passes the raw integer through, since decoding it into a
-// display-facing meaning belongs to the CLI layer, not the engine). It is
-// otherwise deliberately narrow — the LSP spec's SymbolInformation carries
-// other fields this engine never inspects.
+// symbolInformation is the LSP wire shape for a workspace/symbol result.
 type symbolInformation struct {
 	Name     string      `json:"name"`
 	Kind     int         `json:"kind"`
 	Location lspLocation `json:"location"`
 }
 
-// lspDocumentSymbol is the LSP wire shape for one textDocument/documentSymbol
-// result: gopls (and the LSP spec's preferred shape) returns this
-// hierarchical DocumentSymbol[] form, where a type's methods and a
-// namespace's members nest under it via Children, rather than the flat
-// SymbolInformation[] alternative the spec also allows — parsing the
-// hierarchical shape is sufficient for this engine's needs, so the flat
-// alternative is deliberately not handled. Range spans the whole symbol
-// (e.g. a function's entire body); SelectionRange spans just the
-// identifier itself, which is what refs.go's InFile resolve branch uses as
-// the reported position.
+// lspDocumentSymbol is the LSP wire shape for a textDocument/documentSymbol result.
 type lspDocumentSymbol struct {
 	Name           string              `json:"name"`
 	Kind           int                 `json:"kind"`
@@ -85,27 +65,18 @@ type lspDocumentSymbol struct {
 	Children       []lspDocumentSymbol `json:"children"`
 }
 
-// capabilities is the narrow slice of the server's initialize response this
-// client retains: whether workspace/symbol name resolution and
-// textDocument/documentSymbol are supported. The LSP spec allows both
-// capability fields to be either a bare bool or an options object;
-// UnmarshalJSON below normalizes both shapes to a Supported bool so
-// refs.go's supportsWorkspaceSymbol()/supportsDocumentSymbol() checks never
-// have to care which shape a given server sent.
+// capabilities reports the server's workspace/symbol and documentSymbol support.
 type capabilities struct {
 	WorkspaceSymbolProvider capabilityFlag `json:"workspaceSymbolProvider"`
 	DocumentSymbolProvider  capabilityFlag `json:"documentSymbolProvider"`
 }
 
-// capabilityFlag normalizes an LSP capability field that servers may report
-// either as a bare JSON bool or as a non-null options object (both mean
-// "supported"; absent or explicit false/null means "not supported").
+// capabilityFlag normalizes LSP capability fields that may be bool or objects.
 type capabilityFlag struct {
 	Supported bool
 }
 
-// UnmarshalJSON accepts `true`/`false` or any JSON object as a capability
-// value, per the LSP spec's "boolean | options object" capability shape.
+// UnmarshalJSON accepts bool or JSON object for LSP capability fields.
 func (f *capabilityFlag) UnmarshalJSON(data []byte) error {
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "null" {
@@ -130,17 +101,7 @@ func (f *capabilityFlag) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// lspClient drives one language-server subprocess (or, via
-// newLSPClientFromRW, a caller-supplied transport) over the standard
-// Content-Length-framed LSP envelope: w is the outbound half, stdout the
-// buffered inbound half, closer tears both down together. cmd is nil when
-// the client was built over an injected transport with no subprocess —
-// kill() and close() guard on that. incoming is fed by exactly one
-// long-lived readLoop goroutine, started once at construction: every call()
-// across the client's lifetime reads from this same channel rather than
-// spawning its own reader, because two goroutines calling readMessage
-// concurrently on the same bufio.Reader would race and corrupt the framing
-// (each would consume an arbitrary interleaving of the byte stream).
+// lspClient drives a language-server subprocess or caller-supplied transport over Content-Length-framed LSP.
 type lspClient struct {
 	cmd      *exec.Cmd
 	w        io.Writer

@@ -10,29 +10,19 @@ import (
 	"regexp"
 )
 
-// redditHostPattern matches Reddit URLs across its three common host forms
-// (bare, www, and old.reddit.com); all three serve the same content, so any
-// of them is eligible for the old.reddit.com HTML strategy.
+// redditHostPattern matches Reddit URLs across its three host forms
+// (bare, www, and old.reddit.com).
 var redditHostPattern = regexp.MustCompile(`^https?://(www\.|old\.)?reddit\.com`)
 
-// redditHostReplace captures the scheme separately from the host so
-// toOldRedditURL can rewrite just the host segment, regardless of which of
-// the three eligible forms (bare, www, old.) the input used.
+// redditHostReplace captures scheme and host for rewriting to old.reddit.com.
 var redditHostReplace = regexp.MustCompile(`^(https?://)(www\.|old\.)?reddit\.com`)
 
-// maxTopComments bounds how many top-level comments an adapter includes when
-// formatting a discussion thread into markdown, mirroring weblens' behavior
-// of showing only the first ~20 rather than an entire, potentially huge,
-// comment tree. Used by the Hacker News adapter; declared here alongside
-// Reddit's other retained constants. redditAdapter keeps all comments
-// unbounded via stripToBodyText.
+// maxTopComments bounds top-level comments included when formatting threads.
+// Used by the Hacker News adapter.
 const maxTopComments = 20
 
-// toOldRedditURL rewrites a Reddit URL to its old.reddit.com equivalent,
-// e.g. "https://www.reddit.com/r/foo" -> "https://old.reddit.com/r/foo". This
-// is a no-op rewrite when the input is already old.reddit.com, which is
-// harmless: redditAdapter always fetches the plain HTML page regardless of
-// which of the three eligible host forms the input used.
+// toOldRedditURL rewrites a Reddit URL to its old.reddit.com equivalent.
+// No-op when already old.reddit.com.
 func toOldRedditURL(rawURL string) string {
 	return redditHostReplace.ReplaceAllString(rawURL, "${1}old.reddit.com")
 }
@@ -47,11 +37,8 @@ func (redditAdapter) Matches(url string) bool {
 	return redditHostPattern.MatchString(url)
 }
 
-// Fetch retrieves url's old.reddit.com equivalent and formats it into
-// markdown. It reports handled=false when fetchOldRedditHTML's request
-// fails or yields too little content to be useful, so fetchPage falls
-// through to the generic HTML cascade instead of returning a near-empty
-// result.
+// Fetch retrieves url's old.reddit.com equivalent and formats it into markdown.
+// Reports handled=false when request fails or content is insufficient.
 func (redditAdapter) Fetch(ctx context.Context, f fetcher, url string) (string, bool) {
 	return fetchOldRedditHTML(ctx, f, url)
 }

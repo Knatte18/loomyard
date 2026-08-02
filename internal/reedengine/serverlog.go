@@ -13,15 +13,8 @@ import (
 	"time"
 )
 
-// debugLogArgs maps a validated debug_log config value to the tmux global
-// flags the server-spawning invocation should prepend to its argv. level is
-// trimmed of surrounding whitespace before comparison, so a template-sourced
-// value like " 1 " resolves the same as "1". "0" (or empty after trimming —
-// never reached today since the template default is "0", but treated the
-// same for robustness) yields no flags; "1" yields -v; "2" yields -vv. Any
-// other value is a misconfiguration and is reported as an error rather than
-// silently ignored, so an invalid debug_log fails the boot loud instead of
-// booting with the wrong verbosity.
+// debugLogArgs maps a validated debug_log config value to tmux global flags:
+// "0" yields none, "1" yields -v, "2" yields -vv.
 func debugLogArgs(level string) ([]string, error) {
 	switch strings.TrimSpace(level) {
 	case "0":
@@ -35,15 +28,8 @@ func debugLogArgs(level string) ([]string, error) {
 	}
 }
 
-// planLogPrune returns the subset of names to delete so that only the keep
-// newest (by the parallel mtimes slice) remain — the planning half of the
-// boot-time tmux-server-*.log prune (Shared Decision log-prune-keep-3); the
-// caller does the actual os.Remove calls. names and mtimes must be the same
-// length, each names[i] paired with mtimes[i]. When len(names) <= keep,
-// nothing is pruned and nil is returned. Ties (equal mtimes) are broken by
-// input order: entries earlier in names are treated as newer, so the result
-// is deterministic given the same input order. This is a pure function with
-// no filesystem I/O.
+// planLogPrune returns the subset of names to delete so only the keep newest
+// remain. Ties are broken by input order for deterministic results.
 func planLogPrune(names []string, mtimes []time.Time, keep int) []string {
 	if keep < 0 {
 		keep = 0

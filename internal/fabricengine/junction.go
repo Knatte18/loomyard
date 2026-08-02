@@ -18,40 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// WireJunctions creates directory junctions and seeds git-exclude entries for the
-// current worktree, keyed by slug, over the caller-supplied wired name-set names.
-//
-// WireJunctions itself loads NO config: names is the wired name-set the caller
-// already sourced (from fabric.yaml's pathspec, hub-reserved names filtered) — see
-// junctionNames/WiredNames. This is deliberate: config lives inside the very _lyx
-// directory this function seeds, so loading it here would break the missing-target
-// self-heal below the first time _lyx itself is the missing target.
-//
-// For each junction in l.HostJunctions(slug, names), WireJunctions:
-//   - Materialises the junction's weft-side target via os.MkdirAll
-//   - Creates the directory junction via fslink.CreateDirLink (idempotent via fslink.IsLink/PointsTo)
-//   - Appends the junction Name to the host worktree's .git/info/exclude (line-exact idempotent)
-//
-// Materialising the weft-side target is what lets every WireJunctions caller leave
-// a resolvable junction behind: fabricengine/checkout.go, fabricengine/reconcile.go,
-// fabricengine/add.go, and the fabriccli clone handler all call WireJunctions.
-// Before WireJunctions materialised the target itself, fslink.CreateDirLink would
-// happily create a link to a nonexistent target (a raw reparse point on Windows, a
-// dangling symlink elsewhere), leaving a caller's junctions dangling until some
-// other path created the target.
-//
-// The two operations are sequenced such that if either fails, the junction may be
-// left partially wired; the caller is responsible for rollback if needed. The
-// operations themselves are individually idempotent (re-running is safe).
-//
-// WireJunctions enforces the host-pristine invariant: it returns an error if the
-// host repo contains a real (non-junction) directory predating weft (refusing the
-// initial seedLyxJunction call); the exclude-append step never triggers this guard
-// since it operates on an exclude file, not the directory tree.
-//
-// Returns nil on success. Returns an error if:
-//   - The host contains a real directory predating weft (violation of pristine invariant)
-//   - Junction or exclude operations fail (wrapped with context)
+// WireJunctions creates directory junctions and seeds git-exclude entries for
+// the given slug over the caller-supplied wired name-set. The caller must supply
+// the filtered name-set (not loaded by this function). Idempotent. Enforces
+// the host-pristine invariant: returns an error if the host contains a real
+// directory predating weft.
 func WireJunctions(l *hubgeometry.Layout, slug string, names []string) error {
 	// Create or verify host junctions
 	if err := seedLyxJunction(l, slug, names); err != nil {
@@ -67,33 +38,9 @@ func WireJunctions(l *hubgeometry.Layout, slug string, names []string) error {
 }
 
 // seedLyxJunction creates, verifies, or re-points the host junctions pointing
-// to weft directories.
-//
-// It iterates over the junctions returned by l.HostJunctions(slug, names), applying
-// the same create-or-verify-or-re-point logic per junction using each record's Link
-// and Target.
-//
-// Before any check runs, each iteration materialises its junction's weft-side
-// target via os.MkdirAll — deliberately the first statement of the loop, ahead
-// of the os.Lstat(link) call below and both fslink.CreateDirLink call sites.
-// fslink.CreateDirLink happily creates a link to a nonexistent target (a raw
-// reparse point on Windows, a dangling symlink elsewhere), so a junction a prior
-// checkout or reconcile left dangling would otherwise hit the link-exists
-// branch's filepath.EvalSymlinks(target) failure below — the hard "weft
-// directory does not exist" error — on every subsequent WireJunctions call.
-// Materialising the target first gives that worktree a self-repair path instead.
-//
-// For each junction, if the path already exists:
-//   - A link resolving to the correct target is left alone (idempotent).
-//   - A link that dangles or resolves to the wrong target is re-pointed —
-//     removed and recreated toward the canonical weft target. A link is
-//     fabric-owned wiring metadata, never user content, so replacing it is
-//     always safe; this is what lets Reconcile repair a corrupted junction.
-//   - A real (non-link) directory is refused: it predates weft and may hold
-//     user content, which fabric never deletes.
-//
-// If os.Lstat fails with not-exist:
-//   - Creates the junction via fslink.CreateDirLink
+// to weft directories. Materializes each junction's weft-side target first.
+// A correct link is left alone; a dangling or wrong link is re-pointed;
+// a real directory is refused.
 func seedLyxJunction(l *hubgeometry.Layout, slug string, names []string) error {
 	junctions := l.HostJunctions(slug, names)
 

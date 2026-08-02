@@ -7,21 +7,13 @@ package batcher
 
 import "fmt"
 
-// DefaultName is the registry key the active batcher resolves to when
-// webster.yaml's batcher: config key is absent or empty. It names the identity
-// batcher (identity.go) — one card, one batch — webster's baseline execution
-// policy.
+// DefaultName is the default batcher key when no config is specified.
 const DefaultName = "identity"
 
-// registry holds every library member registered so far, keyed by its own
-// Name(). Populated exclusively by register calls from each library member's
-// init(), never mutated after package initialization.
+// registry holds all registered batchers, keyed by Name().
 var registry = make(map[string]Batcher)
 
-// register adds b to the registry under its own Name(). Called only from a
-// library member's init(), so registration is complete before any lookup or
-// Select call can observe the registry — package init() order guarantees this
-// within a single package.
+// register adds b to the registry under its own Name().
 func register(b Batcher) {
 	registry[b.Name()] = b
 }
@@ -33,13 +25,7 @@ func lookup(name string) (Batcher, bool) {
 	return b, ok
 }
 
-// Select resolves the active batcher by name: an empty name resolves to
-// DefaultName (the identity batcher), and a registered name returns its own
-// batcher. An unregistered name returns a wrapped "batcher:"-prefixed error
-// naming the unknown key — this is the load-time error webstercli surfaces
-// when webster.yaml's batcher: key names a batchifier that was never
-// registered (batch 7 adds the config key; batch 9 wires Select at
-// config-load).
+// Select resolves the active batcher by name, defaulting to DefaultName if empty.
 func Select(name string) (Batcher, error) {
 	if name == "" {
 		name = DefaultName

@@ -15,12 +15,8 @@ import (
 )
 
 // roundToken returns the artifact-file token for a round/attempt pair: the
-// bare round number for the first attempt ("3"), and the round number with
-// a letter suffix for each retry after a died/timeout outcome ("3b" for
-// attempt 2, "3c" for attempt 3, ...). The letter suffix is what lets a
-// retried attempt claim fresh output-file paths — a fresh spawn rejects a
-// run whose output files already exist, so a same-round retry can never
-// reuse its failed predecessor's paths.
+// bare round number for the first attempt, and the round number with a
+// letter suffix for each retry ("3b", "3c", etc.).
 func roundToken(round, attempt int) string {
 	if attempt <= 1 {
 		return fmt.Sprintf("%d", round)
@@ -32,14 +28,8 @@ func roundToken(round, attempt int) string {
 }
 
 // roundArtifactPaths is the set of file paths a single round/attempt may
-// produce inside a run dir. Not every field is written every round: Judge
-// is written only when the progress judge runs, Handoff only alongside a
-// successful judge call (same call, second output file), Gate only when a
-// command gate fails, Triage only when asking-triage runs, Seed only when
-// pre-round targeting runs. Seed is round-scoped rather than attempt-scoped
-// (see run.go's pre-round targeting step): a caller wanting the ACTUAL seed
-// path for a round always resolves it at attempt 1's token, never via a
-// later attempt's own artifactPaths call.
+// produce. Not every field is written every round: Judge only when the judge
+// runs, Gate only when a command gate fails, Triage only when triage runs.
 type roundArtifactPaths struct {
 	Review      string
 	FixerReport string
@@ -50,8 +40,7 @@ type roundArtifactPaths struct {
 	Seed        string
 }
 
-// artifactPaths returns the roundArtifactPaths for round/attempt inside
-// runDir, using roundToken to name each file round-<token>-<kind>.md.
+// artifactPaths returns the roundArtifactPaths for round/attempt inside runDir.
 func artifactPaths(runDir string, round, attempt int) roundArtifactPaths {
 	token := roundToken(round, attempt)
 	return roundArtifactPaths{

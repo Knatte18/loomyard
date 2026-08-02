@@ -24,9 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/scoutengine"
 )
 
-// TestRunCLI_NoArgsListsRefsSubcommand verifies that "lyx scout" with no
-// subcommand lists the "refs" subcommand and exits 0 — matching every other
-// module group's bare-invocation behavior (clihelp.GroupRunE).
+// TestRunCLI_NoArgsListsRefsSubcommand verifies bare "lyx scout" lists subcommands and exits 0.
 func TestRunCLI_NoArgsListsRefsSubcommand(t *testing.T) {
 	t.Parallel()
 
@@ -41,9 +39,7 @@ func TestRunCLI_NoArgsListsRefsSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Help verifies that "lyx scout --help" also lists the "refs"
-// subcommand and exits 0, mirroring the bare-invocation assertion above for the
-// explicit --help path.
+// TestRunCLI_Help verifies "lyx scout --help" lists subcommands and exits 0.
 func TestRunCLI_Help(t *testing.T) {
 	t.Parallel()
 
@@ -58,11 +54,7 @@ func TestRunCLI_Help(t *testing.T) {
 	}
 }
 
-// TestCommand_EveryCommandHasShort walks the full command tree returned by
-// Command() and asserts every node (the "scout" group and each subcommand)
-// carries a non-empty Short — the same structural self-documentation contract
-// cmd/lyx/drift_test.go enforces repo-wide, checked locally here so this module's
-// own test suite catches a missing Short before the root-level guard would.
+// TestCommand_EveryCommandHasShort asserts every command node has a non-empty Short.
 func TestCommand_EveryCommandHasShort(t *testing.T) {
 	t.Parallel()
 
@@ -72,8 +64,7 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 	}
 }
 
-// collectMissingShorts performs a depth-first walk of the command tree rooted at
-// cmd and returns the command path of every node whose Short is empty.
+// collectMissingShorts returns command paths for every node whose Short is empty.
 func collectMissingShorts(cmd *cobra.Command) []string {
 	var violations []string
 	if cmd.Short == "" {
@@ -85,11 +76,7 @@ func collectMissingShorts(cmd *cobra.Command) []string {
 	return violations
 }
 
-// TestRunCLI_Refs_NoLanguageError verifies that "refs <symbol> --target-dir
-// <empty dir>" fails through the ErrNoLanguage path: an empty temp dir has no
-// registry markers, so DetectLanguage fails before References ever launches a
-// language server. This exercises the engine-error-to-output.Err mapping without
-// any subprocess spawn.
+// TestRunCLI_Refs_NoLanguageError verifies "refs" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
@@ -130,10 +117,7 @@ func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Definition_NoLanguageError verifies that "definition <symbol>
-// --target-dir <empty dir>" fails through the same ErrNoLanguage path
-// TestRunCLI_Refs_NoLanguageError exercises for "refs" — definitionCommand
-// shares the identical cwd/registry-resolution preamble.
+// TestRunCLI_Definition_NoLanguageError verifies "definition" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
 	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
@@ -172,10 +156,7 @@ func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Symbol_NoLanguageError verifies that "symbol <query>
-// --target-dir <empty dir>" fails through the same ErrNoLanguage path
-// TestRunCLI_Refs_NoLanguageError exercises for "refs" — symbolCommand
-// shares the identical cwd/registry-resolution preamble.
+// TestRunCLI_Symbol_NoLanguageError verifies "symbol" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
 	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
@@ -214,28 +195,8 @@ func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves
-// that symbolCommand never calls parsePosition: an argument shaped like
-// "file:line:col" must still be passed through to Query.Symbol unparsed,
-// not silently swallowed as a position.
-//
-// DetectLanguage never consults Options.Query at all (see
-// internal/scoutengine/detect.go), so RunCLI("symbol", "foo.go:1:1",
-// --target-dir <empty>)'s ErrNoLanguage envelope is byte-for-byte identical
-// regardless of whether the argument was kept as a literal string or
-// mis-parsed as a position — confirmed empirically: "refs foo.go:1:1" and
-// "symbol foo.go:1:1" against the same empty target dir produce the exact
-// same error text. The ErrNoLanguage envelope therefore cannot itself prove
-// which shape Query took, so this test pins the real contract two ways
-// instead: (1) it exercises symbolQuery directly, the one seam
-// symbolCommand's RunE actually uses to build Query.Symbol, asserting it
-// keeps "foo.go:1:1" as a literal Query.Symbol with Query.Pos left nil, even
-// though the same string driven through parseQuery (refs/definition's
-// converter, which symbolCommand deliberately does not call) does parse as a
-// position — proving the two functions diverge exactly where they must; and
-// (2) it still drives the full RunCLI("symbol", ...) path to confirm the
-// command reaches DetectLanguage and fails through the expected
-// ErrNoLanguage envelope, exactly like TestRunCLI_Symbol_NoLanguageError.
+// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves symbolCommand
+// never position-parses "file:line:col" arguments, treating them as literal search strings.
 func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing.T) {
 	const arg = "foo.go:1:1"
 
@@ -281,15 +242,7 @@ func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing
 	}
 }
 
-// TestEmitLookupResult_AmbiguousSymbolExitsTwo tests emitLookupResult
-// directly (this file is package scoutcli, the same package
-// emitLookupResult is defined in) rather than through the full RunCLI tree —
-// reaching *scoutengine.ErrAmbiguousSymbol through a live refs/definition
-// call would require a real language server, out of scope for this file per
-// its own header comment. It covers both the ambiguous exit-2 path and the
-// not-found path, in the same table, to prove the not-found case still falls
-// through to plain output.Err rather than being swept into the ambiguous
-// branch.
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo tests emitLookupResult's handling of ambiguous and not-found cases.
 func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -366,11 +319,7 @@ func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Refs_RequiresAtLeastOneArg verifies that Args:
-// cobra.MinimumNArgs(1) still rejects a bare "refs" call (0 args) through the
-// JSON error envelope, without touching detection or the registry at all. A
-// 2-arg call is no longer an arg-count violation as of batch-mode-cli — see
-// TestRunCLI_Refs_TwoArgsIsBatchMode for that case.
+// TestRunCLI_Refs_RequiresAtLeastOneArg verifies "refs" requires at least one argument.
 func TestRunCLI_Refs_RequiresAtLeastOneArg(t *testing.T) {
 	t.Parallel()
 
@@ -401,13 +350,7 @@ func TestRunCLI_Refs_RequiresAtLeastOneArg(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Refs_TwoArgsIsBatchMode proves the opposite point from
-// TestRunCLI_Refs_RequiresAtLeastOneArg: "refs one two" is valid batch-mode
-// syntax now, not an arg-count rejection. It runs against an empty temp dir
-// so DetectLanguage fails identically for both symbols, keeping the
-// assertion deterministic and gopls-independent — an ErrNoLanguage failure
-// is not "confirmed absent," so both entries classify as "error", not
-// "not_found", pinning that distinction as a useful regression check.
+// TestRunCLI_Refs_TwoArgsIsBatchMode verifies two or more arguments enable batch mode.
 func TestRunCLI_Refs_TwoArgsIsBatchMode(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -446,15 +389,7 @@ func TestRunCLI_Refs_TwoArgsIsBatchMode(t *testing.T) {
 	}
 }
 
-// TestBatchRunner_WorstOutcomeWinsExitCode tests runBatch directly rather
-// than through a live language server: a small table-driven lookupOne
-// closure maps each input symbol string to a fixed (batchStatus,
-// map[string]any) pair, so this test needs no engine call or subprocess at
-// all. It table-drives one sub-test per possible "worst status present"
-// combination, asserting both the resulting exit code (via
-// clihelp.NewExitContext's exitState.Code(), mirroring
-// TestEmitLookupResult_AmbiguousSymbolExitsTwo's pattern above) and that
-// "results" has one entry per input symbol with the expected "status".
+// TestBatchRunner_WorstOutcomeWinsExitCode verifies runBatch sets exit code to the worst status present.
 func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
 	t.Parallel()
 
@@ -520,12 +455,7 @@ func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
 	}
 }
 
-// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker proves the
-// success branch of emitLookupResult (a nil err) adds the machine-readable
-// "resolution":"complete" trust marker alongside the results field, while
-// TestEmitLookupResult_AmbiguousSymbolExitsTwo's table above proves the
-// ambiguous and not-found branches do NOT carry it — the marker is
-// meaningful only for a confirmed, complete result set.
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker verifies success includes "resolution":"complete".
 func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
 	t.Parallel()
 
@@ -548,11 +478,7 @@ func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
 	}
 }
 
-// TestClassifyLookupError_FoundCarriesResolutionCompleteMarker mirrors
-// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker for batch
-// mode's classifier: classifyLookupError's statusFound branch must carry the
-// same "resolution":"complete" field, one per batch entry, while its
-// statusAmbiguous/statusNotFound/statusError branches leave it out.
+// TestClassifyLookupError_FoundCarriesResolutionCompleteMarker verifies statusFound includes "resolution":"complete".
 func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) {
 	t.Parallel()
 
@@ -574,12 +500,7 @@ func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) 
 	}
 }
 
-// TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir proves the
-// "Supervised daemon anchoring outside a lyx hub" Shared Decision's fallback:
-// from a fresh t.TempDir() with no _lyx (outside any lyx hub, and — being a
-// t.TempDir() — never inside a git repository either, so
-// hubgeometry.Resolve fails), resolveWorktreeRoot must return the absolute
-// form of targetDir, never an empty string.
+// TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir verifies the fallback outside a lyx hub.
 func TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir(t *testing.T) {
 	cwd := t.TempDir()
 	targetDir := t.TempDir()
@@ -598,14 +519,7 @@ func TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir(t *testing.T
 	}
 }
 
-// TestBuildOptions_ThreadsEveryFieldFromItsArguments pins buildOptions's
-// field-threading contract: every argument lands in the identically-named
-// Options field, WorktreeRoot included and non-empty. This does not (and
-// cannot) prove a specific call site passes the right worktreeRoot local —
-// that regression is guarded structurally by the DRY collapse of the six
-// construction sites onto this one function, not by this tautological
-// self-check — but it does pin the shape/wiring contract every call site
-// relies on.
+// TestBuildOptions_ThreadsEveryFieldFromItsArguments verifies buildOptions threads all fields correctly.
 func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	t.Parallel()
 
@@ -631,11 +545,7 @@ func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	}
 }
 
-// TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName proves
-// inFileQuery's core contract: the returned Query carries InFile (absolute
-// File, bare Name) and never Pos — even when name itself happens to have a
-// "file:line:col" shape, mirroring symbolQuery's never-position-parsed
-// discipline for the flag-less "symbol" verb.
+// TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName proves inFileQuery never position-parses.
 func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testing.T) {
 	t.Parallel()
 
@@ -660,9 +570,7 @@ func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testi
 	}
 }
 
-// TestInFileQuery_ResolvesRelativePathToAbsolute proves a relative --in-file
-// path is resolved against the process cwd, exactly like parseQuery resolves
-// a relative "file:line:col" argument's file component.
+// TestInFileQuery_ResolvesRelativePathToAbsolute verifies relative paths resolve against cwd.
 func TestInFileQuery_ResolvesRelativePathToAbsolute(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
@@ -678,9 +586,7 @@ func TestInFileQuery_ResolvesRelativePathToAbsolute(t *testing.T) {
 	}
 }
 
-// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol proves --in-file
-// is registered on refs and definition but deliberately absent from symbol:
-// per the plan, symbol has no --in-file variant at all.
+// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol verifies --in-file is on refs/definition but not symbol.
 func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
 	t.Parallel()
 
@@ -704,15 +610,7 @@ func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
 	}
 }
 
-// TestFilterWithin covers the pure --within filtering logic refs, definition,
-// and assert-no-callers all delegate to, entirely offline. It is the
-// regression test for the mitigation this repo's own scout-vs-grep
-// benchmark (docs/benchmarks/scout-vs-grep.md, Task 3) surfaced as a
-// real gap: an unscoped "lyx scout refs" on an interface method
-// conflates results from every structurally-identical interface anywhere in
-// the workspace, and the CI-shaped "assert-no-callers" gate can turn that
-// noise into false "violation":true reports. --within is what lets a caller
-// who already knows a query's intended package scope discard that noise.
+// TestFilterWithin tests the --within filtering logic, which mitigates interface-method reference conflation.
 func TestFilterWithin(t *testing.T) {
 	t.Parallel()
 
@@ -773,13 +671,7 @@ func TestFilterWithin(t *testing.T) {
 	}
 }
 
-// TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous pins the
-// regression classifySymbolError exists to prevent: a future edit that
-// makes classifySymbolError reuse classifyLookupError's ambiguity branch by
-// mistake. Two matches is exactly the multi-candidate case that *would* be
-// "ambiguous" for refs/definition (via classifyLookupError), but per
-// symbol-semantics symbol has no ambiguous status at all — every match is
-// just part of the found result set.
+// TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous verifies symbol never produces ambiguous status.
 func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 	t.Parallel()
 
@@ -804,12 +696,7 @@ func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AssertNoCallers_NoLanguageError verifies that "assert-no-callers
-// <symbol> --target-dir <empty dir>" fails through the same ErrNoLanguage
-// path TestRunCLI_Refs_NoLanguageError exercises for "refs" —
-// assertNoCallersCommand shares the identical cwd/registry-resolution
-// preamble, and the very first engine call (Definition) never launches a
-// language server against an empty temp dir.
+// TestRunCLI_AssertNoCallers_NoLanguageError verifies "assert-no-callers" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
 	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
@@ -848,11 +735,7 @@ func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AssertNoCallers_RequiresExactlyOneArg verifies Args:
-// cobra.ExactArgs(1) rejects both zero and two-or-more arguments —
-// assert-no-callers has no batch mode (refs/definition/symbol's 2+-arg
-// switch to batch mode does not apply here), so a second positional argument
-// must be a hard usage error, not silently ignored or reinterpreted.
+// TestRunCLI_AssertNoCallers_RequiresExactlyOneArg verifies "assert-no-callers" requires exactly one argument.
 func TestRunCLI_AssertNoCallers_RequiresExactlyOneArg(t *testing.T) {
 	t.Parallel()
 
@@ -876,10 +759,7 @@ func TestRunCLI_AssertNoCallers_RequiresExactlyOneArg(t *testing.T) {
 	}
 }
 
-// TestFilterUnexpectedCallers covers the pure filtering logic
-// assertNoCallersCommand's RunE delegates to, entirely offline: no language
-// server, no cobra plumbing — just the File+Line+Character set arithmetic
-// that decides which References results are genuine violations.
+// TestFilterUnexpectedCallers tests the filtering logic for unexpected callers.
 func TestFilterUnexpectedCallers(t *testing.T) {
 	t.Parallel()
 

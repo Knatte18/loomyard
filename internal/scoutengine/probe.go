@@ -14,13 +14,7 @@ import (
 	"time"
 )
 
-// probe issues an empty workspace/symbol query against client, bounded by
-// its own timeout deadline, and returns whatever error that call produces
-// verbatim: an ErrServerTimeout on deadline expiry, an lspError-derived
-// wrap on a real protocol error, or nil on success. The empty-query result
-// value itself is discarded — only the error matters, since probe's sole
-// job is to prove the connection is alive and answering, not to resolve
-// anything.
+// probe queries the language server to verify the connection is alive and responsive.
 func probe(ctx context.Context, client *lspClient, timeout time.Duration) error {
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

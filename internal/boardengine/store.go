@@ -13,14 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// swapLockSuffix names the fine-grained lock that fences readers of a file
-// against the instant a writer swaps it in via rename. It is deliberately
-// separate from the coarse board.lock held across a whole write (which
-// includes git network I/O) so reads wait microseconds, not seconds.
+// swapLockSuffix is the fine-grained lock that fences readers during writer
+// swap, separate from board.lock to minimize read latency.
 const swapLockSuffix = ".swaplock"
 
-// BriefTask is the enriched read-only view returned by the list subcommand.
-// Layer and HasProposal are computed at read time and are not stored in tasks.json.
+// BriefTask is the enriched read-only view returned by list, with Layer and HasProposal computed at read time.
 type BriefTask struct {
 	ID          int      `json:"id"`
 	Slug        string   `json:"slug"`
@@ -54,20 +51,16 @@ func (s *Store) Load() error {
 		return nil
 	}
 
-	// Read via state.ReadJSON, which acquires the swap lock and unmarshals.
-	// It surfaces corruption as an error instead of silently producing an empty list.
 	tasks, found, err := state.ReadJSON[[]Task](s.filePath, s.filePath+swapLockSuffix)
 	if err != nil {
 		return fmt.Errorf("load store: %w", err)
 	}
 
-	// If the file does not exist, initialize to empty and return success.
 	if !found {
 		s.tasks = []Task{}
 		return nil
 	}
 
-	// Normalize DependsOn: set to empty slice if nil
 	for i := range tasks {
 		if tasks[i].DependsOn == nil {
 			tasks[i].DependsOn = []string{}
@@ -100,10 +93,8 @@ func (s *Store) nextID() int {
 	return nextIDIn(s.tasks)
 }
 
-// nextIDIn returns the ID a task appended to tasks would get: one past the
-// highest existing ID, or 0 for an empty list. It exists so projection-based
-// operations (UpsertTasksBatch, MergeTasks) assign the same IDs against their
-// projected snapshot as sequential upserts would against the live store.
+// nextIDIn returns the ID for a task appended to tasks, used so projection-based
+// operations assign the same IDs as sequential upserts would.
 func nextIDIn(tasks []Task) int {
 	if len(tasks) == 0 {
 		return 0
@@ -118,23 +109,19 @@ func nextIDIn(tasks []Task) int {
 }
 
 // validateWrite checks incoming against snapshot for dangling deps, isolated/deferred
-// constraints, and cycles. snapshot is the projected state after any pending removals —
-// not necessarily equal to s.tasks.
+// constraints, and cycles. snapshot is the projected state after any pending removals.
 func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
-	// Build index of snapshot tasks
 	snapshotIndex := make(map[string]*Task)
 	for i := range snapshot {
 		snapshotIndex[snapshot[i].Slug] = &snapshot[i]
 	}
 
-	// (1) Dangling dependency check: every slug in incoming.DependsOn must exist in snapshot
 	for _, dep := range incoming.DependsOn {
 		if _, exists := snapshotIndex[dep]; !exists {
 			return fmt.Errorf("dangling dependency: %q does not exist", dep)
 		}
 	}
 
-	// (2) Target-not-schedulable check: a dep cannot be isolated or deferred
 	for _, dep := range incoming.DependsOn {
 		depTask := snapshotIndex[dep]
 		if depTask.Isolated {
@@ -145,8 +132,6 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		}
 	}
 
-	// (3) Cycle detection via DFS
-	// Build adjacency list from snapshot, replacing incoming's own entry
 	adjacency := make(map[string][]string)
 	for _, t := range snapshot {
 		if t.Slug == incoming.Slug {
@@ -155,12 +140,10 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 			adjacency[t.Slug] = t.DependsOn
 		}
 	}
-	// Ensure incoming.Slug exists in adjacency even if not in snapshot
 	if _, exists := adjacency[incoming.Slug]; !exists {
 		adjacency[incoming.Slug] = incoming.DependsOn
 	}
 
-	// DFS to detect cycle
 	color := make(map[string]string) // "white", "gray", "black"
 	for slug := range adjacency {
 		color[slug] = "white"
@@ -189,7 +172,6 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		return err
 	}
 
-	// (4) Reverse-isolate check: if incoming.Isolated, no task in snapshot may have incoming.Slug in its DependsOn
 	if incoming.Isolated {
 		for _, t := range snapshot {
 			for _, dep := range t.DependsOn {
@@ -200,7 +182,6 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		}
 	}
 
-	// (5) Reverse-defer check: if incoming.Deferred, no non-deferred task in snapshot may depend on incoming.Slug
 	if incoming.Deferred {
 		for _, t := range snapshot {
 			if t.Deferred {
@@ -226,11 +207,8 @@ type MergeStatusUpdate struct {
 	Status   *string
 }
 
-// upsertAllowedKeys is the authoritative set of field names accepted by all
-// upsert paths (UpsertTask, UpsertTasksBatch, MergeTasks). It is enforced at the
-// store boundary before the NewTask/ApplyPatch JSON round-trip so create, patch,
-// and merge-upsert are all covered by one chokepoint. The "id" field is excluded
-// because it is auto-assigned; "phase" and "group" are excluded by omission.
+// upsertAllowedKeys is the authoritative set of field names accepted by all upsert paths,
+// enforced at the store boundary. "id" is auto-assigned; "phase" and "group" are excluded.
 var upsertAllowedKeys = map[string]bool{
 	"slug":       true,
 	"title":      true,
@@ -243,9 +221,7 @@ var upsertAllowedKeys = map[string]bool{
 	"short_name": true,
 }
 
-// validateUpsertFields rejects any key in fields that is not in upsertAllowedKeys.
-// Returns a clear error naming the offending key; adds a hint for the common "phase"
-// typo directing the caller to the renamed "status" field.
+// validateUpsertFields reports an error for any field not in upsertAllowedKeys, with a hint for "phase" typos.
 func validateUpsertFields(fields map[string]any) error {
 	for k := range fields {
 		if !upsertAllowedKeys[k] {
@@ -261,7 +237,6 @@ func validateUpsertFields(fields map[string]any) error {
 // UpsertTask creates or updates the task identified by fields["slug"].
 // Rejects unknown fields via validateUpsertFields before any other processing.
 func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
-	// Validate field allowlist at the store chokepoint before the JSON round-trip.
 	if err := validateUpsertFields(fields); err != nil {
 		return Task{}, err
 	}
@@ -357,7 +332,6 @@ func (s *Store) RemoveTask(idOrSlug any) error {
 		}
 	case string:
 		slugToRemove = v
-		// Verify it exists
 		found := false
 		for _, t := range s.tasks {
 			if t.Slug == v {
@@ -474,18 +448,12 @@ func (s *Store) ListTasksFull() []Task {
 // UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or none.
 // Each task's field map is validated by the upsert allowlist before projection.
 func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
-	// Validate all tasks against the allowlist first, for fast-fail on bad input
-	// before doing any projection or mutation work.
 	for _, fields := range tasks {
 		if err := validateUpsertFields(fields); err != nil {
 			return err
 		}
 	}
 
-	// Project the full post-operation snapshot on a copy: the projection must
-	// never write through to s.tasks, so a failure below leaves the store
-	// untouched in memory too (all-or-none for direct Store users, not just
-	// for writeOp's discard-on-error).
 	snapshot := make([]Task, len(s.tasks))
 	copy(snapshot, s.tasks)
 	projectedSlugs := make([]string, 0, len(tasks))
@@ -500,8 +468,6 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		}
 		projectedSlugs = append(projectedSlugs, slugStr)
 
-		// Patch an existing entry in place or append a new one, exactly as a
-		// sequential upsert of the whole batch would.
 		foundIdx := -1
 		for i, t := range snapshot {
 			if t.Slug == slugStr {
@@ -524,9 +490,6 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		}
 	}
 
-	// Validate every projected task against the full projected snapshot, so
-	// batch elements may reference each other regardless of their order in the
-	// batch (a task may depend on one introduced later in the same batch).
 	for _, slugStr := range projectedSlugs {
 		var incoming Task
 		for _, t := range snapshot {
@@ -540,9 +503,6 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		}
 	}
 
-	// Install the projected snapshot wholesale. Re-applying elements one by
-	// one would re-validate each against a not-yet-complete store and reject
-	// exactly the forward-referencing batches validated above.
 	s.tasks = snapshot
 	return nil
 }
@@ -552,7 +512,6 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 // targets a missing task, SetStatus returns an error and writeOp discards the
 // in-memory mutation without saving, leaving the on-disk state unchanged.
 func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
-	// Project snapshot: snapshot minus removeSlugs
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
 		shouldRemove := false
@@ -567,15 +526,10 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 		}
 	}
 
-	// Validate upsert field allowlist before any other processing of the merge upsert.
 	if err := validateUpsertFields(upsert); err != nil {
 		return Task{}, err
 	}
 
-	// Validate the upserted task against projected snapshot. The checked
-	// assertion mirrors UpsertTask: a JSON payload can carry any type here,
-	// and a number/bool/null slug must surface as an envelope error, not a
-	// panic in the CLI process.
 	slugVal, hasSlug := upsert["slug"]
 	if !hasSlug {
 		return Task{}, fmt.Errorf("slug key is missing in merge upsert")
@@ -610,20 +564,15 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 		return Task{}, err
 	}
 
-	// Execute: remove all removeSlugs
 	for _, slug := range removeSlugs {
 		s.RemoveTask(slug)
 	}
 
-	// Execute: upsert
 	upserted, err := s.UpsertTask(upsert)
 	if err != nil {
 		return Task{}, err
 	}
 
-	// Execute: apply the status update if provided. SetStatus now errors on a
-	// missing target; the error propagates here so writeOp (board.go) discards
-	// the in-memory mutation without calling Save, leaving on-disk state unchanged.
 	if setStatus != nil {
 		if err := s.SetStatus(setStatus.Selector, setStatus.Status); err != nil {
 			return Task{}, err

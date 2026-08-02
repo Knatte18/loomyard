@@ -105,9 +105,7 @@ func RestartChain(resetter WarpResetter, st *State, plan *Plan, chainEnd int, re
 		delete(st.Batches, n)
 	}
 
-	// The chain restarts from its lowest member, so nothing stays
-	// in-flight across the reset regardless of which member CurrentBatch
-	// previously pointed at.
+	// Chain restarts from its lowest member; reset CurrentBatch.
 	st.CurrentBatch = 0
 
 	return nil

@@ -17,14 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestRunCLI_ResolvesLayoutAndConfig seeds a real reed.yaml into a fixture
-// hub's _lyx/config/ (reed config is anchored at layout.Cwd, unlike weft's
-// weft-sibling-anchored config) and verifies PersistentPreRunE reaches the
-// engine call rather than aborting on Getwd/Resolve/LoadConfig. Status then
-// fails because no tmux server is running under this fixture's socket name
-// — that failure is the point: it proves config resolution itself
-// succeeded, exercising a domain-error path distinct from the no-git-repo
-// path TestRunCLI_NotAGitRepo covers.
+// TestRunCLI_ResolvesLayoutAndConfig seeds a real reed.yaml into a fixture hub and verifies config resolution succeeds.
 func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -48,20 +41,13 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 		t.Errorf("RunCLI(status) ok = true; want false (no tmux session up)")
 	}
 
-	// Guard against the wrong failure: this must NOT be a config-resolution
-	// error (those paths are covered by TestRunCLI_NotAGitRepo and the
-	// "not initialized" case) — this test's whole point is that config
-	// resolution succeeded and the engine's own tmux check is what failed.
 	errMsg, _ := env["error"].(string)
 	if strings.Contains(errMsg, "not initialized") || strings.Contains(errMsg, "not a git repository") {
 		t.Errorf("RunCLI(status) error = %q; want a tmux/session error, not a config-resolution error", errMsg)
 	}
 }
 
-// TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up`
-// surfaces the same friendly "no reed session" error Status has always given,
-// rather than a raw tmux error bubbling up from launchStrandLocked's first
-// unguarded tmux call (orch_04 finding #3).
+// TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up` surfaces the friendly "no reed session" error.
 func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -80,21 +66,13 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 		t.Fatalf("RunCLI(add) output is not valid JSON: %v; got: %q", err, out.String())
 	}
-	// Fresh CopyPaired fixture, no reed.json seeded: zero strands persisted,
-	// so requireSessionLocked/noSessionMessage keeps today's short message
-	// rather than the resume-hint enrichment (that case is covered by
-	// TestRunCLI_StatusNotUp_EnrichedResumeHint).
 	wantErr := `no reed session; run "lyx reed up"`
 	if errMsg, _ := env["error"].(string); errMsg != wantErr {
 		t.Errorf("RunCLI(add) before up error = %q; want %q", errMsg, wantErr)
 	}
 }
 
-// TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before
-// `up` surfaces the same friendly "no reed session" error, rather than a raw
-// tmux error bubbling up from reconcileApplyPersistLocked's first unguarded
-// listPanes call (orch_04 finding #3). The guid is a placeholder — the
-// pre-flight session check must fail before the table is even consulted.
+// TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the friendly "no reed session" error.
 func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -113,33 +91,19 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 		t.Fatalf("RunCLI(remove) output is not valid JSON: %v; got: %q", err, out.String())
 	}
-	// Fresh CopyPaired fixture, no reed.json seeded: zero strands persisted,
-	// so requireSessionLocked/noSessionMessage keeps today's short message
-	// rather than the resume-hint enrichment (that case is covered by
-	// TestRunCLI_StatusNotUp_EnrichedResumeHint).
 	wantErr := `no reed session; run "lyx reed up"`
 	if errMsg, _ := env["error"].(string); errMsg != wantErr {
 		t.Errorf("RunCLI(remove) before up error = %q; want %q", errMsg, wantErr)
 	}
 }
 
-// TestRunCLI_StatusNotUp_EnrichedResumeHint verifies that running `status`
-// before `up`, with persisted strands already sitting in reed.json (an
-// unexplained-server-death scenario: the server is gone but the strand table
-// survived), surfaces the enriched "lyx reed resume" pointer instead of the
-// bare "lyx reed up" message the zero-strand before-up tests above assert —
-// requireSessionLocked/noSessionMessage's persisted-state branch (Shared
-// Decision enriched-no-session-error).
+// TestRunCLI_StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with persisted strands surfaces the enriched "lyx reed resume" message.
 func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 
-	// Seed reed.json with two persisted strand records directly, bypassing a
-	// live add (there is no server up yet) — this is exactly the state an
-	// unexplained server death leaves behind: the strand table survives on
-	// disk even though the session is gone.
 	st := &reedengine.ReedState{
 		Socket:  "test-socket",
 		Session: "test-session",

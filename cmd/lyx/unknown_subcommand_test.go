@@ -11,10 +11,7 @@ import (
 	"testing"
 )
 
-// TestMountedUnknownSubcommand verifies that "lyx <group> bogus" exits 1 and emits
-// a JSON error envelope with ok=false and an error string containing "unknown subcommand".
-// This exercises the GroupRunE wiring applied to each mounted group command in batch 2:
-// board/ide/reed (with PersistentPreRunE guards).
+// TestMountedUnknownSubcommand verifies "lyx <group> bogus" exits 1 with "unknown subcommand" in error.
 func TestMountedUnknownSubcommand(t *testing.T) {
 	tests := []struct {
 		group string
@@ -32,7 +29,6 @@ func TestMountedUnknownSubcommand(t *testing.T) {
 				t.Errorf("run([%s bogus]) = %d; want 1\noutput: %s", tt.group, code, out.String())
 			}
 
-			// GroupRunE must emit a well-formed JSON error envelope.
 			var env map[string]any
 			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 				t.Fatalf("run([%s bogus]) output is not valid JSON: %v; output: %q", tt.group, err, out.String())
@@ -40,8 +36,6 @@ func TestMountedUnknownSubcommand(t *testing.T) {
 			if ok, _ := env["ok"].(bool); ok {
 				t.Errorf("run([%s bogus]) ok = true; want false", tt.group)
 			}
-			// Confirm GroupRunE's "unknown subcommand" message reaches the error field,
-			// proving the mounted group no longer falls through to cobra's help output.
 			errMsg, _ := env["error"].(string)
 			if !strings.Contains(errMsg, "unknown subcommand") {
 				t.Errorf("run([%s bogus]) error = %q; want \"unknown subcommand\" substring", tt.group, errMsg)
@@ -50,11 +44,7 @@ func TestMountedUnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestMountedBareGroupListing_NoGitRepo verifies that bare "lyx <group>" exits 0 and
-// prints the human-readable subcommand listing without emitting an error envelope or a
-// "not a git repository" message. Each test runs from a temp dir (not a git repo) so
-// that a PersistentPreRunE guard regression — which would invoke hubgeometry.Resolve and fail
-// — surfaces as a visible test failure.
+// TestMountedBareGroupListing_NoGitRepo verifies bare "lyx <group>" exits 0 with subcommand listing.
 func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 	tests := []struct {
 		group       string
@@ -78,15 +68,12 @@ func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 			if code != 0 {
 				t.Errorf("run([%s]) = %d; want 0 for bare group listing\noutput: %s", tt.group, code, stdout)
 			}
-			// A JSON error envelope must not be present on a bare-group help path.
 			if strings.Contains(stdout, `"ok":false`) {
 				t.Errorf("run([%s]) emitted error envelope; want plain help text\noutput: %s", tt.group, stdout)
 			}
-			// The git-repo error from PersistentPreRunE must not appear.
 			if strings.Contains(stdout, "not a git repository") {
 				t.Errorf("run([%s]) emitted \"not a git repository\"; guard not working\noutput: %s", tt.group, stdout)
 			}
-			// The help listing must contain at least one known subcommand name.
 			if !strings.Contains(stdout, tt.knownSubcmd) {
 				t.Errorf("run([%s]) output does not contain %q; want subcommand listing\noutput: %s", tt.group, tt.knownSubcmd, stdout)
 			}
@@ -94,9 +81,7 @@ func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 	}
 }
 
-// TestUpdateCommandRemoved verifies that "lyx update" no longer resolves after the
-// command was folded into "lyx config reconcile". It must exit 1 with a JSON error
-// envelope whose ok field is false.
+// TestUpdateCommandRemoved verifies "lyx update" no longer resolves (folded into config reconcile).
 func TestUpdateCommandRemoved(t *testing.T) {
 	var out bytes.Buffer
 	code := run([]string{"update"}, &out)
@@ -105,7 +90,6 @@ func TestUpdateCommandRemoved(t *testing.T) {
 		t.Errorf("run([update]) = %d; want 1 (update should be unknown)\noutput: %s", code, out.String())
 	}
 
-	// Cobra must emit a well-formed JSON error envelope via RunRoot.
 	var env map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
 		t.Fatalf("run([update]) output is not valid JSON: %v; output: %q", err, out.String())

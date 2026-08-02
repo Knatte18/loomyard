@@ -65,16 +65,11 @@ type Run struct {
 	runDir string
 	state  RunState
 
-	// offset is the byte offset already consumed from state.EventsPath —
-	// Wait's poll loop only re-reads and re-parses bytes appended since the
-	// last tick.
+	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
-	// deadline is the wall-clock time after which an in-progress run is
-	// classified OutcomeTimeout (spec.Timeout after Start).
+	// deadline is the wall-clock time after which a run is classified OutcomeTimeout.
 	deadline time.Time
-	// clock is Wait's poll-loop time seam (wait.go): realClock{} in
-	// production, overridden with a fake by same-package tests so a whole
-	// poll sequence replays instantly.
+	// clock is the time seam for tests.
 	clock clock
 }
 
@@ -89,19 +84,9 @@ const (
 )
 
 // Start prepares one run described by spec and registers it with reed,
-// returning a handle a caller waits on (or drives via Interrupt/Send)
-// without blocking. Sequence: validate spec; opportunistically sweep
-// orphaned run directories left behind by strands reed no longer tracks
-// (never blocking on a sweep failure); mint a fresh run directory; ask the
-// engine to prepare its provider-specific artifacts; register the strand
-// with reed using the engine's Launch commands; and persist run.json. On an
-// AddStrand failure the just-created run directory is removed before the
-// error returns — there is nothing yet a caller could resume. A failure
-// persisting run.json AFTER AddStrand succeeded removes both the run
-// directory and the just-registered strand: without run.json nothing can
-// resolve the strand's guid back to this run (findRunByStrand scans
-// run.json files), so leaving the strand behind would launch a live,
-// untracked agent pane no caller can ever wait on, interrupt, or clean up.
+// returning a handle without blocking. On AddStrand failure the run directory
+// is removed. On a run.json persistence failure after AddStrand, both the
+// directory and strand are cleaned up to avoid leaking an untracked agent pane.
 func (r *Runner) Start(spec Spec) (*Run, error) {
 	if err := spec.validate(r.layout.WorktreeRoot, r.cfg); err != nil {
 		return nil, err
@@ -198,18 +183,9 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 	return run.Wait()
 }
 
-// sweepOrphansOpportunistic removes run directories whose strand is no
-// longer tracked in reed state, using the live-guid set read from reed.json.
-// A genuinely absent state file (st == nil, no error — the post-`reed down`
-// case) degrades to an empty live set: every dir old enough is a real
-// orphan there. A LoadState ERROR (corrupt or unreadable reed.json) is
-// different and skips the sweep entirely for this Start, rather than also
-// degrading to an empty set: treating a read failure as "no live strands"
-// would sweep every run dir past the age guard — including the kept
-// asking/died/timeout dirs of strands reed still actually tracks — destroying
-// diagnosis material over an unrelated I/O problem. Either way, a failure
-// here never blocks Start: an orphaned run directory left behind costs
-// nothing but disk, while blocking a new run on housekeeping would.
+// sweepOrphansOpportunistic removes run directories whose strand is no longer
+// tracked in reed state. A LoadState error skips the sweep entirely, to avoid
+// sweeping kept diagnosis dirs over an unrelated I/O problem. Failures never block Start.
 func (r *Runner) sweepOrphansOpportunistic() {
 	st, err := reedengine.LoadState(r.layout.DotLyxDir())
 	if err != nil {
@@ -231,27 +207,10 @@ func (r *Runner) sweepOrphansOpportunistic() {
 	}
 }
 
-// Interrupt stops run's in-progress turn without killing its pane or
-// session: after confirming the strand still has a live pane showing the
-// provider's input-ready TUI (see requireReadyAgentPane), it plays the
-// engine's InterruptSequence (e.g. a single
-// Escape key press) through the reed seam. The pane stays warm and idle afterward —
-// the caller typically follows with Send to give the agent updated
-// instructions and let it continue, or lets the operator attach directly.
-// Safe to call concurrently with a blocked Wait: reed's op lock serializes
-// the underlying send-keys calls, and Interrupt mutates no Run-local state.
-//
-// Calibration (verified live): a provider's Stop hook fires on ANY turn end,
-// including one ended by Interrupt itself, not only a self-completed or
-// asking turn. A blocked Wait can therefore classify and return (typically
-// OutcomeAsking, since the file contract is usually still unmet) from the
-// INTERRUPTED turn's own Stop event before a caller's subsequent Send ever
-// starts its redirect turn — Wait has no notion of "an interrupt is coming,
-// don't classify yet." Interrupt+Send still reliably DELIVER the redirect
-// to the still-live pane (the agent process keeps running independently of
-// whatever Wait already returned), but a caller must not assume the SAME
-// Wait call will observe the redirect's own eventual outcome — this is the
-// documented v1 limitation that there is no re-wait path once Wait returns.
+// Interrupt stops run's in-progress turn without killing its pane or session.
+// Safe to call concurrently with a blocked Wait. Note: Wait may classify and
+// return from the interrupted turn's Stop event before a subsequent Send is
+// issued; the redirect is delivered but the same Wait call won't observe it.
 func (run *Run) Interrupt() error {
 	if err := requireReadyAgentPane(run.runner.reed, run.runner.engine, run.state.StrandGUID); err != nil {
 		return err
@@ -259,18 +218,9 @@ func (run *Run) Interrupt() error {
 	return playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.InterruptSequence())
 }
 
-// Send types text as run's next turn: text must be a single, non-empty line
-// — the file contract carries multiline updates (write a file and Send a
-// one-line pointer to it, e.g. "read <file> — updated instructions — and
-// continue"), and an empty or whitespace-only send has nothing to deliver
-// (see validateSendText).
-// It plays the engine's ComposeSend choreography (typically clearing a
-// leaked auto-suggest before typing text and submitting it) through the reed
-// seam and then VERIFIES delivery by observing the text in the pane capture,
-// replaying once if it never appears (see sendVerified — the provider TUI
-// can silently swallow the whole input). A nil return therefore means the
-// text was observed on screen, not merely that keys were emitted. Safe to
-// call concurrently with a blocked Wait, for the same reason as Interrupt.
+// Send types text as run's next turn. Text must be a single, non-empty line.
+// Verifies delivery by observing the text in the pane capture, replaying once
+// if it never appears. Safe to call concurrently with a blocked Wait.
 func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
@@ -281,15 +231,8 @@ func (run *Run) Send(text string) error {
 	return sendVerified(run.runner.reed, run.runner.engine, run.state.StrandGUID, text)
 }
 
-// validateSendText rejects text that cannot be delivered as a single agent
-// turn, the shared guard both (*Run).Send and (*Runner).Send run before
-// touching the pane. Multiline text is rejected because the file contract —
-// not the input line — carries multiline updates (write a file and Send a
-// one-line pointer to it). Empty or whitespace-only text is rejected because
-// there is nothing to deliver: it would still play the Escape+submit
-// choreography (a stray empty turn) yet make sendVerified's delivery check
-// vacuous — the normalized needle would be "", which every pane capture
-// trivially "contains", so a nil return would falsely claim a verified send.
+// validateSendText rejects multiline text, empty text, or whitespace-only text
+// that cannot be delivered as a single agent turn.
 func validateSendText(text string) error {
 	if strings.ContainsAny(text, "\n\r") {
 		return fmt.Errorf("shuttle: Send: text must be a single line; multiline updates ride the file contract (write a file, Send a one-line pointer to it)")
@@ -300,17 +243,9 @@ func validateSendText(text string) error {
 	return nil
 }
 
-// Interrupt stops the in-progress turn of the run whose strand is identified
-// by guid, without needing an in-process Run handle — this is how the CLI's
-// interrupt verb reaches a run started by a separate process. It resolves
-// guid via FindRun to confirm it actually names a shuttle run, confirms the
-// strand still has a live pane showing the provider's input-ready TUI
-// (requireReadyAgentPane), then plays the engine's
-// InterruptSequence through the reed seam via the same playInputs helper
-// (*Run).Interrupt uses. FindRun's underlying error is wrapped (%w) into the
-// "not a shuttle strand" message rather than discarded, so an operator
-// debugging a genuine I/O error against the run-dir root (as opposed to a
-// simple wrong guid) is not told the guid is the problem.
+// Interrupt stops the in-progress turn of the run identified by guid,
+// without needing an in-process Run handle. This is how the CLI's interrupt
+// verb reaches a run started by a separate process.
 func (r *Runner) Interrupt(guid string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
@@ -321,19 +256,9 @@ func (r *Runner) Interrupt(guid string) error {
 	return playInputs(r.reed, guid, r.engine.InterruptSequence())
 }
 
-// Send types text as the next turn of the run whose strand is identified by
-// guid, without needing an in-process Run handle — this is how the CLI's
-// send verb reaches a run started by a separate process. It enforces the
-// same single-line, non-empty rule as (*Run).Send (validateSendText),
-// resolves guid via FindRun to
-// confirm it actually names a shuttle run, confirms the strand still has a
-// live pane showing the provider's input-ready TUI (requireReadyAgentPane),
-// then plays and delivery-verifies the
-// engine's ComposeSend choreography via the same sendVerified helper
-// (*Run).Send uses — a nil return means the text was observed in the pane.
-// FindRun's underlying error is wrapped (%w) into the "not a shuttle
-// strand" message rather than discarded, for the same reason as
-// (*Runner).Interrupt.
+// Send types text as the next turn of the run identified by guid, without
+// needing an in-process Run handle. This is how the CLI's send verb reaches
+// a run started by a separate process.
 func (r *Runner) Send(guid, text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
@@ -347,30 +272,10 @@ func (r *Runner) Send(guid, text string) error {
 	return sendVerified(r.reed, r.engine, guid, text)
 }
 
-// Inject plays inputs into the live pane of the run whose strand is
-// identified by guid, without needing an in-process Run handle — this is how
-// a caller reaches a session that is mid-turn, busy executing a foreground
-// tool subprocess (e.g. a long-running shell command), rather than sitting
-// idle at its input-ready TUI. It resolves guid via FindRun to confirm it
-// actually names a shuttle run, then requires the strand's pane still be
-// live (requireLiveStrand — the same liveness check Send uses), and plays
-// inputs through playInputs.
-//
-// Contrast with Send/Interrupt: those both call requireReadyAgentPane, which
-// refuses unless the engine classifies the CURRENT pane capture as
-// StartupReady — the provider's idle input prompt actually on screen. Inject
-// deliberately skips that guard: its whole purpose is to deliver keys while
-// the provider is busy and its TUI does NOT show the ready marker, which is
-// exactly the state requireReadyAgentPane would refuse. This makes Inject
-// less safe than Send in one respect — nothing here confirms the target
-// pane is in a state that can actually receive and act on these keys, only
-// that its pane is live — and that gap is deliberately accepted, not
-// papered over: whether delivery into a busy TUI actually lands correctly
-// is validated live by webster's sandbox scenario (a real fork-authorized
-// run mid-turn), not by a guard in this package. Empty inputs is a no-op
-// error, since there would be nothing to deliver and callers building an
-// input slice from optional steps should notice an accidentally-empty
-// result rather than have it silently succeed as a no-op.
+// Inject plays inputs into the live pane of the run identified by guid,
+// without needing an in-process Run handle. Unlike Send/Interrupt, Inject
+// deliberately skips the requireReadyAgentPane guard to deliver keys while
+// the provider is busy. Empty inputs is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if len(inputs) == 0 {
 		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")
@@ -384,52 +289,24 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	return playInputs(r.reed, guid, inputs)
 }
 
-// Send delivery-verification tuning: after playing the ComposeSend
-// choreography, the send path polls the pane capture for the sent text —
-// up to sendVerifyAttempts polls, sendVerifyInterval apart — and replays
-// the whole choreography up to sendReplays more times before reporting an
-// honest delivery failure. The polling exists because the swallow it
-// guards against (see PaneInput.SettleMS) produces NO error anywhere:
-// without observing the text in the pane, "ok" would be a guess.
 const (
 	sendVerifyAttempts = 20
 	sendVerifyInterval = 250 * time.Millisecond
 	sendReplays        = 1
 )
 
-// inputSleep is the real-time pause seam for pane-input pacing
-// (PaneInput.SettleMS) and send-delivery polling. A package-level variable
-// rather than a direct time.Sleep call so same-package tests can replace it
-// and drive the retry/verify loops instantly.
+// inputSleep is the time seam for tests to control pacing.
 var inputSleep = time.Sleep
 
-// Agent-pane probe tuning: requireReadyAgentPane classifies up to
-// agentPaneProbeAttempts pane captures, agentPaneProbeInterval apart, before
-// refusing — one capture could land mid-redraw and transiently classify a
-// perfectly healthy provider TUI as still booting.
 const (
 	agentPaneProbeAttempts = 3
 	agentPaneProbeInterval = 250 * time.Millisecond
 )
 
-// requireReadyAgentPane fails unless guid's strand has a live pane
-// (requireLiveStrand) whose current capture the engine classifies as
-// StartupReady — the provider's input-ready TUI actually on screen. Every
-// Interrupt/Send entry point runs this guard before playing keys, because
-// pane liveness alone only proves the pane's SHELL is alive: a provider
-// that failed at launch (or was killed while its shell survived) leaves a
-// live pane where played keys land at the shell prompt — proven live, a
-// send against a kept "died" run reported ok while its text was executed as
-// a pwsh command in the diagnosis pane. The same refusal also fires for a
-// provider that is merely STILL BOOTING (an interrupt/send issued seconds
-// after Start — the probe window is much shorter than a normal provider
-// startup), which is equally correct to refuse but a different diagnosis;
-// the error text names both readings. Known residual limitations,
-// inherited from the same startup-marker heuristic (see claudeengine's
-// Startup): a shell prompt styled with the provider's ready marker, or a
-// dead provider whose final TUI frame is still rendered in the pane, can
-// still false-pass — the guard narrows the hole to the states a capture can
-// distinguish, it cannot close it.
+// requireReadyAgentPane fails unless guid's strand has a live pane and the
+// current capture classifies as StartupReady. Distinguishes between a provider
+// that failed at launch and one still booting, with known residual limitations
+// where a shell prompt styled with the provider's ready marker may false-pass.
 func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
 	if err := requireLiveStrand(reed, guid); err != nil {
 		return err
@@ -456,23 +333,11 @@ func requireReadyAgentPane(reed ReedOps, engine Engine, guid string) error {
 	if lastCaptureErr != nil {
 		return fmt.Errorf("shuttle: capture strand %q's pane to confirm the provider TUI: %w", guid, lastCaptureErr)
 	}
-	// A non-Ready capture cannot distinguish a provider that never came up
-	// (or crashed behind a surviving shell) from one that is simply still
-	// booting — the probe window is far shorter than a normal provider
-	// startup, so an interrupt/send issued seconds after Start lands here on
-	// a perfectly healthy run. The message must own both readings rather
-	// than misdiagnose a booting pane as a dead agent.
 	return fmt.Errorf("shuttle: strand %q's pane shows no input-ready provider TUI — either the provider is still starting up (retry once it is ready), or its process exited (launch failure or crash) while the pane's shell stayed alive, in which case keys would be executed by the shell instead of reaching an agent", guid)
 }
 
-// requireLiveStrand fails unless guid's strand is currently tracked by reed
-// AND bound to a live pane. It is the first half of requireReadyAgentPane's
-// guard (and separately keeps the cheap failure modes cheap): tmux's
-// send-keys against a dead or missing pane exits 0 while delivering nothing
-// (proven live: interrupt/send against a run that had classified "died"
-// both reported success as silent no-ops) — without the guard, the exact
-// verbs the kept died/timeout state exists to support would lie to the
-// operator.
+// requireLiveStrand fails unless guid's strand is tracked by reed and bound
+// to a live pane. This guards against tmux send-keys exiting 0 on dead panes.
 func requireLiveStrand(reed ReedOps, guid string) error {
 	status, err := reed.Status()
 	if err != nil {
@@ -490,14 +355,8 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 	return fmt.Errorf("shuttle: strand %q is not tracked by reed — its run has completed and been cleaned up", guid)
 }
 
-// playInputs plays inputs into guid's pane through reed, in order: a Key
-// step sends a named key (SendKey), a Text step types literal text and,
-// when Submit is set, follows it with Enter (SendText's submit flag) — the
-// shared choreography both Interrupt and Send drive, and the same one
-// batch 5's CLI interrupt/send verbs reuse through the engine so every
-// caller plays a PaneInput sequence identically. A step's SettleMS is
-// honored after the step lands, so an engine can force a pause between an
-// Escape and the text that follows it (see PaneInput.SettleMS for why).
+// playInputs plays inputs into guid's pane through reed in order, with
+// SettleMS honored after each step to allow pauses between steps.
 func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	for _, in := range inputs {
 		if in.Key != "" {
@@ -514,32 +373,14 @@ func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	return nil
 }
 
-// sendVerified plays engine.ComposeSend(text) into guid's pane and then
-// CONFIRMS delivery by polling the pane capture until the sent text appears
-// MORE times than it did before the send, replaying the choreography up to
-// sendReplays more times before failing. The confirmation is not optional
-// politeness: the provider TUI can swallow the entire Escape+text chunk
-// with no error anywhere (observed live — `lyx shuttle send` reported ok
-// while nothing reached the agent), so "the text newly appeared on screen"
-// is the only honest definition of a delivered send. It is the occurrence
-// COUNT that must rise, not mere presence, because the text can already be
-// on screen before the send — an operator retrying the same instruction
-// after an uncertain first attempt (the natural reaction to exactly the
-// swallow this check guards against), or text quoting the agent's own
-// visible output — and a presence check would then verify a swallowed send
-// vacuously. Matching is whitespace-stripped and lowercased
-// (normalizePaneText) because pane captures can drop spaces entirely and
-// wrap long lines, and only a bounded prefix of the text is required so a
-// line-wrapped tail cannot defeat the match.
+// sendVerified plays engine.ComposeSend(text) and verifies delivery by
+// polling for the sent text to appear MORE times than before the send.
 func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 	needle := normalizePaneText(text)
 	if runes := []rune(needle); len(runes) > 48 {
 		needle = string(runes[:48])
 	}
 
-	// Snapshot how often the needle is already on screen; delivery is a NEW
-	// occurrence on top of this. A failed baseline capture degrades to 0 —
-	// the presence-only semantics this check strengthens, never weaker.
 	baseline := 0
 	if capture, err := reed.CapturePane(guid); err == nil {
 		baseline = strings.Count(normalizePaneText(capture), needle)
@@ -554,19 +395,13 @@ func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 			if err == nil && strings.Count(normalizePaneText(capture), needle) > baseline {
 				return nil
 			}
-			// A capture error here is transient noise, not fatal: the next
-			// poll (or the replay) either observes the text or the loop
-			// reports the delivery failure honestly at the end.
 			inputSleep(sendVerifyInterval)
 		}
 	}
 	return fmt.Errorf("shuttle: Send: sent text never appeared in the pane after %d attempt(s) — the provider TUI likely swallowed the input; the send was NOT delivered", 1+sendReplays)
 }
 
-// normalizePaneText lowercases s and strips every whitespace rune — the
-// canonical form sendVerified matches pane captures against, since a pane
-// capture can drop spaces entirely (an observed TUI rendering quirk) and
-// wraps long lines with newlines.
+// normalizePaneText lowercases s and strips whitespace for canonical matching.
 func normalizePaneText(s string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {

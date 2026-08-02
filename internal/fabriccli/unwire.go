@@ -12,13 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// runUnwire executes the fabric unwire subcommand.
-//
-// It resolves the current working directory and delegates to
-// fabricengine.Unwire, which removes every on-disk fabric junction for this
-// worktree, clears the weft-side _lyx content (never _pattern), and reverts
-// the managed .gitignore block's ".lyx/" entry. On success it emits a JSON
-// object mirroring the deleted initcli runUndo's output keys.
+// runUnwire executes the fabric unwire subcommand, removing every on-disk
+// fabric junction for this worktree and clearing weft-side _lyx content.
 func runUnwire(out io.Writer, _ []string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {

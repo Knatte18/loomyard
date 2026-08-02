@@ -27,14 +27,7 @@ import (
 // adds commit churn, and it is never itself a member of the rendered file set.
 const renderManifestFile = ".board-rendered.json"
 
-// RenderToDisk renders the tasks and notes and persists the board's readable
-// representation. It writes every rendered file atomically, then removes any
-// file the previous render produced that the current render no longer
-// produces (covering README renames and DesignPrefix changes, not just
-// orphaned design docs), and finally updates the manifest sidecar so the next
-// render knows what to clean. render.go owns all .md output; board.go owns
-// only tasks.json/notes.json. This is the single call the write path makes
-// for rendering.
+// RenderToDisk renders tasks and notes, persisting the board's output files.
 func RenderToDisk(boardPath string, tasks, notes []Task, out Outputs) error {
 	files, err := Render(tasks, notes, out)
 	if err != nil {
@@ -46,9 +39,6 @@ func RenderToDisk(boardPath string, tasks, notes []Task, out Outputs) error {
 		}
 	}
 
-	// Read the previous manifest to discover files no longer produced by this render.
-	// A missing or corrupt manifest is treated as an empty set — nothing to clean on
-	// the first pass after an upgrade; the manifest is seeded from the current output.
 	previous := readRenderManifest(boardPath)
 	for _, name := range previous {
 		if _, kept := files[name]; !kept {
@@ -58,15 +48,11 @@ func RenderToDisk(boardPath string, tasks, notes []Task, out Outputs) error {
 		}
 	}
 
-	// Persist the current file set so the next render knows what to clean.
 	writeRenderManifest(boardPath, files)
 	return nil
 }
 
-// readRenderManifest returns the list of filenames recorded in the manifest sidecar
-// from the previous render. It returns nil when the manifest is absent or unreadable
-// (corrupt JSON, permission error, etc.) so the caller treats "nothing known" as a
-// graceful no-op rather than an error.
+// readRenderManifest returns the list of filenames from the previous render's manifest.
 func readRenderManifest(boardPath string) []string {
 	data, err := os.ReadFile(filepath.Join(boardPath, renderManifestFile))
 	if err != nil {
@@ -74,15 +60,12 @@ func readRenderManifest(boardPath string) []string {
 	}
 	var names []string
 	if err := json.Unmarshal(data, &names); err != nil {
-		// Corrupt manifest: treat as absent; it will be overwritten by the current set.
 		return nil
 	}
 	return names
 }
 
-// writeRenderManifest persists the current render's file set to the manifest sidecar
-// as a sorted JSON array for stable, diff-friendly output. Best-effort: errors are
-// silently discarded so a manifest write failure never blocks a successful render.
+// writeRenderManifest persists the current render's file set to the manifest sidecar.
 func writeRenderManifest(boardPath string, files map[string]string) {
 	names := make([]string, 0, len(files))
 	for name := range files {
@@ -97,21 +80,12 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 }
 
 // Render produces the board output files from the task and note lists.
-// Returns a map of relative filename → content: the configured README
-// filename (a "# Tasks" section built from tasks, followed by a "# Manifest"
-// section built from notes when notes is non-empty), plus design files (using
-// the configured prefix and slug) for every task or note with a non-empty
-// body.
 func Render(tasks, notes []Task, out Outputs) (map[string]string, error) {
 	ordered, err := RenderOrder(tasks)
 	if err != nil {
 		return nil, err
 	}
 
-	// Slug → task/note, for resolving dependency IDs within each section.
-	// Notes resolve dependencies against noteMap only — per discussion.md's
-	// per-store-scoped depends_on decision, a note's dependencies are always
-	// other notes, never tasks.
 	taskMap := make(map[string]Task, len(tasks))
 	for _, t := range tasks {
 		taskMap[t.Slug] = t
@@ -124,9 +98,6 @@ func Render(tasks, notes []Task, out Outputs) (map[string]string, error) {
 	tasksSection := renderTasksSection(ordered, taskMap, out.DesignPrefix)
 	manifestSection := renderManifestSection(notes, noteMap, out.DesignPrefix)
 
-	// Concatenate Tasks/Done then Manifest, with a blank-line separator only
-	// when there is a Manifest section to separate from — a notes-free board's
-	// README must carry no dangling heading or trailing blank line.
 	readme := tasksSection
 	if manifestSection != "" {
 		readme += "\n" + manifestSection
@@ -136,8 +107,6 @@ func Render(tasks, notes []Task, out Outputs) (map[string]string, error) {
 		out.Readme: readme,
 	}
 
-	// A design-<slug>.md file applies uniformly to any entry — task or note —
-	// with a non-empty body, so union both lists before rendering designs.
 	combined := append(append([]Task{}, tasks...), notes...)
 	for name, content := range renderDesigns(combined, out.DesignPrefix) {
 		result[name] = content
@@ -145,10 +114,7 @@ func Render(tasks, notes []Task, out Outputs) (map[string]string, error) {
 	return result, nil
 }
 
-// renderTasksSection builds the README's "# Tasks" section: sectioned per
-// bucket, with a block per task (heading, slug line, optional dependencies,
-// optional brief, and a [status] suffix). The design prefix is used in task
-// links to design docs.
+// renderTasksSection builds the "# Tasks" section of the README.
 func renderTasksSection(ordered []TaskWithLayer, taskMap map[string]Task, designPrefix string) string {
 	lines := []string{"# Tasks", ""}
 

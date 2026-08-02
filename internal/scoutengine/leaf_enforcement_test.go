@@ -20,8 +20,7 @@ import (
 	"testing"
 )
 
-// allowedImports are the only non-stdlib import paths production code in
-// this package may use.
+// allowedImports lists the only non-stdlib imports allowed in production code.
 var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/hubgeometry": true,
 	"github.com/Knatte18/loomyard/internal/lock":        true,
@@ -30,11 +29,7 @@ var allowedImports = map[string]bool{
 	"gopkg.in/yaml.v3": true,
 }
 
-// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in
-// this package directory imports only stdlib (no '.' in the first path
-// segment) or an entry in allowedImports. It uses go/parser with
-// ImportsOnly so only real import declarations are inspected, never string
-// literals in doc comments.
+// TestLeafInvariant_AllowlistOnly verifies all non-test files import only stdlib or allowedImports.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

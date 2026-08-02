@@ -22,53 +22,30 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// overviewFileName is the fixed filename of a plan's overview file within its plan
-// directory, per plan-format-v3.md's on-disk layout.
+// overviewFileName is the fixed filename of a plan's overview file, per plan-format-v3.md's on-disk layout.
 const overviewFileName = "00-overview.md"
 
-// cardIndexHeading is the exact "## " heading plan-format-v3.md pins for the
-// overview's Card Index section.
+// cardIndexHeading is the exact "## " heading plan-format-v3.md pins for the overview's Card Index section.
 const cardIndexHeading = "## Card Index"
 
-// overviewFrontmatter mirrors 00-overview.md's frontmatter shape 1:1. Fields are
-// pointers so ParsePlan can distinguish "key present with its zero value" from "key
-// absent entirely": plan-format-v3.md's format-unrecognized/plan-unapproved checks
-// (Validate's job, not ParsePlan's) need that distinction to tell an explicit
-// `format: 0` apart from a plan that never set format: at all, and both fold to the
-// same zero value once dereferenced onto Plan.
+// overviewFrontmatter mirrors 00-overview.md's frontmatter shape 1:1 with pointer fields to distinguish absent vs zero-value keys.
 type overviewFrontmatter struct {
 	Format   *int    `yaml:"format"`
 	Approved *bool   `yaml:"approved"`
 	Root     *string `yaml:"root"`
 }
 
-// cardIndexEntry is one parsed "## Card Index" line: the machine-readable fields of
-// "N — <card-slug> — <one-line intent>" before its own card file has been read.
+// cardIndexEntry is one parsed "## Card Index" line's machine-readable fields before the card file is read.
 type cardIndexEntry struct {
 	Number int
 	Slug   string
 	Intent string
 }
 
-// cardIndexLineRe matches a plan-format-v3 Card Index entry's three fields,
-// accepting either the em dash "—" or one-or-two ASCII hyphens as either separator
-// (plan-format-v3.md's worked example uses "—"; hand-written plans may use ASCII).
-// Both separators are required to be surrounded by whitespace so neither is ever
-// confused with a hyphen inside the slug itself (e.g. "json-flag"). A line that does
-// not match this shape at all is document structure, not a card-level defect — it
-// fails loud rather than being silently skipped, per the lenient-card-parse
-// decision (that leniency applies to per-card body content, not to the index).
+// cardIndexLineRe matches a plan-format-v3 Card Index entry's three fields, accepting either the em dash "—" or ASCII hyphens as separators.
 var cardIndexLineRe = regexp.MustCompile(`^(\d+)\s+(?:—|-{1,2})\s+(\S+)\s+(?:—|-{1,2})\s+(.+)$`)
 
-// ParsePlan reads the plan directory planDir and returns the fully parsed Plan:
-// 00-overview.md's frontmatter, framing, Card Index, and plan-level body sections,
-// plus every listed card's own per-card file. planDir is an explicit argument;
-// ParsePlan never constructs the "_lyx"/"plan" path tokens itself — the caller
-// resolves that (via hubgeometry.PlanDir), per the Hub Geometry Invariant. Every
-// distinct failure mode — a missing overview file, undecodable frontmatter, an
-// unparseable Card Index line, a missing or malformed card file — is returned as its
-// own wrapped error, all prefixed "planparser:" per the fail-loud, never-misread
-// discipline plan-format-v3.md pins for every machine-read plan artifact.
+// ParsePlan reads the plan directory and returns the fully parsed Plan. It returns wrapped errors prefixed "planparser:" for every distinct failure mode.
 func ParsePlan(planDir string) (*Plan, error) {
 	overviewPath := filepath.Join(planDir, overviewFileName)
 
@@ -106,9 +83,7 @@ func ParsePlan(planDir string) (*Plan, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Resolve every card path's root:/// shorthand exactly once, here, so
-		// every downstream consumer (Validate included) only ever sees plain,
-		// normalized, worktree-relative paths.
+		// Resolve every card path's root:/// shorthand exactly once so every downstream consumer sees normalized paths.
 		normalizeCard(&card, root)
 		cards = append(cards, card)
 	}
@@ -130,13 +105,7 @@ func ParsePlan(planDir string) (*Plan, error) {
 	return plan, nil
 }
 
-// parseOverviewFrontmatter extracts and strict-decodes 00-overview.md's leading
-// frontmatter block. Unlike the frozen v2 parser, a missing format:/approved:/root:
-// key is not itself a fail-loud error here — format-unrecognized and
-// plan-unapproved are Validate's checks, not ParsePlan's; only a missing
-// frontmatter block entirely, or one that fails to decode (unknown key, duplicate
-// key, unterminated fence), is document structure. It returns the decoded
-// frontmatter and the document body following the closing fence.
+// parseOverviewFrontmatter extracts and strict-decodes 00-overview.md's leading frontmatter block. It returns the decoded frontmatter and the document body following the closing fence.
 func parseOverviewFrontmatter(content, overviewPath string) (overviewFrontmatter, string, error) {
 	fmBlock, body, found, err := splitFrontmatter(content)
 	if err != nil {
@@ -156,12 +125,7 @@ func parseOverviewFrontmatter(content, overviewPath string) (overviewFrontmatter
 	return fm, body, nil
 }
 
-// splitFrontmatter separates a leading "---"-fenced YAML block (skipping any blank
-// lines before the opening fence) from the rest of a markdown document. found is
-// false when the document has no frontmatter at all (the first non-blank line is
-// not "---"); err is non-nil when an opening fence is present but never closed,
-// which is always malformed regardless of whether frontmatter is optional for the
-// caller.
+// splitFrontmatter separates a leading "---"-fenced YAML block from the rest of a markdown document.
 func splitFrontmatter(content string) (frontmatter, body string, found bool, err error) {
 	lines := strings.Split(content, "\n")
 
@@ -181,10 +145,7 @@ func splitFrontmatter(content string) (frontmatter, body string, found bool, err
 	return "", "", false, fmt.Errorf("unterminated frontmatter fence")
 }
 
-// splitFraming locates the overview body's "## Card Index" heading and splits the
-// body into the task-framing prose above it (with the document's H1 title line
-// dropped, since the title is not part of the framing prose) and the raw index
-// lines below it, up to the next "## " heading or EOF.
+// splitFraming locates the "## Card Index" heading and splits the body into framing prose above it and index lines below it.
 func splitFraming(body string) (framing string, indexLines []string, err error) {
 	lines := strings.Split(body, "\n")
 
@@ -202,8 +163,6 @@ func splitFraming(body string) (framing string, indexLines []string, err error) 
 	var framingLines []string
 	for _, l := range lines[:headingIdx] {
 		if strings.HasPrefix(strings.TrimSpace(l), "# ") {
-			// Drop the H1 title line: it identifies the plan, it is not itself
-			// framing prose.
 			continue
 		}
 		framingLines = append(framingLines, l)
@@ -220,12 +179,7 @@ func splitFraming(body string) (framing string, indexLines []string, err error) 
 	return framing, lines[headingIdx+1 : end], nil
 }
 
-// parseCardIndex parses every non-blank Card Index line into a cardIndexEntry. Each
-// line may carry an optional leading markdown bullet marker ("- N — slug — intent"),
-// stripped before cardIndexLineRe is applied; plan-format-v3.md's own worked example
-// carries no bullet marker at all, so both forms are accepted. A line that does not
-// match the expected shape is a fail-loud error naming the offending line, never a
-// silently-skipped entry.
+// parseCardIndex parses every non-blank Card Index line into a cardIndexEntry, accepting optional leading bullet markers.
 func parseCardIndex(lines []string) ([]cardIndexEntry, error) {
 	var entries []cardIndexEntry
 	for _, raw := range lines {
@@ -257,33 +211,20 @@ func parseCardIndex(lines []string) ([]cardIndexEntry, error) {
 	return entries, nil
 }
 
-// normalizeWhitespace collapses any run of whitespace in s to a single space and
-// trims the result, so a Card Index intent copied with inconsistent internal
-// spacing compares equal to its canonical form.
+// normalizeWhitespace collapses any run of whitespace in s to a single space.
 func normalizeWhitespace(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// cardFileName returns the on-disk filename a Card Index entry's card file must
-// carry: its zero-padded number and slug, per plan-format-v3.md's on-disk layout.
+// cardFileName returns the on-disk filename a Card Index entry's card file must carry.
 func cardFileName(number int, slug string) string {
 	return fmt.Sprintf("%02d-%s.md", number, slug)
 }
 
-// cardHeadingRe matches a card file's own "# Card N — <name>" title heading,
-// capturing the card's own number and its trailing name. ASCII "-"/"--" is
-// accepted wherever the em dash "—" is, mirroring cardIndexLineRe's tolerance. A
-// first line that does not match this shape at all is document structure, not a
-// card-level defect — parseCardFile fails loud rather than silently guessing a
-// title (lenient-card-parse decision, which applies to a card's typed fields, not
-// to its own heading).
+// cardHeadingRe matches a card file's "# Card N — <name>" title heading, accepting em dash or ASCII hyphens.
 var cardHeadingRe = regexp.MustCompile(`^#\s+Card\s+(\d+)\s*(?:—|-{1,2})\s*(.*)$`)
 
-// parseCardFile reads planDir's card file for entry (per cardFileName) and parses
-// its title heading, seeding the returned Card with the Card Index fields ParsePlan
-// already knows (Number, Slug, Intent). The remainder of the card body (What:, the
-// five typed file-op fields, Depends-on, Commit, verify:) is parsed by
-// parseCardBody, added in a later revision of this file.
+// parseCardFile reads planDir's card file for entry and parses its title heading, seeding the returned Card with Card Index fields.
 func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	fileName := cardFileName(entry.Number, entry.Slug)
 
@@ -291,12 +232,7 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 		Number: entry.Number,
 		Slug:   entry.Slug,
 		Intent: entry.Intent,
-		// SourcePath is built from hubgeometry.PlanDirRel() (the `_lyx/plan`
-		// segment) joined with fileName (planparser's own NN-<slug>.md), never
-		// from planDir (the absolute, t.TempDir()-in-tests argument) — the sole
-		// source of the card's worktree-relative path pointer. path.Join (not
-		// filepath.Join) so the token is always forward-slash, never
-		// OS-dependent.
+		// SourcePath is built from hubgeometry.PlanDirRel (the `_lyx/plan` segment) joined with fileName.
 		SourcePath: path.Join(hubgeometry.PlanDirRel(), fileName),
 	}
 
@@ -319,9 +255,6 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	if m == nil {
 		return Card{}, fmt.Errorf("planparser: card file %s: unrecognized card heading %q", filePath, headingLine)
 	}
-	// The heading's own number is cross-checked against the Card Index's number
-	// only by Validate's card-numbering check — a mismatch here is a card-level
-	// defect, never a parse failure, per the lenient-card-parse decision.
 	card.Title = strings.TrimSpace(m[2])
 
 	if err := parseCardBody(&card, lines[1:]); err != nil {
@@ -331,8 +264,7 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 	return card, nil
 }
 
-// Bold-label prefixes for the fields plan-format-v3 recognizes inside a card, in
-// the field order plan-format-v3.md pins.
+// Bold-label prefixes for the fields plan-format-v3 recognizes inside a card.
 const (
 	whatLabel       = "**What:**"
 	contextLabel    = "**Context:**"
@@ -345,22 +277,16 @@ const (
 	cardVerifyLabel = "**verify:**"
 )
 
-// cardLabels lists every bold-label prefix parseCardBody recognizes, used by
-// isCardLabelLine to detect where a "**What:**" prose block or a file-op field's
-// bullet list ends: at the next label line, or the end of the card file.
+// cardLabels lists every bold-label prefix parseCardBody recognizes.
 var cardLabels = []string{
 	whatLabel, contextLabel, editsLabel, createsLabel, deletesLabel,
 	movesLabel, dependsOnLabel, commitLabel, cardVerifyLabel,
 }
 
-// noneSentinel is the literal case-insensitive value a field's label line carries
-// when the field is empty: an inline "none" (rather than any "- `path`" bullets, or
-// any Depends-on ids) yields the field's empty non-nil slice — present-but-empty,
-// distinct from the field being absent altogether (nil slice, HasX false).
+// noneSentinel is the literal case-insensitive value a field's label line carries when the field is empty.
 const noneSentinel = "none"
 
-// isCardLabelLine reports whether line (as found in a card's raw body, pre-trim)
-// begins one of the card's recognized bold-label fields.
+// isCardLabelLine reports whether line begins one of the card's recognized bold-label fields.
 func isCardLabelLine(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	for _, label := range cardLabels {
@@ -371,10 +297,7 @@ func isCardLabelLine(line string) bool {
 	return false
 }
 
-// stripBackticks removes a single pair of surrounding backticks from s, if
-// present, or returns s unchanged otherwise — a bullet whose payload is not
-// backtick-wrapped is retained as-is, well-formedness being validator territory
-// (lenient-card-parse decision).
+// stripBackticks removes a single pair of surrounding backticks from s, if present, or returns s unchanged otherwise.
 func stripBackticks(s string) string {
 	if len(s) >= 2 && strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") {
 		return s[1 : len(s)-1]
@@ -382,27 +305,13 @@ func stripBackticks(s string) string {
 	return s
 }
 
-// dependsOnSplitRe splits a "**Depends-on:**" inline value into its individual
-// card-id tokens: a run of one or more commas and/or whitespace, so both
-// "1, 3" and "1 3" style lists parse identically.
+// dependsOnSplitRe splits a "**Depends-on:**" inline value into card-id tokens.
 var dependsOnSplitRe = regexp.MustCompile(`[,\s]+`)
 
-// moveLineRe matches a "Moves:" sub-bullet's well-formed two-path grammar, after
-// its leading "- " bullet marker has already been stripped: "`old/path` ->
-// `new/path`" (backtick-wrapped paths, ASCII " -> " arrow). A bullet that does not
-// match is retained verbatim in Card.MovesRaw for Validate's move-format check to
-// flag, per the lenient-card-parse decision.
+// moveLineRe matches a "Moves:" sub-bullet's well-formed two-path grammar after the leading "- " bullet marker.
 var moveLineRe = regexp.MustCompile("^`([^`]+)` -> `([^`]+)`$")
 
-// parseCardBody parses lines — everything in a card file after its own title
-// heading — into card's remaining fields: What: presence, the five typed file-op
-// fields (raw, un-normalized paths; normalizeCard applies root:/// resolution in a
-// later pass), Depends-on, and the optional Commit and verify: fields. Card-level
-// defects (a missing field, a malformed Moves: bullet, a Depends-on id that isn't
-// an integer) are recorded leniently — via the HasX bits, MovesRaw, or simply left
-// for Validate to enumerate — never returned as an error; parseCardBody fails loud
-// only on document structure it cannot mechanically read at all: an inline value on
-// a field that admits only "none" or a bullet/id list.
+// parseCardBody parses lines after the card title into card's remaining fields.
 func parseCardBody(card *Card, lines []string) error {
 	i := 0
 	for i < len(lines) {
@@ -413,12 +322,7 @@ func parseCardBody(card *Card, lines []string) error {
 			i++
 		case strings.HasPrefix(trimmed, whatLabel):
 			card.HasWhat = true
-			// Collect the prose: the label line's own remainder plus every
-			// following line up to the next field label. The prose is the
-			// implementer's concrete instruction — the fork/recovery strand
-			// reads it directly from the card file via SourcePath, so it
-			// must survive parsing rather than being skipped (a cold
-			// recovery strand has no other source for it).
+			// Collect the prose: the label line's own remainder plus every following line up to the next field label.
 			proseLines := []string{strings.TrimSpace(strings.TrimPrefix(trimmed, whatLabel))}
 			i++
 			for i < len(lines) && !isCardLabelLine(lines[i]) {
@@ -452,9 +356,6 @@ func parseCardBody(card *Card, lines []string) error {
 			card.Verify = strings.TrimSpace(strings.TrimPrefix(trimmed, cardVerifyLabel))
 			i++
 		default:
-			// Any other line (stray prose outside a recognized field) is not
-			// structurally significant — card-level content beyond the pinned
-			// grammar is not this parser's concern.
 			i++
 		}
 		if fieldErr != nil {
@@ -464,18 +365,7 @@ func parseCardBody(card *Card, lines []string) error {
 	return nil
 }
 
-// parseFileOpField parses one of a card's four non-Moves file-op fields
-// (Context/Edits/Creates/Deletes): labelLine is the field's own "**Label:** ..."
-// line, label is its exact bold-label prefix, and lines starting at start are the
-// remaining card body lines to scan for the field's "- `path`" bullets. Returns the
-// field's raw path list (empty non-nil for an inline "none", nil if no bullets
-// followed a non-none label) and the index of the first line not consumed. A
-// non-empty label-line value other than the "none" sentinel (e.g. an inline path)
-// is a fail-loud error, not a card-level finding: silently reading it as an empty
-// field would be exactly the silent degradation the none-sentinel grammar exists to
-// prevent — the field would look present to every check while its paths vanished
-// from validation. This is document structure, so it fails at parse time rather
-// than waiting for Validate.
+// parseFileOpField parses one of a card's four non-Moves file-op fields, returning the field's raw path list and the index of the first line not consumed.
 func parseFileOpField(labelLine, label string, lines []string, start int) ([]string, int, error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
 	if strings.EqualFold(rest, noneSentinel) {
@@ -503,18 +393,12 @@ func parseFileOpField(labelLine, label string, lines []string, start int) ([]str
 	return files, i, nil
 }
 
-// parseMovesField parses a card's "**Moves:**" field the same way parseFileOpField
-// parses the other four, except each bullet is matched against moveLineRe: a
-// well-formed "`old` -> `new`" bullet becomes a raw MovePair (un-normalized;
-// normalizeCard resolves both sides in a later pass), and any other bullet is
-// retained verbatim in raw for Validate's move-format check.
+// parseMovesField parses a card's "**Moves:**" field, matching each bullet against moveLineRe.
 func parseMovesField(labelLine string, lines []string, start int) (pairs []MovePair, raw []string, next int, err error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, movesLabel))
 	if strings.EqualFold(rest, noneSentinel) {
 		return []MovePair{}, nil, start, nil
 	}
-	// Same inline-value rejection as parseFileOpField: an inline pair would
-	// silently vanish from move validation and the rename mechanics.
 	if rest != "" {
 		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only the literal \"none\" or \"- `src` -> `dst`\" sub-bullets on the following lines", movesLabel, rest)
 	}
@@ -540,13 +424,7 @@ func parseMovesField(labelLine string, lines []string, start int) (pairs []MoveP
 	return pairs, raw, i, nil
 }
 
-// parseDependsOnField parses a card's inline "**Depends-on:**" value: the literal
-// "none" (case-insensitive) yields an empty non-nil slice, and otherwise the value
-// is split into comma-and/or-whitespace-separated tokens, each parsed as a plain
-// card number. A token that fails to parse as an integer is document structure —
-// the field's grammar admits nothing else — so it is a fail-loud error rather than
-// a card-level finding; whether a well-formed id actually names an existing,
-// earlier card is Validate's depends-on-order check, not this function's concern.
+// parseDependsOnField parses a card's inline "**Depends-on:**" value into card numbers.
 func parseDependsOnField(labelLine string) ([]int, error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, dependsOnLabel))
 	if strings.EqualFold(rest, noneSentinel) {

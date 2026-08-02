@@ -34,17 +34,11 @@ import (
 const recognizedFormat = 2
 
 // ValidateCaps carries the two operator-configured cap values Validate's
-// batch-oversized check (5) compares each batch's estimate against.
-// builderengine itself stays config-free (config wiring is a later
-// module's job) — callers resolve these from builder.yaml and pass them in.
+// batch-oversized check compares each batch's estimate against.
 type ValidateCaps struct {
-	// ContextCapTokens is the maximum estimated context size (bytes of
-	// referenced Scope + card file-op paths, divided by 4) a non-oversized
-	// batch may claim before batch-oversized fires.
+	// ContextCapTokens is the maximum estimated context size a non-oversized batch may claim.
 	ContextCapTokens int
-
-	// CardCap is the maximum len(PlanBatch.Cards) a non-oversized batch may
-	// claim before batch-oversized fires.
+	// CardCap is the maximum card count a non-oversized batch may claim.
 	CardCap int
 }
 
@@ -76,11 +70,8 @@ func batchID(b PlanBatch) string {
 }
 
 // Validate runs every plan-format v2 machine check against plan and returns
-// every finding, ordered deterministically by check number and then by
-// batch number within a check. worktreeRoot is the base Validate resolves
-// each batch's Scope and card file-op path entries against for the
-// batch-oversized context estimate (check 5); caps supplies that check's
-// two cap values. A nil/empty return means the plan passes every check.
+// all findings, ordered by check and batch number. A nil/empty return means
+// the plan passes every check.
 func Validate(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationError {
 	var findings []ValidationError
 

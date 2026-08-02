@@ -19,33 +19,25 @@ var ErrUnsupported = errors.New("vscode launch unsupported on this platform")
 
 // Color palette (order matters; green is reserved for main).
 var palette = []string{
-	"#2d7d46", // green (reserved for main)
-	"#7d2d6b", // purple
-	"#2d4f7d", // blue
-	"#7d5c2d", // yellow
-	"#6b2d2d", // red
-	"#2d6b6b", // cyan
-	"#4a2d7d", // indigo
-	"#7d462d", // orange
+	"#2d7d46",
+	"#7d2d6b",
+	"#2d4f7d",
+	"#7d5c2d",
+	"#6b2d2d",
+	"#2d6b6b",
+	"#4a2d7d",
+	"#7d462d",
 }
 
 // mainColor is the reserved color for the main worktree.
 var mainColor = "#2d7d46"
 
-// PickColor selects an unused non-green color for a child worktree,
-// scanning sibling .vscode/settings.json files for existing color assignments.
-//
-// Algorithm:
-//   - Scan <l.Hub>/<dir>/<l.RelPath>/.vscode/settings.json for each sibling worktree
-//   - Collect workbench.colorCustomizations.titleBar.activeBackground (lowercased)
-//   - Skip the main worktree and any dir with unreadable settings
-//   - Return the first palette color that is not mainColor and not in use
-//   - If all non-green colors are used, return the first non-green (palette[1])
-//   - If hub/dirs missing, return first non-green
+// PickColor selects an unused non-green color for a child worktree, scanning
+// sibling .vscode/settings.json files for existing assignments. Returns the
+// first unused non-green palette color.
 func PickColor(l *hubgeometry.Layout) string {
 	used := make(map[string]bool)
 
-	// Try to read the hub directory
 	entries, err := os.ReadDir(l.Hub)
 	if err != nil {
 		// Hub doesn't exist or unreadable; return first non-green
@@ -54,18 +46,15 @@ func PickColor(l *hubgeometry.Layout) string {
 
 	primeBase := filepath.Base(l.Prime)
 
-	// Scan each sibling worktree for existing color assignments
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
-		// Skip the main worktree
 		if entry.Name() == primeBase {
 			continue
 		}
 
-		// Build path to .vscode/settings.json
 		settingsPath := filepath.Join(
 			l.Hub,
 			entry.Name(),
@@ -74,7 +63,6 @@ func PickColor(l *hubgeometry.Layout) string {
 			"settings.json",
 		)
 
-		// Try to read and parse settings.json
 		content, err := os.ReadFile(settingsPath)
 		if err != nil {
 			// Unreadable or missing; skip this sibling
@@ -83,11 +71,9 @@ func PickColor(l *hubgeometry.Layout) string {
 
 		var settings map[string]any
 		if err := json.Unmarshal(content, &settings); err != nil {
-			// Invalid JSON; skip this sibling
 			continue
 		}
 
-		// Extract titleBar.activeBackground color using flat dot-notation key
 		if colorCustomizations, ok := settings["workbench.colorCustomizations"].(map[string]any); ok {
 			if activeBackground, ok := colorCustomizations["titleBar.activeBackground"].(string); ok {
 				used[strings.ToLower(activeBackground)] = true
@@ -95,7 +81,6 @@ func PickColor(l *hubgeometry.Layout) string {
 		}
 	}
 
-	// Find first unused non-green color
 	for i := 1; i < len(palette); i++ {
 		if !used[palette[i]] {
 			return palette[i]

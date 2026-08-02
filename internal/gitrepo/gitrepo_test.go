@@ -20,9 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// newRepo creates a fresh git repository on branch main under a temp
-// directory and returns both the raw directory (for fixture setup via
-// lyxtest.MustRun) and a gitrepo.Repo wrapping it (the type under test).
+// newRepo creates a fresh git repository on branch main and returns both
+// the raw directory and a gitrepo.Repo wrapping it.
 func newRepo(t *testing.T) (dir string, repo *gitrepo.Repo) {
 	t.Helper()
 
@@ -31,7 +30,7 @@ func newRepo(t *testing.T) (dir string, repo *gitrepo.Repo) {
 	return dir, gitrepo.New(dir)
 }
 
-// writeFile creates (or overwrites) name under dir with the given content.
+// writeFile creates or overwrites a file with the given content.
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 
@@ -40,9 +39,8 @@ func writeFile(t *testing.T, dir, name, content string) {
 	}
 }
 
-// commitAll stages every change in dir and commits it directly via git,
-// bypassing the Repo under test — used only to build fixture history that a
-// test's assertions do not themselves cover.
+// commitAll stages and commits all changes in dir via git, bypassing the
+// Repo under test — used only for fixture setup.
 func commitAll(t *testing.T, dir, message string) {
 	t.Helper()
 
@@ -50,17 +48,14 @@ func commitAll(t *testing.T, dir, message string) {
 	lyxtest.MustRun(t, dir, "git", "commit", "-m", message)
 }
 
-// runGit runs a git subcommand in dir via gitexec.RunGit, failing the test
-// on a spawn error. It exists so assertion helpers can inspect git's stdout
-// directly (lyxtest.MustRun only fails-or-succeeds; it discards output).
+// runGit runs a git subcommand in dir, returning stdout and stderr.
 func runGit(t *testing.T, dir string, args ...string) (stdout, stderr string, code int, err error) {
 	t.Helper()
 
 	return gitexec.RunGit(args, dir)
 }
 
-// runGitStatus returns the porcelain status output for dir, used to assert
-// that a file StageAndCommit did not stage is still reported as dirty.
+// runGitStatus returns the porcelain status output for dir.
 func runGitStatus(t *testing.T, dir string) (stdout, stderr string, code int, err error) {
 	t.Helper()
 

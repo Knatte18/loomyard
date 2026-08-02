@@ -9,13 +9,9 @@ package gitrepo_test
 
 import "testing"
 
-// TestIsAncestor_Reachability builds a real repo where commit B descends
-// directly from commit A and asserts IsAncestor's three answer shapes:
-// IsAncestor(A, B) is (true, nil) since A is reachable from B; IsAncestor(B,
-// A) is (false, nil) since B is not reachable from the earlier commit A —
-// not-an-ancestor is a genuine answer, not an error; and a well-formed but
-// absent SHA yields an error, since merge-base cannot classify a commit this
-// repo has never seen.
+// TestIsAncestor_Reachability asserts IsAncestor's three answer shapes:
+// (true, nil) when an ancestor, (false, nil) when not, and an error for
+// an absent SHA.
 func TestIsAncestor_Reachability(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "first")

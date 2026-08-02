@@ -10,11 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// interruptCmd builds the `interrupt <guid>` subcommand: plays the engine's
-// interrupt choreography (e.g. a single Escape key press) into the strand
-// identified by <guid>. c.runner.Interrupt confirms guid names a shuttle run
-// before touching the pane; a miss reports "not a shuttle strand" through
-// output.Err.
+// interruptCmd builds the `interrupt <guid>` subcommand, playing the engine's
+// interrupt choreography into the identified strand.
 func (c *shuttleCLI) interruptCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "interrupt <guid>",

@@ -20,10 +20,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// weftVerbNames is the set of leaf command names that require this file's
-// PersistentPreRunE resolution (layout, fabric config, pathspec, and a Fabric
-// handle). Every other command reachable under "fabric" — the bare group and every
-// topology verb from fabric.go — resolves independently and must skip this hook.
+// weftVerbNames is the set of leaf commands needing PersistentPreRunE resolution.
+// Topology verbs resolve independently.
 var weftVerbNames = map[string]bool{
 	"status": true,
 	"commit": true,
@@ -33,41 +31,28 @@ var weftVerbNames = map[string]bool{
 	"diff":   true,
 }
 
-// addWeftVerbs installs the hidden --weft-path persistent flag, the weft-verb-scoped
-// PersistentPreRunE, and the status/commit/push/pull/sync/diff subcommands onto cmd — the
-// "fabric" parent command built by Command() in fabric.go.
-//
-// Normal mode (neither --weft-path nor --warp-path set) resolves cwd → layout →
-// weftBaseDir (the weft worktree joined with the caller's RelPath) → fabric config
-// loaded from weftBaseDir → pathspec scoped to RelPath → a Fabric handle over the
-// resolved warp and weft worktree roots. Bypass mode (--weft-path and/or --warp-path
-// set, used by the detached push child spawned by fabricengine.SpawnDetachedPush)
-// skips all of that and permits only the push verb, rejecting every other verb with
-// "subcommand requires a worktree context" at exit 1.
+// addWeftVerbs installs the hidden --weft-path/--warp-path persistent flags,
+// the weft-verb-scoped PersistentPreRunE, and the status/commit/push/pull/sync/diff
+// subcommands. Normal mode resolves cwd → layout → fabric config → pathspec → Fabric
+// handle. Bypass mode (injected --weft-path/--warp-path by detached push) permits
+// only push, rejecting others with "subcommand requires a worktree context".
 func addWeftVerbs(cmd *cobra.Command) {
-	// Closure vars populated by PersistentPreRunE and read by subcommand RunEs.
 	var (
 		l        *hubgeometry.Layout
 		cfg      fabricengine.Config
 		pathspec []string
 		fab      *fabricengine.Fabric
-		bypass   bool   // true when --weft-path and/or --warp-path is set
-		weftPath string // populated from --weft-path in bypass mode
-		warpPath string // populated from --warp-path in bypass mode
+		bypass   bool
+		weftPath string
+		warpPath string
 	)
 
-	// --weft-path and --warp-path are hidden persistent flags so they are available
-	// to all subcommands and visible to the PersistentPreRunE without referencing
-	// the child command directly.
 	cmd.PersistentFlags().String("weft-path", "", "internal: injected absolute weft worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("weft-path") //nolint:errcheck
 	cmd.PersistentFlags().String("warp-path", "", "internal: injected absolute warp worktree path for the detached push child")
 	cmd.PersistentFlags().MarkHidden("warp-path") //nolint:errcheck
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		// Guard: skip resolution for the bare "fabric" group, an unknown-subcommand
-		// error path, and every topology verb — none of those read this file's
-		// closure state, and none of them require a weft worktree to be present.
 		if !weftVerbNames[cmd.Name()] {
 			return nil
 		}
@@ -75,22 +60,14 @@ func addWeftVerbs(cmd *cobra.Command) {
 		ctx := cmd.Context()
 		out := cmd.OutOrStdout()
 
-		// Read the hidden persistent flags via InheritedFlags to make explicit
-		// that these flags are inherited from the parent command, not local.
 		injectedWeft, _ := cmd.InheritedFlags().GetString("weft-path")
 		injectedWarp, _ := cmd.InheritedFlags().GetString("warp-path")
 
 		if injectedWeft != "" || injectedWarp != "" {
-			// Bypass mode: --weft-path and/or --warp-path was injected by the
-			// detached push child. Only the push subcommand is valid in this mode;
-			// reject everything else to prevent accidental invocation without a
-			// worktree context.
 			bypass = true
 			weftPath = injectedWeft
 			warpPath = injectedWarp
 
-			// In PersistentPreRunE, cmd is the leaf subcommand being executed,
-			// so cmd.Name() returns the subcommand name (e.g. "push", "status").
 			if cmd.Name() != "push" {
 				output.Err(out, "subcommand requires a worktree context")
 				clihelp.Abort(ctx, 1)
@@ -99,7 +76,6 @@ func addWeftVerbs(cmd *cobra.Command) {
 			return nil
 		}
 
-		// Normal mode: resolve cwd → layout → fabric config → pathspec → Fabric handle.
 		cwd, err := hubgeometry.Getwd()
 		if err != nil {
 			output.Err(out, err.Error())
@@ -115,9 +91,6 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		// Fabric config is a repo-wide fact on weft:main, not a per-worktree
-		// file: load it from the board dir, never from the weft worktree.
-		// pathspec scoping below is unchanged — only the config's home moves.
 		loadedCfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
 		if err != nil {
 			output.Err(out, err.Error())
@@ -139,8 +112,6 @@ func addWeftVerbs(cmd *cobra.Command) {
 		return nil
 	}
 
-	// status subcommand: reports every currently-uncommitted change across
-	// both sides of the warp<->weft pair.
 	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "show unified warp+weft uncommitted-change status",
@@ -161,7 +132,6 @@ warp<->weft pair, each labelled with which side (warp or weft) it changed on.`,
 		},
 	}
 
-	// commit subcommand: stages and commits pathspec-scoped changes.
 	commitCmd := &cobra.Command{
 		Use:   "commit",
 		Short: "commit weft changes",
@@ -194,7 +164,6 @@ Related commands:
 		},
 	}
 
-	// push subcommand: commits then pushes, or in bypass mode pushes directly via --weft-path and/or --warp-path.
 	pushCmd := &cobra.Command{
 		Use:   "push",
 		Short: "commit and push weft changes",
@@ -205,14 +174,6 @@ Related commands:
 			out := cmd.OutOrStdout()
 
 			if bypass {
-				// Detached push child: run the loop-until-clean coalescing push
-				// over whichever of the injected warpPath/weftPath were
-				// supplied, skipping commit entirely. CoalescePushBothAt holds
-				// its own absorbing push lock under weftPath's .weft/ for the
-				// whole loop and requires weftPath to be non-empty for that
-				// lock's home — the detached push child (the only production
-				// caller of this bypass) always injects both paths, so that
-				// guard is unreachable here in practice.
 				if err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{}); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
@@ -221,7 +182,6 @@ Related commands:
 				return nil
 			}
 
-			// Normal mode: commit first, then push.
 			opts := fabricengine.EnvSyncOptions()
 			if _, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -236,9 +196,6 @@ Related commands:
 		},
 	}
 
-	// pull subcommand: drives fabricengine.Fabric's unified Pull, fast-forwarding
-	// weft, then fetching and inspecting warp, reconciling a rewritten warp
-	// history when it is safe to do so.
 	pullCmd := &cobra.Command{
 		Use:   "pull",
 		Short: "pull warp and weft, reconciling a rebased warp",
@@ -274,7 +231,6 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
 		},
 	}
 
-	// sync subcommand: commits pathspec changes then spawns a detached push child.
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "commit and async-push weft changes",
@@ -296,7 +252,6 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
 		},
 	}
 
-	// diff subcommand: reports the side-labelled unified diff since a warp SHA.
 	diffCmd := &cobra.Command{
 		Use:   "diff <since-warp-sha>",
 		Short: "show unified warp+weft diff since a warp SHA",
@@ -332,9 +287,8 @@ Example:
 	cmd.AddCommand(statusCmd, commitCmd, pushCmd, pullCmd, syncCmd, diffCmd)
 }
 
-// changeEntriesMap flattens a []fabricengine.ChangeEntry into the
-// map[string]any shape output.Ok's JSON envelope expects, since ChangeEntry
-// carries no json tags of its own.
+// changeEntriesMap flattens a []fabricengine.ChangeEntry into the map shape
+// output.Ok's JSON envelope expects.
 func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 	out := make([]map[string]any, 0, len(entries))
 	for _, e := range entries {
@@ -343,11 +297,8 @@ func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 	return out
 }
 
-// pullResultMap converts a fabricengine.PullResult into the map[string]any
-// shape pullCmd's RunE surfaces through output.Ok — mirroring the
-// map[string]any style the status/commit verbs already use, so the pull
-// result reaches the caller through the same one-JSON-object-per-line
-// envelope. patternResidueMap flattens each PatternResidueEntry the same way.
+// pullResultMap converts a fabricengine.PullResult into the map shape output.Ok
+// expects, flattening each PatternResidueEntry the same way.
 func pullResultMap(result fabricengine.PullResult) map[string]any {
 	residue := make([]map[string]any, 0, len(result.PatternResidue))
 	for _, entry := range result.PatternResidue {

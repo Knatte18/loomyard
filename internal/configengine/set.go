@@ -15,18 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// Set writes pairs into module's config file under baseDir, scaffolding the
-// file from template first if it does not yet exist.
-//
-// Unlike Edit, Set never opens an editor and never loops on validation
-// failure: it is the fully non-interactive counterpart used by the --set CLI
-// flag. Every error path removes a freshly-scaffolded file before returning,
-// mirroring Edit's abort-removes-scaffold contract, so a failed --set never
-// leaves a fresh default-valued file behind on disk.
-//
-// The returned []string is the sorted list of pre-existing top-level config
-// keys not present in template that were preserved verbatim rather than
-// dropped (see yamlengine.SetValues); it is always nil on any error return.
+// Set writes pairs into module's config file under baseDir, scaffolding from
+// template if needed. Unlike Edit, it never opens an editor and never loops on
+// validation failure. Removes freshly-scaffolded files on error, mirroring Edit's
+// contract. Returns the sorted list of pre-existing keys not in template that
+// were preserved verbatim; nil on any error.
 func Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error) {
 	// Check that baseDir is initialized.
 	if _, err := FindBaseDir(baseDir); err != nil {
@@ -41,9 +34,6 @@ func Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, err
 		return nil, err
 	}
 
-	// removeIfScaffolded restores the pre-call filesystem state on any later
-	// failure, exactly as Edit's abort path does: a failed --set must never
-	// leave a fresh default-valued file behind.
 	removeIfScaffolded := func() {
 		if scaffolded {
 			_ = os.Remove(path)

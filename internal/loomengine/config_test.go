@@ -15,10 +15,7 @@ import (
 	"testing"
 )
 
-// seedLoomConfig creates <baseDir>/_lyx/config/loom.yaml with the given
-// contents, mirroring the on-disk layout hubgeometry.ConfigFile expects
-// (_lyx/config/<module>.yaml) without touching git or any other fixture
-// machinery.
+// seedLoomConfig creates <baseDir>/_lyx/config/loom.yaml with the given contents.
 func seedLoomConfig(t *testing.T, baseDir, contents string) {
 	t.Helper()
 	configDir := filepath.Join(baseDir, "_lyx", "config")
@@ -31,8 +28,7 @@ func seedLoomConfig(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadConfig_WellFormed verifies the seeded template's default values
-// round-trip through LoadConfig unchanged.
+// TestLoadConfig_WellFormed verifies the template's default values round-trip.
 func TestLoadConfig_WellFormed(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, ConfigTemplate())
@@ -61,8 +57,6 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 // discussion producer's spawn site.
 func TestLoadConfig_MalformedDiscussionSpec(t *testing.T) {
 	baseDir := t.TempDir()
-	// "opus[effort" has an unclosed bracket, written in place of the
-	// template's well-formed discussion spec.
 	seedLoomConfig(t, baseDir, `discussion: "opus[effort"
 discussion_timeout_min: 480
 plan: opus[effort=high]
@@ -84,8 +78,6 @@ plan_timeout_min: 120
 // carried into the plan producer's spawn site.
 func TestLoadConfig_MalformedPlanSpec(t *testing.T) {
 	baseDir := t.TempDir()
-	// "opus[effort" has an unclosed bracket, written in place of the
-	// template's well-formed plan spec.
 	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]
 discussion_timeout_min: 480
 plan: "opus[effort"
@@ -101,8 +93,7 @@ plan_timeout_min: 120
 	}
 }
 
-// TestLoadConfig_NotInitialized verifies a bare temp baseDir with no _lyx/
-// directory yields the standard "not initialized" recovery hint.
+// TestLoadConfig_NotInitialized verifies uninitialized baseDir yields recovery hint.
 func TestLoadConfig_NotInitialized(t *testing.T) {
 	baseDir := t.TempDir()
 

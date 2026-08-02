@@ -44,14 +44,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 )
 
-// smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
-// for the orphaned-conhost teardown probe. Explicit absolute path, never a
-// bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
+// smokePwshPath is the PowerShell 7 binary for the orphaned-conhost teardown probe.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
-// claudeBinaryPath returns the claude CLI's path from the environment or
-// PATH, skipping the calling test when it is absent so a -tags=smoke run
-// never hard-fails on a machine without a configured claude.
+// claudeBinaryPath returns the claude CLI's path, skipping the test if absent.
 func claudeBinaryPath(t *testing.T) string {
 	t.Helper()
 	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
@@ -64,8 +60,7 @@ func claudeBinaryPath(t *testing.T) string {
 	return path
 }
 
-// hubHolder is one process still holding the fixture hub as its current
-// working directory, as reported by hubHolders.
+// hubHolder is one process holding the fixture hub as its cwd.
 type hubHolder struct {
 	pid  int
 	name string
@@ -137,20 +132,7 @@ Get-Process | ForEach-Object {
 }
 
 // deferHubRelease registers a cleanup that makes the fixture hub directory
-// releasable before the framework's TempDir RemoveAll — which runs AFTER
-// this cleanup — so RemoveAll never fails with a worktree-dir-in-use error.
-// The holder in question is the conhost.exe the OS parents to psmux to host
-// each pane's pseudo-console: reed never spawns it, it is not a #{pane_pid}
-// descendant, and on a quiet machine it exits on its own a beat after its
-// pane dies — but under CPU saturation it can be ORPHANED and then holds the
-// hub cwd indefinitely, so no fixed wait can ever out-last it. The cleanup
-// therefore confirms rather than waits: a short grace for the self-exit
-// path, then it kills any conhost whose PEB cwd is inside the hub (safe —
-// its console app is already gone) and keeps confirming until the hub
-// actually renames. A NON-conhost holder is a genuine leak and fails the
-// test loudly instead of being masked. Registered before t.Chdir and the
-// down cleanup so it runs AFTER them (cwd already restored out of hub) but
-// BEFORE RemoveAll.
+// releasable before RemoveAll. Kills any orphaned conhost holding the hub cwd.
 func deferHubRelease(t *testing.T, hub string) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -218,13 +200,7 @@ func deferHubRelease(t *testing.T, hub string) {
 }
 
 // TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check
-// progress judge call against a REAL claude in a REAL tmux pane, over two
-// tiny fixture review files the test writes itself: an unambiguous
-// same-finding-recurring case, so the machinery (not the judge's own
-// reading of the case) is what this test proves. It constructs the real
-// stack directly (reedengine + claudeengine + shuttleengine.Runner) — this
-// test IS the caller the Shuttle Provider-Seam Invariant reserves that
-// wiring for.
+// progress judge call against a real claude, proving the machinery works.
 func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	claudeBinaryPath(t)
 

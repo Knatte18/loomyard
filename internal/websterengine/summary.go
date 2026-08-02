@@ -30,23 +30,17 @@ func SummaryPath(websterDir string) string {
 	return filepath.Join(websterDir, SummaryFileName)
 }
 
-// Summary is Master's own final-action prose artifact, parsed from
-// summary.md: Title is the "# <title>" heading's trailing text, and Body is
-// every line after that heading, verbatim, never schema-validated — the
-// consumer is PR prose (a future loom-finalize), not a machine contract.
+// Summary is Master's final-action prose artifact: Title from the "# <title>"
+// heading, Body from the remaining lines verbatim.
 type Summary struct {
 	Title string
 	Body  string
 }
 
-// ParseSummary reads and validates the summary.md file at path per
-// discussion.md's summary-artifact decision: fail-loud, minimal validation
-// only. The file must exist and carry at least one non-blank line, and that
-// first non-blank line must be a "# <title>" heading with a non-empty
-// title; every line after that heading is Body, exactly as written, never
-// itself schema-validated. Every violation is its own distinct wrapped
-// error, the same fail-loud posture this package's own parseOutcome
-// applies to outcome.yaml.
+// ParseSummary reads and validates summary.md at path with minimal fail-loud
+// validation: file must exist, have at least one non-blank line, and that
+// first line must be a "# <title>" heading with non-empty title. Every
+// violation is its own distinct wrapped error.
 func ParseSummary(path string) (*Summary, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -78,16 +72,10 @@ func ParseSummary(path string) (*Summary, error) {
 	return &Summary{Title: title, Body: body}, nil
 }
 
-// ArchiveStaleSummary renames websterDir's summary.md, if present, to
-// summary-<UTC compact timestamp>.md in place, mirroring outcome.go's own
-// archiveStaleOutcome's archive-never-refuse posture: a prior run's own
-// summary stays on disk, auditable, rather than being silently overwritten
-// or deleted when `run` spawns a fresh Master. now is a seam so tests can
-// pin the timestamp deterministically instead of racing the real clock;
-// production callers pass time.Now. Absent file: returns ("", nil) — not an
-// error — since a fresh run has never written one yet. Collision: reuses
-// archive.go's own firstFreeArchivePath "-1"/"-2" suffix loop, so two
-// archives landing in the same clock-second never clobber each other.
+// ArchiveStaleSummary renames websterDir's summary.md to
+// summary-<UTC compact timestamp>.md, preserving it rather than deleting.
+// Absent file returns ("", nil). Collision within the same clock-second
+// appends a numeric suffix.
 func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo string, err error) {
 	path := SummaryPath(websterDir)
 
@@ -112,14 +100,9 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 	return target, nil
 }
 
-// AppendIntegrationFailure appends a short section naming the integration
-// bisect's own localized finding to websterDir's summary.md — the
-// summary-document half of the integration-suite escalation path (see
-// integration.go's bisect/BisectAndEscalate). Master's own final-action
-// rule (master-template.md) already guarantees summary.md exists by the
-// time this runs — shuttle classifies Master's own spawn done only once
-// BOTH outcome.yaml and summary.md have landed — so this always APPENDS to
-// an existing file rather than creating one from scratch.
+// AppendIntegrationFailure appends a section naming the integration bisect's
+// localized finding to summary.md. Master's final-action rule guarantees
+// summary.md exists before this runs.
 func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string) error {
 	path := SummaryPath(websterDir)
 	section := fmt.Sprintf("\n\n## Integration suite failed\n\nThe plan-level `## verify:` suite failed. SHA-bisect localized the failure to card `%s` (commit `%s`).\n", offendingCard, offendingSHA)

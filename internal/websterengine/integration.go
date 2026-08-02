@@ -27,13 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// WarpBisector is the warp-only git surface the in-process bisect drives:
-// capturing the current branch, checking out a candidate SHA detached, and
-// restoring the captured branch afterwards. It is structurally satisfied by
-// both `*gitrepo.Repo` (tests, over their own scratch worktree) and
-// `*fabricengine.Fabric` (production, whose three methods each delegate to
-// the same verbs on its own warp repo) — bisect and its callers depend on
-// this interface, never a concrete type.
+// WarpBisector is the git surface in-process bisect drives: capture branch,
+// checkout SHA detached, restore branch. Satisfied by *gitrepo.Repo and *fabricengine.Fabric.
 type WarpBisector interface {
 	CurrentBranch() (string, error)
 	CheckoutDetached(sha string) error
@@ -47,47 +42,28 @@ type WarpBisector interface {
 // report per run.
 const IntegrationReportFileName = "integration.yaml"
 
-// IntegrationReportPath returns the path to the integration fork's report
-// file inside reportsDir. Per the Hub Geometry Invariant, the caller
-// resolves reportsDir (hubgeometry.WebsterReportsDir(...)); this function
-// never constructs a `_lyx` path itself.
+// IntegrationReportPath returns the path to the integration fork's report file inside reportsDir.
 func IntegrationReportPath(reportsDir string) string {
 	return filepath.Join(reportsDir, IntegrationReportFileName)
 }
 
-// integrationPromptFileName is the integration fork's own fixed prompt file
-// name inside a webster prompts dir — rendered and written by run at entry
-// (never by Master, whose only permitted writes are its two contract
-// files), mirroring IntegrationReportFileName's own one-per-run naming.
+// integrationPromptFileName is the integration fork's prompt file name inside a webster prompts dir.
 const integrationPromptFileName = "integration.md"
 
-// ShouldRunIntegration reports whether plan carries a plan-level
-// "## verify:" section at all — the skip-check for the WHOLE integration
-// stage. A plan with no such section (plan.Verify == "") never drives the
-// integration fork and proceeds straight to the summary/finish path, per
-// plan-format-v3.md's "verify model" (the plan-level integration verify is
-// optional): no error, no empty fork.
+// ShouldRunIntegration reports whether plan carries a plan-level "## verify:" section.
 func ShouldRunIntegration(plan *planparser.Plan) bool {
 	return plan.Verify != ""
 }
 
 // IntegrationAwaitResult is what one AwaitIntegration call hands back:
-// ReportPresent reports whether the integration fork's report file existed
-// by the time the call returned, and ElapsedS is how many seconds this call
-// actually blocked — mirroring AwaitResult's own shape (awaitbatch.go) for
-// the per-batch case.
+// ReportPresent (report file existed) and ElapsedS (seconds blocked).
 type IntegrationAwaitResult struct {
 	ReportPresent bool
 	ElapsedS      int
 }
 
-// AwaitIntegration blocks until the integration fork's report file exists
-// in reportsDir or wait elapses, re-checking on a fixed one-second tick
-// (awaitTick, awaitbatch.go's own constant) via clk — the integration-stage
-// analog of AwaitBatch, over the ONE fixed IntegrationReportPath rather than
-// a per-batch report path, since the integration stage is not itself a plan
-// card or execution batch. It reads and mutates NOTHING but the report
-// path's existence, mirroring AwaitBatch's own read-only posture.
+// AwaitIntegration blocks until the integration fork's report file exists or wait elapses.
+// It re-checks on a fixed one-second tick via clk (analogous to AwaitBatch).
 func AwaitIntegration(reportsDir string, wait time.Duration, clk Clock) (*IntegrationAwaitResult, error) {
 	reportPath := IntegrationReportPath(reportsDir)
 
@@ -113,35 +89,14 @@ func AwaitIntegration(reportsDir string, wait time.Duration, clk Clock) (*Integr
 	}
 }
 
-// integrationBatchKey is the reserved State.Batches key the integration
-// stage's own terminal escalation record lives under: -1, which can never
-// collide with a real plan card's own number (plan-format v3 card numbers
-// are always positive, 1..N, per docs/reference/plan-format-v3.md's
-// "Numbering and commit subject"), so RecordIntegrationFailure's own entry
-// can never be mistaken for a real batch's record, and RenderProgress's
-// walk over plan.Cards (which only ever looks up positive card numbers) can
-// never surface it by accident.
+// integrationBatchKey is the reserved State.Batches key (-1) for integration escalation.
+// It never collides with real plan card numbers (1..N), so RenderProgress never surfaces it.
 const integrationBatchKey = -1
 
-// bisect performs an in-process binary search over shas — the ordered
-// per-card commit SHA trail accumulated across every batch's own
-// BatchState.CardSHAs — to localize the first SHA at which verifyCmd
-// fails: it captures repo's current branch (CurrentBranch), checks out each
-// candidate SHA detached (CheckoutDetached), runs verifyCmd IN-PROCESS via
-// os/exec at worktree (never a fork per candidate, preserving the
-// no-concurrent-forks guarantee the integration stage as a whole depends
-// on), and ALWAYS restores the captured branch (RestoreBranch) before
-// returning — including on error, via defer — so HEAD is never left
-// detached. shas is assumed ordered oldest-to-newest with verifyCmd passing
-// on early entries and failing from the offending entry onward (the
-// monotonic property a binary search requires); offendingIndex is the
-// first index at which verifyCmd fails. Both edge shapes degrade
-// gracefully without spawning a checkout or a verify run: an empty shas
-// has nothing to search over, so offendingIndex is the sentinel -1 (the
-// caller, BisectAndEscalate, reports an "unknown" card/SHA rather than
-// indexing into the empty slice); a single-element shas is by construction
-// the only candidate, so offendingIndex is 0 unconditionally (the
-// sole/HEAD card).
+// bisect performs an in-process binary search over shas to localize the
+// first SHA at which verifyCmd fails. It restores HEAD to its original branch
+// even on error (via defer). Edge cases: empty shas returns -1 (no search);
+// single-element shas returns 0 (sole candidate).
 func bisect(repo WarpBisector, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
 	if len(shas) == 0 {
 		return -1, nil
@@ -158,9 +113,7 @@ func bisect(repo WarpBisector, shas []string, verifyCmd string, worktree string)
 		_ = repo.RestoreBranch(branch)
 	}()
 
-	// Standard binary search for the first failing index: a passing
-	// candidate means the offending SHA is later; a failing one means it is
-	// this candidate or earlier.
+	// Binary search for the first failing index.
 	lo, hi := 0, len(shas)-1
 	for lo < hi {
 		mid := (lo + hi) / 2
@@ -177,8 +130,7 @@ func bisect(repo WarpBisector, shas []string, verifyCmd string, worktree string)
 	return lo, nil
 }
 
-// checkoutAndVerify checks out sha detached in repo, then runs verifyCmd
-// in-process at worktree, reporting whether it passed.
+// checkoutAndVerify checks out sha detached, then runs verifyCmd in-process, reporting pass/fail.
 func checkoutAndVerify(repo WarpBisector, sha, verifyCmd, worktree string) (bool, error) {
 	if err := repo.CheckoutDetached(sha); err != nil {
 		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
@@ -186,13 +138,8 @@ func checkoutAndVerify(repo WarpBisector, sha, verifyCmd, worktree string) (bool
 	return runVerifyCommand(verifyCmd, worktree)
 }
 
-// runVerifyCommand runs verifyCmd in-process via os/exec, in a shell ("sh
-// -c" on non-Windows, "cmd /C" on Windows — the same GOOS split
-// hubgeometry.go's own menuLauncherName applies for a platform-varying
-// choice), from worktree. A non-zero exit is a failed verify — reported as
-// (false, nil), never an error, since a verify command failing is the
-// expected shape of a bisect step, not a bisect malfunction; a genuine
-// spawn failure (the shell itself could not run) is a real error.
+// runVerifyCommand runs verifyCmd in-process via os/exec. A non-zero exit is
+// a failed verify (false, nil); a spawn failure propagates as a real error.
 func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
 	shell, flag := "sh", "-c"
 	if runtime.GOOS == "windows" {
@@ -202,9 +149,7 @@ func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
 	cmd := exec.Command(shell, flag, verifyCmd)
 	cmd.Dir = worktree
 	if err := cmd.Run(); err != nil {
-		// An *exec.ExitError means the command ran and exited non-zero — a
-		// failed verify, not a bisect malfunction. Any other error (the shell
-		// itself could not be spawned) propagates as a real failure.
+		// *exec.ExitError is a failed verify (expected); other errors propagate.
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return false, nil
@@ -215,13 +160,7 @@ func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
 }
 
 // RecordIntegrationFailure marks a terminal, non-successful record for the
-// integration stage into st under integrationBatchKey — the existing
-// State.Batches terminal-record mechanism, reused rather than inventing a
-// new operator signal or a new State field, per the
-// integration-suite-fork-with-bisect decision's own "reuse the existing
-// terminal path" escalation mechanism. The caller persists st via SaveState
-// under the state-mutation lease, exactly as every other terminal batch
-// mutation in this package does.
+// integration stage into st under integrationBatchKey. Caller persists via SaveState.
 func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 	if st.Batches == nil {
 		st.Batches = map[int]*BatchState{}
@@ -239,17 +178,9 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 	}
 }
 
-// BisectAndEscalate runs bisect over shas against a FAILED integration
-// report, resolves the localized index to its own card label from labels
-// (parallel to shas, same order/length — the caller's own ordered
-// accumulation of every terminal batch's "NN-slug" identity alongside its
-// own BatchState.CardSHAs), records the terminal escalation into st
-// (RecordIntegrationFailure), and extends websterDir's summary.md
-// (AppendIntegrationFailure, summary.go) naming the localized card. When
-// shas is empty, bisect returns its -1 sentinel (nothing to localize) and
-// both offendingSHA/offendingCard fall back to "unknown" rather than
-// indexing into the empty slice. The caller persists st via SaveState under
-// the state-mutation lease.
+// BisectAndEscalate runs bisect over shas, records the terminal escalation
+// into st, and extends summary.md naming the localized card. When shas is
+// empty, falls back to "unknown" for both SHA and card. Caller persists via SaveState.
 func BisectAndEscalate(repo WarpBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
 	idx, err := bisect(repo, shas, verifyCmd, worktree)
 	if err != nil {

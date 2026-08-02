@@ -21,25 +21,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Handoff is a judge call's maintained state carried into the next judge
-// call: which rounds' reviews it has absorbed (CoversRounds), the lossless
-// finding-identity ledger (Ledger), and a distilled prose narrative (Prose)
-// for everything else. The ledger is deliberately not semantically matched
-// in Go — no key canonicalization — because the judge, not this package, is
-// the holistic decider of whether two findings are "the same" across
-// rounds; Go only validates that the ledger's shape is well-formed.
+// Handoff is a judge call's maintained state carried into the next: which
+// rounds' reviews it has absorbed (CoversRounds), a finding-identity ledger
+// (Ledger), and a prose narrative (Prose).
 type Handoff struct {
 	CoversRounds []int
 	Ledger       []LedgerEntry
 	Prose        string
 }
 
-// LedgerEntry is one lossless finding-identity record in a Handoff's ledger:
-// a short stable Key the judge uses to recognize the same finding recurring
-// across rounds, the Rounds it has been seen in, and whether it is currently
-// Status "open" or "resolved". The carry-forward rule — every entry from the
-// previous handoff must reappear here, never dropped — is enforced at
-// prompt level (the judge templates), not by this type or ParseHandoff.
+// LedgerEntry is one finding-identity record: a Key the judge uses to
+// recognize recurring findings, the Rounds it was seen in, and its Status.
 type LedgerEntry struct {
 	Key    string
 	Rounds []int
@@ -63,24 +55,12 @@ type handoffLedgerEntry struct {
 	Status string `yaml:"status"`
 }
 
-// ParseHandoff parses the raw bytes of a judge handoff file into a Handoff.
-// The file must open with a "---" line and contain a closing "---" line
-// delimiting YAML frontmatter (CRLF line endings are tolerated), exactly
-// like ParseJudgeVerdict; everything after the closing delimiter is the
-// unconstrained prose narrative. Every rule below is enforced fail-loud with
-// a "treadle: handoff file "-prefixed error — including the three shared
-// frontmatter rules, which name the handoff rather than a verdict because
-// splitFrontmatter takes the file kind as a parameter; this function NEVER
-// silently defaults, so a self-contradictory or malformed handoff file is
-// always visible as an error to its caller (the round loop is the one that
-// turns that error into a fail-safe Warn + fallback read-set; see the
-// file-level comment):
-//   - the frontmatter must be present, closed, and valid YAML;
-//   - covers_rounds must be a non-empty list of positive round numbers;
-//   - every ledger entry must have a non-empty key, a non-empty list of
-//     positive round numbers, and a status of exactly "open" or "resolved"
-//     (case-sensitive) — the ledger list itself MAY be empty (a first
-//     handoff has nothing yet to carry forward).
+// ParseHandoff parses a judge handoff file into a Handoff. The file must
+// open and close with "---" delimiting YAML frontmatter; everything after is
+// prose narrative. Fails loud on malformed files: frontmatter must be valid
+// YAML, covers_rounds must be non-empty positive integers, and each ledger
+// entry must have a non-empty key, non-empty rounds list, and status of
+// "open" or "resolved".
 func ParseHandoff(content []byte) (Handoff, error) {
 	header, err := splitFrontmatter(content, "handoff")
 	if err != nil {
@@ -165,21 +145,9 @@ func frontmatterProse(content []byte) string {
 	return strings.TrimSpace(strings.ReplaceAll(prose, "\r", ""))
 }
 
-// latestValidHandoff walks rounds newest-to-oldest looking for the most
-// recent round record whose HandoffPath is non-empty AND whose file both
-// reads and ParseHandoffs cleanly. An unreadable or unparseable recorded
-// handoff is a fail-safe skip, not a hard stop: it logs a logger.Warn
-// prefixed with name — the calling engine's own name, threaded down from
-// Engine.Run exactly like every other Warn this package emits, since these
-// lines reach an operator's stderr at logger's default threshold during an
-// ordinary run and must not label a perch block with a foreign module name
-// — then the walk continues to the next older round, so a single corrupted
-// handoff degrades to the next older valid one instead of taking every
-// future judge call down with it. ok is false only when no round in rounds
-// carries a handoff that reads and parses cleanly (including the
-// fresh-block case of zero rounds). Apart from name this helper depends on
-// nothing but rounds — it must not assume a current-round review exists,
-// since pre-round targeting reuses it before any round has run.
+// latestValidHandoff finds the most recent round with a readable, parseable
+// handoff. Unreadable or unparseable handoffs are skipped with a Warn. ok is
+// false only when no valid handoff is found.
 func latestValidHandoff(name string, rounds []roundRecord) (path string, h Handoff, ok bool) {
 	for i := len(rounds) - 1; i >= 0; i-- {
 		round := rounds[i]
@@ -201,23 +169,9 @@ func latestValidHandoff(name string, rounds []roundRecord) (path string, h Hando
 	return "", Handoff{}, false
 }
 
-// judgeReadSet builds the review-file read-set a progress-judge call is fed,
-// replacing the unbounded collectJudgeReviews call at both judge call sites
-// (run.go). With a valid handoff (see latestValidHandoff), readSet is the
-// reviews of every completed round in rounds whose number is NOT already in
-// that handoff's CoversRounds, in round order, plus currentReviewPath — the
-// rounds it omits are exactly the ones the handoff has already absorbed —
-// and prevHandoffPath is that handoff's own path, to thread into the next
-// judge call's previous_handoff input. With no valid handoff at all (a
-// fresh block, or every recorded handoff failed to read/parse), readSet
-// degrades to exactly today's all-reviews behavior via collectJudgeReviews
-// and prevHandoffPath is "". Rounds where no judge ran at all (round 1, a
-// round right after an approved round, or a round whose judge call itself
-// failed) carry no HandoffPath and so never appear in any handoff's
-// CoversRounds — their reviews are therefore always present in some future
-// call's readSet, which is what closes the judge-gap hole. name is the
-// calling engine's own name, passed straight through to latestValidHandoff
-// so its fail-safe Warns carry the caller's prefix.
+// judgeReadSet builds the review-file read-set for a judge call. With a valid
+// handoff, readSet contains reviews of rounds not yet covered, plus the
+// current review. With no valid handoff, readSet defaults to all reviews.
 func judgeReadSet(name string, rounds []roundRecord, currentReviewPath string) (readSet []string, prevHandoffPath string) {
 	path, handoff, ok := latestValidHandoff(name, rounds)
 	if !ok {

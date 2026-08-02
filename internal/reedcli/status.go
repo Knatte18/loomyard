@@ -13,8 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// statusCmd builds the `status` subcommand: calls c.eng.Status() and emits
-// every tracked strand's guid, name, pane id, and live/dead state.
+// statusCmd builds the `status` subcommand.
 func (c *reedCLI) statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",

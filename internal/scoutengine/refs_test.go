@@ -13,13 +13,7 @@ import (
 	"time"
 )
 
-// TestCollectInFileMatches exercises the pure, transport-free exact-name
-// recursion helper directly — no fake LSP server, no client — over a small
-// hand-built hierarchical symbol tree: a top-level match, a match nested
-// under a child (proving recursion descends), a name with zero matches, and
-// two same-name matches under two different top-level symbols (e.g. an
-// "Open" method on two distinct types), proving every match is collected
-// rather than the search stopping at the first hit.
+// TestCollectInFileMatches tests the collectInFileMatches helper on a hierarchical symbol tree.
 func TestCollectInFileMatches(t *testing.T) {
 	tree := []lspDocumentSymbol{
 		{
@@ -63,11 +57,7 @@ func TestCollectInFileMatches(t *testing.T) {
 	}
 }
 
-// TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart drives
-// resolvePosition's InFile branch end to end over the fake transport:
-// exactly one documentSymbol match returns that match's
-// SelectionRange.Start as the position and "file://"+File as the URI, with
-// no round trip through toLSPPosition.
+// TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart verifies resolvePosition returns selection range starts for InFile matches.
 func TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()

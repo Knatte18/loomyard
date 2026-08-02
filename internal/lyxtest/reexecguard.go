@@ -28,9 +28,7 @@ import (
 	"strings"
 )
 
-// cliReexecArg returns the leading positional argument in args and true when
-// one exists; args is the os.Args[1:] slice of a test binary. Pure and
-// host-testable; the exiting wrapper below stays thin.
+// cliReexecArg returns the leading positional argument in args (or empty string and false).
 func cliReexecArg(args []string) (string, bool) {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return "", false
@@ -38,11 +36,8 @@ func cliReexecArg(args []string) (string, bool) {
 	return args[0], true
 }
 
-// refuseCLIReexec aborts the test binary with a loud diagnostic when it was
-// invoked with a leading positional argument. Called from HermeticGitEnv so
-// every TestMain already wired to the hermetic git environment (machine-
-// enforced for every git-spawning package — see CONSTRAINTS.md's Hermetic
-// Git Test Environment Invariant) gets the guard for free.
+// refuseCLIReexec aborts the test binary when invoked with a leading positional
+// argument. Called from HermeticGitEnv, so every TestMain gets this guard.
 func refuseCLIReexec() {
 	if arg, ok := cliReexecArg(os.Args[1:]); ok {
 		fmt.Fprintf(os.Stderr,

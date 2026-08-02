@@ -141,13 +141,10 @@ var websterSuite = suiteSpec{
 	reedTeardown: true,
 }
 
-// lookPath is a testability seam over exec.LookPath so tests can inject fake
-// PATH resolution without modifying the real environment.
+// lookPath is a testability seam over exec.LookPath.
 var lookPath = exec.LookPath
 
 // isCharDevice reports whether f is attached to a console character device.
-// A false result means f is a pipe, regular file, or closed handle -- i.e.
-// the launcher was redirected, backgrounded, or detached.
 func isCharDevice(f *os.File) bool {
 	fi, err := f.Stat()
 	if err != nil {
@@ -156,8 +153,8 @@ func isCharDevice(f *os.File) bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-// interactiveStdio is a testability seam reporting whether the launcher runs
-// with both stdin and stdout attached to a console.
+// interactiveStdio is a testability seam reporting whether stdin and stdout
+// are attached to a console.
 var interactiveStdio = func() bool {
 	return isCharDevice(os.Stdin) && isCharDevice(os.Stdout)
 }
@@ -171,17 +168,9 @@ const nonInteractiveWarning = "sandbox: warning: stdin/stdout is not an attached
 	"the agent session cannot idle for notifications and may end early, abandoning scenarios. " +
 	"Run the suite launcher in a real interactive terminal (do not redirect or background it).\n"
 
-// launchAgent is a testability seam that runs an interactive claude session
-// inside hostRepoDir. It passes instruction as the sole positional argument and
-// --dangerously-skip-permissions so the agent needs no per-action confirmation.
-// binDir is the derived .dev-bin directory when the resolved lyx is a dev
-// build, or "" when it is the PATH-resolved prod binary; when non-empty it is
-// prepended to the child's PATH so the agent's bare `lyx` invocations resolve
-// to the same dev binary the launcher fingerprinted (see the
-// agent-path-prepend-launchagent-only Shared Decision). The function inherits
-// the calling process's stdin/stdout/stderr, waits for the child to exit, and
-// returns its exit code. A non-zero exit code from *exec.ExitError is returned
-// as-is; any other error returns 1.
+// launchAgent runs an interactive claude session inside hostRepoDir. It passes
+// instruction as the sole positional argument and --dangerously-skip-permissions
+// to skip per-action confirmation. binDir (when non-empty) is prepended to PATH.
 var launchAgent = func(hostRepoDir, claudePath, instruction, binDir string) int {
 	// An interactive claude session is only reliable on an attached console;
 	// warn (not fail) so a knowingly-detached run can still proceed.
@@ -211,10 +200,8 @@ var launchAgent = func(hostRepoDir, claudePath, instruction, binDir string) int 
 	return 0
 }
 
-// reedDown is a testability seam that tears down the Hub-scoped reed substrate
-// after an agent session: it runs `lyx reed down` inside hostRepoDir using the
-// already-fingerprinted lyx binary. `reed down` is idempotent (success with no
-// session up), so the call is safe regardless of what the agent left behind.
+// reedDown is a testability seam that tears down the reed substrate by running
+// `lyx reed down` inside hostRepoDir.
 var reedDown = func(hostRepoDir, lyxPath string) error {
 	cmd := exec.Command(lyxPath, "reed", "down")
 	cmd.Dir = hostRepoDir
@@ -225,31 +212,20 @@ var reedDown = func(hostRepoDir, lyxPath string) error {
 }
 
 // binaryInfo holds a snapshot of a binary file's identity at a point in time.
-// It is used to stamp the copied suite file with a reproducible fingerprint so
-// that the emitted sandbox-report.json (meta.fingerprint) can be traced to the
-// exact binary that triggered it.
 type binaryInfo struct {
 	// Path is the absolute filesystem path to the binary.
 	Path string
-	// Size is the binary's size in bytes at the time of the snapshot.
+	// Size is the binary's size in bytes.
 	Size int64
-	// ModTime is the binary's file-system modification time in UTC.
+	// ModTime is the binary's modification time in UTC.
 	ModTime time.Time
-	// SHA256 holds the first 12 hex characters of the binary's SHA-256 digest,
-	// sufficient to distinguish builds without ballooning the fingerprint block.
+	// SHA256 is the first 12 hex characters of the binary's SHA-256 digest.
 	SHA256 string
-	// Source records which binary resolveLyx picked (sourceDev or sourceProd,
-	// from resolve.go), so a maintainer reading the stamped header or the
-	// fetched report can tell a dev build's findings from a prod build's
-	// without cross-referencing the Path.
+	// Source records which binary resolveLyx picked (sourceDev or sourceProd).
 	Source string
 }
 
-// binaryFingerprint stats and hashes the file at path to produce a binaryInfo
-// snapshot. ModTime is normalised to UTC. SHA256 is the first 12 hex characters
-// of the full digest. source (sourceDev or sourceProd, from resolve.go) is
-// stamped into the returned binaryInfo verbatim. Any OS or IO error is wrapped
-// with the provided path as context so callers can report which binary failed.
+// binaryFingerprint stats and hashes the file at path to produce a binaryInfo snapshot.
 func binaryFingerprint(path, source string) (binaryInfo, error) {
 	// Stat first to capture size and modtime before opening the file, so the
 	// two calls reflect a consistent view of the inode.
@@ -264,8 +240,6 @@ func binaryFingerprint(path, source string) (binaryInfo, error) {
 	}
 	defer f.Close()
 
-	// Stream the file through sha256 to avoid loading it into memory all at once;
-	// lyx.exe can be several megabytes.
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return binaryInfo{}, fmt.Errorf("hash binary %s: %w", path, err)
@@ -281,10 +255,7 @@ func binaryFingerprint(path, source string) (binaryInfo, error) {
 	}, nil
 }
 
-// header returns a small markdown block that stamps the binary's identity into
-// the copied suite file. The same fingerprint is later stamped into
-// meta.fingerprint of the emitted sandbox-report.json so a maintainer can
-// reproduce the exact build that produced a finding.
+// header returns a markdown block that stamps the binary's identity.
 func (b binaryInfo) header() string {
 	return fmt.Sprintf("## Binary under test\n\n"+
 		"- Path: `%s`\n"+
@@ -300,22 +271,16 @@ func (b binaryInfo) header() string {
 	)
 }
 
-// renderScheme combines the binary fingerprint header with doc (a suiteSpec's
-// embedded body) to produce the full suite file content that the launcher
-// writes into the Hub host repo.
+// renderScheme combines the binary fingerprint header with doc to produce
+// the full suite file content.
 func renderScheme(info binaryInfo, doc string) string {
 	return info.header() + "\n" + doc
 }
 
-// ensureGitExclude idempotently appends entry to <repoDir>/.git/info/exclude.
-// It creates the .git/info/ directory and the exclude file when either is
-// absent. Existing content is preserved; the entry is only appended when it is
-// not already present as a whole line. This keeps the Hub host repo's working
-// tree clean without touching its tracked ignore files (.gitignore).
+// ensureGitExclude idempotently appends entry to <repoDir>/.git/info/exclude,
+// creating the directory and file if needed. Existing content is preserved.
 func ensureGitExclude(repoDir, entry string) error {
 	infoDir := filepath.Join(repoDir, ".git", "info")
-	// Ensure .git/info/ exists; MkdirAll is a no-op when the directory is already
-	// there, so this is safe to call unconditionally.
 	if err := os.MkdirAll(infoDir, 0o755); err != nil {
 		return fmt.Errorf("create .git/info dir: %w", err)
 	}
@@ -327,15 +292,12 @@ func ensureGitExclude(repoDir, entry string) error {
 		return fmt.Errorf("read .git/info/exclude: %w", err)
 	}
 
-	// Check for an exact line match so repeated calls are no-ops.
 	for _, line := range strings.Split(string(existing), "\n") {
 		if strings.TrimRight(line, "\r") == entry {
 			return nil
 		}
 	}
 
-	// Append the entry on its own line. If the file did not end with a newline
-	// (or is empty/new), prepend a newline to avoid merging with the last line.
 	var suffix string
 	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
 		suffix = "\n"
@@ -352,37 +314,19 @@ func ensureGitExclude(repoDir, entry string) error {
 	return nil
 }
 
-// runSuite executes the "sandbox suite" / "sandbox reed-suite" / "sandbox
-// shuttle-suite" / "sandbox burler-suite" / "sandbox perch-suite"
-// subcommands. It locates the Hub host repo under parentDir, fingerprints
-// the deployed lyx binary, writes a fresh spec.fileName into the host repo
-// (overwriting any prior copy), registers it in .git/info/exclude, clears
-// any stale sandbox-report.json from a prior run, and starts an interactive
-// Claude session with the given instruction string. After the session ends,
-// specs flagged reedTeardown get a best-effort `lyx reed down` in the host repo
-// so no tmux server outlives the run. It does not fetch the agent's report
-// -- that is the separate fetch subcommand (runFetch), run by the operator
-// after the session. claudeOverride and promptOverride are optional: when
-// empty the function resolves "claude" from PATH and uses spec.instruction.
-// spec selects which suite (mainSuite, reedSuite, shuttleSuite, burlerSuite,
-// perchSuite, builderSuite, or websterSuite) is run.
+// runSuite executes a sandbox suite: fingerprints the deployed lyx binary,
+// writes a fresh suite file, registers it in .git/info/exclude, and starts
+// an interactive Claude session. For specs flagged reedTeardown, it runs
+// `lyx reed down` after the session ends.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
-	// Derive the host repo path from the shared hubName const (main.go) and the
-	// suite-local hostDirName const; the function relies on those consts rather than
-	// the raw cwd primitive or git top-level resolution.
 	hostRepoDir := filepath.Join(parentDir, hubName, hostDirName)
 
-	// Guard against a missing Hub so the operator gets a clear, actionable message
-	// rather than a confusing downstream file-write failure.
 	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
 		return fmt.Errorf("hub host repo not found at %s -- run sandbox/build.cmd first", hostRepoDir)
 	} else if err != nil {
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
 
-	// Resolve lyx via resolveLyx (derived .dev-bin first, PATH fallback) so the
-	// fingerprint captures the exact binary the session will run, and so the
-	// dev/prod distinction can be stamped and threaded to the agent's PATH below.
 	lyxPath, source, err := resolveLyx()
 	if err != nil {
 		return err
@@ -393,36 +337,24 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
 
-	// Write the rendered scheme (fingerprint header + body) into the host repo,
-	// overwriting any copy left from a previous run so every session starts fresh.
 	suitePath := filepath.Join(hostRepoDir, spec.fileName)
 	if err := os.WriteFile(suitePath, []byte(renderScheme(info, spec.doc)), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", spec.fileName, err)
 	}
 
-	// Exclude the scheme file from git tracking in the host repo so it does not
-	// show up as an untracked change when the agent runs git status or similar.
 	if err := ensureGitExclude(hostRepoDir, spec.fileName); err != nil {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
-	// Remove any report left over from a previous session so a fetch run
-	// after this session cannot pick up stale findings under a fresh fingerprint;
-	// if the agent writes nothing, fetch then correctly surfaces the
-	// missing-report error instead.
 	reportPath := filepath.Join(hostRepoDir, reportFileName)
 	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove stale %s: %w", reportFileName, err)
 	}
 
-	// Exclude the report from git tracking in the host repo for the same
-	// reason as the scheme file above.
 	if err := ensureGitExclude(hostRepoDir, reportFileName); err != nil {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
-	// Resolve the claude binary: honour an explicit override flag, otherwise
-	// search PATH -- the agent must be installed like any other tool.
 	claudePath := claudeOverride
 	if claudePath == "" {
 		claudePath, err = lookPath("claude")
@@ -436,29 +368,16 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		instruction = spec.instruction
 	}
 
-	// Only a resolved dev binary gets its directory prepended to the agent's
-	// PATH (see the agent-path-prepend-launchagent-only Shared Decision); a
-	// prod resolution leaves binDir empty so launchAgent inherits the
-	// environment unchanged, exactly as before.
 	binDir := ""
 	if source == sourceDev {
 		binDir = filepath.Dir(lyxPath)
 	}
 
-	// Launch the interactive agent session. An interactive claude session never
-	// self-terminates, so its manual exit is expected and its non-zero exit code
-	// is NORMAL -- it must not be treated as a failure. Fetching the report is a
-	// separate step, so print guidance and return nil regardless of the code.
 	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
 		"sandbox: agent session ended (exit code %d). Run sandbox/fetch.cmd to collect findings into .scratch.\n",
 		code)
 
-	// For suites whose scenarios boot a live reed substrate, tear it down now,
-	// regardless of how the agent session ended: an orphaned tmux server holds
-	// open handles inside the Hub host repo and blocks the next
-	// sandbox/build.cmd -reset. Best-effort -- a teardown failure must not turn
-	// a completed session into a launcher error.
 	if spec.reedTeardown {
 		if err := reedDown(hostRepoDir, lyxPath); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: reed teardown: %v\n", err)

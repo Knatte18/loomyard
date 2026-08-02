@@ -20,105 +20,46 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// ErrNoCommits is returned by CurrentSHA when the repository has no commits
-// yet (a freshly-initialized repo with an unborn HEAD), so callers get a
-// typed signal instead of an ambiguous empty SHA string.
+// ErrNoCommits is returned by CurrentSHA when the repository has no commits.
 var ErrNoCommits = errors.New("gitrepo: repository has no commits")
 
-// ErrInvalidSHA is returned by ChangedFilesSince, CheckoutDetached, and
-// ResetHard (and folded into false by SHAExists, per its bool-swallowing
-// posture) when a caller-supplied SHA argument is not a plain hex object
-// name — surfaced before the string ever reaches git, where an
-// option-shaped value (e.g. a leading "-") would be parsed as a flag rather
-// than a target commit.
+// ErrInvalidSHA is returned when a caller-supplied SHA is not a valid hex
+// object name, surfaced before reaching git.
 var ErrInvalidSHA = errors.New("gitrepo: invalid SHA")
 
-// ErrIndexNotEmpty is returned by CommitEmpty when its pre-check finds the
-// index already carrying staged changes, checkable via errors.Is. CommitEmpty
-// has no pathspec to scope an empty commit with, so refusing on a dirty index
-// is the only way it can avoid silently sweeping up somebody else's staged
-// work — see CommitEmpty's own doc for the residual race this refusal does
-// and does not close.
+// ErrIndexNotEmpty is returned by CommitEmpty when the index has staged changes.
 var ErrIndexNotEmpty = errors.New("gitrepo: index is not empty")
 
-// shaPattern matches a plain abbreviated-or-full hex object name: 4 hex
-// digits (git's minimum abbreviation) up to 64 (a full SHA-256 name). It
-// deliberately excludes symbolic revisions (HEAD, refs, ranges) — gitrepo's
-// SHA-taking methods contract on stored SHAs, not general revision syntax.
+// shaPattern matches a plain abbreviated-or-full hex object name (4-64 digits).
 var shaPattern = regexp.MustCompile(`^[0-9a-fA-F]{4,64}$`)
 
-// validSHA reports whether sha is a plain hex object name that is safe to
-// embed in a git command line as an argument.
+// validSHA reports whether sha is a valid hex object name.
 func validSHA(sha string) bool {
 	return shaPattern.MatchString(sha)
 }
 
-// Repo is a typed handle on one local git checkout, identified by its
-// filesystem path. Repo does not create, clone, or validate the checkout at
-// construction time — see New. Methods on a single Repo are not
-// goroutine-safe for concurrent writes to the same underlying checkout;
-// cross-process push serialization is handled separately by the coalescing
-// pusher's single-pusher lock, and in-process callers must serialize their
-// own writes.
-//
-// goGitMu, goGitRepo, goGitOK, and lastPackFingerprint back the lazily-opened,
-// cached go-git handle described in gogit.go's goGit and the fingerprint-gated
-// object-lookup helper built on top of it. See gogit.go's godoc for the full
-// locking discipline every go-git-backed method (this batch and every batch
-// that migrates a read onto go-git) must follow.
+// Repo is a typed handle on one local git checkout. Methods on a single Repo
+// are not goroutine-safe for concurrent writes; callers must serialize.
 type Repo struct {
 	path string
 
-	// goGitMu guards goGitRepo, goGitOK, and lastPackFingerprint, and is the
-	// single lock every go-git-backed call on this Repo coordinates through —
-	// see gogit.go. CurrentSHA, SHAExists, CurrentBranch, and
-	// ChangedFilesSince are its first production callers (batch 3); batch 4
-	// migrates the rest of the package's local reads onto it.
-	goGitMu sync.RWMutex
-	// goGitRepo is the cached go-git handle, valid only when goGitOK is true.
-	goGitRepo *git.Repository
-	// goGitOK records that goGitRepo was populated by a *successful* open.
-	// Deliberately not a sync.Once: only a successful open may be cached, so a
-	// Repo constructed (via New) before the checkout exists at its path can
-	// still succeed on a later call once the checkout has been created —
-	// New's documented no-I/O, cannot-fail contract says nothing about the
-	// checkout existing yet, and a permanently-cached failure would break
-	// that.
-	goGitOK bool
-	// lastPackFingerprint is the pack fingerprint recorded at the go-git
-	// handle's last index (re)build, read and written only inside the
-	// fingerprint-gated lookup helper's write-locked sequence — see gogit.go.
+	goGitMu             sync.RWMutex
+	goGitRepo           *git.Repository
+	goGitOK             bool
 	lastPackFingerprint string
 }
 
-// New returns a Repo wrapping the git checkout at path. New performs no
-// validation and no I/O — it only stores path — so it cannot fail. The
-// checkout is assumed to already exist; creating or cloning a repo is
-// fabric's topology concern, not gitrepo's.
+// New returns a Repo wrapping the git checkout at path. It performs no I/O.
 func New(path string) *Repo {
 	return &Repo{path: path}
 }
 
-// run executes a git subcommand against this Repo's checkout, delegating to
-// gitexec.RunGit with r.path as the working directory. It is the single
-// choke point every method on Repo uses to invoke git, so the
-// gitexec-is-the-only-exec-layer decision holds without repetition.
+// run executes a git subcommand against this Repo's checkout.
 func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) {
 	return gitexec.RunGit(args, r.path)
 }
 
-// CurrentSHA returns the SHA of the checkout's current HEAD commit. It
-// returns ErrNoCommits (checkable via errors.Is) when the repository has no
-// commits yet — an unborn HEAD is not a genuine failure, just an empty
-// history — and a plain wrapped error for any other failure, including a
-// failed handle open. Unborn-HEAD detection is now typed
-// (plumbing.ErrReferenceNotFound, from go-git's Head), not message-matched
-// against git's English stderr as it was before this method migrated to
-// go-git — a real robustness gain, since it no longer depends on git's
-// locale (see the package doc's locale paragraph). This is a Head() ref
-// read, not an object lookup, so it does not route through the
-// fingerprint-gated lookup helper: go-git never caches refs, so there is
-// nothing on disk for the gate to protect here — every call reads fresh.
+// CurrentSHA returns the SHA of HEAD, or ErrNoCommits if no commits exist.
 func (r *Repo) CurrentSHA() (string, error) {
 	repo, err := r.goGit()
 	if err != nil {
@@ -138,32 +79,11 @@ func (r *Repo) CurrentSHA() (string, error) {
 	return head.Hash().String(), nil
 }
 
-// StageAndCommit stages exactly the given files (never a wildcard/`add -A`
-// stage — see the explicit-file-lists decision) and commits exactly those
-// files with msg. Index entries staged outside this call are neither
-// inspected nor committed — they stay staged, untouched — so an automated
-// commit can never sweep up a half-staged edit someone else (a human sharing
-// the worktree) left in the index; in a worktree mid-merge, git refuses the
-// pathspec-scoped commit outright, surfacing an error instead of silently
-// completing the merge under msg. When the listed files produce no staged
-// change — including when files is empty, which stages nothing and spawns no
-// git at all — StageAndCommit returns ("", false, nil): a plain signal, not
-// an error, since "nothing to commit" is an expected, inspectable outcome
-// rather than a failure. On a real commit it returns the new HEAD SHA with
-// committed=true. Each files entry is a git pathspec relative to the repo
-// root, not a literal filename: git still interprets pathspec magic after
-// `--` (in the add, the staged-change check, and the commit alike), so an
-// entry starting with ':' is treated as a magic signature (and a file
-// literally named that way cannot be staged as-is) — callers pass plain
-// relative paths and must not rely on magic. The `add` step never passes
-// `-f`: see CONSTRAINTS.md's Never force-add invariant for why a path
-// ignored by `.git/info/exclude` is meant to stay out of the index, not be
-// forced past it.
+// StageAndCommit stages the given files and commits them with msg. It returns
+// ("", false, nil) when no staged changes exist (not an error). Returns the new
+// HEAD SHA with committed=true on a successful commit. Files must be plain
+// relative paths; files is never wildcard-staged.
 func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed bool, err error) {
-	// An empty list stages nothing, so there is never anything of the
-	// caller's to commit; return the documented no-op signal before any git
-	// spawn — an unscoped `git commit` here would otherwise commit whatever
-	// happened to be staged already.
 	if len(files) == 0 {
 		return "", false, nil
 	}
@@ -178,11 +98,6 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 		return "", false, fmt.Errorf("gitrepo: git add: %s", stderr)
 	}
 
-	// `diff --cached --quiet -- <files>` reports via exit code alone: 0 means
-	// the staged tree matches HEAD within the listed pathspecs (nothing of
-	// ours to commit), 1 means it differs (proceed to commit). The pathspec
-	// scoping keeps entries staged outside this call from counting as "ours".
-	// Any other exit is a genuine git failure.
 	diffArgs := append([]string{"diff", "--cached", "--quiet", "--"}, files...)
 	_, stderr, code, err = r.run(diffArgs...)
 	if err != nil {
@@ -192,14 +107,10 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	case 0:
 		return "", false, nil
 	case 1:
-		// Staged changes exist within the listed files; fall through to commit.
 	default:
 		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
 	}
 
-	// Commit scoped to the same pathspecs: git commits the listed paths'
-	// current contents (identical to what the add above just staged) and
-	// leaves any other staged entry staged and uncommitted.
 	commitArgs := append([]string{"commit", "-m", msg, "--"}, files...)
 	_, stderr, code, err = r.run(commitArgs...)
 	if err != nil {
@@ -216,71 +127,25 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	return sha, true, nil
 }
 
-// CommitEmpty records an empty commit — one whose tree is identical to its
-// parent's, carrying no content beyond msg — via `git commit --allow-empty`.
-// It exists for the one shape StageAndCommit and StageAllAndCommit cannot be
-// coaxed into: a commit whose whole meaning lives in msg (and, from
-// fabricengine's callers, the trailers already folded into msg) rather than
-// in any file content. Unlike those two, CommitEmpty never no-ops — an empty
-// commit is the entire point, so there is no "nothing changed" case for it to
-// signal — and it returns no committed bool: it always commits when it
-// commits at all.
-//
-// CommitEmpty refuses if the index is dirty when checked, returning
-// ErrIndexNotEmpty (checkable via errors.Is) without committing. This is the
-// one place in the package that still validates caller state before acting,
-// and it is a real refusal, not misuse-handling: an empty commit built with
-// --allow-empty has no pathspec to scope itself with the way StageAndCommit's
-// `commit ... -- <files>` does, so this method is check-then-commit rather
-// than structurally safe. The guarantee here is correspondingly weaker than
-// StageAndCommit's: StageAndCommit cannot ever sweep an unlisted path, race
-// or no race, because its commit is pathspec-scoped at the git level itself;
-// CommitEmpty only refuses when its pre-check happens to observe a dirty
-// index, so an index write landing in the milliseconds between that check and
-// the commit spawn below is still swept into the commit. fabric's own callers
-// serialize their writes under the combined write lock, which keeps this
-// window closed in practice, but the contract documented here must not claim
-// the guarantee StageAndCommit actually has.
-//
-// The pre-check branches on whether HEAD is born, using CurrentSHA's typed
-// ErrNoCommits result (via errors.Is) rather than matching git's stderr text
-// — see CurrentSHA's own doc for why that distinction matters. On a **born**
-// HEAD, `git diff --cached --quiet` is read with the same exit-code mapping
-// StageAndCommit's own check uses, just unscoped since there is no pathspec
-// list here: exit 0 means the index matches HEAD (proceed), exit 1 means
-// staged differences exist (ErrIndexNotEmpty), and any other exit is a
-// genuine git failure returned with its stderr. On an **unborn** HEAD there
-// is no HEAD tree to diff against, so `git diff --cached` is not used at all
-// — `git ls-files --cached` is run instead, and any listed path at all means
-// something is staged (ErrIndexNotEmpty); empty output means proceed. That
-// form is exact, needs no empty-tree object constant (hash-algorithm-
-// dependent, and so a latent SHA-256 bug), and does not bet the contract on
-// diff --cached's unborn-HEAD semantics. The unborn path is reachable in
-// production, not hypothetical: fabricengine's empty-commit rule lands here
-// whenever weft has no commits yet.
+// CommitEmpty records an empty commit (tree identical to its parent's) via
+// `git commit --allow-empty`. It refuses if the index is dirty, returning
+// ErrIndexNotEmpty. Unlike StageAndCommit, it always commits when it succeeds.
 func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 	_, err = r.CurrentSHA()
 	switch {
 	case err == nil:
-		// Born HEAD: an unscoped `diff --cached --quiet` reports via exit
-		// code alone, exactly like StageAndCommit's own pathspec-scoped
-		// check, just without a pathspec to scope to.
 		_, stderr, code, runErr := r.run("diff", "--cached", "--quiet")
 		if runErr != nil {
 			return "", runErr
 		}
 		switch code {
 		case 0:
-			// Index matches HEAD; nothing staged, so it is safe to proceed.
 		case 1:
 			return "", ErrIndexNotEmpty
 		default:
 			return "", fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
 		}
 	case errors.Is(err, ErrNoCommits):
-		// Unborn HEAD: there is no HEAD tree for `diff --cached` to compare
-		// against, so `git ls-files --cached` is the exact substitute —
-		// any listed path names something staged.
 		stdout, stderr, code, runErr := r.run("ls-files", "--cached")
 		if runErr != nil {
 			return "", runErr
@@ -292,8 +157,6 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 			return "", ErrIndexNotEmpty
 		}
 	default:
-		// A genuine CurrentSHA failure (not the unborn-HEAD signal) — surface
-		// it unchanged rather than guessing at the index state.
 		return "", err
 	}
 
@@ -312,16 +175,9 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 	return sha, nil
 }
 
-// StageAllAndCommit stages every working-tree change via `git add -A` and
-// commits whatever lands in the index with msg — the wildcard sibling of
-// StageAndCommit, which never wildcard-stages. It exists as board's
-// Sync/commitDirty opt-in exception, not a relaxation of the explicit-list
-// default: every other consumer (fabric, raddle, scout) must keep using
-// StageAndCommit's explicit file list. Return semantics mirror
-// StageAndCommit exactly: when nothing is staged after the add (a clean
-// working tree), it returns ("", false, nil) rather than an error, since
-// "nothing to commit" is an expected, inspectable outcome; on a real commit
-// it returns the new HEAD SHA with committed=true.
+// StageAllAndCommit stages every change via `git add -A` and commits with msg.
+// Return semantics mirror StageAndCommit: ("", false, nil) when nothing to
+// commit, otherwise the new HEAD SHA with committed=true.
 func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err error) {
 	_, stderr, code, err := r.run("add", "-A")
 	if err != nil {
@@ -331,11 +187,6 @@ func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err er
 		return "", false, fmt.Errorf("gitrepo: git add -A: %s", stderr)
 	}
 
-	// `diff --cached --quiet` (unscoped) reports via exit code alone: 0 means
-	// the staged tree matches HEAD (nothing to commit), 1 means it differs
-	// (proceed to commit). Unlike StageAndCommit, there is no pathspec to
-	// scope to — the wildcard add above staged everything, so the diff check
-	// is correspondingly unscoped.
 	_, stderr, code, err = r.run("diff", "--cached", "--quiet")
 	if err != nil {
 		return "", false, err
@@ -344,7 +195,6 @@ func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err er
 	case 0:
 		return "", false, nil
 	case 1:
-		// Staged changes exist; fall through to commit.
 	default:
 		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
 	}
@@ -364,15 +214,8 @@ func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err er
 	return sha, true, nil
 }
 
-// SHAExists reports whether sha names a commit reachable in this Repo. A
-// git failure (a failed handle open, or any other go-git error) is
-// swallowed into false rather than surfaced as an error: callers treat
-// "false" as a staleness signal ("when in doubt, rebuild") regardless of
-// whether the SHA was simply absent or the check itself failed, so
-// distinguishing the two would buy nothing. A non-hex sha is folded into
-// the same false for the same reason, without ever opening the handle. The
-// lookup peels to a commit exactly like the CLI's `^{commit}` suffix did: a
-// tree or blob sha reports false, never true — see commitByHash.
+// SHAExists reports whether sha names a reachable commit. Errors and invalid
+// SHAs fold into false, treating it as a staleness signal.
 func (r *Repo) SHAExists(sha string) bool {
 	if !validSHA(sha) {
 		return false
@@ -389,21 +232,8 @@ func (r *Repo) SHAExists(sha string) bool {
 	return err == nil
 }
 
-// commitByHash resolves sha — already validated by validSHA as a plain
-// abbreviated-or-full hex object name — to its commit object, peeling
-// exactly like `git rev-parse <sha>^{commit}`: a tree or blob hash reports
-// plumbing.ErrObjectNotFound, never a successful non-commit result.
-//
-// A full-length hash is decoded directly and looked up via CommitObject,
-// which surfaces the storer's own plumbing.ErrObjectNotFound on a miss —
-// the exact signal lookupObjectRetrying's fingerprint gate reacts to.
-// Repository.ResolveRevision cannot be used for that path: on any miss
-// (object absent, or present but not a commit) it always translates the
-// storer's plumbing.ErrObjectNotFound into its own
-// plumbing.ErrReferenceNotFound, which would make the fingerprint gate
-// structurally unreachable from here. ResolveRevision is used only as an
-// abbreviated-hash prefix-expansion fallback, translating its not-found
-// back into plumbing.ErrObjectNotFound for the same reason.
+// commitByHash resolves sha to its commit object, peeling like
+// `git rev-parse <sha>^{commit}`. Tree or blob hashes report error.
 func commitByHash(repo *git.Repository, sha string) (*object.Commit, error) {
 	if len(sha) == hex.EncodedLen(len(plumbing.ZeroHash)) {
 		return repo.CommitObject(plumbing.NewHash(sha))
@@ -419,27 +249,8 @@ func commitByHash(repo *git.Repository, sha string) (*object.Commit, error) {
 	return repo.CommitObject(*hash)
 }
 
-// CurrentBranch returns the short name of the branch HEAD currently points
-// at (e.g. "main"), used by the integration bisect to capture the branch it
-// must restore to BEFORE detaching HEAD for a candidate checkout. It returns
-// a wrapped error when HEAD is detached (or on any other failure) rather
-// than an empty string, since a caller that failed to capture a branch name
-// has no safe ref to hand RestoreBranch afterwards.
-//
-// This reads plumbing.HEAD unresolved (Repository.Reference with resolved =
-// false), never Repository.Head, which resolves HEAD and would therefore
-// succeed even on a detached HEAD — precisely the one shape this method
-// must reject. Because the read is unresolved it also returns the branch
-// name on an unborn HEAD (no commits yet), matching
-// `git symbolic-ref --short HEAD`, which exits 0 and prints the name even
-// before the first commit; that is intentional, not a missed edge case, so
-// no existence check is added here. The read touches no object, so it does
-// not route through the fingerprint-gated lookup helper — the read lock is
-// taken explicitly instead, held for the whole call, per goGit's contract.
-//
-// This method touches exactly one unresolved reference, so it passes even
-// on a handle broken in every other way; it must never be used as a smoke
-// test for the migration.
+// CurrentBranch returns the short name of the branch HEAD points to, or an
+// error if HEAD is detached.
 func (r *Repo) CurrentBranch() (string, error) {
 	repo, err := r.goGit()
 	if err != nil {
@@ -459,13 +270,8 @@ func (r *Repo) CurrentBranch() (string, error) {
 	return head.Target().Short(), nil
 }
 
-// CheckoutDetached moves HEAD to sha without updating any branch ref,
-// leaving the working tree at that commit's contents — the bisect's
-// per-candidate checkout step, run in place in the single worktree rather
-// than a separate clone. sha is validated with the same validSHA check as
-// ChangedFilesSince and SHAExists before it ever reaches git, returning
-// ErrInvalidSHA (checkable via errors.Is) on a non-hex value rather than
-// letting an option-shaped string be parsed as a checkout flag.
+// CheckoutDetached moves HEAD to sha without updating any branch ref, or
+// returns ErrInvalidSHA if sha is invalid.
 func (r *Repo) CheckoutDetached(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA
@@ -480,9 +286,7 @@ func (r *Repo) CheckoutDetached(sha string) error {
 	return nil
 }
 
-// RestoreBranch moves HEAD back onto ref (the branch name CurrentBranch
-// captured before the bisect loop's first CheckoutDetached call), ending
-// the detached-HEAD state the bisect left the worktree in.
+// RestoreBranch moves HEAD back onto ref, ending the detached-HEAD state.
 func (r *Repo) RestoreBranch(ref string) error {
 	_, stderr, code, err := r.run("checkout", ref)
 	if err != nil {
@@ -494,30 +298,9 @@ func (r *Repo) RestoreBranch(ref string) error {
 	return nil
 }
 
-// ChangedFilesSince returns the repo-relative paths that differ between sha
-// and HEAD, considering committed history only — uncommitted working-tree
-// or staged edits are never inspected, since sha and HEAD are the only two
-// points this comparison is defined over: a diff against an uncommitted
-// state would have no stable SHA to compare against later. A missing or
-// invalid sha is a genuine failure
-// here (unlike SHAExists' bool-swallowing posture): callers are expected to
-// check SHAExists first and treat a missing SHA as staleness. A non-hex sha
-// returns ErrInvalidSHA (checkable via errors.Is) without ever opening the
-// handle.
-//
-// The diff is computed via object.DiffTree, never Tree.Diff or
-// DiffTreeWithOptions with DefaultDiffTreeOptions: both of those perform
-// rename detection by default (since go-git v5.1.0), which would fold a
-// rename into a single entry and lose the old path — exactly what the CLI
-// path's --no-renames flag existed to prevent. A non-ASCII path comes back
-// as the verbatim on-disk bytes; go-git's tree entries carry no C-quoting
-// layer to strip, unlike the CLI's -z output. The returned order is not
-// contractual — this describes a set of changed paths, not a sequence, and
-// no consumer indexes into the result positionally.
-//
-// Both the sha and HEAD tree lookups route through the fingerprint-gated
-// lookup helper; the HEAD ref read itself does not, since it touches no
-// object.
+// ChangedFilesSince returns repo-relative paths that differ between sha and
+// HEAD, considering committed history only. Returns ErrInvalidSHA if sha is
+// invalid. The returned order is not contractual.
 func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	if !validSHA(sha) {
 		return nil, ErrInvalidSHA
@@ -573,13 +356,7 @@ func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	return files, nil
 }
 
-// treeForRev resolves rev — a full-length commit hash, either the
-// caller-supplied sha (already validSHA-checked) or HEAD's own hash string,
-// which Hash.String always renders full-length — to its commit's tree via
-// commitByHash, so a miss surfaces as the storer's own
-// plumbing.ErrObjectNotFound rather than ResolveRevision's translated
-// plumbing.ErrReferenceNotFound. See commitByHash's doc for why that
-// distinction is what keeps the fingerprint gate reachable.
+// treeForRev resolves rev to its commit's tree.
 func treeForRev(repo *git.Repository, rev string) (*object.Tree, error) {
 	commit, err := commitByHash(repo, rev)
 	if err != nil {

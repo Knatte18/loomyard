@@ -23,20 +23,8 @@ func launcherExt(goos string) string {
 }
 
 // launcherScript builds the content and file mode for a launcher script that
-// climbs from its own directory to a target worktree subpath via climbRel, then
-// invokes "lyx <lyxArgs>".
-//
-// climbRel is normalized to forward slashes first so callers can pass either
-// filepath.Rel output (OS-native separators) or an already-slashed path.
-//
-// On Windows, the climb is rendered with backslashes and the script uses the
-// "@cd /d "%~dp0<climb>" && lyx <lyxArgs>" cmd idiom with CRLF line endings and
-// mode 0o644 (matching the pre-existing ide.cmd/fabric-checkout.cmd/ide-menu.cmd
-// bodies).
-//
-// On non-Windows, the climb keeps forward slashes and the script is a bash
-// shebang script — "#!/usr/bin/env bash\ncd "$(dirname "$0")/<climb>" && lyx
-// <lyxArgs>\n" — with LF line endings and mode 0o755 so it is executable.
+// climbs to a target subpath and invokes lyx. On Windows, uses cmd with CRLF
+// and mode 0o644. On non-Windows, uses bash with LF and mode 0o755 (executable).
 func launcherScript(goos, climbRel, lyxArgs string) (content []byte, mode os.FileMode) {
 	climbFwd := filepath.ToSlash(climbRel)
 

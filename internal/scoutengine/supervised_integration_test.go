@@ -27,16 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// killRecordedDaemon reads the daemon PID from the state file at statePath
-// and kills-then-waits it, ignoring a missing state file or an
-// already-dead process. Wait (not just Kill) matters here: the daemon is
-// this test process's own child (ensureSupervised's spawn is never
-// cmd.Wait()'d in production, since the daemon is meant to outlive the
-// call), so without reaping it the killed process lingers as a zombie whose
-// PID would still pass a signal-0 liveness check — Wait ensures the
-// respawn sub-test's daemonStale check sees a genuinely gone PID, and
-// doubles as best-effort cleanup so repeated test runs don't accumulate
-// stray gopls processes.
+// killRecordedDaemon kills the daemon PID recorded in the state file, ensuring cleanup.
 func killRecordedDaemon(t *testing.T, statePath string) {
 	t.Helper()
 	state, found, err := readDaemonState(statePath)
@@ -51,16 +42,7 @@ func killRecordedDaemon(t *testing.T, statePath string) {
 	_, _ = process.Wait()
 }
 
-// TestEnsureSupervised_Integration drives ensureSupervised three times
-// against a real gopls, in the same worktreeRoot/lang throughout: (1) a
-// first call with no daemon yet, which must spawn one and hand back a
-// client that actually answers a real workspace/symbol query; (2) a second
-// call, which must reconnect to the same daemon (unchanged PID) rather than
-// spawning a second one; (3) a third call after the daemon is killed out
-// from under it, which must detect the dead PID via daemonStale, respawn,
-// and land on the same deterministic socket address despite the PID
-// changing — the proof that the stale-socket-cleanup-before-rebind logic
-// (ensureSupervised step 4) actually avoids EADDRINUSE on a real bind.
+// TestEnsureSupervised_Integration verifies spawn, reconnect, and respawn behavior end-to-end.
 func TestEnsureSupervised_Integration(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip(builtins()["go"].InstallHint)

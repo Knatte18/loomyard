@@ -26,26 +26,13 @@ import (
 // verbatim from perchengine's CommandRunner.)
 type CommandRunner func(argv []string, dir string, timeout time.Duration) (output []byte, exitZero bool, err error)
 
-// Options carries the two seams a caller may override; both fields default
-// when left zero-valued. A nil PauseRequested means "no pause source
-// wired" (the loop is never paused). A nil RunCommand means "use the real
-// exec runner" (execGateCommand, gate.go). New stores both fields verbatim,
-// nils included — run.go is the single place that substitutes these
-// defaults, at the top of Run, which is what keeps this file free of any
-// compile dependency on gate.go's execGateCommand.
+// Options carries optional seams a caller may override.
 type Options struct {
 	PauseRequested func() bool
 	RunCommand     CommandRunner
 }
 
-// Engine drives one treadle block's generalized round loop: name identifies
-// the calling engine for diagnostics (perch passes "perch") — every error
-// and Warn string this package produces is prefixed with name + ": ",
-// mirroring perch's own literal "perch: " prefix today (the
-// name-parameterized-diagnostics shared decision) — runner is the
-// RoundRunner seam driven once per attempt, shuttle is the seam judge.go's
-// ephemeral judge/triage calls use, and pauseRequested/runCommand are
-// Options' fields stored verbatim (see Options and New).
+// Engine drives one treadle block's generalized round loop.
 type Engine struct {
 	name           string
 	runner         RoundRunner
@@ -54,10 +41,7 @@ type Engine struct {
 	runCommand     CommandRunner
 }
 
-// New returns an Engine ready to run one treadle block's round loop under
-// name, driving runner for every round's attempt(s) and shuttle for the
-// ephemeral judge/triage calls. opts' fields are stored verbatim (nil
-// allowed); Engine.Run substitutes their defaults at its entry.
+// New returns an Engine ready to run one treadle block's round loop.
 func New(name string, runner RoundRunner, shuttle Shuttle, opts Options) *Engine {
 	return &Engine{
 		name:           name,
@@ -68,11 +52,7 @@ func New(name string, runner RoundRunner, shuttle Shuttle, opts Options) *Engine
 	}
 }
 
-// errf composes a name-prefixed error, the mechanism behind the
-// name-parameterized-diagnostics shared decision: every error string this
-// package produces reads "<e.name>: <message>", exactly matching perch's
-// own literal "perch: " prefix today when e.name is "perch", and giving a
-// future caller (e.g. "tenter") the same diagnostics for free.
+// errf composes a name-prefixed error.
 func (e *Engine) errf(format string, args ...any) error {
 	return fmt.Errorf(e.name+": "+format, args...)
 }

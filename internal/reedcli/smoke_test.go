@@ -47,22 +47,18 @@ const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 // -tags=smoke run never hard-fails on a machine without the tool.
 func tmuxBinaryPath(t *testing.T) string {
 	t.Helper()
-	// Check LYX_REED_TMUX env var first for explicit override
 	if path := os.Getenv("LYX_REED_TMUX"); path != "" {
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
 	}
-	// Resolve tmux via PATH on Windows (.exe suffix) or POSIX (bare name)
 	binName := "tmux"
 	if _, err := os.Stat(`C:\Windows\System32\cmd.exe`); err == nil {
-		// Windows detected: try tmux.exe
 		binName = "tmux.exe"
 	}
 	if path, err := exec.LookPath(binName); err == nil {
 		return path
 	}
-	// Fallback: try the other name variant
 	altName := "tmux"
 	if binName == "tmux" {
 		altName = "tmux.exe"
@@ -70,7 +66,6 @@ func tmuxBinaryPath(t *testing.T) string {
 	if path, err := exec.LookPath(altName); err == nil {
 		return path
 	}
-	// Not found on PATH; skip the test
 	t.Skipf("tmux not found in PATH or LYX_REED_TMUX; checked: %s, %s", binName, altName)
 	return ""
 }
@@ -136,10 +131,7 @@ func waitServerGone(t *testing.T, tmuxPath, socket, session string) {
 }
 
 // listPaneLines returns the session's list-panes rows as
-// "<pane_id> <pane_dead> <pane_top> <pane_height>" strings. Uses tmux
-// directly (the same controlled exception the sandbox suite grants) so a
-// smoke test can assert on the real pane set rather than trusting reed's own
-// reporting.
+// "<pane_id> <pane_dead> <pane_top> <pane_height>" strings.
 func listPaneLines(t *testing.T, tmuxPath, socket, session string) []string {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
@@ -156,7 +148,7 @@ func listPaneLines(t *testing.T, tmuxPath, socket, session string) []string {
 	return lines
 }
 
-// socketAndSession reads the socket and session names from a fresh `status`.
+// socketAndSession reads the socket and session names from the current status.
 func socketAndSession(t *testing.T) (socket, session string) {
 	t.Helper()
 	var out bytes.Buffer
@@ -283,9 +275,7 @@ func addStrand(t *testing.T, cmdStr string, extra ...string) string {
 	return guid
 }
 
-// serverPID asks tmux for the server's OS pid via the #{pid} format
-// variable (the only server-liveness signal tmux exposes: list-sessions
-// and kill-server both exit 0 whether or not a server holds the socket).
+// serverPID asks tmux for the server's OS pid via the #{pid} format variable.
 func serverPID(t *testing.T, tmuxPath, socket, session string) int {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", session, "#{pid}").Output()
@@ -299,21 +289,7 @@ func serverPID(t *testing.T, tmuxPath, socket, session string) int {
 	return pid
 }
 
-// processGone reports whether pid no longer names a running process. On
-// Windows, os.Process.Wait() blocks on a process HANDLE until it exits,
-// which works for any accessible pid regardless of parent/child
-// relationship, so a short-timeout Wait (tolerating a just-released process
-// object) is the natural check there. On POSIX, Wait() only ever succeeds
-// for a true CHILD of the calling process — wait4/waitid return ECHILD
-// immediately for any other pid — which is exactly the shape of every pid
-// these smoke tests track (a tmux server or pane descendant, never a child
-// of the go test binary itself), so the Windows-shaped Wait() check would
-// silently report "gone" almost instantly on Linux regardless of whether
-// the process is actually still running: a Windows-only correctness
-// assumption this file never exercised against a real non-child pid until
-// the process-tree probes were ported to run natively here (see
-// smoke_proctree_test.go). POSIX instead checks existence directly via
-// signal 0 (posixProcessAlive, smoke_procalive_linux_test.go).
+// processGone reports whether pid no longer names a running process.
 func processGone(pid int) bool {
 	if runtime.GOOS != "windows" {
 		return !posixProcessAlive(pid)
@@ -336,11 +312,7 @@ func processGone(pid int) bool {
 }
 
 // paneProcessTree returns the OS pids of the session's pane child processes
-// AND their full descendant subtrees. #{pane_pid} names only the pane's
-// immediate launcher; on Windows the process actually holding the worktree
-// directory is a deeper descendant, so the reap-correctness assertion must
-// track the whole subtree, computed here with the same Win32_Process closure
-// the engine uses.
+// and their full descendant subtrees.
 func paneProcessTree(t *testing.T, tmuxPath, socket, session string) []int {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session, "-F", "#{pane_pid}").Output()
@@ -392,11 +364,8 @@ $acc`, strings.Join(roots, ","))
 	return pids
 }
 
-// panePaneSubtree returns the OS pids of a SINGLE pane's child process AND
-// its full descendant subtree, resolved with the same Win32_Process closure
-// the engine uses — the per-pane analogue of paneProcessTree, so the remove
-// reap assertion tracks exactly the removed pane's subtree and not the
-// surviving keeper's.
+// panePaneSubtree returns the OS pids of a single pane's child process and
+// its full descendant subtree.
 func panePaneSubtree(t *testing.T, tmuxPath, socket, session, paneID string) []int {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
@@ -454,14 +423,7 @@ type hubHolder struct {
 	name string
 }
 
-// hubHolders returns every process whose current working directory is inside
-// dir. On Linux this is a direct /proc/<pid>/cwd symlink read
-// (linuxHubHolders, smoke_proctree.go) — no shell, no conhost-exemption
-// class, any holder found is a genuine leak. On Windows it is read from each
-// process's PEB (RTL_USER_PROCESS_PARAMETERS.CurrentDirectory via
-// NtQueryInformationProcess) — the only way to find the conhost.exe holders,
-// since Win32_Process exposes no cwd column. Returns nil when nothing holds
-// dir or the probe fails (callers degrade to waiting).
+// hubHolders returns every process whose current working directory is inside dir.
 func hubHolders(t *testing.T, dir string) []hubHolder {
 	t.Helper()
 	if runtime.GOOS != "windows" {
@@ -526,28 +488,10 @@ Get-Process | ForEach-Object {
 }
 
 // deferHubRelease registers a cleanup that makes the fixture hub directory
-// releasable before the framework's TempDir RemoveAll — which runs AFTER this
-// cleanup — so RemoveAll never fails with a worktree-dir-in-use error. The
-// holder in question is the conhost.exe the OS parents to psmux to host each
-// pane's pseudo-console: reed never spawns it, it is not a #{pane_pid}
-// descendant, and on a quiet machine it exits on its own a beat after its
-// pane dies — but under CPU saturation it can be ORPHANED and then holds the
-// hub cwd indefinitely (observed: conhosts from failed runs still pinning
-// their fixture hubs hours later), so no fixed wait can ever out-last it.
-// The cleanup therefore confirms rather than waits: a short grace for the
-// self-exit path, then it kills any conhost whose PEB cwd is inside the hub
-// (safe — its console app is already gone; killing an orphaned host leaks
-// nothing) and keeps confirming until the hub actually renames. A NON-conhost
-// holder is a genuine leak (a pane child or psmux the product reap missed)
-// and fails the test loudly instead of being masked. Registered before
-// t.Chdir and the down cleanup so it runs AFTER them (cwd already restored
-// out of hub) but BEFORE RemoveAll.
+// releasable before the framework's TempDir RemoveAll.
 func deferHubRelease(t *testing.T, hub string) {
 	t.Helper()
 	t.Cleanup(func() {
-		// A process cannot rename its own cwd; make sure ours is not in hub
-		// while probing, then restore it so a later test's cwd-relative work
-		// (e.g. buildLyxBinary resolving the module root) is not corrupted.
 		prev, _ := os.Getwd()
 		_ = os.Chdir(os.TempDir())
 
@@ -572,13 +516,7 @@ func deferHubRelease(t *testing.T, hub string) {
 			}
 		}
 
-		// Grace phase: the healthy path, where the ConPTY host exits on its
-		// own moments after its pane died.
 		if !waitReleased(10 * time.Second) {
-			// Escalation phase: identify the actual holders. Orphaned
-			// conhosts are killed (re-scanned each round — one can appear
-			// late while the OS teardown is starved); anything else holding
-			// the hub is a real leak the kill must not paper over.
 			deadline := time.Now().Add(90 * time.Second)
 			for {
 				for _, h := range hubHolders(t, hub) {
@@ -599,9 +537,6 @@ func deferHubRelease(t *testing.T, hub string) {
 			}
 		}
 
-		// Restore the original cwd only when it is outside hub (the normal
-		// case, since t.Chdir's own restore has already run by now); never
-		// chdir back into a hub that is about to be removed.
 		if prev != "" && !strings.HasPrefix(strings.ToLower(prev), strings.ToLower(hub)) {
 			_ = os.Chdir(prev)
 		}
@@ -609,11 +544,7 @@ func deferHubRelease(t *testing.T, hub string) {
 }
 
 // tmuxSocketPids returns the OS pids of every tmux process whose command
-// line names the given -L socket (the server plus its __warm__ helper). On
-// Linux this is a direct /proc/*/cmdline argv scan (linuxTmuxSocketPids,
-// smoke_proctree.go), the same shape reedengine.serverProcessesOnSocket uses.
-// On Windows it queries the process table through pwsh — reproduced here so
-// the harness reap can find its private server without a reed engine handle.
+// line names the given -L socket.
 func tmuxSocketPids(t *testing.T, tmuxPath, socket string) []int {
 	t.Helper()
 	if runtime.GOOS != "windows" {
@@ -636,10 +567,7 @@ func tmuxSocketPids(t *testing.T, tmuxPath, socket string) []int {
 	return pids
 }
 
-// pidClosure expands roots to roots-plus-their-transitive-descendant pids —
-// the same descendant-closure the engine's reap uses, so a harness reap can
-// cover the pane shells nested below its server. /proc-native on Linux
-// (linuxDescendantClosure), one Win32_Process pass on Windows.
+// pidClosure expands roots to roots-plus-their-transitive-descendant pids.
 func pidClosure(t *testing.T, roots []int) []int {
 	t.Helper()
 	if len(roots) == 0 {
@@ -677,14 +605,7 @@ $acc`, strings.Join(lits, ","))
 }
 
 // reapHarnessServer tears down the test's private harness tmux server and
-// waits for its whole process subtree (the server, its __warm__ helper, and the
-// pane shells whose cwd is the fixture hub) to actually exit before returning.
-// The harness is the test's own scaffolding, not a reed-managed session, so
-// reed's down reap never covers it; without this wait its async teardown can
-// outlive the framework's TempDir cleanup and leave the fixture hub dir busy
-// under load. It snapshots the subtree BEFORE kill-server (while the processes
-// still exist to enumerate), kills the server, then polls each pid to genuine
-// exit, force-killing any straggler that outlives a generous deadline.
+// waits for its process subtree to exit.
 func reapHarnessServer(t *testing.T, tmuxPath, socket string) {
 	t.Helper()
 	subtree := pidClosure(t, tmuxSocketPids(t, tmuxPath, socket))
@@ -704,8 +625,7 @@ func reapHarnessServer(t *testing.T, tmuxPath, socket string) {
 	}
 }
 
-// capturePane returns the rendered content of the target pane on socket via
-// capture-pane -p (a controlled tmux exception, like listPaneLines).
+// capturePane returns the rendered content of the target pane on socket.
 func capturePane(t *testing.T, tmuxPath, socket, target string) string {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "capture-pane", "-p", "-t", target).Output()
@@ -715,8 +635,7 @@ func capturePane(t *testing.T, tmuxPath, socket, target string) string {
 	return string(out)
 }
 
-// sendKeysLine types text literally into the target pane (send-keys -l, so
-// tmux never reinterprets it) and submits it with a separate Enter.
+// sendKeysLine types text literally into the target pane and submits it with Enter.
 func sendKeysLine(t *testing.T, tmuxPath, socket, target, text string) {
 	t.Helper()
 	if err := exec.Command(tmuxPath, "-L", socket, "send-keys", "-t", target, "-l", text).Run(); err != nil {
@@ -727,9 +646,7 @@ func sendKeysLine(t *testing.T, tmuxPath, socket, target, text string) {
 	}
 }
 
-// pollPaneContains polls capture-pane until the target pane's rendered
-// content contains want, failing the test after timeout with the last
-// capture attached for diagnosis.
+// pollPaneContains polls capture-pane until the target pane contains want.
 func pollPaneContains(t *testing.T, tmuxPath, socket, target, want string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -746,26 +663,9 @@ func pollPaneContains(t *testing.T, tmuxPath, socket, target, want string, timeo
 	}
 }
 
-// smokeTestFile is this source file's own absolute path, captured at
-// compile time — used by buildLyxBinary to locate the repo root independent
-// of the process's runtime cwd. `go test ./pkg/...` sets the compiled test
-// binary's cwd to the package source directory automatically, which is why
-// a bare filepath.Join("..", "..") used to work; but the campaign's own
-// concurrent-load amplifier protocol runs a pre-compiled test binary
-// directly (`go test -c -o bin`, then `./bin`), which gets no such
-// automatic cwd and just inherits whatever directory the shell was in —
-// verified live: TestSmokeAttachRendersInsideHarnessPane failed instantly
-// with "go.mod file not found" when run this way from the repo root, since
-// "../.." from there escapes the module entirely. runtime.Caller(0)-style
-// build-time paths are immune to this because they are baked into the
-// binary at compile time, not resolved against the process's cwd.
 var _, smokeTestFile, _, _ = runtime.Caller(0)
 
-// buildLyxBinary compiles the working tree's cmd/lyx into a temp dir and
-// returns its path. The attach test must exec a REAL lyx process (the
-// terminal handover cannot run in-process through RunCLI), and building
-// from source guarantees the process under test is never a stale deployed
-// snapshot. Must be called BEFORE t.Chdir moves the test off the repo.
+// buildLyxBinary compiles cmd/lyx into a temp dir and returns its path.
 func buildLyxBinary(t *testing.T) string {
 	t.Helper()
 	repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(smokeTestFile), "..", ".."))
@@ -781,9 +681,7 @@ func buildLyxBinary(t *testing.T) string {
 	return lyxExe
 }
 
-// paneEventuallyContains reports whether the target pane's rendered content
-// comes to contain want within timeout — the non-fatal sibling of
-// pollPaneContains, for a branch that has a fallback path when it does not.
+// paneEventuallyContains reports whether the target pane comes to contain want.
 func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string, timeout time.Duration) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -798,15 +696,7 @@ func paneEventuallyContains(t *testing.T, tmuxPath, socket, target, want string,
 	}
 }
 
-// claudeProjectDir returns the ~/.claude/projects/<encoded-cwd> directory
-// claude persists transcripts into for sessions whose cwd is dir. Claude
-// encodes the cwd into the project directory name by replacing every
-// non-alphanumeric character with '-' (verified against a live transcript:
-// `C:\...\Temp\TestSmoke...\001\hub` -> `C--...-Temp-TestSmoke...-001-hub`).
-// Scoping the transcript watch to THIS directory is what keeps a
-// concurrently running sibling suite's brand-new transcript — which a global
-// snapshot-diff over all of ~/.claude/projects wrongly matched — from being
-// mistaken for the one under test.
+// claudeProjectDir returns the ~/.claude/projects/<encoded-cwd> directory for cwd dir.
 func claudeProjectDir(t *testing.T, dir string) string {
 	t.Helper()
 	home, err := os.UserHomeDir()
@@ -823,11 +713,7 @@ func claudeProjectDir(t *testing.T, dir string) string {
 	return filepath.Join(home, ".claude", "projects", string(encoded))
 }
 
-// claudeTranscriptFiles returns the set of every *.jsonl transcript path
-// currently under projectDir (a claudeProjectDir result). Claude persists
-// one JSONL per conversation inside its session-cwd's project directory, so
-// watching only this test's directory pins the observation to this test's
-// own claude.
+// claudeTranscriptFiles returns the set of every *.jsonl transcript path under projectDir.
 func claudeTranscriptFiles(t *testing.T, projectDir string) map[string]bool {
 	t.Helper()
 	found := map[string]bool{}
@@ -840,15 +726,7 @@ func claudeTranscriptFiles(t *testing.T, projectDir string) map[string]bool {
 	return found
 }
 
-// waitTranscriptStable blocks until a transcript that did NOT exist in
-// `before` (the snapshot taken just before this test launched its claude)
-// appears under projectDir — this test's own claude project directory, so a
-// concurrent sibling suite's transcript can never match — and stops growing:
-// the direct, TUI-independent proof that claude persisted a conversation.
-// It dismisses the trust gate on every poll (a fresh dir re-triggers
-// it). "Stable" means the same non-zero size across two consecutive polls,
-// so an in-progress write is never mistaken for a finished one. Returns the
-// new transcript's path.
+// waitTranscriptStable blocks until a new transcript appears in projectDir and stops growing.
 func waitTranscriptStable(t *testing.T, projectDir string, before map[string]bool, dismissTrust func(paneID string), paneID string, timeout time.Duration) string {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -878,9 +756,7 @@ func waitTranscriptStable(t *testing.T, projectDir string, before map[string]boo
 	}
 }
 
-// claudeBinaryPath returns the claude CLI's path from the environment or
-// PATH, skipping the calling test when it is absent so a -tags=smoke run
-// never hard-fails on a machine without a configured claude.
+// claudeBinaryPath returns the claude CLI's path from the environment or PATH.
 func claudeBinaryPath(t *testing.T) string {
 	t.Helper()
 	if path := os.Getenv("LYX_REED_CLAUDE"); path != "" {
@@ -893,16 +769,8 @@ func claudeBinaryPath(t *testing.T) string {
 	return path
 }
 
-// materializeSibling clones the paired fixture's bare origin into a second
-// worktree directory alongside the primary hub, so both live directly under
-// the same parent directory. Because the tmux server name/socket derives from
-// the hub (the parent of the worktree root) while the session name is the
-// worktree's own basename, the two clones resolve to the SAME per-hub socket
-// but carry DISTINCT sessions — exactly the "two worktrees on one hub" fixture
-// the cross-worktree scope invariant needs. It seeds reed config into the
-// sibling and returns its absolute path. A clone (not a bare mkdir) is used so
-// the sibling is a full git repo with a main worktree, which hubgeometry.Resolve
-// requires.
+// materializeSibling clones the fixture's bare origin into a second worktree
+// alongside the primary hub and seeds reed config into it.
 func materializeSibling(t *testing.T, fixture lyxtest.PairedFixture, name string) string {
 	t.Helper()
 	sibling := filepath.Join(fixture.Container, name)
@@ -915,11 +783,7 @@ func materializeSibling(t *testing.T, fixture lyxtest.PairedFixture, name string
 	return sibling
 }
 
-// mustChdir changes the process working directory or fails the test. The
-// cross-worktree test drives two worktrees through RunCLI (which resolves the
-// hub/session from cwd), so it switches cwd between them repeatedly rather than
-// using t.Chdir once; smoke tests never run in parallel within one binary, so a
-// process-wide cwd switch is safe (parallelism comes from separate binaries).
+// mustChdir changes the process working directory or fails the test.
 func mustChdir(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.Chdir(dir); err != nil {
@@ -927,16 +791,12 @@ func mustChdir(t *testing.T, dir string) {
 	}
 }
 
-// sessionAlive reports whether the named session currently exists on the
-// socket (has-session exit 0), without failing the test — the non-fatal probe
-// the stability loop polls on.
+// sessionAlive reports whether the named session currently exists on the socket.
 func sessionAlive(tmuxPath, socket, session string) bool {
 	return exec.Command(tmuxPath, "-L", socket, "has-session", "-t", session).Run() == nil
 }
 
-// waitSessionUp blocks until the named session answers has-session on the
-// socket, or fails after a saturation-sized deadline. tmux verbs are async, so
-// a just-issued up may not have registered its session on the first probe.
+// waitSessionUp blocks until the named session answers has-session on the socket.
 func waitSessionUp(t *testing.T, tmuxPath, socket, session string) {
 	t.Helper()
 	const timeout = 60 * time.Second
@@ -952,8 +812,7 @@ func waitSessionUp(t *testing.T, tmuxPath, socket, session string) {
 	}
 }
 
-// paneLiveOnSession reports whether paneID appears in a listPaneLines result
-// (rows of "<pane_id> <pane_dead> <pane_top> <pane_height>") with pane_dead=0.
+// paneLiveOnSession reports whether paneID is live on the session.
 func paneLiveOnSession(lines []string, paneID string) bool {
 	for _, l := range lines {
 		fields := strings.Fields(l)
@@ -964,12 +823,7 @@ func paneLiveOnSession(lines []string, paneID string) bool {
 	return false
 }
 
-// paneRootPID returns a pane's root process id (#{pane_pid}) on the socket —
-// the immediate process tmux launched in the pane. For this test's
-// `pwsh -NoExit` placeholder that root IS the agent process, and it is stable
-// (unlike the pane's transient descendants such as the OS ConPTY conhost),
-// which makes it the reliable OS-level "the agent is alive" signal for the
-// sibling-stability check.
+// paneRootPID returns a pane's root process id on the socket.
 func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session,
@@ -991,8 +845,7 @@ func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 	return 0
 }
 
-// paneIDForStrand runs `status` in the current worktree and returns the tracked
-// strand's live pane id, failing if the strand or its pane is missing.
+// paneIDForStrand runs status and returns the tracked strand's live pane id.
 func paneIDForStrand(t *testing.T, guid string) string {
 	t.Helper()
 	var out bytes.Buffer
@@ -1010,10 +863,7 @@ func paneIDForStrand(t *testing.T, guid string) string {
 	return paneID
 }
 
-// harnessOnlyPaneID returns the sole pane id of a freshly-booted, single-pane
-// harness session — resolved via list-panes rather than a hardcoded "%0" or
-// "%1" literal, since which one is correct is itself backend-dependent (see
-// TestSmokeAttachRendersInsideHarnessPane's harnessPane comment).
+// harnessOnlyPaneID returns the sole pane id of a freshly-booted harness session.
 func harnessOnlyPaneID(t *testing.T, tmuxPath, socket, session string) string {
 	t.Helper()
 	out, err := exec.Command(tmuxPath, "-L", socket, "list-panes", "-t", session, "-F", "#{pane_id}").Output()
@@ -1027,31 +877,10 @@ func harnessOnlyPaneID(t *testing.T, tmuxPath, socket, session string) string {
 	return lines[0]
 }
 
-// serverProcCountForSession counts the psmux.exe server processes backing a
-// SPECIFIC session on the socket. This psmux port spawns one
-// `psmux.exe server -s <session> -L <socket>` process per session (all sharing
-// the -L socket namespace, alongside psmux's internal `__warm__` helper), so
-// the per-hub "no duplicate server" guarantee is checked per session: exactly
-// one backing process for a live session, zero for a killed one, and never two
-// (a duplicate spawned by a down->up churn race). Returns -1 when the process-
-// table query itself fails, distinct from a genuine zero.
+// serverProcCountForSession counts the server processes backing a session on the socket.
 func serverProcCountForSession(t *testing.T, tmuxPath, socket, session string) int {
 	t.Helper()
 	if runtime.GOOS != "windows" {
-		// Real tmux serves every session on a socket from ONE shared server
-		// process (unlike psmux, which — per this function's Windows
-		// branch — spawns a dedicated server PER session even on a shared
-		// socket): a second `new-session -s sessionB` against a socket that
-		// already has a server just becomes a short-lived CLIENT that asks
-		// the existing server to host sessionB and then exits, so
-		// sessionB's own argv never persists as a running process's
-		// cmdline. So "how many backing servers serve THIS session" on
-		// real tmux is really "is this session currently hosted by the
-		// socket's (at most one) server" — answered directly via
-		// has-session, tmux's own authoritative liveness signal — combined
-		// with the total process count on the socket, which still catches
-		// the real regression this test guards against (a down->up race
-		// spawning a competing SECOND server on the same socket).
 		if exec.Command(tmuxPath, "-L", socket, "has-session", "-t", session).Run() != nil {
 			return 0
 		}
@@ -1075,10 +904,7 @@ func serverProcCountForSession(t *testing.T, tmuxPath, socket, session string) i
 	return count
 }
 
-// waitServerProcCountForSession polls serverProcCountForSession until it equals
-// want, or fails after a saturation-sized deadline — psmux spawns and reaps a
-// session's backing server process asynchronously, so both "it came up" and
-// "it went away" must be polled, never read once.
+// waitServerProcCountForSession polls serverProcCountForSession until it equals want.
 func waitServerProcCountForSession(t *testing.T, tmuxPath, socket, session string, want int) {
 	t.Helper()
 	const timeout = 60 * time.Second
@@ -1094,18 +920,8 @@ func waitServerProcCountForSession(t *testing.T, tmuxPath, socket, session strin
 	}
 }
 
-// assertSiblingStaysLive polls for dur, failing IMMEDIATELY if the sibling
-// worktree's session, its strand pane, its backing-server pid, or its agent
-// root process ever drop. This is the anti-false-green core of the
-// cross-worktree test: a naive down that killed the shared-socket server set
-// (rather than only its own session) would trip one of these checks on the
-// first or an early iteration, and holding the invariant for the whole window
-// proves down left the sibling genuinely usable — not merely that a stale
-// has-session lingered. Every per-iteration probe here is a fast tmux call
-// (has-session / list-panes / display-message) or an in-process pid wait; the
-// expensive process-table count that guards against a *duplicate* backing
-// server is checked ONCE by the caller after this returns, so the tight loop
-// never spawns a pwsh-per-iteration and starves concurrent copies under load.
+// assertSiblingStaysLive polls for dur, failing if the sibling's session, pane,
+// server pid, or agent root process drop.
 func assertSiblingStaysLive(t *testing.T, tmuxPath, socket, session, paneID string, wantServerPID, agentPID int, dur time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(dur)
@@ -1129,9 +945,7 @@ func assertSiblingStaysLive(t *testing.T, tmuxPath, socket, session, paneID stri
 	}
 }
 
-// waitSocketFreeOfTmux polls until no tmux process names the socket, or fails
-// after a saturation-sized deadline. kill-server is async, so the final
-// stray-server check must poll rather than read once.
+// waitSocketFreeOfTmux polls until no tmux process names the socket.
 func waitSocketFreeOfTmux(t *testing.T, tmuxPath, socket string) {
 	t.Helper()
 	const timeout = 30 * time.Second

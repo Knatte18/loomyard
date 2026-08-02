@@ -10,12 +10,9 @@ import (
 	"testing"
 )
 
-// buildIndexFromEntries returns a corrIndex populated with entries, backed
-// by a fresh t.TempDir() file (corrIndex.record always persists — see
-// corrindex.go), sorted by WarpSeq via loadCorrIndex's own sort so the
-// fixture matches what a real on-disk index would look like once loaded.
-// This is still a Tier-1, git-free test — only corrIndex's own file I/O is
-// exercised, no git spawn.
+// buildIndexFromEntries returns a corrIndex populated with entries, sorted by
+// WarpSeq to match what a real on-disk index would look like. Only corrIndex's
+// own file I/O is exercised, no git spawn.
 func buildIndexFromEntries(t *testing.T, entries []corrEntry) *corrIndex {
 	t.Helper()
 

@@ -18,23 +18,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// ErrRead sentinels a failure to read the state file's bytes off disk (I/O
-// error other than the file simply not existing, e.g. permissions). Callers
-// use errors.Is(err, ErrRead) to distinguish this "couldn't even read it"
-// class of failure from a decode failure or an infra failure acquiring the
-// lock, since a caller may want to retry or escalate each class differently.
+// ErrRead sentinels a read failure other than not-exist.
 var ErrRead = errors.New("state: read failed")
 
-// ErrDecode sentinels a failure to strictly decode the state file's bytes as
-// JSON of the expected shape (malformed JSON or an unknown field). Callers
-// use errors.Is(err, ErrDecode) to distinguish "the file exists and was read
-// but its contents are not a valid instance of T" from a raw read failure.
+// ErrDecode sentinels a decode failure (malformed or unknown field).
 var ErrDecode = errors.New("state: decode failed")
 
-// WriteJSON writes a value as indented JSON to the given path atomically.
-// It creates missing parent directories, acquires an exclusive write lock on
-// the caller-supplied lockPath, marshals the value to indented JSON (2 spaces), and writes
-// it atomically via fsx.AtomicWriteBytes. The lock is released via defer.
+// WriteJSON writes a value as indented JSON to path atomically.
 func WriteJSON[T any](path, lockPath string, v T) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -55,12 +45,8 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 	return fsx.AtomicWriteBytes(path, data)
 }
 
-// ReadJSON reads a JSON value from the given path into a value of type T.
-// It creates missing parent directories, acquires a shared read lock on
-// the caller-supplied lockPath, reads the file, and unmarshals it. Returns (zero, false, nil)
-// if the file does not exist. Returns (zero, false, err) on other read errors.
-// Returns (zero, false, err) on unmarshal errors (corruption is not swallowed).
-// Returns (value, true, nil) on success. The lock is released via defer.
+// ReadJSON reads a JSON value from the given path. Returns (zero, false, nil)
+// if the file does not exist. Returns (value, true, nil) on success.
 func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 	dir := filepath.Dir(path)
@@ -90,23 +76,9 @@ func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 	return v, true, nil
 }
 
-// ReadJSONStrict reads a JSON value from the given path into a value of type
-// T, rejecting unknown fields instead of silently ignoring them. Unlike
-// ReadJSON it does not call os.MkdirAll — a read must not have the
-// side effect of creating directories that were never written to. (A
-// sidecar .lock file is still taken by lock.AcquireReadLock, so the call is
-// not fully side-effect-free.) It acquires a shared read lock on the
-// caller-supplied lockPath, reads the file, and decodes it via
-// json.Decoder.DisallowUnknownFields so that stale or mistyped fields are
-// caught rather than silently dropped. Returns (zero, false, nil) if the
-// file does not exist. A raw read failure (I/O error other than
-// not-exist) is wrapped so errors.Is(err, ErrRead) is true; a decode failure
-// (malformed JSON or an unknown field) is wrapped so errors.Is(err,
-// ErrDecode) is true — callers classify the failure via errors.Is rather
-// than string-matching. A lock.AcquireReadLock failure is returned wrapped
-// as today, carrying neither sentinel: it is a third, infra-level failure
-// mode the caller escalates rather than classifies as read-vs-decode.
-// Returns (value, true, nil) on success. The lock is released via defer.
+// ReadJSONStrict reads a JSON value from path, rejecting unknown fields.
+// Returns (zero, false, nil) if the file does not exist. Unlike ReadJSON,
+// does not create missing parent directories.
 func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 

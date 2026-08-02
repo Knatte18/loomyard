@@ -46,9 +46,7 @@ func TestParsePlan_GoldenFixture_PlanLevelSections(t *testing.T) {
 	}
 }
 
-// TestParsePlan_PlanLevelSections_AbsentAreEmpty proves all three plan-level
-// sections default to "" when their headings are absent — they are optional, per
-// docs/reference/plan-format-v3.md, unlike a card's own always-present fields.
+// TestParsePlan_PlanLevelSections_AbsentAreEmpty proves all three plan-level sections default to "" when their headings are absent.
 func TestParsePlan_PlanLevelSections_AbsentAreEmpty(t *testing.T) {
 	t.Parallel()
 

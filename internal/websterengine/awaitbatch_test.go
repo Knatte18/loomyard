@@ -18,9 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// awaitFakeClock is a scriptable clock whose Sleep advances virtual time and
-// invokes an optional per-sleep hook — the hook is how a test materializes
-// the report file "while" AwaitBatch is mid-wait.
+// awaitFakeClock is a scriptable clock whose Sleep advances virtual time.
 type awaitFakeClock struct {
 	now     time.Time
 	sleeps  int
@@ -38,8 +36,7 @@ func (c *awaitFakeClock) Sleep(d time.Duration) {
 
 var _ websterengine.Clock = (*awaitFakeClock)(nil)
 
-// awaitTestBatches returns a minimal one-batch execution-batch list and the
-// batch's report path inside dir.
+// awaitTestBatches returns a minimal one-batch list and its report path.
 func awaitTestBatches(dir string) ([]batcher.Batch, string) {
 	batches := []batcher.Batch{
 		{Cards: []planparser.Card{{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"}}},

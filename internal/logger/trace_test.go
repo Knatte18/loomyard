@@ -12,18 +12,9 @@ import (
 	"testing"
 )
 
-// traceIDHexPattern matches a mintTraceID output exactly: 16 lowercase hex
-// characters, no more, no less.
 var traceIDHexPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
-// resetTraceState clears the package-level traceOnce/traceID white-box
-// state before a test that needs a fresh resolution. traceOnce is a
-// sync.Once with no reset method, so the only way to force a fresh
-// resolution is to replace it with a zero-value sync.Once; sync.Once
-// contains a noCopy marker, so it is reset forward-only (never saved and
-// restored by value, which would fail go vet's copylocks check) — every
-// test that needs a fresh resolution already calls resetTraceState itself
-// before running, so no cleanup restore of traceOnce is required.
+// resetTraceState clears the package-level traceOnce/traceID state before a test.
 func resetTraceState(t *testing.T) {
 	t.Helper()
 	savedID := traceID
@@ -98,10 +89,6 @@ func TestMintOrAdoptAndExport_PropagatesExportedValueToEnv(t *testing.T) {
 
 	got := MintOrAdoptAndExport()
 
-	// A spawned child inherits os.Environ() by default at every spawn site
-	// that does not set cmd.Env explicitly, so asserting the exported env
-	// var matches the resolved value is the untagged, no-real-spawn version
-	// of the propagation check discussion.md's Testing section requires.
 	if envVal := os.Getenv("LYX_TRACE_ID"); envVal != got {
 		t.Errorf("os.Getenv(LYX_TRACE_ID) = %q after MintOrAdoptAndExport() = %q; want them equal", envVal, got)
 	}

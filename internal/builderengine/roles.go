@@ -35,19 +35,8 @@ const (
 )
 
 // ResolveRoles parses and resolves every one of cfg's four role model-spec
-// strings against reg, returning the resolved value keyed by Role. This is
-// the fail-pre-flight surface `run`/`spawn-batch` call at entry: a
-// well-formed but unknown alias (a typo'd role spec) fails here, before any
-// agent spawns, rather than surfacing only when that role's spawn site
-// first reaches it. Any Parse or Resolve failure is wrapped naming the
-// offending role, since cfg's four fields carry no name of their own once
-// extracted.
-//
-// The Resolved→shuttleengine.Spec field mapping (spec.Model = resolved.Model;
-// spec.Effort = resolved.Params["effort"]; spec.Version =
-// resolved.Params["version"]) happens at each spawn site, not here — this
-// function only resolves and returns, per modelspec's documented consumer
-// mapping.
+// strings against reg, returning the resolved value keyed by Role. A typo'd
+// role spec fails here at entry, before any agent spawns, named by role.
 func ResolveRoles(cfg Config, reg modelspec.Registry) (map[Role]modelspec.Resolved, error) {
 	specsByRole := map[Role]string{
 		RoleOrchestrator:         cfg.Orchestrator,

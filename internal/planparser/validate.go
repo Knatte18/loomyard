@@ -30,27 +30,17 @@ import (
 	"strings"
 )
 
-// recognizedFormat is the only plan-format version Validate currently
-// understands; a plan declaring any other format: value fails the
-// format-unrecognized check. v3 supersedes v2 for webster's own consumption
-// (see plan-format-v3.md's coexistence note) — there is no dual-version support
-// inside this package.
+// recognizedFormat is the only plan-format version Validate currently understands.
 const recognizedFormat = 3
 
-// ValidationError is one finding from Validate: which check tripped (Check, a
-// stable kebab-case name matching plan-format-v3.md's "Validation checks" list),
-// which card it concerns (Card, empty for a plan-level finding — v3's flat card
-// list has no wider batch unit to key on instead), and a human-readable Detail
-// naming the specific problem.
+// ValidationError is one finding from Validate: which check tripped, which card it concerns, and a human-readable detail.
 type ValidationError struct {
 	Check  string
 	Card   string
 	Detail string
 }
 
-// Error implements the error interface so a ValidationError can be used
-// anywhere a single error is expected (e.g. in a test's error-substring
-// assertion), formatted as "check[/card]: detail".
+// Error implements the error interface, formatted as "check[/card]: detail".
 func (v ValidationError) Error() string {
 	if v.Card == "" {
 		return fmt.Sprintf("%s: %s", v.Check, v.Detail)
@@ -58,22 +48,12 @@ func (v ValidationError) Error() string {
 	return fmt.Sprintf("%s/%s: %s", v.Check, v.Card, v.Detail)
 }
 
-// cardID returns the stable "N-<slug>" identifier Validate uses to name a card
-// in a ValidationError, mirroring the frozen v2 validator's batchID shape but
-// keyed on the card's own flat number since batches no longer exist.
+// cardID returns the stable "N-<slug>" identifier Validate uses to name a card.
 func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }
 
-// Validate runs every plan-format v3 machine check against plan and returns
-// every finding, in the fixed order docs/reference/plan-format-v3.md's
-// "Validation checks" section pins. worktreeRoot is the sole base the
-// existence-dependent checks (move-source-missing, move-target-collision,
-// path-missing) resolve a card path against to test on-disk presence; every
-// other check operates purely on the parsed Plan model (or, for
-// index-file-mismatch and card-numbering, on plan.Dir — the plan directory
-// ParsePlan itself already read, not the caller-supplied worktreeRoot). A
-// nil/empty return means the plan passes every check.
+// Validate runs every plan-format v3 machine check against plan and returns every finding in fixed order.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 
@@ -95,11 +75,7 @@ func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	return findings
 }
 
-// checkFormatAndApproval implements format-unrecognized/plan-unapproved: the
-// overview's format: must be the one version this package understands, and
-// approved: must be true — the two are checked together (as plan-format-v3.md's
-// own numbering does) since both are prerequisites for treating the plan as
-// runnable at all.
+// checkFormatAndApproval implements format-unrecognized/plan-unapproved checks.
 func checkFormatAndApproval(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -119,17 +95,7 @@ func checkFormatAndApproval(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkIndexFileConsistency implements index-file-mismatch: every *.md file on
-// disk in plan.Dir (other than the overview itself) must be named by some
-// parsed card — an unreferenced file is silently orphaned work a Planner forgot
-// to wire into the Card Index — and the Card Index's own card numbers must run
-// 1..M with no gaps or duplicates. The reverse direction (an index entry naming
-// a file that does not exist) is not checked here: ParsePlan already fails loud
-// on that case (a missing card file is document structure, not a lenient
-// card-level defect), so a successfully parsed Plan can never reach Validate
-// with that half of the mismatch. This check absorbs v2's dropped
-// card-count-mismatch — v3's Card Index has no separate "(C cards)" segment to
-// cross-check; the index itself is the card list.
+// checkIndexFileConsistency implements index-file-mismatch: every *.md file on disk must be named by some parsed card, and card numbers must run 1..M with no gaps or duplicates.
 func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -175,13 +141,7 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	return findings
 }
 
-// cardPathMalformedReason reports why p is not a well-formed plan-format-v3
-// card path, or "" when p is well-formed. p is already normalized (root:///
-// resolution applied by normalizeCard at parse time), so a still-absolute
-// path or a surviving ".." segment here is a genuine escape past the worktree
-// root, not an artifact of an unresolved root:. p is treated as a POSIX-style
-// path (plan files are authored with forward slashes) so the check behaves
-// the same on every platform Validate runs on.
+// cardPathMalformedReason reports why p is not a well-formed plan-format-v3 card path, or "" when well-formed.
 func cardPathMalformedReason(p string) string {
 	if p == "" {
 		return "empty entry"
@@ -196,8 +156,6 @@ func cardPathMalformedReason(p string) string {
 			return `contains a ".." escape`
 		}
 	}
-	// Reuse normalize.go's own cleanPosixPath rather than re-implementing
-	// path.Clean's segment-collapsing rules a second time in this package.
 	if cleaned := cleanPosixPath(posix); cleaned != posix {
 		return fmt.Sprintf("not a clean path (cleans to %q)", cleaned)
 	}
@@ -205,10 +163,7 @@ func cardPathMalformedReason(p string) string {
 	return ""
 }
 
-// checkCardPathMalformed implements card-path-malformed (v2's scope-malformed,
-// renamed because Scope is gone in v3): every card path — all four non-Moves
-// typed fields and both sides of every Moves: pair — must be non-empty,
-// relative, clean, and free of ".." escapes, once normalized.
+// checkCardPathMalformed implements card-path-malformed: every card path must be non-empty, relative, clean, and free of ".." escapes.
 func checkCardPathMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -240,10 +195,7 @@ func checkCardPathMalformed(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkMoveFormat implements move-format: every card's non-well-formed
-// "Moves:" sub-bullet (retained verbatim in Card.MovesRaw by the
-// lenient-card-parse parser) yields one finding, quoting the raw bullet and
-// naming the offending card so a Planner can find and fix it.
+// checkMoveFormat implements move-format: every card's non-well-formed "Moves:" sub-bullet yields one finding.
 func checkMoveFormat(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -263,11 +215,7 @@ func checkMoveFormat(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkMoveRedundant implements move-redundant: a plan-wide check (v3 has no
-// batch to scope it to) — a path that is both a Moves: endpoint (either side
-// of any card's pair) and named in the whole plan's Creates:/Deletes: (across
-// any card) is a conflicting instruction: the Planner must pick one
-// mechanism, not both. Findings are sorted by path for determinism.
+// checkMoveRedundant implements move-redundant: a path that is both a Moves: endpoint and in Creates:/Deletes: is a conflicting instruction.
 func checkMoveRedundant(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -307,11 +255,7 @@ func checkMoveRedundant(plan *Plan) []ValidationError {
 	return findings
 }
 
-// createsUnion returns the union, across every card in plan, of every
-// CreatesFiles entry: plan-wide suppression semantics — order-independent, so
-// a Moves: source or target satisfied by ANY card's Creates: (earlier or
-// later in the Card Index) is not flagged. Consulted by checkMoveSourceMissing
-// and checkPathMissing.
+// createsUnion returns the union, across every card in plan, of every CreatesFiles entry.
 func createsUnion(plan *Plan) map[string]bool {
 	union := make(map[string]bool)
 	for _, c := range plan.Cards {
@@ -322,10 +266,7 @@ func createsUnion(plan *Plan) map[string]bool {
 	return union
 }
 
-// movesTargetsUnion returns the union, across every card in plan, of every
-// MovePair.New: the second plan-wide suppression set, letting a chained
-// rename (card A: X -> Y, card B: Y -> Z) pass move-source-missing regardless
-// of Card Index order.
+// movesTargetsUnion returns the union, across every card in plan, of every MovePair.New.
 func movesTargetsUnion(plan *Plan) map[string]bool {
 	union := make(map[string]bool)
 	for _, c := range plan.Cards {
@@ -336,20 +277,13 @@ func movesTargetsUnion(plan *Plan) map[string]bool {
 	return union
 }
 
-// pathExistsOnDisk reports whether worktreeRoot-joined p exists on disk —
-// shared by every existence-dependent check (move-source-missing,
-// move-target-collision, path-missing). These three checks are the sole
-// place Validate's worktreeRoot parameter is consulted, matching the frozen
-// v2 validator's design.
+// pathExistsOnDisk reports whether worktreeRoot-joined p exists on disk.
 func pathExistsOnDisk(worktreeRoot, p string) bool {
 	_, err := os.Stat(filepath.Join(worktreeRoot, p))
 	return err == nil
 }
 
-// checkMoveSourceMissing implements move-source-missing: a Moves: source that
-// neither exists on disk nor is created or relocated by another card
-// (plan-wide createsUnion/movesTargetsUnion suppression) is a dangling
-// rename instruction.
+// checkMoveSourceMissing implements move-source-missing: a Moves: source that doesn't exist on disk and isn't created/relocated by another card.
 func checkMoveSourceMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 
@@ -378,20 +312,11 @@ func checkMoveSourceMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	return findings
 }
 
-// checkMoveTargetCollision implements move-target-collision: three OR'd
-// conditions per Moves: target, first match wins per occurrence: the target
-// already exists on disk; more than one card names it as a Moves: target; or
-// it collides with a DIFFERENT card's Creates: entry (same-card overlap is
-// card-field-overlap's job, so it is deliberately skipped here).
+// checkMoveTargetCollision implements move-target-collision: a target that already exists, is targeted by multiple cards, or collides with a different card's Creates:.
 func checkMoveTargetCollision(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 
-	// targetCards counts, per target path, the distinct cards that name it
-	// as a Moves: target — a size over 1 is condition (2).
 	targetCards := make(map[string]map[string]bool)
-	// targetCreatesCards records, per target path, the distinct cards whose
-	// Creates: field names it — used by condition (3) to detect a DIFFERENT
-	// card's Creates: collision.
 	targetCreatesCards := make(map[string]map[string]bool)
 	for _, c := range plan.Cards {
 		id := cardID(c)
@@ -442,14 +367,7 @@ func checkMoveTargetCollision(plan *Plan, worktreeRoot string) []ValidationError
 	return findings
 }
 
-// checkMoveMechanicMissing implements move-mechanic-missing: now a plan-level
-// check (v2's was per-batch) — a plan with at least one parsed Moves: pair
-// (across any card) but an empty Plan.RenameMechanic (the overview's "##
-// Rename mechanic" section batch 1's sections.go already extracts) is missing
-// the mechanical instruction that pins how the rename must be carried out. A
-// plan whose every Moves: field is "none" (zero pairs) is skipped — a
-// MovesRaw-only defect is move-format's finding, and requiring the section
-// too would double-report the same underlying mistake.
+// checkMoveMechanicMissing implements move-mechanic-missing: a plan with at least one Moves: pair but an empty RenameMechanic section.
 func checkMoveMechanicMissing(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -470,20 +388,13 @@ func checkMoveMechanicMissing(plan *Plan) []ValidationError {
 	return findings
 }
 
-// cardFieldLabel pairs a card field's Has-presence bool with the bold label
-// plan-format-v3.md pins for it, in field order — checkCardMissingField's only
-// data shape, kept next to the check so the field order stays visibly tied to
-// the check that walks it.
+// cardFieldLabel pairs a card field's Has-presence bool with its bold label.
 type cardFieldLabel struct {
 	present bool
 	label   string
 }
 
-// checkCardMissingField implements card-missing-field: every card must carry
-// all seven of What:/Context:/Edits:/Creates:/Deletes:/Moves:/Depends-on: — a
-// missing label yields one finding per absent field, Detail naming the card and
-// the missing label. Commit: and verify: are optional and never flagged. v3
-// adds Depends-on: to the six fields v2 required.
+// checkCardMissingField implements card-missing-field: every card must carry all seven required fields.
 func checkCardMissingField(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -512,13 +423,7 @@ func checkCardMissingField(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkCardFieldOverlap implements card-field-overlap: within a single card, a
-// path appearing in more than one of ContextFiles/EditsFiles/CreatesFiles/
-// DeletesFiles, or as either side of a Moves: pair, is a conflicting
-// instruction — one finding per duplicated path, Detail naming the card and
-// every field the path appears in. Overlap is deliberately per-card only, per
-// plan-format-v3.md: the same path in one card's Creates: and a later card's
-// Edits: is legitimate cross-card sequencing, not a defect.
+// checkCardFieldOverlap implements card-field-overlap: a path appearing in more than one field within a single card.
 func checkCardFieldOverlap(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -573,26 +478,13 @@ func checkCardFieldOverlap(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkCardNumbering implements card-numbering: a card file's own "# Card N —
-// <name>" heading number must equal the number the Card Index assigned it.
-// Unlike v2 (where this check also verified a per-batch 1..M card sequence),
-// v3's cards ARE the Card Index — that sequencing is index-file-mismatch's job
-// now (checkIndexFileConsistency above), since there is no narrower per-batch
-// unit left to sequence separately. This check's own job — the heading-vs-index
-// cross-check — is genuinely unique work: ParsePlan deliberately discards the
-// heading's own captured number once the title text is extracted (see
-// parseCardFile's comment), so this check re-reads the card file directly
-// against plan.Dir (not the caller-supplied worktreeRoot) to recover it.
+// checkCardNumbering implements card-numbering: a card file's heading number must equal the Card Index number.
 func checkCardNumbering(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
 		headingNumber, ok := cardHeadingNumber(plan.Dir, c)
 		if !ok {
-			// The card file was unreadable or its heading unrecognized — both
-			// are document-structure failures ParsePlan would already have
-			// caught fail-loud for a plan that reached Validate at all, so
-			// this is unreachable in practice; skip rather than panic.
 			continue
 		}
 		if headingNumber != c.Number {
@@ -610,11 +502,7 @@ func checkCardNumbering(plan *Plan) []ValidationError {
 	return findings
 }
 
-// cardHeadingNumber re-reads c's own card file under planDir and extracts the
-// number its "# Card N — <name>" title heading carries, reusing parse.go's own
-// cardFileName/cardHeadingRe (same package, so no edit to parse.go is needed)
-// rather than duplicating that grammar. Returns ok == false when the file
-// cannot be read or its first line does not match the heading grammar.
+// cardHeadingNumber re-reads c's own card file and extracts its heading number.
 func cardHeadingNumber(planDir string, c Card) (int, bool) {
 	path := filepath.Join(planDir, cardFileName(c.Number, c.Slug))
 	data, err := os.ReadFile(path)
@@ -635,13 +523,7 @@ func cardHeadingNumber(planDir string, c Card) (int, bool) {
 	return n, true
 }
 
-// checkPathMissing implements path-missing: every card path in ContextFiles,
-// EditsFiles, and DeletesFiles must exist on disk under worktreeRoot, unless
-// it is satisfied by some card's Creates: or some Moves: pair's target (the
-// same plan-wide createsUnion/movesTargetsUnion suppression sets
-// move-source-missing consults). CreatesFiles is deliberately excluded —
-// those paths are new by definition — and a card's own Moves: sources are
-// move-source-missing's job, not this check's.
+// checkPathMissing implements path-missing: every card path in ContextFiles, EditsFiles, and DeletesFiles must exist on disk or be satisfied by Creates: or Moves: targets.
 func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 
@@ -672,11 +554,7 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	return findings
 }
 
-// checkCommitSubjectMismatch implements commit-subject-mismatch: a card's
-// non-empty Commit value must start with the exact "N: " prefix its own flat
-// card number pins — v3's numbering-and-commit-subject discipline, the
-// resume-trail invariant a pinned message that breaks the "N:" shape would
-// corrupt.
+// checkCommitSubjectMismatch implements commit-subject-mismatch: a card's Commit value must start with the "N: " prefix.
 func checkCommitSubjectMismatch(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -700,18 +578,10 @@ func checkCommitSubjectMismatch(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkDependsOnOrder implements depends-on-order: a card's Depends-on: must
-// name only cards strictly earlier in the Card Index — an id naming the
-// card's own position, a later card, or a number that references no existing
-// card at all is flagged before any LLM-based review runs, at zero LLM cost
-// (plan-format-v3.md's "Depends-on" rationale).
+// checkDependsOnOrder implements depends-on-order: a card's Depends-on: must name only cards strictly earlier in the Card Index.
 func checkDependsOnOrder(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	// positionOf maps each card's own Number to its index in plan.Cards, so
-	// "at or after its own position" can be checked by comparing index
-	// positions rather than raw card numbers (which need not be contiguous
-	// once index-file-mismatch already has its own finding for that).
 	positionOf := make(map[int]int, len(plan.Cards))
 	for i, c := range plan.Cards {
 		positionOf[c.Number] = i

@@ -130,9 +130,8 @@ func TestArchiveStaleOutcome_AbsentFileIsNoOp(t *testing.T) {
 	}
 }
 
-// fixedClock returns a func() time.Time that always returns t, letting a
-// test pin ArchiveStaleOutcome's timestamp deterministically instead of
-// racing the real clock.
+// fixedClock returns a func() time.Time that always returns t, for
+// deterministic testing of ArchiveStaleOutcome's timestamp.
 func fixedClock(t time.Time) func() time.Time {
 	return func() time.Time { return t }
 }
@@ -185,8 +184,7 @@ func TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix(t *testing.T) {
 		t.Fatalf("first ArchiveStaleOutcome() error = %v; want nil", err)
 	}
 
-	// A fresh outcome.yaml, written after the first was archived away, is
-	// itself archived a second time within the same clock-second.
+	// Archive again within the same second to test collision handling.
 	writeOutcomeFile(t, filepath.Join(dir, "outcome.yaml"), "outcome: paused\nstuck_reason: null\nbatches_done: 2\n")
 	second, err := builderengine.ArchiveStaleOutcome(dir, clk)
 	if err != nil {
@@ -202,7 +200,7 @@ func TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix(t *testing.T) {
 		t.Errorf("second ArchiveStaleOutcome() = %q; want %q", second, wantSecond)
 	}
 
-	// Both archived files must survive, distinct and unclobbered.
+	// Verify both archives survive with distinct content.
 	firstContent, err := os.ReadFile(first)
 	if err != nil {
 		t.Fatalf("ReadFile(first %q): %v", first, err)

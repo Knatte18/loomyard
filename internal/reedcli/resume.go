@@ -10,8 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resumeCmd builds the `resume` subcommand: calls c.eng.Resume() and emits
-// the session name plus how many strands were relaunched.
+// resumeCmd builds the `resume` subcommand.
 func (c *reedCLI) resumeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "resume",

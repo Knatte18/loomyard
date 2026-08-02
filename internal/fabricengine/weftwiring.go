@@ -30,19 +30,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// weftRepoExists reports whether a weft repo exists at the expected location.
-//
-// A weft repo must be a directory that passes the git rev-parse --is-inside-work-tree check.
+// weftRepoExists reports whether a weft repo exists and is a valid git
+// repository.
 func weftRepoExists(l *hubgeometry.Layout) bool {
 	weftRepoRoot := l.WeftRepoRoot()
 
-	// Check if directory exists
 	info, err := os.Stat(weftRepoRoot)
 	if err != nil || !info.IsDir() {
 		return false
 	}
 
-	// Check if it's a valid git repo
 	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--is-inside-work-tree"}, weftRepoRoot)
 	if err != nil {
 		return false
@@ -51,10 +48,7 @@ func weftRepoExists(l *hubgeometry.Layout) bool {
 	return exitCode == 0
 }
 
-// weftBranchExists reports whether branch (an already-suffixed weft branch
-// name, i.e. the result of WeftBranchName) exists in the weft repo.
-//
-// It uses git rev-parse --verify to check for the branch.
+// weftBranchExists reports whether the weft branch exists in the weft repo.
 func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--verify", "refs/heads/" + branch},
@@ -66,13 +60,8 @@ func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
 	return exitCode == 0
 }
 
-// createWeftWorktree creates a new weft worktree at the given path on branch
-// (an already-suffixed weft branch name, i.e. the result of WeftBranchName).
-//
-// The new weft branch forks from startPoint (the parent's weft branch), preserving the
-// shared merge-base needed for future squash-merge-back operations. Runs
-// git worktree add -b <branch> <path> <startPoint> in the weft repo root.
-// Returns an error if the command fails or exits with non-zero code.
+// createWeftWorktree creates a new weft worktree on branch, forking from
+// startPoint to preserve the merge-base for future squash-merge-back.
 func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
 	_, _, exitCode, err := gitexec.RunGit(
@@ -88,15 +77,7 @@ func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) 
 	return nil
 }
 
-// pushWeftBranch pushes branch (an already-suffixed weft branch name, i.e. the
-// result of WeftBranchName) to the origin remote.
-//
-// When opts.SkipGit or opts.SkipPush is true the push is skipped and nil is
-// returned, preserving the same semantics warp's AddOptions gives its
-// pushWeftBranch.
-//
-// Otherwise, runs git push -u origin <branch> from the weft worktree.
-// Returns an error if the command fails or exits with non-zero code.
+// pushWeftBranch pushes the weft branch to origin, honoring SkipGit/SkipPush.
 func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
@@ -117,53 +98,16 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions
 	return nil
 }
 
-// removeHostJunction removes every host junction for slug — every entry in
-// l.HostJunctions(slug, names) — via fslink.Remove. It is a thin wrapper over
-// removeJunctionRecords, which owns the actual best-effort loop; the split
-// exists purely so the loop's continue-past-failure contract is directly
-// testable against a synthetic junction slice, since l.HostJunctions always
-// returns exactly one entry today and cannot itself produce the
-// multi-junction scenario the contract is about (mirroring
-// unseedLyxJunction/unseedJunctionRecords in junction.go).
-//
-// names is caller-supplied; removeHostJunction loads no config itself. Its
-// caller (Remove) sources names from the repo-wide `BoardDir` base,
-// best-effort — see Remove's godoc for why an unreadable config there yields
-// names == nil rather than a hard failure, and the residual risk that
-// accepts for a nested (RelPath != ".") junction.
-//
-// Returns nil if every junction is already absent (idempotent). See
-// removeJunctionRecords for the error case.
+// removeHostJunction removes every host junction for slug via fslink.Remove.
+// Returns nil if all are absent (idempotent).
 func removeHostJunction(l *hubgeometry.Layout, slug string, names []string) error {
 	return removeJunctionRecords(l.HostJunctions(slug, names))
 }
 
-// removeJunctionRecords removes each junction in junctions via fslink.Remove.
-//
-// It is best-effort and deliberately continues past a per-junction failure,
-// accumulating every error via errors.Join rather than aborting on the first —
-// the opposite of unseedJunctionRecords' abort-on-first-junction-error rule in
-// junction.go, and deliberately so. A future reader must not "fix" one loop to
-// match the other; they intentionally disagree. Remove's call site is
-// `_ = removeHostJunction(l, slug)`, discarding the return value exactly as the
-// adjacent removePortal and removeLaunchers calls in the same teardown do, so
-// aborting on the first junction's failure would silently leave every later
-// junction in place — defeating the whole point of this step.
-//
-// This step exists because Remove's later link-cleanup step,
-// fslink.RemoveLinksIn(target), scans only the immediate children of the
-// worktree root and misses a nested junction whenever RelPath != "." — the
-// reason step (5) of Remove removes junctions explicitly, before that safety
-// net runs. Leaving this _lyx-only would reintroduce exactly that documented
-// bug for every junction after the first. Remove's call site is
-// `_ = removeHostJunction(l, slug, names)`, discarding the return value
-// exactly as the adjacent removePortal and removeLaunchers calls in the same
-// teardown do.
-//
-// Returns nil if junctions is empty or every entry is already absent
-// (idempotent). Returns a joined error naming every junction whose removal
-// failed; a non-nil error does NOT mean no junction was removed — the loop
-// still attempted (and may have succeeded for) every other junction.
+// removeJunctionRecords removes each junction via fslink.Remove in a
+// best-effort loop, continuing past per-junction failures and accumulating
+// errors. Returns nil if empty or all absent (idempotent); non-nil error does
+// not mean no junction was removed.
 func removeJunctionRecords(junctions []hubgeometry.HostJunction) error {
 	var errs []error
 	for _, j := range junctions {
@@ -174,31 +118,15 @@ func removeJunctionRecords(junctions []hubgeometry.HostJunction) error {
 	return errors.Join(errs...)
 }
 
-// removeWeftWorktree tears down the weft worktree, optionally its branch (an
-// already-suffixed weft branch name, i.e. the result of WeftBranchName), and
-// related state.
-//
-// Steps (best-effort, errors collected):
-//  1. git worktree remove [--force] <weft-worktree-path>
-//  2. git branch -D <branch> (only when deleteBranch is true)
-//  3. git worktree prune
-//
-// deleteBranch exists for Add's rollback of an ADOPTED weft branch: when Add
-// merely adopted a pre-existing branch (rather than creating one), rolling
-// back must remove only the worktree Add created and leave the branch — and
-// any unpushed history it carries — untouched. Deleting it would destroy work
-// that predates the failed Add, the exact work Cleanup's raddle-fold-back
-// gate exists to protect.
-//
-// All commands run with cwd = WeftRepoRoot.
-// Returns the first error encountered, or nil if all steps succeed.
+// removeWeftWorktree tears down the weft worktree, optionally its branch, and
+// prunes stale worktree entries. Returns the first error encountered, or nil
+// if all steps succeed.
 func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force, deleteBranch bool) error {
 	weftPath := l.WeftWorktreePath(slug)
 	weftRoot := l.WeftRepoRoot()
 
 	var firstErr error
 
-	// Remove weft worktree
 	args := []string{"worktree", "remove"}
 	if force {
 		args = append(args, "--force")
@@ -215,8 +143,6 @@ func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force, delet
 		}
 	}
 
-	// Delete branch — skipped when the caller does not own the branch (an
-	// adopted, pre-existing weft branch survives its worktree's rollback).
 	if deleteBranch {
 		_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", branch}, weftRoot)
 		if err != nil || exitCode != 0 {
@@ -230,7 +156,6 @@ func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force, delet
 		}
 	}
 
-	// Prune worktrees
 	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, weftRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {

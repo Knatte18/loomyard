@@ -58,16 +58,9 @@ func PauseRequested(builderDir string) bool {
 	return err == nil
 }
 
-// ClearPause removes builderDir's pause flag file, doing nothing if it is
-// already absent — clearing an already-clear flag is not an error. Callers
-// MUST invoke this once run has passed its refusal gates and is committed to
-// spawning a fresh orchestrator (so a resumed run never instantly re-pauses on
-// the flag that requested the very pause it is now resuming from — while a run
-// that refuses on a validation finding or a fingerprint mismatch leaves the
-// operator's pending pause intact rather than discarding a request it never
-// acted on) and again at every terminal outcome (so a pause request that lost
-// the race against the last batch settling on its own never lingers in a
-// finished run's builder dir).
+// ClearPause removes builderDir's pause flag, idempotently. Callers must
+// invoke this after passing refusal gates (to avoid re-pausing on a resumed
+// run's own flag) and at every terminal outcome.
 func ClearPause(builderDir string) error {
 	path := PauseFlagPath(builderDir)
 	if err := os.Remove(path); err != nil {

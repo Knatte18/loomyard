@@ -12,16 +12,12 @@ import (
 	"github.com/gofrs/flock"
 )
 
-// FileLock wraps a file-based advisory lock (gofrs/flock). The same type backs
-// both exclusive (write) and shared (read) locks; Release drops whichever was
-// taken. Because it is a real OS file lock it coordinates across processes — the
-// way Loomyard is actually used, one short-lived process per command.
+// FileLock wraps a file-based advisory lock (gofrs/flock) for both exclusive and shared access.
 type FileLock struct {
 	fl *flock.Flock
 }
 
-// AcquireWriteLock acquires an exclusive lock on lockPath, blocking until it is
-// available. While held, no other exclusive or shared lock on the path succeeds.
+// AcquireWriteLock acquires an exclusive lock, blocking until available.
 func AcquireWriteLock(lockPath string) (*FileLock, error) {
 	fl := flock.New(lockPath)
 	if err := fl.Lock(); err != nil {
@@ -30,13 +26,8 @@ func AcquireWriteLock(lockPath string) (*FileLock, error) {
 	return &FileLock{fl}, nil
 }
 
-// TryAcquireWriteLock attempts to acquire an exclusive lock on lockPath
-// without blocking: it returns (lock, true, nil) on success, and (nil,
-// false, nil) — not an error — when the lock is already held by someone
-// else, so a caller can fail fast with its own descriptive message ("this
-// resource is already in use") instead of hanging until a possibly
-// long-running holder releases it. A non-nil error is reserved for an
-// actual OS-level failure to even attempt the lock.
+// TryAcquireWriteLock attempts to acquire an exclusive lock without blocking.
+// It reports (lock, true, nil) on success, and (nil, false, nil) when already held (not an error).
 func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
 	fl := flock.New(lockPath)
 	locked, err := fl.TryLock()
@@ -49,10 +40,7 @@ func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
 	return &FileLock{fl}, true, nil
 }
 
-// AcquireReadLock acquires a shared lock on lockPath, blocking until it is
-// available. Multiple readers may hold it at once; it blocks only while a writer
-// holds the exclusive lock. Used to fence reads of tasks.json against the brief
-// instant a writer is swapping the file in (see store.Save / store.Load).
+// AcquireReadLock acquires a shared lock, blocking until available.
 func AcquireReadLock(lockPath string) (*FileLock, error) {
 	fl := flock.New(lockPath)
 	if err := fl.RLock(); err != nil {

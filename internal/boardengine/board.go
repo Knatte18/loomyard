@@ -64,9 +64,8 @@ const (
 )
 
 // Board is the high-level facade over a board directory.
-// Every mutating method acquires an exclusive file lock, mutates one or both
-// stores, and renders output files; the slow remote backup (commit + push) is
-// handed off to a detached sync process so the write returns immediately.
+// Every mutating method acquires an exclusive file lock, mutates the stores,
+// and renders output files; the remote backup (commit + push) is detached.
 type Board struct {
 	boardPath string
 	out       Outputs
@@ -94,15 +93,10 @@ const (
 	notesTarget
 )
 
-// boardCriticalSection runs the locked, dual-store scaffolding shared by
-// every mutating Board method: lock → load both stores → fn → render from
-// both stores' current state → spawn detached sync. It never calls
-// Store.Save itself — fn is responsible for saving whichever store(s) it
-// mutated, in whatever order its own crash-safety story requires (see
-// writeOp for the common single-store case and PromoteNote for the dual-save
-// case). This is the concrete mechanism behind discussion.md's combined-lock
-// decision: one lock/render/sync path shared by every writer, rather than two
-// separate per-file locks with an ordering rule.
+// boardCriticalSection runs the locked, dual-store scaffolding shared by every
+// mutating Board method: it acquires a lock, loads both stores, calls fn to mutate
+// them, renders outputs, and spawns a detached sync. fn is responsible for saving
+// whichever store(s) it mutated.
 func (b *Board) boardCriticalSection(fn func(tasksStore, notesStore *Store) (any, error)) (any, error) {
 	// Guard before any disk mutation: a Board built without output filenames
 	// (the --board-path shape, which carries only the data dir) can sync and
@@ -113,21 +107,16 @@ func (b *Board) boardCriticalSection(fn func(tasksStore, notesStore *Store) (any
 		return nil, fmt.Errorf("board outputs not configured; write commands require board config (not --board-path)")
 	}
 
-	// (0) Ensure board directory exists before acquiring lock
-	// (the lock file lives inside the board dir)
 	if err := os.MkdirAll(b.boardPath, 0o755); err != nil {
 		return nil, fmt.Errorf("mkdir board: %w", err)
 	}
 
-	// (1) Acquire write lock
 	lock, err := flock.AcquireWriteLock(filepath.Join(b.boardPath, writeLockFile))
 	if err != nil {
 		return nil, fmt.Errorf("acquire lock: %w", err)
 	}
 	defer lock.Release()
 
-	// (2) Load both stores — every writer needs both, either as its own
-	// mutation target or as the "other" store a cross-store check reads.
 	tasksStore := NewStore(filepath.Join(b.boardPath, tasksFile))
 	if err := tasksStore.Load(); err != nil {
 		return nil, fmt.Errorf("load tasks store: %w", err)
@@ -137,22 +126,15 @@ func (b *Board) boardCriticalSection(fn func(tasksStore, notesStore *Store) (any
 		return nil, fmt.Errorf("load notes store: %w", err)
 	}
 
-	// (3) Call fn. fn saves whichever store(s) it mutated itself.
 	result, err := fn(tasksStore, notesStore)
 	if err != nil {
 		return nil, err
 	}
 
-	// (4) Render the readable README (render.go owns all markdown output and
-	// orphan cleanup; board.go only deals with the two JSON stores) from both
-	// stores' current, just-saved state.
 	if err := RenderToDisk(b.boardPath, tasksStore.Tasks(), notesStore.Tasks(), b.out); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 
-	// (5) Hand the remote backup to a detached sync process and return. The data
-	// is already durable on disk; a failed spawn just defers backup to the next
-	// write, since git push is cumulative.
 	if !b.skipGit {
 		_ = spawnSync(b.boardPath)
 	}
@@ -160,11 +142,8 @@ func (b *Board) boardCriticalSection(fn func(tasksStore, notesStore *Store) (any
 	return result, nil
 }
 
-// writeOp runs the common single-store write shape: pick target/other from
-// (tasksStore, notesStore) per target, call mutate, and on success save only
-// the target store. It is a thin wrapper over boardCriticalSection for the
-// seven existing task-mutating methods, none of which need to save the other
-// store.
+// writeOp runs the common single-store write shape: it selects target and other
+// stores per target, calls mutate, and saves only the target store on success.
 func (b *Board) writeOp(target storeTarget, mutate func(target, other *Store) (any, error)) (any, error) {
 	return b.boardCriticalSection(func(tasksStore, notesStore *Store) (any, error) {
 		targetStore, otherStore := tasksStore, notesStore
@@ -177,9 +156,7 @@ func (b *Board) writeOp(target storeTarget, mutate func(target, other *Store) (a
 			return nil, err
 		}
 
-		// Save the target store — tasks.json/notes.json is the source of truth,
-		// persisted before the derived .md view (so a crash never leaves .md
-		// ahead of the data).
+		// Save the target store before the derived .md view (JSON is authoritative).
 		if err := targetStore.Save(); err != nil {
 			return nil, fmt.Errorf("save store: %w", err)
 		}
@@ -305,23 +282,18 @@ func (b *Board) Sync() error {
 }
 
 // HealthCheck verifies the board directory and tasks.json file exist and are readable.
-// Returns nil if the board is healthy, or an error if the board dir is absent,
-// tasks.json is absent/unreadable, or any other I/O error occurs.
 // Syntactically corrupt but readable files pass the health check.
 func (b *Board) HealthCheck() error {
-	// Check if board directory exists
 	if _, err := os.Stat(b.boardPath); err != nil {
 		return err
 	}
 
-	// Check if tasks.json exists and is readable
 	tasksPath := filepath.Join(b.boardPath, tasksFile)
 	_, err := os.ReadFile(tasksPath)
 	return err
 }
 
 func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
-	// Short-circuit if board dir does not exist
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return Task{}, false, nil
 	}
@@ -336,7 +308,6 @@ func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 }
 
 func (b *Board) ListTasksBrief() ([]BriefTask, error) {
-	// Short-circuit if board dir does not exist
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -350,7 +321,6 @@ func (b *Board) ListTasksBrief() ([]BriefTask, error) {
 }
 
 func (b *Board) ListTasksFull() ([]Task, error) {
-	// Short-circuit if board dir does not exist
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
 		return nil, nil
 	}

@@ -19,18 +19,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// fileSetYAML mirrors burlerengine.FileSet's YAML shape (the target/fasit
-// key of a profile file): a list of paths and/or free-form instructions.
+// fileSetYAML mirrors burlerengine.FileSet's YAML shape.
 type fileSetYAML struct {
 	Paths        []string `yaml:"paths"`
 	Instructions string   `yaml:"instructions"`
 }
 
-// profileYAML mirrors a profile file's top-level shape 1:1 onto
-// burlerengine.Profile's fields. It exists as a separate type (rather than
-// decoding straight into Profile) so the YAML key vocabulary — kebab-case,
-// matching the discussion's profile-file contract — stays decoupled from
-// Profile's Go field names.
+// profileYAML mirrors a profile file's top-level shape, using kebab-case keys.
 type profileYAML struct {
 	Target            fileSetYAML `yaml:"target"`
 	Fasit             fileSetYAML `yaml:"fasit"`
@@ -44,14 +39,8 @@ type profileYAML struct {
 	PriorFixerReports []string    `yaml:"prior-fixer-reports"`
 }
 
-// decodeProfile strictly decodes a profile file's raw bytes into a
-// burlerengine.Profile. Decoding uses yaml.v3's Decoder.KnownFields(true)
-// per the yaml-strictness-split decision: an operator typo in a profile key
-// (e.g. "fixscope:" for "fix-scope:") must fail loudly here rather than
-// silently zeroing a safety-critical field. decodeProfile performs no
-// content validation itself (existence checks, FixScope legality, and so
-// on) — that stays the engine's job via Profile.validate, so this function's
-// only responsibility is the YAML-to-struct mapping.
+// decodeProfile strictly decodes a profile file into burlerengine.Profile
+// using Decoder.KnownFields(true). Content validation is Profile.validate's job.
 func decodeProfile(data []byte) (burlerengine.Profile, error) {
 	var parsed profileYAML
 
@@ -81,26 +70,8 @@ func decodeProfile(data []byte) (burlerengine.Profile, error) {
 	}, nil
 }
 
-// runCmd builds the `run` subcommand: validates that --profile was supplied
-// before ever touching c.engine (matching shuttlecli's run.go flag-shape
-// pattern, so the flag error surfaces in its own JSON line rather than being
-// swallowed by, or racing with, a failing PersistentPreRunE's already-
-// recorded exit code — see cli_test.go's TestRunCLI_Run_MissingProfile),
-// reads and strictly decodes the --profile file into a burlerengine.Profile,
-// maps the four run-tuning flags onto a burlerengine.RunOpts, and blocks on
-// c.engine.Run(profile, opts) until the round reaches a classified outcome.
-// Every error path (missing --profile, profile read, strict decode, or a Run
-// failure — validation, fan resolution, cluster audit policy, shuttle,
-// verdict parse) goes through output.Err; a successful Run — for any
-// outcome, not only done — is reported via output.Ok, mirroring shuttlecli's
-// run.go pattern where a classified outcome is data, not an error.
-//
-// --profile is validated manually here rather than via cobra's
-// MarkFlagRequired: MarkFlagRequired's error is raised by cobra itself,
-// after PersistentPreRunE returns but before RunE (and ShouldAbort) is ever
-// consulted, which routes it through clihelp.RunRoot's generic
-// cobra-error-wrapping path instead of through SetExit like every other
-// error this command reports.
+// runCmd builds the `run` subcommand. It validates --profile manually (rather
+// than via MarkFlagRequired) to route the flag error through SetExit.
 func (c *burlerCLI) runCmd() *cobra.Command {
 	var (
 		profilePath string

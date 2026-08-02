@@ -17,9 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 )
 
-// writePlanFiles writes every entry of files (keyed by filename, e.g.
-// "00-overview.md") into a fresh temp plan directory and returns that
-// directory's path.
+// writePlanFiles writes every entry of files into a fresh temp plan
+// directory and returns that directory's path.
 func writePlanFiles(t *testing.T, files map[string]string) string {
 	t.Helper()
 
@@ -33,19 +32,15 @@ func writePlanFiles(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// writeOverview writes a minimal 00-overview.md with the given content into
-// a fresh temp plan directory and returns that directory's path. Used only
-// by tests that never reach per-batch file parsing (overview-level errors).
+// writeOverview writes minimal 00-overview.md into a fresh temp plan
+// directory and returns that directory's path.
 func writeOverview(t *testing.T, content string) string {
 	t.Helper()
 	return writePlanFiles(t, map[string]string{"00-overview.md": content})
 }
 
-// minimalBatchFile is a syntactically complete v2 batch file body: a Scope
-// entry, one "### Card 01.1" card carrying all five required file-op
-// fields ("none" except a single Edits: bullet), and a verify: command —
-// enough to satisfy parseBatchFile without exercising any of its optional
-// paths.
+// minimalBatchFile is a syntactically complete v2 batch file body with
+// Scope, one card with all five required fields, and verify:.
 func minimalBatchFile(scopePath, editsPath, verifyCommand string) string {
 	return "# Batch\n\n## Scope\n\n- " + scopePath + "\n\n## Cards\n\n" +
 		"### Card 01.1 — placeholder\n\n" +
@@ -112,7 +107,7 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 			}
 
 			dir := writePlanFiles(t, map[string]string{
-				"00-overview.md": "---\nformat: 2\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Batch Index\n\n- 01 — json-flag (1 card) — placeholder\n",
+				"00-overview.md":  "---\nformat: 2\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Batch Index\n\n- 01 — json-flag (1 card) — placeholder\n",
 				"01-json-flag.md": batchBody,
 			})
 
@@ -318,9 +313,8 @@ Framing.
 - 01 — only (1 card) — the only batch
 `
 
-// parseSingleBatch writes singleBatchOverview plus one "01-only.md" batch
-// file with the given body and returns the parsed PlanBatch (t.Fatal on any
-// ParsePlan error).
+// parseSingleBatch writes a single-batch overview with the given body
+// and returns the parsed PlanBatch.
 func parseSingleBatch(t *testing.T, batchBody string) builderengine.PlanBatch {
 	t.Helper()
 

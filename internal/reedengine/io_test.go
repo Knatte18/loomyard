@@ -16,12 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// TestResolveLivePaneID pins the one lookup SendText, SendKey, and
-// CapturePane all share: an unknown guid, a still-hidden strand (never
-// launched, so no pane), and a registered-but-unbound strand (empty
-// PaneID) each reject with a guid-naming error, while a strand holding a
-// live PaneID resolves to it. Every pane-transport op's error paths trace
-// back to this one table.
+// TestResolveLivePaneID pins the lookup all pane-transport ops share.
 func TestResolveLivePaneID(t *testing.T) {
 	st := &ReedState{Strands: []Strand{
 		{GUID: "live", PaneID: "%1", Display: render.Display{Anchor: render.AnchorBelowParent}},

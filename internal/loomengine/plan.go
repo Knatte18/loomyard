@@ -32,17 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// composePlanPrompt builds the Plan producer's prompt by composing the
-// template's three required top-level marker values (the decision record
-// path, the plan directory the agent writes into, and the overview file
-// path it must write last), plus patternDirective under the optional
-// pattern_directive marker, and filling planTemplate with them via
-// stencil.FillOptional. Unlike composePrompt, there is no mode-specific
-// branch to compose: the Plan producer is autonomous-only, so
-// plan-template.md carries a single, unconditional instruction set.
-// composePlanPrompt stays a pure string function — patternDirective is
-// computed one level up, in PlanSpec, which already holds the Layout this
-// function has no need for.
+// composePlanPrompt builds the Plan producer's prompt by filling the template.
 func composePlanPrompt(decisionRecordPath, planDir, overviewPath, patternDirective string) ([]byte, error) {
 	values := map[string]string{
 		"decision_record_path": decisionRecordPath,
@@ -58,25 +48,8 @@ func composePlanPrompt(decisionRecordPath, planDir, overviewPath, patternDirecti
 	return rendered, nil
 }
 
-// PlanSpec builds the shuttleengine.Spec for one Plan producer run against
-// layout, using cfg's plan role model-spec and timeout knob and reg to
-// resolve that model-spec. Unlike DiscussionSpec, PlanSpec takes no slug
-// and no autonomous param: the Plan producer's sole input is
-// layout.DiscussionDecisionRecord() (self-contained, no board read), and
-// it is always autonomous (Interactive is always false).
-//
-// The Resolved→Spec field mapping mirrors DiscussionSpec's: Spec.Model =
-// resolved.Model, Spec.Effort = resolved.Params["effort"], Spec.Version =
-// resolved.Params["version"].
-//
-// PlanSpec does not stat or create any file (see the package doc comment
-// above): shuttleengine's Spec.validate rejects a Spec naming a
-// pre-existing output file, and creating `_lyx/plan/` is the plan agent's
-// own write concern (see plan-template.md's Step 3).
+// PlanSpec builds the shuttleengine.Spec for one Plan producer run.
 func PlanSpec(layout *hubgeometry.Layout, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
-	// Resolve the plan role's model-spec now, before composing the prompt
-	// or naming output paths, so an unknown alias or malformed spec fails
-	// loud before anything else about this run is constructed.
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: plan role model-spec: %w", err)
@@ -90,12 +63,6 @@ func PlanSpec(layout *hubgeometry.Layout, cfg Config, reg modelspec.Registry) (s
 	planDir := layout.PlanDir()
 	overviewPath := layout.PlanOverview()
 
-	// RoleImplementer: the Plan producer authors the typed file-op
-	// instructions (Edits:/Creates:/Moves:/Requirements:) a later
-	// code-writing agent executes near-verbatim, so it is the last
-	// authoring point before code — an invariant missed here is carried
-	// into every card that inherits it, unlike the Discussion producer,
-	// which this task deliberately excludes.
 	directive := pattern.Directive(layout, pattern.RoleImplementer)
 	prompt, err := composePlanPrompt(decisionRecordPath, planDir, overviewPath, directive)
 	if err != nil {

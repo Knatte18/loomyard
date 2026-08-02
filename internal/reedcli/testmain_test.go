@@ -15,19 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestMain first intercepts the header-pane invocation shape
-// ("<binary> reed ..."): reedengine's ensureHeaderPaneLocked boots the header
-// pane with os.Executable() + " reed header --blocking", and inside an
-// in-process smoke test (RunCLI) that executable is THIS test binary — a Go
-// test binary invoked with positional args ignores them and runs its whole
-// suite, recursively, inside the pane, leaking each recursive test's tmux
-// servers when the outer test tears the pane down mid-run (found by
-// fable-header-r1; the leaked servers' fixture paths matched exactly). The
-// guard stands in for the keepalive instead: print a marker, hold the pane
-// open, stay killable (a sleep loop rather than a bare select{}, which the
-// runtime's deadlock detector could kill). Otherwise it runs
-// lyxtest.HermeticGitEnv() before any test spawns git, then delegates to
-// the normal test run.
+// TestMain intercepts the header-pane invocation and prevents re-execution recursion.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "reed" {
 		fmt.Println("reedcli test binary standing in for the header keepalive (`lyx reed header --blocking`)")

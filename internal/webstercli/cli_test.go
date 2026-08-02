@@ -30,10 +30,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestRunCLI_NoArgs verifies that "lyx webster" with no subcommand exits 0
-// and lists whatever subcommands are currently registered -- no git repo
-// is needed, since the PersistentPreRunE guard skips layout/config/engine
-// resolution for the group command itself.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -45,10 +41,6 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1
-// and emits a JSON error envelope with ok=false, without needing a git repo
-// (the PersistentPreRunE guard for cmd.Name() == "webster" fires before
-// layout resolution).
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -68,10 +60,6 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard:
-// bare "lyx webster" works outside a git repository, mirroring buildercli's
-// guard rationale (neither the bare listing nor the unknown-subcommand path
-// should require layout/config resolution).
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -83,9 +71,6 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	}
 }
 
-// TestCommand_EveryCommandHasShort walks the full webster command tree and
-// asserts that every command -- the parent group and every subcommand --
-// carries a non-empty Short, per the CLI/Cobra Invariant.
 func TestCommand_EveryCommandHasShort(t *testing.T) {
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
@@ -99,8 +84,6 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 	walk(Command())
 }
 
-// TestCommand_AllEightSubcommandsRegistered asserts every one of webster's
-// eight subcommands is present on the tree Command() builds.
 func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
 	want := []string{"validate", "run", "status", "pause", "begin-batch", "await-batch", "record-batch", "recover-batch"}
 	got := map[string]bool{}
@@ -114,13 +97,6 @@ func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
 	}
 }
 
-// TestCommand_LongStringsHaveNoStaleV2Language walks the full webster
-// command tree and asserts that no command's Long help string mentions
-// anything from the retired plan-format v2/chain/oversized-batch model:
-// --restart-chain, the deferred-verify chain, oversized batches, or a bare
-// "v2" version reference (plan-format-v3.md is fine; a literal "v2" is
-// not) -- per the CLI/Cobra Invariant's help-accuracy obligation and the
-// no-version-suffix-naming Shared Decision.
 func TestCommand_LongStringsHaveNoStaleV2Language(t *testing.T) {
 	forbidden := []string{"--restart-chain", "restart-chain", "chain", "oversized", "v2"}
 
@@ -139,8 +115,7 @@ func TestCommand_LongStringsHaveNoStaleV2Language(t *testing.T) {
 	walk(Command())
 }
 
-// containsString reports whether haystack contains needle. Shared with
-// weft_integration_test.go's exclude-file assertions.
+// containsString reports whether haystack contains needle.
 func containsString(haystack []string, needle string) bool {
 	for _, s := range haystack {
 		if s == needle {
@@ -150,17 +125,11 @@ func containsString(haystack []string, needle string) bool {
 	return false
 }
 
-// TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree pins the guard ordering
-// weftCommit's own block comment documents: with WEFT_SKIP_GIT=1 the bypass
-// must short-circuit BEFORE fabricengine.New's stat-based path validation,
-// so the CI/test bypass never requires a weft worktree (or even the host
-// worktree) to exist on disk. A regression hoisting New above the guard
-// turns every bypassed CI run into an ErrMissingPath failure.
+// TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree verifies the WEFT_SKIP_GIT bypass short-circuits before path validation.
 func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
-	// Neither the host worktree nor its -weft sibling exists on disk.
 	hub := t.TempDir()
 	layout := &hubgeometry.Layout{
 		Hub:          hub,
@@ -178,10 +147,7 @@ func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 	}
 }
 
-// TestWeftCommit_NonBypassValidatesPairPaths proves the counterpart of the
-// bypass test above: without WEFT_SKIP_GIT, weftCommit constructs the
-// fabric handle and surfaces fabricengine's typed ErrMissingPath when the
-// pair is absent -- evidence New runs, and runs only in non-bypass mode.
+// TestWeftCommit_NonBypassValidatesPairPaths verifies weftCommit validates paths without WEFT_SKIP_GIT.
 func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
@@ -204,11 +170,7 @@ func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 	}
 }
 
-// newTestCLI builds a minimal *websterCLI wired only with the fields
-// validate/status/pause need (layout, cfg, and the four hubgeometry dirs),
-// bypassing Command()'s PersistentPreRunE -- the package-local injection
-// pattern every verb's own test uses. hub is a plain t.TempDir(), never a
-// real git repo: none of these three verbs ever call gitquery or spawn.
+// newTestCLI builds a minimal *websterCLI for validate/status/pause testing without a live git repo.
 func newTestCLI(t *testing.T) (*websterCLI, string) {
 	t.Helper()
 	hub := t.TempDir()
@@ -223,11 +185,7 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	return c, hub
 }
 
-// seedValidPlanDir writes a syntactically complete, validation-clean
-// plan-format v3 plan with one card into dir, mirroring websterengine's own
-// seedRunPlanDir (runlevel_test.go): a Card Index naming the one card, and
-// the card's own file with all seven required fields, its sole file-op
-// field a Creates: entry.
+// seedValidPlanDir writes a valid plan-format v3 plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
 	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
@@ -245,8 +203,6 @@ func seedValidPlanDir(t *testing.T, dir string) {
 	}
 }
 
-// TestValidateCmd_ValidPlan proves the happy path: a clean plan prints
-// {"valid": true, "cards": N}.
 func TestValidateCmd_ValidPlan(t *testing.T) {
 	c, _ := newTestCLI(t)
 	seedValidPlanDir(t, c.planDir)
@@ -266,11 +222,8 @@ func TestValidateCmd_ValidPlan(t *testing.T) {
 	}
 }
 
-// TestValidateCmd_MissingPlan proves a plan directory that does not parse
-// at all surfaces a loud error envelope, never a panic or a false valid:true.
 func TestValidateCmd_MissingPlan(t *testing.T) {
 	c, _ := newTestCLI(t)
-	// Deliberately never seed c.planDir: ParsePlan must fail loud.
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
@@ -283,11 +236,7 @@ func TestValidateCmd_MissingPlan(t *testing.T) {
 	}
 }
 
-// seedMissingFieldPlanDir writes a plan-format v3 plan whose sole card omits
-// the **Deletes:** label entirely -- ParsePlan succeeds (the parser only
-// records HasDeletes = false; a missing field is a Validate-time finding,
-// never a parse-time error), so this plan reaches planparser.Validate and
-// trips exactly one card-missing-field finding.
+// seedMissingFieldPlanDir writes a plan with a card missing the **Deletes:** label.
 func seedMissingFieldPlanDir(t *testing.T, dir string) {
 	t.Helper()
 	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +
@@ -305,14 +254,6 @@ func seedMissingFieldPlanDir(t *testing.T, dir string) {
 	}
 }
 
-// TestValidateCmd_FindingsUseCardKey proves findingsEnvelope's per-finding
-// JSON entries carry the "card" key (f.Card) rather than the pre-rewrite
-// "batch" key: it drives a syntactically-parseable plan through validateCmd
-// that trips one planparser.Validate check (card-missing-field, via a card
-// missing its **Deletes:** label) and asserts the emitted findings array
-// shape end-to-end, since TestValidateCmd_ValidPlan only exercises the
-// zero-findings ok-envelope and TestValidateCmd_MissingPlan never reaches
-// Validate at all.
 func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
 	c, _ := newTestCLI(t)
 	seedMissingFieldPlanDir(t, c.planDir)
@@ -338,8 +279,6 @@ func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
 	}
 }
 
-// TestStatusCmd_NotInitialized proves a run that never started prints
-// {"initialized": false}.
 func TestStatusCmd_NotInitialized(t *testing.T) {
 	c, _ := newTestCLI(t)
 
@@ -354,9 +293,6 @@ func TestStatusCmd_NotInitialized(t *testing.T) {
 	}
 }
 
-// TestStatusCmd_WithBatches proves status renders every persisted batch's
-// kind, status, terminal, and digest-presence fields, plus the run-level
-// identity fields, from a plain on-disk state.json -- no git, no spawn.
 func TestStatusCmd_WithBatches(t *testing.T) {
 	c, _ := newTestCLI(t)
 
@@ -391,9 +327,6 @@ func TestStatusCmd_WithBatches(t *testing.T) {
 	}
 }
 
-// TestPauseCmd_RequestsPauseIdempotent proves pause writes the flag file
-// and reports {"paused": true}, and that a second call is a no-op success,
-// never an error.
 func TestPauseCmd_RequestsPauseIdempotent(t *testing.T) {
 	c, _ := newTestCLI(t)
 
@@ -409,6 +342,4 @@ func TestPauseCmd_RequestsPauseIdempotent(t *testing.T) {
 	}
 }
 
-// fakeDigest is a minimal terminal websterengine.Digest used only to prove
-// status's has_digest field distinguishes a persisted digest from a nil one.
 var fakeDigest = websterengine.Digest{Batch: "01-first", Status: websterengine.DigestStatusDone}

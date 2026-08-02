@@ -37,8 +37,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Errorf("got.RoundCaps = %v; want %v", got.RoundCaps, []int{5, 8, 10})
 		}
 
-		// The initial state must actually be persisted, not just returned in
-		// memory — a second read should see the same file.
+		// Verify the initial state is actually persisted.
 		path := filepath.Join(runDir, stateFileName)
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("state.json not written: %v", err)

@@ -29,9 +29,7 @@ func HeadSHA(worktree string) (string, error) {
 }
 
 // ChangedFiles returns every file path that differs between sinceSHA and
-// HEAD in worktree, via `git diff --name-only <sinceSHA>..HEAD`. Each path
-// is slash-normalized (filepath.ToSlash) and the result is sorted
-// lexically, so callers get a platform-independent, deterministic list.
+// HEAD in worktree, slash-normalized and sorted lexically.
 func ChangedFiles(worktree, sinceSHA string) ([]string, error) {
 	rangeArg := sinceSHA + "..HEAD"
 	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"diff", "--name-only", rangeArg}, worktree)

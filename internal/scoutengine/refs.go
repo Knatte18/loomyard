@@ -22,54 +22,28 @@ import (
 	"time"
 )
 
-// Reference is one result of a References call: the file and the 1-based
-// line/character position within it where the queried symbol is
-// referenced. Character is a UTF-16 code-unit offset converted back to
-// 1-based for display, matching Position's convention.
+// Reference reports a symbol reference's file and 1-based line/character position.
 type Reference struct {
 	File      string
 	Line      int
 	Character int
 }
 
-// InFileQuery names a bare symbol by name within exactly one file, resolved
-// via an exhaustive textDocument/documentSymbol search of that file rather
-// than workspace/symbol's project-wide, potentially fuzzy name search. File
-// must be an absolute path, exactly like Position.File and Pos.File below.
+// InFileQuery resolves a bare symbol name exhaustively within one file via textDocument/documentSymbol.
 type InFileQuery struct {
 	File string
 	Name string
 }
 
-// Query is exactly one of three forms: InFile (a symbol name resolved
-// exhaustively within one named file via textDocument/documentSymbol), Pos
-// (an explicit file:line:col position, bypassing name resolution entirely),
-// or Symbol (a name to resolve project-wide via workspace/symbol). Callers
-// must set exactly one; References does not validate that only one of the
-// three is set, since resolvePosition's own precedence check — InFile
-// first, then Pos, then Symbol — is itself the discriminant it uses. Pos.File
-// and InFile.File, when set, must be absolute paths — References turns them
-// into file:// URIs directly, the same way it derives rootURI from
-// TargetDir.
+// Query selects a symbol or position to look up: one of InFile (file-scoped name),
+// Pos (explicit position), or Symbol (project-wide name search).
 type Query struct {
 	InFile *InFileQuery
 	Symbol string
 	Pos    *Position
 }
 
-// Options configures one References call: Registry supplies the language
-// servers to choose from, TargetDir is the project root to detect the
-// language in and root the launched server at, WorktreeRoot is the
-// worktree root EnsureServer's supervised strategy anchors its daemon
-// singleton (state file, spawn lock, socket) at — Go's registry entry
-// dispatches to supervised as its live V1 strategy, so this field is read
-// on every Go lookup, not merely threaded through unused. The CLI layer
-// populates it from a resolved hubgeometry.Layout.WorktreeRoot when
-// available, empty otherwise. Lang optionally overrides detection, Query
-// selects the symbol or position to look up, and Timeout bounds every
-// individual LSP request (initialize, the resolver call, and references) —
-// not the call as a whole, so a slow-but-eventually-fed server only fails
-// the specific phase that stalls.
+// Options configures a References call.
 type Options struct {
 	Registry     Registry
 	TargetDir    string
@@ -79,26 +53,14 @@ type Options struct {
 	Timeout      time.Duration
 }
 
-// References resolves opts.Query against the language server for
-// opts.TargetDir and returns every reference to it, sorted by
-// file:line:character. It is a two-line wrapper over the shared lookup
-// pipeline, passing client.references as the one LSP call the pipeline
-// should make once a position is resolved — see lookup's own doc comment
-// for the full step-by-step behavior.
+// References resolves a query and returns every reference to it, sorted by file:line:character.
 func References(ctx context.Context, opts Options) ([]Reference, error) {
 	return lookup(ctx, opts, func(ctx context.Context, client *lspClient, fileURI string, pos lspPosition) ([]lspLocation, error) {
 		return client.references(ctx, fileURI, pos)
 	})
 }
 
-// acquireConnection obtains a ready-to-use *lspClient for lang/entry,
-// alongside the connKind teardownConnection needs to tear it down
-// correctly. When entry.HasNativeDaemon is true, this delegates entirely to
-// ensureServer, which resolves the toolchain, spawns or dials, and hands
-// back an already-initialized connection. Otherwise it runs the legacy
-// cold-spawn-per-call sequence every non-Go language still uses today:
-// newLSPClient followed by a manual initialize, both owned and torn down by
-// this call alone (ensureServer is never invoked for this branch).
+// acquireConnection obtains a ready-to-use LSP client and its teardown kind.
 func acquireConnection(ctx context.Context, lang string, entry Entry, opts Options) (*lspClient, connKind, error) {
 	if entry.HasNativeDaemon {
 		return ensureServer(ctx, lang, entry, opts.TargetDir, opts.WorktreeRoot, opts.Timeout)

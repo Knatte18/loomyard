@@ -11,10 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// newHeaderTestEngine builds an Engine rooted at a fixed Layout/Config pair
-// for header-pipeline tests, with cfg.Header.Template set to template so
-// each subtest can exercise either the embedded default (empty template) or
-// a config override without touching disk or spawning tmux.
+// newHeaderTestEngine builds a test Engine with the given header template.
 func newHeaderTestEngine(template string) *Engine {
 	layout := &hubgeometry.Layout{
 		Hub:  "test-hub",

@@ -14,9 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
-// GateMode selects how a round's convergence is decided. It is a
-// safety-critical field (like burlerengine.FixScope) and gets no silent
-// default — validate rejects any value outside the three named constants.
+// GateMode selects how a round's convergence is decided.
 type GateMode string
 
 // The three legal GateMode values.
@@ -35,21 +33,14 @@ const (
 	GateBoth GateMode = "both"
 )
 
-// Gate describes the convergence check for a perch block: which signal(s)
-// decide a round is clean (Mode), the argv to run when Mode consults a
-// command (Command — no shell, so argv is unambiguous and portable), and how
-// long that command may run before it is killed (Timeout, defaulting to
-// defaultGateTimeout when zero).
+// Gate describes the convergence check for a perch block.
 type Gate struct {
 	Mode    GateMode
 	Command []string
 	Timeout time.Duration
 }
 
-// defaultRoundCaps is the built-in milestone ladder used when neither the
-// profile nor Config sets one. A one-element ladder degenerates to a plain
-// hard cap; this three-element default reserves two milestone rungs before
-// the hard cap at 10.
+// defaultRoundCaps is the built-in milestone ladder when neither profile nor Config sets one.
 var defaultRoundCaps = []int{5, 8, 10}
 
 // The built-in defaults validate falls back to when a field is left
@@ -59,15 +50,7 @@ const (
 	defaultGateTimeout = 10 * time.Minute
 )
 
-// Profile is the content contract for one perch block: the burler content
-// fields (embedded by value — the same vocabulary burlerengine.Profile
-// itself carries, so a perch operator writes exactly the same target/
-// fasit/rubric/fix-scope/tool-use/cluster-fan keys a bare burler profile
-// would) plus the perch-owned fields that drive the loop around them: the
-// convergence Gate, the milestone RoundCaps ladder, the judge model/effort,
-// and uniform per-round burler tuning (JudgeModel, JudgeEffort, Model,
-// Effort, Timeout — the "Run-tuning v1" decision applies these identically
-// to every round rather than escalating them).
+// Profile is the content contract for one perch block: burler content fields plus perch-owned fields driving the round loop.
 type Profile struct {
 	// Target, Fasit, Rubric, FixScope, ToolUse, and ClusterFan are the
 	// burler content fields, carried 1:1 into every round's
@@ -103,18 +86,7 @@ type Profile struct {
 	Timeout time.Duration
 }
 
-// validate resolves p's perch-owned defaults in place against cfg and
-// reports a fail-loud, perch-prefixed error if the resolved profile is not
-// runnable. It checks ONLY the perch-owned fields listed on Profile above —
-// the embedded burler content fields are validated separately by
-// burlerengine.Profile.validate inside the first round's Engine.Run.
-//
-// Default resolution runs first, in the fixed order profile > cfg >
-// built-in: RoundCaps, then JudgeModel, then JudgeEffort (Config only, no
-// built-in), then Gate.Timeout. Checks then run in the fixed order
-// documented on the corresponding fields: RoundCaps shape, Gate.Mode
-// legality and its Command-emptiness pairing, Gate.Timeout sign, and Timeout
-// sign.
+// validate resolves perch-owned defaults and reports fail-loud error if the profile is not runnable.
 func (p *Profile) validate(cfg Config) error {
 	// A nil RoundCaps means "unset — resolve through the default chain"; a
 	// non-nil EMPTY ladder is an explicit `round-caps: []` the operator

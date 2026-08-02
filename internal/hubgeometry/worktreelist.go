@@ -19,18 +19,7 @@ type WorktreeEntry struct {
 }
 
 // List returns a list of all git worktrees in the repository.
-//
-// The sourceDir is any worktree in the repository (usually the main checkout).
-// Runs `git worktree list --porcelain` and parses the output. The FIRST block
-// in the porcelain output is marked as Main=true; all subsequent blocks have Main=false.
-//
-// The porcelain format contains blocks separated by blank lines, each with:
-//   - "worktree <path>" (the worktree path)
-//   - "HEAD <sha>" (the current HEAD SHA)
-//   - "branch refs/heads/<name>" (the branch, or "detached" for a detached HEAD)
-//   - "bare" (only in bare repositories, which are rejected)
-//
-// Returns WorktreeEntry slice or an error if parsing or git execution fails.
+// The FIRST block in the porcelain output is marked as Main=true; all others have Main=false.
 func List(sourceDir string) ([]WorktreeEntry, error) {
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, sourceDir)
 	if err != nil {
@@ -44,13 +33,6 @@ func List(sourceDir string) ([]WorktreeEntry, error) {
 }
 
 // parseWorktreePorcelain parses the porcelain output from `git worktree list --porcelain`.
-//
-// Format: blocks separated by blank lines, each containing:
-//   - "worktree <path>"
-//   - "HEAD <sha>"
-//   - "branch refs/heads/<name>" or "detached"
-//   - optionally "bare" (rejected as an error)
-//
 // The FIRST block gets Main=true; all others get Main=false.
 func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 	blocks := strings.Split(out, "\n\n")

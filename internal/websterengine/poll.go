@@ -26,20 +26,12 @@ type realClock struct{}
 func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// pollTick is PollUntilTerminal's fixed re-run interval. Blocking inside Go
-// on a short tick keeps the loop responsive without hammering gather's own
-// I/O.
+// pollTick is PollUntilTerminal's fixed re-run interval.
 const pollTick = 1 * time.Second
 
-// PollUntilTerminal repeatedly calls gather on pollTick's cadence until it
-// reports terminal or wait elapses, timing itself via clk (realClock{} in
-// production; a fake clock replays an entire poll sequence instantly under
-// test). A terminal gather result returns immediately. If wait elapses
-// first, PollUntilTerminal returns gather's last non-terminal ("running")
-// digest with a nil error — the snapshot the caller's next poll call
-// re-polls from; a deadline is an ordinary long-poll return, never a
-// failure. A gather error propagates immediately: a tick that cannot even
-// determine whether the batch is terminal yet has nothing safe to report.
+// PollUntilTerminal repeatedly calls gather until it reports terminal or
+// wait elapses, returning immediately on terminal. A deadline returns the
+// last running digest; a gather error propagates.
 func PollUntilTerminal(gather func() (Digest, bool, error), wait time.Duration, clk clock) (Digest, error) {
 	deadline := clk.Now().Add(wait)
 

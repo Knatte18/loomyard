@@ -22,12 +22,7 @@ import (
 )
 
 // allowedImports are the only non-stdlib import paths production code in
-// this package may use. Deliberately excludes internal/hubgeometry as a
-// direct import: the engine is geometry-blind (caller-supplied absolute
-// runDir/GateDir) and no file in this package needs it directly — extending
-// this set to add it as a direct import is a deliberate future edit, not a
-// pre-grant. internal/logger (an allowlisted direct import) pulls in
-// internal/hubgeometry transitively, which this allowlist does not police.
+// this package may use.
 var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/lock":          true,
 	"github.com/Knatte18/loomyard/internal/logger":        true,
@@ -37,11 +32,8 @@ var allowedImports = map[string]bool{
 	"gopkg.in/yaml.v3": true,
 }
 
-// TestRunnerSeamInvariant_AllowlistOnly verifies that every non-test .go
-// file in this package directory imports only stdlib (no '.' in the first
-// path segment) or an entry in allowedImports. It uses go/parser with
-// ImportsOnly so only real import declarations are inspected, never string
-// literals in doc comments.
+// TestRunnerSeamInvariant_AllowlistOnly verifies that every non-test .go file
+// imports only stdlib or an entry in allowedImports.
 func TestRunnerSeamInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -72,9 +64,6 @@ func TestRunnerSeamInvariant_AllowlistOnly(t *testing.T) {
 		for _, imp := range astFile.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 
-			// A stdlib import path has no '.' in its first path segment
-			// (e.g. "fmt", "os", "go/parser") — a domain that would need a
-			// registered TLD (e.g. "github.com/...") always contains one.
 			firstSegment := importPath
 			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
 				firstSegment = importPath[:idx]

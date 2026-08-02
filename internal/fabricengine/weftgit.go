@@ -35,21 +35,14 @@ const (
 	weftPushLockFile = "fabric.push.lock"
 )
 
-// ensureWeftLockDir creates (idempotently) the .weft lock directory inside
-// the weft worktree and returns its path. It also seeds the weft repo's
-// git-exclude entries for fabric's own lock artifacts (see
-// seedWeftArtifactExcludes): this is the choke point every lock-creating weft
-// verb passes through before any lock file exists, so excluding here
-// guarantees the artifacts never surface as untracked dirt.
+// ensureWeftLockDir creates the .weft lock directory and seeds git-exclude
+// entries for fabric's lock artifacts.
 func (f *Fabric) ensureWeftLockDir() (string, error) {
 	return ensureWeftLockDirAt(f.weftPath)
 }
 
-// ensureWeftLockDirAt is ensureWeftLockDir's no-Fabric-instance form: it takes
-// the weft worktree path directly rather than a *Fabric receiver, so a caller
-// with no Fabric instance at hand — the detached push child building
-// CoalescePushBothAt's absorbing lock path — can still create and
-// exclude-seed the lock dir.
+// ensureWeftLockDirAt is the no-Fabric form of ensureWeftLockDir for callers
+// without a Fabric instance.
 func ensureWeftLockDirAt(weftPath string) (string, error) {
 	dir := filepath.Join(weftPath, weftLockDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -142,11 +135,6 @@ func seedWeftArtifactExcludes(weftPath string) error {
 	}
 	contentStr := string(content)
 
-	// The trailing slash on the lock-dir entry scopes it to the directory,
-	// matching gitignore semantics; the push lock is a single file at the
-	// worktree root, named via gitrepo's exported constant so the literal has
-	// exactly one owner. crossModuleMachineLocalExcludes appends every
-	// module's own machine-local patterns after fabric's own two.
 	entries := append([]string{weftLockDirName + "/", gitrepo.PushLockFileName}, crossModuleMachineLocalExcludes...)
 	for _, entry := range entries {
 		present := false
@@ -174,14 +162,8 @@ func seedWeftArtifactExcludes(weftPath string) error {
 	return nil
 }
 
-// warpHeadSHA returns the warp repo's current HEAD SHA. On a host repo with
-// zero commits (a fresh `git init` -> `lyx fabric reconcile` -> `lyx config`
-// first-run path, before the operator's first host commit), it reports unborn=true
-// (sha="", err=nil) instead of propagating gitrepo.ErrNoCommits as a hard
-// failure: pre-cutover, weftengine.Commit never touched the host repo and
-// succeeded on exactly this path, and commitWeft must not regress it just
-// because it now reads warp HEAD for the Warp-SHA trailer. Any other
-// CurrentSHA failure still propagates as a genuine error.
+// warpHeadSHA returns the warp repo's HEAD SHA, or reports unborn=true for an
+// unborn HEAD (zero commits), preventing regression on first-run paths.
 func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 	sha, err = f.Warp.CurrentSHA()
 	if err == nil {
@@ -193,40 +175,12 @@ func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 	return "", false, err
 }
 
-// weftPathspecFilter filters pathspec entries before staging, so a caller's
-// stale positive entry (e.g. "_pattern" in a worktree where nothing has ever
-// been written there) never reaches `git add`, which fails its ENTIRE
-// invocation — including every other, genuinely-matching entry — the moment
-// one entry matches nothing at all.
-//
-// An entry is kept if either:
-//   - it begins with ":" — git pathspec magic. No production caller feeds an
-//     ":(exclude)..." entry any longer (builder's/webster's/perch's own
-//     weft-commit paths and fabric's own commit/push/sync all now build
-//     plain positive pathspecs, per the commit-takes-positive-path-list
-//     Shared Decision), so this branch is currently unreachable in
-//     production; it is left in place as gitrepo's general-layer pathspec
-//     magic passthrough, kept deliberately general rather than trimmed to
-//     today's callers. Magic entries are always passed through untouched and
-//     NEVER evaluated for a match: they do not name a path to check, and
-//     treating one as a plain path would both mis-evaluate it and defeat its
-//     own purpose.
-//   - it is a plain path that matches at least one path in the weft
-//     worktree OR the index (see entryMatchesWeft). Untracked-in-worktree
-//     must count: a brand-new "_pattern/PATTERN.md" is untracked at the
-//     moment of its first commit, so a tracked-only check would drop the
-//     very first PATTERN commit. Index-only must count too:
-//     internal/fabricengine/unwire.go commits a "_lyx" path that os.RemoveAll
-//     has just deleted from the worktree, surviving only in the index, so a
-//     worktree-existence-only check would silently break `lyx fabric unwire`.
-//
-// Returns the filtered entries and whether at least one non-magic (plain)
-// entry survived the filter. When positive is false, commitWeft must not
-// call StageAndCommit at all, even with a non-empty filtered slice: handing
-// git a pathspec made up of only ":(exclude)" entries and no positive entry
-// is read by git as "everything except those," staging the entire weft
-// worktree — the opposite of the no-op commitWeft already promises for
-// "nothing of ours to stage."
+// weftPathspecFilter filters pathspec entries before staging: keeps git
+// pathspec magic (entries starting with ":") untouched and evaluates plain
+// paths for matches in the weft worktree or index. Returns filtered entries
+// and whether at least one non-magic entry survived. It prevents stale
+// entries from reaching git add, which fails its entire invocation on a
+// non-matching entry.
 func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, positive bool, err error) {
 	for _, entry := range pathspec {
 		if strings.HasPrefix(entry, ":") {
@@ -245,14 +199,9 @@ func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, 
 	return filtered, positive, nil
 }
 
-// entryMatchesWeft reports whether pathspec entry matches at least one path
-// tracked in the weft repo's index or present untracked in its worktree,
-// via `git ls-files --cached --others -- <entry>` run with cwd at weftPath
-// — the same anchor StageAndCommit's own `git add` uses, so this check can
-// never disagree with the command it is filtering for. --cached covers an
-// index-only path (already deleted from the worktree); --others covers a
-// brand-new untracked file. Either alone would miss one of the two real
-// callers this filter exists for — see weftPathspecFilter's doc comment.
+// entryMatchesWeft reports whether pathspec entry matches a path in the
+// weft repo's index or worktree via git ls-files, the same anchor used by
+// git add.
 func entryMatchesWeft(weftPath, entry string) (bool, error) {
 	stdout, stderr, code, err := gitexec.RunGit([]string{"ls-files", "--cached", "--others", "--", entry}, weftPath)
 	if err != nil {
@@ -264,34 +213,8 @@ func entryMatchesWeft(weftPath, entry string) (bool, error) {
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// commitEmptySnapshot lands an empty weft commit carrying commitMessage —
-// already composed, before this call, with its Warp-SHA and Snapshot:
-// trailers — via f.Weft.CommitEmpty, then records the correspondence exactly
-// as a content commit would. It is the one fall-through tail all three of
-// commitWeftLocked's early-return points share (see the
-// tags-force-a-weft-commit Shared Decision), factored out once rather than
-// written three times, since the "land an empty commit, then record it" pair
-// of steps is identical at every call site.
-//
-// RecordCorrespondence runs unconditionally when the empty commit lands: it
-// carries a real Warp-SHA trailer like any other weft commit, so
-// RebuildIndex (which reads trailers, not this call site's decision) would
-// record it anyway on a full rescan — skipping the call here would only make
-// the incremental and rebuilt indexes diverge. As with a content commit, a
-// RecordCorrespondence failure does not undo the commit that already landed,
-// so the SHA and committed=true are still reported alongside the error
-// rather than swallowed.
-//
-// When f.Weft.CommitEmpty itself refuses with gitrepo.ErrIndexNotEmpty (the
-// weft index is carrying someone else's staged work), that refusal
-// propagates unchanged as ("", false, err): commitWeftLocked's caller,
-// commitBothSides, maps it through its existing err != nil && !weftCommitted
-// arm onto a *PartialCommitError with WeftCommitted: false — the unlanded-
-// weft outcome it already models, so no new error shape and no new branch
-// are needed. This is a genuine behaviour change from what was previously a
-// silent no-op on this path (see commitWeftLocked's own doc comment for why
-// failing loudly here, rather than silently folding someone else's staged
-// work into a snapshot commit, is the correct posture).
+// commitEmptySnapshot lands an empty weft commit with the given commitMessage
+// and records the correspondence via RecordCorrespondence.
 func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string, committed bool, err error) {
 	sha, err = f.Weft.CommitEmpty(commitMessage)
 	if err != nil {
@@ -303,69 +226,12 @@ func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string,
 	return sha, true, nil
 }
 
-// commitWeftLocked stages pathspec-scoped changes in the weft worktree and
-// commits them. It ASSUMES the weft write lock is already held by its caller
-// and that opts.SkipGit has already been handled — it neither calls
-// ensureWeftLockDir nor acquires the lock itself, so a caller that wants to
-// hold the lock across more than this one commit (a two-sided Fabric.Commit
-// holding it across a warp commit and this weft commit) can do so without
-// commitWeftLocked reacquiring it out from under it. Staging always goes
-// through f.Weft.StageAndCommit's explicit pathspec list — commitWeftLocked
-// never calls StageAllAndCommit, per gitrepo's doc.go consumer rules. When
-// the warp repo already has a HEAD, the commit carries a Warp-SHA trailer
-// naming it, followed by one Snapshot: trailer per entry in snapshotTags
-// (see appendSnapshotTrailers; a validation failure there is returned before
-// anything is staged or committed, empty or otherwise — that composition
-// runs before every guard below, so an invalid tag never reaches any of
-// them). When the warp repo has no commits yet (see warpHeadSHA), the
-// message carries no trailer and no Snapshot tags at all (there is no
-// trailer block to append them to) — see the unborn-warp exception below.
-//
-// The empty-commit rule (the tags-force-a-weft-commit Shared Decision): when
-// snapshotTags is non-empty and warp is NOT unborn, every point below that
-// would otherwise return a no-op falls through instead to
-// commitEmptySnapshot, landing an empty weft commit carrying the already-
-// composed commitMessage and its trailers. There are four triggering cases,
-// three of them early-return points in this function and the fourth
-// (unchanged content) discovered inline:
-//
-//  1. weftPathspecFilter reduces pathspec to no positive entry at all (the
-//     `!positive` guard) — a warp-only or tags-only Fabric.Commit call
-//     reaches this shape with an empty pathspec.
-//  2. f.Weft.StageAndCommit fails with git's "did not match any files"
-//     pathspec error, which this function has always tolerated as a no-op —
-//     defense-in-depth, since weftPathspecFilter's own pre-check normally
-//     keeps this path from being reached at all.
-//  3. StageAndCommit succeeds but reports committed=false: the pathspec
-//     matched real paths, but their staged content is identical to HEAD's —
-//     this is the genuine correctness hole the whole rule exists to close.
-//     Without it, a caller re-running the identical regeneration against an
-//     unchanged warp SHA would see no weft commit land, the correspondence
-//     baseline would never advance, and a staleness check would report drift
-//     forever despite the regeneration having just confirmed itself current.
-//
-// All three share the identical semantic: nothing of the caller's content
-// needs committing, but the caller's snapshot tags still need a home, and an
-// empty commit records exactly that — "this warp SHA, under this tag" — with
-// no other change required. commitEmptySnapshot's own doc comment covers the
-// two behaviours that follow from choosing an empty commit here:
-// RecordCorrespondence still runs (keeping the incremental and rebuilt
-// indexes in agreement), and a CommitEmpty refusal via ErrIndexNotEmpty
-// propagates as a genuine *PartialCommitError instead of the silent no-op
-// this branch used to be — reachable when the combined write lock is held
-// but an earlier aborted run has left the weft index dirty.
-//
-// The unborn-warp exception: none of the above fires when warp itself is
-// unborn, snapshotTags or not. A snapshot's entire content is a warp SHA to
-// record; with none to name, an empty commit carrying only a bare Snapshot:
-// trailer (no Warp-SHA sibling) would force SnapshotWarpSHA's reader to grow
-// a third "found the tag, but it has no baseline" state, so the tags are
-// dropped for that one commit exactly as they always were — normal
-// trailer/tag/record behavior resumes on the first commitWeftLocked call
-// after warp's own first commit. This is NOT symmetric with an unborn WEFT
-// HEAD, which is not an exception at all: commitEmptySnapshot's
-// f.Weft.CommitEmpty lands the empty commit as weft's own root commit,
-// carrying its trailers like any other.
+// commitWeftLocked stages and commits pathspec-scoped changes in the weft
+// worktree. The weft write lock must already be held. When warp has a HEAD,
+// the commit carries a Warp-SHA trailer and Snapshot trailers. On unborn
+// warp (zero commits), tags are dropped. When snapshotTags is non-empty and
+// warp is not unborn, falls through to commitEmptySnapshot for no-op cases
+// that still need snapshot tags recorded.
 func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	warpSHA, unborn, err := f.warpHeadSHA()
 	if err != nil {
@@ -381,9 +247,6 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 		}
 	}
 
-	// forceEmptyCommit is the empty-commit rule's own guard, shared by all
-	// three fall-through points below: it never fires on an unborn warp HEAD
-	// (see the doc comment's unborn-warp exception), regardless of tags.
 	forceEmptyCommit := len(snapshotTags) > 0 && !unborn
 
 	filteredPathspec, positive, err := weftPathspecFilter(f.weftPath, pathspec)
@@ -399,10 +262,6 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 
 	sha, committed, err = f.Weft.StageAndCommit(commitMessage, filteredPathspec)
 	if err != nil {
-		// gitrepo.StageAndCommit's `git add --` does not tolerate a pathspec
-		// that no longer matches anything at all, on disk or in the index.
-		// Tolerate that case explicitly here: nothing of ours to stage, not
-		// a hard failure. Any other add/commit failure still propagates.
 		if strings.Contains(err.Error(), "did not match any files") {
 			if forceEmptyCommit {
 				return f.commitEmptySnapshot(commitMessage, warpSHA)
@@ -412,9 +271,6 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 		return "", false, err
 	}
 	if !committed {
-		// StageAndCommit's pathspec matched real content, but that content is
-		// identical to HEAD's — the unchanged-content case the empty-commit
-		// rule exists to close (case 3 above).
 		if forceEmptyCommit {
 			return f.commitEmptySnapshot(commitMessage, warpSHA)
 		}
@@ -424,11 +280,6 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 		return sha, true, nil
 	}
 
-	// The commit already exists on disk at this point; a RecordCorrespondence
-	// failure does not undo it, so the commit SHA and committed=true are
-	// still reported alongside the error rather than swallowed — the caller
-	// can decide whether to retry recording (or rely on RebuildIndex healing
-	// it later) without losing track of the commit that did land.
 	if err := f.RecordCorrespondence(warpSHA, sha); err != nil {
 		return sha, true, err
 	}
@@ -436,22 +287,9 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 	return sha, true, nil
 }
 
-// commitWeft acquires the fabric-layer weft write lock and delegates to
-// commitWeftLocked to stage and commit pathspec-scoped changes in the weft
-// worktree. The trailing snapshotTags variadic lets a caller (fabric's
-// two-sided Fabric.Commit) attach one or more Snapshot: trailers to the
-// commit alongside its Warp-SHA trailer; every existing 3-argument call site
-// keeps compiling unchanged and passes zero tags. Returns ("", false, nil)
-// immediately when opts.SkipGit is true, with no lock taken and no git
-// spawned. commitWeft's sole remaining production caller is in-package
-// unwire.go now that fabriccli drives commits through the exported
-// Fabric.Commit; it still inherits commitWeftLocked's full contract as its
-// own: a non-empty snapshotTags forces an empty weft commit (the
-// tags-force-a-weft-commit Shared Decision) whenever there is otherwise
-// nothing to stage, except on an unborn warp HEAD, where tags are dropped
-// exactly as before. See commitWeftLocked's doc comment for the
-// staging-tolerance, trailer, empty-commit, and RecordCorrespondence
-// behavior this delegates to.
+// commitWeft acquires the weft write lock and delegates to commitWeftLocked.
+// Returns ("", false, nil) when opts.SkipGit is true. Optional snapshotTags
+// force an empty commit to record them.
 func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil
@@ -470,9 +308,8 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
-// PushWeft pushes unpushed weft commits, honoring SkipGit/SkipPush gating.
-// Serialization reuses gitrepo's PushCoalesced — its .gitrepo-push.lock is
-// the push serialization; fabric ports no separate weft push lock.
+// PushWeft pushes unpushed weft commits via PushCoalesced, honoring
+// SkipGit/SkipPush gating.
 func (f *Fabric) PushWeft(opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
@@ -489,9 +326,8 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 	return f.Weft.Pull()
 }
 
-// pushWeftAt pushes unpushed commits at weftPath directly, with no Fabric
-// instance and no warp path involved — the detached-push child's bypass-push
-// entry point (spawnPush). Gating matches PushWeft exactly.
+// pushWeftAt pushes unpushed commits at weftPath with no Fabric instance,
+// used by the detached-push child.
 func pushWeftAt(weftPath string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
@@ -499,20 +335,10 @@ func pushWeftAt(weftPath string, opts SyncOptions) error {
 	return gitrepo.New(weftPath).PushCoalesced()
 }
 
-// commitWeftAt is the warp-untethered, wildcard-stage commit primitive for
-// _board's weft:main checkout, which has no corresponding warp branch to
-// trailer a commit against. Unlike Fabric.commitWeft, it wraps
-// gitrepo.StageAllAndCommit directly: no pathspec filtering, no Warp-SHA
-// trailer, and no RecordCorrespondence call — there is no warp SHA to name
-// and no correspondence index entry to keep. It is pushWeftAt's natural
-// commit-side counterpart: package-level, no Fabric receiver, no warp path.
-// Returns ("", false, nil) immediately when opts.SkipGit is true, with no
-// git spawned. commitWeftAt does not acquire ensureWeftLockDir's write lock
-// — that lock serializes commitWeft callers sharing a pathspec-scoped
-// commit; commitWeftAt's caller (Bolt.Commit) already holds its own write
-// lock around the equivalent critical section, so a second lock here would
-// only add contention with no correctness benefit. It is unexported: Bolt is
-// its sole remaining caller now that board and clone route through it.
+// commitWeftAt commits wildcard-staged content at weftPath for _board's
+// weft:main checkout, with no warp branch or Warp-SHA trailer. Returns
+// ("", false, nil) when opts.SkipGit is true. Does not acquire the weft write
+// lock; the caller is responsible for synchronization.
 func commitWeftAt(weftPath, message string, opts SyncOptions) (sha string, committed bool, err error) {
 	if opts.SkipGit {
 		return "", false, nil

@@ -12,8 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestConfigTemplate_ValidYAML asserts that ConfigTemplate returns valid YAML
-// that can be parsed without error.
+// TestConfigTemplate_ValidYAML asserts ConfigTemplate returns valid YAML.
 func TestConfigTemplate_ValidYAML(t *testing.T) {
 	got := ConfigTemplate()
 	var result map[string]any
@@ -22,10 +21,8 @@ func TestConfigTemplate_ValidYAML(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_HasRequiredKeys asserts that the template contains
-// all expected configuration keys (readme, design_prefix).
-// The geometry key path is intentionally absent — board data dir is now
-// owned by hubgeometry.BoardDir, not the config file.
+// TestConfigTemplate_HasRequiredKeys asserts the template contains required keys (readme, design_prefix).
+// The geometry key path is intentionally absent — hubgeometry.BoardDir now owns the data dir.
 func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 	got := ConfigTemplate()
 	var result map[string]any
@@ -41,8 +38,7 @@ func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ResolvesToDefaults asserts that resolving the template
-// against an empty environment yields the correct default values.
+// TestConfigTemplate_ResolvesToDefaults asserts the template resolves to correct defaults with empty environment.
 func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)

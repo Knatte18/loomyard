@@ -27,17 +27,12 @@ import (
 const PauseFlagName = "pause"
 
 // pauseFlagPath returns the path to the pause flag file inside websterDir.
-// The pause flag lives under the webster dir; callers resolve websterDir
-// via hubgeometry.WebsterDir before calling in — this file never
-// constructs a _lyx/webster path itself (Hub Geometry Invariant).
 func pauseFlagPath(websterDir string) string {
 	return filepath.Join(websterDir, PauseFlagName)
 }
 
 // RequestPause creates websterDir's pause flag file, creating websterDir
-// itself first if it does not yet exist — a pause may be requested before
-// any batch has ever spawned. Creating an already-present flag file is not
-// an error: RequestPause is idempotent.
+// if needed. Creating an already-present flag is idempotent.
 func RequestPause(websterDir string) error {
 	if err := os.MkdirAll(websterDir, 0o755); err != nil {
 		return fmt.Errorf("websterengine: create webster dir %s: %w", websterDir, err)
@@ -58,16 +53,9 @@ func PauseRequested(websterDir string) bool {
 	return err == nil
 }
 
-// ClearPause removes websterDir's pause flag file, doing nothing if it is
-// already absent — clearing an already-clear flag is not an error. Callers
-// MUST invoke this once a run has passed its refusal gates and is committed
-// to spawning a fresh Master (so a resumed run never instantly re-pauses on
-// the flag that requested the very pause it is now resuming from — while a
-// run that refuses on a validation finding or a fingerprint mismatch leaves
-// the operator's pending pause intact rather than discarding a request it
-// never acted on) and again at every terminal outcome (so a pause request
-// that lost the race against the last batch settling on its own never
-// lingers in a finished run's webster dir).
+// ClearPause removes websterDir's pause flag file. Clearing an already-clear
+// flag is not an error. Callers must invoke this once committed to spawning
+// Master and again at terminal outcome (per double-clear pattern).
 func ClearPause(websterDir string) error {
 	path := pauseFlagPath(websterDir)
 	if err := os.Remove(path); err != nil {

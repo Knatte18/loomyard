@@ -21,17 +21,8 @@ import (
 )
 
 // TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay proves the
-// gate call's lifetime is bounded even when the command leaves a child
-// holding the combined-output pipe — the exact shape of real gate commands
-// (go test's test binaries, build workers, a server the round's own fix
-// started). Without cmd.WaitDelay, Wait blocks until every pipe holder
-// exits: the pass case would stall for the child's full ~19s lifetime with
-// the deadline never firing at all, and the timeout case would blow far
-// past its 2s deadline the same way — both observed before the fix. The
-// child outliving the assertions is reaped by the OS on its own (a plain
-// ping); the test only asserts the GATE returned without waiting for it.
-// Windows-only: the child-spawning idiom (cmd's start /b) has no portable
-// equivalent, and this repo's substrate is Windows.
+// gate call's lifetime is bounded when a child holds the output pipe.
+// Windows-only: the child-spawning idiom (cmd's start /b) has no portable equivalent.
 func TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("uses cmd.exe's start /b to spawn a pipe-holding child")

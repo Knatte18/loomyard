@@ -17,14 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// errTestShuttle is the scripted Run error fakeJudgeShuttle returns in the
-// "shuttle run error" branch of each of the three functions' tables below.
+// errTestShuttle is the scripted Run error fakeJudgeShuttle returns.
 var errTestShuttle = errors.New("fake shuttle run error")
 
-// fakeJudgeShuttle is a same-package Shuttle double: Run records the Spec
-// it received, optionally writes scripted content to the Spec's sole
-// OutputFiles entry (the verdict file), and returns a scripted
-// Result/error.
+// fakeJudgeShuttle is a Shuttle double for testing.
 type fakeJudgeShuttle struct {
 	called bool
 	spec   shuttleengine.Spec

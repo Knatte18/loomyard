@@ -15,11 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// addCmd builds the `add` subcommand: registers a new strand from the
-// --cmd/--role/--round/--name/--resume-cmd/--parent/--anchor/--focus
-// flags. It rejects --anchor own-window (declared but deferred) and any
-// value outside below-parent|hidden before ever calling the engine, then
-// builds a reedengine.AddSpec and delegates to c.eng.AddStrand.
+// addCmd builds the `add` subcommand, validating the --anchor vocabulary before delegating to the engine.
 func (c *reedCLI) addCmd() *cobra.Command {
 	var (
 		cmdFlag   string

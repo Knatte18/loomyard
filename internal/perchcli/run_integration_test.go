@@ -23,14 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml
-// Fabric.Commit's classify step reads via RepoWiredNames (the `weft:main`
-// base at hubgeometry.BoardDir(hub)) -- required now that perchcli's
-// block-exit commit moved onto Fabric.Commit, which resolves the wired
-// name-set itself rather than trusting the caller-built pathspec CommitWeft
-// used to accept directly. lyxtest.CopyPairedLocal's fixture carries no
-// repo-wide fabric config of its own, mirroring fabriccli/cli_test.go's
-// setupCLIRepo helper.
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml that Fabric.Commit reads.
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
@@ -44,13 +37,7 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	}
 }
 
-// seedFabricAnchor records relPath as the .fabric-anchor marker under hub's
-// board directory, so Fabric.Commit's own hubgeometry.ResolveWorktree call
-// resolves l.RelPath to relPath instead of falling back to a cwd-derived
-// "." -- Commit re-resolves geometry from the warp path itself rather than
-// trusting any *hubgeometry.Layout a caller already holds, so a
-// nested-RelPath fixture must record the anchor for real git to classify
-// correctly.
+// seedFabricAnchor records relPath as the .fabric-anchor marker so Fabric.Commit resolves the correct RelPath.
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 

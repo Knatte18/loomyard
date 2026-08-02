@@ -29,13 +29,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// perchCLI is the receiver the run and pause verbs hang off of, so their
-// RunE bodies read the same PersistentPreRunE-populated state. Unlike
-// burlerCLI (which stores a constructed engine), perchCLI stores the
-// resolved ingredients a fresh *perchengine.Engine is built from: the run
-// verb calls perchengine.New per invocation, closing its pause
-// seam over the concrete runDir it resolves from --profile/--run-id. The
-// zero perchCLI is not valid until PersistentPreRunE has populated it.
+// perchCLI stores PersistentPreRunE-resolved state shared by run and pause verbs.
 type perchCLI struct {
 	burlerEngine *burlerengine.Engine
 	runner       *shuttleengine.Runner
@@ -50,15 +44,6 @@ type perchCLI struct {
 }
 
 // Command returns the cobra command tree for the perch module.
-//
-// The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> models registry -> perch
-// config -> burler config -> reed engine -> claude engine ->
-// shuttleengine.Runner -> burlerengine.Engine
-// into c, skipping that resolution entirely when the group command itself
-// is invoked (bare "lyx perch" listing or an unknown-subcommand error via
-// GroupRunE) so neither path requires a git repository. The run and pause
-// verbs register their own builders via parent.AddCommand.
 func Command() *cobra.Command {
 	c := &perchCLI{}
 
@@ -183,10 +168,6 @@ Example:
 }
 
 // RunCLI is the public seam for the perch module CLI.
-//
-// It delegates to clihelp.Execute with the cobra command tree, passing out as
-// the capture writer for all output (including cobra's error text). This
-// preserves the existing call contract so that callers and tests are unchanged.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

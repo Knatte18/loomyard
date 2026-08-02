@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// writeSourceFile writes content to a file under dir and returns its path.
+// writeSourceFile writes content to a file and returns its path.
 func writeSourceFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)

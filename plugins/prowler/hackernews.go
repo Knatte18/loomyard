@@ -21,10 +21,8 @@ import (
 // appended to, e.g. "https://hn.algolia.com/api/v1/items/12345".
 const hackerNewsItemAPIBase = "https://hn.algolia.com/api/v1/items/"
 
-// hackerNewsItem models the fields this adapter needs from an Algolia HN
-// API item response. Children is the nested comment tree: for a story item
-// its direct children are the top-level comments, and each comment's own
-// Children are its replies (unused here — only the top level is rendered).
+// hackerNewsItem models fields needed from Algolia HN API item responses.
+// Children is the nested comment tree (only top level rendered here).
 type hackerNewsItem struct {
 	Title    string           `json:"title"`
 	Points   int              `json:"points"`
@@ -40,19 +38,14 @@ type hackerNewsAdapter struct{}
 
 // Matches reports whether url is a Hacker News item page
 // (news.ycombinator.com/item?id=N, any scheme or optional "www." prefix).
-// Other HN pages (front page, /newest, user profiles) are not matched: this
-// adapter only knows how to format a single discussion thread.
 func (hackerNewsAdapter) Matches(rawURL string) bool {
 	_, ok := hackerNewsItemID(rawURL)
 	return ok
 }
 
-// Fetch retrieves url's item id, fetches its Algolia API representation via
-// f.do, and formats it into markdown. It reports handled=false when the id
-// can't be extracted, the request fails, the response is non-2xx or
-// unparseable, or the parsed item has neither a title nor text — in every
-// case fetchPage falls through to the generic HTML cascade instead of
-// treating an empty or malformed result as final.
+// Fetch retrieves the Algolia API representation and formats it into markdown.
+// Reports handled=false if the id can't be extracted, request fails, response
+// is non-2xx/unparseable, or the item has neither title nor text.
 func (hackerNewsAdapter) Fetch(ctx context.Context, f fetcher, rawURL string) (out string, handled bool) {
 	id, ok := hackerNewsItemID(rawURL)
 	if !ok {
@@ -97,9 +90,7 @@ func (hackerNewsAdapter) Fetch(ctx context.Context, f fetcher, rawURL string) (o
 }
 
 // hackerNewsItemID extracts the numeric item id from a Hacker News item URL
-// (news.ycombinator.com/item?id=N, any scheme/optional "www." prefix). It
-// reports ok=false for any other HN URL (wrong path, missing/non-numeric
-// id) or a non-HN URL.
+// (news.ycombinator.com/item?id=N). Reports false for other HN URLs or non-HN URLs.
 func hackerNewsItemID(rawURL string) (id string, ok bool) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -124,10 +115,8 @@ func hackerNewsItemID(rawURL string) (id string, ok bool) {
 	return idParam, true
 }
 
-// formatHackerNewsItem renders a Hacker News item into markdown, mirroring
-// the Reddit adapter's post shape: a title header, a source/points/author
-// line, the post text (or a link for URL-only stories), and up to
-// maxTopComments top-level comments.
+// formatHackerNewsItem renders a Hacker News item into markdown with title,
+// source/points/author line, post text or link, and top-level comments.
 func formatHackerNewsItem(item hackerNewsItem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", item.Title)

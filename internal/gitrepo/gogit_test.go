@@ -40,19 +40,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// forceGoGitFinalizersOnCleanup registers a t.Cleanup (run before
-// t.TempDir()'s own removal, since Cleanups run in last-registered-first
-// order and TempDir's is always registered earlier, inside the fixture
-// builder) that forces Go's garbage collector to run and gives its
-// finalizer goroutine a moment to execute. go-git's commondir resolution
-// (repository.go's dotGitCommonDirectory) opens the linked worktree's
-// "commondir" file and never explicitly closes it; that *os.File is
-// unreachable the instant the open call returns, so on Windows — where an
-// unclosed file blocks deletion of the same path — it is released as soon
-// as the garbage collector finalizes it. Without this, t.TempDir()'s own
-// cleanup can fail to remove a fixture that opened a linked-worktree
-// handle. See TestGoGit_OpenHandleDoesNotBlockWorktreeRemove's doc for the
-// same mechanism spelled out in full.
+// forceGoGitFinalizersOnCleanup forces the garbage collector to run,
+// finalizing unclosed go-git file handles before t.TempDir() cleanup.
 func forceGoGitFinalizersOnCleanup(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -62,8 +51,7 @@ func forceGoGitFinalizersOnCleanup(t *testing.T) {
 	})
 }
 
-// writeAndCommit writes name under dir with content and commits it directly
-// via the git CLI, bypassing goGit — used only to build fixture history.
+// writeAndCommit writes a file and commits it via git CLI, bypassing goGit.
 func writeAndCommit(t *testing.T, dir, name, content, message string) {
 	t.Helper()
 
@@ -74,9 +62,7 @@ func writeAndCommit(t *testing.T, dir, name, content, message string) {
 	lyxtest.MustRun(t, dir, "git", "commit", "-m", message)
 }
 
-// newStandaloneRepo creates a fresh, non-worktree git repository on branch
-// main under a temp directory with one commit, and returns both the raw
-// path (for direct git calls) and the *Repo wrapping it.
+// newStandaloneRepo creates a fresh git repository on main with one commit.
 func newStandaloneRepo(t *testing.T) (dir string, repo *Repo) {
 	t.Helper()
 
@@ -86,14 +72,8 @@ func newStandaloneRepo(t *testing.T) (dir string, repo *Repo) {
 	return dir, New(dir)
 }
 
-// gogitLinkedFixture is this file's own minimal linked-worktree fixture,
-// built independently because an equivalent package gitrepo_test fixture
-// would be unreachable from here (see this file's header comment). It
-// gives main and linked different branches and different HEAD commits, and
-// records a ref set from main so the linked worktree's handle can be
-// asserted to see it — any ref lives in the shared common dir, while HEAD
-// is per-worktree, so the choice of ref name is arbitrary to what this
-// fixture proves.
+// gogitLinkedFixture is a minimal linked-worktree fixture with different
+// branches and HEAD commits on main and linked.
 type gogitLinkedFixture struct {
 	mainDir    string
 	linkedDir  string

@@ -50,24 +50,10 @@ const runLockName = "run.lock"
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
 // RunActive reports whether a live `lyx webster run` currently holds
-// websterDir's run.lock. It probes non-blocking: if the run.lock can be
-// acquired, no run owns it (the lock is released again immediately), so the
-// probe returns false; if the acquire fails because the lock is held, a run
-// owns it and the probe returns true. The bracket verbs (begin/await/record/
-// recover-batch) are Master's own calls and legitimately run only under a
-// live run that holds this lock, so a false result flags the zombie case —
-// a Master still driving verbs after its run process died (e.g. the
-// shuttle-asking exit that leaves the pane alive): the verb still functions
-// but its mutations have no run-level owner and no run-exit backstop, worth
-// warning about. A probe error (never an OS lock outcome, only an
-// underlying filesystem failure) is returned so the caller can decide; it
-// is not itself a reason to refuse the verb.
-//
-// Known benign race: the probe momentarily HOLDS run.lock, so a real `lyx
-// webster run` starting in exactly that instant loses its own TryAcquire and
-// refuses ErrRunBusy once even though no run is in progress — a retry
-// succeeds. Advisory file locks admit no portable non-acquiring probe, so
-// this window is accepted rather than engineered around.
+// websterDir's run.lock. It probes non-blocking: if the lock can be
+// acquired, no run owns it and the probe returns false; otherwise it
+// returns true. Probe errors (filesystem failures) are returned so the
+// caller can decide.
 func RunActive(websterDir string) (bool, error) {
 	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, runLockName))
 	if err != nil {
@@ -112,17 +98,11 @@ type MasterStarter interface {
 	StartMaster(shuttleengine.Spec) (MasterHandle, error)
 }
 
-// RunDeps carries every seam Run needs, so a test can fake each one
-// independently: Starter spawns Master and hands back the handle Run blocks
-// on; Reed is the live reed query surface the entry-time reclaim consults via
-// StrandLive/RemoveStrand; Engine and ShuttleCfg/Layout are what
-// shuttleengine.FindRun (Master session-identity resolution) and the
-// weft-reference audit pattern need; PlanDir, WebsterDir, ReportsDir, and
-// PromptsDir are the hubgeometry-resolved _lyx/plan, _lyx/webster,
-// _lyx/webster/reports, and _lyx/webster/prompts directories; WorktreeRoot
-// is the host repo checkout Validate's context estimate resolves
-// Scope/Where entries against; Config is the loaded webster.yaml; Roles is
-// the pre-flight-resolved role->model-spec map (see ResolveRoles).
+// RunDeps carries every seam Run needs for testing. Starter spawns Master;
+// Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
+// PlanDir, WebsterDir, ReportsDir, PromptsDir, WorktreeRoot are hubgeometry-
+// resolved paths; Config and Roles carry the loaded configuration and
+// pre-flight-resolved role->model-spec map.
 type RunDeps struct {
 	Starter      MasterStarter
 	Reed         shuttleengine.ReedOps
@@ -160,10 +140,9 @@ type RunOptions struct {
 	Fresh bool
 }
 
-// RunResult is what one successful Run call hands back to its caller
-// (internal/webstercli's `run` verb): the parsed outcome.yaml's own judgment
-// (Outcome/StuckReason/BatchesDone) plus, once a valid summary.md has been
-// read, its title — the future loom-finalize PR-text source's headline.
+// RunResult is what one successful Run call hands back: the parsed
+// outcome.yaml's judgment (Outcome/StuckReason/BatchesDone) plus the
+// summary.md's title.
 type RunResult struct {
 	// Outcome is one of webster's own outcomeDone, outcomeStuck, or
 	// outcomePaused values (outcome.go), taken verbatim from the parsed
@@ -320,18 +299,10 @@ func countBegunForkBatches(st *State, sessionID string) int {
 }
 
 // Run drives one `lyx webster run` invocation to completion: the run-level
-// mutex, the automatic validation gate (including the zero-batch
-// pre-flight refusal), the state-phase entry-time reclaim, the
-// plan-fingerprint crash/resume guard (with its --fresh escape), the
-// never-instantly-re-pause clear (run only after every refusal gate passes,
-// so a refused run leaves a pending pause intact), the stale-outcome/
-// summary archive, the always-fresh Master spawn, and the
-// shuttle-outcome-to-RunResult mapping (see mapMasterDone). Every returned
-// error is "webster: "-prefixed (via the helpers it calls); ErrRunBusy and
-// ErrFingerprintMismatch are exported sentinels a caller matches via
-// errors.Is, and a non-done shuttle outcome for Master's own spawn returns
-// one of the three distinct *Master*Error types above rather than ever
-// attempting to parse a (non-existent) outcome.yaml.
+// mutex, validation gate, state-phase entry-time reclaim, plan-fingerprint
+// crash/resume guard with its --fresh escape, and Master spawn to outcome.
+// ErrRunBusy and ErrFingerprintMismatch are exported sentinels; non-done
+// shuttle outcomes return *Master*Error types.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.WebsterDir, err)
@@ -609,16 +580,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	}
 }
 
-// mapMasterDone maps a shuttle-level OutcomeDone Master spawn (both contract
-// files landed) onto RunResult: strict outcome.yaml parsing, the summary.md
-// gate (required content-validity when outcome: done, best-effort
-// otherwise), the every-batch-terminal-done cross-check and the run-exit
-// whole-session audit cross-check (done outcomes only — the backstops
-// behind record-batch's own per-batch incremental audit), and the
-// pause-flag clear every non-paused terminal performs. The
-// asking/died/timeout shuttle outcomes never reach this function — they are
-// mapped directly in Run, before any attempt to parse a file Master never
-// wrote.
+// mapMasterDone maps a shuttle-level OutcomeDone Master spawn onto RunResult:
+// strict outcome.yaml parsing, summary.md validation (required for done,
+// best-effort otherwise), every-batch-terminal-done and run-exit audit
+// cross-checks (done outcomes only), and pause-flag clear for non-paused
+// terminals.
 func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPath string, result shuttleengine.Result) (RunResult, error) {
 	outcome, err := parseOutcome(outcomePath)
 	if err != nil {

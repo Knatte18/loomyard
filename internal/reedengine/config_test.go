@@ -15,8 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// seedLyxConfig creates <tmpDir>/_lyx/config/<module>.yaml with content, the
-// minimal on-disk shape LoadConfig needs (no git repository required).
+// seedLyxConfig creates the minimal on-disk config structure for LoadConfig.
 func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	t.Helper()
 	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
@@ -35,9 +34,6 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Seed the config file with the template itself: this is exactly the
-	// file "lyx config reconcile" would produce, so LoadConfig must accept
-	// it verbatim and every default must resolve.
 	seedLyxConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
 
 	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
@@ -45,9 +41,6 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// ConfigTemplate() is OS-split (template_windows.go / template_posix.go),
-	// but both variants defer to PATH names rather than a pinned install
-	// path: tmux/pwsh on Windows, tmux/bash on POSIX.
 	wantTmux, wantShell := "tmux", "pwsh"
 	if runtime.GOOS != "windows" {
 		wantTmux, wantShell = "tmux", "bash"

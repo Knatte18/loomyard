@@ -24,16 +24,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// UpResult reports the outcome of Up: the resolved session/socket identity
-// and how many strands are currently tracked in the persisted table.
+// UpResult reports the outcome of Up.
 type UpResult struct {
 	Session string
 	Socket  string
 	Strands int
 }
 
-// ResumeResult reports the outcome of Resume: the session name and how many
-// not-live, non-hidden strands were relaunched.
+// ResumeResult reports the outcome of Resume.
 type ResumeResult struct {
 	Session string
 	Resumed int
@@ -45,8 +43,7 @@ type DownResult struct {
 	Session string
 }
 
-// StrandStatus is one strand's reporting projection for StatusResult: its
-// identity plus whatever reed can currently observe about it.
+// StrandStatus is one strand's status in StatusResult.
 type StrandStatus struct {
 	GUID   string
 	Name   string
@@ -54,36 +51,18 @@ type StrandStatus struct {
 	Live   bool
 }
 
-// StatusResult reports this session's tracked strands and their live/dead
-// state. Status only reports this session — active stray-server
-// enumeration across the hub is deferred (NOTE3).
+// StatusResult reports this session's tracked strands and their live/dead state.
 type StatusResult struct {
 	Session string
 	Socket  string
 	Strands []StrandStatus
 }
 
-// Boot-loop tuning for ensureServerAndSessionLocked. bootAttemptTimeout is
-// the per-spawn window before a still-session-less socket is treated as a
-// zombie boot and reaped; bootOverallTimeout is the total budget across
-// spawn/reap/respawn cycles, sized for a CPU-saturated machine (a quiet boot
-// is ~1-2s; three concurrent smoke suites have been observed to starve a
-// boot past two full 20s windows). maxBootAttempts is a second, independent
-// cap on the SAME loop: bootOverallTimeout alone assumes each failed attempt
-// costs real wall-clock time (a slow boot), but a spawn that fails FAST
-// (e.g. the OS rejecting the fork outright under resource pressure) burns
-// through the 90s budget in many more than the ~4-5 attempts the timeout
-// alone was sized for -- observed live (2026-07-30): a fork-bomb incident
-// where each fresh spawn attempt failed near-instantly, retried near-
-// instantly, and the loop reached 30-90+ real tmux-server spawns within the
-// SAME single bootOverallTimeout window before the caller ever saw the loop
-// exit. maxBootAttempts bounds attempt COUNT independent of how fast or
-// slow each attempt fails, so a fast-failure spiral is capped at a handful
-// of real spawns regardless of how much of the 90s budget remains -- the
-// loop exits on whichever limit (time or count) is hit first. staleSocketGrace
-// is how long a session-less socket-holder must persist before the pre-boot
-// check treats it as stale rather than a sibling worktree's still-
-// registering fresh boot.
+// Boot-loop tuning for ensureServerAndSessionLocked. maxBootAttempts caps
+// attempt count to guard against fast-failure spirals (observed: 30-90+ spawns
+// within a single bootOverallTimeout when fork fails near-instantly under
+// resource pressure). staleSocketGrace is the grace window before a
+// session-less socket is treated as stale (vs. a sibling worktree's fresh boot).
 const (
 	bootAttemptTimeout = 20 * time.Second
 	bootPoll           = 100 * time.Millisecond
@@ -92,30 +71,11 @@ const (
 	staleSocketGrace   = 5 * time.Second
 )
 
-// serverLogPruneKeep is how many pre-existing tmux-server-*.log files
-// pruneServerLogsLocked keeps in the hub logs dir before a fresh boot writes
-// its own — Shared Decision log-prune-keep-3's concrete reading of "keep the
-// newest 3": 2 kept plus the fresh server's own log makes 3.
+// serverLogPruneKeep keeps 2 pre-existing logs; newest 3 total (2 + fresh boot).
 const serverLogPruneKeep = 2
 
-// serverLogNamePrefix, clientLogNamePrefix, and outLogNamePrefix bound the
-// three log-filename shapes a debug-armed boot can leave in the hub logs dir,
-// and serverLogNameSuffix is the shared suffix; kept as named constants
-// (rather than an inline glob) since planLogPrune's caller side needs to
-// recognize the same filename shapes tmux itself writes. -v/-vv are GLOBAL
-// tmux flags on the spawn invocation, and that invocation is simultaneously a
-// CLIENT (the local process issuing the command) and, once forked, the SERVER
-// it starts — so tmux logs BOTH sides: tmux-server-<pid>.log from the forked
-// server (documented since the original debug-logging batch) and
-// tmux-client-<pid>.log from the client half of that same invocation
-// (observed live against native tmux 3.6 on Linux — the original
-// debug-logging batch was developed and reviewed against psmux on Windows,
-// which never surfaced this). At -vv (debug_log: 2) the server additionally
-// writes a tmux-out-<pid>.log protocol-output log — a THIRD shape that only
-// appears at the higher verbosity, so an earlier fix that added client-log
-// pruning at -v never surfaced it and it accumulated unbounded across repeated
-// -vv boots (observed live, tmux 3.6). All three are pruned identically so
-// none accumulates unbounded across repeated debug-armed boots/crashes.
+// Log filename shapes from -v/-vv: server, client, and -vv-only out logs.
+// At -vv, server additionally writes tmux-out-<pid>.log; all three are pruned.
 const (
 	serverLogNamePrefix = "tmux-server-"
 	clientLogNamePrefix = "tmux-client-"
@@ -123,17 +83,9 @@ const (
 	serverLogNameSuffix = ".log"
 )
 
-// pruneServerLogsLocked prunes files under logsDir matching prefix+*+suffix
-// down to the keep newest by mtime, deleting the rest via planLogPrune's
-// plan. It ignores os.Remove errors for files that vanish between the
-// directory scan and the removal (e.g. a sibling worktree's boot already
-// cleaned up the same stale file) — the caller only needs "no more than
-// keep remain", never a hard guarantee that this call itself removed every
-// listed name. It assumes the op lock is already held (the same withOpLock
-// the rest of ensureServerAndSessionLocked runs under) and performs no
-// locking of its own. Called once per log-filename shape (server, client,
-// out) so each stays independently bounded rather than competing for one
-// shared budget.
+// pruneServerLogsLocked prunes prefix+*+suffix files to keep newest by mtime.
+// It ignores remove errors when files vanish between scan and deletion
+// (sibling worktree may have already pruned them).
 func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
@@ -169,22 +121,12 @@ func pruneServerLogsLocked(logsDir, prefix string, keep int) error {
 	return nil
 }
 
-// planUpLaunches always returns nil: Up never launches or relaunches a
-// strand command — only Resume replays. This trivial-but-explicit function
-// exists so Up's "never launches" contract has a concrete, unit-testable
-// seam symmetric with planResumeLaunches, rather than being an implicit
-// absence of behavior a reader has to infer from Up's body never calling
-// launchStrandLocked.
+// planUpLaunches always returns nil: Up never launches strands.
 func planUpLaunches(strands []Strand) []Strand {
 	return nil
 }
 
-// planResumeLaunches returns the strands Resume must (re)launch: every
-// strand that is not live (no pane, or its pane is absent from liveIDs) and
-// not anchor:hidden. A hidden strand is "pending first surface", not dead,
-// so Resume must not surface it (GAP1) — that is UpdateStrand's job.
-// liveIDs is the set of pane ids currently present in the tmux window per
-// list-panes, matching toRenderStrands' Live derivation.
+// planResumeLaunches returns non-live, non-hidden strands for Resume to relaunch.
 func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 	var out []Strand
 	for _, s := range strands {
@@ -200,27 +142,9 @@ func planResumeLaunches(strands []Strand, liveIDs map[string]bool) []Strand {
 	return out
 }
 
-// ensureServerAndSessionLocked ensures this hub's named tmux server and
-// this worktree's session exist, spawning a fresh server via a raw
-// new-session when has-session reports absent. It never runs a strand
-// command: Up composes only this plus reconcile/apply, and Resume replays
-// separately via launchStrandLocked after this returns — matching the
-// sharp up=substrate / resume=replay boundary. It assumes the op lock is
-// already held and always makes a real tmux round trip.
-// It reports booted=true when it spawned a fresh session and false when the
-// session already existed, so callers can tell a server rebirth (bindings are
-// all stale) from a normal no-op bring-up; strippedKeys names the env keys
-// CleanClaudeEnv removed from the spawn env (nil when nothing was booted),
-// so the caller can stamp them into ReedState.StrippedEnv for diagnosis.
-// Before any of that, it runs the capability probe (probe.go) once and
-// returns a *CapabilityError immediately if the configured multiplexer
-// binary is below the pinned version floor or missing a required
-// subcommand. It also validates cfg.DebugLog via debugLogArgs, cfg.Mouse
-// via mouseOption, and the header template via ValidateHeader up front and
-// returns any of those errors before any tmux round trip at all — an
-// invalid debug_log, mouse, or header-template value must fail the boot
-// loud, not partway through a spawn (see the header-validation comment in
-// the body for why "after the spawn" was concretely harmful).
+// ensureServerAndSessionLocked ensures this hub's tmux server and this
+// worktree's session exist. Reports booted=true on fresh spawn; validates
+// capability, debug_log, mouse, and header template before any tmux round trip.
 func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []string, err error) {
 	// Validate debug_log before anything else touches tmux: a misconfigured
 	// value is a pure config error, unrelated to server/session state, so it
@@ -463,14 +387,8 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	return true, stripped, nil
 }
 
-// stripTraceID removes any LYX_TRACE_ID entry from env before it is handed
-// to a spawned tmux server's cmd.Env. This is deliberately separate from
-// CleanClaudeEnv: the tmux server is a long-lived singleton that later,
-// unrelated invocations reattach to, so it must not inherit this
-// invocation's trace ID, but CleanClaudeEnv's stripped-keys return value is
-// persisted verbatim into ReedState.StrippedEnv as a Claude-injected-env
-// diagnostic — LYX_TRACE_ID must never appear there. Follows the same
-// SplitN-then-compare shape CleanClaudeEnv uses.
+// stripTraceID removes LYX_TRACE_ID from env before the tmux server inherits it.
+// The server is a long-lived singleton reattached by unrelated invocations.
 func stripTraceID(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, entry := range env {
@@ -482,55 +400,9 @@ func stripTraceID(env []string) []string {
 	return out
 }
 
-// ensureHeaderPaneLocked ensures this hub's always-present header pane
-// exists AND is alive, (re)creating it when st.HeaderPaneID is empty, names
-// a pane no longer present in the live set, or names a dead-but-present
-// corpse (the keepalive process exited — one attached-operator keystroke
-// away — and reconcile deliberately never kills a dead header, so this boot
-// step is the single place a header is ever healed) — idempotent across
-// up/resume, exactly like the rest of this file's boot steps. A corpse is
-// killed before the new header is split (when it is not the session's sole
-// pane — killing a sole pane would end the session, so that order flips)
-// so the top row it occupied is freed for the replacement. The split
-// targets the TOPMOST pane with -b, never merely the first alive one:
-// render.Rules emits the header cell first and psmux/tmux assign layout
-// cells positionally, so a rebuilt header must land physically topmost or
-// every later select-layout would misassign heights; splitting a dead
-// topmost pane works (remain-on-exit corpses stay splittable), and a
-// too-short topmost pane surfaces as a hard error either way: native tmux
-// errors loud ("no space for new pane"), while psmux's silent-split shape
-// (exit 0, an EXISTING pane's id printed — doc.go's "Silent split failure"
-// contract bullet) is caught by the same validateSplitCreatedNewPane guard
-// launchStrandLocked runs, so a printed pre-existing pane id is never
-// recorded as the header. It
-// never touches st.Strands: the
-// header pane is a first-class but separate construct (Shared Decision
-// header-is-not-a-strand), so it must never be added to the strand table
-// this method would otherwise mutate. It splits off whichever pane is
-// currently alive (a fresh boot has exactly one — the new-session initial
-// pane; a header rebuilt after a crash-reborn server finds the same shape,
-// since the caller clears HeaderPaneID alongside every strand binding on
-// that path, before any strand has re-split anything) with -c e.layout.Cwd
-// — the SAME worktree cwd new-session -c pins for the initial pane, and
-// deliberately NOT e.layout.Hub: the hub is the container directory, not a
-// git repo (hubgeometry.Layout's own contract), so a header pane spawned
-// there cannot resolve geometry or config and its "lyx reed header
-// --blocking" command dies with "not a git repository" instead of ever
-// rendering the header text (observed live; the discussion.md spec's
-// "-c <e.layout.Hub>" line carried this defect). The {{.hub}} token still
-// renders the hub path — tokens resolve from the layout, not from where
-// the pane sits. It reuses the same send-keys launch mechanics
-// launchStrandLocked uses (spawn.go). The header pane runs headerLaunchCmd's own eagerly
-// validated print-then-block pipeline, never a strand's cmd/resumeCmd. It
-// assumes the op lock is already held and always persists st immediately on
-// success, before returning, so a later failure elsewhere in the same op
-// can never orphan an untracked header pane. One cosmetic consequence of
-// the boot ordering: until the first strand is actually placed, the header
-// keeps whatever height the -b split gave it (roughly half the window) —
-// applyLayoutLocked deliberately skips select-layout while no strand owns
-// a present pane (the empty-layout protection), so the configured
-// height_rows band is only enforced from the first placement on. This is
-// intended, not drift.
+// ensureHeaderPaneLocked ensures the header pane exists and is alive.
+// (Re)creates it when missing, dead, or gone. The header is separate from
+// strands and must land physically topmost so layout heights stay correct.
 func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	session := e.SessionName()
 	live, err := e.tmux.listPanes(session)
@@ -663,11 +535,8 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	return nil
 }
 
-// Up ensures the named server and this worktree's session exist (booting
-// them if absent, no-op if already up), then reconciles and re-applies the
-// layout from the current strand table. Up never launches or relaunches a
-// strand command — bringing strand content back after a server restart is
-// Resume's job, not Up's.
+// Up ensures the server and session exist. Up never launches strands;
+// Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
 	err := e.withOpLock(func() error {
@@ -718,24 +587,8 @@ func (e *Engine) Up() (UpResult, error) {
 	return result, err
 }
 
-// Resume boots the server+session if absent, then reconciles first (clearing
-// any stale pane bindings a crashed-and-reborn server left behind — a
-// standalone resume-after-crash has no earlier op in this process to have
-// run reconcile already, unlike add/surface's up-then-mutate sequencing).
-// Without this, a strand's stale non-empty PaneID from before the crash
-// would make planLaunch see a "pane already held" table and split instead of
-// adopting the new session's sole initial pane, leaving it orphaned and
-// causing the final layout apply to enumerate one pane fewer than tmux
-// actually holds (GAP2). Then — for every persisted strand that is not live
-// and not anchor:hidden — it realizes the strand into a live pane via the
-// shared launchStrandLocked (GAP A), replaying its ResumeCmd (or Cmd, when
-// ResumeCmd is empty; every strand has at least a Cmd, so every such strand
-// is rebuildable). Already-live strands are left untouched (no double
-// send-keys); hidden strands are skipped (pending first surface, not dead —
-// GAP1). Finishes by reconciling again, re-applying the layout, and
-// re-persisting pane ids (the reconcileApplyPersistLocked tail is a cheap
-// no-op re-check when the pre-launch reconcile already left the table
-// clean).
+// Resume boots server+session if absent, reconciles stale bindings,
+// relaunches non-live strands, and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
 	err := e.withOpLock(func() error {
@@ -830,24 +683,9 @@ func (e *Engine) Resume() (ResumeResult, error) {
 	return result, err
 }
 
-// Down tears this worktree's session down: kill-session (never kill-server
-// while sibling worktrees still hold sessions — the per-hub server is shared,
-// and killing it would destroy theirs too) and delete reed.json (ignoring
-// not-exist). Errors from kill-session are ignored so Down stays idempotent
-// against an already-stopped session. When this was the last session on the
-// server, the now-empty server is cleaned up — and Down then WAITS until the
-// server process has actually released the socket: tmux's kill-server is
-// asynchronous, and returning while the old server still holds the socket
-// lets an immediately following up spawn a second server process on the same
-// -L name, whose loser lingers forever as an unreachable stray (observed
-// live under down->up churn). Down also waits for this session's pane CHILD
-// processes (the shell tmux ran in each pane, and whatever it launched) to
-// exit before returning: tmux terminates pane children asynchronously, so a
-// Down that waited only on the server process could return while a pane's
-// shell — whose cwd is the worktree — was still alive, a "no stray state"
-// violation (observed as a worktree-dir-in-use failure under load). It does
-// not reconcile or apply — there is nothing left to render once the state
-// file is gone.
+// Down tears this worktree's session down and waits for async teardown to finish.
+// Only kill-session (not kill-server, which other worktrees share).
+// Waits for server and pane-child processes to actually release resources.
 func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {
@@ -934,17 +772,9 @@ func (e *Engine) Down() (DownResult, error) {
 	return result, err
 }
 
-// sessionlessSocketHolderPersists reports whether a tmux process is
-// squatting on this engine's socket without hosting any session, and keeps
-// doing so across staleSocketGrace. The grace window exists because the reed
-// op lock is per-worktree: a SIBLING worktree's up may have just spawned
-// this shared server, and between its process appearing and its session
-// registering the socket looks exactly like a stale holder — reaping it then
-// would kill the sibling's healthy boot out from under it. A genuinely stale
-// holder (a "__warm__" helper that outlived kill-server, a dying server, an
-// unreachable zombie) stays session-less forever, so waiting the grace out
-// never misses it. The common fresh-boot path (nothing on the socket)
-// returns false on the first probe.
+// sessionlessSocketHolderPersists reports whether a process holds this engine's
+// socket without any session, persisting across staleSocketGrace (grace prevents
+// reaping a sibling worktree's just-spawned server).
 func (e *Engine) sessionlessSocketHolderPersists() bool {
 	deadline := time.Now().Add(staleSocketGrace)
 	for {
@@ -963,12 +793,8 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 	}
 }
 
-// serverPIDLocked returns the tmux server's OS pid as tmux reports it via
-// the #{pid} format variable, or 0 when it cannot be determined (server or
-// session absent, unparseable output) — callers treat 0 as "nothing to wait
-// on". It targets this worktree's session, so it must run BEFORE
-// kill-session when the caller intends to wait on the server afterwards.
-// It assumes the op lock is already held.
+// serverPIDLocked returns the tmux server's OS pid, or 0 if unknown.
+// Must run before kill-session when the caller intends to wait on server.
 func (e *Engine) serverPIDLocked() int {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{pid}")
 	if err != nil {
@@ -981,15 +807,8 @@ func (e *Engine) serverPIDLocked() int {
 	return pid
 }
 
-// panePIDsLocked returns the OS pids of this worktree's session's pane child
-// processes — the immediate shell tmux launched in each pane, as tmux
-// reports them via the #{pane_pid} format variable (carried on LivePane by
-// listPanes). It returns nil when the session is absent or the query fails
-// (callers treat that as "no children to reap"). It must run BEFORE
-// kill-session, while the panes still exist to be listed, and assumes the op
-// lock is already held. Callers that need the process actually holding the
-// worktree directory want the whole subtree (paneProcessTreePIDsLocked), not
-// just these launcher pids.
+// panePIDsLocked returns pane child process pids. Returns nil on failure.
+// Must run before kill-session while panes exist.
 func (e *Engine) panePIDsLocked() []int {
 	live, err := e.tmux.listPanes(e.SessionName())
 	if err != nil {
@@ -1004,56 +823,22 @@ func (e *Engine) panePIDsLocked() []int {
 	return pids
 }
 
-// paneProcessTreePIDsLocked returns this session's pane child pids AND their
-// full descendant subtrees — the snapshot Down reaps after kill-session. It
-// returns nil when there is no session or pane. Must run BEFORE
-// kill-session, while the panes still exist, and assumes the op lock is
-// held.
+// paneProcessTreePIDsLocked returns pane child pids and their descendants.
+// Must run before kill-session while panes exist.
 func (e *Engine) paneProcessTreePIDsLocked() []int {
 	return e.descendantClosurePIDs(e.panePIDsLocked())
 }
 
-// forceKillExitGrace bounds how long reapPaneChildren waits, per pid, for a
-// force-killed process to actually exit. TerminateProcess is asynchronous on
-// Windows, so a kill with no follow-up wait closes nothing — the killed
-// process can still hold the worktree directory when the caller returns. It is
-// generous because on a CPU-saturated machine even a TerminateProcess'd process
-// can take seconds to be reaped by the OS and release its handles.
+// forceKillExitGrace bounds how long to wait for force-kill to land
+// (TerminateProcess is asynchronous on Windows; generous for CPU saturation).
 const forceKillExitGrace = 5 * time.Second
 
-// reapExitTimeout bounds how long the pane-child and server reaps wait for a
-// graceful async teardown before force-killing stragglers. It is deliberately
-// generous rather than the old fixed 5s: on a CPU-saturated machine tmux's
-// async pane/server teardown — and the Win32_Process probe the reap relies on —
-// both slow down, so a tight deadline risks force-killing prematurely (harmless)
-// or, in the pre-fix code, a fixed wait that ERRORED and aborted the teardown.
-// The reaps confirm each process is actually gone rather than trusting the
-// timer, so this value only bounds a pathological hang; the common quiet-machine
-// path returns as soon as the processes exit.
+// reapExitTimeout bounds pane-child and server reaps before force-killing.
+// Generous for CPU saturation; reaps confirm actual exit, not just timer.
 const reapExitTimeout = 15 * time.Second
 
 // ensureServerGoneLocked guarantees no tmux process remains on this engine's
-// socket after a kill-server, so down provably leaves zero tmux for its socket
-// the moment it returns. kill-server is asynchronous and, under CPU saturation,
-// the main server AND its "__warm__" helper can outlive any fixed wait. Since
-// the debug-logging batch, the server process's own cwd is the hub's
-// .lyx/logs dir (cmd.Dir on spawn), inside the hub container and never any
-// worktree, so a lingering server no longer holds a WORKTREE directory busy
-// the way it used to when its cwd was the worktree itself — the "no stray
-// state" concern this function guards is now about the socket/process
-// itself, not a worktree-dir lock. Windows' worktree-dir-in-use teardown
-// belt (which scans for processes holding a worktree directory open) no
-// longer sees the server's cwd at all for that reason; it still needs to see
-// pane child processes, whose cwd stays the invoking worktree via the -c
-// pin on new-session. It first gives the graceful teardown a bounded window
-// to finish on its own (the common, quiet-machine path), then, if any tmux
-// still names the socket, force-reaps them and confirms the socket is clear.
-// Force-reap-and-confirm rather than a fixed wait that aborts down: a stray
-// server left on the socket is a real leak even though it no longer pins a
-// worktree directory, so down must actively clear it, never merely hope it
-// dies in time. Returns an error only if the socket is still not clear after
-// the force-reap — a genuine, reportable failure. It assumes the op lock is
-// already held.
+// socket after kill-server. Force-reaps if needed; waits for async teardown.
 func (e *Engine) ensureServerGoneLocked(serverPID int) error {
 	_ = waitProcessExit(serverPID, reapExitTimeout)
 	if len(e.serverProcessesOnSocket()) == 0 {
@@ -1062,19 +847,8 @@ func (e *Engine) ensureServerGoneLocked(serverPID int) error {
 	return e.reapSocketProcesses()
 }
 
-// reapPaneChildren waits for every pane child process to exit, force-killing
-// any that outlive the deadline, so a pane-destroying op leaves no pane
-// grandchild holding worktree resources. tmux terminates pane children
-// asynchronously when a pane/session/server is killed, so an op that
-// returned without this wait could do so while a pane's shell (whose cwd is
-// the worktree) was still alive — the "no stray state" gap that surfaces as
-// a worktree-dir-in-use failure under load. The wait is the normal path (the
-// graceful tmux teardown reaps each child moments later); the force-kill
-// fires only for a pid that failed to exit within the deadline, so it can
-// never target a reused pid (a pid that never exited cannot have been
-// reused) — and it then waits again, briefly, for the kill to land, because
-// a fire-and-forget TerminateProcess leaves the same window it was supposed
-// to close.
+// reapPaneChildren waits for pane child processes to exit, force-killing
+// stragglers. Pane-destroying ops must reap children to avoid worktree dir locks.
 func reapPaneChildren(pids []int, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for _, pid := range pids {
@@ -1093,12 +867,8 @@ func reapPaneChildren(pids []int, timeout time.Duration) {
 	}
 }
 
-// waitServerProcessesGone polls serverProcessesOnSocket until no tmux
-// process names this socket, erroring after timeout. It is the belt to
-// waitProcessExit's suspenders: the pid wait covers the main server exactly
-// and instantly, while this drain also catches the "__warm__" helper, which
-// has no queryable pid of its own and has been observed to outlive the main
-// server and wedge the next boot by squatting on the socket.
+// waitServerProcessesGone polls until no tmux process names this socket.
+// Catches both main server and any "__warm__" helper.
 func (e *Engine) waitServerProcessesGone(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -1114,13 +884,8 @@ func (e *Engine) waitServerProcessesGone(timeout time.Duration) error {
 }
 
 // reapSocketProcesses force-terminates every tmux process on this engine's
-// socket and drains until the process table confirms they are gone: a
-// graceful kill-server first, then TerminateProcess by pid — necessary
-// because a zombie-booted server (running but never reachable on its
-// socket) and a lagging "__warm__" helper both ignore the socket-routed
-// kill-server entirely. Callers must first establish the socket hosts no
-// live sessions (list-sessions empty/unreachable), so a healthy shared
-// server is never in scope here.
+// socket and confirms they're gone. Necessary for zombie servers and helpers
+// that ignore socket-routed kill-server.
 func (e *Engine) reapSocketProcesses() error {
 	_ = e.tmux.run("kill-server")
 	for _, pid := range e.serverProcessesOnSocket() {
@@ -1131,17 +896,8 @@ func (e *Engine) reapSocketProcesses() error {
 	return e.waitServerProcessesGone(reapExitTimeout)
 }
 
-// waitProcessExit blocks until the process with pid has exited, or errors
-// after timeout. A pid of 0 (unknown) and an already-gone process both
-// return nil immediately. This exists because tmux's kill-server is
-// asynchronous AND its CLI cannot report server absence (every probe exits
-// 0), so the only trustworthy "the socket is free" signal is the server
-// process itself disappearing — without this wait, a down immediately
-// followed by up spawns a duplicate server process on the same -L name,
-// whose loser lingers forever as an unreachable stray. On Windows (psmux's
-// only platform in practice) os.Process.Wait works for non-child processes;
-// on other platforms Wait errors immediately for a non-child, which the
-// select treats as "done" — a benign no-wait rather than a failure.
+// waitProcessExit blocks until the process exits, or errors after timeout.
+// Necessary because tmux's kill-server is asynchronous.
 func waitProcessExit(pid int, timeout time.Duration) error {
 	if pid <= 0 {
 		return nil
@@ -1163,18 +919,8 @@ func waitProcessExit(pid int, timeout time.Duration) error {
 	}
 }
 
-// noSessionMessage builds requireSessionLocked's operator-facing text for an
-// absent session, pointing at the verb that actually helps: strandCount <= 0
-// means reed.json is empty or unreadable, so there is nothing to rebuild and
-// today's bare "run lyx reed up" stands; strandCount >= 1 means persisted
-// strands exist, so the message names "lyx reed resume" first — resume is the
-// replaying verb (it relaunches every persisted, non-hidden strand), while up
-// only ever stands up a bare substrate and never replays anything (Shared
-// Decision enriched-no-session-error). This is an unexplained-server-death
-// mitigation, not a claim about why the session went away. strandCount is
-// always a strand count, never inclusive of the header pane — the header
-// is not a strand and is never something "lyx reed resume" would rebuild,
-// so it must never be folded into this count.
+// noSessionMessage builds operator-facing text for an absent session,
+// pointing at resume (if strands exist) or up (if empty).
 func noSessionMessage(strandCount int) string {
 	if strandCount <= 0 {
 		return `no reed session; run "lyx reed up"`
@@ -1182,23 +928,8 @@ func noSessionMessage(strandCount int) string {
 	return fmt.Sprintf(`no reed session (%d strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`, strandCount)
 }
 
-// requireSessionLocked returns a friendly, actionable error when this
-// worktree's tmux session does not exist, instead of letting a caller fall
-// through to a raw tmux error surfacing later from deep inside
-// launchStrandLocked or listPanes. Status has always pre-flighted this way;
-// AddStrand and RemoveStrand share the identical check because both hit
-// tmux directly with no earlier session check of their own — AddStrand via
-// launchStrandLocked, RemoveStrand via reconcileApplyPersistLocked's
-// listPanes — which otherwise surfaces a cryptic tmux error when a caller
-// runs add/remove before up. Beyond confirming the session is gone, it now
-// also tells the operator whether "lyx reed resume" would have anything to
-// rebuild: it loads the persisted state to count strands and lets
-// noSessionMessage pick the pointer, since resume (not up) is the verb that
-// replays strand content back after an unexplained server death. A
-// LoadState failure or a fresh worktree with no state yet falls back to
-// count 0 — the state read is diagnostic only and must never mask the
-// primary "no session" signal with a state-read error. It assumes the op
-// lock is already held and always makes a real tmux round trip.
+// requireSessionLocked returns an actionable error when this worktree's
+// session does not exist, including whether resume would have content to rebuild.
 func (e *Engine) requireSessionLocked() error {
 	up, err := e.tmux.hasSession(e.SessionName())
 	if err != nil {
@@ -1219,23 +950,8 @@ func (e *Engine) requireSessionLocked() error {
 	return errors.New(noSessionMessage(strandCount))
 }
 
-// Status reports this session's tracked strands (guid, name, pane id,
-// live/dead) purely by cross-referencing the persisted table against the
-// live pane set list-panes just reported. Status is a read verb, so unlike
-// the mutating ops it must not touch tmux beyond the read-only
-// has-session/list-panes calls: it does NOT run reconcileLocked (which kills
-// dead-but-not-sole panes and clears their strands' bindings — a real state
-// correction that belongs to a mutating op, not a query) and it does NOT run
-// applyLayoutLocked's select-layout/select-pane (which would move input
-// focus and rewrite the window layout as a side effect of a query). The
-// persisted PaneID is reported unchanged; Live is derived by checking it
-// against the live set. Nothing is lost by leaving reed.json as-is between
-// queries — the next mutating op reconciles and persists the correction
-// itself. It returns a non-nil error when the server/session is absent, so a
-// pre-flight caller (e.g. attach) can surface that on its envelope before
-// attempting anything that needs a live session. Status only reports this
-// session — active stray-server enumeration across the hub is deferred
-// (NOTE3).
+// Status reports this session's tracked strands and their live/dead state
+// by cross-referencing the persisted table against live panes. Read-only.
 func (e *Engine) Status() (StatusResult, error) {
 	var result StatusResult
 	err := e.withOpLock(func() error {

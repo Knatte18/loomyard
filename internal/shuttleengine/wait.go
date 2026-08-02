@@ -20,10 +20,7 @@ import (
 	"time"
 )
 
-// clock abstracts time.Now/time.Sleep so Wait's poll loop runs instantly
-// under test: a fake clock's Sleep advances a virtual "now" rather than
-// blocking, and a same-package test overrides a Run's unexported clock
-// field directly before calling Wait.
+// clock abstracts time for tests.
 type clock interface {
 	Now() time.Time
 	Sleep(d time.Duration)
@@ -35,16 +32,11 @@ type realClock struct{}
 func (realClock) Now() time.Time        { return time.Now() }
 func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// defaultPollIntervalMS mirrors template.yaml's poll_interval_ms default:
-// the floor pollInterval falls back to for a non-positive configured value.
+// defaultPollIntervalMS is the template.yaml default poll interval.
 const defaultPollIntervalMS = 500
 
-// pollInterval returns Wait's tick interval from cfg, flooring a
-// non-positive poll_interval_ms to the template default. Unlike the two
-// timeout keys — whose 0 values fail fast and visibly, and are documented
-// footguns — a 0 (or negative) poll interval would SILENTLY busy-spin the
-// loop, re-reading the events file every iteration and hammering reed.Status
-// every Nth, burning a core for the whole run with nothing ever failing.
+// pollInterval returns Wait's tick interval, flooring non-positive values
+// to the template default to prevent busy-spinning.
 func pollInterval(cfg Config) time.Duration {
 	if cfg.PollIntervalMS <= 0 {
 		return defaultPollIntervalMS * time.Millisecond
@@ -52,29 +44,14 @@ func pollInterval(cfg Config) time.Duration {
 	return time.Duration(cfg.PollIntervalMS) * time.Millisecond
 }
 
-// maxEventsReadRetries bounds how many consecutive tick failures to read
-// events.jsonl Wait tolerates before reporting a mechanism failure — a
-// transient share-violation or a file mid-rename should not abort a run
-// outright, but a persistently unreadable events file leaves no
-// classifiable outcome at all (the run loop cannot see turn-end signals).
+// maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
 const maxEventsReadRetries = 3
 
-// maxStatusRetries bounds how many CONSECUTIVE reed.Status failures Wait
-// tolerates before reporting a mechanism failure, per the Shared Decision
-// wording ("Status error twice consecutively").
+// maxStatusRetries bounds consecutive reed.Status failures.
 const maxStatusRetries = 2
 
-// Wait blocks until run reaches a terminal outcome, polling at
-// cfg.PollIntervalMS via run.clock (real time in production, instant in
-// tests). Each tick: reads and parses any new events.jsonl bytes,
-// classifying done/asking on any new Stop event; every
-// cfg.LivenessEveryNPolls-th tick, checks the strand's liveness via reed
-// and, during the startup window, probes the pane for a trust prompt or a
-// still-pending fast-fail; and checks spec.Timeout's deadline. A terminal
-// classification always returns error == nil — Wait's error return is
-// reserved for mechanism failures (events.jsonl unreadable after retries,
-// reed.Status failing twice consecutively) that leave no classifiable
-// outcome at all.
+// Wait blocks until run reaches a terminal outcome. Error is reserved for
+// mechanism failures that leave no classifiable outcome.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
 	interval := pollInterval(cfg)
@@ -177,12 +154,8 @@ func (run *Run) pollEventsTick() (Outcome, string, error) {
 	return OutcomeAsking, last.Message, nil
 }
 
-// readEventsFrom reads path from byte offset onward and returns only the
-// bytes up to (and including) the last complete line — a trailing partial
-// line (no terminating '\n' yet) is left unconsumed, so newOffset does not
-// advance past it and the next tick re-reads and, hopefully, completes it.
-// A not-yet-created events file (the engine has not appended its first
-// line yet) is not an error: it returns (nil, offset, nil) unchanged.
+// readEventsFrom reads path from byte offset onward, returning bytes up to
+// the last complete line. Partial lines are left unconsumed for the next tick.
 func readEventsFrom(path string, offset int64) ([]byte, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -206,7 +179,6 @@ func readEventsFrom(path string, offset int64) ([]byte, int64, error) {
 
 	lastNL := bytes.LastIndexByte(buf, '\n')
 	if lastNL == -1 {
-		// A partial append in progress: nothing complete to parse yet.
 		return nil, offset, nil
 	}
 
@@ -214,8 +186,7 @@ func readEventsFrom(path string, offset int64) ([]byte, int64, error) {
 	return consumed, offset + int64(len(consumed)), nil
 }
 
-// allOutputFilesExist reports whether every entry in files exists on disk —
-// the file contract's "done" test.
+// allOutputFilesExist reports whether every entry in files exists on disk.
 func allOutputFilesExist(files []string) bool {
 	for _, f := range files {
 		if _, err := os.Stat(f); err != nil {
@@ -225,29 +196,8 @@ func allOutputFilesExist(files []string) bool {
 	return true
 }
 
-// checkLivenessTick checks the strand's liveness via reed.Status and, while
-// still in the startup window (*started is false and startupDeadline has
-// not passed), probes the pane for the engine's Startup classification: a
-// trust prompt is dismissed by playing the engine's TrustDismissSequence
-// choreography, a ready pane flips
-// *started to true (ending the probe for the rest of this Wait call), and
-// a still-booting pane is left pending unless startupDeadline has passed,
-// which fast-fails the run as died rather than waiting out the full
-// spec.Timeout on a pane that will never come up. A pane reported not live
-// is classified done rather than died when every output file already
-// exists: the agent can write its result and then have its process die
-// (crash, kill, or a race with its own Stop hook) before a qualifying Stop
-// event is ever recorded, and the file contract — not the Stop event — is
-// shuttle's actual "did it finish" signal. Note the boundary of this check:
-// pane liveness is all it can see, so a provider process that crashes
-// MID-RUN while its pane's shell survives stays "live" here and the run
-// degrades to OutcomeTimeout at the deadline (proven live; see OutcomeDied's
-// doc for why no capture heuristic can do better). Returns a non-nil error only for
-// reed.Status itself failing — a mechanism failure Wait's caller tracks
-// across consecutive ticks; every other failure along this path (a
-// CapturePane error, a key error playing the trust dismissal) is logged
-// and treated as "still pending" rather than propagated, since none of
-// them is fatal to the run on its own.
+// checkLivenessTick checks strand liveness and probes the pane during
+// startup. Returns a non-nil error only for reed.Status failures.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
@@ -262,10 +212,6 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		}
 	}
 	if !live {
-		// The file contract, not the Stop event, is the authoritative
-		// "finished" signal: a pane that died after writing every output
-		// file has still delivered a valid result, even though no Stop line
-		// ever made it into events.jsonl (see pollEventsTick).
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
 		}
@@ -286,9 +232,6 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	case StartupReady:
 		*started = true
 	case StartupTrustPrompt:
-		// The dismissal keys are the engine's choreography, not the run
-		// loop's: which keys clear a provider's trust gate is provider
-		// grammar, same as InterruptSequence/ComposeSend.
 		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
 			log.Printf("shuttle: dismiss trust prompt (non-fatal): %v", err)
 		}
@@ -300,23 +243,8 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	return "", nil
 }
 
-// finalize builds run's terminal Result and, for OutcomeDone without
-// spec.KeepPane, removes the strand and the run directory — cleanup
-// errors are logged, not fatal, since the classification itself already
-// stands. Every other outcome keeps both the strand and the run directory
-// for diagnosis/attach.
-//
-// When run.spec.ForkSubagents is set and outcome is OutcomeDone, this also
-// audits the session's fork subagents (Engine.AuditForks) and attaches the
-// result to Result.ForkAudit. The workdir passed is run.runner.layout.Cwd —
-// NEVER layout.WorktreeRoot: reed launches every pane with `-c e.layout.Cwd`
-// (reedengine lifecycle.go new-session/split-window), so the claude process's
-// actual cwd — which is what encodes the provider's
-// ~/.claude/projects/<encoded-cwd> transcript directory — is Cwd, and the
-// two diverge whenever the operator invoked lyx from a subdirectory
-// (layout.RelPath != "."). An audit error fails Wait outright with a
-// wrapped error (fail-loud): a fork-mode run whose audit cannot be read must
-// never classify as a clean done.
+// finalize builds run's terminal Result and performs cleanup for OutcomeDone.
+// For fork mode, audits fork subagents and attaches the result.
 func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	result := Result{
 		Outcome:              outcome,

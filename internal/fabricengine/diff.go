@@ -15,15 +15,10 @@ import (
 	"fmt"
 )
 
-// weftAnchorForWarpSHA resolves warpSHA to the weft SHA Fabric.Diff should
-// anchor its weft-side comparison to, via the same exact-then-nearest-older
-// resolveRevertTarget resolver — but bridging, not reverting: nothing is
-// reset here. A warpSHA older than the
-// first recorded correspondence is a valid pre-lyx state, not an error, so
-// that case is reported as found=false rather than propagating
-// ErrNoCorrespondence: a caller diffing since before fabric started tracking
-// this pair has no weft baseline to compare against, and that is expected,
-// not exceptional.
+// weftAnchorForWarpSHA resolves warpSHA to the weft SHA for Fabric.Diff,
+// without reverting. A warpSHA predating any correspondence is reported as
+// found=false rather than an error, since a diff before fabric started
+// tracking this pair has no weft baseline.
 func (f *Fabric) weftAnchorForWarpSHA(warpSHA string) (weftSHA string, found bool, err error) {
 	targetSeq, err := f.warpSeq(warpSHA)
 	if err != nil {
@@ -71,16 +66,10 @@ type DiffResult struct {
 }
 
 // Diff reports what changed on both sides of the warp<->weft pair since
-// sinceWarpSHA: warp-side changes are sinceWarpSHA..HEAD in the warp repo
-// (via Warp.ChangedFilesSince); weft-side changes are computed against the
-// nearest-at-or-before weft SHA correspondence resolves sinceWarpSHA to (via
-// weftAnchorForWarpSHA's underlying resolveRevertTarget resolver), not an
-// exact match, since an exact correspondence entry for sinceWarpSHA need not
-// exist. When no weft correspondence exists at or before
-// sinceWarpSHA at all, the weft side is empty and
-// DiffResult.NoWeftCorrespondence is true rather than an error: a diff since
-// before fabric started tracking this pair has no weft baseline, which is a
-// valid answer, not a failure.
+// sinceWarpSHA, resolved to the nearest-at-or-before correspondence when
+// no exact match exists. When no weft correspondence exists for sinceWarpSHA,
+// the weft side is empty and DiffResult.NoWeftCorrespondence is true rather
+// than an error.
 func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 	warpFiles, err := f.Warp.ChangedFilesSince(sinceWarpSHA)
 	if err != nil {
@@ -112,10 +101,8 @@ func (f *Fabric) Diff(sinceWarpSHA string) (DiffResult, error) {
 }
 
 // Status reports every currently-uncommitted path across both sides of the
-// warp<->weft pair, merged into one side-labelled slice via each repo's
-// gitrepo.Repo.WorktreeChangedFiles. Unlike Diff, there is no correspondence
-// anchor involved — this is a live worktree read, not a since-SHA comparison
-// — so there is no NoWeftCorrespondence case to report.
+// warp<->weft pair, merged into one side-labelled slice. Unlike Diff, there
+// is no correspondence anchor involved — this is a live worktree read.
 func (f *Fabric) Status() ([]ChangeEntry, error) {
 	warpFiles, err := f.Warp.WorktreeChangedFiles()
 	if err != nil {

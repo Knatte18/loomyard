@@ -16,11 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// CommitResult reports what Fabric.Commit actually did on each side: the SHA
-// landed (if any) and whether a commit was actually made, independently for
-// warp and weft — mirroring the "committed" bool gitrepo.StageAndCommit and
-// commitWeftLocked already report, since a Fabric.Commit call over unchanged
-// content is a legitimate no-op on either or both sides.
+// CommitResult reports what Fabric.Commit did on each side: landed SHA and whether a commit was made,
+// mirroring gitrepo.StageAndCommit and commitWeftLocked since unchanged content is a legitimate no-op.
 type CommitResult struct {
 	WarpSHA       string
 	WarpCommitted bool
@@ -28,22 +25,9 @@ type CommitResult struct {
 	WeftCommitted bool
 }
 
-// PartialCommitError reports a Fabric.Commit call whose weft side did not
-// complete cleanly — see the partial-failure-report-three-outcomes Shared
-// Decision. It does NOT imply a warp commit landed: since the
-// tags-force-a-weft-commit rule, a tags-only call (zero warp files) can hit
-// either weft-side failure shape with WarpSHA left empty, so WarpSHA must be
-// read as "whatever landed on warp, if anything" rather than as proof a warp
-// commit exists. WeftCommitted distinguishes the two weft-side failure
-// shapes it can wrap: true means the weft commit itself landed but
-// RecordCorrespondence failed to persist an index entry afterwards —
-// recoverable via an explicit RebuildIndex, since the landed commit's own
-// Warp-SHA trailer remains the correspondence index's sole source of truth,
-// and WeftSHAForWarpSHA's own one-shot rebuild fires only on a stale hit,
-// never on the index miss a never-written entry produces; false means the
-// weft commit itself failed, so nothing landed on that side. WarpSHA/WeftSHA
-// name whatever DID land, for a caller (or an operator reading the error) to
-// act on without re-deriving it.
+// PartialCommitError reports Fabric.Commit's weft-side failure, distinguishing whether
+// the weft commit itself landed (WeftCommitted=true, index recording failed) or failed entirely.
+// WarpSHA/WeftSHA report whatever did land; does not imply a warp commit (tags-only case).
 type PartialCommitError struct {
 	WarpSHA       string
 	WeftSHA       string
@@ -51,11 +35,8 @@ type PartialCommitError struct {
 	Err           error
 }
 
-// Error implements the error interface. The warp clause is included only
-// when e.WarpSHA is populated: a tags-only Fabric.Commit call (zero warp
-// files) can hit either branch below with no warp commit at all, and
-// asserting one landed regardless — as an earlier version of this method
-// did — misdescribes that first-class shape.
+// Error implements the error interface, including the warp clause only when WarpSHA is populated
+// (tags-only calls can hit weft-side failures with no warp commit).
 func (e *PartialCommitError) Error() string {
 	warpClause := "no warp commit"
 	if e.WarpSHA != "" {
@@ -72,32 +53,13 @@ func (e *PartialCommitError) Unwrap() error {
 	return e.Err
 }
 
-// spawnDetachedPushFn is a package-level test seam over SpawnDetachedPush —
-// see the push-invocation-seam-for-tests Shared Decision. Every
-// Fabric.Commit integration test swaps this for a recorder/no-op (with a
-// deferred restore, and no t.Parallel()) so no real detached child is
-// spawned from the test binary.
+// spawnDetachedPushFn is a package-level test seam; tests swap it for a recorder.
 var spawnDetachedPushFn = SpawnDetachedPush
 
-// Commit classifies files into warp-side and weft-side paths (via
-// classifyPaths, passing the resolved worktree's l.RelPath, against the
-// wired name-set RepoWiredNames resolves from the repo-wide `weft:main` base
-// at hubgeometry.BoardDir(Hub) — the same base checkJunctionHealth,
-// Reconcile, junctionRepointedDetail, Healthy, Topology.Checkout, and
-// Topology.Remove all read through, never f.weftPath's own per-pair base, so
-// every worktree's commits classify against the one repo-wide pathspec),
-// commits each side under commitBothSides, and — once
-// that returns, lock already released — fires the async both-sides push
-// whenever something landed. See the combined-commit-lock Shared Decision: the
-// combined write lock (`.weft/weft.write.lock`, the existing
-// weftWriteLockFile) is acquired whenever the call will commit anything at
-// all, not only on the weft side — closing the warp-only race a weft-scoped
-// lock left open — and is released before spawnDetachedPushFn is called (the
-// commit-lock-scoped-to-commit-only Shared Decision): the network push runs
-// in the detached child under its own separate absorbing push lock, never
-// under this commit lock. A fully degenerate no-op call (nothing on either
-// side, and no snapshot tags) takes no lock, runs no ensureWeftLockDir, and
-// spawns no push.
+// Commit classifies files into warp and weft paths against the repo-wide pathspec,
+// commits each side under one combined write lock (acquired whenever anything lands,
+// even warp-only), and fires async both-sides push after releasing the lock.
+// A fully degenerate no-op takes no lock and spawns no push.
 //
 // weftSide — and therefore whether committing takes the combined lock and
 // runs ensureWeftLockDir — is true whenever there are weft files OR

@@ -11,10 +11,8 @@ import (
 
 // Launch launches VS Code for the given worktree directory on Linux.
 //
-// It runs "code <worktreeDir>" via exec.Command and starts it detached
-// (cmd.Start(), not Run()) so the caller does not block on the editor
-// process. Wraps a start failure (e.g. "code" missing from PATH) with
-// context so callers can distinguish it from other errors.
+// It starts the "code" command detached (cmd.Start(), not Run()) so the caller does not block on the editor process.
+// Wraps start failures with context.
 func Launch(worktreeDir string) error {
 	cmd := exec.Command("code", worktreeDir)
 

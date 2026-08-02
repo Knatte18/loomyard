@@ -14,83 +14,34 @@ import (
 	"text/template/parse"
 )
 
-// Fill renders a markdown template by substituting {{.X}} marker fields from values
-// and returns the rendered bytes. It never HTML-escapes output (it uses text/template,
-// not html/template), so values containing markdown or code fences pass through verbatim.
-// Fill is defined as FillOptional(template, values, nil): it carries no optional-marker
-// exemption, so every top-level marker follows Fill's original unfilled-marker guarantee.
-//
-// A leading `<!-- ... -->` comment is stripped before parsing (a documentation banner on
-// the template asset); comments elsewhere in the template are left untouched as ordinary
-// template syntax.
-//
-// Fill's one load-bearing guarantee: every top-level marker (a `{{.X}}` substitution that
-// is a direct child of the template, not nested inside a conditional) that is absent from
-// values or maps to an empty-or-whitespace-only string is collected — all of them, not
-// just the first — and reported together in one sorted, deterministic error, and the
-// template is never executed. A marker reached only inside a taken `{{if}}`/`{{with}}`/
-// `{{range}}` branch is instead caught incrementally during execution (via
-// `missingkey=error`): only an absent branch-internal key is an error; a present-but-empty
-// branch-internal value renders as a silent blank. Because that empty check only applies at
-// the top level, a caller-required marker (such as `fasit`/`target`) MUST be placed at the
-// template's top level, never inside a conditional branch, or an empty value for it will
-// pass through unnoticed.
+// Fill renders a markdown template by substituting {{.X}} markers from values.
+// Every top-level marker absent from values or empty is collected and reported
+// in one error; the template is never executed with unfilled top-level markers.
 func Fill(template []byte, values map[string]string) ([]byte, error) {
 	return FillOptional(template, values, nil)
 }
 
-// FillOptional renders a markdown template exactly like Fill, except every name listed in
-// optional is exempt from Fill's unfilled-top-level-marker guarantee: an optional marker
-// absent from values, or present as an empty or whitespace-only string, renders as nothing
-// instead of tripping either of Fill's two guards. This is the mechanism a caller uses to
-// mark a specific `{{.X}}` field as allowed to render blank — optionality is a property of
-// the call site's argument list, not of the template text, so the same template can be
-// filled once with a marker required and once with it optional depending on the caller.
-//
-// The exemption reaches both guards, which are separate mechanisms: the top-level batch
-// check (unfilledTopLevelMarkers) skips a listed name entirely, and the branch-internal
-// missingkey=error check never fires on a listed name because FillOptional seeds a copy of
-// values with an explicit "" for every optional name that is absent or whitespace-only
-// before executing. The caller's values map is never mutated. A name listed in optional but
-// absent from the template entirely is a harmless no-op.
-//
-// An optional name listed in optional is a first-class part of Fill's contract, not a
-// backdoor around it: Fill(t, v) and FillOptional(t, v, nil) are byte-identical on the same
-// input, including on the error path, because Fill is defined in terms of FillOptional.
+// FillOptional renders a template like Fill, except names in optional are
+// exempt from the unfilled-marker guarantee and render as nothing if absent or empty.
 func FillOptional(template []byte, values map[string]string, optional []string) ([]byte, error) {
-	// Strip a leading banner comment before parsing; mid-template comments are ordinary
-	// template syntax and must reach the parser untouched.
 	stripped := stripLeadingComment(string(template))
 
-	// missingkey=error turns a branch-internal reference to an absent key into an
-	// execution-time error instead of silently rendering "<no value>".
 	t, err := tmpl.New("stencil").Option("missingkey=error").Parse(stripped)
 	if err != nil {
 		return nil, fmt.Errorf("parse template: %w", err)
 	}
 
-	// A set lookup is what lets both guards below share one definition of "this name is
-	// exempt", rather than each re-deriving it from the optional slice independently.
 	optionalNames := make(map[string]bool, len(optional))
 	for _, name := range optional {
 		optionalNames[name] = true
 	}
 
-	// Batch-check every top-level marker before executing anything: this is what lets us
-	// report every unfilled top-level marker in one error instead of failing on the first.
-	// A listed optional name is skipped by this check regardless of its value.
 	offenders := unfilledTopLevelMarkers(t, values, optionalNames)
 	if len(offenders) > 0 {
 		sort.Strings(offenders)
 		return nil, fmt.Errorf("stencil: unfilled top-level marker(s): %s", strings.Join(offenders, ", "))
 	}
 
-	// missingkey=error fires at execution time on a key wholly absent from the map, so an
-	// optional name absent from values would otherwise still error the moment execution
-	// reaches it. Seed a copy — never the caller's own map — with an explicit "" for every
-	// optional name that is absent or, per the same TrimSpace test unfilledTopLevelMarkers
-	// uses, whitespace-only: a "   " optional value must render as nothing, not as its
-	// three spaces verbatim.
 	execValues := values
 	if len(optionalNames) > 0 {
 		execValues = make(map[string]string, len(values))
@@ -106,18 +57,13 @@ func FillOptional(template []byte, values map[string]string, optional []string) 
 
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, execValues); err != nil {
-		// A branch-internal reached-but-absent marker surfaces here, one at a time,
-		// because missingkey=error halts execution at the first miss.
 		return nil, fmt.Errorf("execute template: %w", err)
 	}
 	return buf.Bytes(), nil
 }
 
-// stripLeadingComment drops a leading `<!-- ... -->` block from text, returning
-// everything after the closing `-->` with leading `\r`/`\n` trimmed. The block is
-// dropped only when text, after trimming leading whitespace, begins with `<!--`; if
-// there is no leading `<!--` or the comment is never closed, text is returned
-// unchanged so a mid-template comment is never mistaken for the leading banner.
+// stripLeadingComment drops a leading `<!-- ... -->` block from text.
+// Returns text unchanged if no leading block is found.
 func stripLeadingComment(text string) string {
 	trimmed := strings.TrimLeft(text, " \t\r\n")
 	if !strings.HasPrefix(trimmed, "<!--") {
@@ -131,14 +77,9 @@ func stripLeadingComment(text string) string {
 	return strings.TrimLeft(rest, "\r\n")
 }
 
-// unfilledTopLevelMarkers walks the parsed template's top-level (depth-0) nodes only —
-// it does not descend into if/with/range bodies, since those are checked incrementally
-// at execution time instead — and returns the deduplicated names of every bare `{{.X}}`
-// substitution whose value in values is absent or empty-or-whitespace-only. A name present
-// in optional is exempt from this check entirely, regardless of its value in values.
+// unfilledTopLevelMarkers returns the deduplicated names of every top-level
+// marker absent or empty in values, skipping names in optional.
 func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optional map[string]bool) []string {
-	// A comment-only or empty template parses to a tree with no root, or a root with
-	// no nodes; either way there is nothing to check.
 	if t.Tree == nil || t.Tree.Root == nil {
 		return nil
 	}
@@ -150,9 +91,6 @@ func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optiona
 		if !ok {
 			continue
 		}
-		// Only a single-command pipe whose sole argument is a bare field reference is a
-		// plain `{{.X}}` substitution; anything else (pipelines, functions, multiple
-		// commands) is not the marker idiom this guard targets.
 		if actionNode.Pipe == nil || len(actionNode.Pipe.Cmds) != 1 {
 			continue
 		}
@@ -166,12 +104,9 @@ func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optiona
 		}
 
 		name := fieldNode.Ident[0]
-		// A listed optional name is exempt from this guard outright, whatever its value.
 		if optional[name] {
 			continue
 		}
-		// An absent key reads as the zero value "" from a map[string]string, so this
-		// single TrimSpace check covers both the absent-key and empty/whitespace cases.
 		if strings.TrimSpace(values[name]) != "" {
 			continue
 		}

@@ -28,9 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// TestFinalizeConnection_SuccessReturnsNil drives a fake server that answers
-// initialize and the follow-up workspace/symbol probe both successfully,
-// and asserts finalizeConnection returns nil.
+// TestFinalizeConnection_SuccessReturnsNil verifies finalizeConnection succeeds with a responsive server.
 func TestFinalizeConnection_SuccessReturnsNil(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()

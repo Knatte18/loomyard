@@ -22,23 +22,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// newHostWeftPair builds a hub directory holding a "host" git repo and its
-// "host-weft" sibling git repo (each with one commit, so both have a HEAD),
-// plus an uncommitted _lyx change in the weft worktree for weftCommit to
-// stage, and returns the layout weftCommit resolves the pair from. RelPath is
-// "." -- use newHostWeftPairAt for a nested layout.
+// newHostWeftPair builds a hub with "host" and "host-weft" git repos and returns the layout.
 func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
 	t.Helper()
 	return newHostWeftPairAt(t, ".")
 }
 
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml
-// Fabric.Commit's classify step reads via RepoWiredNames (the `weft:main`
-// base at hubgeometry.BoardDir(hub)) -- required since weftCommit moved onto
-// Fabric.Commit, which resolves the wired name-set itself rather than
-// trusting a caller-built pathspec. Mirrors
-// commit_integration_test.go's seedFabricConfig in package fabricengine,
-// duplicated here since that helper is unexported in a different package.
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml.
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 

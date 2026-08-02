@@ -26,17 +26,8 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact pins the header
-// template's validation ORDER, not just its existence: it must sit in the
-// same pre-tmux validation block as debug_log/mouse. The engine's tmux path
-// points at a nonexistent binary (newTestEngine's fixture), so if
-// validation ran after any tmux contact — the capability probe, a
-// has-session, a spawn — Up's error would be about that binary instead of
-// the template. Validating after the spawn was concretely harmful: a bad
-// template then left a half-created session behind and, on the
-// crash-recovery path, lost the booted=true rebirth signal, making the
-// next resume mistake stale pre-crash pane bindings for live strands
-// (observed live in fable-header-r1).
+// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact pins that header validation
+// runs before any tmux contact (validates validation ORDER, not just existence).
 func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.DebugLog = "0"
@@ -52,13 +43,8 @@ func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
 	}
 }
 
-// TestServerBootEnv_ExcludesTraceID pins the long-lived-child-env decision
-// on the computed env slice, not a real spawn — following CleanClaudeEnv's
-// own existing testability precedent. The tmux server is a singleton later,
-// unrelated invocations reattach to, so LYX_TRACE_ID set in this process
-// must not survive into the env reed's tmux-server-boot would hand to
-// cmd.Env, even though CleanClaudeEnv itself (a different, Claude-Code-only
-// concern) leaves it untouched.
+// TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped
+// before the tmux server inherits the boot env (long-lived singleton).
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	t.Setenv("LYX_TRACE_ID", "somevalue")
 
@@ -272,19 +258,7 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 }
 
 // TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure pins the
-// validateSplitCreatedNewPane guard AT ITS ACTUAL CALL SITE inside
-// ensureHeaderPaneLocked's header-rebuild path — not merely the shared pure
-// function (TestValidateSplitCreatedNewPane in spawn_test.go covers that in
-// isolation). The distinction is the whole point: the pure-function test stays
-// green even if the wiring in ensureHeaderPaneLocked is silently deleted, so it
-// cannot protect this call site against a future regression that drops the
-// guard here. This test drives the rebuild through a scripted tmux (the
-// execHook white-box seam) that reproduces psmux's silent too-small-to-split
-// failure — split-window exits 0 and prints an EXISTING pane id — which native
-// tmux cannot produce (it errors loud). With the guard present the rebuild must
-// FAIL and must NOT bind HeaderPaneID to that pre-existing strand pane; if the
-// guard call at this site were removed or bypassed, ensureHeaderPaneLocked
-// would instead record the bogus id and return nil, failing this test.
+// validateSplitCreatedNewPane guard at its call site (against regression).
 func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
 	e := newTestEngine(t)
 

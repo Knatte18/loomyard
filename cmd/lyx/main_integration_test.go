@@ -28,9 +28,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so the board's PersistentPreRunE can call hubgeometry.Resolve
-	// without error. The board data dir is now geometry (hubgeometry.BoardDir(Hub)) rather
-	// than a config key, so the dispatched command resolves the worktree layout.
+	// Initialize a git repo so hubgeometry.Resolve succeeds.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
@@ -58,7 +56,6 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("expected exit 0, got %d; output: %s", code, out.String())
 	}
 
-	// run must forward the board module's JSON to out unchanged.
 	var result map[string]any
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse board output: %v; output: %s", err, out.String())
@@ -73,9 +70,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so PersistentPreRunE's hubgeometry.Resolve succeeds; this
-	// ensures the exit-1 assertion below tests the board command's own failure
-	// (removing a nonexistent task), not an upstream layout-resolution error.
+	// Initialize a git repo so hubgeometry.Resolve succeeds.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
@@ -89,15 +84,13 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 	configPath := hubgeometry.ConfigFile(cwd, "board")
-	// Write a template-complete board config. path: is no longer a template key
-	// (the board data dir is paths-owned), so only readme/design_prefix remain.
+	// Write a template-complete board config.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 	t.Chdir(cwd)
 
-	// remove of a nonexistent task fails — exit code must bubble up through run.
 	var out bytes.Buffer
 	code := run([]string{"board", "remove", `{"slug":"nope"}`}, &out)
 	if code != 1 {
@@ -108,24 +101,13 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	}
 }
 
-// integrationTestFile is this source file's own absolute path, captured at
-// compile time by runtime.Caller(0) — used by buildLyxBinary to locate the
-// repo root independent of the process's runtime cwd, following
-// internal/reedcli/smoke_test.go's buildLyxBinary precedent: a
-// pre-compiled test binary run from elsewhere has no automatic cwd, so a
-// relative parent-directory walk from os.Getwd() is not reliable, while a
-// build-time-baked path is immune to that.
+// integrationTestFile is this source file's absolute path, captured at compile time.
 var _, integrationTestFile, _, _ = runtime.Caller(0)
 
-// traceFilenamePattern matches the durable sink's trace-file naming
-// grammar exactly as sink.go's ensureDurableSink composes it:
-// "trace-<UTC timestamp>-<TraceID>-<PID>.log".
+// traceFilenamePattern matches the durable sink's trace-file naming: "trace-<UTC timestamp>-<TraceID>-<PID>.log".
 var traceFilenamePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-\d+\.log$`)
 
-// buildLyxBinary compiles the working tree's cmd/lyx into a temp dir and
-// returns its path, so the test below spawns a real lyx process rather than
-// calling run() in-process — testing.Testing() is true for any in-process
-// call, which would self-suppress the root hook this test is proving works.
+// buildLyxBinary compiles cmd/lyx into a temp dir for spawning a real lyx process.
 func buildLyxBinary(t *testing.T) string {
 	t.Helper()
 	repoRoot, err := filepath.Abs(filepath.Join(filepath.Dir(integrationTestFile), "..", ".."))
@@ -141,19 +123,11 @@ func buildLyxBinary(t *testing.T) string {
 	return lyxExe
 }
 
-// TestRootHookWritesTraceFileOnNonZeroExit spawns a real lyx binary against
-// a fixture worktree and drives it to a non-zero exit via an unknown
-// subcommand, which clihelp.GroupRunE rejects cheaply and deterministically
-// (discussion.md's sink-open-triggers "This also settles the integration
-// test's trigger" paragraph). It is the only test that proves geometry
-// resolution, the root-hook wiring (Card 27), and the real file path
-// together: an in-process call to run() cannot, because testing.Testing()
-// is true there and the root hook self-suppresses.
+// TestRootHookWritesTraceFileOnNonZeroExit verifies the root hook writes trace files on failure.
 func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 	lyxExe := buildLyxBinary(t)
 
-	// A real git repo so the spawned process's own hubgeometry.Resolve call
-	// succeeds, mirroring this file's other tests' fixture setup.
+	// Initialize a git repo so the spawned process's hubgeometry.Resolve succeeds.
 	cwd := t.TempDir()
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
@@ -163,9 +137,6 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 	cmd.Dir = cwd
 	out, runErr := cmd.CombinedOutput()
 
-	// A non-zero exit is expected and required — it is the trigger under
-	// test. Any error type other than *exec.ExitError (e.g. the binary
-	// failing to start) is a real test failure, not the condition we want.
 	var exitErr *exec.ExitError
 	if runErr == nil {
 		t.Fatalf("expected lyx bogus-subcommand to exit non-zero, got exit 0; output: %s", out)
@@ -177,10 +148,6 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 		t.Fatalf("expected a non-zero exit code from lyx bogus-subcommand, got 0; output: %s", out)
 	}
 
-	// hubgeometry's WorktreeLogsDir returns filepath.Join(WorktreeRoot,
-	// ".lyx", "logs"); this literal join is a review-only rule for test
-	// files (TestEnforcement_GeometryLiterals excludes *_test.go), and
-	// asserting against the real produced path is the point of this test.
 	logsDir := filepath.Join(cwd, ".lyx", "logs")
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
@@ -242,7 +209,6 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 		t.Fatalf("expected exit 0 for config reconcile, got %d; output: %s", code, out.String())
 	}
 
-	// Verify JSON output with ok=true.
 	var result map[string]any
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatalf("failed to parse config reconcile output: %v; output: %s", err, out.String())

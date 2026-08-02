@@ -14,10 +14,7 @@ import (
 	"time"
 )
 
-// newValidProfile returns a Profile that passes validate unmodified against
-// an empty Config — every test mutates a copy of this base to exercise one
-// rule at a time. The embedded burler content fields are left zero-valued:
-// validate does not check them.
+// newValidProfile returns a Profile that passes validate against an empty Config.
 func newValidProfile() Profile {
 	return Profile{
 		Gate: Gate{Mode: GateLLMVerdict},

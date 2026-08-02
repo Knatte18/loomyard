@@ -21,30 +21,18 @@ import (
 )
 
 // pathResolveAllowlistFile is the single file permitted to contain a banned
-// bare-PATH lyx literal: it is resolve.go itself, the sole resolution site the
-// Dev/Prod Binary Separation Invariant designates.
+// bare-PATH lyx literal: resolve.go, the sole resolution site.
 const pathResolveAllowlistFile = "resolve.go"
 
-// bareLyxLookupLiteral is the one banned token still matched as a whole-file
-// substring: a direct bare-PATH lookPath call, which has no argument-order
-// ambiguity to worry about.
+// bareLyxLookupLiteral is the one banned token matched as a whole-file substring.
 const bareLyxLookupLiteral = `lookPath("lyx")`
 
-// execSpawnTokens are the substrings identifying an exec.Command or
-// exec.CommandContext call. They are matched on the SAME LINE as the quoted
-// "lyx" argument (see lineHasBannedLyxSpawn) rather than as a whole-file
-// substring together with the argument: exec.CommandContext's first
-// parameter is a context.Context, not the binary name, so the literal
-// `exec.CommandContext("lyx"` can never appear in compilable Go — a
-// substring scan for it can never match, silently exempting the exact call
-// shape the Dev/Prod Binary Separation Invariant most needs to catch.
-// Line-based matching finds both spellings regardless of how many arguments
-// precede "lyx".
+// execSpawnTokens are the substrings identifying exec.Command or
+// exec.CommandContext calls, matched line-based with the "lyx" argument.
 var execSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 
-// TestPathResolveGuard_NoBarePathLyxOutsideResolve walks every non-test *.go file in
-// the tools/sandbox package directory and fails if any file other than
-// pathResolveAllowlistFile contains a banned bare-PATH lyx literal.
+// TestPathResolveGuard_NoBarePathLyxOutsideResolve fails if any non-test *.go
+// file contains a banned bare-PATH lyx literal.
 func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
 	dir := sandboxSourceDir(t)
 
@@ -56,17 +44,12 @@ func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
 	var scanned int
 	var failures []string
 	for _, entry := range entries {
-		// Only non-test *.go files are in scope: this guard's own source is a
-		// *_test.go file and is excluded by the same filter, with no special-case
-		// needed.
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
 		scanned++
 
 		if entry.Name() == pathResolveAllowlistFile {
-			// resolve.go is the designated resolution site; its own bare-PATH
-			// lookup is the invariant's implementation, not a violation of it.
 			continue
 		}
 
@@ -83,10 +66,6 @@ func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
 		}
 	}
 
-	// Vacuous-scan protection: tools/sandbox has 4 non-test .go files today
-	// (main.go, report.go, resolve.go, suite.go); fewer than 3 found means the
-	// directory read is misconfigured (wrong dir, files missing) rather than the
-	// package having genuinely shrunk below the resolution split it was built for.
 	if scanned < 3 {
 		t.Fatalf("pathresolve guard: only scanned %d non-test .go file(s) in %s; expected at least 3 -- the directory read may be misconfigured", scanned, dir)
 	}
@@ -96,12 +75,8 @@ func TestPathResolveGuard_NoBarePathLyxOutsideResolve(t *testing.T) {
 	}
 }
 
-// firstBannedLyxToken reports the first banned bare-PATH lyx token found in content,
-// scanning line by line so the exec.Command/exec.CommandContext check can require the
-// spawn token and the quoted "lyx" argument to co-occur on one line rather than
-// merely anywhere in the file. The lookPath("lyx") literal needs no such pairing --
-// it has no argument-order ambiguity -- so it is checked directly per line too, for a
-// single unified scan pass.
+// firstBannedLyxToken reports the first banned bare-PATH lyx token found in
+// content, scanning line by line.
 func firstBannedLyxToken(content string) (token string, bad bool) {
 	for _, line := range strings.Split(content, "\n") {
 		if strings.Contains(line, bareLyxLookupLiteral) {
@@ -114,10 +89,8 @@ func firstBannedLyxToken(content string) (token string, bad bool) {
 	return "", false
 }
 
-// lineHasBannedLyxSpawn reports whether line contains both an exec.Command/
-// exec.CommandContext spawn token and the quoted "lyx" argument -- the pairing that
-// identifies a bare-PATH lyx spawn regardless of how many arguments (e.g. a leading
-// context.Context) separate the two tokens on the line.
+// lineHasBannedLyxSpawn reports whether line contains both exec.Command/
+// exec.CommandContext and the "lyx" argument.
 func lineHasBannedLyxSpawn(line string) (token string, bad bool) {
 	if !strings.Contains(line, `"lyx"`) {
 		return "", false
@@ -130,9 +103,8 @@ func lineHasBannedLyxSpawn(line string) (token string, bad bool) {
 	return "", false
 }
 
-// sandboxSourceDir returns the tools/sandbox package directory, derived from this
-// test file's own location via runtime.Caller rather than a hardcoded absolute
-// path, so the guard works from any checkout or worktree.
+// sandboxSourceDir returns the tools/sandbox package directory, derived from
+// this test file's location.
 func sandboxSourceDir(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)

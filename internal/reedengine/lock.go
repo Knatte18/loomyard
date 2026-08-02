@@ -27,21 +27,15 @@ import (
 const reedLockFileName = "reed.lock"
 
 // Engine is the domain kernel's public handle: a resolved Config, the
-// worktree's hubgeometry.Layout (the Hub Geometry Invariant's single owner
-// of cwd/geometry), and the TmuxCmd bound to this hub's socket. Every
-// exported method returns a plain result struct and error — no cobra, no
-// io.Writer, no exit codes (the engine-purity litmus reedcli, batch 6,
-// depends on). The zero Engine is not valid; always build one via New.
+// worktree's Layout, and the TmuxCmd bound to this hub's socket.
+// The zero Engine is not valid; build one via New.
 type Engine struct {
 	cfg    Config
 	layout *hubgeometry.Layout
 	tmux   TmuxCmd
 }
 
-// New builds an Engine for the given resolved Config and Layout, deriving
-// the TmuxCmd from cfg.Tmux and this hub's socket name (server.go's
-// socketName). Every tmux command an Engine method issues therefore
-// targets the one named server this hub shares across its worktrees.
+// New builds an Engine for the given Config and Layout.
 func New(cfg Config, layout *hubgeometry.Layout) *Engine {
 	return &Engine{
 		cfg:    cfg,
@@ -50,40 +44,24 @@ func New(cfg Config, layout *hubgeometry.Layout) *Engine {
 	}
 }
 
-// Socket returns this engine's tmux -L socket name, so reedcli never needs
-// the unexported socketName helper or the raw Layout to report it.
+// Socket returns this engine's tmux -L socket name.
 func (e *Engine) Socket() string {
 	return socketName(e.layout.Hub)
 }
 
-// SessionName returns this engine's tmux session name (this worktree's
-// directory slug), so reedcli never needs the raw Layout to report it.
+// SessionName returns this engine's tmux session name.
 func (e *Engine) SessionName() string {
 	return SessionName(e.layout.WorktreeRoot)
 }
 
-// TmuxPath returns the resolved tmux binary path this engine's TmuxCmd
-// was built from, so a caller that must build its own raw exec.Command (like
-// attach's in-place attach-session handover, which needs stdio inheritance
-// tmux's own run/output helpers don't support) can target the same binary
-// without reaching into engine config directly.
+// TmuxPath returns the resolved tmux binary path this engine uses.
 func (e *Engine) TmuxPath() string {
 	return e.cfg.Tmux
 }
 
-// withOpLock acquires the reed operation lock at
-// <worktree>/.lyx/reed.lock exactly once, runs fn while holding it, and
-// releases it (via defer) before returning fn's error. This is the ONLY
-// acquisition point for reed.lock in the whole package: every public op
-// (AddStrand, UpdateStrand, RemoveStrand, Up, Resume, Down, Status) wraps
-// its body in withOpLock and calls unexported *Locked helpers that assume
-// the lock is already held. Public ops must never call each other, or
-// call withOpLock a second time, while already holding the lock —
-// gofrs/flock is non-reentrant across handles (even in-process, on
-// Windows: a second Lock() call from a different *Flock/file handle blocks
-// forever waiting on the first), so a nested acquisition would
-// self-deadlock. CLI verbs (reedcli, batch 6) never call withOpLock or
-// internal/lock directly; only Engine methods do.
+// withOpLock acquires the operation lock, runs fn while holding it,
+// and releases it before returning. This is the only acquisition point
+// for reed.lock in the package; it is non-reentrant.
 func (e *Engine) withOpLock(fn func() error) error {
 	dotLyx := e.layout.DotLyxDir()
 	// gofrs/flock opens the lock file with O_CREATE but never creates

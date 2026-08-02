@@ -68,16 +68,8 @@ type Digest struct {
 	ElapsedS int `json:"elapsed_s,omitempty"`
 }
 
-// Distill computes the terminal digest for a batch whose batch-report has
-// landed. report's decision fields (Status, Tests, StuckReason,
-// OutOfScope) pass straight through — OutOfScope is read from
-// report.OutOfScope, never a separate parameter. changed is compared
-// against scope (prefix semantics, "/"-separated path boundaries — a
-// directory scope entry covers everything under it, but "internal/foo"
-// never covers "internal/foobar") to classify every changed file as
-// in-scope, justified out-of-scope (named by report.OutOfScope), or
-// unreported drift; DriftUnreported carries the sorted unreported set.
-// FilesChanged is len(changed); dirty passes straight through to Dirty.
+// Distill computes the terminal digest for a batch report, classifying
+// changed files against scope and OutOfScope to identify unreported drift.
 func Distill(report *Report, changed []string, scope []string, dirty bool) Digest {
 	justified := make(map[string]bool, len(report.OutOfScope))
 	for _, e := range report.OutOfScope {
@@ -115,10 +107,8 @@ func inScope(file string, scope []string) bool {
 	return false
 }
 
-// pathCovers reports whether prefix covers path under "/"-separated
-// boundary semantics: an exact match, or path continuing with
-// prefix + "/". A raw string-prefix comparison would wrongly let
-// "internal/foo" cover "internal/foobar"; this does not.
+// pathCovers reports whether prefix covers path using "/"-separated
+// boundary semantics: exact match or path starting with prefix + "/".
 func pathCovers(prefix, path string) bool {
 	if path == prefix {
 		return true

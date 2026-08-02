@@ -21,31 +21,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// AuditForks implements shuttleengine.Engine.AuditForks for Claude by calling
-// AuditForksIncremental with a nil seenTranscripts map, which reports every fork
-// transcript found — see AuditForksIncremental for the full contract.
+// AuditForks implements shuttleengine.Engine.AuditForks for Claude,
+// reporting every fork transcript by calling AuditForksIncremental with nil seenTranscripts.
 func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	return c.AuditForksIncremental(sessionID, workdir, nil)
 }
 
-// AuditForksIncremental implements shuttleengine.Engine.AuditForksIncremental for
-// Claude. It derives the session's project directory from workdir
-// (claudeProjectDirFor), reads <projectDir>/<sessionID>.jsonl as the parent
-// session's own transcript (always read in full: SpawnCalls, NamedSpawns,
-// ParentWriteCalls, ParentWrites, ParentBashCommands), and reads every
-// <projectDir>/<sessionID>/subagents/*.jsonl whose full path is NOT a key of
-// seenTranscripts as one fork subagent's transcript (one ForkReport each); a nil
-// seenTranscripts reports every fork transcript, which is what makes AuditForks
-// expressible as this method called with a nil map — one parsing path, no
-// duplication. workdir MUST be the pane's actual process cwd — see the call site
-// in wait.go's finalize for why layout.Cwd, never layout.WorktreeRoot, is what
-// must be passed here. A missing subagents/ directory is not an error: zero forks
-// is a legitimate finding for the caller's policy to interpret (an
-// authorized-but-unused capability), so it yields ForkAudit{Forks: []ForkReport{}}
-// with a nil error. A missing parent transcript, or a fork transcript that exists
-// but cannot be read, IS an error — the audit could not be completed at all, and
-// wait.go's fail-loud posture on this error is what keeps a fork-mode run whose
-// audit came back incomplete from ever silently classifying as a clean done.
+// AuditForksIncremental implements shuttleengine.Engine.AuditForksIncremental for Claude,
+// deriving the session's project directory from workdir and reading transcripts.
+// A nil seenTranscripts reports every fork transcript; missing subagents/ is not an error (zero forks).
+// A missing parent transcript or unreadable fork transcript is an error (audit incomplete).
 func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
 	projectDir, err := claudeProjectDirFor(workdir)
 	if err != nil {
@@ -106,12 +91,8 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 	}, nil
 }
 
-// claudeProjectDirFor derives the ~/.claude/projects/<encoded-workdir> directory
-// Claude persists this session's transcripts into, mirroring claudeProjectDir in
-// internal/reedcli/smoke_test.go (verified there against a live transcript):
-// workdir with every non-alphanumeric byte replaced by '-'. Production code must
-// not import test code, so this ~6-line encoding loop is re-implemented here
-// rather than shared with that test helper.
+// claudeProjectDirFor derives the ~/.claude/projects/<encoded-workdir> directory,
+// encoding workdir by replacing non-alphanumeric bytes with '-'.
 func claudeProjectDirFor(workdir string) (string, error) {
 	home, err := claudeHomeDir()
 	if err != nil {
@@ -128,17 +109,8 @@ func claudeProjectDirFor(workdir string) (string, error) {
 	return filepath.Join(home, ".claude", "projects", string(encoded)), nil
 }
 
-// claudeHomeDir resolves the home directory Claude Code itself uses for
-// ~/.claude/projects/, honoring an explicit HOME override before falling back
-// to the platform-correct os.UserHomeDir(). Claude Code (like most POSIX
-// tooling) always honors HOME when set, on every OS it runs on — including
-// Windows, where stdlib os.UserHomeDir() reads USERPROFILE instead and never
-// consults HOME at all. Checking HOME first, unconditionally, keeps this
-// resolution correct for a caller that has deliberately overridden it
-// (t.Setenv("HOME", ...) is this package's own test suite's standard,
-// portable way to sandbox filesystem interactions) on every host OS, while a
-// normal run with no HOME override still falls through to the real
-// platform-specific home directory exactly as before.
+// claudeHomeDir resolves the home directory Claude Code uses for ~/.claude/projects/,
+// honoring HOME before falling back to os.UserHomeDir() for platform-specific resolution.
 func claudeHomeDir() (string, error) {
 	if home := os.Getenv("HOME"); home != "" {
 		return home, nil
@@ -146,12 +118,8 @@ func claudeHomeDir() (string, error) {
 	return os.UserHomeDir()
 }
 
-// transcriptBlock is one entry of a transcript message's content array: a
-// "tool_use" block (Name is the tool name, Input its arguments) or a "text" block
-// (Text is the assistant's message text). Only the fields this audit reads are
-// modeled — any other field Claude's transcript format carries is silently
-// ignored by json.Unmarshal, exactly like ParseEvents' leniency for unrecognized
-// fields (events.go).
+// transcriptBlock is one entry of a transcript message's content array
+// (tool_use or text). Only audited fields are modeled.
 type transcriptBlock struct {
 	Type  string         `json:"type"`
 	ID    string         `json:"id"`
@@ -160,10 +128,8 @@ type transcriptBlock struct {
 	Text  string         `json:"text"`
 }
 
-// transcriptLine is one JSONL line of a Claude session transcript: Type
-// discriminates "assistant"/"user"/other entry kinds, and Message.Content carries
-// the assistant's content blocks (tool_use and text) this audit inspects. Lines of
-// any other Type are skipped entirely by the callers below.
+// transcriptLine is one JSONL line of a Claude session transcript,
+// with Type discriminating entry kinds and Message.Content carrying assistant blocks.
 type transcriptLine struct {
 	Type    string `json:"type"`
 	Message struct {
@@ -172,12 +138,7 @@ type transcriptLine struct {
 }
 
 // readTranscriptLines reads path and leniently decodes it into transcriptLines,
-// one per JSONL line: a blank line is skipped, and a line that fails to parse as
-// JSON is skipped rather than aborting the whole read — mirroring ParseEvents'
-// posture (events.go), since a transcript belonging to a run that raced this
-// audit can end mid-line. The file itself failing to open is NOT tolerated here;
-// that is the caller's job to classify (a missing parent transcript is an error,
-// a missing subagents/ directory is not — see AuditForks).
+// skipping blank lines and JSON errors. File open errors are not tolerated (caller's job to classify).
 func readTranscriptLines(path string) ([]transcriptLine, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -199,20 +160,9 @@ func readTranscriptLines(path string) ([]transcriptLine, error) {
 	return lines, nil
 }
 
-// auditParentTranscript reads path (the parent session's own transcript) and
-// extracts three provider-invariant fact groups the caller's policy interprets:
-// spawnCalls is the total count of Agent tool_use invocations, and namedSpawns
-// is how many of those carried a non-empty tool_input.name field — a defect
-// signal the caller's fail-loud policy hard-errors on (named forks silently
-// lose inherited context in Claude Code ≤2.1.206). writeCalls counts every
-// Write/Edit/NotebookEdit tool_use block, and writes carries the file path of
-// each one, in transcript order — read from the block's file_path input key,
-// falling back to notebook_path for NotebookEdit; a block whose input carries
-// neither key still increments writeCalls but contributes no entry to writes
-// (skipped, not a panic). bashCommands carries the verbatim command input of
-// every Bash tool_use block, in transcript order. A missing or unreadable
-// parent transcript is an error: without it there is no way to know what the
-// session actually spawned or did.
+// auditParentTranscript reads the parent session's transcript and extracts
+// spawnCalls (Agent tool_use count), namedSpawns (non-empty name fields),
+// writeCalls (Write/Edit/NotebookEdit count), writes (file paths), and bashCommands.
 func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int, writes, bashCommands []string, err error) {
 	lines, err := readTranscriptLines(path)
 	if err != nil {
@@ -254,15 +204,8 @@ func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int
 	return spawnCalls, namedSpawns, writeCalls, writes, bashCommands, nil
 }
 
-// forkSpawnToolUseID returns the tool_use id of the parent's own Agent call
-// that spawned the fork whose transcript lives at transcriptPath, read from the
-// sibling <transcript>.meta.json file Claude Code writes next to every fork
-// transcript ({"toolUseId": "toolu_..."}). The fork transcript's FIRST
-// assistant line is a replay of exactly that spawning call (the
-// inherited-context boundary — observed live on Claude Code 2.1.205), so the
-// audit needs this id to avoid counting the parent's own spawn as the fork's
-// nested-Agent attempt. A missing or unparseable meta file returns "" — the
-// caller then skips nothing, which is the pre-meta.json behavior.
+// forkSpawnToolUseID returns the parent's Agent tool_use id that spawned the fork,
+// read from the sibling .meta.json file. Returns "" if meta file is missing or unparseable.
 func forkSpawnToolUseID(transcriptPath string) string {
 	metaPath := strings.TrimSuffix(transcriptPath, ".jsonl") + ".meta.json"
 	data, err := os.ReadFile(metaPath)
@@ -278,17 +221,9 @@ func forkSpawnToolUseID(transcriptPath string) string {
 	return meta.ToolUseID
 }
 
-// auditForkTranscript reads path (one fork subagent's own transcript) into a
-// ForkReport: ToolCalls tallies every tool_use by tool name, AgentCalls and
-// WriteCalls narrow that tally to the two tool families the fail-loud posture
-// treats as defect signals (a nested Agent spawn; a Write/Edit/NotebookEdit
-// mutation), BashCommands carries every Bash tool_use's command string verbatim
-// and in order, and ReportReturned reports whether the LAST assistant-type
-// message in the transcript carried a non-empty text block — the fork's own
-// "report returned" signal. A missing or unreadable fork transcript is an error:
-// the fork clearly ran (its transcript file exists in the caller's directory
-// listing, or the caller would not have called this at all), so a read failure
-// here is a real I/O problem, not a legitimate zero-fork finding.
+// auditForkTranscript reads one fork subagent's transcript into a ForkReport,
+// extracting ToolCalls, AgentCalls, WriteCalls, BashCommands, and ReportReturned
+// (whether the final assistant message carried a text block).
 func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 	lines, err := readTranscriptLines(path)
 	if err != nil {

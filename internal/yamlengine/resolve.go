@@ -18,17 +18,9 @@ import (
 // Group 3: the default value (captured only if group 2 matched)
 var envMarkerRe = regexp.MustCompile(`\$\{env:([A-Za-z_][A-Za-z0-9_]*)(:-((?s).*?))?\}`)
 
-// Resolve expands ${env:...} markers in YAML content using the supplied environment map.
-//
-// The function unmarshals src into a yaml.Node, walks every scalar leaf node
-// at any depth in nested mappings and sequences, applies env-marker expansion
-// to each scalar's value, and returns the marshalled result.
-//
-// An empty or whitespace-only src resolves to itself without error.
-//
-// The env parameter supplies the environment variables as a map[string]string.
-// The caller is responsible for populating env with desired values; Resolve performs
-// no I/O and does not consult the OS environment.
+// Resolve expands ${env:...} markers in YAML content using the supplied
+// environment map. An empty or whitespace-only src resolves to itself. The
+// caller is responsible for populating env; Resolve performs no I/O.
 func Resolve(src []byte, env map[string]string) ([]byte, error) {
 	// Handle empty/whitespace-only input
 	if len(strings.TrimSpace(string(src))) == 0 {
@@ -56,7 +48,7 @@ func Resolve(src []byte, env map[string]string) ([]byte, error) {
 }
 
 // walkAndExpand recursively walks a node tree and expands env markers in
-// every scalar leaf node. It mutates the tree in place.
+// every scalar leaf node, mutating the tree in place.
 func walkAndExpand(n *yaml.Node, env map[string]string) error {
 	if n == nil {
 		return nil
@@ -104,17 +96,9 @@ func walkAndExpand(n *yaml.Node, env map[string]string) error {
 	return nil
 }
 
-// expandScalar expands all ${env:NAME} and ${env:NAME:-default} markers
-// in a scalar string. Markers may be embedded in surrounding text (interpolation).
-//
-// For required form (${env:NAME}): if NAME is not present in env, returns an error.
-// For optional form (${env:NAME:-default}): if NAME is absent or empty-string in env,
-// substitutes the literal default text verbatim (no trimming, no quote-stripping).
-//
-// If NAME is present in env with a non-empty value, the optional form uses that value.
-// A truly-absent key and an empty-string value are treated differently for the
-// optional form: absent or empty yields the default; present and non-empty yields the value.
-// For the required form, empty-string is treated as a normal value (substituted, no error).
+// expandScalar expands ${env:NAME} and ${env:NAME:-default} markers in a
+// scalar string, supporting interpolation. Required form errors if NAME is
+// absent. Optional form uses default when NAME is absent or empty.
 func expandScalar(s string, env map[string]string) (string, error) {
 	// Find all matches of the env-marker pattern
 	matches := envMarkerRe.FindAllStringSubmatchIndex(s, -1)

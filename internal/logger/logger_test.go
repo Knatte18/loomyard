@@ -13,9 +13,7 @@ import (
 	"testing"
 )
 
-// withCapturedOutput redirects the package sink to a fresh buffer for the
-// duration of the test and restores the real os.Stderr sink at test end, so
-// state does not leak between tests that run in the same process.
+// withCapturedOutput redirects output to a fresh buffer for the test duration.
 func withCapturedOutput(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -26,8 +24,6 @@ func withCapturedOutput(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-// originalOut is the real stderr sink, captured once so withCapturedOutput's
-// cleanup can restore it without hardcoding os.Stderr in every test.
 var originalOut = out
 
 func TestDefaultLevel_WarnIsSilentForInfoAndDebug(t *testing.T) {
@@ -150,10 +146,7 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 	}
 }
 
-// TestDualHandler_DebugReachesStderrOnlyNotDurableSink covers the
-// dual-handler-fan-out decision's Debug exclusion: a Debug record reaches
-// the stderr half once -vv is set, but durableHandler.Enabled never accepts
-// below Info, so no sink file is created at all for a Debug-only sequence.
+// TestDualHandler_DebugReachesStderrOnlyNotDurableSink verifies Debug does not reach the durable sink.
 func TestDualHandler_DebugReachesStderrOnlyNotDurableSink(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -171,11 +164,7 @@ func TestDualHandler_DebugReachesStderrOnlyNotDurableSink(t *testing.T) {
 	}
 }
 
-// TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV
-// covers the composite's OR-gate: an Info record reaches the durable sink
-// even at the default Warn threshold (verbosity 0), where the stderr half
-// alone would reject it, and reaches stderr only once -v (verbosity 1) or
-// above is set -- the exact property the motivating incident depends on.
+// TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV verifies Info reaches durable sink at all verbosity levels.
 func TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -208,9 +197,7 @@ func TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV(t *
 	}
 }
 
-// TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity covers that Warn,
-// the default threshold, always reaches both the stderr half and the
-// durable sink regardless of -v/-vv.
+// TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity verifies Warn reaches both sinks at all levels.
 func TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity(t *testing.T) {
 	for _, verbosity := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("verbosity=%d", verbosity), func(t *testing.T) {
@@ -240,12 +227,7 @@ func TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity(t *testing.T) {
 	}
 }
 
-// TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic covers
-// the case where the durable sink never activates (SetDurableSinkDir("")
-// falls through to the testing.Testing()/LYX_TRACE gate, keeping sinkOK
-// false): a Warn call must still reach stderr, produce no error, and not
-// panic -- durableWriter.Write silently discards the record rather than
-// surfacing the unarmed sink as a failure.
+// TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic verifies Warn works without a durable sink.
 func TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic(t *testing.T) {
 	SetDurableSinkDir("")
 	buf := withCapturedOutput(t)
@@ -259,10 +241,7 @@ func TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic(t *testi
 	}
 }
 
-// TestDualHandler_EveryLevelStampsCurrentTraceID covers Card 18's
-// trace-stamping requirement end-to-end through the dual-handler wiring:
-// every emitted line at every level -- stderr and durable sink alike --
-// carries trace= matching TraceID()'s current value.
+// TestDualHandler_EveryLevelStampsCurrentTraceID verifies all levels stamp the trace ID.
 func TestDualHandler_EveryLevelStampsCurrentTraceID(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -290,8 +269,6 @@ func TestDualHandler_EveryLevelStampsCurrentTraceID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.ReadFile(%q) = _, %v; want nil error", files[0], err)
 	}
-	// The header line and every subsequent Info/Warn record (Debug never
-	// reaches the durable sink) all carry trace=.
 	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
 		if !strings.Contains(line, wantTrace) {
 			t.Errorf("durable sink line = %q; want it to contain %q", line, wantTrace)
@@ -299,12 +276,7 @@ func TestDualHandler_EveryLevelStampsCurrentTraceID(t *testing.T) {
 	}
 }
 
-// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker
-// pins the concurrency-contract decision: concurrent Warn calls across many
-// goroutines, run under go test -race, must still open exactly one sink
-// file (pins sinkOnce) and, when their combined bytes cross the size cap,
-// emit exactly one truncation-marker line (pins writeDurable's
-// mutex-guarded counter+cap-check+marker+write critical section).
+// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent writes produce one file and one marker.
 func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -313,9 +285,6 @@ func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t 
 	t.Cleanup(func() { SetVerbosity(0) })
 
 	const goroutines = 20
-	// 512 KiB per call, two calls per goroutine: 20 MiB combined, well past
-	// the 8 MiB cap, so the crossing is guaranteed to happen under real
-	// concurrent contention rather than a single sequential writer.
 	payload := strings.Repeat("x", 512*1024)
 
 	var wg sync.WaitGroup

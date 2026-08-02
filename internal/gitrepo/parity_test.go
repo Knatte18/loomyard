@@ -22,9 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// newEmptyRepoFixture builds a repo initialized via `git init -b main` with
-// an unborn HEAD — no commit at all — the fixture CurrentSHA's ErrNoCommits
-// path and CurrentBranch's unborn-HEAD path both exercise.
+// newEmptyRepoFixture builds a repo with an unborn HEAD via `git init -b main`.
 func newEmptyRepoFixture(t *testing.T) (dir string) {
 	t.Helper()
 
@@ -33,11 +31,8 @@ func newEmptyRepoFixture(t *testing.T) (dir string) {
 	return dir
 }
 
-// newNonASCIIFixture builds a repo whose second commit adds a filename
-// outside ASCII (å.txt), exercising the core.quotePath escaping pitfall
-// ChangedFilesSince's -z flag guards against — both the oracle and the
-// implementation must return the on-disk literal, never a C-quoted escape
-// form.
+// newNonASCIIFixture builds a repo whose second commit adds a non-ASCII
+// filename (å.txt).
 func newNonASCIIFixture(t *testing.T) (dir, filename string) {
 	t.Helper()
 

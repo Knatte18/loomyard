@@ -17,28 +17,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Preflight validates that the current worktree is fit for loom to begin
-// running a task: the worktree is resolvable and at its root, the host is
-// clean, the weft pairing is present and in sync, and _lyx/status.json is a
-// coherent, fresh seed. It owns cwd resolution end-to-end (Getwd + Resolve)
-// so it can be called with no arguments from anywhere in a worktree; a
-// caller outside this package that already holds a resolved Layout (e.g. for
-// isolated testing) cannot reach checkResolved directly, since that helper is
-// unexported by design — Preflight is the only entry point from outside the
-// package.
+// Preflight validates that the current worktree is fit for loom to run: the
+// worktree is resolvable and at its root, the host is clean, the weft pairing
+// is present and in sync, and _lyx/status.json is coherent and fresh.
 //
 // Callers MUST NOT invoke Preflight except when the task is at the
 // fresh/preflight stage. Invoking it on an already-advanced task (non-empty
-// history, set start_sha, …) is a caller error that will be reported as a
-// half-finished precondition failure, not diagnosed as misuse, because
-// Preflight is a stateless validator.
+// history, set start_sha) is a caller error that will be reported as a
+// half-finished precondition failure.
 //
 // Returns (Report{OK:true}, nil) when every precondition is met.
 // Returns (Report{OK:false, Failures}, nil) when one or more preconditions
-// are determined to be unmet — a normal, expected outcome, not an error.
-// Returns (Report{}, err) when Preflight could not determine an answer at
-// all (a git spawn failure, an unexpected I/O error, or similar infra
-// failure) — the caller must escalate, not treat this as "not ready".
+// are unmet — a normal, expected outcome, not an error.
+// Returns (Report{}, err) when Preflight could not determine an answer at all
+// — the caller must escalate, not treat this as "not ready".
 func Preflight() (Report, error) {
 	// Resolve cwd via hubgeometry.Getwd(), the only permitted raw-cwd read
 	// outside cmd/lyx/main.go (per the Hub Geometry Invariant).
@@ -66,10 +58,8 @@ func Preflight() (Report, error) {
 	return checkResolved(l)
 }
 
-// checkResolved runs checks 1b–4 against an already-resolved Layout. It is
-// unexported and takes an injected Layout so integration tests can drive
-// every precondition scenario in isolation, without going through Preflight's
-// process-cwd resolution.
+// checkResolved runs checks 1b–4 against an already-resolved Layout, allowing
+// tests to exercise preconditions in isolation.
 func checkResolved(l *hubgeometry.Layout) (Report, error) {
 	// Check 1b: geometry sanity. Resolve can succeed with no Prime when List
 	// found no main-worktree entry — treat that the same as "not a git repo"

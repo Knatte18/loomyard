@@ -20,11 +20,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// statusCmd builds the `status` subcommand: LoadState, then for each
-// persisted BatchState (sorted by number) a summary row naming the batch's
-// kind (fork/recovery), its current status, whether it has reached a
-// terminal classification, and whether a distilled digest has been
-// persisted for it -- status is a plain read, never a state.json write.
+// statusCmd builds the `status` subcommand.
 func (c *websterCLI) statusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -61,9 +57,6 @@ Example:
 				return nil
 			}
 
-			// Batches is keyed by number for O(1) SaveState mutation
-			// elsewhere; status renders it as a stable, number-ordered list
-			// instead, since that map iteration order is not deterministic.
 			numbers := make([]int, 0, len(st.Batches))
 			for n := range st.Batches {
 				numbers = append(numbers, n)

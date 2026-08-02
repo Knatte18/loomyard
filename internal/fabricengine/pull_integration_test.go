@@ -28,13 +28,9 @@ import (
 )
 
 // buildReconcileFixture builds a warp+weft pair with a bare warp remote and n
-// synced warp<->weft correspondences (via Fabric.CommitWeft, exactly like
-// staleCorrespondenceFixture in syncweft_integration_test.go), pushing warp's
-// history to the bare remote once at the end. It returns the Fabric handle,
-// both worktree paths, the bare remote's path, the warp repo's very first
-// (pre-loop) commit SHA — the root a caller can rewrite back to for a
-// no-surviving-anchor scenario — and the recorded warp/weft SHA pairs in
-// commit order.
+// synced warp<->weft correspondences, returning the Fabric handle, both worktree
+// paths, the bare remote's path, the initial warp SHA (the root for no-surviving-anchor),
+// and the recorded warp/weft SHA pairs in commit order.
 func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *Fabric, warpPath, bareDir string, weftFixture lyxtest.WeftFixture, initWarpSHA string, warpSHAs, weftSHAs []string) {
 	t.Helper()
 

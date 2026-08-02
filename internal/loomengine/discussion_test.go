@@ -13,9 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
-// TestDiscussionSpec verifies DiscussionSpec's field mapping for both
-// autonomous values against a hand-built Layout, an in-memory Config, and
-// the built-in modelspec registry (no models.yaml present).
+// TestDiscussionSpec verifies DiscussionSpec's field mapping for both autonomous values.
 func TestDiscussionSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
@@ -77,9 +75,7 @@ func TestDiscussionSpec(t *testing.T) {
 	}
 }
 
-// TestDiscussionSpec_EmptySlug verifies an empty slug is rejected with a
-// non-nil error rather than silently producing a Spec with no board-read
-// target.
+// TestDiscussionSpec_EmptySlug verifies an empty slug is rejected.
 func TestDiscussionSpec_EmptySlug(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}

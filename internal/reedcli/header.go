@@ -16,25 +16,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// blockForever parks the keepalive tail without ever returning. It sleeps in
-// a loop rather than using `select {}`: with no other goroutines in this
-// process, an empty select trips Go's runtime deadlock detector and the
-// keepalive dies instantly with "fatal error: all goroutines are asleep -
-// deadlock!" — observed live as every header pane crashing right after
-// printing its text. A sleeping goroutine is never counted as deadlocked, so
-// this parks the process for the pane's whole life at zero CPU.
+// blockForever parks the keepalive tail indefinitely. It sleeps in a loop rather than using select {} to avoid Go's deadlock detector.
 func blockForever() {
 	for {
 		time.Sleep(time.Hour)
 	}
 }
 
-// headerCmd builds the `header` subcommand: calls c.eng.HeaderText() and
-// either returns it via the JSON envelope (default) or prints it then blocks
-// forever (--blocking, the header pane's keepalive tail). Rendering is the
-// only fallible step and it always runs pre-flight, on the envelope, before
-// either mode's tail — a bad template surfaces as output.Err with a non-zero
-// exit in both modes, never a silent hang.
+// headerCmd builds the `header` subcommand: calls c.eng.HeaderText() and either returns it via the JSON envelope or prints and blocks forever.
 func (c *reedCLI) headerCmd() *cobra.Command {
 	var blocking bool
 
@@ -73,22 +62,7 @@ Example:
 			}
 
 			if blocking {
-				// The pane keepalive: display the rendered text once, then
-				// hold the pane open forever. No JSON is written here even on
-				// success — this is the one documented envelope exception,
-				// scoped to exactly this tail (rendering above already ran
-				// pre-flight, on the envelope).
-				//
-				// Display mechanics are load-bearing for the DEFAULT 1-row
-				// header pane (height_rows: 1): the pane's shell has already
-				// echoed this command's own (long) launch line, and a
-				// trailing newline after the text would park the cursor on a
-				// fresh empty row — which is the only row a 1-row pane shows,
-				// scrolling the text itself out of view (observed live,
-				// tmux 3.6). So: clear the pane and home the cursor (hides
-				// the echoed launch line at any height), then print the text
-				// with its trailing newlines trimmed via Fprint, leaving the
-				// cursor on the text's last row so that row stays visible.
+				// Display the rendered text once, then hold the pane open forever.
 				fmt.Fprint(out, "\x1b[2J\x1b[H"+strings.TrimRight(text, "\r\n"))
 				blockForever()
 			}

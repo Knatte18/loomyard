@@ -48,13 +48,7 @@ import (
 //go:embed master-template.md
 var masterTemplate []byte
 
-// MasterTemplate returns the embedded Master-session prompt template's raw
-// bytes: the caller-required top-level markers are {{.batch_index}},
-// {{.progress}}, {{.outcome_path}}, {{.summary_path}},
-// {{.integration_prompt_path}}, {{.self_fix_cap}}, and {{.poll_wait_s}}
-// (see master-template.md's leading banner comment).
-// RenderMasterPrompt fills it via stencil.Fill before run hands it to
-// shuttle as the Master session's Prompt.
+// MasterTemplate returns the embedded Master-session prompt template's raw bytes.
 func MasterTemplate() []byte {
 	return masterTemplate
 }
@@ -68,14 +62,8 @@ var recoveryPrefix []byte
 //go:embed implementer-body.md
 var implementerBody []byte
 
-// joinTemplateAssets concatenates prefix and body's raw template bytes,
-// separated by a blank line, into one composed template — the Go
-// byte-composition internal/stencil's single-pass text/template needs in
-// place of an include mechanism it does not have (see stencil.go's own doc
-// comment). Only prefix may carry a leading `<!-- -->` banner comment: body
-// (always implementerBody) never does, so stencil.stripLeadingComment strips
-// exactly the composed result's one banner and none of body's own markers
-// are lost to it.
+// joinTemplateAssets concatenates prefix and body's raw template bytes
+// separated by a blank line. stencil.stripLeadingComment removes the leading banner.
 func joinTemplateAssets(prefix, body []byte) []byte {
 	joined := append([]byte{}, prefix...)
 	joined = append(joined, []byte("\n\n")...)
@@ -95,33 +83,18 @@ func composeRecoveryTemplate() []byte {
 	return joinTemplateAssets(recoveryPrefix, implementerBody)
 }
 
-// ForkTemplate returns the composed, thin in-session fork prompt template's
-// raw bytes (fork-prefix.md + implementer-body.md). Its required top-level
-// markers are {{.card_pointers}}, {{.worktree_root}}, {{.prev_digest}},
-// {{.self_fix_cap}}, and {{.report_path}} — see implementer-body.md's own
-// section text for each marker's role; fork-prefix.md carries no markers of
-// its own. RenderForkPrompt fills it via stencil.Fill before begin-batch
-// writes the result to a prompt file Master's Agent-tool fork call reads.
+// ForkTemplate returns the composed thin in-session fork prompt template.
 func ForkTemplate() []byte {
 	return composeForkTemplate()
 }
 
-// RecoveryTemplate returns the composed, full cold-start recovery prompt
-// template's raw bytes (recovery-prefix.md + implementer-body.md). It
-// carries the same five required markers ForkTemplate does, PLUS
-// recovery-prefix.md's one optional marker, {{.pattern_directive}}.
-// RenderRecoveryPrompt fills it via stencil.FillOptional before
-// recover-batch starts the separate cold recovery strand.
+// RecoveryTemplate returns the composed full cold-start recovery prompt template.
 func RecoveryTemplate() []byte {
 	return composeRecoveryTemplate()
 }
 
-// ImplementerBodyTemplate returns implementer-body.md's raw, pre-Fill bytes
-// — the one shared job body both ForkTemplate and RecoveryTemplate compose
-// with their own prefix. It exists so a test can assert the reuse guarantee
-// (both composed templates carry this exact byte sequence) without
-// byte-comparing the two renderers' own final output, which legitimately
-// diverges on per-caller values.
+// ImplementerBodyTemplate returns implementer-body.md's raw bytes — the shared
+// job body both ForkTemplate and RecoveryTemplate compose with their own prefix.
 func ImplementerBodyTemplate() []byte {
 	return implementerBody
 }
@@ -129,11 +102,7 @@ func ImplementerBodyTemplate() []byte {
 //go:embed integration-template.md
 var integrationTemplate []byte
 
-// IntegrationTemplate returns the embedded integration-suite fork prompt
-// template's raw bytes (see integration-template.md's leading banner
-// comment for its top-level markers), mirroring ForkTemplate/MasterTemplate's
-// own accessor shape. RenderIntegrationPrompt fills it via stencil.Fill
-// before the single dedicated integration fork's prompt file is written.
+// IntegrationTemplate returns the embedded integration-suite fork prompt template's raw bytes.
 func IntegrationTemplate() []byte {
 	return integrationTemplate
 }
@@ -146,17 +115,7 @@ func IntegrationTemplate() []byte {
 // required-top-level-marker guarantee.
 const noPrecedingBatchDigest = "none (first batch)"
 
-// renderCardPointers renders one `- <SourcePath>` bullet per card, in
-// declared order, joined by "\n" — the pointer list both RenderForkPrompt
-// and RenderRecoveryPrompt inject in place of any inlined card content. It
-// reads c.SourcePath VERBATIM: the worktree-relative `_lyx/plan/NN-<slug>.md`
-// token planparser already built (see planparser.Card.SourcePath). Per the
-// card-pointer-relative-via-hubgeometry Shared Decision this function must
-// NOT filepath.Rel/filepath.Join the pointer against any Layout field, must
-// NOT rebuild the NN-<slug>.md filename from Card.Number/Slug, and must NOT
-// name a literal `_lyx` — all three would duplicate authority the Hub
-// Geometry Invariant and the Planparser Sole-Parser Invariant already
-// reserve elsewhere.
+// renderCardPointers renders one `- <SourcePath>` bullet per card in declared order.
 func renderCardPointers(cards []planparser.Card) string {
 	bullets := make([]string, 0, len(cards))
 	for _, c := range cards {
@@ -165,36 +124,9 @@ func renderCardPointers(cards []planparser.Card) string {
 	return strings.Join(bullets, "\n")
 }
 
-// RenderForkPrompt fills the composed, thin in-session fork prompt
-// (ForkTemplate) for one execution batch's fork, called by begin-batch
-// immediately before Master forks that batch's implementer. batch is the
-// specific batcher.Batch being forked — the ordered group of cards this fork
-// implements; its cards' SourcePath pointers are rendered verbatim by
-// renderCardPointers, never inlined What/file-op fields, since the fork
-// already inherits Master's whole plan-level context and reads its own card
-// files directly (see the fork-context-hygiene Shared Decision). prevDigest
-// is the immediately preceding batch's persisted digest, ALREADY rendered by
-// the caller as a one-line summary — read from state.json's
-// BatchState.Digest, never re-distilled here against a HEAD that may have
-// since moved; an empty prevDigest renders the literal sentinel "none (first
-// batch)" instead of a blank field. reportPath is the fork's own
-// OutputFiles target; l is the resolved Layout this batch's worktree runs
-// in — the source of {{.worktree_root}}. selfFixCap is the config knob
-// bounding the fork's in-session self-fix attempts.
-//
-// {{.worktree_root}} is filled from l.Cwd, NOT l.WorktreeRoot: every caller
-// of this function assigns l.Cwd to the Layout field this parameter
-// replaced, so filling from WorktreeRoot instead would silently change what
-// the fork prompt calls its worktree root at any RelPath != "." — the exact
-// geometry this plumbing exists for. On a Resolve-built Layout the two are
-// byte-identical at RelPath == ".", but that holds because both are
-// Cwd-equivalent there, not because the fields are interchangeable in
-// general.
-//
-// This function takes no *planparser.Plan: the thinned fork prompt injects
-// nothing plan-level (no Shared Decisions body, no Rename mechanic, no
-// PATTERN directive) — all of that is already in the fork's inherited
-// Master context, per the fork-context-hygiene Shared Decision.
+// RenderForkPrompt fills ForkTemplate for one execution batch's in-session fork.
+// Cards' SourcePath pointers are rendered verbatim; {{.worktree_root}} is filled
+// from l.Cwd. prevDigest is already rendered as a one-line summary by the caller.
 func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *hubgeometry.Layout, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
@@ -215,20 +147,10 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *hub
 	return prompt, nil
 }
 
-// RenderRecoveryPrompt fills the composed, full cold-start recovery prompt
-// (RecoveryTemplate) for one execution batch's recovery strand, called by
-// recover-batch immediately before spawning that separate process. Unlike
-// RenderForkPrompt's in-session fork, the recovery strand inherits NOTHING —
-// no codebase orientation, no plan framing, no constraints — so its prompt
-// points the strand at `_lyx/plan/00-overview.md`, `CONSTRAINTS.md`, and (when
-// PATTERN is active) `_pattern/PATTERN.md` before the shared implementer-job
-// body runs, per the fork-context-hygiene Shared Decision. batch, prevDigest,
-// reportPath, l, and selfFixCap share RenderForkPrompt's exact meaning and
-// plan-less signature shape. pattern_directive is injected via
-// pattern.Directive(l, pattern.RoleImplementer) — RoleImplementer, not
-// RoleOrchestrator, because the recovery strand DOES edit code (unlike
-// Master, which only forks) — and filled through stencil.FillOptional, so it
-// renders as nothing when PATTERN is inactive.
+// RenderRecoveryPrompt fills RecoveryTemplate for one batch's cold-start recovery
+// strand. Unlike RenderForkPrompt, the recovery strand inherits nothing, so its
+// prompt orients from plan/overview.md and CONSTRAINTS.md before the shared
+// implementer-job body runs. pattern_directive is injected if PATTERN is active.
 func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l *hubgeometry.Layout, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
@@ -251,16 +173,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l 
 }
 
 // RenderIntegrationPrompt fills integration-template.md for the plan's
-// single, dedicated integration-suite fork's own prompt: run once (if at
-// all), after every batch has reached a terminal-done state, only when
-// ShouldRunIntegration(plan) is true (integration.go). plan is the whole
-// parsed plan — this function injects its own plan-level "## verify:" text
-// (plan.Verify). reportPath and worktreeRoot are the fork's own OutputFiles
-// target and host checkout, mirroring RenderForkPrompt's own two path
-// parameters. Returns an error when plan.Verify is empty: callers gate this
-// call on ShouldRunIntegration first, so an empty plan-level verify reaching
-// this function is a caller bug, not a value this function papers over with
-// a sentinel the way RenderForkPrompt's own prev_digest marker does.
+// single integration-suite fork. Returns an error if plan.Verify is empty.
 func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot string) ([]byte, error) {
 	verify := strings.TrimSpace(plan.Verify)
 	if verify == "" {
@@ -279,39 +192,12 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot str
 	return prompt, nil
 }
 
-// noIntegrationPromptPath is the literal sentinel RenderMasterPrompt renders
-// into {{.integration_prompt_path}} when integrationPromptPath is empty: the
-// plan carries no plan-level "## verify:" section, so no integration prompt
-// file was ever rendered. Never a blank field — an empty top-level marker
-// would violate stencil.Fill's required-marker guarantee, and the master
-// template's own integration section already tells Master to skip the stage
-// when the plan has no "## verify:".
+// noIntegrationPromptPath is the sentinel RenderMasterPrompt renders when no integration prompt file.
 const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 
-// RenderMasterPrompt fills master-template.md for one `lyx webster run`
-// invocation's Master spawn. plan is the parsed, validated plan; st is the
-// current run's in-memory State (nil-safe via RenderProgress's own guard,
-// though run always has a freshly loaded/initialized State by the time it
-// renders this). outcomePath and summaryPath are Master's two permitted
-// output files; integrationPromptPath is the pre-rendered integration fork
-// prompt file's path (written by run when ShouldRunIntegration reports
-// true; empty otherwise, rendering the noIntegrationPromptPath sentinel —
-// Master never renders or writes a prompt file itself, since any Master
-// write beyond its two contract files is a parent-write audit violation);
-// selfFixCap and pollWaitS are the config knobs Master's prompt states as
-// tuning knobs for its forks and its recover-batch re-polling,
-// respectively. l is the resolved Layout the caller's own PATTERN active
-// check runs against — RenderMasterPrompt had neither a root nor a Layout
-// parameter before this.
-//
-// pattern_directive is injected via pattern.Directive(l,
-// pattern.RoleOrchestrator) — RoleOrchestrator, not RoleImplementer: this
-// template states in as many words that Master never edits code, so an
-// implementer-worded directive would be one Master cannot carry out; Master
-// qualifies on the context-inheritance clause instead, since its forks are
-// in-session and thin precisely because they inherit everything Master has
-// read. It is filled through stencil.FillOptional, so it renders as nothing
-// when PATTERN is inactive.
+// RenderMasterPrompt fills master-template.md for one `lyx webster run` invocation.
+// pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active
+// (Master never edits code, only forks).
 func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *hubgeometry.Layout) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
@@ -335,13 +221,7 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 	return prompt, nil
 }
 
-// RenderBatchIndex renders plan's flat card list into the ordered-list text
-// {{.batch_index}} fills with: one line per card, "NN — slug — intent".
-// Unlike builderengine's own renderBatchIndex, there are no v2 batch
-// annotations left to render — "(oversized)" and "(verify: deferred;
-// chain-end NN)" described PlanBatch fields (Oversized, VerifyDeferred,
-// ChainEnd) that do not exist on planparser.Card, since the flat format has
-// no oversized/chained escape mechanism at all.
+// RenderBatchIndex renders plan's flat card list into ordered-list text for {{.batch_index}}.
 func RenderBatchIndex(plan *planparser.Plan) string {
 	lines := make([]string, 0, len(plan.Cards))
 	for _, c := range plan.Cards {
@@ -350,26 +230,9 @@ func RenderBatchIndex(plan *planparser.Plan) string {
 	return strings.Join(lines, "\n")
 }
 
-// RenderProgress renders {{.progress}}'s per-batch state summary for
-// resume, built strictly from st's PERSISTED BatchState entries — never by
-// re-parsing report files the way builderengine's renderProgress does,
-// since webster already keeps this exact record in state.json (the
-// digest-persistence decision). A batch with no BatchState entry yet, or
-// one recorded but not yet Terminal (still in flight, or never started), is
-// omitted entirely — only a terminal batch (done or stuck) is listed, one
-// "NN-slug: <status>" line per batch, in plan order. Returns the literal
-// word "none" when no batch has reached a terminal state yet (a fresh run,
-// or a resume before the first batch ever finished). st may be nil (an
-// as-yet-uninitialized run); RenderProgress then returns "none" rather than
-// panicking, since Master's very first render call happens before any batch
-// has run.
-//
-// st.Batches is keyed by execution-batch number, not plan card number; this
-// walks plan.Cards and looks each card's own Number up directly in
-// st.Batches. That is exact under today's identity batchifier (batch ≡
-// card, so the numbering spaces coincide) and is the same v0 assumption
-// CardSHAs documents — a future grouping batchifier needs its own progress
-// rendering, not a change here.
+// RenderProgress renders {{.progress}}'s per-batch state summary for resume,
+// built from st's persisted BatchState entries. Returns "none" when no batch
+// has reached terminal state. st may be nil (as-yet-uninitialized run).
 func RenderProgress(plan *planparser.Plan, st *State) string {
 	if st == nil {
 		return "none"

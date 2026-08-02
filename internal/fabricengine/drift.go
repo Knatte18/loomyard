@@ -17,21 +17,12 @@ import (
 )
 
 // Healthy reports whether the host worktree and its paired weft worktree are
-// in sync: the weft worktree is on WeftBranchName(hostBranch), and every host
-// junction in l.HostJunctionsHere(names) exists and points to its own weft
-// directory, where names is the wired name-set loaded from the repo-wide
-// BoardDir fabric.yaml. The weft sibling is derived deterministically as
-// <worktree-base>-weft; no registry or status.md is consulted, so Healthy is
-// stateless.
-//
-// Returns (true, "", nil) if the pair is in sync.
-// Returns (false, reason, nil) if the pair is out of sync; reason describes
-// the divergence. A config-load failure is reported this way too — as a
-// "junction check unavailable" reason, not a hard error — deliberately
-// containing the substring "junction" the loom preflight classifier keys on
-// (preflight.go's check-3 classification).
-// Returns (false, "", err) if the check encounters a system error (e.g., git
-// failure, stat error).
+// in sync: the weft worktree is on the paired weft branch and every host
+// junction exists and points to its correct weft directory. The weft sibling
+// is determined deterministically and no external state is consulted, so
+// Healthy is stateless.
+// Returns (true, "", nil) if in sync; (false, reason, nil) if out of sync;
+// (false, "", err) if a system error occurs.
 func Healthy(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 	// Verify the host worktree's current branch via rev-parse --abbrev-ref HEAD.
 	hostOut, _, exitCode, err := gitexec.RunGit(

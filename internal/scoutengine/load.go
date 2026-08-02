@@ -17,25 +17,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoadRegistry loads the servers.yaml registry rooted at baseDir. The path
-// is always hubgeometry.ConfigFile(baseDir, "servers") — never hand-joined,
-// per the Hub Geometry Invariant. An absent file is deliberately NOT an
-// error: servers.yaml is optional, so a fresh hub with no file at all still
-// resolves every built-in language via builtins(). Any other read error
-// (permissions, a directory where a file is expected, …) is wrapped with the
-// path for context.
-//
-// When the file is present, its entries are decoded with
-// yaml.Decoder.KnownFields(true) into map[string]Entry — an unknown YAML
-// field anywhere in an entry is a loud error — and then each is validated
-// with validateEntry, naming the offending alias and the file path on
-// failure.
-//
-// The result is built from builtins(), with each file entry overlaid as a
-// WHOLE-ENTRY replacement: a file "go:" block replaces the built-in go entry
-// entirely (markers, match, command, and install hint together), never
-// merging field-by-field. An empty or comments-only file yields builtins()
-// unchanged.
+// LoadRegistry loads the optional servers.yaml overlay, replacing built-in entries whole.
+// An absent file returns builtins(); an empty file also returns builtins() unchanged.
 func LoadRegistry(baseDir string) (Registry, error) {
 	path := hubgeometry.ConfigFile(baseDir, "servers")
 

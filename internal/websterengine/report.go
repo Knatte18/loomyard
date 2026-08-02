@@ -49,16 +49,9 @@ func ReportFileName(number int, slug string) string {
 }
 
 // ParseReport reads and strictly decodes the fork-return report YAML file
-// at path (yaml.Decoder.KnownFields(true), so an unrecognized key is a
-// fail-loud error, not silently ignored), then enforces the schema's
-// vocabulary and cross-field rules:
-//   - status: must be ReportStatusOK or ReportStatusFailed;
-//   - head_sha: must be non-empty.
-//
-// Deviations is never validated beyond its shape (a YAML list of strings);
-// a non-empty deviation list is never itself an error, per the deviation-
-// list-is-informational Shared Decision. Each violation is returned as its
-// own distinct wrapped error naming path and the offending field.
+// at path, then enforces strict validation: status must be ReportStatusOK or
+// ReportStatusFailed, head_sha must be non-empty. Each violation is returned
+// as its own distinct wrapped error.
 func ParseReport(path string) (*Report, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

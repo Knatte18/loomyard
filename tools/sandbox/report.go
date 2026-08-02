@@ -14,43 +14,31 @@ import (
 	"time"
 )
 
-// Sandbox report file naming. reportFileName is the agent-written file inside
-// the Hub host repo; reportSourceID is the required value of the report's
-// top-level "source" field, used to reject reports from an unrelated producer.
+// Sandbox report file naming.
 const (
 	reportFileName = "sandbox-report.json"
 	reportSourceID = "sandbox-report"
 )
 
-// sandboxReport is the top-level shape of sandbox-report.json. The agent
-// writes only Source and Items; Meta is stamped by fetchReport from the
-// authoritative binaryInfo during the fetch step (see the
-// "suite.go stamps meta.fingerprint" Shared Decision).
+// sandboxReport is the top-level shape of sandbox-report.json.
 type sandboxReport struct {
 	Source string        `json:"source"`
 	Meta   reportMeta    `json:"meta"`
 	Items  *[]reportItem `json:"items"`
 }
 
-// reportMeta holds provenance metadata attached to a sandboxReport. Today it
-// carries only the binary fingerprint, but is its own type so future
-// provenance fields can be added without reshaping sandboxReport.
+// reportMeta holds provenance metadata attached to a sandboxReport.
 type reportMeta struct {
 	Fingerprint reportFingerprint `json:"fingerprint"`
 }
 
-// reportFingerprint identifies the exact lyx binary that produced a report,
-// mirroring the fields already captured by binaryInfo so a maintainer can
-// trace a finding back to the build that triggered it.
+// reportFingerprint identifies the exact lyx binary that produced a report.
 type reportFingerprint struct {
 	Path    string `json:"path"`
 	SHA256  string `json:"sha256"`
 	Size    int64  `json:"size"`
 	ModTime string `json:"modtime"`
-	// Source records which binary resolveLyx picked (sourceDev or sourceProd,
-	// from resolve.go), so a maintainer reading sandbox-report.json can tell
-	// a dev build's findings from a prod build's without cross-referencing Path.
-	Source string `json:"source"`
+	Source  string `json:"source"`
 }
 
 // reportItem is a single WARN/FAIL finding recorded by the agent during a
@@ -61,29 +49,17 @@ type reportItem struct {
 	Body  string `json:"body"`
 }
 
-// runFetch executes the "sandbox fetch" subcommand, run by the operator
-// after a suite session ends. It mirrors runSuite's host-repo derivation,
-// re-resolves and re-fingerprints lyx via resolveLyx, and fetches the
-// agent-written sandbox-report.json into <loomyardRoot>/.scratch. For the
-// normal flow (run the suite, then fetch) resolveLyx picks the same binary
-// both times, so re-resolving here is acceptable and intended.
+// runFetch executes "sandbox fetch" after a suite session. Re-resolves lyx,
+// re-fingerprints it, and fetches agent-written sandbox-report.json.
 func runFetch(parentDir, loomyardRoot string) error {
-	// Derive the host repo path the same way runSuite does, from the shared
-	// hubName const (main.go) and the suite-local hostDirName const.
 	hostRepoDir := filepath.Join(parentDir, hubName, hostDirName)
 
-	// Guard against a missing Hub so the operator gets a clear, actionable message
-	// rather than a confusing downstream read failure.
 	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
 		return fmt.Errorf("hub host repo not found at %s -- run sandbox/build.cmd first", hostRepoDir)
 	} else if err != nil {
 		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
 	}
 
-	// Resolve lyx via resolveLyx (derived .dev-bin first, PATH fallback) so the
-	// fingerprint captures the exact binary that produced the report -- the
-	// normal flow (run the suite, then fetch) resolves the same binary both
-	// times, so re-resolving here is acceptable and intended.
 	lyxPath, source, err := resolveLyx()
 	if err != nil {
 		return err
@@ -112,22 +88,15 @@ func runFetch(parentDir, loomyardRoot string) error {
 	return nil
 }
 
-// fetchReport reads sandbox-report.json from hostRepoDir, validates it
-// against the sandbox-report contract, stamps its meta.fingerprint from info,
-// and writes the normalized result to
-// <loomyardRoot>/.scratch/sandbox-report-<sha256>.json. It returns the written
-// destination path and the number of findings (items) so the caller can report
-// what it fetched. It is called by the separate fetch step (runFetch) after a
-// suite session, per the "normalized re-serialize" Shared Decision.
+// fetchReport reads sandbox-report.json, validates it, stamps meta.fingerprint,
+// and writes the normalized result to .scratch. Returns the written path and
+// finding count.
 func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) (string, int, error) {
 	reportPath := filepath.Join(hostRepoDir, reportFileName)
 
 	raw, err := os.ReadFile(reportPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// A missing report means the agent finished without writing one --
-			// surface this distinctly from a parse error so the operator knows
-			// the agent itself misbehaved, not that the file was malformed.
 			return "", 0, fmt.Errorf("sandbox report not found at %s: the agent produced no report", reportPath)
 		}
 		return "", 0, fmt.Errorf("read sandbox report %s: %w", reportPath, err)
@@ -141,17 +110,10 @@ func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) (string, int
 	if report.Source != reportSourceID {
 		return "", 0, fmt.Errorf("sandbox report has wrong source %q (want %q)", report.Source, reportSourceID)
 	}
-	// Items is decoded as *[]reportItem so a nil pointer (key absent) can be
-	// distinguished from a non-nil pointer to an empty slice (key present,
-	// zero findings) -- see the "typed-decode validation with *[]Item" Shared
-	// Decision. Only the former is rejected.
 	if report.Items == nil {
 		return "", 0, fmt.Errorf("sandbox report is missing its items array")
 	}
 
-	// The agent does not know its own fingerprint, so the fetch helper -- which
-	// already has the authoritative binaryInfo -- stamps it here, overwriting
-	// anything the agent may have written to meta.
 	report.Meta.Fingerprint = reportFingerprint{
 		Path:    info.Path,
 		SHA256:  info.SHA256,

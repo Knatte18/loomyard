@@ -27,9 +27,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// recoverRealClock is webstercli's own production websterengine.Clock: a
-// genuine time.Now/time.Sleep, mirroring buildercli's own pollRealClock
-// pattern (internal/buildercli/poll.go).
+// recoverRealClock is webstercli's production websterengine.Clock using time.Now/time.Sleep.
 type recoverRealClock struct{}
 
 func (recoverRealClock) Now() time.Time        { return time.Now() }
@@ -37,15 +35,7 @@ func (recoverRealClock) Sleep(d time.Duration) { time.Sleep(d) }
 
 var _ websterengine.Clock = recoverRealClock{}
 
-// batchSlugFor returns the slug of the batchifier-derived group whose own
-// identity is batchNumber, mirroring websterengine's own v0
-// identity-batcher assumption (runlevel.go's unexported batchIdentity): a
-// batch's identity is its first card's Number/Slug, exact for today's only
-// registered batchifier (batcher/identity.go), since every batcher.Batch it
-// produces holds exactly one card. Used only to name batchNumber in this
-// verb's own status/weft-commit messages before RecoverSpawnOrAttach's own
-// findBatch call (which shares the same identity convention) ever runs;
-// returns "" when no batch in batches carries that identity.
+// batchSlugFor returns the slug of the batcher.Batch whose identity matches batchNumber.
 func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 	for _, b := range batches {
 		if len(b.Cards) > 0 && b.Cards[0].Number == batchNumber {
@@ -161,8 +151,7 @@ Example:
 					return nil
 				}
 			}
-			// The state phase is over; the bounded wait below runs with the
-			// lease RELEASED, per AcquireStateMutation's contract.
+
 			_ = mutateLock.Release()
 			mutateHeld = false
 
@@ -180,9 +169,6 @@ Example:
 			}
 
 			if result.Digest != nil {
-				// Terminal: re-acquire the lease and merge the digest into a
-				// FRESHLY loaded state — the pre-wait copy may be minutes
-				// stale, and saving it would erase a concurrent mutation.
 				terminalLock, err := websterengine.AcquireStateMutation(c.websterDir)
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

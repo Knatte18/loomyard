@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-// TestWriteVSCodeConfigCreatesFilesWhenAbsent tests both files are created when absent.
 func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	tmpDir := t.TempDir()
 	worktreeDir := tmpDir
@@ -24,7 +23,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
-	// Check settings.json exists and is valid
 	settingsPath := filepath.Join(worktreeDir, relpath, ".vscode", "settings.json")
 	if _, err := os.Stat(settingsPath); err != nil {
 		t.Fatalf("settings.json not created: %v", err)
@@ -40,7 +38,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("settings.json is not valid JSON: %v", err)
 	}
 
-	// Verify expected keys
 	if _, ok := settings["workbench.colorCustomizations"]; !ok {
 		t.Fatalf("missing workbench.colorCustomizations in settings.json")
 	}
@@ -48,7 +45,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("missing window.title in settings.json")
 	}
 
-	// Verify files.watcherExclude contains **/_lyx/**
 	watcherExclude, ok := settings["files.watcherExclude"].(map[string]any)
 	if !ok {
 		t.Fatalf("files.watcherExclude not found or not a map in settings.json")
@@ -59,7 +55,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("**/_lyx/** value is not true, got %v", excludeLyx)
 	}
 
-	// Check tasks.json exists and is valid
 	tasksPath := filepath.Join(worktreeDir, relpath, ".vscode", "tasks.json")
 	if _, err := os.Stat(tasksPath); err != nil {
 		t.Fatalf("tasks.json not created: %v", err)
@@ -75,7 +70,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("tasks.json is not valid JSON: %v", err)
 	}
 
-	// Verify tasks structure
 	tasksList, ok := tasks["tasks"].([]any)
 	if !ok {
 		t.Fatalf("tasks.json missing tasks array")
@@ -85,7 +79,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("tasks.json has no tasks")
 	}
 
-	// Verify the first task has "Start Claude" label
 	firstTask, ok := tasksList[0].(map[string]any)
 	if !ok {
 		t.Fatalf("first task is not a map")
@@ -95,7 +88,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 		t.Fatalf("expected label 'Start Claude', got %v", firstTask["label"])
 	}
 
-	// Verify folderOpen task
 	if runOptions, ok := firstTask["runOptions"].(map[string]any); !ok {
 		t.Fatalf("missing runOptions in task")
 	} else {
@@ -105,7 +97,6 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	}
 }
 
-// TestWriteVSCodeConfigDoesNotClobber tests that existing files are not clobbered.
 func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 	tmpDir := t.TempDir()
 	worktreeDir := tmpDir
@@ -119,7 +110,6 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 		t.Fatalf("failed to create .vscode: %v", err)
 	}
 
-	// Write a settings.json with custom content
 	originalSettings := map[string]any{"custom": "value"}
 	originalData, _ := json.Marshal(originalSettings)
 	settingsPath := filepath.Join(vscodePath, "settings.json")
@@ -127,7 +117,6 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 		t.Fatalf("failed to write original settings.json: %v", err)
 	}
 
-	// Write a tasks.json with custom content
 	originalTasks := map[string]any{"version": "999.0.0"}
 	originalTasksData, _ := json.Marshal(originalTasks)
 	tasksPath := filepath.Join(vscodePath, "tasks.json")
@@ -141,7 +130,6 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
-	// Verify settings.json was not modified
 	settingsData, err := os.ReadFile(settingsPath)
 	if err != nil {
 		t.Fatalf("failed to read settings.json: %v", err)
@@ -156,7 +144,6 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 		t.Fatalf("settings.json was clobbered")
 	}
 
-	// Verify tasks.json was not modified
 	tasksData, err := os.ReadFile(tasksPath)
 	if err != nil {
 		t.Fatalf("failed to read tasks.json: %v", err)
@@ -172,7 +159,6 @@ func TestWriteVSCodeConfigDoesNotClobber(t *testing.T) {
 	}
 }
 
-// TestWriteVSCodeConfigRegistersInGitignore tests .vscode/ is registered in .gitignore.
 func TestWriteVSCodeConfigRegistersInGitignore(t *testing.T) {
 	tmpDir := t.TempDir()
 	worktreeDir := tmpDir

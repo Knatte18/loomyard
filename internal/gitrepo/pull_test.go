@@ -14,9 +14,8 @@ import (
 	"testing"
 )
 
-// TestPull_RemoteAdvanced_FastForwards asserts the ordinary case: the
-// remote has commits this clone lacks, and Pull() fast-forwards the local
-// branch to include them, with the file content landing on disk.
+// TestPull_RemoteAdvanced_FastForwards asserts Pull() fast-forwards the local
+// branch when the remote has commits this clone lacks.
 func TestPull_RemoteAdvanced_FastForwards(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)

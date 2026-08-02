@@ -22,20 +22,13 @@ import (
 )
 
 const (
-	// writeLockFile serialises file-state changes (writers' mutations and the
-	// sync commit). pushLockFile guarantees a single active pusher. Both stores
-	// (tasks.json and notes.json) share these two lock files.
 	writeLockFile = "board.lock"
 	pushLockFile  = "board.push.lock"
 )
 
-// Sync commits any pending changes and pushes them to the remote, looping until
-// the working tree is clean and nothing is unpushed. skipGit disables it
-// entirely (used by tests); skipPush commits locally but skips the push. The
-// absorbing-lock loop-until-clean coalescing is delegated to
-// fabricengine.NewBolt(boardPath).Sync, which acquires the SAME
-// board.push.lock path (unchanged name/location) once and holds it across the
-// whole loop; board supplies only the per-iteration step.
+// Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes are gone.
+// skipGit disables it entirely; skipPush commits locally but skips the push.
+// The absorbing-lock coalescing loop is delegated to fabricengine.NewBolt.
 func Sync(boardPath string, skipGit, skipPush bool) error {
 	if skipGit {
 		return nil
@@ -44,14 +37,6 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 	bolt := fabricengine.NewBolt(boardPath)
 
 	step := func() (progressed bool, err error) {
-		// The lock files live in the board dir; keep git from ever committing
-		// them. Runs as the first action of each iteration — under the
-		// absorbing push lock Bolt.Sync now holds for the whole loop — so the
-		// ignore patterns are always in place before that iteration's first
-		// `git add -A`. ensureLockfilesIgnored is idempotent and cheap (reads
-		// .gitignore, returns early once the patterns are present), so running
-		// it every iteration preserves the original ordering guarantee at
-		// negligible cost.
 		if err := ensureLockfilesIgnored(boardPath); err != nil {
 			return false, err
 		}
@@ -61,29 +46,18 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 			return false, err
 		}
 		if !skipPush {
-			// Bolt.Push no-ops when nothing is ahead of upstream, so a sync
-			// with nothing to do never touches the network (and never fails just
-			// because the remote is unreachable) — matching the pre-gitrepo
-			// pushUnpushed behavior. commitDirty is only reached from inside
-			// Sync's own skipGit-false path, so a zero-value SyncOptions is
-			// always correct here — do not call fabricengine.EnvSyncOptions(),
-			// which reads WEFT_SKIP_GIT/WEFT_SKIP_PUSH, not board's own
-			// BOARD_SKIP_GIT/BOARD_SKIP_PUSH.
 			if err := bolt.Push(fabricengine.SyncOptions{}); err != nil {
 				return false, fmt.Errorf("sync push: %w", err)
 			}
 		}
-		// Nothing new arrived this round → done. If a write landed while we were
-		// pushing, the tree is dirty again and the loop catches it.
 		return committed, nil
 	}
 
 	return bolt.Sync(step)
 }
 
-// commitDirty stages and commits the working tree if it has changes, under
-// board's own write lock so it snapshots a state no writer is mid-mutation
-// on. Returns whether a commit was made.
+// commitDirty stages and commits the working tree if it has changes, under board's write lock.
+// Returns whether a commit was made.
 func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	lock, err := flock.AcquireWriteLock(filepath.Join(boardPath, writeLockFile))
 	if err != nil {
@@ -91,9 +65,6 @@ func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	}
 	defer lock.Release()
 
-	// commitDirty is only ever reached from inside Sync's own skipGit-false
-	// path, so SkipGit is always already false by construction here — a
-	// zero-value SyncOptions is correct, not a shortcut.
 	_, committed, err := bolt.Commit("board sync", fabricengine.SyncOptions{})
 	if err != nil {
 		return false, fmt.Errorf("sync commit: %w", err)
@@ -101,11 +72,7 @@ func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	return committed, nil
 }
 
-// ensureLockfilesIgnored adds the lock-file and manifest-sidecar patterns to the
-// board's .gitignore (idempotently) so the flock files and the render manifest that
-// live alongside tasks.json are never staged or committed. A committed .gitignore is
-// shared with every clone via the remote, so the sidecars are ignored on every machine
-// from clone time — the first sync commits the .gitignore once.
+// ensureLockfilesIgnored adds lock-file and manifest-sidecar patterns to .gitignore idempotently.
 func ensureLockfilesIgnored(boardPath string) error {
 	gitignorePath := filepath.Join(boardPath, ".gitignore")
 	existing, err := os.ReadFile(gitignorePath)

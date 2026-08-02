@@ -11,9 +11,8 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default YAML template for fabric configuration.
-// The template uses ${env:VAR:-default} syntax for configuration values,
-// allowing environment-based overrides while preserving defaults when not set.
+// ConfigTemplate returns the default YAML template for fabric configuration,
+// supporting ${env:VAR:-default} syntax for environment-based overrides.
 func ConfigTemplate() string {
 	return configTemplate
 }

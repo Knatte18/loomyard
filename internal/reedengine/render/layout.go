@@ -22,11 +22,9 @@ type placement struct {
 	height int
 }
 
-// buildStackBody renders panes — already placed top to bottom and sized —
-// as a tmux window_layout body positioned within box:
-// "<box.W>x<box.H>,<box.X>,<box.Y>[<w>x<h>,<x>,<y>,<paneNum>,...]". Each pane
-// spans box.W at box.X; panes stack vertically with a one-row divider
-// between them, with cumulative y starting at box.Y.
+// buildStackBody renders panes into a tmux window_layout body positioned
+// within box: "<box.W>x<box.H>,<box.X>,<box.Y>[<w>x<h>,<x>,<y>,<paneNum>,...]}".
+// Each pane spans box.W, stacking vertically with a one-row divider.
 func buildStackBody(box Box, panes []placement) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%dx%d,%d,%d[", box.W, box.H, box.X, box.Y)
@@ -52,16 +50,10 @@ func wrapLayout(body string) string {
 }
 
 // bandHeader prepends a fixed-height header cell to stackBody's pane group,
-// producing the full window_layout body Rules emits when a header pane is
-// present: one flat top-level frame listing the header cell first, then
-// every cell stackBody already rendered — stackBody must be the direct
-// output of buildStackBody(stackBox, ...) against the shrunk stack region,
-// a "<w>x<h>,<x>,<y>[...]" string, never the checksum-wrapped layout. Each
-// stack cell's own x/y offset is already a correct absolute position within
-// fullBox (buildStackBody is region-relative to whatever box it was called
-// against), so this function only needs to splice the header cell in front
-// of the existing cell list and re-wrap the whole thing at fullBox's
-// dimensions — it makes no placement or height decision of its own.
+// producing the full window_layout body when a header pane is present.
+// stackBody must be a region-relative body string from buildStackBody, not
+// checksum-wrapped; this function only splices the header in front and
+// re-wraps at fullBox's dimensions.
 func bandHeader(fullBox Box, headerPaneID string, headerHeight int, stackBody string) string {
 	open := strings.IndexByte(stackBody, '[')
 	closeIdx := strings.LastIndexByte(stackBody, ']')

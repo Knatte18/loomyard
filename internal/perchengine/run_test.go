@@ -25,18 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// stateFileName mirrors treadleengine's own (unexported) state.json file
-// name constant — a test-local pin of the on-disk contract, per the
-// state-json-compatibility shared decision.
+// stateFileName mirrors treadleengine's own state.json file name constant.
 const stateFileName = "state.json"
 
-// roundRecord and runState are test-local mirrors of treadleengine's own
-// (unexported) persisted-state shapes, carrying the same JSON tags: the
-// on-disk state.json schema is a pinned contract (state-json-compatibility
-// shared decision), so a test-side mirror struct is a legitimate way for
-// this differential suite to keep asserting on fields (like TriagePath)
-// that Result/RoundSummary does not surface, without perchengine importing
-// treadleengine's unexported types.
+// roundRecord and runState are test-local mirrors of treadleengine's persisted-state shapes with the same JSON tags.
 type roundRecord struct {
 	Round           int    `json:"round"`
 	Attempts        int    `json:"attempts"`
@@ -46,9 +38,7 @@ type roundRecord struct {
 	ReviewPath      string `json:"reviewPath"`
 	FixerReportPath string `json:"fixerReportPath"`
 	JudgePath       string `json:"judgePath,omitempty"`
-	// HandoffPath mirrors treadleengine's additive roundRecord field (see
-	// the state-json-compatibility shared decision) — set only when this
-	// round's judge call recorded a valid handoff.
+	// HandoffPath is set only when this round's judge call recorded a valid handoff.
 	HandoffPath  string `json:"handoffPath,omitempty"`
 	GatePath     string `json:"gatePath,omitempty"`
 	TriagePath   string `json:"triagePath,omitempty"`
@@ -65,10 +55,7 @@ type runState struct {
 	StuckReason string        `json:"stuckReason,omitempty"`
 }
 
-// readRunState reads runDir's persisted state.json, failing the test loudly
-// if it is missing or unreadable — a test-only shortcut for asserting on
-// roundRecord fields (like TriagePath) that Result/RoundSummary does not
-// surface.
+// readRunState reads runDir's persisted state.json, failing the test if missing or unreadable.
 func readRunState(t *testing.T, runDir string) runState {
 	t.Helper()
 	path := filepath.Join(runDir, stateFileName)
@@ -83,10 +70,7 @@ func readRunState(t *testing.T, runDir string) runState {
 	return got
 }
 
-// writeFile writes content to path, creating parent directories as needed
-// and failing the test on any I/O error. Duplicated from
-// internal/treadleengine/state_test.go (which stays treadle-side) per the
-// mechanical-package-split helper-fallout clause.
+// writeFile writes content to path, creating parent directories as needed and failing the test on I/O error.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -97,10 +81,7 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// stringSlicesEqual reports whether a and b contain the same strings in the
-// same order. Duplicated from internal/treadleengine/roundfiles_test.go's
-// predecessor (now perchengine/adapter_test.go, which stays perch-side too)
-// per the mechanical-package-split helper-fallout clause.
+// stringSlicesEqual reports whether a and b contain the same strings in the same order.
 func stringSlicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -113,19 +94,13 @@ func stringSlicesEqual(a, b []string) bool {
 	return true
 }
 
-// scriptedBurlerCall records one burlerengine.Profile/RunOpts pair fakeBurler
-// received, in call order.
+// scriptedBurlerCall records one burlerengine.Profile/RunOpts pair fakeBurler received.
 type scriptedBurlerCall struct {
 	profile burlerengine.Profile
 	opts    burlerengine.RunOpts
 }
 
-// fakeBurler is a same-package Burler double: Run records every Profile/
-// RunOpts it receives, dequeues the next scripted burlerengine.Result (or
-// error), and — for a scripted done result — writes placeholder content to
-// the round's ReviewPath/FixerReportPath so later rounds' PriorReviews/
-// PriorFixerReports existence and hydration checks hold, mirroring the real
-// burler's file contract.
+// fakeBurler is a Burler double: Run records every Profile/RunOpts it receives and dequeues the next scripted result.
 type fakeBurler struct {
 	calls []scriptedBurlerCall
 	queue []struct {
@@ -134,11 +109,7 @@ type fakeBurler struct {
 	}
 }
 
-// Run implements Burler by dequeuing the next scripted result in FIFO
-// order; it fails the test loudly (via a returned error, since Burler.Run
-// itself can only report failure that way) if more calls arrive than were
-// scripted, which would signal the loop ran more rounds than a test
-// intended.
+// Run implements Burler by dequeuing the next scripted result in FIFO order, failing the test if more calls arrive than scripted.
 func (f *fakeBurler) Run(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.Result, error) {
 	f.calls = append(f.calls, scriptedBurlerCall{profile: p, opts: opts})
 	if len(f.queue) == 0 {

@@ -21,9 +21,7 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-// TestConverged tables every GateMode against every verdict/gatePassed
-// combination the loop can hand it, including the nil-gatePassed case a
-// GateLLMVerdict round always produces.
+// TestConverged tables every GateMode against every verdict/gatePassed combination.
 func TestConverged(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -52,8 +50,7 @@ func TestConverged(t *testing.T) {
 	}
 }
 
-// TestExecGateCommand_Pass proves a zero-exit command reports exitZero
-// true, a nil error, and non-empty combined output.
+// TestExecGateCommand_Pass proves a zero-exit command reports success.
 func TestExecGateCommand_Pass(t *testing.T) {
 	dir := t.TempDir()
 	output, exitZero, err := execGateCommand([]string{"go", "version"}, dir, 30*time.Second)
@@ -68,9 +65,7 @@ func TestExecGateCommand_Pass(t *testing.T) {
 	}
 }
 
-// TestExecGateCommand_Fail proves a non-zero-exit command reports exitZero
-// false with a nil error (a normal gate failure, not a could-not-run
-// failure) and still carries the command's output.
+// TestExecGateCommand_Fail proves a non-zero-exit command reports failure.
 func TestExecGateCommand_Fail(t *testing.T) {
 	dir := t.TempDir()
 	output, exitZero, err := execGateCommand([]string{"go", "bogus-subcommand"}, dir, 30*time.Second)
@@ -85,9 +80,7 @@ func TestExecGateCommand_Fail(t *testing.T) {
 	}
 }
 
-// TestExecGateCommand_NotFound proves a command that cannot even start
-// (unknown binary) reports a non-nil error, distinguishing a could-not-run
-// failure from an ordinary non-zero exit.
+// TestExecGateCommand_NotFound proves a could-not-run command reports error.
 func TestExecGateCommand_NotFound(t *testing.T) {
 	dir := t.TempDir()
 	_, exitZero, err := execGateCommand([]string{"perch-gate-command-does-not-exist-xyz"}, dir, 30*time.Second)
@@ -99,10 +92,7 @@ func TestExecGateCommand_NotFound(t *testing.T) {
 	}
 }
 
-// TestExecGateCommand_Timeout proves a command that outlives timeout is
-// killed and reported as an ORDINARY failing gate — never an error — whose
-// output carries a note naming the timeout, so the failure feeds forward
-// into the next round's hydration like any other failing gate.
+// TestExecGateCommand_Timeout proves a timed-out command reports as a failing gate.
 func TestExecGateCommand_Timeout(t *testing.T) {
 	dir := t.TempDir()
 	// "go version" reliably finishes well inside 30s but a 1-nanosecond
@@ -120,8 +110,7 @@ func TestExecGateCommand_Timeout(t *testing.T) {
 	}
 }
 
-// TestWriteGateOutput proves the written file's header carries the argv and
-// pass/fail status, followed by the raw output.
+// TestWriteGateOutput proves the written file's format.
 func TestWriteGateOutput(t *testing.T) {
 	tests := []struct {
 		name       string

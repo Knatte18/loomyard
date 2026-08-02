@@ -29,15 +29,9 @@ type SymbolMatch struct {
 }
 
 // symbolFromClient runs workspace/symbol against client for query and maps
-// every candidate to a SymbolMatch. It deliberately does not call
-// resolvePosition and does not collapse multiple candidates to
-// ErrAmbiguousSymbol — that ambiguity-collapsing behavior is exactly what
-// Symbol must not inherit from References/Definition's resolution path.
-// It takes no Options, only the bare values its logic needs, so it is
-// callable from a test against a hand-built client with no real
-// Options/registry/target-dir at all: TargetDir is filled in by Symbol
-// itself, below, the only caller that actually has opts.TargetDir in
-// scope.
+// every candidate to a SymbolMatch, deliberately returning all results rather than
+// collapsing multiple candidates to ErrAmbiguousSymbol. It takes only the bare values
+// its logic needs (not full Options), making it testable against a hand-built client.
 func symbolFromClient(ctx context.Context, client *lspClient, lang string, entry Entry, query string, timeout time.Duration) ([]SymbolMatch, error) {
 	if !client.supportsWorkspaceSymbol() {
 		return nil, &ErrResolverUnsupported{Language: lang, Server: entry.Command[0]}
@@ -72,10 +66,6 @@ func symbolFromClient(ctx context.Context, client *lspClient, lang string, entry
 
 // Symbol resolves opts.Query.Symbol via workspace/symbol against the
 // language server for opts.TargetDir and returns every candidate match.
-// Symbol's CLI argument handling (accepting only a plain search string,
-// never a file:line:col bypass) is the CLI layer's concern, not this
-// function's — opts.Query.Symbol here is just whatever string the caller
-// supplies.
 func Symbol(ctx context.Context, opts Options) ([]SymbolMatch, error) {
 	lang, entry, err := DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
 	if err != nil {

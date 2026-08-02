@@ -13,10 +13,7 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default YAML template for perch configuration:
-// judge_model (a model-spec string; effort rides its optional [effort=...]
-// bracket — the split judge_effort key no longer exists on disk) and
-// round_caps, the default milestone cap ladder.
+// ConfigTemplate returns the default YAML template for perch configuration.
 func ConfigTemplate() string {
 	return configTemplate
 }

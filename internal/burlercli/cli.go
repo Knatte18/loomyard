@@ -23,24 +23,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// burlerCLI is the receiver the run verb hangs off of, so its RunE reads the
-// same PersistentPreRunE-populated state. engine is the domain handle the
-// verb calls into (Run) — the zero burlerCLI is not valid until
-// PersistentPreRunE has populated engine.
+// burlerCLI is the receiver the run verb hangs off of.
 type burlerCLI struct {
 	engine *burlerengine.Engine
 }
 
 // Command returns the cobra command tree for the burler module.
-//
-// The parent "burler" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> burler config -> reed config -> reed
-// engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
-// into c, skipping that resolution entirely when the group command itself
-// is invoked (bare "lyx burler" listing or an unknown-subcommand error via
-// GroupRunE) so neither path requires a git repository. The run verb
-// creates its own (c *burlerCLI) runCmd() builder and registers it here via
-// parent.AddCommand.
 func Command() *cobra.Command {
 	c := &burlerCLI{}
 
@@ -61,10 +49,8 @@ Example:
 		// through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: when the burler group command itself is invoked (bare
-			// listing or unknown-subcommand error path via GroupRunE), skip
-			// cwd/layout/config/engine resolution so that neither path
-			// requires a git repository to be present.
+			// Guard: when the group command itself is invoked, skip resolution
+			// so neither path requires a git repository.
 			if cmd.Name() == "burler" {
 				return nil
 			}
@@ -81,9 +67,7 @@ Example:
 
 			layout, err := hubgeometry.Resolve(cwd)
 			if err != nil {
-				// hubgeometry.Resolve's error is already self-describing (it
-				// IS the "not a git repository" sentinel); pass it through
-				// bare rather than doubling that same text on top of it.
+				// hubgeometry.Resolve's error is already self-describing.
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
@@ -130,10 +114,6 @@ Example:
 }
 
 // RunCLI is the public seam for the burler module CLI.
-//
-// It delegates to clihelp.Execute with the cobra command tree, passing out as
-// the capture writer for all output (including cobra's error text). This
-// preserves the existing call contract so that callers and tests are unchanged.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

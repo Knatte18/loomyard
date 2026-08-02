@@ -23,14 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// Shuttle is the seam judge.go drives its three ephemeral calls through:
-// the subset of shuttleengine's API each call needs, satisfied as-is by
-// *shuttleengine.Runner in production and by a fake in unit tests. Kept
-// package-local rather than shared with burlerengine's own Shuttle
-// interface, mirroring that seam's own rationale: it lets treadleengine stay
-// engine-agnostic and testable without wiring reed or an LLM provider. This
-// is the seam's sole declaration; perchengine's own Shuttle is a type alias
-// onto this one.
+// Shuttle is the seam judge.go drives its three ephemeral calls through,
+// satisfied by *shuttleengine.Runner in production and fakes in tests.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }
@@ -40,18 +34,7 @@ type Shuttle interface {
 // never needs an adapter type.
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
-// judgeInputs bundles the values every judge call (either framing) needs to
-// compose its prompt and shuttle spec. HardCap is only read by the
-// milestone framing; PriorReviews is the judgeReadSet walk's output —
-// rendered into the prior_reviews marker as a newline-separated
-// absolute-path list of only the reviews NOT yet absorbed by
-// PreviousHandoffPath — the judge agent reads the files itself, so its
-// input is self-contained with no memory carried between calls beyond that
-// one handoff file. PreviousHandoffPath is the path the judge should read
-// as its starting handoff, or "" when there is none yet (rendered into the
-// previous_handoff marker as the literal "(none)"). HandoffPath is where
-// this call must write its own fresh handoff, alongside VerdictPath, in the
-// SAME call — see the handoff-on-disk shared decision.
+// judgeInputs bundles values for composing a judge call's prompt and shuttle spec.
 type judgeInputs struct {
 	Round               int
 	HardCap             int
@@ -63,17 +46,10 @@ type judgeInputs struct {
 	Effort              string
 }
 
-// runCircling spawns the per-round circling-check progress judge: does the
-// newest BLOCKING round's findings recur across prior rounds, or is the
-// block still moving forward? Fail-safe: any failure — stencil fill,
-// shuttle Run error, non-done Outcome, verdict file read, or parse — logs a
-// name-prefixed logger.Warn naming the round and cause, and returns
-// (JudgeProgressing, "", false) rather than an error, since a false CIRCLING
-// permanently kills a converging block while a false PROGRESSING only costs
-// a few more bounded rounds. The third return, ok, is false on every
-// fail-safe path and true only when a real verdict was parsed — callers use
-// it to avoid recording a fail-safe default as if the judge had actually
-// answered.
+// runCircling spawns the per-round circling-check progress judge. Fail-safe:
+// any failure logs a Warn and returns (JudgeProgressing, "", false) rather
+// than an error. ok is false on every fail-safe path and true only when a
+// real verdict was parsed.
 func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
 	values := map[string]string{
 		"round":            strconv.Itoa(in.Round),
@@ -85,13 +61,9 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 	return runJudgeCall(sh, name, judgeCirclingTemplate, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
 }
 
-// runMilestone spawns the milestone continuation-gate progress judge: has a
-// block reached a soft cap whose trajectory still justifies continuing
-// toward HardCap? Fail-safe posture mirrors runCircling exactly, defaulting
-// to (JudgeContinue, "", false) on any failure — a false STOP permanently
-// kills a converging block while a false CONTINUE only spends the remaining
-// rounds up to the hard cap, which still catches a genuinely stuck block.
-// See runCircling's doc for the ok return's meaning.
+// runMilestone spawns the milestone continuation-gate progress judge. Fail-safe
+// posture mirrors runCircling: defaults to (JudgeContinue, "", false) on any
+// failure.
 func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
 	values := map[string]string{
 		"round":            strconv.Itoa(in.Round),
@@ -117,33 +89,10 @@ func previousHandoffMarker(path string) string {
 	return path
 }
 
-// runJudgeCall is the shared body runCircling and runMilestone drive
-// through their respective template/framing/default: compose the prompt,
-// build and run the shuttle spec (Role "judge" for both framings, two
-// OutputFiles — the verdict AND the handoff the same call must write; see
-// the handoff-on-disk shared decision), then read and parse the verdict
-// file. Every failure point degrades to (fallback, "", false) rather than
-// an error, logging label (the call's human-facing name, e.g. "circling
-// judge"), name-prefixed, alongside round and cause so an operator can tell
-// which caller's which framing failed. ok is true only on the success path,
-// so a caller can distinguish a genuine verdict from the fail-safe default
-// without inspecting the verdict value itself.
-//
-// Reading and ParseHandoff-validating the handoff CONTENT is the round
-// loop's job (run.go), not this function's, so a handoff that is written
-// but malformed never affects the verdict it rides alongside. A handoff
-// that is not written AT ALL is a different case, and a deliberate one:
-// listing it in OutputFiles makes it required, and shuttle reports
-// OutcomeDone only once EVERY output file exists, so a call that renders a
-// perfectly good verdict and then fails to write its handoff comes back
-// non-done and takes the fail-safe branch below with its verdict unread.
-// Pre-handoff, the verdict was the sole output file and that same call
-// would have been honoured. The direction is safe — the fallback is
-// PROGRESSING/CONTINUE, never STUCK, and the hard cap still bounds the
-// block — and the alternative (reading the verdict file anyway after a
-// non-done outcome) would mean reaching around shuttle's own done contract
-// to trust a file the agent may still have been writing. Pinned by
-// TestRunCircling's "valid verdict but missing handoff" case.
+// runJudgeCall composes the prompt, builds and runs the shuttle spec, then
+// reads and parses the verdict file. Every failure point degrades to
+// (fallback, "", false) rather than an error, logging the call's name and
+// cause. ok is true only on the success path.
 func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]string, framing judgeFraming, round int, model, effort string, fallback JudgeVerdict, label string) (JudgeVerdict, string, bool) {
 	prompt, err := stencil.Fill(template, values)
 	if err != nil {

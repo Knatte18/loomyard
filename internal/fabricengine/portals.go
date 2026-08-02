@@ -21,12 +21,8 @@ func createPortal(l *hubgeometry.Layout, slug string) error {
 	return fslink.CreateDirLink(link, target)
 }
 
-// removePortal removes the portal junction at <container>/_portals/<RelPath>/<slug>.
-//
-// Uses fslink.Remove to delete only the link itself, never recursing into the target.
-// After successful/idempotent removal, prunes empty mirrored ancestors up to but not
-// including <container>/_portals/. Returns nil if the link does not exist (idempotent).
-// Returns an error if removal fails.
+// removePortal removes the portal junction, deletes only the link (not the
+// target), and prunes empty ancestors. Returns nil if the link does not exist.
 func removePortal(l *hubgeometry.Layout, slug string) error {
 	link := l.PortalLink(slug)
 	if err := fslink.Remove(link); err != nil {

@@ -94,9 +94,7 @@ func TestSpan_EndWithErrorRecordsErrorText(t *testing.T) {
 	}
 }
 
-// TestSpan_OpenCloseRecordsAbsentFromDurableSink covers that StartSpan,
-// Child, and End(nil)'s own open/close records never reach the durable
-// sink -- they emit at Debug, which durableHandler.Enabled never accepts.
+// TestSpan_OpenCloseRecordsAbsentFromDurableSink verifies open/close records don't reach the durable sink.
 func TestSpan_OpenCloseRecordsAbsentFromDurableSink(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -109,8 +107,6 @@ func TestSpan_OpenCloseRecordsAbsentFromDurableSink(t *testing.T) {
 	child.End(nil)
 	sp.End(nil)
 
-	// Some other Info+ activity opens the durable sink so there is a file to
-	// inspect at all.
 	Info("unrelated info line opens the sink")
 
 	files := listSinkDirFiles(t, dir)
@@ -127,8 +123,7 @@ func TestSpan_OpenCloseRecordsAbsentFromDurableSink(t *testing.T) {
 	}
 }
 
-// TestSpan_EndWithErrorReachesDurableSink covers that End(err) with a
-// non-nil error, emitting at Warn, IS present in the durable file.
+// TestSpan_EndWithErrorReachesDurableSink verifies End(err) reaches the durable sink.
 func TestSpan_EndWithErrorReachesDurableSink(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -153,11 +148,7 @@ func TestSpan_EndWithErrorReachesDurableSink(t *testing.T) {
 	}
 }
 
-// TestSpan_InfoCarriesSpanPathIntoDurableSink covers that an Info emitted
-// through a span-scoped method carries span= into the durable file even
-// though that span's own open/close records did not -- the causal
-// structure survives via the span= field on ordinary Info/Warn lines, not
-// via the open/close records themselves.
+// TestSpan_InfoCarriesSpanPathIntoDurableSink verifies Info carries span= into the durable sink.
 func TestSpan_InfoCarriesSpanPathIntoDurableSink(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)

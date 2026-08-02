@@ -50,9 +50,7 @@ func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the
-	// test's working directory, exactly as tierpurity_test.go does, so the
-	// walk is cwd-independent.
+	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
@@ -71,20 +69,13 @@ func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			// tierPuritySkipDirs (defined in tierpurity_test.go, same package) is
-			// reused rather than redeclared: this guard walks the identical
-			// module tree and must skip the identical non-Go-module overlay
-			// directories.
+			// Skip overlay directories per tierPuritySkipDirs.
 			if tierPuritySkipDirs[d.Name()] {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		// Only non-test *.go files are in scope. This guard's own source is a
-		// *_test.go file and is excluded by the same filter, with no
-		// self-exclusion entry needed -- unlike tools/sandbox's
-		// pathresolve_guard_test.go, which scans a single directory that also
-		// contains its own non-test siblings.
+		// Only non-test *.go files are in scope.
 		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
 			return nil
 		}
@@ -93,16 +84,12 @@ func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 		if relErr != nil {
 			return relErr
 		}
-		// Normalize to slash-separated form before any comparison: WalkDir
-		// yields backslash paths on Windows, and un-normalized matching would
-		// silently miss the slash-separated allowlist prefix.
+		// Normalize to slash-separated form before any comparison.
 		relPath = filepath.ToSlash(relPath)
 		scanned++
 
 		if relPath == ghGuardAllowlistDir || strings.HasPrefix(relPath, ghGuardAllowlistDir+"/") {
-			// internal/githubclient is the designated `gh` shell-out owner; its
-			// own shell-out is the invariant's implementation, not a violation
-			// of it.
+			// internal/githubclient is the designated `gh` shell-out owner; skip it.
 			return nil
 		}
 
@@ -123,10 +110,7 @@ func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 		t.Fatalf("failed to walk module tree: %v", walkErr)
 	}
 
-	// Vacuous-scan protection: this is a module-root walk, so it takes the
-	// same floor as its structural twin tierpurity_test.go, not the < 3 floor
-	// tools/sandbox/pathresolve_guard_test.go's single-directory scan uses. A
-	// mis-resolved root that still finds a handful of files must not pass.
+	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
 	if scanned < 20 {
 		t.Fatalf("gh guard: only scanned %d non-test .go file(s) under %s; expected at least 20 -- the walk may be misconfigured", scanned, moduleRoot)
 	}
@@ -136,10 +120,7 @@ func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 	}
 }
 
-// firstBannedGHToken reports the first banned gh shell-out token found in
-// content, scanning line by line so the exec.Command/exec.CommandContext check
-// can require the spawn token and the quoted "gh" argument to co-occur on one
-// line rather than merely anywhere in the file.
+// firstBannedGHToken reports the first banned gh shell-out token found in content.
 func firstBannedGHToken(content string) (token string, bad bool) {
 	for _, line := range strings.Split(content, "\n") {
 		if strings.Contains(line, ghLookPathLiteral) {
@@ -152,10 +133,7 @@ func firstBannedGHToken(content string) (token string, bad bool) {
 	return "", false
 }
 
-// lineHasBannedGHSpawn reports whether line contains both an exec.Command/
-// exec.CommandContext spawn token and the quoted "gh" argument -- the pairing
-// that identifies a gh shell-out regardless of how many arguments (e.g. a
-// leading context.Context) separate the two tokens on the line.
+// lineHasBannedGHSpawn reports whether line contains both a spawn token and "gh" on the same line.
 func lineHasBannedGHSpawn(line string) (token string, bad bool) {
 	if !strings.Contains(line, `"gh"`) {
 		return "", false

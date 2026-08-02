@@ -20,10 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// TmuxCmd wraps low-level tmux operations for one resolved tmux binary
-// and one -L socket. It carries no caller-specific configuration — width,
-// height, launch templates, and similar tuning knobs live in Config
-// (config.go), not here.
+// TmuxCmd wraps low-level tmux operations for one binary and -L socket.
 type TmuxCmd struct {
 	tmuxPath string
 	socket   string
@@ -41,19 +38,13 @@ type TmuxCmd struct {
 	execHook func(capture bool, args ...string) (string, error)
 }
 
-// NewTmuxCmd builds a TmuxCmd bound to the given tmux binary path and -L
-// socket name. Every run/output call this TmuxCmd makes prepends
-// "-L <socket>" automatically, so callers never repeat the socket flag.
+// NewTmuxCmd builds a TmuxCmd bound to the given binary and -L socket.
 func NewTmuxCmd(tmuxPath, socket string) TmuxCmd {
 	return TmuxCmd{tmuxPath: tmuxPath, socket: socket}
 }
 
-// run builds an exec.Command with "-L <socket>" prepended and runs it,
-// discarding stdout but folding tmux's stderr into the returned error —
-// a bare "exit status 1" is undiagnosable, while tmux's own message
-// ("can't find session: …") names the actual failure. It traces the full
-// argument list at Debug level before exec so a -vv run can see exactly
-// what tmux was told to do.
+// run builds and runs a command with "-L <socket>" prepended,
+// folding stderr into the returned error.
 func (p TmuxCmd) run(args ...string) error {
 	if p.execHook != nil {
 		_, err := p.execHook(false, args...)
@@ -69,9 +60,8 @@ func (p TmuxCmd) run(args ...string) error {
 	return wrapTmuxError(err, stderr.Bytes())
 }
 
-// output builds an exec.Command with "-L <socket>" prepended and runs it,
-// capturing stdout and folding tmux's stderr into the returned error,
-// matching run's tracing and error shape.
+// output builds and runs a command with "-L <socket>" prepended,
+// capturing stdout and folding stderr into the error.
 func (p TmuxCmd) output(args ...string) (string, error) {
 	if p.execHook != nil {
 		return p.execHook(true, args...)
@@ -86,11 +76,8 @@ func (p TmuxCmd) output(args ...string) (string, error) {
 	return string(out), err
 }
 
-// wrapTmuxError attaches tmux's trimmed stderr text to err so failures
-// surface with tmux's own diagnosis attached. The original err stays the
-// wrapped cause, so callers matching on *exec.ExitError (hasSession's
-// absent-vs-error split) must unwrap via errors.As, never a direct type
-// assertion.
+// wrapTmuxError attaches tmux's stderr to err so failures surface
+// with tmux's own diagnosis. Wrapped as a cause for errors.As unwrapping.
 func wrapTmuxError(err error, stderr []byte) error {
 	if err == nil {
 		return nil
@@ -102,35 +89,19 @@ func wrapTmuxError(err error, stderr []byte) error {
 	return fmt.Errorf("%w: %s", err, msg)
 }
 
-// exactSessionTarget returns session as a tmux exact-match session target
-// ("=<name>"). tmux resolves a bare -t session name by exact match first
-// but falls back to PREFIX matching when no exact match exists, so a bare
-// name can silently address a SIBLING worktree's session whose name shares
-// this one's prefix (verified live on tmux 3.6: with only "repo2" present,
-// `has-session -t repo` exits 0 and `kill-session -t repo` kills repo2 —
-// worktree basenames such as mill task slugs share prefixes routinely).
-// The "=" prefix pins exact matching. Subcommands whose -t argument is a
-// WINDOW or PANE target need exactSessionWindowTarget instead — their
-// target parser rejects the bare "=<name>" form.
+// exactSessionTarget returns session as an exact-match target ("=<name>").
+// Without "=" prefix, tmux may prefix-match a sibling worktree's session.
 func exactSessionTarget(session string) string {
 	return "=" + session
 }
 
-// exactSessionWindowTarget returns session as an exact-match target for
-// subcommands whose -t argument is a window/pane target (list-panes,
-// select-layout, display-message). Their target parser rejects a bare
-// "=<name>" ("can't find pane: =<name>", verified live on tmux 3.6) but
-// accepts the "=<name>:" session-qualified form, which pins exact session
-// matching and selects that session's current window.
+// exactSessionWindowTarget returns session as an exact-match window/pane target
+// ("=<name>:"). Window/pane parsers reject bare "=<name>"; they need the ":".
 func exactSessionWindowTarget(session string) string {
 	return "=" + session + ":"
 }
 
-// hasSession reports whether the named session exists — by exact name,
-// never tmux's prefix fallback (see exactSessionTarget). tmux exits 0 when
-// the session is present and exits 1 when it is absent — exit 1 is the
-// normal "not there yet" case, not an error, so only other failures surface
-// as an error.
+// hasSession reports whether the named session exists (by exact match, not prefix).
 func (p TmuxCmd) hasSession(name string) (bool, error) {
 	err := p.run("has-session", "-t", exactSessionTarget(name))
 	if err == nil {
@@ -145,13 +116,7 @@ func (p TmuxCmd) hasSession(name string) (bool, error) {
 	return false, err
 }
 
-// listPanes returns all panes in the session — targeted by exact session
-// name, never tmux's prefix fallback (see exactSessionWindowTarget) —
-// parsed from
-// list-panes -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}".
-// pane_top rides along so callers can derive the window's actual top-to-bottom
-// pane order, and pane_pid so pane-destroying ops can snapshot a pane's
-// process subtree, without a second round trip.
+// listPanes returns all panes in the session (by exact match).
 func (p TmuxCmd) listPanes(session string) ([]LivePane, error) {
 	out, err := p.output("list-panes", "-t", exactSessionWindowTarget(session), "-F", "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid}")
 	if err != nil {

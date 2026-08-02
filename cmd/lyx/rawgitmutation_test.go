@@ -70,9 +70,7 @@ func TestNoRawGitMutation_WebsterBuilderProductionSource(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the
-	// test's working directory, exactly as tierpurity_test.go does, so the
-	// walk is cwd-independent.
+	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
@@ -135,10 +133,7 @@ func TestNoRawGitMutation_WebsterBuilderProductionSource(t *testing.T) {
 		}
 	}
 
-	// Vacuous-scan protection: fewer than rawGitMutationMinScannedFiles
-	// production .go files found across both packages means the walk is
-	// misconfigured (wrong root, all files skipped) rather than either
-	// package having genuinely shrunk to nothing.
+	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
 	if scanned < rawGitMutationMinScannedFiles {
 		t.Fatalf("raw git mutation guard: only scanned %d production .go file(s) across %v; expected at least %d — the walk may be misconfigured", scanned, rawGitMutationScanPackages, rawGitMutationMinScannedFiles)
 	}

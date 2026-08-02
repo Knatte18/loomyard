@@ -10,10 +10,8 @@ import (
 	"testing"
 )
 
-// TestComposePrompt_RendersMarkers verifies, for both autonomous values,
-// that the rendered prompt leaves no unrendered {{ marker token, contains
-// the given slug and both given paths, and contains the board-read command
-// the discussion agent must run first.
+// TestComposePrompt_RendersMarkers verifies the rendered prompt has no unrendered
+// markers, contains the slug and paths, and contains the board-read command.
 func TestComposePrompt_RendersMarkers(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -53,10 +51,8 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 	}
 }
 
-// TestComposePrompt_ModeLanguageDiffers verifies the autonomous=true
-// rendering carries autonomous-mode language, the autonomous=false
-// rendering carries interactive-mode language, and the two renderings are
-// not identical.
+// TestComposePrompt_ModeLanguageDiffers verifies the mode renderings carry
+// different language and are not identical.
 func TestComposePrompt_ModeLanguageDiffers(t *testing.T) {
 	slug := "add-json-flag"
 	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
@@ -82,8 +78,7 @@ func TestComposePrompt_ModeLanguageDiffers(t *testing.T) {
 	}
 }
 
-// TestModeRules verifies modeRules(true) and modeRules(false) each return a
-// non-empty string and the two are distinct.
+// TestModeRules verifies modeRules returns distinct non-empty strings for each mode.
 func TestModeRules(t *testing.T) {
 	autonomous := modeRules(true)
 	interactive := modeRules(false)

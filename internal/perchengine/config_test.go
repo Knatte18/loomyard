@@ -16,10 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/perchengine"
 )
 
-// seedLyxConfig creates <tmpDir>/_lyx/config/<module>.yaml with content, the
-// minimal on-disk shape LoadConfig needs (no git repository required). It is
-// safe to call more than once against the same tmpDir for different modules
-// — the _lyx/config directories are created idempotently.
+// seedLyxConfig creates <tmpDir>/_lyx/config/<module>.yaml with content.
 func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	t.Helper()
 	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
@@ -36,9 +33,7 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	}
 }
 
-// seedModelsYAML writes a models.yaml registry into tmpDir's _lyx/config,
-// via hubgeometry.ConfigFile per the Hub Geometry Invariant's in-test-code
-// rule — never a hand-joined path.
+// seedModelsYAML writes a models.yaml registry into tmpDir's _lyx/config.
 func seedModelsYAML(t *testing.T, tmpDir, content string) {
 	t.Helper()
 	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)

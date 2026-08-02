@@ -21,21 +21,12 @@ import (
 	readability "github.com/go-shiori/go-readability"
 )
 
-// errUnsupportedContentEncoding is returned by decodeContentEncoding for a
-// Content-Encoding value it has no decoder for. gzip, deflate, and br
-// (Brotli, via the pure-Go andybalholm/brotli decoder — the standard
-// library has none) all decode locally; anything else falls back to this
-// sentinel. It is a distinct sentinel — rather than a generic decode error —
-// so fetchPage can route around it to the browser fallback instead of
-// surfacing it as a hard fetch failure: a real browser's network stack
-// decodes encodings this function doesn't recognize, so the content is
-// still recoverable via that path.
+// errUnsupportedContentEncoding is returned by decodeContentEncoding for
+// unsupported encodings, allowing fetchPage to route to browser fallback.
 var errUnsupportedContentEncoding = errors.New("unsupported Content-Encoding")
 
-// minUsableTextLen is the character-count threshold below which extracted
-// text is considered too thin to be the article itself (e.g. a cookie
-// banner or loading skeleton rather than the real content) and worth
-// attempting a further fallback for.
+// minUsableTextLen is the character-count threshold; below this, extracted
+// text is often chrome rather than article content.
 const minUsableTextLen = 100
 
 // scriptStyleNoscriptBlock matches <script>/<style>/<noscript> elements
@@ -44,27 +35,16 @@ const minUsableTextLen = 100
 // the readable article and can otherwise pollute extracted text.
 var scriptStyleNoscriptBlock = regexp.MustCompile(`(?is)<(script|style|noscript)\b[^>]*>.*?</(script|style|noscript)>`)
 
-// errorResult formats a fetch failure into the "# Error fetching <url>"
-// markdown shape shared by every failure branch of fetchPage, so the prefix
-// is written once rather than hand-rolled at each of its several
-// error-return points.
+// errorResult formats fetch failures into the standard "# Error fetching
+// <url>" markdown format.
 func errorResult(url, detail string) string {
 	return "# Error fetching " + url + "\n\n" + detail
 }
 
-// fetchPage fetches url and extracts its readable content, trying — in
-// order — a matching site adapter first, then the generic cascade: static
-// HTML plus Readability, raw body text, and finally a headless-browser
-// render. Every step degrades to the next rather than failing the whole
-// fetch, matching weblens' resilient behavior: a bot-blocked or JS-only page
-// should still yield the best content available rather than an empty
-// result. f is the injectable transport/browser/adapter seam, so this whole
-// cascade is unit-testable without real network or Chrome access.
+// fetchPage fetches url and extracts readable content, trying site adapters
+// then HTML+Readability, body text, and browser render, cascading gracefully.
+// f bundles injectable transport and browser for testability.
 func fetchPage(ctx context.Context, f fetcher, url string) string {
-	// At most one adapter is consulted: the first whose Matches reports
-	// true. A match that can't produce usable content (handled=false)
-	// falls through to the generic cascade below rather than being retried
-	// against a second adapter — see siteAdapter's doc comment.
 	for _, adapter := range f.adapters {
 		if !adapter.Matches(url) {
 			continue
@@ -154,25 +134,9 @@ func fetchPage(ctx context.Context, f fetcher, url string) string {
 	return "# " + url + "\n\nCould not extract readable content from this page."
 }
 
-// fetchOldRedditHTML is redditAdapter's sole fetch strategy: it fetches the
-// given Reddit post/subreddit URL against old.reddit.com's plain,
-// server-rendered HTML page — which Reddit does not appear to gate as
-// aggressively as its www SPA shell (the SPA shell serves a JS-driven
-// "please wait" verification page to non-browser clients, which
-// old.reddit.com's legacy markup does not).
-//
-// Deliberately skips Readability (unlike the ordinary static-fetch cascade
-// in fetchPage): Readability's whole job is to find and keep only the
-// single highest-scoring "article" block and discard the rest as chrome —
-// but on a Reddit thread the comments are a separate, lower-scoring block
-// from the self-post text, so Readability silently drops exactly the
-// content a reader most wants (verified empirically: it returned only the
-// post body, none of an 18-comment thread present in the same page's raw
-// HTML). stripToBodyText's cruder script/style/nav/header/footer strip
-// keeps everything else, comments included, which is what this fallback
-// needs. It reports ok=false when the request itself fails or yields too
-// little content to be useful, so the caller (redditAdapter.Fetch) falls
-// through to the generic cascade instead of returning a near-empty result.
+// fetchOldRedditHTML fetches Reddit URLs from old.reddit.com's HTML, which
+// avoids gating and skips Readability to preserve comments that Readability
+// would drop. Reports false if request fails or yields too little content.
 func fetchOldRedditHTML(ctx context.Context, f fetcher, url string) (out string, ok bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, toOldRedditURL(url), nil)
 	if err != nil {
@@ -211,13 +175,9 @@ func fetchOldRedditHTML(ctx context.Context, f fetcher, url string) (out string,
 	return "", false
 }
 
-// decodeContentEncoding decompresses body according to the response's
-// Content-Encoding header. gzip and deflate are handled directly (the two
-// formats the standard library supports); an empty or "identity" encoding is
-// returned unchanged; any other non-empty value (most notably "br"/Brotli,
-// which weblens' Node runtime decodes natively but Go's standard library
-// cannot) yields errUnsupportedContentEncoding so the caller can route
-// around it instead of treating the still-compressed bytes as HTML.
+// decodeContentEncoding decompresses body according to Content-Encoding.
+// Handles gzip, deflate, and Brotli; returns errUnsupportedContentEncoding
+// for others so the caller can route to browser fallback.
 func decodeContentEncoding(body []byte, contentEncoding string) ([]byte, error) {
 	switch contentEncoding {
 	case "", "identity":

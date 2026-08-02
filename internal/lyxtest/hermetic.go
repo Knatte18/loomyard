@@ -15,42 +15,12 @@ import (
 var hermeticGitEnvOnce sync.Once
 
 // HermeticGitEnv makes every git process spawned by this test binary ignore the
-// operator's global and system git config, replacing it with a small neutral
-// config. Without this, machine-specific settings such as core.fsmonitor=true
-// in the operator's ~/.gitconfig cause every fixture-built or freshly `git
-// init`/`git clone`d repo to spawn an fsmonitor--daemon (and auto-maintenance)
-// background process, which is what produced hundreds of daemon spawns per
-// fabricengine test run. HermeticGitEnv covers both direct git spawns and
-// indirect ones: os.Setenv mutates the test process's own environment, which
-// exec.Command children (and any binaries those children launch, such as
-// cmd/lyx's e2e tests invoking the lyx binary, which itself spawns git)
-// inherit by default.
-//
-// Call HermeticGitEnv as the first line of a package's TestMain, before
-// m.Run():
-//
-//	func TestMain(m *testing.M) {
-//		lyxtest.HermeticGitEnv()
-//		os.Exit(m.Run())
-//	}
-//
-// The neutral config file this writes is a documented accepted leak: it is one
-// small file per test-binary run, created under os.TempDir() and never removed.
-// TestMain conventionally ends in os.Exit(m.Run()), which skips deferred
-// cleanup, and lyxtest's template directories (built via os.MkdirTemp in the
-// sync.Once template builders) already leak under exactly the same precedent —
-// the OS temp cleaner owns both.
+// operator's global and system git config, replacing it with a neutral config.
+// Call it as the first line of TestMain, before m.Run(). It also runs the
+// CLI-reexec refusal guard before anything else.
 //
 // The bare function name HermeticGitEnv is the presence token that cmd/lyx's
-// hermetic guard scans test files for (a raw-substring match, matching both the
-// qualified lyxtest.HermeticGitEnv() call form used by other packages and the
-// unqualified HermeticGitEnv() form used by lyxtest's own tests). Do not rename
-// this function without updating the guard.
-//
-// HermeticGitEnv also runs the CLI-reexec refusal guard (reexecguard.go)
-// before anything else: a test binary invoked with a leading positional
-// argument is being mistaken for a CLI by whatever spawned it, and aborts
-// loudly instead of silently running the whole suite.
+// hermetic guard scans test files for; do not rename without updating the guard.
 func HermeticGitEnv() {
 	refuseCLIReexec()
 	hermeticGitEnvOnce.Do(func() {

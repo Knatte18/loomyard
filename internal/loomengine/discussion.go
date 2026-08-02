@@ -17,28 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// DiscussionSpec builds the shuttleengine.Spec for one discussion producer
-// run against layout, using cfg's discussion role model-spec and timeout
-// knob, reg to resolve that model-spec, slug for the interview prompt's
-// board-read step, and autonomous to select interactive vs auto-mode
-// instructions (autonomous sets Interactive to false).
-//
-// The Resolved→Spec field mapping mirrors builderengine/roles.go's
-// documented spawn-site mapping: Spec.Model = resolved.Model, Spec.Effort =
-// resolved.Params["effort"], Spec.Version = resolved.Params["version"].
-//
-// DiscussionSpec does not stat or create the output files: shuttleengine's
-// Spec.validate rejects a Spec naming a pre-existing output file, and
-// creating the _lyx/discussion/ directory is the discussion agent's own
-// write concern (see discussion-template.md's Step 5).
+// DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
 func DiscussionSpec(layout *hubgeometry.Layout, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: slug must not be empty")
 	}
 
-	// Resolve the discussion role's model-spec now, before composing the
-	// prompt or naming output paths, so an unknown alias or malformed spec
-	// fails loud before anything else about this run is constructed.
 	spec, err := modelspec.Parse(cfg.Discussion)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: discussion role model-spec: %w", err)

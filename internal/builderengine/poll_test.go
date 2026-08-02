@@ -112,9 +112,8 @@ func TestClassify_RunningSnapshotCarriesOnlyBatchStatusElapsed(t *testing.T) {
 	}
 }
 
-// fakeEngine is a minimal shuttleengine.Engine double for TurnEnded: only
-// ParseEvents is scripted (a canned Events slice or a canned error), since
-// TurnEnded never calls any other method.
+// fakeEngine is a minimal shuttleengine.Engine double for TurnEnded,
+// with only ParseEvents scripted.
 type fakeEngine struct {
 	events []shuttleengine.Event
 	err    error
@@ -208,9 +207,8 @@ func TestTurnEnded(t *testing.T) {
 	})
 }
 
-// fakeReed is a minimal shuttleengine.ReedOps double for StrandLive: only
-// Status is scripted (a canned StatusResult or a canned error), since
-// StrandLive never calls any other method.
+// fakeReed is a minimal shuttleengine.ReedOps double for StrandLive,
+// with only Status scripted.
 type fakeReed struct {
 	status reedengine.StatusResult
 	err    error
@@ -285,10 +283,8 @@ func TestStrandLive(t *testing.T) {
 	})
 }
 
-// fakeClock is a package-local, scriptable clock double for
-// PollUntilTerminal: Now starts at a fixed base and only advances when
-// Sleep is called, so a test controls exactly how many ticks elapse before
-// a fixed wait budget is exceeded, without ever blocking for real.
+// fakeClock is a scriptable clock double for PollUntilTerminal, where
+// Now starts at a fixed base and only advances when Sleep is called.
 type fakeClock struct {
 	now time.Time
 }

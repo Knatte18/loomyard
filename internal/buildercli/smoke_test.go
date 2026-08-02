@@ -32,10 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// bootRealReed builds a scratch hub (git repo + plan fixture + reed config),
-// boots a REAL tmux server/session on the hub's own derived socket, and
-// registers teardown. Skips the calling test when the configured tmux
-// binary is not on this box.
+// bootRealReed builds a scratch hub and boots a REAL tmux server with teardown.
 func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string) {
 	t.Helper()
 

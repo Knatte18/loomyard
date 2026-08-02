@@ -13,9 +13,8 @@ import _ "embed"
 var configTemplate string
 
 // ConfigTemplate returns the default YAML template for webster
-// configuration: the two role model-specs (master, recovery), the
-// batchifier selection (batcher), and the numeric knobs the Master
-// session's bracket verbs consult.
+// configuration: role model-specs, batchifier selection, and Master
+// session configuration.
 func ConfigTemplate() string {
 	return configTemplate
 }

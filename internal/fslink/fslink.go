@@ -29,9 +29,8 @@ import (
 	"path/filepath"
 )
 
-// Remove idempotently deletes a link. It returns nil if the link does not exist
-// (os.IsNotExist), wraps other errors with context "remove link %s: %w", and
-// removes only the link entry itself, never recursing into the target.
+// Remove idempotently deletes a link, returning nil if absent. Wraps errors
+// with context; removes only the link entry, never the target.
 func Remove(link string) error {
 	err := os.Remove(link)
 	if err == nil {
@@ -43,10 +42,8 @@ func Remove(link string) error {
 	return fmt.Errorf("remove link %s: %w", link, err)
 }
 
-// RemoveLinksIn scans the immediate children of dir and removes any links found.
-// It returns the count of removed links and the first error encountered. Regular
-// files and real subdirectories are left untouched. If dir does not exist or
-// cannot be read, returns (0, err) from the os.ReadDir failure.
+// RemoveLinksIn scans dir's immediate children, removes links found, and
+// returns the count. Regular files and directories are left untouched.
 func RemoveLinksIn(dir string) (int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -71,18 +68,14 @@ func RemoveLinksIn(dir string) (int, error) {
 	return count, nil
 }
 
-// prepareLink is an unexported helper that enforces the refuse-to-clobber and
-// parent-mkdir guards. It returns an error if link already exists, if lstat fails
-// for a reason other than os.IsNotExist, or if parent directory creation fails.
+// prepareLink enforces refuse-to-clobber and parent-mkdir guards.
 func prepareLink(link string) error {
-	// Refuse to clobber existing paths
 	if _, err := os.Lstat(link); err == nil {
 		return fmt.Errorf("link already exists — remove it first: %s", link)
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("lstat %s: %w", link, err)
 	}
 
-	// Create parent directory if needed
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 		return fmt.Errorf("mkdir parent of %s: %w", link, err)
 	}

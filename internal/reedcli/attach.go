@@ -16,28 +16,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// attachArgv builds the tmux argv for an in-place attach: "-L <socket>
-// attach-session -t =<session>". The "=" pins tmux's exact session-name
-// matching — a bare -t name falls back to PREFIX matching when no exact
-// match exists, which could attach the operator to a prefix-sharing SIBLING
-// worktree's session (mirroring reedengine's exactSessionTarget; the
-// pre-flight Status() makes that window small but not zero, since the
-// session can die between pre-flight and exec). It is kept as a pure
-// function, separate from the exec.Command call it feeds, so cli_test.go
-// can assert the built invocation without spawning tmux or needing a live
-// session.
+// attachArgv reports the tmux argv for an in-place attach.
 func attachArgv(socket, session string) []string {
 	return []string{"-L", socket, "attach-session", "-t", "=" + session}
 }
 
-// attachCmd builds the `attach` subcommand: a session-level verb (no strand
-// argument) that runs Status() pre-flight — Status takes the op lock and
-// returns a non-nil error when the server/session is absent (it is read-only:
-// it reports live/dead without reconciling) — then hands the operator's own
-// stdin/stdout/stderr to a tmux
-// attach-session child, in place. Only that terminal-handover tail is
-// exempt from the JSON-envelope contract; every step before it still
-// reports through output.Err/output.Ok.
+// attachCmd builds the `attach` subcommand, handing the operator's terminal to tmux attach-session.
 func (c *reedCLI) attachCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "attach",

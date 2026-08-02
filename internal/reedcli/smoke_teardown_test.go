@@ -12,14 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestSmokeDownReleasesServerBeforeReturning pins the down->up churn race
-// this round fixed: tmux's kill-server is asynchronous, and a Down that
-// returned while the old server still held the socket let an immediate up
-// spawn a duplicate server process that lingered forever as an unreachable
-// stray. Down now waits on the server PROCESS itself (tmux's CLI cannot
-// report server absence — every probe exits 0), so the moment it returns
-// the server must be gone — and an immediate up+add cycle must work. Three
-// back-to-back cycles with no sleeps.
+// TestSmokeDownReleasesServerBeforeReturning pins the down->up churn race.
 func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -47,8 +40,6 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 		if code := RunCLI(&out, []string{"down"}); code != 0 {
 			t.Fatalf("cycle %d down = %d; want 0, output: %s", cycle, code, out.String())
 		}
-		// No sleep: the server process must already be gone when down
-		// returns.
 		if !processGone(pid) {
 			t.Fatalf("cycle %d: tmux server (pid %d) still running immediately after down returned", cycle, pid)
 		}
@@ -60,14 +51,7 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 	}
 }
 
-// TestSmokeDownReapsPaneChildProcesses pins the pane-child reaping gap this
-// round fixed: tmux terminates pane children asynchronously, so a down that
-// waited only on the server process could return while a pane's shell subtree
-// (a deep descendant whose cwd is the worktree) was still alive — a "no stray
-// state" violation that surfaced as a worktree-dir-in-use failure under load.
-// down now waits for this session's whole pane process subtree to exit before
-// returning, so the instant down returns every pane descendant must be gone.
-// Loops several add->down cycles to give the async teardown a chance to lag.
+// TestSmokeDownReapsPaneChildProcesses pins the pane-child reaping semantics.
 func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 

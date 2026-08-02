@@ -16,12 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
-// TestBuildRoundProfile_FieldMapping asserts every burlerengine content
-// field is carried 1:1 from Profile, the loop-owned ReviewPath/
-// FixerReportPath come from the caller-supplied path strings, and the
-// operator-owned prior lists are passed through unmodified —
-// buildRoundProfile must never append to or otherwise invent entries in
-// them.
+// TestBuildRoundProfile_FieldMapping asserts field mapping: every content field carried 1:1, paths from caller, prior lists unmodified.
 func TestBuildRoundProfile_FieldMapping(t *testing.T) {
 	p := Profile{
 		Target:     burlerengine.FileSet{Paths: []string{"target.txt"}},

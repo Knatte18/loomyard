@@ -67,25 +67,11 @@ type StatusResult struct {
 }
 
 // Status returns the paired host↔weft status view for all worktrees reachable from
-// the given layout, plus host-pollution detection on the host index.
-//
-// For each host worktree discovered via hubgeometry.List, Status:
-//   - Derives the paired weft worktree path via layout geometry
-//   - Reads the host branch and weft branch (if the weft exists)
-//   - Reports in-sync status: weftBranch == WeftBranchName(hostBranch) and the host
-//     _lyx junction is valid
-//   - Reports junction health (separate from the drift check) using checkJunctionHealth
-//   - Scans the host index for any _lyx, _pattern, or _raddle paths via git ls-files;
-//     marks _lyx and _pattern entries as remediable (git rm --cached + restore
-//     junction/exclude — both have a junction from card 15 onward) and _raddle
-//     entries as report-only (no junction to restore in this task)
-//
-// Layout l is the resolved layout for the current working directory; it provides Hub
-// and Prime fields for deriving the weft repo root and weft worktree names.
-// Returns an error only on fatal system failures; per-worktree errors are recorded
+// the given layout, plus host-pollution detection on the host index. For each host
+// worktree, it reports branch status, in-sync verdict, junction health, and
+// host-tracked _lyx/_pattern/_raddle paths. Per-worktree errors are recorded
 // inline in PairStatus.DriftReason / PairStatus.JunctionReason.
 func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
-	// Enumerate all host worktrees from any worktree in the repository.
 	entries, err := hubgeometry.List(l.WorktreeRoot)
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("list worktrees: %w", err)
@@ -97,18 +83,13 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 		hostPath := filepath.FromSlash(entry.Path)
 		hostPath = filepath.Clean(hostPath)
 
-		// Derive the paired weft worktree path from the host worktree base name.
-		// e.g. <hub>/my-task → <hub>/my-task-weft
 		weftPath := l.WeftWorktreePath(filepath.Base(hostPath))
 
-		// Emit forward-slash paths in the JSON-tagged fields only; hostPath/weftPath
-		// stay OS-native below for os.Stat, git subprocess calls, and junction checks.
 		pair := PairStatus{
 			HostWorktree: filepath.ToSlash(hostPath),
 			WeftWorktree: filepath.ToSlash(weftPath),
 		}
 
-		// Read the host branch.
 		hostBranch, hostBranchErr := readBranch(hostPath)
 		if hostBranchErr != nil {
 			pair.DriftReason = fmt.Sprintf("read host branch: %v", hostBranchErr)
@@ -117,7 +98,6 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 		}
 		pair.HostBranch = hostBranch
 
-		// Read the weft branch if the weft worktree exists; a missing weft is reported inline.
 		weftStat, err := os.Stat(weftPath)
 		if err != nil || !weftStat.IsDir() {
 			pair.DriftReason = "weft worktree missing"
@@ -134,8 +114,6 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 		}
 		pair.WeftBranch = weftBranch
 
-		// Build a per-host-worktree layout to resolve junction geometry. hostLayoutFor
-		// avoids a git spawn for the common hub-sibling case.
 		hostLayout, layoutErr := hostLayoutFor(l, hostPath)
 		if layoutErr != nil {
 			pair.DriftReason = fmt.Sprintf("resolve host layout: %v", layoutErr)
@@ -143,8 +121,6 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 			continue
 		}
 
-		// Determine junction health independently of the drift verdict so callers
-		// can distinguish "branches match but junction is broken" from full in-sync.
 		junctionHealthy, junctionReason := checkJunctionHealth(hostLayout)
 		pair.JunctionHealthy = junctionHealthy
 		pair.JunctionReason = junctionReason

@@ -15,13 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Strand is the persisted record for one tmux pane reedengine owns. It
-// reuses render.Display/render.Anchor for the display vocabulary (a single
-// source of that vocabulary) and adds the opaque carrier fields reedengine
-// stores but never interprets: Cmd/ResumeCmd (opaque launch/resume command
-// strings), SessionID (opaque metadata, never identity — GUID is), Worktree
-// (the owning worktree root, so a strand self-describes without external
-// lookup), and Parent (the parent strand's GUID, or "" for a root strand).
+// Strand is the persisted record for one tmux pane reedengine owns,
+// reusing render.Display for the display vocabulary.
 type Strand struct {
 	GUID      string         `json:"guid"`
 	Name      string         `json:"name"`
@@ -35,13 +30,7 @@ type Strand struct {
 }
 
 // ReedState is the persisted record for one hub's tmux server: the socket
-// name (which doubles as the server name — one identity, stored once), the
-// session this state file belongs to, the env keys stripped at server-spawn
-// time (stamped when this worktree's op booted the server, for diagnosis),
-// and every strand across the session as a flat, GUID-keyed list. The flat
-// list is the v2 union seam — each strand self-describes its own Worktree
-// rather than being nested under a per-worktree map, so a strand can be
-// looked up or iterated without first knowing which worktree owns it.
+// name, the session, stripped env keys, and every strand as a flat list.
 type ReedState struct {
 	Socket      string   `json:"socket"`
 	Session     string   `json:"session"`
@@ -58,17 +47,11 @@ type ReedState struct {
 	HeaderPaneID string `json:"headerPaneId,omitempty"`
 }
 
-// reedStateFileName is the reed.json file name inside a Layout's ephemeral
-// .lyx directory (hubgeometry.(*Layout).DotLyxDir()). It is a package-local
-// constant rather than a hardcoded literal at each call site.
+// reedStateFileName is the reed.json file name inside .lyx directory.
 const reedStateFileName = "reed.json"
 
-// LoadState reads the ReedState persisted at dotLyxDir/reed.json under a
-// shared read lock. The caller supplies dotLyxDir as layout.DotLyxDir() so
-// this package never hardcodes the ".lyx" literal itself (the Hub Geometry
-// Invariant). Returns (nil, nil) if the file is absent — a fresh worktree
-// with no reed state yet is not an error. Returns (nil, err) if the file is
-// corrupt/unparseable or on other read errors.
+// LoadState reads the ReedState persisted at dotLyxDir/reed.json.
+// Returns (nil, nil) if absent, (nil, err) on corrupt or read errors.
 func LoadState(dotLyxDir string) (*ReedState, error) {
 	path := filepath.Join(dotLyxDir, reedStateFileName)
 	lockPath := path + ".lock"
@@ -83,24 +66,15 @@ func LoadState(dotLyxDir string) (*ReedState, error) {
 	return &v, nil
 }
 
-// SaveState writes s to dotLyxDir/reed.json atomically under an exclusive
-// write lock, creating dotLyxDir if needed. The caller supplies dotLyxDir as
-// layout.DotLyxDir(), matching LoadState.
+// SaveState writes s to dotLyxDir/reed.json atomically.
 func SaveState(dotLyxDir string, s *ReedState) error {
 	path := filepath.Join(dotLyxDir, reedStateFileName)
 	lockPath := path + ".lock"
 	return state.WriteJSON(path, lockPath, s)
 }
 
-// toRenderStrands maps the persisted strands down to the render-facing
-// projection Rules needs: GUID, Parent, Display, and PaneID carry straight
-// through, and Live is set from liveIDs[PaneID]. liveIDs is the set of pane
-// ids currently present in the tmux window per list-panes — a
-// dead-but-remain-on-exit pane still counts as present until something
-// explicitly kills it, so Live means "this strand owns a present window
-// pane", not "this strand's command is still running". toRenderStrands maps
-// every strand unconditionally; it is render.partitionByAnchor's job, not
-// this mapper's, to drop not-live or empty-PaneID strands from the layout.
+// toRenderStrands maps persisted strands to the render projection, setting
+// Live from liveIDs[PaneID].
 func toRenderStrands(strands []Strand, liveIDs map[string]bool) []render.Strand {
 	out := make([]render.Strand, len(strands))
 	for i, s := range strands {

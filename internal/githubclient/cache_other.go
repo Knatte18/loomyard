@@ -13,8 +13,7 @@ import (
 	"os"
 )
 
-// hardenCacheFile applies the 0600 mode to path, restricting it to the
-// owning user. No further hardening is required on this platform.
+// hardenCacheFile applies 0600 mode to path, restricting it to the owner.
 func hardenCacheFile(path string) error {
 	if err := os.Chmod(path, 0o600); err != nil {
 		return fmt.Errorf("chmod %s: %w", path, err)

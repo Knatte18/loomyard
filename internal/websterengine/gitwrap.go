@@ -17,12 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// headSHA returns worktree's current HEAD commit SHA via
-// gitrepo.Repo.CurrentSHA. An unborn HEAD (no commits yet) surfaces as
-// gitrepo.ErrNoCommits, checkable via errors.Is against the wrapped error —
-// a superset of builderengine.HeadSHA's plain-error behavior on the same
-// case, since gitrepo distinguishes "no commits yet" from every other git
-// failure while builder's own HeadSHA folds both into one opaque error.
+// headSHA returns worktree's current HEAD commit SHA via gitrepo.Repo.
+// An unborn HEAD surfaces as gitrepo.ErrNoCommits.
 func headSHA(worktree string) (string, error) {
 	sha, err := gitrepo.New(worktree).CurrentSHA()
 	if err != nil {
@@ -31,11 +27,8 @@ func headSHA(worktree string) (string, error) {
 	return sha, nil
 }
 
-// dirty reports whether worktree has any uncommitted or untracked changes,
-// via a non-empty `git status --porcelain`. gitrepo.Repo exposes no
-// porcelain/status method — adding one is out of scope for this batch — so
-// dirty is webster's own thin wrapper directly over gitexec.RunGit, the one
-// exception the Shared Decision git-verification-via-gitrepo carves out.
+// dirty reports whether worktree has any uncommitted or untracked changes.
+// It wraps gitexec.RunGit directly since gitrepo.Repo exposes no porcelain/status method.
 func dirty(worktree string) (bool, error) {
 	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, worktree)
 	if err != nil {

@@ -19,14 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// TestEnsureSupervised_StaleSocketCleanupAllowsRebind asserts that a
-// leftover non-socket regular file at the deterministic socketPath (e.g.
-// left behind by a daemon that crashed without cleaning up after itself)
-// does not block a fresh spawn's bind. This exercises ensureSupervised's
-// unconditional os.Remove(socketPath) cleanup against a real gopls listen
-// socket, not a mocked scenario — only a real bind attempt can prove
-// EADDRINUSE was actually avoided, which is the trade-off for needing gopls
-// on $PATH to run at all.
+// TestEnsureSupervised_StaleSocketCleanupAllowsRebind verifies stale sockets are cleaned up before rebind.
 func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"

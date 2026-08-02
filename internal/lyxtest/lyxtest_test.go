@@ -12,24 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// TestMain wires up the hermetic git environment before any test in this
-// package spawns git, matching the canonical TestMain shape every
-// git-spawning package in the repo uses. lyxtest's own test file is
-// `package lyxtest`, so the call is unqualified — this is also why the
-// hermetic guard's presence token is the bare function name, not the
-// qualified lyxtest.HermeticGitEnv() form.
+// TestMain wires up the hermetic git environment before any test spawns git.
 func TestMain(m *testing.M) {
 	HermeticGitEnv()
 	os.Exit(m.Run())
 }
 
-// TestHermeticGitEnv_QuietAndPinned verifies Layer B end to end: a repo
-// created with a bare `git init` (no explicit -b flag) inside a fresh
-// t.TempDir() reads its fsmonitor setting from the hermetic env-level global
-// config (proving the operator's own global config is not being read), and
-// lands on branch "main" via init.defaultBranch rather than git's own
-// fallback default — the round-guarding edge case that motivates shipping
-// identity/defaultBranch in the neutral config alongside the quiet keys.
+// TestHermeticGitEnv_QuietAndPinned verifies Layer B: a bare git init reads
+// fsmonitor and branch from the hermetic env config, not the operator's config.
 func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 	t.Parallel()
 
@@ -59,10 +49,8 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 	}
 }
 
-// TestTemplateQuietConfig verifies Layer A independently of Layer B: a
-// Copy*-produced fixture carries the quiet git settings in its own
-// .git/config, not merely inherited from the process-wide hermetic env.
-// --local scopes the read to the copy's own config file.
+// TestTemplateQuietConfig verifies Layer A: Copy* fixtures carry quiet git settings
+// in their own .git/config, independent of the hermetic env.
 func TestTemplateQuietConfig(t *testing.T) {
 	t.Parallel()
 
@@ -107,7 +95,7 @@ func TestCopyHostHub(t *testing.T) {
 	}
 }
 
-// TestCopyHostHub_Isolation verifies that mutations to one copy don't affect another.
+// TestCopyHostHub_Isolation verifies that fixture copies are isolated.
 func TestCopyHostHub_Isolation(t *testing.T) {
 	t.Parallel()
 
@@ -240,7 +228,7 @@ func TestCopyWeft(t *testing.T) {
 	}
 }
 
-// TestCopyWeft_Isolation verifies that mutations to one weft copy don't affect another.
+// TestCopyWeft_Isolation verifies that weft copies are isolated.
 func TestCopyWeft_Isolation(t *testing.T) {
 	t.Parallel()
 
@@ -282,10 +270,8 @@ func TestMustRun(t *testing.T) {
 	MustRun(t, fixture.Hub, "git", "rev-parse", "HEAD")
 }
 
-// TestMustRun_Failure verifies that MustRun calls tb.Fatalf on a non-zero exit.
-// It uses the subprocess pattern: when GO_TEST_SUBPROCESS=MUSTRUN_FAILURE the test
-// binary runs MustRun directly (which calls t.Fatalf and exits non-zero). The parent
-// process asserts the subprocess exited non-zero, confirming Fatalf was reached.
+// TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using
+// the subprocess pattern to confirm non-zero exit.
 func TestMustRun_Failure(t *testing.T) {
 	t.Parallel()
 
@@ -375,8 +361,7 @@ func TestSeedConfig(t *testing.T) {
 	}
 }
 
-// TestCopyPaired_NeutralFixture verifies that CopyPaired produces a neutral fixture
-// with a placeholder file and no real config files.
+// TestCopyPaired_NeutralFixture verifies CopyPaired produces a neutral fixture.
 func TestCopyPaired_NeutralFixture(t *testing.T) {
 	t.Parallel()
 

@@ -72,29 +72,17 @@ type RecordResult struct {
 	Warnings []string
 }
 
-// RecordBatch drives one record-batch call to completion, immediately after
-// Master's fork for batchNumber returns: the bracket-discipline check, the
-// incremental fork audit (with its bounded settle retry against a
-// zero-new-transcript miss), webster's fork-audit policy (CheckParent on the
-// parent session's facts, CheckFork on every new fork transcript), the
-// unconditional transcript-attribution advance (BEFORE the report-presence
-// check, so a no_report retry sees only its own new transcript), the
-// batch-report presence check and parse, and — once a report has landed —
-// the distilled digest's persistence. The caller holds the state-mutation
-// lease across this whole call and is responsible for persisting
-// deps.State (and, once terminal, the batch report) via SaveState once
-// RecordBatch returns successfully.
+// RecordBatch drives one record-batch call: the bracket-discipline check,
+// incremental fork audit, fork-audit policy checks, transcript-attribution
+// advance, report parse, and digest persistence. The caller persists deps.State
+// via SaveState once RecordBatch returns successfully.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	bs, ok := deps.State.Batches[batchNumber]
 	if !ok || bs == nil || bs.Terminal {
 		return nil, ErrNoBeginRecord
 	}
 
-	// A recovery batch is never record-batch's to consume: its report is
-	// classified by recover-batch's own bounded wait, and running the fork
-	// audit against it can only ever end in a misleading "never forked" error
-	// (a recovery strand is a separate process, not a fork). Refuse loud with
-	// the correct verb instead.
+	// Recovery batches are consumed by recover-batch, not record-batch.
 	if bs.Kind != "fork" {
 		return nil, fmt.Errorf("webster: batch %d is a %s batch, not a fork batch — its report is consumed by `lyx webster recover-batch %d`, never record-batch", batchNumber, bs.Kind, batchNumber)
 	}
@@ -110,39 +98,24 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		seenSet[p] = true
 	}
 
-	// The audit keys on the session that OPENED this batch's bracket
-	// (bs.SessionID, stamped by begin-batch) — equal to the current Master
-	// session in the normal flow, but deliberately NOT read from
-	// State.MasterSessionID: after a crash between the fork's report landing
-	// and record-batch, a resumed run's fresh Master must still be able to
-	// consume the report, and the fork's transcript lives under the CRASHED
-	// session's subagents directory, which persists on disk (found live in
-	// round fable-r3: auditing the new session instead wedged every resume of
-	// exactly that crash window across all three verbs).
+	// Audit the session that opened this batch's bracket (bs.SessionID),
+	// not the current Master session, so a resumed Master can consume a
+	// report whose transcript lives under the crashed session's directory.
 	fetch := func() (shuttleengine.ForkAudit, error) {
 		return deps.Engine.AuditForksIncremental(bs.SessionID, deps.Layout.Cwd, seenSet)
 	}
 
 	audit, newReports, err := SettleRetry(fetch, deps.State.SeenForkTranscripts, DefaultSettleWindow, DefaultSettleTick, deps.Sleeper)
 	if err != nil {
-		// A missing transcript FILE for the bracket-opening session means that
-		// session's transcripts are not on this machine at all — the parent
-		// transcript is machine-local exactly like the fork transcripts, so the
-		// true cross-machine resume dies HERE, before ClassifyAttribution's
-		// ErrNoForkTranscripts can ever name the operator recourse. Wrap the
-		// raw file error with the same explanation and recourse (found live in
-		// crucible round fable-r3: the resume surfaced a bare "no such file or
-		// directory" instead of the documented escape).
+		// Session transcripts are machine-local, so a cross-machine resume
+		// fails here with the documented operator recourse.
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("webster: no transcript exists on this machine for the session that opened batch %02d-%s's bracket (%s): %w — session transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch", number, slug, bs.SessionID, err)
 		}
 		return nil, err
 	}
 
-	// Transcript count is decided BEFORE report presence — a report with no
-	// fork behind it means Master wrote it itself, and this check is what
-	// makes that defect unfakeable regardless of whether a report file
-	// exists on disk.
+	// Check transcripts before report presence so a fake (unfakeable) report is caught.
 	warning, err := ClassifyAttribution(newReports)
 	if err != nil {
 		return nil, err
@@ -169,10 +142,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, errors.Join(violations...)
 	}
 
-	// Attribution advances unconditionally, before the report-presence
-	// check below: a no_report retry then sees only its own new
-	// transcript(s) on the next call, never re-counting the ones already
-	// attributed here.
+	// Attribution advances before report-presence check so a retry sees only its own new transcript.
 	newPaths := make([]string, 0, len(newReports))
 	for _, f := range newReports {
 		newPaths = append(newPaths, f.TranscriptPath)
@@ -201,10 +171,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, fmt.Sprintf("worktree is dirty after batch %s's own commits (uncommitted or untracked changes remain)", polledID))
 	}
 
-	// The fork's own self-reported head_sha is cross-checked against the
-	// worktree's actual current HEAD: a mismatch means the fork's report and
-	// the host repo it left behind disagree about where the batch's work
-	// actually landed, which is never trusted silently.
+	// Cross-check report's head_sha against the worktree's actual HEAD.
 	actualHead, err := headSHA(deps.WorktreeRoot)
 	if err != nil {
 		return nil, err

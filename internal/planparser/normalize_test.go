@@ -79,9 +79,7 @@ func TestNormalizeCardPath(t *testing.T) {
 	}
 }
 
-// TestNormalizeCard_MovesBothEndpoints covers normalizeCard applying
-// normalizeCardPath to both sides of every Moves: pair, and leaving MovesRaw
-// (malformed bullets) untouched since they never resolved into a MovePair.
+// TestNormalizeCard_MovesBothEndpoints covers normalizeCard applying normalizeCardPath to both sides of every Moves: pair.
 func TestNormalizeCard_MovesBothEndpoints(t *testing.T) {
 	t.Parallel()
 
@@ -106,10 +104,7 @@ func TestNormalizeCard_MovesBothEndpoints(t *testing.T) {
 	}
 }
 
-// TestNormalizeCard_NilSliceStaysNil proves normalizeCard preserves the
-// nil-vs-empty-non-nil distinction: a field whose label was never seen (nil
-// slice) stays nil after normalization, never silently promoted to an empty
-// non-nil slice.
+// TestNormalizeCard_NilSliceStaysNil proves normalizeCard preserves the nil-vs-empty-non-nil distinction.
 func TestNormalizeCard_NilSliceStaysNil(t *testing.T) {
 	t.Parallel()
 

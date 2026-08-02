@@ -31,8 +31,7 @@ import (
 	"strings"
 )
 
-// linuxPids returns every numeric entry under /proc — the live pid set at
-// this instant. Returns nil if /proc cannot be read at all.
+// linuxPids returns every numeric entry under /proc.
 func linuxPids() []int {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
@@ -47,9 +46,7 @@ func linuxPids() []int {
 	return pids
 }
 
-// linuxProcPPID reads pid's parent pid from /proc/<pid>/stat, anchored on
-// the last ")" the same way reedengine's parseStatPPID is, since comm (field
-// 2) can itself contain spaces or parens.
+// linuxProcPPID reads pid's parent pid from /proc/<pid>/stat.
 func linuxProcPPID(pid int) (int, bool) {
 	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
 	if err != nil {
@@ -71,9 +68,7 @@ func linuxProcPPID(pid int) (int, bool) {
 	return ppid, true
 }
 
-// linuxProcArgv reads pid's argv from /proc/<pid>/cmdline (NUL-separated,
-// trailing NUL trimmed before splitting so it never yields a spurious empty
-// trailing element).
+// linuxProcArgv reads pid's argv from /proc/<pid>/cmdline.
 func linuxProcArgv(pid int) ([]string, bool) {
 	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
 	if err != nil {

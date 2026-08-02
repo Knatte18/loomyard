@@ -80,9 +80,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the test's
-	// working directory, exactly as crosscompile_test.go does, so the walk is
-	// cwd-independent.
+	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory.
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
@@ -114,9 +112,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		if relErr != nil {
 			return relErr
 		}
-		// Normalize to slash-separated form before any comparison: filepath.WalkDir
-		// yields backslash paths on Windows (the primary dev OS), and un-normalized
-		// matching would silently miss the slash-separated allowedSpawners prefixes.
+		// Normalize to slash-separated form before any comparison.
 		relPath = filepath.ToSlash(relPath)
 		scanned++
 
@@ -136,10 +132,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 			))
 		}
 
-		// The banned-token check above may already have flagged this file, but the
-		// Sleep guard is an independent check and must still run for every file:
-		// isTierTagged(data) is already known false at this point (the walk
-		// returned above otherwise), so there is no need to re-test it here.
+		// Sleep guard is an independent check and must still run for every untagged file.
 		if !pathAllowlisted(relPath, allowedLongSleepers) {
 			if evidence, found := findLongLiteralSleep(token.NewFileSet(), path, data); found {
 				failures = append(failures, fmt.Sprintf(
@@ -155,9 +148,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		t.Fatalf("failed to walk module tree: %v", walkErr)
 	}
 
-	// Vacuous-scan protection: the repo has ~60 *_test.go files; fewer than 20 found
-	// means the walk is misconfigured (wrong root, all files skipped) rather than the
-	// suite having genuinely shrunk.
+	// Vacuous-scan protection: fewer than 20 found means misconfiguration.
 	if scanned < 20 {
 		t.Fatalf("tier purity guard: only scanned %d *_test.go file(s) under %s; expected at least 20 — the walk may be misconfigured", scanned, moduleRoot)
 	}
@@ -167,10 +158,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	}
 }
 
-// isTierTagged reports whether data's first non-empty line is a `//go:build`
-// constraint mentioning any entry of `knownTierTags` ("integration", "smoke", "scout").
-// A platform-only constraint (e.g. `//go:build windows`) is NOT tagged — it still runs
-// in Tier 1 on that platform, so its spawns still count.
+// isTierTagged reports whether data's first line is a `//go:build` constraint with a known tier tag.
 func isTierTagged(data []byte) bool {
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -190,10 +178,7 @@ func isTierTagged(data []byte) bool {
 	return false
 }
 
-// TestIsTierTagged_RecognizesKnownTagsList verifies isTierTagged matches every entry of
-// knownTierTags (not just the two originally-hardcoded "integration"/"smoke" tags),
-// still treats a platform-only constraint as untagged, and still fires a substring
-// match against a compound constraint that combines a platform term with a tier tag.
+// TestIsTierTagged_RecognizesKnownTagsList verifies isTierTagged recognizes all known tier tags.
 func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 	tests := []struct {
 		name string
@@ -229,10 +214,7 @@ func firstBannedToken(data []byte) (string, bool) {
 	return "", false
 }
 
-// pathAllowlisted reports whether relPath (module-relative, slash-separated) is covered
-// by an entry of allowlist: an exact file match, or a match under a directory-prefix
-// entry. Shared by both the banned-token allowlist (allowedSpawners) and the
-// literal-Sleep allowlist (allowedLongSleepers).
+// pathAllowlisted reports whether relPath is covered by an entry in allowlist.
 func pathAllowlisted(relPath string, allowlist map[string]string) bool {
 	for prefix := range allowlist {
 		if relPath == prefix || strings.HasPrefix(relPath, prefix+"/") {

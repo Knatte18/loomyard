@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// mustRunMenu is a test helper that runs a command in a directory.
 func mustRunMenu(t *testing.T, dir string, args ...string) {
 	t.Helper()
 
@@ -29,14 +28,12 @@ func mustRunMenu(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// newTestGitRepoWithWorktrees creates a git repository with a main worktree and child worktrees.
 func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	t.Helper()
 
 	container := t.TempDir()
 	mainWorktreePath := filepath.Join(container, "main")
 
-	// Create and initialize main worktree
 	if err := os.Mkdir(mainWorktreePath, 0o755); err != nil {
 		t.Fatalf("failed to create main worktree: %v", err)
 	}
@@ -45,7 +42,6 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "config", "user.email", "test@test.com")
 	mustRunMenu(t, mainWorktreePath, "git", "config", "user.name", "Test")
 
-	// Create and commit a file
 	readmeFile := filepath.Join(mainWorktreePath, "README")
 	if err := os.WriteFile(readmeFile, []byte("test"), 0o644); err != nil {
 		t.Fatalf("failed to write README: %v", err)
@@ -54,7 +50,6 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "add", ".")
 	mustRunMenu(t, mainWorktreePath, "git", "commit", "-m", "initial")
 
-	// Create main's _lyx directory
 	if err := os.MkdirAll(filepath.Join(mainWorktreePath, hubgeometry.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create main _lyx: %v", err)
 	}
@@ -62,7 +57,6 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	return container, mainWorktreePath
 }
 
-// TestMenuHardErrorOnMissingBoard tests that Menu hard-errors when board config cannot be loaded.
 func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -75,8 +69,6 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 		Cwd:     mainWorktreePath,
 	}
 
-	// Call Menu without a board config file (_lyx/config/board.yaml missing)
-	// This should hard-error during LoadConfig
 	var out bytes.Buffer
 	in := strings.NewReader("")
 
@@ -85,19 +77,16 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 		t.Fatalf("expected hard error when board config cannot be loaded, got nil")
 	}
 
-	// Should be a load error, not a health check error (since we don't get that far)
 	if !strings.Contains(err.Error(), "load board config") && !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected load config error, got: %v", err)
 	}
 }
 
-// TestMenuExcludesMain tests that the main worktree is excluded from discovery.
 func TestMenuExcludesMain(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a real git worktree using `git worktree add`
 	childPath := filepath.Join(container, "child")
 	mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", "child-branch", childPath)
 	defer func() {
@@ -105,12 +94,10 @@ func TestMenuExcludesMain(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	// Create _lyx in child
 	if err := os.MkdirAll(filepath.Join(childPath, hubgeometry.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create child _lyx: %v", err)
 	}
 
-	// Create board config
 	configDir := hubgeometry.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
@@ -124,7 +111,6 @@ design_prefix: proposal-
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	// Create board directory with tasks.json
 	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
@@ -142,12 +128,10 @@ design_prefix: proposal-
 		Cwd:     mainWorktreePath,
 	}
 
-	// Stub CodeLauncher
 	originalLauncher := CodeLauncher
 	defer func() { CodeLauncher = originalLauncher }()
 	CodeLauncher = func(dir string) error { return nil }
 
-	// Simulate user selecting first worktree (child, not main)
 	var out bytes.Buffer
 	in := strings.NewReader("1\n")
 
@@ -162,22 +146,18 @@ design_prefix: proposal-
 	}
 }
 
-// TestMenuRequiresLyxDir tests that worktrees without _lyx are excluded.
 func TestMenuRequiresLyxDir(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create a real git worktree WITHOUT _lyx (should be excluded)
 	childPath := filepath.Join(container, "child")
 	mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", "child-branch", childPath)
 	defer func() {
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "remove", "--force", childPath)
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
-	// Note: child is created but has no _lyx
 
-	// Create board config
 	configDir := hubgeometry.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
@@ -191,7 +171,6 @@ design_prefix: proposal-
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	// Create board directory with tasks.json
 	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
@@ -223,13 +202,11 @@ design_prefix: proposal-
 	}
 }
 
-// TestMenuNumericSelection tests that numeric selection invokes Spawn with correct slug.
 func TestMenuNumericSelection(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	// Create real git worktrees child1 and child2 with _lyx
 	for _, child := range []string{"child1", "child2"} {
 		childPath := filepath.Join(container, child)
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", child+"-branch", childPath)
@@ -246,7 +223,6 @@ func TestMenuNumericSelection(t *testing.T) {
 		}
 	}()
 
-	// Create board config
 	configDir := hubgeometry.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
@@ -260,7 +236,6 @@ design_prefix: proposal-
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	// Create board directory with tasks.json at <container>/_board
 	boardDir := filepath.Join(container, "_board")
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("failed to create board dir: %v", err)
@@ -279,7 +254,6 @@ design_prefix: proposal-
 		Cwd:     mainWorktreePath,
 	}
 
-	// Stub CodeLauncher to verify it gets called
 	var launchCount int
 	originalLauncher := CodeLauncher
 	defer func() { CodeLauncher = originalLauncher }()
@@ -288,7 +262,6 @@ design_prefix: proposal-
 		return nil
 	}
 
-	// Simulate user selecting item 2 (child2)
 	var out bytes.Buffer
 	in := strings.NewReader("2\n")
 
@@ -297,7 +270,6 @@ design_prefix: proposal-
 		t.Fatalf("Menu failed: %v", err)
 	}
 
-	// Verify that CodeLauncher was called exactly once (for the selected worktree)
 	if launchCount != 1 {
 		t.Fatalf("expected CodeLauncher to be called once, was called %d times", launchCount)
 	}

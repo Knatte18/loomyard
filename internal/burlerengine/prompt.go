@@ -31,16 +31,10 @@ type instructionFile struct {
 	Content string
 }
 
-// composePrompt builds the burler round prompt for p by rendering each of
-// the four embedded assets separately, each with only its own required
-// top-level markers (plus patternDirective under instruction 1's optional
-// pattern_directive marker), via internal/stencil. It returns the rendered
-// orchestrator string and the three instruction files — at inst1Path,
-// inst2Path, inst3Path respectively — in the order the orchestrator names
-// them. patternDirective is not gated on whether the round's target is
-// code or prose: loomyard has no target-type classification, and a
-// file-extension heuristic would be new fragile logic whose
-// misclassification would silently drop the constraints.
+// composePrompt builds the burler round prompt for p, returning the
+// orchestrator string and three instruction files. patternDirective is not
+// gated on target type because loomyard has no target-type classification;
+// a heuristic would risk silently dropping constraints.
 func composePrompt(p *Profile, patternDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
 	orchestratorValues := map[string]string{
 		"instruction_1_path": inst1Path,

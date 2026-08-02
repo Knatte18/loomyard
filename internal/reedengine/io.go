@@ -38,16 +38,8 @@ func resolveLivePaneID(st *ReedState, guid string) (string, error) {
 	return strand.PaneID, nil
 }
 
-// SendText types text into guid's live pane as a literal string (never
-// reinterpreted as tmux flags or key names) and, when submit is true,
-// follows it with a separate Enter — the exact two-step send-keys pattern
-// launchStrandLocked uses to run a strand's launch command. SendText is pure
-// transport: it does not reconcile, re-render, or persist, so a caller
-// driving many sends in a tight loop pays no layout-apply cost per call. The
-// whole lookup-then-send sequence runs under the op lock, the same
-// discipline every other public op follows, so a concurrent mutation can
-// never resolve a pane id that a racing remove then invalidates before the
-// send lands.
+// SendText types text into guid's live pane and optionally submits it with Enter.
+// It does not reconcile, re-render, or persist — pure transport.
 func (e *Engine) SendText(guid, text string, submit bool) error {
 	return e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -76,11 +68,8 @@ func (e *Engine) SendText(guid, text string, submit bool) error {
 	})
 }
 
-// SendKey sends a single named key (e.g. "Enter", "Escape") into guid's live
-// pane WITHOUT the -l literal flag, so tmux interprets it as a key name
-// rather than typing it verbatim — the opposite of SendText's literal
-// transport. Like SendText, it is pure transport (no reconcile, re-render,
-// or persist) and runs its lookup-then-send sequence under the op lock.
+// SendKey sends a named key (e.g. "Enter") into guid's live pane.
+// Like SendText, it is pure transport with no reconcile, re-render, or persist.
 func (e *Engine) SendKey(guid, key string) error {
 	return e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -104,13 +93,8 @@ func (e *Engine) SendKey(guid, key string) error {
 	})
 }
 
-// CapturePane returns guid's live pane's current screen contents via
-// tmux's capture-pane, resolving the pane the same way SendText/SendKey do.
-// It is a read-only query, mirroring Status's discipline: it does not
-// reconcile (which can kill dead-but-not-sole panes), does not re-apply the
-// layout (which would move input focus as a side effect), and does not
-// persist — a caller polling CapturePane in a tight loop pays no layout-apply
-// cost per call and never disturbs whichever pane currently has focus.
+// CapturePane returns guid's live pane's current screen contents.
+// It is read-only: no reconcile, re-apply, or persist.
 func (e *Engine) CapturePane(guid string) (string, error) {
 	var captured string
 	err := e.withOpLock(func() error {

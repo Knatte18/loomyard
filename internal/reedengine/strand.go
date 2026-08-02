@@ -17,10 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// AddSpec carries the caller-supplied inputs AddStrand needs to build a new
-// Strand. Role/Round/NameOverride are formatting-only inputs consumed once
-// here to resolve Name — they are never persisted as Strand fields and
-// never branched on afterward (the domain-free strand contract).
+// AddSpec carries the caller-supplied inputs AddStrand needs to build a new Strand.
 type AddSpec struct {
 	Role, Round, NameOverride string
 	Parent                    string
@@ -32,21 +29,14 @@ type AddSpec struct {
 	Display   render.Display
 }
 
-// Removed reports every strand RemoveStrand actually deleted: the target
-// plus its whole cascaded descendant subtree, each identified by guid and
-// display name.
+// Removed reports every strand RemoveStrand deleted: the target plus its
+// whole cascaded descendant subtree.
 type Removed struct {
 	Strands []struct{ GUID, Name string }
 }
 
-// validateAnchor rejects a Display anchor the engine cannot realize, at the
-// op boundary — BEFORE any pane is launched or state persisted. The CLI
-// performs the same closed-vocabulary check for flag-specific messages, but
-// the engine API is the seam in-process callers (shuttle) drive directly:
-// without this guard an own-window or mistyped anchor would launch a pane,
-// persist the strand, and only then fail in render at the apply step — after
-// which EVERY subsequent mutating verb keeps failing at apply until that
-// strand is removed.
+// validateAnchor rejects an invalid Display anchor at the op boundary,
+// before any pane is launched or state persisted.
 func validateAnchor(anchor render.Anchor) error {
 	switch anchor {
 	case render.AnchorBelowParent, render.AnchorHidden:
@@ -58,8 +48,7 @@ func validateAnchor(anchor render.Anchor) error {
 	}
 }
 
-// strandIndex returns the index of the strand with the given guid in
-// strands, or -1 if none matches.
+// strandIndex returns the index of the strand with the given guid, or -1.
 func strandIndex(strands []Strand, guid string) int {
 	for i, s := range strands {
 		if s.GUID == guid {
@@ -69,8 +58,7 @@ func strandIndex(strands []Strand, guid string) int {
 	return -1
 }
 
-// strandByGUID returns the strand with the given guid and true, or a zero
-// Strand and false if none matches.
+// strandByGUID returns the strand with the given guid and true, or a zero Strand and false.
 func strandByGUID(strands []Strand, guid string) (Strand, bool) {
 	if i := strandIndex(strands, guid); i != -1 {
 		return strands[i], true
@@ -79,12 +67,7 @@ func strandByGUID(strands []Strand, guid string) (Strand, bool) {
 }
 
 // wouldFormCycle reports whether linking guid as a child of parent would
-// create a cycle in strands' parent chains — parent's own chain would have
-// to walk back through guid. AddStrand always passes a freshly generated
-// guid that cannot already appear in strands, so in practice this never
-// trips during a real add; it exists as a generic, pure, unit-testable
-// guard against a corrupt or reused guid rather than an implicit assumption
-// baked silently into AddStrand.
+// create a cycle.
 func wouldFormCycle(strands []Strand, guid, parent string) bool {
 	byGUID := make(map[string]Strand, len(strands))
 	for _, s := range strands {
@@ -105,8 +88,7 @@ func wouldFormCycle(strands []Strand, guid, parent string) bool {
 	return false
 }
 
-// directChildren returns the GUIDs of strands whose Parent equals guid, in
-// table order.
+// directChildren returns the GUIDs of strands whose Parent equals guid.
 func directChildren(strands []Strand, guid string) []string {
 	var out []string
 	for _, s := range strands {
@@ -117,9 +99,7 @@ func directChildren(strands []Strand, guid string) []string {
 	return out
 }
 
-// descendantSubtree returns guid and every descendant GUID beneath it (its
-// whole subtree, breadth-first), so RemoveStrand can cascade a non-leaf
-// removal without orphaning children into a broken parent chain.
+// descendantSubtree returns guid and every descendant beneath it (breadth-first).
 func descendantSubtree(strands []Strand, guid string) []string {
 	childrenOf := make(map[string][]string, len(strands))
 	for _, s := range strands {
@@ -141,11 +121,8 @@ func descendantSubtree(strands []Strand, guid string) []string {
 	return out
 }
 
-// resolveStrandName computes AddStrand's display name from spec: an
-// explicit NameOverride wins verbatim; otherwise a non-empty Role fills the
-// configured strand-name template (Round/Worktree/ShortGuid substituted
-// alongside it); with neither a name nor a role, the bare short guid alone
-// is the name.
+// resolveStrandName computes AddStrand's display name: NameOverride wins,
+// else Role fills the template, else the short guid.
 func resolveStrandName(template string, spec AddSpec, guid, worktreeRoot string) string {
 	if spec.NameOverride != "" {
 		return spec.NameOverride
@@ -163,29 +140,19 @@ func resolveStrandName(template string, spec AddSpec, guid, worktreeRoot string)
 }
 
 // needsLaunchOnAdd reports whether AddStrand must realize display into a
-// live pane via launchStrandLocked: every anchor except hidden. A hidden
-// strand registers a record with no pane and its cmd is not run at add
-// time — realization is deferred to a later surface (UpdateStrand).
+// live pane: every anchor except hidden.
 func needsLaunchOnAdd(display render.Display) bool {
 	return display.Anchor != render.AnchorHidden
 }
 
 // needsLaunchOnSurface reports whether an UpdateStrand call is a
-// hidden->visible surface — the one transition that must realize a pane via
-// launchStrandLocked (GAP A), since a hidden strand was registered with no
-// pane and its cmd was never run at add time.
+// hidden->visible surface that must realize a pane.
 func needsLaunchOnSurface(wasHidden bool, display render.Display) bool {
 	return wasHidden && display.Anchor != render.AnchorHidden
 }
 
-// addStrandLocked builds and registers a new Strand from spec: validates
-// spec.Parent (must exist, must not form a cycle), resolves its display
-// name, and — unless added anchor:hidden — realizes it into a live pane via
-// the shared launchStrandLocked (GAP A). It assumes the op lock is already
-// held and appends the new Strand into st.Strands in place. Hermetically
-// testable for a hidden add (needsLaunchOnAdd skips launchStrandLocked
-// entirely, so no tmux round trip happens); a non-hidden add always makes
-// a real tmux round trip via launchStrandLocked.
+// addStrandLocked builds and registers a new Strand from spec, validating
+// the parent chain and realizing non-hidden strands into a live pane.
 func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 	if err := validateAnchor(spec.Display.Anchor); err != nil {
 		return Strand{}, err
@@ -226,12 +193,8 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 	return *strand, nil
 }
 
-// updateStrandLocked mutates guid's Display: rejects a visible->hidden
-// transition outright (v1 cannot hide a live strand), and — on a
-// hidden->visible transition — realizes the strand into a live pane via
-// launchStrandLocked before returning (GAP A). It assumes the op lock is
-// already held. Hermetically testable except for the actual surfacing
-// launch, which always makes a real tmux round trip.
+// updateStrandLocked mutates guid's Display, rejecting visible->hidden
+// transitions and realizing hidden->visible ones into a pane.
 func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.Display) (Strand, error) {
 	if err := validateAnchor(display.Anchor); err != nil {
 		return Strand{}, err
@@ -259,13 +222,9 @@ func (e *Engine) updateStrandLocked(st *ReedState, guid string, display render.D
 	return *strand, nil
 }
 
-// removeStrandLocked removes guid from st.Strands: a non-leaf without
-// recursive is rejected outright; otherwise the whole descendant subtree is
-// cascaded away (never orphaning children into a broken parent chain). It
-// assumes the op lock is already held, never touches tmux itself, and so
-// is fully hermetically testable. It returns the pane ids of every removed
-// strand that held a live pane binding, so the caller can kill those panes
-// explicitly rather than relying on select-layout to reap them.
+// removeStrandLocked removes guid, rejecting non-leaf strands without
+// recursive, and cascading descendants. It returns pane ids of every
+// removed strand that held a live binding.
 func (e *Engine) removeStrandLocked(st *ReedState, guid string, recursive bool) (Removed, []string, error) {
 	if _, ok := strandByGUID(st.Strands, guid); !ok {
 		return Removed{}, nil, fmt.Errorf("unknown strand %q", guid)

@@ -81,38 +81,16 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 }
 
 // Edit opens a config file in an editor, validates the YAML syntax, and loops
-// on validation failure.
-//
-// Flow:
-//  1. Call FindBaseDir(baseDir) to ensure initialization; propagate error if not.
-//  2. Compute path = hubgeometry.ConfigFile(baseDir, module).
-//  3. If path does not exist, write template to it (scaffold; 0o644) and track
-//     that this call created the file (scaffolded := true).
-//  4. Loop:
-//     a. Record the file bytes.
-//     b. Call edit(path); if it returns an error, abort.
-//     c. Re-read the bytes and yaml.Unmarshal into map[string]any to validate.
-//     d. On parse success, return nil.
-//     e. On parse failure, if bytes unchanged from pre-edit snapshot, abort
-//     (operator saved without fixing); otherwise print the parse error to
-//     os.Stderr and loop to re-open the editor.
-//  5. Abort means: if scaffolded, os.Remove the file so the filesystem returns to
-//     its pre-call state; then return ErrAborted (wrapping the editor error when
-//     applicable). When the file pre-existed, abort leaves it as-is.
-//
-// Validation is syntactic only (the file must parse as YAML); known keys are
-// not enforced.
+// on validation failure. On abort, removes any scaffolded file and returns
+// ErrAborted. Validation is syntactic only; known keys are not enforced.
 func Edit(baseDir, module, template string, edit EditorFunc) error {
-	// Check that baseDir is initialized.
 	_, err := FindBaseDir(baseDir)
 	if err != nil {
 		return err
 	}
 
-	// Compute the config file path via paths helper.
 	path := hubgeometry.ConfigFile(baseDir, module)
 
-	// Scaffold the file from the template if it does not already exist.
 	configDir := hubgeometry.ConfigDir(baseDir)
 	scaffolded, err := scaffoldIfMissing(path, configDir, template)
 	if err != nil {
@@ -121,7 +99,6 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 
 	// Loop until valid YAML is saved or edit is aborted.
 	for {
-		// Record the current file bytes before editing.
 		preEditBytes, err := os.ReadFile(path)
 		if err != nil {
 			// If we just scaffolded and now can't read it, something is very wrong.
@@ -131,7 +108,6 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 			return fmt.Errorf("read config file: %w", err)
 		}
 
-		// Call the editor.
 		if err := edit(path); err != nil {
 			// Editor failed or user aborted.
 			if scaffolded {
@@ -140,7 +116,6 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 			return fmt.Errorf("%w: %w", ErrAborted, err)
 		}
 
-		// Re-read the file bytes after editing.
 		postEditBytes, err := os.ReadFile(path)
 		if err != nil {
 			// If we just scaffolded, clean up before returning.
@@ -150,7 +125,6 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 			return fmt.Errorf("read config file after edit: %w", err)
 		}
 
-		// Validate YAML syntax.
 		var config map[string]any
 		if err := yaml.Unmarshal(postEditBytes, &config); err != nil {
 			// Parse failed. Check if the user left the bytes unchanged.
@@ -167,7 +141,6 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 			continue
 		}
 
-		// Validation succeeded; exit the loop.
 		return nil
 	}
 }

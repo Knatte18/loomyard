@@ -18,21 +18,9 @@ import (
 	"strings"
 )
 
-// descendantClosurePIDs expands roots to roots-plus-their-transitive-
-// descendant pids. #{pane_pid} names only a pane's immediate launcher
-// process, but on Windows psmux nests the real shell (and the strand command
-// it runs) below it, and it is that deeper descendant whose cwd is the
-// worktree directory — so every pane-destroying op (Down's kill-session,
-// RemoveStrand's kill-pane) must reap the whole subtree, not just the pane
-// pid, or a leftover grandchild keeps the worktree dir busy. The closure is
-// computed in one Win32_Process pass through the configured shell (pwsh on
-// Windows; the same reliable Windows process-table probe
-// serverProcessesOnSocket uses). It falls back to the bare roots if the
-// shell probe fails (including non-Windows, where Win32_Process does not
-// exist) and returns nil for no roots. Callers must pass only roots that are
-// still running (a dead pane's recorded pid may already have been reused by
-// an unrelated process, and a closure over a reused pid would mark innocent
-// processes for force-kill).
+// descendantClosurePIDs expands roots to transitive descendants via Win32_Process.
+// Pane-destroying ops must reap the full subtree (shell nests below launcher).
+// Falls back to bare roots on probe failure.
 func (e *Engine) descendantClosurePIDs(roots []int) []int {
 	if len(roots) == 0 {
 		return nil
@@ -66,17 +54,9 @@ $acc`, strings.Join(rootLiterals, ","))
 	return pids
 }
 
-// serverProcessesOnSocket returns the OS pids of every configured-tmux-binary
-// process (tmuxProcessName — e.g. psmux.exe or tmux.exe, whichever reed.yaml
-// resolves) whose command line names this engine's -L socket — the main
-// server AND psmux's internal "__warm__" helper. It queries the Windows process table
-// through the configured shell (pwsh on Windows, via Get-CimInstance
-// Win32_Process), because that table is the ONLY reliable tmux-server
-// liveness signal: every tmux CLI probe (list-sessions, kill-server,
-// has-session) exits 0 or 1 identically with and without a server on the
-// socket. Returns nil on any query failure
-// (including non-Windows, where Win32_Process does not exist) — callers
-// degrade to best-effort behavior rather than failing the op.
+// serverProcessesOnSocket returns OS pids on this engine's socket via
+// Get-CimInstance Win32_Process (the only reliable liveness signal on Windows).
+// Returns nil on query failure; callers degrade to best-effort behavior.
 func (e *Engine) serverProcessesOnSocket() []int {
 	// The Name filter must name the CONFIGURED binary: a hardcoded
 	// 'psmux.exe' matched nothing on a machine whose config resolves tmux

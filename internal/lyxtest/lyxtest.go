@@ -16,9 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// MustRun runs a command with the given arguments in the specified directory.
-// It calls tb.Fatalf if the command returns a non-zero exit code.
-// Call tb.Helper() is delegated to the caller.
+// MustRun runs a command in the specified directory, calling tb.Fatalf on failure.
 func MustRun(tb testing.TB, dir string, args ...string) {
 	tb.Helper()
 
@@ -30,14 +28,9 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 	}
 }
 
-// SeedConfig seeds real configuration into a git repository, making the config
-// files available for tests without importing configreg. The repository must
-// already exist and be initialized with git. The map parameter maps module names
-// to YAML content (obtained by calling ConfigTemplate() on each module's package).
-// SeedConfig creates the _lyx/config directory if needed, writes each module's
-// YAML file, stages all changes, and commits them so the files are checked out
-// in the worktree. This preserves the leaf invariant: lyxtest imports only stdlib
-// and internal/hubgeometry, never configreg or feature packages.
+// SeedConfig seeds real configuration into a git repository: creates _lyx/config,
+// writes each module's YAML file, and commits them. The map parameter maps module
+// names to YAML content. This preserves the leaf invariant by avoiding configreg imports.
 func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string) {
 	tb.Helper()
 
@@ -62,10 +55,8 @@ func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string)
 
 // Template builders: cached, built once per test binary via sync.Once.
 
-// stripHookSamples removes all *.sample files from the given hooks directory.
-// It uses filepath.Glob to find matches and os.Remove to delete each one,
-// ignoring any errors. The removal is best-effort; missing or locked files
-// must not panic a fixture build.
+// stripHookSamples removes all *.sample files from the given hooks directory
+// (best-effort; errors are ignored).
 func stripHookSamples(hooksDir string) {
 	pattern := filepath.Join(hooksDir, "*.sample")
 	matches, err := filepath.Glob(pattern)
@@ -78,11 +69,8 @@ func stripHookSamples(hooksDir string) {
 	}
 }
 
-// initRepo initializes a git repository at dir on branch main with user Test/test@test.com.
-// It also disables fsmonitor and auto-maintenance so that fsmonitor--daemon and
-// auto-maintenance spawns never occur for this repo or any copy made from it (copies
-// inherit .git/config verbatim; worktrees share it). Fixture construction errors are
-// unrecoverable, so any git command failure panics immediately.
+// initRepo initializes a git repository at dir on branch main, disabling
+// fsmonitor and auto-maintenance (copies inherit .git/config). Panics on failure.
 func initRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
 	mustGit(dir, "config", "user.email", "test@test.com")
@@ -93,19 +81,14 @@ func initRepo(dir string) {
 	stripHookSamples(filepath.Join(dir, ".git", "hooks"))
 }
 
-// commitAll stages every change in dir and creates a commit with the given message.
-// Fixture construction errors are unrecoverable, so any git command failure panics immediately.
+// commitAll stages every change in dir and creates a commit (panics on failure).
 func commitAll(dir, message string) {
 	mustGit(dir, "add", ".")
 	mustGit(dir, "commit", "-m", message)
 }
 
-// initBareRemote creates a bare git repository at dir and adds it as the origin remote
-// of the repo at repoDir. The bare repository starts empty; the caller is responsible
-// for any push that seeds it. It also disables fsmonitor and auto-maintenance so that
-// fsmonitor--daemon and auto-maintenance spawns never occur for this bare repo or any
-// copy made from it. Fixture construction errors are unrecoverable, so any failure
-// panics immediately.
+// initBareRemote creates a bare git repository at dir and adds it as origin.
+// It disables fsmonitor and auto-maintenance. Panics on failure.
 func initBareRemote(dir, repoDir string) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		panic(err)
@@ -119,7 +102,6 @@ func initBareRemote(dir, repoDir string) {
 }
 
 // mustGit runs a git subcommand in dir, panicking on non-zero exit.
-// It is the shared low-level helper for all fixture git operations.
 func mustGit(dir string, args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
@@ -136,10 +118,7 @@ var (
 )
 
 // buildHostHub constructs the host-hub template: a git repo with origin bare remote,
-// populated with a README and initial commit. The bare remote is left empty
-// (not pushed to), matching the worktree "AddOptions{SkipPush:true}" semantics.
-// This is called once per test binary via sync.Once; subsequent calls return the cached path.
-// Failures panic immediately because test-fixture construction errors are unrecoverable.
+// populated with a README and initial commit (called once per test binary; panics on failure).
 func buildHostHub() (hub, bare string) {
 	hostHubOnce.Do(func() {
 		tmpDir, err := os.MkdirTemp("", "lyxtest-hosthub-*")
@@ -179,10 +158,7 @@ var (
 )
 
 // buildWeftPrime constructs the weft-prime template: a sibling weft worktree
-// at <hub>-weft with _lyx/config/placeholder, plus a bare remote left empty.
-// The hub base-name is derived from the cached hostHubPath so the naming is
-// consistent regardless of call order. Failures panic immediately because
-// test-fixture construction errors are unrecoverable.
+// at <hub>-weft with _lyx/config/placeholder and a bare remote (panics on failure).
 func buildWeftPrime() (weftPrime, weftBare string) {
 	weftPrimeOnce.Do(func() {
 		// Derive the base name from the already-cached host hub path so the naming
@@ -233,9 +209,7 @@ var (
 )
 
 // buildWeftOnly constructs the weft-only template: a weft worktree with
-// _lyx/config.yaml and upstream tracking (push -u origin main).
-// This is the only template that needs upstream tracking.
-// Failures panic immediately because test-fixture construction errors are unrecoverable.
+// _lyx/config.yaml and upstream tracking (the only template that needs this; panics on failure).
 func buildWeftOnly() (weftPath, bare string) {
 	weftOnlyOnce.Do(func() {
 		tmpDir, err := os.MkdirTemp("", "lyxtest-weftonly-*")
@@ -276,14 +250,14 @@ func buildWeftOnly() (weftPath, bare string) {
 
 // Fixture structs for public API.
 
-// HostFixture represents an isolated copy of the host-hub template.
+// HostFixture represents an isolated copy of the host-hub template (hub + bare).
 type HostFixture struct {
 	Hub  string
 	Bare string
 }
 
-// PairedFixture represents an isolated copy of the full paired-Add fixture
-// (host hub + bare + weft-prime sibling + weft bare).
+// PairedFixture represents an isolated copy of the paired-Add fixture
+// (host hub + bare + weft-prime + weft-bare).
 type PairedFixture struct {
 	Container string
 	Hub       string
@@ -293,20 +267,14 @@ type PairedFixture struct {
 	Layout    *hubgeometry.Layout
 }
 
-// WeftFixture represents an isolated copy of the weft-only template
-// (with upstream tracking established).
+// WeftFixture represents an isolated copy of the weft-only template (with upstream tracking).
 type WeftFixture struct {
 	WeftPath string
 	Bare     string
 }
 
-// rewriteOriginURLInConfig rewrites the single `url = …` line under [remote "origin"]
-// in the copied repository's .git/config as a pure text edit — no subprocess.
-// The plan's shared decision ("template-once + per-test filesystem copy") explicitly
-// forbids git remote set-url because it re-introduces a spawn and breaks the
-// zero-per-test-git-spawn guarantee. The invariant is that each template .git/config
-// has exactly one origin remote / one url line in stable formatting; this function
-// asserts that invariant (returns an error if the count is not exactly one).
+// rewriteOriginURLInConfig rewrites the origin URL in .git/config as a pure text edit
+// (no subprocess). It asserts that exactly one url line exists under [remote "origin"].
 func rewriteOriginURLInConfig(repoPath string, newURL string) error {
 	configPath := filepath.Join(repoPath, ".git", "config")
 
@@ -356,9 +324,7 @@ func rewriteOriginURLInConfig(repoPath string, newURL string) error {
 	return nil
 }
 
-// copyDirRecursive recursively copies a directory tree from src to dest.
-// dest must not exist beforehand. Symlinks are refused: templates must never
-// contain symlinks because they would dangle after copying to an isolated path.
+// copyDirRecursive recursively copies a directory tree from src to dest (panics on symlinks).
 func copyDirRecursive(src string, dest string) error {
 	// Ensure destination parent exists.
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {

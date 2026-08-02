@@ -17,12 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree pins the guard ordering
-// weftCommit's own block comment documents: with WEFT_SKIP_GIT=1 the bypass
-// must short-circuit BEFORE fabricengine.New's stat-based path validation,
-// so the CI/test bypass never requires a weft worktree (or even the host
-// worktree) to exist on disk. A regression hoisting New above the guard
-// turns every bypassed CI run into an ErrMissingPath failure.
+// TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree proves the WEFT_SKIP_GIT
+// bypass short-circuits before stat validation, so CI never needs the
+// worktree on disk.
 func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	t.Setenv("WEFT_SKIP_PUSH", "")
@@ -45,10 +42,8 @@ func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 	}
 }
 
-// TestWeftCommit_NonBypassValidatesPairPaths proves the counterpart of the
-// bypass test above: without WEFT_SKIP_GIT, weftCommit constructs the
-// fabric handle and surfaces fabricengine's typed ErrMissingPath when the
-// pair is absent -- evidence New runs, and runs only in non-bypass mode.
+// TestWeftCommit_NonBypassValidatesPairPaths proves that without
+// WEFT_SKIP_GIT, weftCommit validates the worktree pair exists.
 func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")

@@ -19,10 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// newScratchRepo initializes a fresh git repo at t.TempDir(), configures a
-// test identity, and returns its path -- the same minimal recipe
-// builderengine's own gitquery_test.go uses, reimplemented here since it is
-// package-private there.
+// newScratchRepo initializes a fresh git repo with test identity.
 func newScratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -32,8 +29,7 @@ func newScratchRepo(t *testing.T) string {
 	return dir
 }
 
-// mustGit runs a git command in dir via gitexec.RunGit, failing the test on
-// any spawn error or non-zero exit.
+// mustGit runs a git command in dir, failing the test on error.
 func mustGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	stdout, stderr, exitCode, err := gitexec.RunGit(args, dir)

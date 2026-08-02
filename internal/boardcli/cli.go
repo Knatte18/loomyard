@@ -25,12 +25,6 @@ import (
 )
 
 // Command returns the cobra command tree for the board module.
-//
-// The parent "board" command carries a PersistentPreRunE that resolves config
-// and constructs the Board instance once, before any subcommand runs. The
-// resolved Board is shared via a closure variable closed over by all RunEs.
-// When the parent is invoked with no subcommand, cobra lists available
-// subcommands without invoking the PreRunE, so no board config is needed.
 func Command() *cobra.Command {
 	// b is populated by PersistentPreRunE and closed over by each subcommand RunE.
 	var b *boardengine.Board
@@ -52,24 +46,14 @@ mirrors the same verb set over notes.json (not yet claimable); promote-note
 moves an entry from one to the other.`,
 	}
 
-	// --board-path is an internal persistent flag injected by spawnSync so that
-	// the detached sync child can bypass cwd resolution and use the absolute board
-	// path directly. It must be hidden so it does not appear in help output.
 	boardPathFlag := cmd.PersistentFlags().String("board-path", "", "internal: injected absolute board dir for the detached sync child")
 	if err := cmd.PersistentFlags().MarkHidden("board-path"); err != nil {
-		// MarkHidden only errors when the flag name does not exist, which cannot
-		// happen here since we just registered it above.
 		panic(fmt.Sprintf("board: MarkHidden board-path: %v", err))
 	}
 
-	// RunE is set so that bare "lyx board" lists subcommands and "lyx board bogus"
-	// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 	cmd.RunE = clihelp.GroupRunE
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		// Guard: when the board group command itself is invoked (bare listing or
-		// unknown-subcommand error path), skip config resolution so that neither
-		// path requires a git repository or board config to be present.
 		if cmd.Name() == "board" {
 			return nil
 		}
@@ -97,9 +81,6 @@ moves an entry from one to the other.`,
 				return nil
 			}
 
-			// Resolve the worktree layout to derive the board data dir. The board
-			// data dir is geometry (<hub>/_board) and must come from paths, not from
-			// the config file or an environment variable.
 			layout, rerr := hubgeometry.Resolve(cwd)
 			if rerr != nil {
 				output.Err(cmd.OutOrStdout(), rerr.Error())
@@ -109,7 +90,6 @@ moves an entry from one to the other.`,
 			cfg.Path = hubgeometry.BoardDir(layout.Hub)
 		}
 
-		// Fold BOARD_SKIP_* env into cfg at the single production entry point.
 		cfg = applySkipEnv(cfg)
 		b = boardengine.New(cfg)
 		return nil
@@ -199,7 +179,6 @@ Example:
 				return outputError(out, "tasks array must not be empty")
 			}
 
-			// Convert []any to []map[string]any; the store validates each element's fields.
 			tasks := make([]map[string]any, len(tasksArr))
 			for i, v := range tasksArr {
 				m, ok := v.(map[string]any)
@@ -410,7 +389,6 @@ Example:
 				}
 			}
 
-			// Parse upsert (required: contains the task fields to create or update).
 			upsertVal, hasUpsert := raw["upsert"]
 			if !hasUpsert || upsertVal == nil {
 				return outputError(out, "missing required field: upsert")
@@ -530,9 +508,6 @@ Example:
 		}),
 	}
 
-	// notes subcommand group: mirrors the task verb set above, targeting notes.json
-	// instead of tasks.json. notes.json holds entries that are not yet claimable;
-	// promote-note (registered separately, below) moves an entry between the two stores.
 	notesCmd := &cobra.Command{
 		Use:   "notes",
 		Short: "manage not-yet-claimable manifest entries (notes.json)",
@@ -576,9 +551,6 @@ Example:
 		}),
 	}
 
-	// notes upsert-batch subcommand: create or update multiple notes atomically.
-	// Allowed wrapper key: {tasks}. A typo'd wrapper (e.g. "taks") errors;
-	// an absent or empty tasks array also errors (nothing to upsert is a mistake).
 	notesUpsertBatchCmd := &cobra.Command{
 		Use:   "upsert-batch [json-payload]",
 		Short: "Create or update multiple notes atomically",
@@ -623,7 +595,6 @@ Example:
 				return outputError(out, "tasks array must not be empty")
 			}
 
-			// Convert []any to []map[string]any; the store validates each element's fields.
 			notes := make([]map[string]any, len(tasksArr))
 			for i, v := range tasksArr {
 				m, ok := v.(map[string]any)
@@ -640,8 +611,6 @@ Example:
 		}),
 	}
 
-	// notes set-status subcommand: set or clear the status field of a note identified by
-	// slug or numeric id. Allowed keys: {slug, id, status}.
 	notesSetStatusCmd := &cobra.Command{
 		Use:   "set-status [json-payload]",
 		Short: "Set or clear the status of a note",
@@ -689,7 +658,6 @@ Examples:
 		}),
 	}
 
-	// notes remove subcommand: remove a note by slug or numeric id.
 	notesRemoveCmd := &cobra.Command{
 		Use:   "remove [json-payload]",
 		Short: "Remove a note",
@@ -718,8 +686,6 @@ Example:
 		}),
 	}
 
-	// notes get subcommand: fetch a single note by slug or numeric id; returns task:null
-	// for a valid-but-absent target (not an error). Malformed payloads error.
 	notesGetCmd := &cobra.Command{
 		Use:   "get [json-payload]",
 		Short: "Fetch a single note",
@@ -753,7 +719,6 @@ Example:
 		}),
 	}
 
-	// notes list subcommand: list all notes with computed fields (layer, has_proposal).
 	notesListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all notes with computed fields",
@@ -766,7 +731,6 @@ Example:
 		}),
 	}
 
-	// notes list-full subcommand: list all notes as stored in notes.json.
 	notesListFullCmd := &cobra.Command{
 		Use:   "list-full",
 		Short: "List all notes as stored in notes.json",
@@ -779,9 +743,6 @@ Example:
 		}),
 	}
 
-	// notes merge subcommand: remove slugs, upsert one note, and optionally set status — atomically.
-	// Allowed top-level keys: {remove_slugs, upsert, set_status}. The inner set_status
-	// object is validated identically to the set-status command.
 	notesMergeCmd := &cobra.Command{
 		Use:   "merge [json-payload]",
 		Short: "Atomically remove, upsert, and set-status",
@@ -881,10 +842,6 @@ Example:
 		}),
 	}
 
-	// notes set-deps subcommand: replace the depends_on list for a note.
-	// Allowed keys: {slug, depends_on}. depends_on is required (absent errors;
-	// explicit [] clears the list, distinguishing intentional clear from a typo
-	// that would otherwise silently wipe the note's dependency list).
 	notesSetDepsCmd := &cobra.Command{
 		Use:   "set-deps [json-payload]",
 		Short: "Replace the depends_on list for a note",
@@ -916,7 +873,6 @@ Example:
 				}
 			}
 
-			// slug is required to identify the target note.
 			slug, ok := m["slug"].(string)
 			if !ok || slug == "" {
 				return outputError(out, "missing required field: slug")
@@ -966,9 +922,6 @@ Example:
 		notesSetDepsCmd,
 	)
 
-	// promote-note subcommand: move a note from notes.json into tasks.json. A
-	// top-level sibling of notesCmd (not nested under it) because it moves an
-	// entry OUT of notes.json — it is not itself a notes-scoped verb.
 	promoteNoteCmd := &cobra.Command{
 		Use:   "promote-note [json-payload]",
 		Short: "Move a note from notes.json into tasks.json",
@@ -1002,7 +955,6 @@ Example:
 		}),
 	}
 
-	// rerender subcommand: rebuild the combined README from tasks.json and notes.json.
 	rerenderCmd := &cobra.Command{
 		Use:   "rerender",
 		Short: "Rebuild the combined README from tasks.json and notes.json",
@@ -1014,7 +966,6 @@ Example:
 		}),
 	}
 
-	// sync subcommand: commit and push pending changes to the remote.
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Commit and push pending board changes to the remote",
@@ -1045,32 +996,24 @@ Example:
 	return cmd
 }
 
-// resolveLookup decodes a raw JSON payload into a map, validates that every key
-// is within the allowed set ({slug, id} plus any extraKeys), and returns the task
-// selector and decoded map. Presence is detected via map-key membership so id:0
-// is a valid distinct-from-absent lookup. Returns a Go string when slug is present
-// or a float64 when id is present (JSON numbers decode as float64).
+// resolveLookup decodes and validates a JSON payload, returning the selector and decoded map.
 func resolveLookup(raw []byte, extraKeys ...string) (any, map[string]any, error) {
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, nil, fmt.Errorf("invalid json: %v", err)
 	}
 
-	// Build the full allowed key set from the base {slug, id} plus any extras.
 	allowed := map[string]bool{"slug": true, "id": true}
 	for _, k := range extraKeys {
 		allowed[k] = true
 	}
 
-	// Reject any key outside the allowed set before checking presence.
 	for k := range m {
 		if !allowed[k] {
 			return nil, nil, fmt.Errorf("unknown field: %q", k)
 		}
 	}
 
-	// Detect which identifier is present via map-key membership, not zero-value,
-	// so {"id":0} is distinct from an absent "id" key.
 	_, hasSlug := m["slug"]
 	_, hasID := m["id"]
 
@@ -1089,9 +1032,6 @@ func resolveLookup(raw []byte, extraKeys ...string) (any, map[string]any, error)
 		return slugStr, m, nil
 	}
 
-	// JSON numbers always decode as float64. Reject fractional values here so
-	// {"id":1.5} errors instead of silently truncating to task 1 in the store's
-	// int conversion; a whole float64 passes through unchanged.
 	switch v := m["id"].(type) {
 	case float64:
 		if v != math.Trunc(v) {
@@ -1104,10 +1044,6 @@ func resolveLookup(raw []byte, extraKeys ...string) (any, map[string]any, error)
 }
 
 // RunCLI is the public seam for the board module CLI.
-//
-// It delegates to clihelp.Execute with the cobra command tree, passing out as
-// the capture writer for all output (including cobra's error text). This
-// preserves the existing call contract so that callers and tests are unchanged.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
@@ -1122,34 +1058,32 @@ func outputSuccess(out io.Writer) int {
 	return output.Ok(out, map[string]any{})
 }
 
-// outputSuccessWithCount writes {"ok":true,"count":N} and returns exit code 0.
+// outputSuccessWithCount writes {"ok":true,"count":N} with exit code 0.
 func outputSuccessWithCount(out io.Writer, count int) int {
 	return output.Ok(out, map[string]any{"count": count})
 }
 
-// outputSuccessWithTask writes {"ok":true,"task":{...}} and returns exit code 0.
+// outputSuccessWithTask writes {"ok":true,"task":{...}} with exit code 0.
 func outputSuccessWithTask(out io.Writer, task boardengine.Task) int {
 	return output.Ok(out, map[string]any{"task": task})
 }
 
-// outputGetTask writes {"ok":true,"task":{...}} or {"ok":true,"task":null} and returns exit code 0.
-// task is a pointer: nil produces task:null in JSON (task not found, but not an error).
+// outputGetTask writes {"ok":true,"task":{...}} with task as pointer (nil → null).
 func outputGetTask(out io.Writer, task *boardengine.Task) int {
 	return output.Ok(out, map[string]any{"task": task})
 }
 
-// outputListBrief writes {"ok":true,"tasks":[...]} with BriefTask objects and returns exit code 0.
+// outputListBrief writes {"ok":true,"tasks":[...]} with BriefTask objects with exit code 0.
 func outputListBrief(out io.Writer, tasks []boardengine.BriefTask) int {
 	return output.Ok(out, map[string]any{"tasks": tasks})
 }
 
-// outputListFull writes {"ok":true,"tasks":[...]} with full Task objects and returns exit code 0.
+// outputListFull writes {"ok":true,"tasks":[...]} with full Task objects with exit code 0.
 func outputListFull(out io.Writer, tasks []boardengine.Task) int {
 	return output.Ok(out, map[string]any{"tasks": tasks})
 }
 
-// applySkipEnv folds BOARD_SKIP_GIT and BOARD_SKIP_PUSH environment variables into cfg.
-// This is the single production env read; all other consumption sites use the config fields.
+// applySkipEnv folds BOARD_SKIP_* environment variables into cfg.
 func applySkipEnv(cfg boardengine.Config) boardengine.Config {
 	if os.Getenv("BOARD_SKIP_GIT") == "1" {
 		cfg.SkipGit = true

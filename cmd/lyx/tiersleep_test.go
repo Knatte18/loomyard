@@ -35,13 +35,7 @@ var allowedLongSleepers = map[string]string{
 		"path is safe",
 }
 
-// findLongLiteralSleep parses data as Go source and walks it looking for a
-// time.Sleep(...) call whose single argument resolves to a compile-time constant
-// duration of at least one second. It returns the position of the first such call (or
-// the first argument shape it could not resolve — see sleepDurationAtLeastOneSecond's
-// doc comment) as evidence, and whether anything was found. A file that fails to parse
-// as Go is not this check's concern: it returns ("", false) rather than propagating the
-// parse error, since a non-Go *_test.go file is out of scope for an AST-based guard.
+// findLongLiteralSleep parses data as Go and finds time.Sleep(...) calls with duration >= 1 second.
 func findLongLiteralSleep(fset *token.FileSet, filename string, data []byte) (evidence string, found bool) {
 	file, err := parser.ParseFile(fset, filename, data, 0)
 	if err != nil {
@@ -87,15 +81,7 @@ func findLongLiteralSleep(fset *token.FileSet, filename string, data []byte) (ev
 	return evidence, found
 }
 
-// sleepDurationAtLeastOneSecond reports whether arg — a time.Sleep(...) call's single
-// argument — evaluates to a compile-time constant duration of at least one second
-// (isLong), or whether its shape could not be resolved to a known constant
-// (unresolvable). An unresolvable shape is deliberately treated as "flag it": an
-// unrecognized time.* selector, an identifier with no matching declaration in the same
-// file, or a malformed numeric literal all force an explicit allowedLongSleepers entry
-// or a rename, rather than silently passing an argument shape this guard cannot reason
-// about. This mirrors the same conservative-flag decision behind the banned-token check
-// this file's sibling (tierpurity_test.go) already enforces.
+// sleepDurationAtLeastOneSecond reports whether arg is a duration of at least one second or unresolvable.
 func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, unresolvable bool) {
 	switch e := arg.(type) {
 	case *ast.SelectorExpr:
@@ -107,9 +93,7 @@ func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, u
 		return timeScaleAtLeastOneSecond(e.Sel.Name)
 
 	case *ast.BinaryExpr:
-		// Case (b): a literal-times-scale multiplication, e.g.
-		// time.Sleep(2 * time.Second). Exactly one operand must be a numeric
-		// literal and the other must resolve to a known time.* scale selector.
+		// Case (b): a multiplication of literal and time.* scale, e.g. 2 * time.Second.
 		if e.Op != token.MUL {
 			return false, true
 		}
@@ -132,8 +116,7 @@ func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, u
 		return litValue*scaleNanos >= 1e9, false
 
 	case *ast.Ident:
-		// Case (c): a bare identifier — look for a same-file top-level const/var
-		// declaration and recurse one level into its value expression.
+		// Case (c): a bare identifier — look for a same-file top-level const/var declaration.
 		valueExpr, ok := findTopLevelDeclValue(file, e.Name)
 		if !ok {
 			return false, true
@@ -145,9 +128,7 @@ func sleepDurationAtLeastOneSecond(file *ast.File, arg ast.Expr) (isLong bool, u
 	}
 }
 
-// timeScaleAtLeastOneSecond reports whether a bare time.<name> selector (e.g. "Hour")
-// names a duration constant of at least one second, or whether the name is not one of
-// the six time.Duration scale constants this guard recognizes.
+// timeScaleAtLeastOneSecond reports whether a time.<name> scale is at least one second.
 func timeScaleAtLeastOneSecond(name string) (isLong bool, unresolvable bool) {
 	switch name {
 	case "Second", "Minute", "Hour":
@@ -182,10 +163,7 @@ func scaleInNanoseconds(name string) float64 {
 	}
 }
 
-// splitLiteralAndScale identifies which of a *ast.BinaryExpr's two operands is a
-// numeric literal and which is the (presumed) time.<Scale> selector, regardless of
-// operand order (N * time.Second or time.Second * N). It reports ok = false if neither
-// operand is a *ast.BasicLit of Kind INT or FLOAT.
+// splitLiteralAndScale identifies numeric literal and time.<Scale> in a BinaryExpr, regardless of order.
 func splitLiteralAndScale(x, y ast.Expr) (lit *ast.BasicLit, scale ast.Expr, ok bool) {
 	if l, isLit := x.(*ast.BasicLit); isLit && (l.Kind == token.INT || l.Kind == token.FLOAT) {
 		return l, y, true
@@ -196,10 +174,7 @@ func splitLiteralAndScale(x, y ast.Expr) (lit *ast.BasicLit, scale ast.Expr, ok 
 	return nil, nil, false
 }
 
-// findTopLevelDeclValue searches file's top-level const/var declarations for a
-// ValueSpec whose Names includes name, and returns its corresponding Values
-// expression. This is one level of indirection only — sleepDurationAtLeastOneSecond's
-// case (c) does not chase a further identifier-to-identifier chain.
+// findTopLevelDeclValue searches file for a const/var with the given name and returns its value.
 func findTopLevelDeclValue(file *ast.File, name string) (ast.Expr, bool) {
 	for _, decl := range file.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
@@ -225,10 +200,7 @@ func findTopLevelDeclValue(file *ast.File, name string) (ast.Expr, bool) {
 	return nil, false
 }
 
-// TestFindLongLiteralSleep_DetectsAllArgumentForms exercises findLongLiteralSleep
-// against small in-memory Go source snippets covering every argument shape
-// sleepDurationAtLeastOneSecond recognizes, plus the conservative-flag behavior for an
-// argument it cannot resolve.
+// TestFindLongLiteralSleep_DetectsAllArgumentForms verifies detection against crafted code snippets.
 func TestFindLongLiteralSleep_DetectsAllArgumentForms(t *testing.T) {
 	tests := []struct {
 		name string

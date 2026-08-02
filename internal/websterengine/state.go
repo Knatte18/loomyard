@@ -59,7 +59,8 @@ func AcquireStateMutation(websterDir string) (*lock.FileLock, error) {
 	return l, nil
 }
 
-// State is the durable run state persisted at <websterDir>/state.json.
+// State is the durable run state persisted at <websterDir>/state.json:
+// run identity, plan-fingerprint, batch records, and Master strand/session.
 type State struct {
 	// RunGUID identifies this webster run, minted once at first init.
 	RunGUID string `json:"runGuid"`

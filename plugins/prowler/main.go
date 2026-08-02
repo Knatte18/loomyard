@@ -11,17 +11,11 @@ import (
 	"os"
 )
 
-// resultJoiner separates each URL's fetched content in the combined output,
-// mirroring weblens' multi-URL join so a caller reading the file sees a
-// clear boundary between sources.
+// resultJoiner separates each URL's fetched content in the combined output.
 const resultJoiner = "\n\n---\n\n"
 
-// newFetcher wires the real, side-effecting implementations into a fetcher:
-// httpClient.Do for the transport, fetchWithBrowser for the headless-Chrome
-// fallback, and defaultAdapters() for the site-specific strategies fetchPage
-// tries first. It is the only place production code constructs a fetcher —
-// every other package function receives one as a parameter so it can be
-// exercised in tests with stubs instead.
+// newFetcher wires real implementations: httpClient.Do, fetchWithBrowser, and
+// defaultAdapters(). It is the only place production code constructs a fetcher.
 func newFetcher() fetcher {
 	return fetcher{
 		do:       httpClient.Do,
@@ -30,17 +24,12 @@ func newFetcher() fetcher {
 	}
 }
 
-// runAll fetches every URL in urls via f and joins their results with
-// resultJoiner, preserving input order. A per-URL failure is already
-// captured inline as that URL's own "# Error fetching ..." result string
-// (see fetchPage), so one bad URL never aborts or drops its siblings'
-// results — the batch always returns len(urls) joined segments.
+// runAll fetches every URL via f and joins results with resultJoiner,
+// preserving input order. Per-URL failures are captured inline, so one bad
+// URL never drops siblings' results.
 func runAll(ctx context.Context, f fetcher, urls []string) string {
 	results := make([]string, len(urls))
 
-	// Fetch every URL concurrently: each is an independent network
-	// operation, so there is no reason to serialize them and make a
-	// multi-URL call as slow as the sum of its parts.
 	done := make(chan struct{})
 	for i, u := range urls {
 		go func(i int, u string) {
@@ -62,12 +51,9 @@ func runAll(ctx context.Context, f fetcher, urls []string) string {
 	return joined
 }
 
-// main is the binary's entrypoint. It reads the requested URLs from the
-// command line, runs the fetch cascade against each, and writes the
-// combined markdown to a uniquely-named scratch file. Per the stdout/stderr
-// discipline the invoking skill wrapper depends on, the created file's
-// absolute path is the ONLY line ever printed to stdout — every diagnostic
-// goes to stderr, so `path=$(run.sh ...)` always captures a clean path.
+// main is the binary's entrypoint. Reads URLs from command line, runs fetch
+// cascade, and writes combined markdown to a scratch file. Prints the file's
+// absolute path to stdout.
 func main() {
 	urls := os.Args[1:]
 	if len(urls) == 0 {

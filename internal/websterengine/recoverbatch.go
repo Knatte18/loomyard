@@ -51,22 +51,8 @@ type Clock interface {
 	Sleep(time.Duration)
 }
 
-// RecoverDeps carries every seam RecoverBatch needs, so a test can fake each
-// one independently: Starter spawns the cold recovery strand (see strand.go's
-// Starter — production code passes a real *shuttleengine.Runner); Plan is
-// retained for RecoverDeps/BeginDeps shape symmetry with the CLI wiring that
-// populates both structs in parallel — it is currently unread within this
-// file, since RenderRecoveryPrompt's plan-less signature drops the only call
-// site that used to read it; Batches is the batchifier-derived execution
-// batches (see internal/batcher.Select) `run` computed once at entry; State
-// is the already-loaded run state RecoverBatch reads and mutates; Roles is
-// the pre-flight-resolved role->model-spec map (see ResolveRoles); Config is
-// the loaded webster.yaml; Engine supplies TurnEnded's event-grammar parsing;
-// Reed is the live reed query surface StrandLive/RemoveStrand consult;
-// ShuttleCfg and Layout are what shuttleengine.FindRun needs to resolve the
-// just-started run's cross-process identity; WorktreeRoot, WebsterDir, and
-// ReportsDir are the hubgeometry-resolved host checkout, _lyx/webster, and
-// _lyx/webster/reports directories.
+// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State,
+// Roles, Config, Engine, Reed, ShuttleCfg, Layout, WorktreeRoot, WebsterDir, ReportsDir.
 type RecoverDeps struct {
 	Starter      Starter
 	Plan         *planparser.Plan
@@ -83,15 +69,9 @@ type RecoverDeps struct {
 	ReportsDir   string
 }
 
-// RecoverResult is what one RecoverAwait call hands back to its caller
-// (internal/webstercli's recover-batch verb): Digest is the distilled
-// digest once the recovery strand reaches a terminal classification (nil
-// while Running); Running reports whether this call's bounded wait elapsed
-// with the batch still non-terminal (the caller re-calls); ElapsedS is the
-// number of seconds since the recovery strand was spawned, measured across
-// every re-entrant call, not merely this one; Warnings carries every
-// non-fatal substrate-cleanup failure observed at terminal classification,
-// never treated as a failure.
+// RecoverResult is what one RecoverAwait call hands back: Digest (nil while
+// Running), Running (true if wait elapsed non-terminal), ElapsedS (since
+// spawn), and Warnings (non-fatal substrate-cleanup failures).
 type RecoverResult struct {
 	Digest   *Digest
 	Running  bool
@@ -99,17 +79,8 @@ type RecoverResult struct {
 	Warnings []string
 }
 
-// archiveStaleReport renames reportsDir's NN-<slug>.yaml, if present, to
-// NN-<slug>-<UTC-compact-timestamp>.yaml in place: the recovery path's
-// archive-never-refuse escape. A recovery spawn re-uses the batch's own
-// report path as its sole shuttle OutputFiles entry, which both a
-// pre-existing-report guard and shuttle's own Spec.validate would refuse
-// when a prior stuck report is still on disk — archiving frees the path
-// while keeping the stuck report auditable rather than deleting it. now is
-// a seam so tests can pin the timestamp; production callers pass time.Now.
-// Absent file: ("", nil), a no-op — a recovery spawn is legitimate even
-// when no prior report exists. Built on firstFreeArchivePath so the same-
-// second "-1"/"-2" collision rule lives in exactly one place.
+// archiveStaleReport renames a stale report to free the path, keeping it
+// auditable rather than deleting. Absent file returns ("", nil).
 func archiveStaleReport(reportsDir string, number int, slug string, now func() time.Time) (string, error) {
 	path := filepath.Join(reportsDir, ReportFileName(number, slug))
 	if _, err := os.Stat(path); err != nil {
@@ -135,21 +106,11 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	return target, nil
 }
 
-// refuseRecoveringDoneReport is recoverSpawn's finished-work guard: when the
-// batch's on-disk report already parses to status: OK, spawning a recovery
-// strand would silently archive finished work away and pay for a cold
-// implementer to redo a complete batch — record-batch, not recover-batch, is
-// the verb that consumes an OK report (found live in round fable-r1: a
-// record-batch-wedged Master recovered two already-done batches). The ONE
-// exception mirrors builder's dead-respawn rule: a batch whose persisted
-// state is terminal dead may carry a LATE OK report its orphaned strand
-// wrote after the classification — that report is archive-never-refuse
-// material, so the guard steps aside. A missing or unparseable report also
-// steps aside: recovery is exactly the path for a batch with no usable
-// report.
+// refuseRecoveringDoneReport refuses to recover a batch whose report already
+// has status: OK (record-batch is the consuming verb), except when prior is
+// terminal dead (a late orphan report), or missing/unparseable.
 func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prior *BatchState) error {
-	// The dead-orphan late-report exception: the ladder archives, never
-	// refuses, a report the orphan wrote after a dead classification.
+	// Dead-orphan exception: archive a late report the orphan wrote after dead classification.
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusDead {
 		return nil
 	}
@@ -157,8 +118,7 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 	reportPath := filepath.Join(reportsDir, ReportFileName(number, slug))
 	report, err := ParseReport(reportPath)
 	if err != nil {
-		// Absent or malformed: nothing finished to protect — recovery is the
-		// designed path for exactly this state.
+		// Absent or malformed report: recovery is the path for this.
 		return nil
 	}
 	if report.Status == ReportStatusOK {
@@ -167,28 +127,9 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 	return nil
 }
 
-// recoverSpawn performs the SPAWN half of RecoverBatch's spawn-or-attach
-// decision: archive any stale report at this batch's own report path
-// (archive-never-refuse — the stuck report is the recovery spawn's own
-// output path), stop prior's recorded strand when it is still live (a
-// timed-out implementer may still be WORKING, not hung, and left alive it
-// races the fresh session — the same reclaim discipline builder's
-// dead-respawn ladder applies), render the SEPARATE, full cold-start
-// recovery prompt via RenderRecoveryPrompt (deliberately distinct from the
-// thin in-session fork prompt RenderForkPrompt renders, since the recovery
-// strand inherits no session context — see the fork-context-hygiene Shared
-// Decision), build and start the shuttleengine.Spec at the recovery role, and
-// resolve the just-started run's cross-process identity via
-// shuttleengine.FindRun. prior is the batch's existing BatchState, if any
-// (nil for a batch that has never been touched by begin-batch or a prior
-// recovery); its StrandGUID (empty for a plain fork batch, since only
-// recovery batches carry strand fields) is the only field this function
-// reads from it. clk stamps SpawnedAt (clk.Now(), never the wall clock
-// directly) so the elapsed-since-spawn measurement awaitTerminal performs
-// later is computed against the SAME clock a caller injects for the whole
-// call — the property a fake clock's tests depend on. Returns the
-// freshly-built BatchState the caller records into
-// deps.State.Batches[batchNumber].
+// recoverSpawn archives any stale report, stops a live prior strand, renders
+// the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
+// clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
 
@@ -196,9 +137,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, err
 	}
 
-	// Same reports-dir guarantee BeginBatch makes for a fork batch: the
-	// recovery strand's report write must never fail on a missing parent dir
-	// (a recover-batch can legitimately be the first verb to ever need it).
+	// Ensure reports dir exists so the recovery strand's report write succeeds.
 	if err := os.MkdirAll(deps.ReportsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
 	}
@@ -266,17 +205,9 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}, nil
 }
 
-// RecoverSpawnOrAttach drives the spawn-or-attach half of one recover-batch
-// call. The decision reads deps.State.Batches[batchNumber]: a recorded,
-// non-terminal BatchState whose Kind is "recovery" and whose StrandGUID is
-// already set means a prior call already spawned this recovery strand —
-// ATTACH, mutate nothing, return that record. Any other state (no record, a
-// plain fork batch's record, or a previously-terminal recovery record)
-// means SPAWN a fresh recovery strand and record it into deps.State. The
-// caller (webstercli) holds the state-mutation lease across this call ONLY
-// — never across the bounded wait that follows (RecoverAwait) — and is
-// responsible for persisting deps.State via SaveState when spawned is true.
-// This function never calls SaveState and never touches weft.
+// RecoverSpawnOrAttach decides spawn-or-attach: if a recorded, non-terminal
+// recovery BatchState exists, ATTACH and return it; otherwise SPAWN fresh.
+// Caller persists deps.State via SaveState when spawned is true.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
@@ -307,16 +238,9 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	return fresh, true, nil
 }
 
-// RecoverAwait drives the bounded-wait half of one recover-batch call for a
-// recovery strand RecoverSpawnOrAttach already recorded: the long-poll
-// classification loop (see awaitTerminal) plus, on a terminal
-// classification, the strand/run-dir substrate release. It reads and
-// mutates NO run state — the caller runs it with the state-mutation lease
-// RELEASED (a single call blocks up to poll_wait_s, and holding the lease
-// across that block would stall every concurrent verb and run entry for
-// minutes — the exact hold AcquireStateMutation's contract forbids), then
-// re-acquires the lease and persists a terminal digest into a FRESHLY
-// loaded state via PersistRecoveryTerminal.
+// RecoverAwait drives the bounded wait for a recovery strand: the long-poll
+// classification loop (see awaitTerminal) plus substrate release on terminal.
+// Caller runs this with the state-mutation lease RELEASED.
 func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
@@ -325,14 +249,9 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 	return awaitTerminal(deps, batch, bs, wait, clk)
 }
 
-// PersistRecoveryTerminal merges a terminal recovery digest into st — which
-// the caller re-loaded FRESH under the state-mutation lease AFTER the
-// unleased bounded wait, so a concurrently persisted mutation is never
-// erased by saving a stale pre-wait copy (builder's poll applies the same
-// reload-under-lease discipline). It marks st.Batches[batchNumber]
-// terminal with digest and clears the in-flight cursor; a missing batch
-// record is a hard error, never silently recreated — the record was
-// persisted at spawn time and nothing in the normal flow removes it.
+// PersistRecoveryTerminal merges a terminal digest into st (loaded fresh
+// under the lease after the unleased wait). Marks batch terminal and clears
+// the in-flight cursor.
 func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 	bs, ok := st.Batches[batchNumber]
 	if !ok || bs == nil {
@@ -341,13 +260,7 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 	bs.Digest = digest
 	bs.Terminal = true
 	bs.Status = digest.Status
-	// Record the per-card SHA trail exactly as record-batch does for a fork
-	// batch: without it, a recovery-completed batch is a silent gap in the
-	// accumulated CardSHAs the integration-suite bisect searches, and the
-	// bisect blames the NEXT card in the gapped trail (found in crucible
-	// round fable-r1). A report-derived terminal digest always carries the
-	// head SHA; a dead classification carries none and contributes no trail
-	// entry, matching the batch's not-actually-built reality.
+	// Record CardSHAs like record-batch does, so integration bisect has no gaps.
 	if digest.HeadSHA != "" {
 		bs.CardSHAs = []string{digest.HeadSHA}
 	}
@@ -355,32 +268,10 @@ func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 	return nil
 }
 
-// awaitTerminal drives one bounded long-poll wait for bs's recovery strand:
-// a gather closure assembles ClassifyInputs — the report-presence branch of
-// Classify (parsed only when the report file exists), TurnEnded(bs.EventsPath,
-// deps.Engine), StrandLive(deps.Reed, bs.StrandGUID), Elapsed computed from
-// bs.SpawnedAt (parsed once, up front) so RecoveryTimeoutMin measures
-// wall-clock time since the strand was SPAWNED, not since this particular
-// call started — the property that makes the long-poll safely re-entrant
-// across the tool-call ceiling. gather is handed to PollUntilTerminal,
-// which re-runs it on its fixed tick until terminal or wait elapses.
-//
-// A non-terminal return after wait elapses reports RecoverResult{Running:
-// true, ElapsedS: <since spawn>} — nothing anywhere is mutated, so the
-// caller's next call re-enters cleanly.
-//
-// A terminal return carries the digest for the caller to persist (see
-// PersistRecoveryTerminal — awaitTerminal itself mutates no state, since it
-// runs with the state-mutation lease released), then releases the recovery
-// strand's substrate with builder's own parity rules: done removes the
-// strand (if still live) and the shuttle run directory; stuck removes the
-// strand but KEEPS the run directory (the stuck trail a human or a fresh
-// recovery diagnosis reads); dead keeps BOTH — the kept pane may still be
-// genuinely working, exactly the kept-substrate reclaim builder's
-// dead-respawn ladder consumes elsewhere. A cleanup failure is collected as
-// a warning on the result, never returned as a fatal error: the terminal
-// classification itself already succeeded, and a caller must not lose that
-// judgment over a best-effort housekeeping failure.
+// awaitTerminal drives one bounded long-poll wait for bs's recovery strand,
+// assembling ClassifyInputs and releasing substrate with status-specific rules
+// on terminal (done removes strand+rundir, stuck removes strand, dead keeps both).
+// Cleanup failures are warnings, not fatal errors.
 func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
 	number, slug := batchIdentity(batch)
 
@@ -438,12 +329,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		return &RecoverResult{Running: true, ElapsedS: elapsedS}, nil
 	}
 
-	// A done/stuck classification is report-derived (dead never is), so its
-	// self-reported head_sha gets the same cross-check RecordBatch applies to
-	// a fork's report: a report disagreeing with the worktree it left behind
-	// is never trusted silently — the digest (and, for done, the bisect
-	// trail's CardSHAs entry) would otherwise carry a SHA that is not where
-	// the batch's work actually landed.
+	// Cross-check report's head_sha against worktree's actual HEAD like RecordBatch does.
 	if digest.HeadSHA != "" {
 		actualHead, err := headSHA(deps.WorktreeRoot)
 		if err != nil {
@@ -474,13 +360,10 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		removeStrand()
 		removeRunDir()
 	case DigestStatusStuck:
-		// Strand removed, run dir KEPT — the stuck trail a fresh recovery
-		// diagnosis or a human reads.
+		// Remove strand but keep run dir for diagnosis.
 		removeStrand()
 	case DigestStatusDead:
-		// Both kept: a dead-classified strand may still be genuinely
-		// working, not hung — the same kept-substrate reclaim builder's own
-		// dead-respawn ladder consumes on its next spawn.
+		// Keep both: dead-classified strand may still be working.
 	}
 
 	return &RecoverResult{Digest: &digest, ElapsedS: elapsedS, Warnings: warnings}, nil

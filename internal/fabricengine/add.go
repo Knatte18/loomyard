@@ -32,58 +32,8 @@ type AddResult struct {
 }
 
 // Add creates a new paired host and weft git worktree with the given slug.
-//
-// The Layout l provides geometry information; all git operations use the
-// appropriate cwd (l.WorktreeRoot for host, l.WeftRepoRoot for weft). The
-// slug becomes the final path component; the host branch name is formed by
-// prepending the configured BranchPrefix. The weft branch is
-// WeftBranchName(hostBranch) — always suffixed, never mirrored.
-//
-// opts controls optional behaviour such as suppressing the weft-branch push.
-// Tests pass AddOptions directly so they do not rely on environment variables
-// and can safely use t.Parallel(). Production callers populate AddOptions
-// from environment variables at the CLI edge (a later batch).
-//
-// Steps:
-//  0. Slug validation: slug must be non-empty, a single path component (no '/'
-//     or '\'), must not end in the weft suffix (reserved for weft worktrees),
-//     and must not name a reserved hub-level geometry entry
-//     (hubgeometry.IsReservedHubName: hubgeometry's own hub-structural set
-//     _raddle/_board/_portals/_launchers UNION the acting worktree's own
-//     fabric.yaml pathspec junction names, e.g. _lyx/_pattern by default).
-//  1. Clean check: l.WorktreeRoot must have no uncommitted changes.
-//  2. Branch name: hostBranch := t.cfg.BranchPrefix + slug; weftBranch := WeftBranchName(hostBranch)
-//  3. Branch-exists check: hostBranch must not already exist in host.
-//  4. Target path: sibling directory named slug; must not exist.
-//  5. Remote check: must have at least one remote configured.
-//  6. Weft prechecks: weft repo must exist; weft worktree must not exist yet.
-//     6b. Resolve parent host branch: capture host HEAD as branch name; abort if detached/unborn.
-//  7. Create: git worktree add -b <hostBranch> <target> in host repo.
-//  8. Create or adopt weft worktree: if weftBranch exists, adopt it (build from existing
-//     branch); otherwise create new weft worktree with weftBranch forking from the
-//     parent's weft branch (WeftBranchName(parentBranch)).
-//  9. Create portal junction to _lyx/ in the new host worktree.
-//
-// 10. Write per-worktree launchers.
-// 10b. Wire the new worktree's host junctions (_lyx/_pattern) eagerly, using
-// the repo-wide wired name-set (RepoWiredNames). No dormant state: the pair
-// is fully wired the moment Add succeeds, with no separate `lyx init` step.
-// 11. Push host branch: git push -u origin <hostBranch> (LAST step for host).
-// 12. Push weft branch: git push -u origin <weftBranch> to weft remote (respects opts).
-//
-// On ANY error at or after step 7, performs a best-effort full paired rollback:
-//   - removeWeftWorktree — tear down the weft worktree (and the weft branch only
-//     when Add created it; an adopted pre-existing branch is never deleted)
-//   - removeHostJunction — unwire the host junctions wired by step 10b
-//   - removePortal(l, slug)
-//   - removeLaunchers(l, slug)
-//   - git worktree remove --force <host-target>
-//   - git branch -D <hostBranch> in host
-//   - git worktree prune in host
-//
-// The ORIGINAL error is returned; rollback-step failures are not masked.
-//
-// Returns AddResult on success or an error if any step fails.
+// It validates the slug, creates both worktrees, wires junctions, and pushes branches,
+// rolling back all changes on any failure.
 func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (AddResult, error) {
 	// (0) Slug validation. A slug is by contract a single path component:
 	// every consumer re-derives it from the host worktree path via
@@ -92,10 +42,6 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	// the rest of the module cannot re-identify. Reject both separators on
 	// every platform — a slash-free contract must not depend on GOOS.
 	if strings.TrimSpace(slug) == "" {
-		// An empty (or whitespace-only) slug has no name for the pair and would
-		// otherwise fall through to step 4, where l.WorktreePath("") resolves to
-		// the hub root and Add fails with a misleading "worktree directory
-		// <HUB> already exists". Reject it here with an honest message.
 		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not be empty", slug)
 	}
 
@@ -103,37 +49,16 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
 	}
 
-	// A slug ending in the weft suffix would name a host worktree directory
-	// (l.WorktreePath(slug)) that is indistinguishable from a weft worktree
-	// directory: hubgeometry.WeftHostSlug accepts it, so prune's hub scan would
-	// misclassify the host worktree as an orphaned weft and — under --apply —
-	// os.RemoveAll it, destroying the host worktree and any uncommitted work in
-	// it. fabric owns the weft suffix namespace, so the safe place to close this
-	// is here, before any git operation, rejecting the collision at the source.
+	// Reject slugs ending with weft suffix to prevent collision with weft worktree directory naming.
 	if strings.HasSuffix(slug, hubgeometry.WeftSuffix) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, hubgeometry.WeftSuffix)
 	}
 
-	// A slug naming a reserved hub-level geometry entry — hubgeometry's own
-	// hub-structural set (_raddle, _board, _portals, _launchers) UNION the
-	// acting worktree's own fabric.yaml pathspec junction names (_lyx,
-	// _pattern by default) — would create a host worktree directory colliding
-	// with the paths lyx composes at the hub level — e.g. a worktree named
-	// "_portals" on a fresh hub would later have portal junctions created
-	// inside it, and a "_lyx" worktree shadows the config-dir token every
-	// module resolves. Some of these are blocked incidentally by the step-4
-	// directory-exists check on mature hubs; rejecting them here makes the
-	// guard unconditional and the error honest. The RAW, unfiltered
-	// t.cfg.Dirs() is used (not the junctionNames helper's wiring-guard
-	// filter): the reserved union must include every pathspec junction name,
-	// so appending a name to pathspec also reserves it as a slug. The new
-	// slug's own config does not exist yet at add time, so this reads the
-	// acting worktree's already-loaded config, not the new slug's.
+	// Reject reserved hub-level geometry names that would collide with hub structure.
 	if hubgeometry.IsReservedHubName(slug, t.cfg.Dirs()) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
 	}
 
-	// (1) Clean check
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
@@ -145,11 +70,9 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		return AddResult{}, fmt.Errorf("source worktree has uncommitted changes")
 	}
 
-	// (2) Branch names
 	hostBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(hostBranch)
 
-	// (3) Branch-exists check
 	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + hostBranch}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
@@ -165,13 +88,11 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		)
 	}
 
-	// (4) Target path check
 	target := l.WorktreePath(slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		return AddResult{}, fmt.Errorf("worktree directory %q already exists", target)
 	}
 
-	// (5) Remote check
 	stdout, _, exitCode, err = gitexec.RunGit([]string{"remote"}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
@@ -183,7 +104,6 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		return AddResult{}, fmt.Errorf("no remote configured")
 	}
 
-	// (6) Weft prechecks: must run BEFORE any creation (no partial state)
 	if !weftRepoExists(l) {
 		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", l.WeftRepoRoot())
 	}
@@ -195,8 +115,7 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
 
-	// (6b) Resolve parent host branch; abort if detached/unborn.
-	// This must run BEFORE host worktree creation to avoid partial state.
+	// Resolve parent host branch before worktree creation to avoid partial state on failure.
 	stdout, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)
@@ -207,7 +126,6 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	parentBranch := strings.TrimSpace(stdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	// (7) Create host worktree
 	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", hostBranch, target}, l.WorktreeRoot)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
@@ -223,9 +141,6 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		log.Printf("fabric add: post-checkout hook install (non-fatal): %v", hookErr)
 	}
 
-	// (8) Create or adopt weft worktree: if the weft branch already exists,
-	// adopt it (without -b); otherwise create new with -b forking from the
-	// parent's weft branch.
 	weftPath := l.WeftWorktreePath(slug)
 	if weftBranchAlreadyExists {
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
@@ -249,13 +164,11 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		}
 	}
 
-	// (9) Create portal junction
 	if err := createPortal(l, slug); err != nil {
 		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
 	}
 
-	// (10) Write launchers
 	if err := writeLaunchers(l, slug); err != nil {
 		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
@@ -304,27 +217,8 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	}, nil
 }
 
-// rollbackAdd performs best-effort paired cleanup on Add failure.
-//
-// Steps (best-effort, errors collected but not masked):
-//  1. removeWeftWorktree — tear down the weft worktree (and the weft branch
-//     only when Add created it — see weftBranchAdopted below)
-//     1b. removeHostJunction — unwire the host junctions wired by Add's step 10b
-//  2. removePortal — remove host portal junction
-//  3. removeLaunchers — remove host launchers
-//  4. git worktree remove --force <host-target>
-//  5. git branch -D <hostBranch> (host)
-//  6. git worktree prune (host)
-//
-// weftBranchAdopted reports whether Add adopted a pre-existing weft branch
-// (step 8's adopt path) rather than creating one. An adopted branch — and any
-// unpushed history it carries — predates this Add and is never deleted by its
-// rollback; only a branch Add itself created is torn down.
-//
-// Since step 10b wires the host _lyx/_pattern junctions eagerly (no dormant
-// state — see Add's godoc), rollback unwires them too: a partially-wired
-// worktree must not leave dangling junctions behind.
-// All errors are collected; the original error passed to the caller is preserved.
+// rollbackAdd performs best-effort paired cleanup on Add failure, unwiring junctions,
+// removing worktrees and branches, preserving pre-existing adopted weft branches.
 func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBranch, target string, weftBranchAdopted bool) error {
 	var firstErr error
 

@@ -26,41 +26,20 @@ const (
 	DeadReasonDied    = "died"
 )
 
-// Digest is webster's batch-outcome snapshot: the fork-return facts
-// (status, head SHA, the informational deviation list) plus recovery
-// metadata, recorded into state.json and the resume trail. A "running"
-// snapshot carries only Batch, Status, and ElapsedS; the remaining fields
-// populate only once a batch reaches a terminal classification.
+// Digest is webster's batch-outcome snapshot recorded into state.json and resume trail.
+// Running snapshots carry only Batch, Status, and ElapsedS; other fields populate at terminal.
 type Digest struct {
-	// Batch is the batch's NN-<batch-slug> identifier.
-	Batch string `json:"batch"`
-	// Status is one of DigestStatusRunning, DigestStatusDone,
-	// DigestStatusStuck, or DigestStatusDead.
-	Status string `json:"status"`
-	// HeadSHA is the fork's reported Report.HeadSHA, carried through
-	// verbatim; empty for a running or dead snapshot.
-	HeadSHA string `json:"head_sha,omitempty"`
-	// Deviations is the fork's reported Report.Deviations, carried through
-	// verbatim. It is always informational — see the deviation-list-is-
-	// informational Shared Decision — and never affects Status.
-	Deviations []string `json:"deviations,omitempty"`
-	// DeadReason is set only when Status is DigestStatusDead: one of
-	// DeadReasonAsking, DeadReasonTimeout, or DeadReasonDied.
-	DeadReason string `json:"dead_reason,omitempty"`
-	// ElapsedS is the number of seconds since spawn, populated only on a
-	// running snapshot.
-	ElapsedS int `json:"elapsed_s,omitempty"`
+	Batch      string   `json:"batch"`
+	Status     string   `json:"status"` // DigestStatusRunning, Done, Stuck, or Dead
+	HeadSHA    string   `json:"head_sha,omitempty"`
+	Deviations []string `json:"deviations,omitempty"`  // Informational only, never affects Status
+	DeadReason string   `json:"dead_reason,omitempty"` // Set only when Status is Dead
+	ElapsedS   int      `json:"elapsed_s,omitempty"`   // Seconds since spawn, running snapshots only
 }
 
-// distill computes the terminal digest for a batch whose fork-return report
-// has landed: r.Status maps OK -> DigestStatusDone / FAILED ->
-// DigestStatusStuck, r.HeadSHA carries straight through, and r.Deviations
-// (the fork-reported, informational deviation list) carries straight
-// through as Deviations — the digest's Deviations field is always the
-// fork's own report, never a host-side recomputation, per the
-// deviation-list-is-informational Shared Decision. distill never sets
-// Batch — the caller (Classify) composes and assigns the NN-<batch-slug>
-// identifier, since a fork Report carries no batch field of its own.
+// distill computes the terminal digest for a fork-return report:
+// OK → Done, FAILED → Stuck. HeadSHA and Deviations carry through.
+// Batch is not set; the caller (Classify) assigns it.
 func distill(r *Report) Digest {
 	status := DigestStatusStuck
 	if r.Status == ReportStatusOK {

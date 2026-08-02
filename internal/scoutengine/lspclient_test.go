@@ -33,9 +33,7 @@ import (
 	"time"
 )
 
-// pipeTransport wires a client-side io.ReadWriteCloser to a server-side
-// io.ReadWriteCloser over two io.Pipes: everything the client writes is
-// what the server reads, and vice versa.
+// pipeTransport wires client and server sides over two io.Pipes.
 type pipeTransport struct {
 	io.Reader
 	io.Writer
@@ -52,8 +50,7 @@ func (p pipeTransport) Close() error {
 	return err
 }
 
-// newPipeTransportPair returns two linked transports: client (for
-// newLSPClientFromRW) and server (for the fake-server goroutine to drive).
+// newPipeTransportPair returns two linked transports for client and server.
 func newPipeTransportPair() (client, server pipeTransport) {
 	clientReadServerWrite, serverWriteClientRead := io.Pipe()
 	serverReadClientWrite, clientWriteServerRead := io.Pipe()
@@ -71,10 +68,7 @@ func newPipeTransportPair() (client, server pipeTransport) {
 	return client, server
 }
 
-// fakeServer reads Content-Length-framed JSON-RPC messages from r and
-// writes framed responses to w, matching the same wire shape lspClient's
-// writeMessage/readMessage speak. It lets a test script canned responses
-// (and server-initiated requests) keyed by the incoming request's method.
+// fakeServer reads and writes Content-Length-framed JSON-RPC messages.
 type fakeServer struct {
 	r *bufio.Reader
 	w io.Writer
@@ -84,9 +78,7 @@ func newFakeServer(rw io.ReadWriter) *fakeServer {
 	return &fakeServer{r: bufio.NewReader(rw), w: rw}
 }
 
-// fakeServerMessage mirrors lspMessage's wire shape for the test's own
-// send/receive helpers, independent of the production type so this file
-// tests the wire format itself rather than reusing the type under test.
+// fakeServerMessage mirrors lspMessage's wire shape for testing.
 type fakeServerMessage struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id,omitempty"`
@@ -95,10 +87,7 @@ type fakeServerMessage struct {
 	Result  json.RawMessage `json:"result,omitempty"`
 }
 
-// readMessage reads one Content-Length-framed message. On any framing
-// failure it records the failure via t.Errorf and returns ok=false; it
-// never calls t.Fatalf, since this runs on the fake-server goroutine, not
-// the test's own goroutine.
+// readMessage reads one Content-Length-framed message, reporting errors via t.Errorf.
 func (s *fakeServer) readMessage(t *testing.T) (msg fakeServerMessage, ok bool) {
 	t.Helper()
 	contentLength := -1
@@ -137,8 +126,7 @@ func (s *fakeServer) readMessage(t *testing.T) (msg fakeServerMessage, ok bool) 
 	return msg, true
 }
 
-// writeMessage frames and writes v. Like readMessage, it reports failure via
-// t.Errorf and a bool rather than t.Fatalf.
+// writeMessage frames and writes a value, reporting errors via t.Errorf.
 func (s *fakeServer) writeMessage(t *testing.T, v any) bool {
 	t.Helper()
 	body, err := json.Marshal(v)
@@ -157,7 +145,7 @@ func (s *fakeServer) writeMessage(t *testing.T, v any) bool {
 	return true
 }
 
-// respond writes a success response for the request identified by id.
+// respond writes a success response for a request ID.
 func (s *fakeServer) respond(t *testing.T, id json.RawMessage, result any) bool {
 	t.Helper()
 	raw, err := json.Marshal(result)
@@ -168,15 +156,13 @@ func (s *fakeServer) respond(t *testing.T, id json.RawMessage, result any) bool 
 	return s.writeMessage(t, fakeServerMessage{JSONRPC: "2.0", ID: id, Result: raw})
 }
 
-// request writes a server-initiated request with the given id and method.
+// request writes a server-initiated request.
 func (s *fakeServer) request(t *testing.T, id int, method string) bool {
 	t.Helper()
 	return s.writeMessage(t, fakeServerMessage{JSONRPC: "2.0", ID: json.RawMessage(strconv.Itoa(id)), Method: method})
 }
 
-// TestLSPClient_InitializeCapturesCapabilities drives the initialize
-// handshake against a fake server that advertises workspaceSymbolProvider,
-// and asserts the client's supportsWorkspaceSymbol() reflects it.
+// TestLSPClient_InitializeCapturesCapabilities verifies initialize captures server capabilities.
 func TestLSPClient_InitializeCapturesCapabilities(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -220,10 +206,7 @@ func TestLSPClient_InitializeCapturesCapabilities(t *testing.T) {
 	}
 }
 
-// TestLSPClient_AnswersServerInitiatedRequest asserts that while call() is
-// awaiting its own response, a server-initiated request (e.g.
-// client/registerCapability) received in the meantime is answered with an
-// empty success result rather than left unanswered.
+// TestLSPClient_AnswersServerInitiatedRequest verifies server-initiated requests are answered.
 func TestLSPClient_AnswersServerInitiatedRequest(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
