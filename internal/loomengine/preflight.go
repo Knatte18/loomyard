@@ -118,12 +118,12 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 		report.addFailure(CheckWeftPairing, "weft not paired")
 		check3BlocksSeed = true
 	} else {
-		ok, reason, err := fabricengine.PairInSync(l)
+		ok, reason, err := fabricengine.Healthy(l)
 		if err != nil {
 			return Report{}, err
 		}
 		if !ok {
-			// PairInSync's junction reasons are a consumed string format: all
+			// Healthy's junction reasons are a consumed string format: all
 			// three now read "host <name> junction …" or "host <name> is not a
 			// junction" (fabricengine's junction-name parameterisation), so a
 			// prefix match on "junction" no longer catches any of them — only

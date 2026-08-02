@@ -1,17 +1,7 @@
-// drift.go implements the stateless pair-in-sync check for fabric topology.
-//
-// PairInSync derives the weft sibling deterministically and checks that the weft
-// worktree is on WeftBranchName(hostBranch), and that every host junction
-// (l.HostJunctionsHere(names)) is valid and points to its own weft directory. It
-// loads the repo-wide fabric.yaml at hubgeometry.BoardDir(l.Hub) for the junction
-// name-set; it still consults no registry/status.md: fabric's correspondence
-// check compares the weft branch against WeftBranchName(hostBranch). A
-// config-load failure is reported as a junction-check-unavailable reason (not a
-// hard error), deliberately containing the "junction" substring the loom
-// preflight classifier keys on — see below.
-//
-// PairInSync and HostClean (hostclean.go) are wired into the loom preflight
-// via internal/loomengine.
+// drift.go implements Healthy, the stateless pair-in-sync check for fabric
+// topology: branch correspondence between a host worktree and its weft
+// sibling, plus every wired junction's health. Healthy and Clean
+// (hostclean.go) are wired into the loom preflight via internal/loomengine.
 
 package fabricengine
 
@@ -26,22 +16,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// PairInSync reports whether the host worktree and its paired weft worktree are in sync.
-//
-// A pair is considered in sync when:
-//   - The weft worktree is on WeftBranchName(hostBranch) (via rev-parse --abbrev-ref HEAD
-//     on both worktrees)
-//   - Every host junction in l.HostJunctionsHere(names) exists and points to its own
-//     weft directory, where names is the wired name-set loaded from the repo-wide
-//     BoardDir fabric.yaml
-//
-// The weft sibling is derived deterministically as <worktree-base>-weft (via paths geometry).
-// No registry or status.md is consulted; PairInSync is stateless.
+// Healthy reports whether the host worktree and its paired weft worktree are
+// in sync: the weft worktree is on WeftBranchName(hostBranch), and every host
+// junction in l.HostJunctionsHere(names) exists and points to its own weft
+// directory, where names is the wired name-set loaded from the repo-wide
+// BoardDir fabric.yaml. The weft sibling is derived deterministically as
+// <worktree-base>-weft; no registry or status.md is consulted, so Healthy is
+// stateless.
 //
 // Returns (true, "", nil) if the pair is in sync.
-// Returns (false, reason, nil) if the pair is out of sync; reason describes the divergence.
-// Returns (false, "", err) if the check encounters a system error (e.g., git failure, stat error).
-func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
+// Returns (false, reason, nil) if the pair is out of sync; reason describes
+// the divergence. A config-load failure is reported this way too — as a
+// "junction check unavailable" reason, not a hard error — deliberately
+// containing the substring "junction" the loom preflight classifier keys on
+// (preflight.go's check-3 classification).
+// Returns (false, "", err) if the check encounters a system error (e.g., git
+// failure, stat error).
+func Healthy(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 	// Verify the host worktree's current branch via rev-parse --abbrev-ref HEAD.
 	hostOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
@@ -79,16 +70,9 @@ func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 	// Load the wired name-set from the repo-wide BoardDir base — durable and
 	// independent of the host junction whose health this function checks, and
 	// the same repo-wide base checkJunctionHealth in reconcile.go uses. A load
-	// failure is reported as a determinable "pair unhealthy: bad config"
-	// verdict REASON, not a hard Go error: internal/loomengine/preflight.go:
-	// 120-123 propagates a non-nil err straight into an infra-escalating
-	// `return Report{}, err`, which a missing/corrupt fabric.yaml does not
-	// warrant. The reason string must also contain the substring "junction":
-	// preflight.go:125-148's check-3 classifier sets check3BlocksSeed = true
-	// only when strings.Contains(reason, "junction") (its own godoc warns any
-	// reword must keep that substring), and an undeterminable junction set is
-	// exactly the case that must block seed so check 4 reports
-	// CheckSeedUnreadable rather than a phantom CheckSeedMissing.
+	// failure is reported as a determinable "unhealthy: bad config" verdict
+	// reason, not a hard Go error — see the doc comment above for why the
+	// reason string must keep the substring "junction".
 	names, err := RepoWiredNames(l)
 	if err != nil {
 		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err), nil
@@ -96,10 +80,7 @@ func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 
 	// Verify every host junction is valid and points to its correct weft
 	// target — l.HostJunctionsHere(names), the same Here-anchored, slug-free
-	// accessor checkJunctionHealth loops in reconcile.go. PairInSync's
-	// signature is unchanged and it stays stateless and slug-free, which is
-	// exactly why it loops HostJunctionsHere(names) rather than
-	// HostJunctions(slug, names).
+	// accessor checkJunctionHealth loops in reconcile.go.
 	for _, j := range l.HostJunctionsHere(names) {
 		// Distinguish a missing junction entry from an existing one that is not
 		// a link: fslink.IsLink reports (false, nil) for both shapes, and the
@@ -118,7 +99,7 @@ func PairInSync(l *hubgeometry.Layout) (ok bool, reason string, err error) {
 		}
 		if !isLink {
 			// Same wording as checkJunctionHealth for this drift shape, so
-			// status/reconcile and PairInSync describe it identically.
+			// status/reconcile and Healthy describe it identically.
 			return false, fmt.Sprintf("host %s is not a junction", j.Name), nil
 		}
 

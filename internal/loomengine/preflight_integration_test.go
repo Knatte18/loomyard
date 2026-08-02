@@ -21,15 +21,15 @@ import (
 )
 
 // setupPreflightFixture builds a CopyPaired fixture, seeds a fabric config at
-// the weft base (PairInSync/checkJunctionHealth now load fabric.yaml for the
+// the weft base (Healthy/checkJunctionHealth now load fabric.yaml for the
 // wired junction name-set, so a fixture without one would see every junction
 // health check fail as "cannot load fabric.yaml" instead of exercising the
 // scenario under test — mirroring fabricengine's own newFabricFixture), seeds
 // the repo-wide fabric config at <hub>/_board/_lyx/config/fabric.yaml
-// (checkJunctionHealth/PairInSync's wired-junction name-set read is migrated
+// (checkJunctionHealth/Healthy's wired-junction name-set read is migrated
 // there — see seedRepoWideFabricConfig), moves the weft primary onto fabric's
 // suffixed branch naming (CopyPaired's raw fixture leaves both sides on
-// "main", the warp-era equality convention; fabric's PairInSync requires the
+// "main", the warp-era equality convention; fabric's Healthy requires the
 // weft branch to be WeftBranchName(hostBranch)), wires the host-weft _lyx
 // junction (CopyPaired does not wire it — see WireJunctions' host-pristine
 // invariant), and seeds a fresh, coherent status.json through the wired
@@ -68,7 +68,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
 // hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
-// PairInSync) now read from. lyxtest.CopyPaired does not create a _board
+// Healthy) now read from. lyxtest.CopyPaired does not create a _board
 // dir, so this creates it (and its _lyx/config/) first; unlike
 // lyxtest.SeedConfig, _board is not a git repository, so the file is
 // written directly with no git add/commit step. Mirrors fabricengine's own
@@ -383,13 +383,13 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 	assertCheckSet(t, report, CheckWeftSync)
 }
 
-// TestPreflight_JunctionBroken asserts that all three of PairInSync's
+// TestPreflight_JunctionBroken asserts that all three of Healthy's
 // junction-drift shapes — missing, not-a-link, and points-elsewhere —
 // classify as junction (card 12's substring-match fix: a prefix match only
 // ever caught the missing shape). Each drift shape is exercised against BOTH
 // junctions (_lyx and _pattern, from card 15 onward) so the classification is
 // proven to hold for the second, non-_lyx junction too — not just the one
-// PairInSync's underlying loop was originally written and tested against.
+// Healthy's underlying loop was originally written and tested against.
 //
 // The seed-check expectation differs by junction, and deliberately so:
 // status.json lives under _lyx (l.LoomStatusFile() is _lyx-anchored), so a

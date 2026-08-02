@@ -83,7 +83,7 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // classifyPaths, passing the resolved worktree's l.RelPath, against the
 // wired name-set RepoWiredNames resolves from the repo-wide `weft:main` base
 // at hubgeometry.BoardDir(Hub) — the same base checkJunctionHealth,
-// Reconcile, junctionRepointedDetail, PairInSync, Topology.Checkout, and
+// Reconcile, junctionRepointedDetail, Healthy, Topology.Checkout, and
 // Topology.Remove all read through, never f.weftPath's own per-pair base, so
 // every worktree's commits classify against the one repo-wide pathspec),
 // commits each side under commitBothSides, and — once

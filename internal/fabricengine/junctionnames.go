@@ -37,7 +37,7 @@ func filterHubReserved(names []string) []string {
 // pathspec's directory names with the wiring guard applied (see
 // filterHubReserved). It is the in-package name-sourcing helper for sites
 // that already hold a *hubgeometry.Layout and can compute their own weft
-// base: the read-only health checks (PairInSync, checkJunctionHealth,
+// base: the read-only health checks (Healthy, checkJunctionHealth,
 // junctionRepointedDetail) and checkout.go/reconcile.go's re-wire call
 // sites.
 //
@@ -81,7 +81,7 @@ func repoWideFabricBase(l *hubgeometry.Layout) string {
 // Layout-taking convenience for callers that already hold a
 // *hubgeometry.Layout and want the repo-wide junction name-set without
 // re-deriving the base themselves: checkJunctionHealth, Reconcile's inline
-// wiring load, junctionRepointedDetail, PairInSync, Topology.Checkout, and
+// wiring load, junctionRepointedDetail, Healthy, Topology.Checkout, and
 // Topology.Remove all read through this rather than the pair's own weft
 // base, so every worktree converges to the one repo-wide pathspec.
 func RepoWiredNames(l *hubgeometry.Layout) ([]string, error) {

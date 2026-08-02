@@ -9,10 +9,9 @@
 //
 // Status computes its in-sync verdict inline (branch correspondence via WeftBranchName,
 // then junction health via checkJunctionHealth, both already defined in reconcile.go)
-// rather than calling a shared PairInSync helper — drift.go (a later card in this batch)
-// does not exist yet when this file is written, and Status already has hostBranch/
-// weftBranch in hand from readBranch, so there is nothing to gain from a second
-// rev-parse round trip through a shared helper.
+// rather than calling the shared Healthy helper (drift.go) — Status already has
+// hostBranch/weftBranch in hand from readBranch, so there is nothing to gain from a
+// second rev-parse round trip through a shared helper.
 
 package fabricengine
 
@@ -152,8 +151,8 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 
 		// Determine pair in-sync status: branch correspondence uses WeftBranchName
 		// (fabric's suffixed pairing) rather than warp's equal-name requirement, folded
-		// together with junction health exactly as warp's PairInSync folds both checks
-		// into one verdict.
+		// together with junction health exactly as warp's pair-in-sync check (fabric's
+		// Healthy) folds both checks into one verdict.
 		expectedWeftBranch := WeftBranchName(hostBranch)
 		switch {
 		case weftBranch != expectedWeftBranch:
