@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: docs-word-count-trim
 branch: docs-word-count-trim
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-02T15:03:26Z'
+done  '2026-08-02T15:34:47Z'
 ```
