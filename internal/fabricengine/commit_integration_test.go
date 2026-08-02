@@ -26,6 +26,7 @@ package fabricengine
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -460,6 +461,70 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 	}
 	if got2 != result2.WarpSHA {
 		t.Errorf("SnapshotWarpSHA() after round 2 = %q; want the ADVANCED baseline %q, not the stale round-1 baseline %q", got2, result2.WarpSHA, result1.WarpSHA)
+	}
+}
+
+// writeFabricAnchor records anchor as the .fabric-anchor marker under
+// warpPath's hub board directory, so a subsequent hubgeometry.ResolveWorktree
+// call resolves l.RelPath to anchor rather than falling back to a
+// cwd-derived ".". Mirrors hubgeometry's own anchor_test.go writeAnchor,
+// duplicated here rather than imported since that helper lives in the
+// hubgeometry_test package.
+func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(filepath.Dir(warpPath))
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
+	}
+}
+
+// TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath is the regression
+// guard for the card-6 fix: Fabric.Commit must classify against the
+// resolved worktree's l.RelPath, not a hardcoded ".". With a recorded
+// two-segment anchor ("wts/some-task"), a file physically nested at
+// <RelPath>/_lyx/... in the weft checkout must still route to the weft side
+// and land in a real commit — proving the fix beyond the RelPath=="."
+// coverage every other test in this file exercises.
+func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
+	f, warpPath, weftPath := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	const anchor = "wts/some-task"
+	writeFabricAnchor(t, warpPath, anchor)
+
+	nestedDir := filepath.Join(weftPath, filepath.FromSlash(anchor), "_lyx")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("mkdir nested weft dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, "nested.yaml"), []byte("nested weft content"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	nestedRel := anchor + "/_lyx/nested.yaml"
+
+	result, err := f.Commit([]string{nestedRel}, "nested relpath commit", nil, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if result.WarpCommitted {
+		t.Errorf("Commit() = %+v; want no warp commit -- the nested path must route to weft, not warp", result)
+	}
+	if !result.WeftCommitted || result.WeftSHA == "" {
+		t.Fatalf("Commit() = %+v; want a populated WeftSHA and WeftCommitted=true", result)
+	}
+
+	cmd := exec.Command("git", "show", result.WeftSHA+":"+nestedRel)
+	cmd.Dir = weftPath
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git show %s:%s in %s: %v", result.WeftSHA, nestedRel, weftPath, err)
+	}
+	if string(out) != "nested weft content" {
+		t.Errorf("committed content = %q; want %q", string(out), "nested weft content")
 	}
 }
 

@@ -1,13 +1,13 @@
 //go:build integration
 
 // weft_integration_test.go covers weftCommit's composed behavior against real
-// git repositories -- the seams the untagged weft_test.go (pure pathspec
-// assertions) cannot reach. Two scenarios: the CommitWeft error-branch
-// contract (a commit that lands but fails its correspondence record must
-// still be reported as committed=true alongside the error, never swallowed
-// into a false "no commit was made"), and the exclusion pathspec actually
-// staging the right files at every layout.RelPath depth, which only real git
-// can decide.
+// git repositories -- the seams weft_test.go's guard-ordering assertions
+// cannot reach. Two scenarios: Fabric.Commit's error-branch contract (a
+// commit that lands but fails its correspondence record must still be
+// reported as committed=true alongside the error, never swallowed into a
+// false "no commit was made"), and the weft repo's .git/info/exclude
+// actually keeping the right files out of every commit at every
+// layout.RelPath depth, which only real git can decide.
 
 package buildercli
 
@@ -32,13 +32,53 @@ func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
 	return newHostWeftPairAt(t, ".")
 }
 
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml
+// Fabric.Commit's classify step reads via RepoWiredNames (the `weft:main`
+// base at hubgeometry.BoardDir(hub)) -- required since weftCommit moved onto
+// Fabric.Commit, which resolves the wired name-set itself rather than
+// trusting a caller-built pathspec. Mirrors
+// commit_integration_test.go's seedFabricConfig in package fabricengine,
+// duplicated here since that helper is unexported in a different package.
+func seedRepoWideFabricConfig(t *testing.T, hub string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(hub)
+	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
+}
+
+// seedFabricAnchor records relPath as the .fabric-anchor marker under hub's
+// board directory, so Fabric.Commit's own hubgeometry.ResolveWorktree(warpPath)
+// call resolves l.RelPath to relPath instead of falling back to a
+// cwd-derived "." -- Commit re-resolves geometry from f.warpPath itself
+// rather than trusting the *hubgeometry.Layout weftCommit already holds, so
+// a nested-RelPath fixture must record the anchor for real git to classify
+// correctly.
+func seedFabricAnchor(t *testing.T, hub, relPath string) {
+	t.Helper()
+
+	boardDir := hubgeometry.BoardDir(hub)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
+	}
+}
+
 // newHostWeftPairAt is newHostWeftPair with an explicit layout.RelPath: the
 // weft-side _lyx is seeded at <weft>/<relPath>/_lyx, mirroring the host's own
 // repo-subpath geometry, and the returned layout's Cwd points at the matching
 // host subdirectory. Alongside state.json it seeds the two machine-local
-// artifacts builderWeftPathspec must exclude (an advisory *.lock file and the
-// pause flag) so a caller can assert on what the commit did and did not pick
-// up. It also seeds a webster tree in the same _lyx -- the two round-loop
+// artifacts the weft repo's .git/info/exclude must keep out (an advisory
+// *.lock file and the pause flag) so a caller can assert on what the commit
+// did and did not pick up. It also seeds a webster tree in the same _lyx -- the two round-loop
 // modules share one -- carrying webster's own durable state.json plus its two
 // machine-local artifacts (pause flag, rendered fork prompt), so a caller can
 // assert that a BUILDER commit keeps webster's runtime state out while still
@@ -93,6 +133,9 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 		}
 	}
 
+	seedRepoWideFabricConfig(t, hub)
+	seedFabricAnchor(t, hub, filepath.ToSlash(relPath))
+
 	return &hubgeometry.Layout{
 		Hub:          hub,
 		WorktreeRoot: host,
@@ -102,11 +145,11 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 }
 
 // TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves the
-// CommitWeft error branch passes committed through instead of forcing it to
-// false: with a directory squatting on the correspondence index path, the
+// Fabric.Commit error branch passes committed through instead of forcing it
+// to false: with a directory squatting on the correspondence index path, the
 // weft commit itself lands but RecordCorrespondence fails, and weftCommit
-// must report (true, err) -- the commit is real, and CommitWeft's contract
-// says the caller gets to know that alongside the error.
+// must report (true, err) -- the commit is real, and Fabric.Commit's
+// contract says the caller gets to know that alongside the error.
 func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
@@ -135,22 +178,30 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	}
 }
 
-// TestWeftCommit_CommitsAtEveryRelPathDepth proves builderWeftPathspec's
-// exclusion set is honoured by REAL git at every layout.RelPath depth, not
-// merely present in the returned slice. The nested case is the regression
-// guard: with the pre-fix, unanchored ":(exclude)*.lock" spelling, git's
-// one-star pathspec matching false-positive-matched the intermediate
-// directories leading to a multi-segment positive pathspec and pruned the
-// entire subtree, so `git add` staged nothing, the staged-diff check reported
-// "nothing to commit", and weftCommit returned (false, nil) -- a completely
-// silent no-op that dropped every builder artifact on the floor with no error
-// for the caller to notice. It is also the cross-module regression guard: a
-// builder commit must hold back WEBSTER's pause flag and rendered prompts
-// too, since both round-loop modules share one _lyx -- committing them pins
-// them in weft HEAD, where webster can never stage their deletion (its own
-// exclusion hides them from `git add`), so every other machine's weft pull
-// materializes a pause request nobody made. WEFT_SKIP_PUSH is set because the
-// scratch weft repo has no remote; the commit half is what is under test.
+// TestWeftCommit_CommitsAtEveryRelPathDepth proves every machine-local
+// transient (locks, both round-loop modules' pause flags, webster's
+// rendered fork prompts) stays uncommitted by REAL git at every
+// layout.RelPath depth, not merely absent from some in-memory pathspec
+// shape. Exclusion is now enforced solely by the weft repo's
+// .git/info/exclude (seeded by fabricengine.seedWeftArtifactExcludes,
+// reached through Fabric.Commit's ensureWeftLockDir), not by any
+// ":(exclude)" pathspec builderCLI builds itself -- weftCommit passes only
+// the positive scoped _lyx pathspec. The nested case is the regression
+// guard for the pre-fix, unanchored ":(exclude)*.lock" spelling this
+// migration retired: that spelling's one-star pathspec false-positive-matched
+// the intermediate directories leading to a multi-segment positive pathspec
+// and pruned the entire subtree, so `git add` staged nothing and weftCommit
+// returned (false, nil) -- a completely silent no-op. It is also the
+// cross-module regression guard: a builder commit must hold back WEBSTER's
+// pause flag and rendered prompts too, since both round-loop modules share
+// one _lyx -- committing them pins them in weft HEAD, where webster can
+// never stage their deletion (its own exclusion hides them from `git add`),
+// so every other machine's weft pull materializes a pause request nobody
+// made. Each excluded artifact is asserted both absent from the commit AND
+// still untracked via `git ls-files` -- proving the exclude file, not merely
+// an already-tracked file happening to be omitted from this one commit.
+// WEFT_SKIP_PUSH is set because the scratch weft repo has no remote; the
+// commit half is what is under test.
 func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
 		name    string
