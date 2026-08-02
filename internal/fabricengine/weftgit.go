@@ -83,7 +83,7 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // `_lyx/perch/<block>/run.lock`), not just directly inside it. This is
 // gitignore glob syntax, not git pathspec syntax: a bare `*` here does NOT
 // cross `/` (unlike the leading-wildcard pathspec bug CONSTRAINTS.md's
-// "Anchored exclusions" bullet documents), so no per-RelPath anchoring is
+// "Cross-module exclusions" bullet documents), so no per-RelPath anchoring is
 // needed — `**/` alone handles arbitrary depth.
 //
 // "pause" and "prompts" are not sourced from hubgeometry — hubgeometry owns
