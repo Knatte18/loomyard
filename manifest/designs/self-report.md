@@ -8,7 +8,7 @@ Millhouse's `mill-self-report` works because in Millhouse the LLM *is* the orche
 
 ## Tier 1 — Go detects structurally, no LLM involved
 
-loom's own status file (`_lyx/status.json`, see [loom.md](loom.md#state--contracts)) already records exactly the kind of anomaly Millhouse's self-report catches by an LLM noticing a pattern in its own transcript: crash-resumes, `stuck` escalations, repeated review rounds on the same finding. Go can file these directly off its own history trail — deterministic, no LLM call, and strictly more complete than an LLM's approximate recall of its own session, since it reads an exact record instead of remembering one.
+loom's own status file (`_lyx/status.json`, see [loom.md](loom.md#state--contracts)) records exactly the kind of anomaly Millhouse's self-report catches by an LLM noticing a pattern in its own transcript: crash-resumes, `stuck` escalations, repeated review rounds on the same finding. Go can file these directly off its own history trail — deterministic, no LLM call, and strictly more complete than an LLM's approximate recall of its own session, since it reads an exact record instead of remembering one.
 
 ## Tier 2 — a narrow, per-agent friction note
 
@@ -18,11 +18,11 @@ Every spawned agent (producer, reviewer, builder/webster implementer fork, ...) 
 
 ## Aggregation and the reflection step
 
-Go collects every Tier 2 note emitted during a run (it already reads every phase's output file regardless) and, at a natural end point — Finalize, or a `stuck` escalation — spawns **one** dedicated reflection agent over the aggregated dossier. This mirrors the `Raddle` pattern (see [loom.md](loom.md#the-phase-machine)): a fresh-context agent reading only the accumulated notes, not carrying the baggage of having "been there" for the whole run. That agent makes the actual self-report judgment call (worth filing? one issue or several? title/body?) and invokes the shipped `lyx selfreport create` primitive to do the actual filing.
+Go collects every Tier 2 note emitted during a run (it reads every phase's output file regardless) and, at a natural end point — Finalize, or a `stuck` escalation — spawns **one** dedicated reflection agent over the aggregated dossier. This mirrors the `Raddle` pattern (see [loom.md](loom.md#the-phase-machine)): a fresh-context agent reading only the accumulated notes, not carrying the baggage of having "been there" for the whole run. That agent makes the actual self-report judgment call (worth filing? one issue or several? title/body?) and invokes the shipped `lyx selfreport create` primitive to do the actual filing.
 
 ## Relationship to the shipped `selfreport` module
 
-This design does not replace `lyx selfreport create` (already shipped) — it changes **when/how** it gets invoked: today, manual only; this adds two automatic triggers on top of the same primitive (Go directly, for Tier 1; the aggregation/reflection agent, for Tier 2).
+This design does not replace `lyx selfreport create` (shipped) — it changes **when/how** it gets invoked: today, manual only; this adds two automatic triggers on top of the same primitive (Go directly, for Tier 1; the aggregation/reflection agent, for Tier 2).
 
 ## Open questions
 
