@@ -187,8 +187,8 @@
 //
 // # ResetHard surface
 //
-// ResetHard is the primitive fabric's RevertWithWeft history-recovery flow
-// builds on: it points HEAD, the index, and the working tree at a
+// ResetHard is the primitive fabric's coordinated history-recovery flows
+// build on: it points HEAD, the index, and the working tree at a
 // caller-supplied SHA exactly, via `git reset --hard`, discarding any local
 // commits or uncommitted changes past that point. The SHA-shape validation
 // every caller-supplied SHA argument goes through (see above) guarantees an
