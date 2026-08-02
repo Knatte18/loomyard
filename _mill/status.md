@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-cli-collapse
+phase: holistic-reviewing
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-remove-force-add  '2026-08-02T13:55:54Z'
 approved-clean-healthy-renames  '2026-08-02T14:04:45Z'
 approved-delete-dead-methods  '2026-08-02T14:17:13Z'
 approved-fabric-cli-collapse  '2026-08-02T14:30:10Z'
+holistic-reviewing  '2026-08-02T14:30:27Z'
 ```
 
 ## Batches
