@@ -19,23 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// supervisedProtocolVersion is lyx's own wire-compatibility version for the
-// supervised daemon protocol — NOT gopls's version. It exists to detect "a
-// still-running daemon was spawned by an older lyx binary whose
-// expectations of the daemon no longer match this binary's" and is bumped
-// by a future lyx change to the supervised protocol itself, never by a
-// gopls upgrade. Do not confuse this with registry.Entry.PinnedVersion,
-// which pins the gopls binary version resolveGoToolchain installs.
+// supervisedProtocolVersion is lyx's wire-compatibility version for the
+// supervised daemon protocol, distinct from gopls's version.
+// It detects when a still-running daemon was spawned by an incompatible lyx binary.
 const supervisedProtocolVersion = "1"
 
-// daemonState is the JSON shape written to the supervised daemon's state
-// file. Address is the dial target in "network;addr" form (e.g.
-// "unix;/path/to/sock"), matching gopls serve -listen's own flag syntax so
-// the recorded value can be split on the same ";" the daemon itself was
-// told to listen on. StartedAt is RFC3339
-// (time.Now().UTC().Format(time.RFC3339)); it is produced by the caller,
-// not this file — daemonState itself does no clock reads, keeping this
-// file trivially unit-testable.
+// daemonState is the JSON shape written to the supervised daemon's state file.
+// Address is the dial target in "network;addr" form; StartedAt is RFC3339 format.
 type daemonState struct {
 	PID             int    `json:"pid"`
 	Address         string `json:"address"`
@@ -43,12 +33,9 @@ type daemonState struct {
 	StartedAt       string `json:"started_at"`
 }
 
-// readDaemonState reads and parses the daemon state file at path. A missing
-// file is the common case on a worktree's first EnsureServer call, so it is
-// translated into (daemonState{}, false, nil) rather than an error, mirroring
-// os.IsNotExist's own "absent means no recorded state" semantics. Any other
-// read error is wrapped and returned; a successful read is json.Unmarshal'd
-// and returned with found=true.
+// readDaemonState reads and parses the daemon state file at path.
+// Missing files return (daemonState{}, false, nil) rather than an error;
+// other errors are wrapped and returned with found=false.
 func readDaemonState(path string) (daemonState, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -65,13 +52,8 @@ func readDaemonState(path string) (daemonState, bool, error) {
 	return s, true, nil
 }
 
-// writeDaemonState marshals s and writes it to path via a temp-file-then-
-// rename sequence: it writes to path+".tmp" and then os.Renames it onto
-// path. This is what makes a concurrent reader (a losing EnsureServer
-// caller polling this same path, batch 6) never observe a partially-written
-// file — os.Rename atomically replaces an existing destination on both
-// Linux and Windows (Go's Windows implementation already uses
-// MOVEFILE_REPLACE_EXISTING).
+// writeDaemonState marshals s and writes it to path atomically
+// (via temp-file-then-rename) to ensure concurrent readers never observe partial writes.
 func writeDaemonState(path string, s daemonState) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("scoutengine: create daemon state dir %s: %w", filepath.Dir(path), err)
@@ -92,13 +74,8 @@ func writeDaemonState(path string, s daemonState) error {
 	return nil
 }
 
-// daemonStale reports whether the recorded daemon state s should be treated
-// as unusable, forcing a fresh spawn rather than a reuse. Either half of
-// this two-part check alone is sufficient to force a restart, per the
-// design's "two-part staleness" decision: the recorded PID is no longer
-// alive (the daemon process is gone), or the recorded protocol version does
-// not match this binary's supervisedProtocolVersion (a still-running daemon
-// spawned by an incompatible lyx binary).
+// daemonStale reports whether the daemon state s is unusable.
+// It checks whether the PID is still alive and whether the protocol version matches.
 func daemonStale(s daemonState) bool {
 	return !proc.IsAlive(s.PID) || s.ProtocolVersion != supervisedProtocolVersion
 }

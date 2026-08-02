@@ -144,38 +144,19 @@ import (
 	"strings"
 )
 
-// levelVar is the package-level threshold shared by the slog handler. It is
-// initialised to slog.LevelWarn in init so a normal run emits zero log
-// lines; -v/-vv (wired to SetVerbosity in cmd/lyx/main.go) lower it to
-// surface more detail, as does LYX_LOG_LEVEL for entry points that never
-// reach that flag parsing (see the package doc).
+// levelVar is the package-level threshold controlling stderr verbosity.
 var levelVar slog.LevelVar
 
-// out is the stderr-half sink log lines are written to. It defaults to
-// os.Stderr, overridable at init via LYX_LOG_FILE, and otherwise only
-// replaced via SetOutput, which exists as a test seam so tests can capture
-// stderr-half output into a buffer instead of touching the real stderr. It
-// never affects the durable sink (sink.go), which opens its own file
-// independently of this var.
+// out is the stderr output destination, defaulting to os.Stderr.
 var out io.Writer = os.Stderr
 
-// currentStderr is the composite handler's stderr-half inner handler.
-// SetOutput rebuilds it in place from a new out (Card 19/20); dualHandler
-// reads it fresh via stderrHandlerSnapshot on every Enabled/Handle/WithAttrs
-// call rather than caching it, so the rebind is visible without ever
-// rebuilding the package-level log var itself. Both the write here (in
-// SetOutput) and the read (in stderrHandlerSnapshot) go under sinkMu
-// (sink.go), the same mutex guarding the durable sink's state, per
-// discussion.md's concurrency-contract decision.
+// currentStderr is the stderr-half inner handler, rebuilt by SetOutput to
+// respond to output redirections.
 var currentStderr slog.Handler = slog.NewTextHandler(out, &slog.HandlerOptions{Level: &levelVar})
 
-// stderrHandlerSnapshot returns the composite handler's current stderr-half
-// inner handler under a narrow, self-contained critical section. Callers
-// must not hold sinkMu across the Enabled/Handle call that follows: the
-// durable handler's own Handle path (via writeDurable) independently
-// acquires sinkMu, and sync.Mutex is not reentrant, so holding the lock
-// across both inner handlers' calls would self-deadlock the moment a record
-// reaches both.
+// stderrHandlerSnapshot returns the current stderr-half handler under a
+// narrow critical section; caller must not hold sinkMu across the following
+// Handle call to avoid deadlock.
 func stderrHandlerSnapshot() slog.Handler {
 	sinkMu.Lock()
 	h := currentStderr

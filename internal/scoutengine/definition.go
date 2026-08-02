@@ -8,16 +8,9 @@ package scoutengine
 
 import "context"
 
-// Definition resolves opts.Query against the language server for
-// opts.TargetDir and returns the location(s) of its definition. It takes
-// the identical Options/Query shape References does — a bare symbol name
-// resolved via resolvePosition's existing ambiguity-collapsing
-// workspace/symbol call (returning ErrAmbiguousSymbol on more than one
-// candidate, exactly as it already does for References), or an explicit
-// file:line:col position bypassing resolution entirely. Definition is a
-// thin wrapper over the shared lookup pipeline, passing client.definition
-// as the one LSP call the pipeline should make once a position is resolved
-// — see lookup's own doc comment for the full step-by-step behavior.
+// Definition resolves opts.Query against the language server for opts.TargetDir
+// and returns the location(s) of its definition. It uses the same resolution
+// pipeline as References, differing only in the LSP method called.
 func Definition(ctx context.Context, opts Options) ([]Reference, error) {
 	return lookup(ctx, opts, func(ctx context.Context, client *lspClient, fileURI string, pos lspPosition) ([]lspLocation, error) {
 		return client.definition(ctx, fileURI, pos)
