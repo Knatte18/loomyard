@@ -514,6 +514,85 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	}
 }
 
+// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare
+// worktree-relative `_lyx/plan/NN-<slug>.md` token — never prefixed by the
+// (t.TempDir()) absolute Plan.Dir the fixture is parsed from — for both a
+// single-card and a multi-card plan.
+func TestParsePlan_Card_SourcePath(t *testing.T) {
+	t.Parallel()
+
+	t.Run("single-card plan", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writePlanFiles(t, map[string]string{
+			"00-overview.md": minimalOverview,
+			"01-only.md":     minimalCardFile(1, "only", "a.go"),
+		})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+		}
+		if len(plan.Cards) != 1 {
+			t.Fatalf("len(plan.Cards) = %d; want 1", len(plan.Cards))
+		}
+
+		want := "_lyx/plan/01-only.md"
+		got := plan.Cards[0].SourcePath
+		if got != want {
+			t.Errorf("plan.Cards[0].SourcePath = %q; want %q", got, want)
+		}
+		if strings.Contains(got, dir) {
+			t.Errorf("plan.Cards[0].SourcePath = %q; leaks the absolute Plan.Dir %q", got, dir)
+		}
+		if strings.Contains(got, os.TempDir()) {
+			t.Errorf("plan.Cards[0].SourcePath = %q; leaks the t.TempDir() temp path", got)
+		}
+	})
+
+	t.Run("multi-card plan", func(t *testing.T) {
+		t.Parallel()
+
+		const overview = `---
+format: 3
+approved: true
+---
+
+# Plan: multi
+
+Framing paragraph.
+
+## Card Index
+
+1 — first — the first card
+2 — second — the second card
+`
+		dir := writePlanFiles(t, map[string]string{
+			"00-overview.md": overview,
+			"01-first.md":    minimalCardFile(1, "first", "a.go"),
+			"02-second.md":   minimalCardFile(2, "second", "b.go"),
+		})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan(%q) error = %v; want nil", dir, err)
+		}
+		if len(plan.Cards) != 2 {
+			t.Fatalf("len(plan.Cards) = %d; want 2", len(plan.Cards))
+		}
+
+		if want := "_lyx/plan/01-first.md"; plan.Cards[0].SourcePath != want {
+			t.Errorf("plan.Cards[0].SourcePath = %q; want %q", plan.Cards[0].SourcePath, want)
+		}
+		if want := "_lyx/plan/02-second.md"; plan.Cards[1].SourcePath != want {
+			t.Errorf("plan.Cards[1].SourcePath = %q; want %q", plan.Cards[1].SourcePath, want)
+		}
+		for _, c := range plan.Cards {
+			if strings.Contains(c.SourcePath, dir) {
+				t.Errorf("card %d SourcePath = %q; leaks the absolute Plan.Dir %q", c.Number, c.SourcePath, dir)
+			}
+		}
+	})
+}
+
 func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	t.Parallel()
 
