@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
@@ -45,6 +45,7 @@ holistic-reviewing  '2026-08-02T14:39:31Z'
 holistic-fixing  '2026-08-02T14:46:30Z'
 nits-fixed-holistic  '2026-08-02T14:49:37Z'
 holistic-approved  '2026-08-02T14:49:47Z'
+done  '2026-08-02T14:50:18Z'
 ```
 
 ## Batches
