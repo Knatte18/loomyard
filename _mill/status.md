@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: webster-fork-context-hygiene
 branch: webster-fork-context-hygiene
 plan: _mill/plan
@@ -31,6 +31,8 @@ approved-planparser-card-source-identity  '2026-08-02T14:29:45Z'
 approved-webster-prompt-split  '2026-08-02T14:40:26Z'
 holistic-reviewing  '2026-08-02T14:40:50Z'
 holistic-fixing  '2026-08-02T14:43:40Z'
+nits-fixed-holistic  '2026-08-02T14:45:28Z'
+holistic-approved  '2026-08-02T14:45:33Z'
 ```
 
 ## Batches
