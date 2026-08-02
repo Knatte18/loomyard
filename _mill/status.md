@@ -46,7 +46,9 @@ batches:
     start_sha: 55b76b8b727302e95969a1dc5e36a02f7c8d2504
     commit_sha: de04de447516da3ee87552e4763a19cae54195e2
   - name: commit-migration
-    state: pending
+    state: running
+    implementer_session: 35d7fccf-e2df-41ea-a58e-2bc43b0a7aa2
+    start_sha: 08c0a2b80d9022067a8d6f16234dd78989226d0a
   - name: remove-force-add
     state: pending
   - name: clean-healthy-renames
