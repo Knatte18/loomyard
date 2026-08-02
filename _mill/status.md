@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
@@ -31,4 +31,23 @@ plan-fix-r5  '2026-08-02T13:05:00Z'
 plan-review-r6  '2026-08-02T13:24:08Z'
 plan-fix-r6  '2026-08-02T13:24:08Z'
 planned  '2026-08-02T13:24:32Z'
+implementing  '2026-08-02T13:25:04Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: bolt-handle
+    state: pending
+  - name: commit-migration
+    state: pending
+  - name: remove-force-add
+    state: pending
+  - name: clean-healthy-renames
+    state: pending
+  - name: delete-dead-methods
+    state: pending
+  - name: fabric-cli-collapse
+    state: pending
 ```
