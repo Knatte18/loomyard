@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: collapse external API surface onto Commit — stop leaking warp/weft'
 slug: fabric-collapse-external-surface
-approved: false
+approved: true
 started: '20260802-114601'
 parent: main
 root: ""
@@ -107,6 +107,7 @@ batches:
 - `internal/fabricengine/hostclean.go`
 - `internal/fabricengine/index.go`
 - `internal/fabricengine/junctionnames.go`
+- `internal/fabricengine/pull_integration_test.go`
 - `internal/fabricengine/reconcile.go`
 - `internal/fabricengine/revert.go`
 - `internal/fabricengine/revert_test.go`
