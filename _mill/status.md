@@ -70,5 +70,7 @@ batches:
     start_sha: 925bbb332ac21c67434b1e9b221357ca9e693549
     commit_sha: f2ad6f87b93329d3ea1e524b3a64e0f51c752495
   - name: fabric-cli-collapse
-    state: pending
+    state: running
+    implementer_session: 1a442f96-8461-437c-b2d1-0307f128bf48
+    start_sha: b941ac8deec9d5f98891f1fffeb8e0bf3d1a4164
 ```
