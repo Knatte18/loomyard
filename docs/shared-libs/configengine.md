@@ -17,7 +17,7 @@ Loads and resolves a module's configuration from the current working directory. 
 ├── .env                git-IGNORED — local env values (KEY=value)
 ```
 
-`_lyx/` presence is what makes a directory "initialised". If it is absent, `configengine` errors with `not initialized: _lyx/ directory not found in <dir>` (the raw error from `FindBaseDir`; the board rewraps it into `not initialized here; run "lyx init"`). Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a first-class constraint; it caused constant trouble in millpy precisely because it was designed in and then forgotten).
+`_lyx/` presence is what makes a directory "initialised"; if it is absent, `configengine` errors (see `FindBaseDir`'s error messages below). Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a first-class constraint; it caused constant trouble in millpy precisely because it was designed in and then forgotten).
 
 ## Resolution model
 
@@ -32,7 +32,7 @@ The `Load(baseDir, module, template []byte)` function reads the on-disk config f
 3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`. If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx config reconcile`.
 4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
 5. Resolve environment variables via `yamlengine.Resolve(fileBytes, env)` (expands `${env:...}` markers).
-6. Return the resolved bytes. Typed wrappers unmarshal into their own config structs.
+6. Return the resolved bytes (see "What it returns" below).
 
 **Key properties:**
 
@@ -110,8 +110,6 @@ Loads and resolves a module's configuration from disk.
 All error messages include the file path and context to guide the user.
 
 **Returns:** On success, the resolved YAML bytes. On error, nil bytes and an error message.
-
-Typed wrappers like `board.LoadConfig(cwd, "board")` call `Load` with the board template, then unmarshal the result into a typed struct.
 
 ### `Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error)`
 

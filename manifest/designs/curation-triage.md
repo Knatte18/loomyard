@@ -1,6 +1,6 @@
 # board — curation/triage automation (DRAFT — deferred out of `board: move storage to weft:main`)
 
-> **Status: Someday, deferred.** This is a stub, not a settled design — carried forward from `board-weft-storage.md`'s now-deleted "Curation flow" section (its host design, `board: move storage to weft:main`, shipped without this piece). Do not implement from this doc yet; it captures the substance of what was scoped and deferred so the idea isn't lost, not a ready-to-build spec.
+> **Status: Someday, deferred.** A stub, not a settled design — carried forward from `board-weft-storage.md`'s now-deleted "Curation flow" section (its host design, `board: move storage to weft:main`, shipped without this piece). Do not implement from this doc yet; it records the deferred idea so it isn't lost, not a ready-to-build spec.
 
 ## What already shipped (out of scope here)
 
@@ -9,7 +9,7 @@
 - `notes.json` and `tasks.json` share one schema and one global slug namespace — raw/uncurated entries live in `notes.json`, claimable work lives in `tasks.json`.
 - `promote-note` is a plain, mechanical, human-triggered CLI command that moves one entry from `notes.json` into `tasks.json`.
 
-Neither of those is this stub's remaining scope. This item is the **automation layer** on top of that already-shipped primitive — GitHub-issue ingestion and periodic/triggered triage — not the primitive itself.
+This item is the **automation layer** on top of that already-shipped primitive — GitHub-issue ingestion and periodic/triggered triage — not the primitive itself.
 
 ## Curation flow (carried forward from `board-weft-storage.md`)
 
@@ -22,4 +22,4 @@ Neither of those is this stub's remaining scope. This item is the **automation l
 - The GitHub-issue-intake mechanism itself: how an issue on the `weft` repo becomes a `notes.json` entry (webhook? polling? a `lyx board` subcommand an operator or a scheduled job runs?).
 - The periodic/triggered triage workflow: what "extract a logical next task from the manifest" means as a skill an operator invokes, and how it selects which note(s) to act on.
 
-Both remain undesigned; this doc exists to record the deferral, not to specify the mechanism.
+Both remain undesigned — this doc records the deferral, not the mechanism.

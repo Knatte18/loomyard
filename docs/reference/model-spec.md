@@ -1,6 +1,6 @@
 # Model-spec — provider/model/parameter notation
 
-> **Status: Contract — pinned.** The notation every agent-spawning config in the stack uses to say *which* LLM runs a role: builder's roles, perch/burler reviewers and judges, loom's producers. Pinned alongside [plan-format v2](plan-format.md) — and the emerging [v3](plan-format-v3.md) — because the plan is model-agnostic — so the config side needs a precise notation. The registry loader and spec parser land with the first consumer (`builder`); this doc is the spec they implement against.
+> **Status: Contract — pinned.** The notation every agent-spawning config in the stack uses to say *which* LLM runs a role: builder's roles, perch/burler reviewers and judges, loom's producers. Pinned alongside [plan-format v2](plan-format.md) and the emerging [v3](plan-format-v3.md): the plan itself is model-agnostic, so the config side needs a precise notation. The registry loader and spec parser land with the first consumer (`builder`); this doc is the spec they implement against.
 
 ## Grammar
 
@@ -49,7 +49,7 @@ opus:
     effort: high
 ```
 
-**Built-in fallback:** Go ships a small built-in default set (`sonnet` / `opus` / `haiku` / `fable` → claude engine) so everything works with **no file present**; built-ins carry **no parameter defaults** — operator defaults (e.g. `effort`) live only in the seeded `models.yaml`, never baked into Go. `models.yaml` overrides and extends the built-in set when it exists.
+**Built-in fallback:** Go ships a small built-in default set (`sonnet` / `opus` / `haiku` / `fable` → claude engine) so everything works with **no file present**; built-ins carry **no parameter defaults** — operator defaults (e.g. `effort`) live only in the seeded `models.yaml`, never in Go. `models.yaml` overrides and extends the built-in set when it exists.
 
 ## Newest by default; pinning is deliberate
 

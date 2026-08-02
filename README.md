@@ -2,7 +2,7 @@
 
 LoomYard (LY) is a task-orchestration system for [Claude Code](https://claude.ai/code). It manages the lifecycle of coding tasks — from triaging issues to merging finished code — using AI subagents for design, planning, implementation, and review, with each task isolated in its own git worktree.
 
-At its center is **`lyx`** — a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, and (in progress) the orchestrator. Everything else in LY is built around `lyx`. The repo is under active development: several modules ship today, and the orchestration layers are being built out.
+At its center is **`lyx`** — a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, and (in progress) the orchestrator; everything else in LY is built around it. The repo is under active development: several modules ship today, and the orchestration layers are being built out.
 
 > **A re-implementation of Millhouse in Go.** LoomYard is a ground-up rebuild of [Millhouse](https://github.com/Knatte18/millhouse) — same goal (task orchestration for Claude Code with isolated worktrees and AI subagents), rebuilt in Go instead of Python: one compiled binary, deep internal tests, and a cleaner geometry/overlay model.
 
