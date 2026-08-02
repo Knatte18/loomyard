@@ -115,10 +115,11 @@ Migrate the three round-loop CLIs (builder, webster, perch) off `CommitWeft` + s
   - `internal/perchcli/run.go`
 - **Edits:**
   - `CONSTRAINTS.md`
+  - `internal/fabricengine/weftgit.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `CONSTRAINTS.md`'s "Fabric Git Invariant (warp + weft)" section, revise the two now-false bullets. "Anchored exclusions" (the `:(exclude)`-anchoring rule and its live-caller enumeration naming buildercli/webstercli `weftCommit` + perch "still unanchored — carries this bug"): retire the anchoring failure-mode rule and the live-caller list — no caller passes `:(exclude)` pathspecs anymore. "Cross-module exclusions": drop the "live callers pass exclusions" enumeration and the perch caveat; keep the git-exclude-layer mechanism (now the SOLE guardian) and update its stated pattern to the deepened `**/_lyx/*/**/*.lock` form from card 7. Keep the "Known limitation" (`.git/info/exclude` does not untrack already-committed artifacts) text. One line per paragraph, no hard-wrap.
+- **Requirements:** `internal/fabricengine/weftgit.go`'s `crossModuleMachineLocalExcludes` doc comment (touched by card 7) references CONSTRAINTS.md's now-retired "Anchored exclusions" bullet by name — update that cross-reference to point at the (retained, revised) "Cross-module exclusions" bullet instead, since the pathspec-anchoring failure mode it described no longer has its own bullet. In `CONSTRAINTS.md`'s "Fabric Git Invariant (warp + weft)" section, revise the two now-false bullets. "Anchored exclusions" (the `:(exclude)`-anchoring rule and its live-caller enumeration naming buildercli/webstercli `weftCommit` + perch "still unanchored — carries this bug"): retire the anchoring failure-mode rule and the live-caller list — no caller passes `:(exclude)` pathspecs anymore. "Cross-module exclusions": drop the "live callers pass exclusions" enumeration and the perch caveat; keep the git-exclude-layer mechanism (now the SOLE guardian) and update its stated pattern to the deepened `**/_lyx/*/**/*.lock` form from card 7. Keep the "Known limitation" (`.git/info/exclude` does not untrack already-committed artifacts) text. One line per paragraph, no hard-wrap.
 - **Commit:** `docs(constraints): retire pathspec-exclude rules, keep git-exclude guardian`
 
 ### Card 13: Exclusion + nested-RelPath regression coverage
