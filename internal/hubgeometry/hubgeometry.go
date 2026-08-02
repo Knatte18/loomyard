@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -295,6 +296,21 @@ func PerchRunsDir(baseDir string) string {
 // Returns filepath.Join(baseDir, LyxDirName, "plan").
 func PlanDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "plan")
+}
+
+// PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`, the
+// relative counterpart to PlanDir(baseDir): callers that need a worktree-relative
+// plan-file pointer (one that resolves from the session cwd, not an absolute
+// baseDir-joined path — e.g. planparser's Card.SourcePath token) build it from this
+// accessor rather than an absolute PlanDir(baseDir) result. Like PlanDir, it keeps
+// the `_lyx/plan` path construction inside hubgeometry per the Hub Geometry
+// Invariant and PlanDir's own "no other package may construct this path" doc; it
+// uses the stdlib path package (not filepath) so the token is always forward-slash,
+// never OS-dependent.
+//
+// Returns path.Join(LyxDirName, "plan").
+func PlanDirRel() string {
+	return path.Join(LyxDirName, "plan")
 }
 
 // PlanDir returns the path to the Plan phase's output directory for this
