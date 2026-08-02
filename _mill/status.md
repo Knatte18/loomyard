@@ -52,7 +52,9 @@ batches:
     start_sha: 08c0a2b80d9022067a8d6f16234dd78989226d0a
     commit_sha: d2a32c19e5c2e8f8aee816cda1571d03b2c06e82
   - name: remove-force-add
-    state: pending
+    state: running
+    implementer_session: 3112e535-af1e-4c23-83a0-0fed94c391b6
+    start_sha: 56b7695ef6f8c8f4b3f13315ed1b359e0ae8ba17
   - name: clean-healthy-renames
     state: pending
   - name: delete-dead-methods
