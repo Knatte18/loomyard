@@ -1,0 +1,103 @@
+# Batch: webster-prompt-split
+
+```yaml
+task: 'webster: stop re-rendering already-inherited context into fork prompts'
+batch: 'webster-prompt-split'
+number: 2
+cards: 3
+verify: go build ./... && go test ./internal/websterengine/...
+depends-on: [1]
+```
+
+## Batch Scope
+
+This batch splits webster's single `RenderForkPrompt` into a thin in-session fork prompt and a full cold-start recovery prompt, both composed from one shared implementer-job body, with card content delivered by the `planparser.Card.SourcePath` pointer from batch 1 instead of inlined fields. Card 2 creates the three new prompt assets (Creates-only; nothing embeds them yet, so the build and existing tests stay green). Card 3 is the atomic core: it embeds and composes the assets, rewrites `render.go` (thin `RenderForkPrompt`, new `RenderRecoveryPrompt`, card-pointer rendering, dead-code and `noSharedDecisions` removal, integration-prompt Shared-Decisions drop, the `fork-context-hygiene` decision rename), deletes `fork-template.md`, switches `recoverbatch.go` to `RenderRecoveryPrompt`, updates `doc.go`, and rewrites every affected `template_test.go` test in the same card — Go's compile+test gate makes the render/template/test changes atomic. Card 4 applies the independent Master-orientation text fix. There is no external interface a later batch consumes; this is the terminal batch.
+
+## Cards
+
+### Card 2: create the three shared prompt assets
+
+- **Context:**
+  - `internal/websterengine/fork-template.md`
+  - `internal/websterengine/integration-template.md`
+  - `internal/websterengine/master-template.md`
+  - `internal/stencil/stencil.go`
+  - `internal/pattern/pattern.go`
+  - `CONSTRAINTS.md`
+- **Edits:** none
+- **Creates:**
+  - `internal/websterengine/implementer-body.md`
+  - `internal/websterengine/fork-prefix.md`
+  - `internal/websterengine/recovery-prefix.md`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  - Create `internal/websterengine/implementer-body.md` — the shared implementer-job body both prompts compose. It carries EXACTLY these five top-level `{{.X}}` markers, all required (no optional, no branch-internal): `{{.card_pointers}}`, `{{.worktree_root}}`, `{{.prev_digest}}`, `{{.self_fix_cap}}`, `{{.report_path}}`. **It must NOT carry a leading `<!-- -->` banner comment** (only a prefix may; per the `shared-implementer-body` decision the body's banner would otherwise render literally mid-prompt). Content is the caller-invariant job derived from today's `fork-template.md` body (lines 53–82): a `## Your cards` section whose body is `{{.card_pointers}}` followed by the instruction to, for each listed card file in declared order, Read the `_lyx/plan/NN-<slug>.md` file and implement it — **and if that card's `**What:**` is empty, fall back to the card's one-line intent from the Card Index in `00-overview.md`, matched by NN/slug** (the `empty-what-index-fallback` decision); the FRESH-READ rule (re-read every `Context:`/file-op file in this turn before editing); a `## Prior-batch context` section carrying `{{.prev_digest}}`; the per-card build+unit gate run from `{{.worktree_root}}`; the per-card commit to the HOST repo from `{{.worktree_root}}` with subject `N: <name>` **unless the card FILE carries a `**Commit:**` line pinning the exact subject** (reworded from today's "unless the card block above" — the pin now lives in the card file the agent reads, not an inlined block); the per-card `verify:` gate; bounded self-fix up to `{{.self_fix_cap}}` attempts then stop; and the minimal batch-report (`status`/`head_sha`/`deviations`) written last to `{{.report_path}}`. Do NOT mention Shared Decisions, the rename mechanic, or PATTERN in the body — those are prefix-specific. Follow the project markdown rule (one line per paragraph, no hard-wrap).
+  - Create `internal/websterengine/fork-prefix.md` — the in-session fork prefix. It MUST carry a leading `<!-- -->` banner (documenting that it is composed with `implementer-body.md` by `RenderForkPrompt` and that the fork inherits Master's whole context). Content derived from today's `fork-template.md` lines 20–27 (the `# Webster fork implementer …` title + the honest "you inherit Master's whole context, so this prompt is deliberately thin" framing + the "You are the IMPLEMENTER, not the driver — never run `lyx webster`" section). It MUST NOT contain any of the markers `{{.shared_decisions}}`, `{{.rename_mechanic}}`, `{{.pattern_directive}}`, or `{{.cards}}`, and MUST NOT contain a `## Shared Decisions` or `## Rename mechanic` section — all inherited from Master. It carries no `{{.X}}` markers of its own (all remaining markers live in the shared body).
+  - Create `internal/websterengine/recovery-prefix.md` — the cold-start recovery prefix. It MUST carry a leading `<!-- -->` banner (documenting that it is composed with `implementer-body.md` by `RenderRecoveryPrompt` for the separate, cold recovery-strand process that inherits nothing). Content: an honest title/framing stating the strand starts COLD and inherits no session context; a `{{.pattern_directive}}` marker (the one optional marker, filled via `stencil.FillOptional`, rendering empty when PATTERN is inactive — it IS the "read `_pattern/PATTERN.md`" cold-start instruction); explicit instructions to Read `_lyx/plan/00-overview.md` (task framing, `## Shared Decisions`, `## Rename mechanic`, `## verify:`) and `CONSTRAINTS.md` in full, and to orient to the codebase (read what its card needs plus the constraint/decision docs — NOT a gratuitous full-repo tour), BEFORE the shared body runs; and a short "you only implement your card(s) and write your report — never run `lyx webster`" discipline note. Its ONLY marker is `{{.pattern_directive}}`. Follow the project markdown rule.
+- **Commit:** `feat(webster): add shared implementer-body and fork/recovery prefixes`
+
+### Card 3: split render.go into thin fork + cold recovery prompts, delete fork-template.md, update callers and tests
+
+- **Context:**
+  - `internal/websterengine/implementer-body.md`
+  - `internal/websterengine/fork-prefix.md`
+  - `internal/websterengine/recovery-prefix.md`
+  - `internal/websterengine/beginbatch.go`
+  - `internal/stencil/stencil.go`
+  - `internal/pattern/pattern.go`
+  - `internal/planparser/plan.go`
+  - `internal/hubgeometry/hubgeometry.go`
+  - `CONSTRAINTS.md`
+- **Edits:**
+  - `internal/websterengine/render.go`
+  - `internal/websterengine/integration-template.md`
+  - `internal/websterengine/recoverbatch.go`
+  - `internal/websterengine/doc.go`
+  - `internal/websterengine/template_test.go`
+- **Creates:** none
+- **Deletes:**
+  - `internal/websterengine/fork-template.md`
+- **Moves:** none
+- **Requirements:**
+  - In `internal/websterengine/render.go`: replace the `//go:embed fork-template.md` directive and its `forkTemplate` var with three new embeds — `//go:embed fork-prefix.md` (`forkPrefix []byte`), `//go:embed recovery-prefix.md` (`recoveryPrefix []byte`), `//go:embed implementer-body.md` (`implementerBody []byte`). Delete the `internal/websterengine/fork-template.md` file (its `go:embed` is being removed in the same card, so the build stays valid).
+  - Add an unexported `joinTemplateAssets(prefix, body []byte) []byte` that concatenates `prefix`, a blank-line separator (`"\n\n"`), and `body` into one byte slice (use `append`; do not add a `bytes` import if `append` suffices). Add unexported `composeForkTemplate() []byte` returning `joinTemplateAssets(forkPrefix, implementerBody)` and `composeRecoveryTemplate() []byte` returning `joinTemplateAssets(recoveryPrefix, implementerBody)`. Because only the prefix carries a leading `<!-- -->` banner, `stencil`'s `stripLeadingComment` strips exactly the composed template's banner and the body contributes none.
+  - Change `ForkTemplate()` to return `composeForkTemplate()`; add `RecoveryTemplate() []byte` returning `composeRecoveryTemplate()`; add `ImplementerBodyTemplate() []byte` returning `implementerBody` (this is the pre-`Fill` shared-body source the reuse-guarantee test compares). Update each accessor's godoc for the new composed-template / shared-body reality and the new marker sets.
+  - Add `renderCardPointers(cards []planparser.Card) string`: one `` - `<SourcePath>` `` bullet per card, in declared order, joined by `"\n"`, reading `c.SourcePath` VERBATIM (the token planparser built in batch 1). It must NOT call `filepath.Rel`/`filepath.Join`, must NOT rebuild the `NN-<slug>.md` filename from `Card.Number`/`Slug`, and must NOT name a literal `_lyx` (per the `card-pointer-relative-via-hubgeometry` decision and the Hub Geometry / Planparser Sole-Parser invariants).
+  - Thin `RenderForkPrompt` (keep its exact signature `(plan *planparser.Plan, batch batcher.Batch, prevDigest, reportPath string, l *hubgeometry.Layout, selfFixCap int) ([]byte, error)`): build values `{"card_pointers": renderCardPointers(batch.Cards), "report_path": reportPath, "self_fix_cap": fmt.Sprintf("%d", selfFixCap), "worktree_root": l.Cwd, "prev_digest": digestLine}` where `digestLine` keeps today's `noPrecedingBatchDigest` sentinel logic. Fill via `stencil.Fill(composeForkTemplate(), values)` (plain `Fill`, no optional — the composed thin fork carries no optional/branch-internal marker). Drop the `shared_decisions`, `rename_mechanic`, `pattern_directive`, and `cards` values entirely. The `plan` parameter is retained for signature symmetry with `RenderRecoveryPrompt` and both call sites even though it is now unused; document that. `worktree_root` stays sourced from `l.Cwd`, not `l.WorktreeRoot` (keep today's rule and its doc-comment rationale).
+  - Add `RenderRecoveryPrompt(plan *planparser.Plan, batch batcher.Batch, prevDigest, reportPath string, l *hubgeometry.Layout, selfFixCap int) ([]byte, error)` — same signature shape as `RenderForkPrompt`, called by the cold recovery strand. Build the same five body values PLUS `"pattern_directive": pattern.Directive(l, pattern.RoleImplementer)`, and Fill via `stencil.FillOptional(composeRecoveryTemplate(), values, []string{"pattern_directive"})`. Give it a full godoc explaining it renders the self-contained prompt for the separate recovery-strand process (which inherits nothing), points the strand at `_lyx/plan/00-overview.md` / `CONSTRAINTS.md` / `_pattern/PATTERN.md`, and reuses `pattern.Directive` with `RoleImplementer` (the strand DOES edit code, unlike Master).
+  - `RenderIntegrationPrompt`: remove the `"shared_decisions"` entry from its values map (and its `noSharedDecisions` fallback use). In `internal/websterengine/integration-template.md`, delete the `## Shared Decisions` section and the `{{.shared_decisions}}` marker, and update the leading banner from "Four markers … all four non-empty" to "Three markers … all three non-empty" (remaining markers: `{{.verify}}`, `{{.report_path}}`, `{{.worktree_root}}`). `{{.verify}}` and `{{.worktree_root}}` stay — `verify` is the executable command rendered verbatim, not inherited context.
+  - Delete the now-dead functions `renderBatchCards`, `renderCard`, `renderFileOpField`, `renderMovesField`, and `batchHasMove` from `render.go`, and delete the `noSharedDecisions` const (no remaining user after the integration change). Keep `noPrecedingBatchDigest` (still the `prev_digest` sentinel) and `noIntegrationPromptPath`.
+  - Rewrite `render.go`'s header doc comment (lines 1–20) and every function comment that names the `fork-prompt-plan-level-context Shared Decision`: rename it to the **`fork-context-hygiene`** Shared Decision and describe the new model — thin in-session fork prompt, full cold-recovery prompt, one shared implementer body composed by Go byte-concatenation, and card content delivered by the `planparser.Card.SourcePath` relative pointer rather than inlined `What`/file-op fields.
+  - In `internal/websterengine/recoverbatch.go`, change the `RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.Layout, deps.Config.SelfFixCap)` call (near line 216) to `RenderRecoveryPrompt(...)` with the identical argument list.
+  - In `internal/websterengine/doc.go`, update the cold-recovery section (the "cold recovery is the only real model escalation" text near line 134–140) that names `RenderForkPrompt` as the prompt the recovery strand gets: it now gets `RenderRecoveryPrompt`. Fix any other `doc.go` sentence that asserts the recovery strand renders "the SAME fork prompt".
+  - In `internal/websterengine/template_test.go`:
+    - Update `forkTemplateMarkerValues()` to the new composed-thin marker set `{card_pointers, report_path, self_fix_cap, worktree_root, prev_digest}`; remove `cards`, `shared_decisions`, `rename_mechanic`, and `pattern_directive`.
+    - `TestForkTemplate_FillsWithAllMarkers`: fill `ForkTemplate()` (now composed) via plain `stencil.Fill` (drop the `FillOptional`/`[]string{"pattern_directive"}`); make the per-marker deletion sweep iterate the new required list `{card_pointers, report_path, self_fix_cap, worktree_root, prev_digest}`.
+    - Delete `TestForkTemplate_PatternDirectiveOptional` (the composed thin fork carries no `pattern_directive` or `rename_mechanic` optional/branch markers).
+    - Flip `TestRenderForkPrompt_InjectsSharedDecisionsAlways` and `TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch`: assert the composed fork prompt does NOT contain the plan's Shared Decisions body/heading nor the rename-mechanic body, and DOES contain each card's relative `SourcePath` pointer. Assert the rendered pointer is relative — it has no absolute prefix and no `t.TempDir()` leak. Set `SourcePath` explicitly on the inline fixture cards (these are hand-built `batcher.Batch{Cards: [...]}` values, not produced by `ParsePlan`, so they need `SourcePath: "_lyx/plan/NN-<slug>.md"` set by hand).
+    - Remove `TestRenderForkPrompt_RendersWhatProseOverIntent` and `TestRenderForkPrompt_RendersPinnedCommitSubject` (they assert inlined card content that no longer exists). Replace with a test asserting the shared body carries the empty-`What`→Card-Index-intent fallback instruction and that the per-card loop instruction references reading the card file (and honoring its `**Commit:**` pin) rather than an inlined block.
+    - `TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty`: keep, but set `SourcePath` on its fixture cards so `renderCardPointers` yields a non-empty `card_pointers` value.
+    - Add `RenderRecoveryPrompt` tests: assert the recovery prompt instructs reading `00-overview.md`, `CONSTRAINTS.md`, and (PATTERN active) `_pattern/PATTERN.md`; contains the same card pointer(s) and the shared implementer-body text; and renders cleanly with PATTERN inactive (empty directive, no orphan `## Constraints` heading). For the PATTERN-active case, build a `*hubgeometry.Layout` rooted at a `t.TempDir()` that contains a real `_pattern/PATTERN.md` file so `pattern.Directive` returns non-empty (mirror `pattern.isActive`'s `PatternFileHere()` check); for the inactive case use the existing `testLayout()` (anchored at a non-existent path). Add marker-required coverage for the recovery template's composed set analogous to `TestForkTemplate_FillsWithAllMarkers` (its optional marker is `pattern_directive`).
+    - Add a reuse-guarantee test asserting BOTH `ForkTemplate()` and `RecoveryTemplate()` contain `ImplementerBodyTemplate()`'s bytes (comparing the pre-`Fill` shared-body source, NOT byte-equality of the two rendered outputs, which legitimately diverge on per-caller values).
+    - `TestRenderIntegrationPrompt_InjectsVerifyText` and `TestRenderIntegrationPrompt_EmptyVerifyErrors`: keep green; add an assertion that the integration prompt no longer contains a `## Shared Decisions` section.
+    - `TestTemplates_NoV2TokensRemain`: keep the `fork` case (now the composed template); add a `recovery` case over `RecoveryTemplate()`.
+- **Commit:** `refactor(webster): split fork prompt into thin fork + cold recovery, card content by pointer`
+
+### Card 4: Master reads only 00-overview.md at orientation
+
+- **Context:** none
+- **Edits:**
+  - `internal/websterengine/master-template.md`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  - In `internal/websterengine/master-template.md`, change the orientation instruction on line 29 from "read the whole plan — every card file, not just the overview — once" to instruct reading ONLY `00-overview.md` (task framing, Card Index, `## Shared Decisions`, `## Rename mechanic`, `## verify:`) — Master no longer pre-reads every card file; each in-session fork now Reads its own card file via the pointer.
+  - Update the line-85 parenthetical "(you already read the whole plan at orientation — no new file read is needed here)" to match: Master read `00-overview.md` (which carries the `## verify:` section it checks here), not every card file.
+  - Do not change any `{{.X}}` marker in this file — the Master marker set is unchanged, so the master marker-required tests stay green.
+- **Commit:** `docs(webster): Master reads only 00-overview.md at orientation`
+
+## Batch Tests
+
+`verify: go build ./... && go test ./internal/websterengine/...` — every edit lands in `internal/websterengine` (plus the assets it embeds), so the websterengine unit suite is the exact scope; it exercises the thinned `RenderForkPrompt`, the new `RenderRecoveryPrompt`, the composition/reuse guarantee, the integration-prompt change, and the Master-orientation text. `go build ./...` confirms the `recoverbatch.go` call-site switch and the deleted-symbol removals compile across the whole module (the `runlevel.go` `RenderIntegrationPrompt` caller and `beginbatch.go` `RenderForkPrompt` caller keep unchanged signatures). The module-wide overview `verify:` additionally re-runs `./internal/planparser/...` at the batch boundary.
