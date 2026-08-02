@@ -31,7 +31,7 @@ func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed b
 // Push pushes any unpushed commits in the Bolt's repo, honoring
 // opts.SkipGit/SkipPush.
 func (b *Bolt) Push(opts SyncOptions) error {
-	return PushWeftAt(b.path, opts)
+	return pushWeftAt(b.path, opts)
 }
 
 // Sync drives step to completion under the Bolt's own absorbing push lock,

@@ -1,5 +1,5 @@
 // weftgit.go — the weft-git content-sync verbs on Fabric: StatusWeft,
-// CommitWeft, PushWeft, PullWeft, plus the package-level PushWeftAt and
+// CommitWeft, PushWeft, PullWeft, plus the package-level pushWeftAt and
 // commitWeftAt for the detached-push child and board's warp-untethered
 // weft:main commit (via Bolt). CommitWeft's commit carries a Warp-SHA trailer and
 // records the correspondence immediately — except on an unborn warp HEAD
@@ -541,10 +541,10 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 	return f.Weft.Pull()
 }
 
-// PushWeftAt pushes unpushed commits at weftPath directly, with no Fabric
+// pushWeftAt pushes unpushed commits at weftPath directly, with no Fabric
 // instance and no warp path involved — the detached-push child's bypass-push
 // entry point (spawnPush). Gating matches PushWeft exactly.
-func PushWeftAt(weftPath string, opts SyncOptions) error {
+func pushWeftAt(weftPath string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
@@ -556,7 +556,7 @@ func PushWeftAt(weftPath string, opts SyncOptions) error {
 // trailer a commit against. Unlike Fabric.CommitWeft, it wraps
 // gitrepo.StageAllAndCommit directly: no pathspec filtering, no Warp-SHA
 // trailer, and no RecordCorrespondence call — there is no warp SHA to name
-// and no correspondence index entry to keep. It is PushWeftAt's natural
+// and no correspondence index entry to keep. It is pushWeftAt's natural
 // commit-side counterpart: package-level, no Fabric receiver, no warp path.
 // Returns ("", false, nil) immediately when opts.SkipGit is true, with no
 // git spawned. commitWeftAt does not acquire ensureWeftLockDir's write lock

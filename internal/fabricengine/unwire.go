@@ -123,7 +123,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 		}
 		// Push runs unconditionally, never gated on whether CommitWeft made
 		// a new commit this invocation.
-		if err := PushWeftAt(weftWorktree, opts); err != nil {
+		if err := pushWeftAt(weftWorktree, opts); err != nil {
 			return UnwireVerbResult{}, err
 		}
 	}
