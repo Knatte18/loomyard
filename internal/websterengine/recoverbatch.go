@@ -2,9 +2,11 @@
 // exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach
 // (the only place webster spawns a genuinely separate process — escalating
 // a batch a fork reported stuck, or never reported at all, to a cold
-// implementer strand at the recovery role, rendering the SAME fork prompt a
-// fork would have gotten via RenderForkPrompt, since the recovery strand
-// implements the same batch), RecoverAwait (the bounded wait, over
+// implementer strand at the recovery role, rendering the SEPARATE, full
+// cold-start recovery prompt via RenderRecoveryPrompt — deliberately
+// distinct from RenderForkPrompt's thin in-session fork prompt, since the
+// recovery strand inherits no session context, per the
+// fork-context-hygiene Shared Decision), RecoverAwait (the bounded wait, over
 // webster's own classification machinery — Classify/PollUntilTerminal/
 // TurnEnded/StrandLive), and PersistRecoveryTerminal (the terminal digest
 // merge into a freshly reloaded state). First call spawns and records;
@@ -52,12 +54,14 @@ type Clock interface {
 // RecoverDeps carries every seam RecoverBatch needs, so a test can fake each
 // one independently: Starter spawns the cold recovery strand (see strand.go's
 // Starter — production code passes a real *shuttleengine.Runner); Plan is
-// the already-parsed plan RenderForkPrompt reads its plan-level context
-// from; Batches is the batchifier-derived execution batches (see
-// internal/batcher.Select) `run` computed once at entry; State is the
-// already-loaded run state RecoverBatch reads and mutates; Roles is the
-// pre-flight-resolved role->model-spec map (see ResolveRoles); Config is the
-// loaded webster.yaml; Engine supplies TurnEnded's event-grammar parsing;
+// retained for RecoverDeps/BeginDeps shape symmetry with the CLI wiring that
+// populates both structs in parallel — it is currently unread within this
+// file, since RenderRecoveryPrompt's plan-less signature drops the only call
+// site that used to read it; Batches is the batchifier-derived execution
+// batches (see internal/batcher.Select) `run` computed once at entry; State
+// is the already-loaded run state RecoverBatch reads and mutates; Roles is
+// the pre-flight-resolved role->model-spec map (see ResolveRoles); Config is
+// the loaded webster.yaml; Engine supplies TurnEnded's event-grammar parsing;
 // Reed is the live reed query surface StrandLive/RemoveStrand consult;
 // ShuttleCfg and Layout are what shuttleengine.FindRun needs to resolve the
 // just-started run's cross-process identity; WorktreeRoot, WebsterDir, and
@@ -169,9 +173,11 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 // output path), stop prior's recorded strand when it is still live (a
 // timed-out implementer may still be WORKING, not hung, and left alive it
 // races the fresh session — the same reclaim discipline builder's
-// dead-respawn ladder applies), render the SAME fork prompt a fork would
-// have gotten via RenderForkPrompt (the recovery strand implements the same
-// batch), build and start the shuttleengine.Spec at the recovery role, and
+// dead-respawn ladder applies), render the SEPARATE, full cold-start
+// recovery prompt via RenderRecoveryPrompt (deliberately distinct from the
+// thin in-session fork prompt RenderForkPrompt renders, since the recovery
+// strand inherits no session context — see the fork-context-hygiene Shared
+// Decision), build and start the shuttleengine.Spec at the recovery role, and
 // resolve the just-started run's cross-process identity via
 // shuttleengine.FindRun. prior is the batch's existing BatchState, if any
 // (nil for a batch that has never been touched by begin-batch or a prior
@@ -213,7 +219,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderForkPrompt(deps.Plan, batch, prevDigest, reportPath, deps.Layout, deps.Config.SelfFixCap)
+	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Layout, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}

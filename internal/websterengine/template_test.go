@@ -1,23 +1,31 @@
-// template_test.go pins webster's two embedded prompt templates
-// (master-template.md, fork-template.md) against the Go contracts they
-// key off of — the template-parser-co-versioning decision applied here:
-// the master template's digest-field bullet list is pinned against
-// webster's own Digest field set and order, the outcome-file bullet list
-// against the outcome schema, and the fork template's report-schema
-// section against the minimal fork-return contract's field set (status,
-// head_sha, deviations) — all as literal-statement and exact-field-list
-// assertions in the same style as builderengine/template_test.go, plus
-// stencil.Fill round-trips proving every required marker and
-// RenderForkPrompt round-trips proving the plan-level context injection
-// (## Shared Decisions always, ## Rename mechanic only for a Moves-bearing
-// batch). Every test here is untagged and spawn-free: no subprocess exec,
-// no git, no fixture trees — only embedded bytes, stencil.Fill, and
-// RenderForkPrompt/RenderProgress, per the batch's own
+// template_test.go pins webster's embedded prompt templates
+// (master-template.md, the composed fork/recovery templates, and
+// integration-template.md) against the Go contracts they key off of — the
+// template-parser-co-versioning decision applied here: the master
+// template's digest-field bullet list is pinned against webster's own
+// Digest field set and order, the outcome-file bullet list against the
+// outcome schema, and the fork/recovery templates' report-schema section
+// against the minimal fork-return contract's field set (status, head_sha,
+// deviations) — all as literal-statement and exact-field-list assertions in
+// the same style as builderengine/template_test.go, plus stencil.Fill/
+// FillOptional round-trips proving every required marker and
+// RenderForkPrompt/RenderRecoveryPrompt round-trips proving the
+// fork-context-hygiene Shared Decision: a thin in-session fork prompt that
+// injects nothing already inherited from Master, a full cold-start
+// recovery prompt, and card content delivered by a SourcePath pointer
+// rather than inlined fields. Every test here is untagged and spawn-free:
+// no subprocess exec, no git, no fixture trees (beyond a plain t.TempDir()
+// PATTERN.md fixture) — only embedded bytes, stencil.Fill/FillOptional, and
+// RenderForkPrompt/RenderRecoveryPrompt/RenderProgress, per the batch's own
 // test-tiers-and-hermetic-git decision.
 
 package websterengine_test
 
 import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -30,13 +38,31 @@ import (
 )
 
 // testLayout returns a *hubgeometry.Layout anchored at a fixed, non-existent
-// "/worktree" path — every RenderForkPrompt test in this file that does not
-// itself exercise pattern_directive uses this fixture, since
-// pattern.Directive's os.Stat on a path that never exists on disk always
-// resolves PATTERN inactive, matching every one of these tests' pre-existing
-// expectation of an empty pattern_directive.
+// "/worktree" path — every RenderForkPrompt/RenderRecoveryPrompt test in
+// this file that does not itself exercise pattern_directive's active branch
+// uses this fixture, since pattern.Directive's os.Stat on a path that never
+// exists on disk always resolves PATTERN inactive, matching every one of
+// these tests' pre-existing expectation of an empty pattern_directive.
 func testLayout() *hubgeometry.Layout {
 	return &hubgeometry.Layout{Cwd: "/worktree", WorktreeRoot: "/worktree", RelPath: "."}
+}
+
+// patternActiveLayout builds a *hubgeometry.Layout rooted at a real
+// t.TempDir() that contains a real _pattern/PATTERN.md file, so
+// pattern.Directive returns non-empty — mirroring pattern.isActive's own
+// PatternFileHere() check (see internal/pattern/pattern_test.go's
+// writePatternFile/layoutAt fixtures).
+func patternActiveLayout(t *testing.T) *hubgeometry.Layout {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "_pattern")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
+	}
+	return &hubgeometry.Layout{Cwd: root, WorktreeRoot: root, RelPath: "."}
 }
 
 // requireContains fails the test, naming the missing needle, if text does
@@ -52,7 +78,9 @@ func requireContains(t *testing.T, text, needle string) {
 
 // requireNotContains fails the test, naming the forbidden needle, if text
 // contains it — the negative half of requireContains, used to pin the
-// absence of every dropped v2 concept (oversized, chain, ## Scope).
+// absence of every dropped v2 concept (oversized, chain, ## Scope) and every
+// concept the fork-context-hygiene Shared Decision moved out of the thin
+// fork prompt (## Shared Decisions, ## Rename mechanic).
 func requireNotContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if strings.Contains(text, needle) {
@@ -94,34 +122,6 @@ func extractBacktickBullets(text, heading string) []string {
 	return tokens
 }
 
-// extractSection returns the trimmed text strictly between heading (matched
-// by trimmed equality) and the next "## " heading or EOF — used to isolate
-// one rendered section's own body from the rest of the prompt for an
-// exact-content assertion.
-func extractSection(text, heading string) string {
-	lines := strings.Split(text, "\n")
-
-	start := -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == heading {
-			start = i + 1
-			break
-		}
-	}
-	if start == -1 {
-		return ""
-	}
-
-	end := len(lines)
-	for i := start; i < len(lines); i++ {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
-			end = i
-			break
-		}
-	}
-	return strings.TrimSpace(strings.Join(lines[start:end], "\n"))
-}
-
 // digestSectionHeading and outcomeKeysHeadingSub name the two headings whose
 // bullet lists the digest-fields and outcome-schema tests below scope their
 // extraction to — never the whole template body, since prose elsewhere
@@ -151,26 +151,44 @@ func masterTemplateMarkerValues() map[string]string {
 	}
 }
 
-// forkTemplateMarkerValues returns a values map with every one of
-// ForkTemplate's six required top-level markers set to a non-empty
-// placeholder, mirroring masterTemplateMarkerValues, plus rename_mechanic
-// set to the empty string: the one branch-internal marker, reached only
-// inside the template's own {{if .rename_mechanic}} block — present (so the
-// condition itself evaluates cleanly under stencil's missingkey=error) but
-// empty (so the branch is not taken), exactly RenderForkPrompt's own
-// non-Moves-batch behavior. pattern_directive is the one top-level OPTIONAL
-// marker (filled via stencil.FillOptional, distinct from rename_mechanic's
-// branch-internal mechanism) and is set to a non-empty placeholder here too.
+// forkTemplateMarkerValues returns a values map with every one of the
+// composed thin fork template's five required top-level markers set to a
+// non-empty placeholder — the fork-context-hygiene Shared Decision's marker
+// set: card_pointers replaces the old inlined cards field, and
+// shared_decisions/rename_mechanic/pattern_directive are gone entirely
+// (nothing already inherited from Master is re-injected).
 func forkTemplateMarkerValues() map[string]string {
 	return map[string]string{
-		"cards":             "### Card 2 — list-tests\n\n**What:** add tests\n**Context:** none\n**Edits:**\n- `list_test.go`\n**Creates:** none\n**Deletes:** none\n**Moves:** none",
-		"report_path":       "/webster/reports/02-list-tests.yaml",
-		"self_fix_cap":      "2",
-		"worktree_root":     "/worktree",
-		"prev_digest":       "01-json-flag: done head_sha=abc123",
-		"shared_decisions":  "none",
-		"rename_mechanic":   "",
-		"pattern_directive": "## Constraints — do this before you write any code\n\n- Read _pattern/PATTERN.md.",
+		"card_pointers": "- `_lyx/plan/02-list-tests.md`",
+		"report_path":   "/webster/reports/02-list-tests.yaml",
+		"self_fix_cap":  "2",
+		"worktree_root": "/worktree",
+		"prev_digest":   "01-json-flag: done head_sha=abc123",
+	}
+}
+
+// recoveryTemplateMarkerValues returns a values map with every one of the
+// composed recovery template's five required top-level markers set to a
+// non-empty placeholder (mirroring forkTemplateMarkerValues), plus
+// pattern_directive — the recovery template's own one optional marker.
+func recoveryTemplateMarkerValues() map[string]string {
+	values := forkTemplateMarkerValues()
+	values["pattern_directive"] = "## Constraints — do this before you write any code\n\n- Read _pattern/PATTERN.md."
+	return values
+}
+
+// cardWithSourcePath returns a minimal planparser.Card with SourcePath set
+// by hand: the inline fixture batches in this file are hand-built
+// batcher.Batch{Cards: [...]} values, not produced by ParsePlan, so
+// SourcePath — normally computed by planparser from hubgeometry.PlanDirRel()
+// plus the card's own NN-<slug>.md filename — must be set explicitly here.
+func cardWithSourcePath(number int, slug, intent string) planparser.Card {
+	return planparser.Card{
+		Number:     number,
+		Slug:       slug,
+		Title:      slug,
+		Intent:     intent,
+		SourcePath: fmt.Sprintf("%s/%02d-%s.md", hubgeometry.PlanDirRel(), number, slug),
 	}
 }
 
@@ -262,19 +280,6 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 // webster run`, that `lyx` is a CLI driven via the Bash tool (never a
 // listed tool), and that the session gets its bearings via `lyx webster
 // status` rather than ending its turn to ask.
-//
-// The grounding is deliberately EVIDENCE-FIRST and NEUTRAL, not defensive:
-// round opus-r2 (crucible) live-observed a Master quote the prior fix's own
-// anti-refusal phrasing — an imperative "never by asking" plus "no human
-// reads this session, so a clarifying question is never answered; it just
-// ends the run as failed" — back as the very injection tell that made it
-// refuse ("a manipulation tactic, not something a legitimate harness needs
-// to say"). A block that preempts the "is this real?" doubt and forbids
-// asking pattern-matches the exact move an injection would make. So the
-// grounding leads with orientation (the two read-only checks and what they
-// prove) and states the non-interactive execution mode as a plain fact
-// (there is no chat partner to field a question), never as a prohibition on
-// asking or a warning about fabricated/injected content.
 func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -283,26 +288,15 @@ func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.
 	requireContains(t, text, "it is an ordinary CLI binary")
 	requireContains(t, text, "RUNNING it with your")
 	requireContains(t, text, "run `lyx webster status`")
-	// Evidence-first is the load-bearing part: a skeptical model is handed a
-	// concrete first move (read-only orientation) and told exactly what the
-	// two checks prove, so it reaches "proceed" from verifiable facts rather
-	// than being asked to trust the document.
 	requireContains(t, text, "confirm the harness, the run state, and the plan are all present")
-	// The non-interactive mode is stated as a neutral operational fact, never
-	// as an imperative "never ask": a message that forbids asking is itself
-	// what round opus-r2 saw quoted back as an injection tell.
 	requireContains(t, text, "there is no chat partner on the other end")
 }
 
 // TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the
 // embedded template's bytes carry every rung of the begin-batch -> fork ->
 // await-batch -> record-batch sequence, verbatim prompt forwarding, the
-// backgrounded-fork wait discipline (forks return immediately on current
-// Claude Code, so Master must block on await-batch instead of ever ending
-// its turn mid-batch — round fable-r1's F1), and the flat-model recovery
-// ladder (no_report re-fork-once with the same prompt file, stuck ->
-// recover-batch, running -> re-call until terminal) in prose. There is no
-// deferred-verify chain rung any more (see TestTemplates_NoV2TokensRemain).
+// backgrounded-fork wait discipline, and the flat-model recovery ladder in
+// prose.
 func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -310,16 +304,8 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, `subagent_type: "fork"`)
 	requireContains(t, text, "with no name")
 	requireContains(t, text, "forwarded verbatim")
-	// The master prompt is inherited by every fork, so it must disambiguate
-	// role up front and send an inheriting fork away — otherwise the fork
-	// runs Master's await-batch loop and deadlocks (round fable-r1 live).
 	requireContains(t, text, "you are an **IMPLEMENTER")
 	requireContains(t, text, "STOP reading this Master prompt")
-	// The banner must also preempt the observed live failure mode: a fork
-	// reasoning "this fork instruction contradicts my inherited history, so I
-	// must be the Master" and dismissing the spawn instruction (round
-	// fable-r3 live — both forks of a run did exactly this and forged
-	// Master's contract files).
 	requireContains(t, text, "AUTHORITATIVE")
 	requireContains(t, text, "never evidence that you are the Master")
 	requireContains(t, text, "this instruction is authoritative")
@@ -337,38 +323,18 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "SAME prompt file and no new `begin-batch`")
 	requireContains(t, text, `"paused": true`)
 
-	// A terminal dead recovery result must have an explicit ladder rung —
-	// otherwise Master improvises (round fable-r1's F10). Both stuck and dead
-	// recovery terminals end the run stuck.
 	requireContains(t, text, "OR `status: dead`")
 
-	// A bracket-verb weft-sync error must have its own explicit rung — without
-	// it Master improvises and retries the verb, double-committing (round
-	// opus-r2 live). It ends the run stuck; the run is resumable.
 	requireContains(t, text, "weft sync")
 	requireContains(t, text, "do not retry the verb")
 
-	// A resumed run over a crash that landed between the fork's report and
-	// record-batch finds the report already on disk; without an explicit rung
-	// Master exhausts all three verbs and declares the finished batch stuck
-	// (round fable-r3 live). The rung routes it to record-batch (fork batch)
-	// or recover-batch (recovery batch).
 	requireContains(t, text, "already has a report")
 	requireContains(t, text, "consume that report")
 
-	// The progress trail lists EVERY terminal status (RenderProgress renders
-	// done, stuck, and dead alike), so the read rule must branch by status —
-	// a blanket "skip every reported batch" would skip a half-built stuck
-	// batch and build the rest of the plan on top of it (round fable-r3).
 	requireContains(t, text, "`done` → skip")
 	requireContains(t, text, "`stuck` → its fork reported stuck")
 	requireContains(t, text, "`dead` → its recovery already failed")
 
-	// The integration report has no await verb — the template must spell out
-	// the concrete bounded foreground poll, or a literal-minded Master has no
-	// defined wait mechanism for the integration fork (crucible round
-	// fable-r1's F15: "the same way you wait for a batch's own report"
-	// pointed at await-batch, which cannot target integration.yaml).
 	requireContains(t, text, "there is no")
 	requireContains(t, text, "await verb for the integration report")
 	requireContains(t, text, "never end your turn")
@@ -444,12 +410,12 @@ func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 	})
 }
 
-// TestForkTemplate_PinsReportSchemaKeys asserts the embedded fork template's
-// bytes carry the minimal fork-return contract's field names verbatim
-// (status, head_sha, deviations — never the v2 report's tests/stuck_reason/
-// out_of_scope grammar) plus the fresh-read rule statement and the
-// host-commit-per-card statement, so a silent edit to any of these fails
-// here rather than only a human review.
+// TestForkTemplate_PinsReportSchemaKeys asserts the embedded, composed fork
+// template's bytes carry the minimal fork-return contract's field names
+// verbatim (status, head_sha, deviations — never the v2 report's
+// tests/stuck_reason/out_of_scope grammar) plus the fresh-read rule
+// statement and the host-commit-per-card statement, so a silent edit to any
+// of these fails here rather than only a human review.
 func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	text := string(websterengine.ForkTemplate())
 
@@ -462,9 +428,7 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	requireContains(t, text, "One commit per card is the norm")
 
 	// The fork inherits Master's loop instructions; it must be told forcefully
-	// NOT to drive the webster loop itself (a fork that polls await-batch for
-	// its own report deadlocks — nobody writes it; found live in round
-	// fable-r1's first clean await-batch drive).
+	// NOT to drive the webster loop itself.
 	requireContains(t, text, "NEVER run any `lyx webster` command")
 	requireContains(t, text, "YOU are the one who WRITES that report")
 
@@ -474,29 +438,67 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	requireNotContains(t, text, "tests: green")
 }
 
-// TestForkTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds
-// when every one of ForkTemplate's six required markers plus the optional
-// pattern_directive marker is supplied, and fails — naming the marker —
-// when any single REQUIRED one is absent. rename_mechanic and
-// pattern_directive are both excluded from this deletion sweep, via two
-// different mechanisms: rename_mechanic is a branch-internal marker, never
-// required at the top level (see
-// TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch);
-// pattern_directive is the one top-level OPTIONAL marker, exempted via
-// stencil.FillOptional's optional list, so deleting it must not error
-// either.
+// TestForkTemplate_CardLoopReadsCardFileWithWhatFallback asserts the shared
+// implementer-body text — reused by both the fork and recovery templates —
+// carries the per-card loop's read-the-card-file instruction, the
+// empty-What Card-Index-intent fallback (the empty-What-falls-back-to-the-
+// Card-Index-intent Shared Decision), and the Commit-pin-lives-in-the-card-
+// file wording, rather than any inlined-block phrasing.
+func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
+	text := string(websterengine.ForkTemplate())
+
+	requireContains(t, text, "Read the card file")
+	requireContains(t, text, "fall back to that card's one-line intent from the Card Index")
+	requireContains(t, text, "unless the card FILE carries a `**Commit:**` line")
+}
+
+// TestForkTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
+// every one of the composed fork template's five required markers is
+// supplied, and fails — naming the marker — when any single one is absent.
+// The composed thin fork carries no optional or branch-internal marker at
+// all (shared_decisions, rename_mechanic, and pattern_directive are gone,
+// per the fork-context-hygiene Shared Decision), so this uses plain
+// stencil.Fill rather than stencil.FillOptional.
 func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.FillOptional(websterengine.ForkTemplate(), forkTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
+		if _, err := stencil.Fill(websterengine.ForkTemplate(), forkTemplateMarkerValues()); err != nil {
+			t.Fatalf("stencil.Fill() = %v; want nil", err)
+		}
+	})
+
+	for _, marker := range []string{"card_pointers", "report_path", "self_fix_cap", "worktree_root", "prev_digest"} {
+		t.Run("missing "+marker, func(t *testing.T) {
+			values := forkTemplateMarkerValues()
+			delete(values, marker)
+			_, err := stencil.Fill(websterengine.ForkTemplate(), values)
+			if err == nil {
+				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
+			}
+			if !strings.Contains(err.Error(), marker) {
+				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
+			}
+		})
+	}
+}
+
+// TestRecoveryTemplate_FillsWithAllMarkers asserts stencil.FillOptional
+// succeeds when every one of the composed recovery template's five required
+// markers plus the optional pattern_directive marker is supplied, and fails
+// — naming the marker — when any single REQUIRED one is absent.
+// pattern_directive is excluded from the deletion sweep: it is the
+// recovery template's one optional marker, so deleting it must not error.
+func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
+	t.Run("all markers supplied", func(t *testing.T) {
+		if _, err := stencil.FillOptional(websterengine.RecoveryTemplate(), recoveryTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
 	})
 
-	for _, marker := range []string{"cards", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "shared_decisions"} {
+	for _, marker := range []string{"card_pointers", "report_path", "self_fix_cap", "worktree_root", "prev_digest"} {
 		t.Run("missing "+marker, func(t *testing.T) {
-			values := forkTemplateMarkerValues()
+			values := recoveryTemplateMarkerValues()
 			delete(values, marker)
-			_, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
+			_, err := stencil.FillOptional(websterengine.RecoveryTemplate(), values, []string{"pattern_directive"})
 			if err == nil {
 				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -507,72 +509,24 @@ func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestForkTemplate_PatternDirectiveOptional asserts pattern_directive
-// behaves as an optional marker: an empty value renders cleanly with no
-// leftover `{{`, no orphan `## Constraints` heading, and no stray
-// blank-line block where the directive would have sat, and a non-empty
-// value places the directive block ahead of the first work instruction
-// ("## You are the IMPLEMENTER"). A third case pins this file's own extra
-// requirement: an empty pattern_directive together with an empty
-// rename_mechanic renders with neither an orphan `## Constraints` heading
-// nor an orphan `## Rename mechanic` heading.
-func TestForkTemplate_PatternDirectiveOptional(t *testing.T) {
-	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
-		values := forkTemplateMarkerValues()
-		values["pattern_directive"] = ""
-		got, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		if strings.Contains(text, "{{") {
-			t.Errorf("rendered output contains leftover {{: %q", text)
-		}
-		if strings.Contains(text, "## Constraints") {
-			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
-		}
-		// Scope the stray-blank-line check to the region immediately
-		// preceding the first work heading — the pattern_directive
-		// insertion point — rather than the whole document: this file's
-		// own pre-existing {{if .rename_mechanic}} block (unrelated to
-		// pattern_directive) collapses to a wider gap of its own when
-		// rename_mechanic is empty, which is not this test's concern.
-		beforeHeading := text[:strings.Index(text, "## You are the IMPLEMENTER")]
-		if strings.HasSuffix(beforeHeading, "\n\n\n\n") {
-			t.Errorf("rendered output contains a stray blank-line block ahead of the first work heading: %q", beforeHeading)
-		}
-	})
-
-	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
-		values := forkTemplateMarkerValues()
-		got, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		directiveIdx := strings.Index(text, values["pattern_directive"])
-		workIdx := strings.Index(text, "## You are the IMPLEMENTER")
-		if directiveIdx == -1 || workIdx == -1 || directiveIdx >= workIdx {
-			t.Errorf("pattern_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
-		}
-	})
-
-	t.Run("empty pattern_directive and empty rename_mechanic together leave neither heading orphaned", func(t *testing.T) {
-		values := forkTemplateMarkerValues()
-		values["pattern_directive"] = ""
-		values["rename_mechanic"] = ""
-		got, err := stencil.FillOptional(websterengine.ForkTemplate(), values, []string{"pattern_directive"})
-		if err != nil {
-			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
-		}
-		text := string(got)
-		if strings.Contains(text, "## Constraints") {
-			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
-		}
-		if strings.Contains(text, "## Rename mechanic") {
-			t.Errorf("rendered output contains an orphan ## Rename mechanic heading: %q", text)
-		}
-	})
+// TestTemplates_ForkAndRecoveryShareImplementerBody asserts the
+// reuse guarantee behind the fork-context-hygiene Shared Decision: both
+// ForkTemplate() and RecoveryTemplate() carry ImplementerBodyTemplate()'s
+// exact pre-Fill byte sequence — the shared body's raw template text, not a
+// byte-equality of the two renderers' own rendered output, which
+// legitimately diverges on per-caller values (card_pointers, prev_digest,
+// and so on).
+func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
+	body := websterengine.ImplementerBodyTemplate()
+	if len(body) == 0 {
+		t.Fatalf("ImplementerBodyTemplate() = empty; want non-empty shared body bytes")
+	}
+	if !bytes.Contains(websterengine.ForkTemplate(), body) {
+		t.Errorf("ForkTemplate() does not contain ImplementerBodyTemplate()'s bytes")
+	}
+	if !bytes.Contains(websterengine.RecoveryTemplate(), body) {
+		t.Errorf("RecoveryTemplate() does not contain ImplementerBodyTemplate()'s bytes")
+	}
 }
 
 // TestTemplates_NoV2TokensRemain asserts neither embedded template carries
@@ -585,21 +539,13 @@ func TestTemplates_NoV2TokensRemain(t *testing.T) {
 	}{
 		{"master", string(websterengine.MasterTemplate())},
 		{"fork", string(websterengine.ForkTemplate())},
+		{"recovery", string(websterengine.RecoveryTemplate())},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requireNotContains(t, strings.ToLower(tc.text), "oversized")
 			requireNotContains(t, strings.ToLower(tc.text), "chain")
 			requireNotContains(t, tc.text, "## Scope")
 		})
-	}
-}
-
-// testPlan returns a minimal *planparser.Plan carrying sharedDecisions and
-// renameMechanic as its plan-level sections, for RenderForkPrompt tests.
-func testPlan(sharedDecisions, renameMechanic string) *planparser.Plan {
-	return &planparser.Plan{
-		SharedDecisions: sharedDecisions,
-		RenameMechanic:  renameMechanic,
 	}
 }
 
@@ -611,13 +557,12 @@ func testPlan(sharedDecisions, renameMechanic string) *planparser.Plan {
 // digest context is always Go-rendered from the caller's own persisted
 // value, never re-derived here.
 func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
-	plan := testPlan("", "")
 	batch := batcher.Batch{Cards: []planparser.Card{
-		{Number: 1, Slug: "seam-extensions", Title: "seam-extensions", Intent: "add the seam"},
+		cardWithSourcePath(1, "seam-extensions", "add the seam"),
 	}}
 
 	t.Run("empty prevDigest renders the first-batch sentinel", func(t *testing.T) {
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-seam-extensions.yaml", testLayout(), 2)
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-seam-extensions.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -625,13 +570,8 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	})
 
 	t.Run("non-empty prevDigest passes through verbatim", func(t *testing.T) {
-		// The template's own prose explains the sentinel's literal text
-		// (see fork-template.md's "Prior-batch context" section), so its
-		// presence in the rendered output is expected regardless of
-		// prevDigest; what this case actually proves is that the supplied
-		// digest line itself reaches the rendered prompt verbatim.
 		digest := "01-seam-extensions: done head_sha=abc123"
-		got, err := websterengine.RenderForkPrompt(plan, batch, digest, "/reports/02-webster-foundation.yaml", testLayout(), 2)
+		got, err := websterengine.RenderForkPrompt(batch, digest, "/reports/02-webster-foundation.yaml", testLayout(), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -639,153 +579,102 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	})
 }
 
-// TestRenderForkPrompt_RendersWhatProseOverIntent asserts the rendered card
-// block's "**What:**" carries the card file's own What prose — the concrete
-// implementer instruction — and falls back to the index Intent only when the
-// card carries no prose. A cold recovery strand inherits no session context,
-// so the rendered prompt is its whole instruction; rendering the one-line
-// Intent under the "**What:**" label silently dropped the real specification
-// (found in crucible round fable-r3).
-func TestRenderForkPrompt_RendersWhatProseOverIntent(t *testing.T) {
-	plan := testPlan("", "")
-
-	t.Run("What prose wins over Intent", func(t *testing.T) {
-		batch := batcher.Batch{Cards: []planparser.Card{{
-			Number: 1, Slug: "alpha", Title: "alpha",
-			Intent: "create r3a.md marker",
-			What:   "Create `r3a.md` containing the single line `OK-A` and commit it.",
-		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), "**What:** Create `r3a.md` containing the single line `OK-A` and commit it.")
-		if strings.Contains(string(got), "**What:** create r3a.md marker") {
-			t.Errorf("rendered prompt carries the index Intent under **What:** despite the card having prose")
-		}
-	})
-
-	t.Run("empty What falls back to Intent", func(t *testing.T) {
-		batch := batcher.Batch{Cards: []planparser.Card{{
-			Number: 1, Slug: "alpha", Title: "alpha", Intent: "create r3a.md marker",
-		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), "**What:** create r3a.md marker")
-	})
+// assertCardPointerIsRelative fails the test if got does not contain the
+// card's own SourcePath, or if that pointer is not worktree-relative (an
+// absolute prefix, or a leaked t.TempDir() path, would mean the renderer
+// re-composed the pointer against some absolute base instead of rendering
+// planparser's own token verbatim).
+func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
+	t.Helper()
+	requireContains(t, got, sourcePath)
+	if filepath.IsAbs(sourcePath) {
+		t.Errorf("card SourcePath %q is absolute; want a worktree-relative token", sourcePath)
+	}
+	if strings.HasPrefix(sourcePath, "/") {
+		t.Errorf("card SourcePath %q leaks an absolute prefix", sourcePath)
+	}
 }
 
-// TestRenderForkPrompt_RendersPinnedCommitSubject asserts a card's pinned
-// Commit: subject reaches the rendered card block — the implementer only
-// ever sees this block, so an unrendered pin would be validated by
-// planparser's commit-subject-mismatch check yet silently unusable (found in
-// crucible round fable-r3) — and that a card without a pin renders no
-// Commit: line at all (the fork template's own step 3 states the N: <name>
-// default).
-func TestRenderForkPrompt_RendersPinnedCommitSubject(t *testing.T) {
-	plan := testPlan("", "")
+// TestRenderForkPrompt_OmitsSharedDecisions asserts the composed thin fork
+// prompt never carries a "## Shared Decisions" section — that plan-level
+// context is already in the fork's inherited Master context, per the
+// fork-context-hygiene Shared Decision — and that it DOES carry the card's
+// own relative SourcePath pointer.
+func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
+	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
-	t.Run("pinned Commit renders verbatim", func(t *testing.T) {
-		batch := batcher.Batch{Cards: []planparser.Card{{
-			Number: 1, Slug: "alpha", Title: "alpha", Intent: "add the flag",
-			Commit: "1: json-flag",
-		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), "**Commit:** 1: json-flag")
-	})
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
+	if err != nil {
+		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
 
-	t.Run("fork template states the default subject convention", func(t *testing.T) {
-		// The N: <name> default is the plan's resume-trail invariant
-		// (plan-format-v3.md "Numbering and commit subject"); the implementer
-		// only ever sees the fork template, so the convention must be stated
-		// there, not merely in the format doc.
-		requireContains(t, string(websterengine.ForkTemplate()), "The commit subject is `N: <name>`")
-	})
-
-	t.Run("no pin renders no Commit line", func(t *testing.T) {
-		batch := batcher.Batch{Cards: []planparser.Card{{
-			Number: 1, Slug: "alpha", Title: "alpha", Intent: "add the flag",
-		}}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		// "**Commit:** " with a trailing space is the rendered field line's
-		// shape; the template's own step-3 prose mentions `**Commit:**` only
-		// backtick-wrapped, so it never matches this needle.
-		if strings.Contains(string(got), "**Commit:** ") {
-			t.Errorf("rendered prompt carries a **Commit:** field line for a card with no pinned subject")
-		}
-	})
+	requireNotContains(t, text, "## Shared Decisions")
+	assertCardPointerIsRelative(t, text, card.SourcePath)
 }
 
-// TestRenderForkPrompt_InjectsSharedDecisionsAlways asserts every fork
-// prompt carries the plan's own "## Shared Decisions" body verbatim,
-// regardless of the batch's own cards — a plan-level, not batch-level,
-// injection — and renders the literal sentinel "none" when the plan carries
-// no such section, per the fork-prompt-plan-level-context Shared Decision.
-func TestRenderForkPrompt_InjectsSharedDecisionsAlways(t *testing.T) {
-	batch := batcher.Batch{Cards: []planparser.Card{
-		{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"},
-	}}
+// TestRenderForkPrompt_OmitsRenameMechanic asserts the composed thin fork
+// prompt never carries a "## Rename mechanic" section, regardless of
+// whether the batch has a Moves-bearing card — that mechanism, like Shared
+// Decisions, is already in the fork's inherited Master context — and that
+// it DOES carry the card's own relative SourcePath pointer.
+func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
+	card := cardWithSourcePath(4, "helptree-rename", "rename the row mapper")
+	card.Moves = []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
-	t.Run("non-empty SharedDecisions passes through verbatim", func(t *testing.T) {
-		plan := testPlan("### Decision: json-envelope-reuse\n\n- **Decision:** reuse output.Ok.", "")
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		requireContains(t, string(got), "json-envelope-reuse")
-	})
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/04-helptree-rename.yaml", testLayout(), 2)
+	if err != nil {
+		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
 
-	t.Run("empty SharedDecisions renders the none sentinel", func(t *testing.T) {
-		plan := testPlan("", "")
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
-		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
-		}
-		section := extractSection(string(got), "## Shared Decisions")
-		if !strings.HasPrefix(section, "none") {
-			t.Errorf("## Shared Decisions section = %q; want it to start with the none sentinel", section)
-		}
-	})
+	requireNotContains(t, text, "## Rename mechanic")
+	assertCardPointerIsRelative(t, text, card.SourcePath)
 }
 
-// TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch asserts
-// RenderForkPrompt injects the plan's canonical "## Rename mechanic" body
-// ONLY when the batch contains a card with a non-empty Moves field — a
-// non-Moves-bearing batch's rendered prompt must not carry that body text
-// at all, per the fork-prompt-plan-level-context Shared Decision.
-func TestRenderForkPrompt_InjectsRenameMechanicOnlyForMovesBearingBatch(t *testing.T) {
-	renameMechanic := "1. Run `git mv <old> <new>` FIRST, before any other change to the moved file."
-	plan := testPlan("", renameMechanic)
+// TestRenderRecoveryPrompt_InstructsColdOrientation asserts
+// RenderRecoveryPrompt's rendered prompt points the cold recovery strand at
+// `00-overview.md` and `CONSTRAINTS.md`, carries the card's own SourcePath
+// pointer and the shared implementer-body text, and — for the PATTERN-active
+// case — also names `_pattern/PATTERN.md` via the injected pattern_directive.
+// The PATTERN-inactive case renders cleanly: no leftover `{{`, no orphan
+// `## Constraints` heading.
+func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
+	card := cardWithSourcePath(1, "alpha", "add the flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
-	t.Run("Moves-bearing batch gets the rename mechanic", func(t *testing.T) {
-		batch := batcher.Batch{Cards: []planparser.Card{
-			{Number: 4, Slug: "helptree-rename", Title: "helptree-rename", Intent: "rename the row mapper",
-				Moves: []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}},
-		}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/04-helptree-rename.yaml", testLayout(), 2)
+	t.Run("PATTERN inactive", func(t *testing.T) {
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
 		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
-		requireContains(t, string(got), renameMechanic)
+		text := string(got)
+
+		requireContains(t, text, "00-overview.md")
+		requireContains(t, text, "CONSTRAINTS.md")
+		requireContains(t, text, card.SourcePath)
+		requireContains(t, text, "## Your final action: the minimal batch-report")
+
+		if strings.Contains(text, "{{") {
+			t.Errorf("rendered output contains leftover {{: %q", text)
+		}
+		if strings.Contains(text, "## Constraints") {
+			t.Errorf("rendered output contains an orphan ## Constraints heading: %q", text)
+		}
 	})
 
-	t.Run("non-Moves batch never gets the rename mechanic", func(t *testing.T) {
-		batch := batcher.Batch{Cards: []planparser.Card{
-			{Number: 1, Slug: "json-flag", Title: "json-flag", Intent: "add the --json flag"},
-		}}
-		got, err := websterengine.RenderForkPrompt(plan, batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
+	t.Run("PATTERN active", func(t *testing.T) {
+		l := patternActiveLayout(t)
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", l, 2)
 		if err != nil {
-			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
-		requireNotContains(t, string(got), renameMechanic)
+		text := string(got)
+
+		requireContains(t, text, "_pattern/PATTERN.md")
+		requireContains(t, text, "## Constraints")
 	})
 }
 
@@ -801,7 +690,9 @@ func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
 	}
-	requireContains(t, string(got), plan.Verify)
+	text := string(got)
+	requireContains(t, text, plan.Verify)
+	requireNotContains(t, text, "## Shared Decisions")
 }
 
 // TestRenderIntegrationPrompt_EmptyVerifyErrors asserts RenderIntegrationPrompt
@@ -819,9 +710,8 @@ func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 // integration fork's own template AND the master template's spawn directive
 // carry the anti-poll clause: an integration fork that inherits Master's
 // own "poll for the integration report" loop and continues it — instead of
-// running the verify and writing that report itself — deadlocks the run
-// via plain shell polls the lyx-webster fork hook cannot see (found live
-// in crucible round fable-r1's F19).
+// running the verify and writing that report itself — deadlocks the run via
+// plain shell polls the lyx-webster fork hook cannot see.
 func TestIntegrationTemplate_ForbidsPollingForOwnReport(t *testing.T) {
 	integration := string(websterengine.IntegrationTemplate())
 	requireContains(t, integration, "NEVER poll or wait for the integration")
