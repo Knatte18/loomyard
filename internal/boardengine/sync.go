@@ -1,17 +1,10 @@
 // sync.go — the background pusher that backs up the board to the remote.
 //
-// Writes only touch the filesystem; Sync is what gets those changes to GitHub.
-// The absorbing-lock loop-until-clean coalescing itself is now provided by
-// fabricengine.CoalescePush: it acquires the board.push.lock ONCE, holds it
-// across the whole loop, and repeatedly calls a step closure that commits any
-// dirty working-tree state via fabricengine.CommitWeftAt and, unless skipPush
-// is set, pushes anything unpushed via fabricengine.PushWeftAt (which owns
-// the HasUnpushed guard and the rebase-retry, so a fully-pushed board never
-// touches the network) — looping while the step reports a commit landed, so a
-// burst of writes coalesces into as few pushes as possible. Board still
-// supplies the commit+push step and its own board.lock (via commitDirty) and
-// .gitignore seeding (ensureLockfilesIgnored); only the absorbing lock's
-// acquire site and the loop skeleton moved into fabricengine. A single
+// Writes only touch the filesystem; Sync is what gets those changes to
+// GitHub. The absorbing-lock loop-until-clean coalescing is owned by
+// fabricengine.Bolt.Sync, composed here with board's own step closure:
+// ensureLockfilesIgnored + commitDirty (which holds board's own board.lock)
+// and, unless skipPush is set, a push through the same Bolt value. A single
 // top-level push lock still serializes pushers across processes; concurrent
 // sync processes block, then exit quickly once there is nothing to do. The
 // write path launches `lyx board sync` detached (see spawn.go) so it never
@@ -40,33 +33,35 @@ const (
 // the working tree is clean and nothing is unpushed. skipGit disables it
 // entirely (used by tests); skipPush commits locally but skips the push. The
 // absorbing-lock loop-until-clean coalescing is delegated to
-// fabricengine.CoalescePush, which acquires the SAME board.push.lock path
-// (unchanged name/location) once and holds it across the whole loop; board
-// supplies only the per-iteration step.
+// fabricengine.NewBolt(boardPath).Sync, which acquires the SAME
+// board.push.lock path (unchanged name/location) once and holds it across the
+// whole loop; board supplies only the per-iteration step.
 func Sync(boardPath string, skipGit, skipPush bool) error {
 	if skipGit {
 		return nil
 	}
 
+	bolt := fabricengine.NewBolt(boardPath)
+
 	step := func() (progressed bool, err error) {
 		// The lock files live in the board dir; keep git from ever committing
 		// them. Runs as the first action of each iteration — under the
-		// absorbing push lock fabricengine.CoalescePush now holds for the
-		// whole loop — so the ignore patterns are always in place before that
-		// iteration's first `git add -A`. ensureLockfilesIgnored is idempotent
-		// and cheap (reads .gitignore, returns early once the patterns are
-		// present), so running it every iteration preserves the original
-		// ordering guarantee at negligible cost.
+		// absorbing push lock Bolt.Sync now holds for the whole loop — so the
+		// ignore patterns are always in place before that iteration's first
+		// `git add -A`. ensureLockfilesIgnored is idempotent and cheap (reads
+		// .gitignore, returns early once the patterns are present), so running
+		// it every iteration preserves the original ordering guarantee at
+		// negligible cost.
 		if err := ensureLockfilesIgnored(boardPath); err != nil {
 			return false, err
 		}
 
-		committed, err := commitDirty(boardPath)
+		committed, err := commitDirty(boardPath, bolt)
 		if err != nil {
 			return false, err
 		}
 		if !skipPush {
-			// PushWeftAt no-ops when nothing is ahead of upstream, so a sync
+			// Bolt.Push no-ops when nothing is ahead of upstream, so a sync
 			// with nothing to do never touches the network (and never fails just
 			// because the remote is unreachable) — matching the pre-gitrepo
 			// pushUnpushed behavior. commitDirty is only reached from inside
@@ -74,7 +69,7 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 			// always correct here — do not call fabricengine.EnvSyncOptions(),
 			// which reads WEFT_SKIP_GIT/WEFT_SKIP_PUSH, not board's own
 			// BOARD_SKIP_GIT/BOARD_SKIP_PUSH.
-			if err := fabricengine.PushWeftAt(boardPath, fabricengine.SyncOptions{}); err != nil {
+			if err := bolt.Push(fabricengine.SyncOptions{}); err != nil {
 				return false, fmt.Errorf("sync push: %w", err)
 			}
 		}
@@ -83,13 +78,13 @@ func Sync(boardPath string, skipGit, skipPush bool) error {
 		return committed, nil
 	}
 
-	return fabricengine.CoalescePush(filepath.Join(boardPath, pushLockFile), step)
+	return bolt.Sync(step)
 }
 
-// commitDirty stages and commits the working tree if it has changes, under the
-// write lock so it snapshots a state no writer is mid-mutation on. Returns
-// whether a commit was made.
-func commitDirty(boardPath string) (bool, error) {
+// commitDirty stages and commits the working tree if it has changes, under
+// board's own write lock so it snapshots a state no writer is mid-mutation
+// on. Returns whether a commit was made.
+func commitDirty(boardPath string, bolt *fabricengine.Bolt) (bool, error) {
 	lock, err := flock.AcquireWriteLock(filepath.Join(boardPath, writeLockFile))
 	if err != nil {
 		return false, fmt.Errorf("acquire write lock: %w", err)
@@ -99,7 +94,7 @@ func commitDirty(boardPath string) (bool, error) {
 	// commitDirty is only ever reached from inside Sync's own skipGit-false
 	// path, so SkipGit is always already false by construction here — a
 	// zero-value SyncOptions is correct, not a shortcut.
-	_, committed, err := fabricengine.CommitWeftAt(boardPath, "board sync", fabricengine.SyncOptions{})
+	_, committed, err := bolt.Commit("board sync", fabricengine.SyncOptions{})
 	if err != nil {
 		return false, fmt.Errorf("sync commit: %w", err)
 	}
