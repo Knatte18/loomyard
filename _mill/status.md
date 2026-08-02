@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-remove-force-add
+phase: approved-clean-healthy-renames
 slug: fabric-collapse-external-surface
 branch: fabric-collapse-external-surface
 plan: _mill/plan
@@ -36,6 +36,7 @@ implementing  '2026-08-02T13:25:04Z'
 approved-bolt-handle  '2026-08-02T13:34:42Z'
 approved-commit-migration  '2026-08-02T13:52:02Z'
 approved-remove-force-add  '2026-08-02T13:55:54Z'
+approved-clean-healthy-renames  '2026-08-02T14:04:45Z'
 ```
 
 ## Batches
@@ -58,9 +59,10 @@ batches:
     start_sha: 56b7695ef6f8c8f4b3f13315ed1b359e0ae8ba17
     commit_sha: 4e6de6d83501fdc87faf9dce622afb8b8761add1
   - name: clean-healthy-renames
-    state: running
+    state: approved
     implementer_session: 0eff3227-7c44-4c4d-bf19-3cd852bd7b18
     start_sha: 070f941c1af1394d674b3248f4d3df94b2036c60
+    commit_sha: 7edfac802ab00cbb3b96b29dfa4b70c3a773af3e
   - name: delete-dead-methods
     state: pending
   - name: fabric-cli-collapse
