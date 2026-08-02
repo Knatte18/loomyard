@@ -36,11 +36,8 @@ import (
 const runLockName = "run.lock"
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already
-// holds the builder dir's run.lock. It is a sentinel (matched via
-// errors.Is) because the caller must treat this refusal differently from
-// every other hard error: the losing call touched NOTHING on disk — the
-// winner is mid-run and owns the state — so a caller must not run its own
-// exit-time bookkeeping (buildercli's backstop weft-commit) for it.
+// holds the run.lock. A caller must treat this refusal specially: the losing
+// call touched nothing on disk, so it must skip exit-time bookkeeping.
 var ErrRunBusy = errors.New("builder: run is already in progress")
 
 // ErrFingerprintMismatch marks Run's fail-loud refusal when the on-disk
@@ -109,41 +106,21 @@ func (e *OrchestratorTimeoutError) Unwrap() error { return ErrOrchestratorTimeou
 var ErrOrchestratorTimeout = errors.New("builder: orchestrator timed out")
 
 // OrchestratorHandle is the started-but-not-yet-finished orchestrator spawn
-// Run blocks on: StrandGUID identifies the reed strand the orchestrator runs
-// in (available immediately after the start, so Run can persist it to
-// state.json BEFORE blocking — the record the next run's entry-time orphan
-// reclaim reads), and Wait blocks until the spawn reaches a terminal shuttle
-// outcome. *shuttleengine.Run satisfies this structurally.
+// Run blocks on. *shuttleengine.Run satisfies this structurally.
 type OrchestratorHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
 }
 
 // OrchestratorStarter is the seam Run spawns the orchestrator through. It is
-// deliberately two-phase (start, then wait on the returned handle) rather
-// than one blocking call: Run must learn the orchestrator's strand identity
-// and persist it to state.json BEFORE blocking, or a `run` process that dies
-// mid-wait leaves a live orchestrator pane nothing can ever find again —
-// found live in round fable-r4: a killed `run` (or a timed-out orchestrator
-// whose kept pane was still working) kept driving the batch loop while a
-// resumed `run` spawned a second orchestrator over it. Production code
-// passes an adapter over *shuttleengine.Runner (buildercli's
-// runnerOrchestratorStarter); tests pass a local fake (builderengine's own
-// fakes are test-file-local, per the discussion's test-conventions decision).
+// deliberately two-phase: Run must persist the orchestrator's strand identity
+// to state.json BEFORE blocking on it, or a process crash mid-wait orphans
+// the pane.
 type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }
 
-// RunDeps carries every seam Run needs, so a test can fake each one
-// independently: Runner starts the orchestrator and hands back the handle
-// Run blocks on; Reed is the live reed query surface the entry-time orphan
-// reclaim consults via StrandLive/RemoveStrand (the same handle SpawnBatch's
-// in-flight guard already holds); PlanDir, BuilderDir, and ReportsDir are
-// the hubgeometry-resolved _lyx/plan, _lyx/builder, and _lyx/builder/reports
-// directories; WorktreeRoot is the host repo checkout Validate's context
-// estimate resolves Scope/Where entries against; Config is the loaded
-// builder.yaml; Roles is the pre-flight-resolved role->model-spec map (see
-// ResolveRoles).
+// RunDeps carries every seam Run needs for its operation.
 type RunDeps struct {
 	Runner       OrchestratorStarter
 	Reed         shuttleengine.ReedOps
@@ -180,10 +157,7 @@ type RunResult struct {
 	RunDir string
 }
 
-// newRunGUID returns a 128-bit random identifier, hex-encoded, generated
-// from crypto/rand — mirroring internal/reedengine's own newGUID, the
-// pattern this package's own RunGUID field (see state.go) is minted with:
-// once, at first init, never regenerated across a resume.
+// newRunGUID returns a 128-bit random hex identifier from crypto/rand.
 func newRunGUID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -198,15 +172,8 @@ func newRunGUID() (string, error) {
 // identically regardless of which one archived it.
 const archiveTimestampFormat = "20060102T150405Z"
 
-// FirstFreeArchivePath returns the first path in the sequence
-// candidate(""), candidate("-1"), candidate("-2"), ... that does not
-// currently exist on disk — the same same-second collision rule
-// ArchiveStaleOutcome documents, shared here so ArchiveStateFile and
-// ArchiveReportsDir need not each duplicate the collision loop. Exported
-// as shared archive infrastructure: webster's own archive-never-refuse
-// posture (fail-loud-archive-never-refuse) reuses this exact collision rule
-// rather than re-implementing it, per the Shared Decision
-// reuse-by-import-never-copy.
+// FirstFreeArchivePath returns the first path in the sequence candidate(""),
+// candidate("-1"), candidate("-2"), ... that does not currently exist on disk.
 func FirstFreeArchivePath(candidate func(suffix string) string) (string, error) {
 	for n := 0; ; n++ {
 		suffix := ""
@@ -223,11 +190,8 @@ func FirstFreeArchivePath(candidate func(suffix string) string) (string, error) 
 	}
 }
 
-// ArchiveStateFile renames builderDir's state.json, if present, to
-// state-<UTC-compact-timestamp>.json in place — the discussion's
-// fingerprint-mismatch escape's first half. Absent file: ("", nil), a no-op.
-// Exported as shared infrastructure with a second consumer (webster), which
-// applies the same archive-never-refuse posture to its own state file.
+// ArchiveStateFile renames builderDir's state.json to
+// state-<UTC-compact-timestamp>.json in place. Absent file: ("", nil).
 func ArchiveStateFile(builderDir string, now func() time.Time) (string, error) {
 	path := filepath.Join(builderDir, stateFileName)
 	if _, err := os.Stat(path); err != nil {
@@ -251,15 +215,8 @@ func ArchiveStateFile(builderDir string, now func() time.Time) (string, error) {
 	return target, nil
 }
 
-// ArchiveReportsDir renames reportsDir wholesale, if present, to
-// <reportsDir>-<UTC-compact-timestamp> — "clears the reports dir the same
-// way" the discussion's fingerprint-mismatch escape pins — then recreates an
-// empty reportsDir so the re-initialized run has somewhere to write the
-// first batch's report into. Absent dir: a no-op (still recreates an empty
-// one, since a fresh run needs it regardless of whether a prior one ever
-// existed). Exported as shared infrastructure with a second consumer
-// (webster), which applies the same archive-never-refuse posture to its own
-// reports dir.
+// ArchiveReportsDir renames reportsDir to <reportsDir>-<UTC-compact-timestamp>
+// if present, then recreates an empty reportsDir.
 func ArchiveReportsDir(reportsDir string, now func() time.Time) error {
 	if _, err := os.Stat(reportsDir); err != nil {
 		if !os.IsNotExist(err) {
@@ -286,13 +243,8 @@ func ArchiveReportsDir(reportsDir string, now func() time.Time) error {
 	return nil
 }
 
-// renderBatchIndex renders plan's Batch Index into the ordered-list text
-// {{.batch_index}} fills with: one line per batch, "NN — slug — intent",
-// annotated with "(oversized)" and/or "(verify: deferred; chain-end NN)"
-// where the batch's own frontmatter declares them — the orchestrator's
-// pinned navigation source, per the discussion's decision that Go renders
-// the batch list from the validated plan rather than the orchestrator
-// reading 00-overview.md itself.
+// renderBatchIndex renders plan's Batch Index for {{.batch_index}}: one line
+// per batch, "NN — slug — intent", with annotations (oversized, verify status).
 func renderBatchIndex(plan *Plan) string {
 	lines := make([]string, 0, len(plan.Batches))
 	for _, b := range plan.Batches {
@@ -314,16 +266,9 @@ func renderBatchIndex(plan *Plan) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderProgress renders {{.progress}}'s per-batch state summary for
-// resume: every batch in plan whose batch-report file already exists in
-// reportsDir is summarized as done — the discussion's resume-on-files rule
-// ("reports present are summarized done") — one "NN-slug: done" line per
-// such batch, in plan order. A batch with no report yet is omitted
-// entirely, never listed as "pending", since the orchestrator's own batch
-// index already enumerates every batch — this field's only job is telling a
-// resumed session what already happened. Returns the literal word "none"
-// when no batch has reported yet (a fresh run, or a resume before the first
-// batch ever completed).
+// renderProgress renders {{.progress}}'s per-batch state summary for resume:
+// every batch whose report file exists is summarized by its report's own status.
+// Returns "none" when no batch has reported yet.
 func renderProgress(plan *Plan, reportsDir string) (string, error) {
 	var lines []string
 	for _, b := range plan.Batches {
@@ -334,15 +279,8 @@ func renderProgress(plan *Plan, reportsDir string) (string, error) {
 			}
 			return "", fmt.Errorf("builder: stat batch report %s: %w", reportPath, err)
 		}
-		// Summarize each reported batch by its report's OWN status, not merely
-		// by the report's presence: a batch that reported stuck still needs
-		// recovery, so labeling it "done" here would tell a resumed
-		// orchestrator it already finished and make it skip the recovery the
-		// stuck batch actually needs — a silent false-success across a
-		// crash/resume boundary (poll commits a stuck report the same as a done
-		// one). A report that will not parse is corruption on the resume path:
-		// fail loud, the same discipline ParseReport applies everywhere else,
-		// never a guessed status.
+		// Use the report's own status, not just its presence: a stuck batch
+		// still needs recovery, and a missing report is corruption.
 		report, err := ParseReport(reportPath)
 		if err != nil {
 			return "", err
@@ -355,18 +293,12 @@ func renderProgress(plan *Plan, reportsDir string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-// Run drives one `lyx builder run` invocation to completion: the run-level
-// mutex, the automatic validation gate, the plan-fingerprint crash/resume
-// guard (with its --fresh escape), the never-instantly-re-pause clear (run
-// only after those refusal gates pass, so a refused run leaves a pending
-// pause intact), the stale-outcome-file archive, the always-fresh
-// orchestrator spawn, and the
-// shuttle-outcome-to-RunResult mapping. Every returned error is
-// "builder: "-prefixed (via the helpers it calls); ErrRunBusy and
-// ErrFingerprintMismatch are exported sentinels a caller matches via
-// errors.Is, and a non-done shuttle outcome for the orchestrator's own spawn
-// returns one of the three distinct *Orchestrator*Error types above rather
-// than ever attempting to parse a (non-existent) outcome.yaml.
+// Run drives one `lyx builder run` invocation to completion: acquires the
+// run-level mutex, validates the plan, guards against stale plans, clears any
+// pending pause, archives stale outcomes, spawns the orchestrator, and maps
+// the shuttle outcome to RunResult. ErrRunBusy and ErrFingerprintMismatch
+// are sentinel errors a caller matches via errors.Is. All errors are
+// "builder: "-prefixed.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.BuilderDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("builder: create builder dir %s: %w", deps.BuilderDir, err)

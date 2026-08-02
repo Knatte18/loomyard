@@ -27,8 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// newBareRemote creates a bare git repository at <dir>/remote.git and
-// returns its path, ready to be added as an "origin" remote.
+// newBareRemote creates a bare git repository at <dir>/remote.git.
 func newBareRemote(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -40,11 +39,8 @@ func newBareRemote(t *testing.T, dir string) string {
 	return bare
 }
 
-// newRepoWithRemote creates a fresh (non-cloned) git repository under
-// dir/name on branch main, with bareRemote configured as "origin" but no
-// upstream tracking branch yet — the state a repo is in before its very
-// first push. It returns both the raw directory (for fixture git calls) and
-// the gitrepo.Repo wrapping it (the type under test).
+// newRepoWithRemote creates a fresh git repository on main with bareRemote
+// configured as "origin" but no upstream tracking yet.
 func newRepoWithRemote(t *testing.T, dir, name, bareRemote string) (path string, repo *gitrepo.Repo) {
 	t.Helper()
 

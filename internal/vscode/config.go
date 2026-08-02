@@ -13,31 +13,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitignore"
 )
 
-// WriteConfig generates VS Code configuration files in a worktree,
-// only if they don't already exist (never clobbering operator edits).
-//
-// It writes two files into <worktreeDir>/<relpath>/.vscode/:
-//   - settings.json: workbench and window configuration with title-bar colors
-//   - tasks.json: one "Start Claude" shell task with runOptions.runOn: "folderOpen"
-//
-// After writing, it registers .vscode/ in the managed .gitignore via gitignore.Ensure().
-//
-// Returns an error if I/O fails (but not if files already exist).
+// WriteConfig generates VS Code configuration files in a worktree, only if
+// they don't already exist (never clobbering operator edits). Returns an error
+// if I/O fails (but not if files already exist).
 func WriteConfig(worktreeDir, relpath, slug, color string) error {
 	dir := filepath.Join(worktreeDir, relpath)
 	vscodePath := filepath.Join(dir, ".vscode")
 
-	// Ensure .vscode directory exists
 	if err := os.MkdirAll(vscodePath, 0o755); err != nil {
 		return err
 	}
 
-	// Write settings.json only if absent
 	settingsPath := filepath.Join(vscodePath, "settings.json")
 	if _, err := os.Stat(settingsPath); err == nil {
-		// File exists; skip
 	} else if os.IsNotExist(err) {
-		// File doesn't exist; write it
 		settings := map[string]any{
 			"workbench.colorCustomizations": map[string]any{
 				"titleBar.activeBackground":   color,
@@ -60,16 +49,12 @@ func WriteConfig(worktreeDir, relpath, slug, color string) error {
 			return err
 		}
 	} else {
-		// Error checking file existence
 		return err
 	}
 
-	// Write tasks.json only if absent
 	tasksPath := filepath.Join(vscodePath, "tasks.json")
 	if _, err := os.Stat(tasksPath); err == nil {
-		// File exists; skip
 	} else if os.IsNotExist(err) {
-		// File doesn't exist; write it
 		tasks := map[string]any{
 			"version": "2.0.0",
 			"tasks": []map[string]any{
@@ -97,11 +82,9 @@ func WriteConfig(worktreeDir, relpath, slug, color string) error {
 			return err
 		}
 	} else {
-		// Error checking file existence
 		return err
 	}
 
-	// Register .vscode/ in .gitignore
 	_, err := gitignore.Ensure(dir, ".vscode/")
 	return err
 }

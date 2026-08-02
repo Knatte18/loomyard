@@ -39,25 +39,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// ErrPaused is the sentinel SpawnBatch returns when builderDir's pause flag
-// is present at the batch boundary (PauseRequested). Exported so a caller
-// can distinguish the operational "paused" refusal from every other spawn
-// failure via errors.Is(err, ErrPaused), per the discussion's pause
-// decision: the orchestrator reads this refusal and writes its own outcome
-// file with outcome: paused, rather than treating it as a hard error.
+// ErrPaused is the sentinel SpawnBatch returns when the pause flag is present
+// at the batch boundary. A caller matches it via errors.Is.
 var ErrPaused = errors.New("builder: paused")
 
 // ErrBatchInFlight is the sentinel SpawnBatch returns when state records a
-// non-terminal in-flight batch whose implementer strand the reed still
-// reports live. The batch loop is strictly sequential, so spawning anything
-// while a live implementer is mid-flight is always wrong — it silently
-// clobbers the in-flight batch's BatchState and races two agents on the
-// same host repo. The refusal never fires on the intended
-// respawn-on-top-of-a-kept-pane ladder (dead respawn, recovery after
-// stuck): every one of those passes through a terminal poll first, which
-// sets BatchState.Terminal and clears CurrentBatch. A caller resolves the
-// refusal by long-polling (`lyx builder poll`) until the in-flight batch
-// classifies terminal.
+// non-terminal in-flight batch whose implementer is still live. Spawning
+// while one is mid-flight would race two agents on the same repo.
 var ErrBatchInFlight = errors.New("builder: a batch is already in flight")
 
 // Starter is the seam SpawnBatch spawns an implementer through: exactly
@@ -73,16 +61,7 @@ type Starter interface {
 	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
 }
 
-// SpawnDeps carries every seam SpawnBatch needs, so a test can fake each one
-// independently: Starter spawns the implementer; Plan and State are the
-// already-parsed/loaded plan and run state SpawnBatch reads and mutates;
-// Roles is the pre-flight-resolved role->model-spec map (see ResolveRoles);
-// Config is the loaded builder.yaml; WorktreeRoot is the host repo checkout
-// SpawnBatch captures HeadSHA from; BuilderDir and ReportsDir are the
-// hubgeometry-resolved _lyx/builder and _lyx/builder/reports directories;
-// ShuttleCfg and Layout are what shuttleengine.FindRun needs to resolve the
-// just-started run's cross-process identity (a *shuttleengine.Run exposes
-// only StrandGUID() — there is no run-dir accessor on the handle itself).
+// SpawnDeps carries every seam SpawnBatch needs.
 type SpawnDeps struct {
 	Starter      Starter
 	Plan         *Plan
@@ -94,16 +73,9 @@ type SpawnDeps struct {
 	ReportsDir   string
 	ShuttleCfg   shuttleengine.Config
 	Layout       *hubgeometry.Layout
-	// Reed is the live reed query surface the in-flight guard (ErrBatchInFlight)
-	// and the dead-respawn orphan cleanup consult via StrandLive/RemoveStrand —
-	// the same handle buildercli's poll verb already holds for its own
-	// classification gathers.
+	// Reed is the live reed query surface for in-flight guard and dead-respawn cleanup.
 	Reed shuttleengine.ReedOps
-	// Resetter is the chain-restart reset seam: nil (the production default)
-	// makes SpawnBatch construct a real *fabricengine.Fabric inline via
-	// fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree()),
-	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
-	// so the restart-chain path never requires a paired weft fixture.
+	// Resetter is the chain-restart reset seam; nil uses the production default.
 	Resetter WarpResetter
 }
 

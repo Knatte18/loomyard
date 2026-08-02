@@ -33,13 +33,8 @@ const stateFileName = "state.json"
 // other *.lock (see buildercli's builderWeftPathspec).
 const stateMutateLockName = "mutate.lock"
 
-// AcquireStateMutation acquires builderDir's exclusive state-mutation
-// lease, blocking until it is free — every holder's critical section is
-// bounded (a spawn, a terminal-classification persist, run's own state
-// init), so blocking is always short and never a deadlock risk. Callers
-// hold it across their WHOLE load-mutate-save sequence and Release it as
-// soon as the save lands, never across a long block (poll's wait loop,
-// run's orchestrator wait).
+// AcquireStateMutation acquires builderDir's exclusive state-mutation lease,
+// blocking until free. Callers hold it across the load-mutate-save sequence.
 func AcquireStateMutation(builderDir string) (*lock.FileLock, error) {
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		return nil, fmt.Errorf("builder: create builder dir %s: %w", builderDir, err)
@@ -111,10 +106,8 @@ type BatchState struct {
 	Status string `json:"status"`
 }
 
-// LoadState reads <builderDir>/state.json. A missing file returns (nil,
-// nil) — no run has started yet, not an error. An unreadable or malformed
-// file is a wrapped error: fail loud, never guess at a corrupted run's
-// state.
+// LoadState reads <builderDir>/state.json. A missing file returns (nil, nil).
+// An unreadable or malformed file is a wrapped error.
 func LoadState(builderDir string) (*State, error) {
 	path := filepath.Join(builderDir, stateFileName)
 	lockPath := path + ".lock"
@@ -129,9 +122,7 @@ func LoadState(builderDir string) (*State, error) {
 	return &st, nil
 }
 
-// SaveState writes st to <builderDir>/state.json: MkdirAll followed by an
-// atomic write (temp file + rename), so a crash mid-write never leaves a
-// reader observing a half-written file.
+// SaveState writes st to <builderDir>/state.json atomically.
 func SaveState(builderDir string, st *State) error {
 	path := filepath.Join(builderDir, stateFileName)
 	lockPath := path + ".lock"

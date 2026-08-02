@@ -17,9 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Claude implements shuttleengine.Engine for the Claude Code CLI. It carries
-// no fields: every method is a pure function of its arguments, so a single
-// zero-value Claude is safe to share across concurrent runs.
+// Claude implements shuttleengine.Engine for the Claude Code CLI. All methods are pure functions, so a zero-value Claude is safe to share across concurrent runs.
 type Claude struct{}
 
 // New returns a Claude engine ready to use.
@@ -27,17 +25,10 @@ func New() *Claude {
 	return &Claude{}
 }
 
-// var _ shuttleengine.Engine = (*Claude)(nil) is the compile-time proof that
-// Claude satisfies the provider seam; a missing or mis-signed method here
-// fails the build immediately rather than surfacing later as a runtime
-// type-assertion panic.
+// Compile-time proof that Claude satisfies the provider seam.
 var _ shuttleengine.Engine = (*Claude)(nil)
 
-// newSessionID mints a UUID v4 (crypto/rand, RFC-4122 version/variant bits
-// set) as the session identity Prepare hands to claude via --session-id.
-// This mirrors the same recipe muxpoccli (now deleted) used; it is
-// independently implemented here rather than shared via import because
-// a CLI feature package is not something shuttleengine should depend on.
+// newSessionID mints a UUID v4 (crypto/rand, RFC-4122 bits set) as the session identity.
 func newSessionID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -53,23 +44,10 @@ func newSessionID() (string, error) {
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
 }
 
-// Prepare writes this run's prompt.md and settings.json into runDir and
-// returns the Launch command strings to start (or later resume) it. It is
-// the one place claudeengine composes launch/resume commands from all three
-// inputs: the session id it mints here, the POSIX form of the run's events
-// path (hook commands run under git-bash, which cannot parse a Windows
-// backslash path), and the claude binary/flags cfg and spec.Interactive
-// select. spec.Effort is hard-error-validated (validateEffort) before any
-// artifact is written; a valid value is threaded through to buildLaunchCmd
-// unchanged. spec.Model and spec.Version are likewise resolved
-// (resolveModelID) before any artifact is written; the resolved model id —
-// not spec.Model — is what buildLaunchCmd receives.
+// Prepare writes prompt.md and settings.json into runDir and returns the Launch command strings.
+// It validates spec.Effort and spec.Model before writing any artifacts.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
-	// Reject an over-ceiling prompt before any artifact is written: past
-	// maxLaunchPromptBytes the pane launch is guaranteed to fail against the
-	// Windows command-line limit, and the only symptom would be an opaque
-	// `died` a full startup window later. Failing here is immediate and
-	// self-describing instead.
+	// Reject oversized prompts before any artifact is written (failing now is immediate and self-describing).
 	if len(spec.Prompt) > maxLaunchPromptBytes {
 		return shuttleengine.Launch{}, fmt.Errorf(
 			"prompt is %d bytes, over the %d-byte launch limit: the pane launch expands the whole prompt into one command-line argument and Windows caps a process command line at 32,767 characters — move the long content into a file and make the prompt a short pointer to it",
@@ -77,20 +55,12 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		)
 	}
 
-	// Reject an unrealizable effort before any artifact is written, for the
-	// same reason as the prompt-size guard above: claude only
-	// warns-and-ignores a bad --effort value rather than failing the launch,
-	// so failing here is the only way to surface the mistake at all, and
-	// failing before prompt.md/settings.json exist keeps a rejected Prepare
-	// call from leaving a half-written run directory behind.
+	// Reject unrealizable effort before any artifact is written (claude ignores bad efforts at launch).
 	if err := validateEffort(spec.Effort); err != nil {
 		return shuttleengine.Launch{}, err
 	}
 
-	// Resolve the bare-word model + version pin into the final model id
-	// before any artifact is written, for the same reason as the effort
-	// guard above: a (model, version) pair the engine cannot realize must
-	// fail here, not leave a half-written run directory behind.
+	// Resolve the bare-word model + version into the final model id before any artifact is written.
 	resolvedModel, err := resolveModelID(spec.Model, spec.Version)
 	if err != nil {
 		return shuttleengine.Launch{}, err
@@ -106,12 +76,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, fmt.Errorf("write prompt: %w", err)
 	}
 
-	// The hook command embeds this path and runs under git-bash on Windows,
-	// where a backslash path is silently misread (backslash is git-bash's
-	// escape character) — so on Windows convert to the git-bash POSIX form.
-	// On a POSIX host the hook runs in the native shell and the path is already
-	// correct; pass it through unconverted (PosixPath only accepts drive-rooted
-	// Windows paths and would reject an ordinary /tmp/... run dir).
+	// On Windows, convert the events path to git-bash POSIX form (backslash is git-bash's escape character).
+	// On POSIX, pass it through unconverted.
 	eventsPath := filepath.Join(runDir, "events.jsonl")
 	eventsPathForHook := eventsPath
 	if runtime.GOOS == "windows" {
@@ -131,9 +97,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 
 	bin := claudeBinary(cfg)
-	// sh selects the pane-shell mechanics (quoting, call operator, prompt-file
-	// read idiom) for the current host OS — pwsh on Windows, posix elsewhere —
-	// so buildLaunchCmd/buildResumeCmd never hardcode either shell's syntax.
+	// sh selects pane-shell mechanics per OS (pwsh on Windows, posix elsewhere).
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
 		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive, spec.ForkSubagents),

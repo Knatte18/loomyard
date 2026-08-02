@@ -19,12 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pausedEnvelope writes a single JSON error envelope carrying "paused": true
-// -- the orchestrator's own pause signal -- alongside the usual ok:false and
-// error fields, and returns exit code 1. Like findingsEnvelope, this exists
-// because output.Err's message field has no room for a structured extra
-// field, and the orchestrator branches on "paused" being present, not on
-// the error text.
+// pausedEnvelope writes a JSON error envelope with "paused": true for the orchestrator to detect.
 func pausedEnvelope(out io.Writer, err error) int {
 	data, _ := json.Marshal(map[string]any{
 		"ok":     false,
@@ -73,13 +68,6 @@ Example:
 				return nil
 			}
 
-			// Go picks the role from the batch's own oversized: frontmatter;
-			// the orchestrator overrides only for the recovery escalation
-			// path. Reject any other override before ever touching the
-			// engine, mirroring builderengine.SpawnBatch's own selectRole
-			// guard (the CLI-level check exists so a typo'd --role value
-			// surfaces its own clear flag error rather than SpawnBatch's
-			// more generic one).
 			var role builderengine.Role
 			switch roleOverride {
 			case "":

@@ -48,24 +48,9 @@ SCRIPT_DIR="$(dirname "$0")"
 `
 
 // InstallPostCheckoutHook installs the embedded post-checkout drift-warning
-// hook into the repo's common hooks directory.
-//
-// The function resolves the common hooks directory via
-// gitexec.RunGit("rev-parse --git-common-dir") on l.WorktreeRoot, then appends
-// "hooks/post-checkout" to obtain the hook path.
-//
-// Idempotency: if the target file already contains hookSentinel, the function
-// returns nil immediately without touching the file.
-//
-// Non-clobbering chaining: if the target exists and does not contain the
-// fabric sentinel, the existing file is renamed to post-checkout.user and a
-// new wrapper is written that (a) invokes the user hook first, (b) runs the
-// fabric drift check. The wrapper itself contains the sentinel so repeated
-// installs are idempotent.
-//
-// On platforms that support chmod (non-Windows), the file is marked executable.
-// On Windows, git reads and executes the hook via its bundled bash regardless of
-// the file mode, so the chmod is a no-op but harmless.
+// hook into the repo's common hooks directory. Idempotent if already installed;
+// chains around any existing hook without clobbering. On POSIX platforms,
+// marks the file executable; on Windows, git ignores the mode.
 func InstallPostCheckoutHook(l *hubgeometry.Layout) error {
 	// Resolve the common git directory so the hook lands in the shared .git
 	// even when called from a linked worktree (where --git-dir differs).
@@ -122,12 +107,9 @@ func InstallPostCheckoutHook(l *hubgeometry.Layout) error {
 	return nil
 }
 
-// chainUserHook backs up the existing hook to post-checkout.user and writes a
-// wrapper script that invokes the user hook first, then runs the fabric check.
-//
-// The wrapper is written atomically: the backup is created first; if any step
-// fails after the backup, the original hook is restored so the repo is never
-// left in a state where neither hook runs.
+// chainUserHook backs up the existing hook to post-checkout.user and writes
+// a wrapper that invokes both hooks. The backup is created first, and if
+// writing the wrapper fails, the original is restored.
 func chainUserHook(hookPath string, original []byte) error {
 	userHookPath := hookPath + ".user"
 

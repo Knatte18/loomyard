@@ -23,17 +23,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestSmokeDebugLog arms debug_log via LYX_REED_DEBUG, pre-seeds three stale
-// fake server logs with staggered mtimes in the hub logs dir, boots the
-// substrate, and asserts (a) a fresh tmux verbose log newer than the
-// fakes appears there and (b) the oldest fake was pruned (boot keeps the
-// newest 2 pre-existing logs, so with the fresh log at most 3 ever exist).
+// TestSmokeDebugLog arms debug_log via LYX_REED_DEBUG and checks log rotation.
 func TestSmokeDebugLog(t *testing.T) {
 	tmuxBinaryPath(t)
 
-	// The template's ${env:LYX_REED_DEBUG:-0} resolves this in-process at
-	// LoadConfig time — no rebuild or restart needed for the override to
-	// take effect on the boot below.
 	t.Setenv("LYX_REED_DEBUG", "1")
 
 	fixture := lyxtest.CopyPaired(t)
@@ -47,18 +40,11 @@ func TestSmokeDebugLog(t *testing.T) {
 		RunCLI(&buf, []string{"down"})
 	})
 
-	// lyxtest.PairedFixture.Hub is the WORKTREE root, while Layout.Hub (what
-	// HubLogsDir() joins on) is its parent container — compute the logs dir
-	// exactly as the engine does, never fixture.Hub/.lyx/logs.
 	logsDir := filepath.Join(filepath.Dir(fixture.Hub), ".lyx", "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		t.Fatalf("mkdir fake logs dir: %v", err)
 	}
 
-	// Three fake pre-existing server logs with staggered old mtimes, oldest
-	// first: boot-time prune must keep only the newest 2 of these before
-	// writing its own fresh log, so "fake-oldest" is the one that must be
-	// gone afterward.
 	now := time.Now()
 	fakeOldest := filepath.Join(logsDir, "tmux-server-fake-oldest.log")
 	fakeMiddle := filepath.Join(logsDir, "tmux-server-fake-middle.log")
@@ -72,7 +58,6 @@ func TestSmokeDebugLog(t *testing.T) {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
 	}
 
-	// The oldest fake must be pruned; the two newer fakes must survive.
 	if _, err := os.Stat(fakeOldest); !os.IsNotExist(err) {
 		t.Errorf("fake-oldest server log survived the boot prune (stat err = %v); want removed", err)
 	}

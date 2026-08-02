@@ -36,16 +36,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// errOracleNoCommits is the oracle's own sentinel for "no commits yet" —
-// intentionally a distinct value from gitrepo.ErrNoCommits, since the whole
-// point of an independent oracle is that it shares no code, including error
-// sentinels, with the implementation it checks.
+// errOracleNoCommits is the oracle's own sentinel for "no commits yet",
+// distinct from gitrepo.ErrNoCommits for independence.
 var errOracleNoCommits = errors.New("oracle: repository has no commits")
 
-// oracleCurrentSHA reimplements CurrentSHA directly on `git rev-parse HEAD`:
-// the unborn-HEAD stderr shapes git prints ("ambiguous argument 'HEAD'" or
-// "unknown revision") map to errOracleNoCommits; any other non-zero exit or
-// spawn failure is a genuine oracle failure.
+// oracleCurrentSHA reimplements CurrentSHA on `git rev-parse HEAD`, mapping
+// unborn-HEAD stderr to errOracleNoCommits.
 func oracleCurrentSHA(t *testing.T, dir string) (string, error) {
 	t.Helper()
 

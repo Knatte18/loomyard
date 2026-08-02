@@ -21,20 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// runCloneWithReset executes the clone subcommand.
-//
-// When reset is true it tears down any existing hub at the derived path before
-// cloning, making the operation idempotent. The teardown uses fabricengine.RemoveAll
-// so tests can inject errors by swapping that exported var.
-//
-// After fabricengine.CloneHub succeeds, this handler drives the sequence that
-// used to be lyx init's job: materialize the repo-wide fabric.yaml, commit the
-// anchor marker + config onto weft:main, wire host junctions, maintain the
-// .gitignore .lyx/ block, and reconcile per-worktree module configs. On any
-// step erroring, the hub's git clone is left intact (per the batch's
-// partial-failure-recovery decision) — the operator completes wiring with
-// `lyx fabric reconcile` rather than this handler destructively tearing down
-// a good clone.
+// runCloneWithReset executes the clone subcommand. When reset is true, it tears
+// down any existing hub before cloning (idempotent re-clone). After CloneHub
+// succeeds, it drives the wiring sequence: repo-wide fabric.yaml, weft:main
+// commits, host junctions, .gitignore, and per-worktree config. On error, the
+// clone is left intact; the operator completes wiring with reconcile.
 func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string) int {
 	cwd, err := hubgeometry.Getwd()
 	if err != nil {
@@ -65,15 +56,10 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		return output.Err(out, err.Error())
 	}
 
-	// Materialize the repo-wide fabric.yaml at <BoardDir>/_lyx/config/fabric.yaml.
-	// Idempotent: a no-op on the adopt path where it is already present.
 	if _, err := configsync.ReconcileFabricAt(res.BoardDir, true); err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	// Commit + push the .fabric-anchor marker and fabric.yaml onto weft:main
-	// through the Bolt handle. Its wildcard-stage commit covers both files;
-	// this is a clean no-op on the adopt path.
 	b := fabricengine.NewBolt(res.BoardDir)
 	if _, _, err := b.Commit("fabric clone: record anchor + repo-wide config", fabricengine.SyncOptions{}); err != nil {
 		return output.Err(out, err.Error())
@@ -82,8 +68,6 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		return output.Err(out, err.Error())
 	}
 
-	// Wire host junctions for the prime worktree: the weft worktree already
-	// exists (CloneHub materialized it), so every junction target resolves.
 	l, err := hubgeometry.Resolve(res.PrimeCwd)
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -96,14 +80,9 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		return output.Err(out, err.Error())
 	}
 
-	// Maintain the .gitignore .lyx/ managed block on the host worktree.
 	if _, err := gitignore.Ensure(l.Cwd, ".lyx/"); err != nil {
 		return output.Err(out, err.Error())
 	}
-
-	// Materialize per-worktree module configs on the weft side (fabric is
-	// already skipped by ReconcileAll — see configsync.ReconcileAll's doc
-	// comment).
 	if _, err := configsync.ReconcileAll(res.WeftBase, true); err != nil {
 		return output.Err(out, err.Error())
 	}

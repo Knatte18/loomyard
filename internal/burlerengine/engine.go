@@ -17,19 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Shuttle is the seam Engine drives one round through: the subset of
-// shuttleengine's API a round needs, satisfied as-is by
-// *shuttleengine.Runner in production and by a fake in unit tests. Keeping
-// this interface package-local (rather than importing shuttleengine's own
-// ReedOps-style seam) is what lets burlerengine stay engine-agnostic and
-// testable without wiring reed or an LLM provider.
+// Shuttle is the seam Engine drives one round through.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }
 
-// var _ Shuttle = (*shuttleengine.Runner)(nil) is the compile-time proof
-// that *shuttleengine.Runner satisfies Shuttle as-is, so production wiring
-// (burlercli) never needs an adapter type.
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
 // Engine drives burler rounds through a Shuttle, resolving Profile paths
@@ -107,15 +99,8 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 
 	logger.Info("burler: round starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
-	// RoleReviewFix, not a reviewer-only role: the template states in as
-	// many words that the agent has two jobs in order in one session, and
-	// part B is fixing what part A found.
 	directive := pattern.Directive(e.layout, pattern.RoleReviewFix)
 
-	// Mint a fresh per-round directory under the machine-local .lyx tree
-	// (never the weft-synced _lyx) to hold this round's three instruction
-	// files — os.MkdirTemp guarantees a collision-free name across
-	// concurrent rounds in the same worktree.
 	burlerDir := filepath.Join(e.layout.DotLyxDir(), "burler")
 	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
 		logger.Warn("burler: create instruction dir failed", "burlerDir", burlerDir, "round", opts.Round, "error", err)
@@ -136,9 +121,6 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 		return Result{}, err
 	}
 
-	// Write every instruction file before the shuttle ever starts: a
-	// partial materialization must never leave the shuttle running against
-	// an orchestrator that names a file that does not exist.
 	for _, f := range files {
 		if err := os.WriteFile(f.Path, []byte(f.Content), 0o644); err != nil {
 			return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
@@ -146,16 +128,13 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	}
 
 	spec := shuttleengine.Spec{
-		Prompt:      prompt,
-		OutputFiles: []string{p.ReviewPath, p.FixerReportPath},
-		Model:       opts.Model,
-		Effort:      opts.Effort,
-		Timeout:     opts.Timeout,
-		Role:        "burler",
-		Round:       opts.Round,
-		// ForkSubagents authorizes cluster-round fork spawns only when a
-		// fan actually resolved — a non-cluster round never touches this
-		// authorization.
+		Prompt:        prompt,
+		OutputFiles:   []string{p.ReviewPath, p.FixerReportPath},
+		Model:         opts.Model,
+		Effort:        opts.Effort,
+		Timeout:       opts.Timeout,
+		Role:          "burler",
+		Round:         opts.Round,
 		ForkSubagents: p.ClusterFan != "",
 	}
 

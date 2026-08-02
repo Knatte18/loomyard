@@ -23,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// headSHA returns dir's (or a bare repo's) HEAD commit SHA.
+// headSHA returns dir's HEAD commit SHA.
 func headSHA(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -36,15 +36,9 @@ func headSHA(t *testing.T, dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// TestRunCLI_BypassPushAdvancesBothUpstreams builds a weft repo with an
-// unpushed commit (lyxtest.CopyWeft, whose fixture ships with upstream
-// tracking already established, plus one more commit made on top) and a warp
-// repo whose lyxtest.CopyHostHub fixture already carries an unpushed "init"
-// commit against an empty bare origin — reused directly per the batch's
-// decision, since PushCoalesced's -c push.autoSetupRemote=true makes the
-// first push against a no-upstream checkout succeed and establish tracking.
-// It asserts RunCLI's --warp-path/--weft-path bypass push exits 0 and that
-// both bare upstreams' HEAD now matches their local checkout's HEAD.
+// TestRunCLI_BypassPushAdvancesBothUpstreams builds weft and warp repos with
+// unpushed commits, then asserts that --warp-path/--weft-path bypass push
+// exits 0 and both bare upstreams' HEAD matches their local checkout's HEAD.
 func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 	weftFixture := lyxtest.CopyWeft(t)
 	warpFixture := lyxtest.CopyHostHub(t)
@@ -85,9 +79,7 @@ func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 }
 
 // TestRunCLI_WarpPathPushOnly verifies that --warp-path with a non-push
-// subcommand returns exit 1 and the JSON error envelope
-// {"ok":false,"error":"subcommand requires a worktree context"}, mirroring
-// cli_test.go's TestRunCLI_WeftPathPushOnly for the sibling --weft-path flag.
+// subcommand returns exit 1 and a "subcommand requires a worktree context" error.
 func TestRunCLI_WarpPathPushOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 

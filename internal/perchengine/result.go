@@ -38,46 +38,24 @@ const (
 	StuckCircling StuckReason = "circling"
 )
 
-// RoundSummary records one round's outcome for Result.Rounds and for
-// state.json's per-round history. Every field describes something that may
-// or may not have happened that round: an empty or nil field means the
-// corresponding sub-step did not occur this round (e.g. JudgePath is empty
-// on round 1, where the judge never runs; GatePassed is nil for a round
-// whose gate mode is GateLLMVerdict, which never runs a command).
+// RoundSummary records one round's outcome for Result.Rounds and state.json's per-round history.
 type RoundSummary struct {
-	// Round is the round number (1-based); Attempts is how many burler
-	// attempts it took to reach a done outcome (>1 means one retry occurred
-	// before this round completed — either a died/timeout outcome or an
-	// asking-triage RETRY verdict, the two causes runRound retries on).
+	// Round is the round number (1-based); Attempts is how many burler attempts it took to reach a done outcome.
 	Round    int
 	Attempts int
-	// Verdict and BlockingCount are the fresh round's burler review
-	// result — the review the round loop reasons about, independent of
-	// gate mode.
+	// Verdict and BlockingCount are the fresh round's burler review result.
 	Verdict       burlerengine.Verdict
 	BlockingCount int
-	// ReviewPath and FixerReportPath are always set for a completed round;
-	// JudgePath, GatePath, and TriagePath are set only when the judge, the
-	// command gate, or asking-triage actually ran that round.
+	// ReviewPath and FixerReportPath are always set; JudgePath, GatePath, and TriagePath are set only when the judge, gate, or triage actually ran.
 	ReviewPath      string
 	FixerReportPath string
 	JudgePath       string
 	GatePath        string
-	// TriagePath is set when this round's burler attempt(s) included an
-	// asking-triage call (an attempt stopped mid-round asking a question);
-	// empty otherwise. There is no TriageVerdict field alongside it — a
-	// GIVE_UP triage verdict never reaches this record at all, since it
-	// surfaces as a hard ERROR from Engine.Run before any round record is
-	// appended (see doc.go's non-done-outcomes section), so a persisted
-	// TriagePath always implies the triage verdict was RETRY.
+	// TriagePath is set when this round's burler attempt(s) included an asking-triage call; empty otherwise. A GIVE_UP triage verdict never reaches this record at all; it surfaces as an error from Engine.Run before any round record is appended.
 	TriagePath string
-	// JudgeVerdict is the raw progress-judge verdict string (one of the
-	// circling-check or milestone-gate vocabularies) when the judge ran
-	// this round, empty otherwise.
+	// JudgeVerdict is the raw progress-judge verdict string when the judge ran this round, empty otherwise.
 	JudgeVerdict string
-	// GatePassed is nil when the round's gate mode never runs a command
-	// (GateLLMVerdict), and set to the command's pass/fail result
-	// otherwise (GateCommand/GateBoth).
+	// GatePassed is nil when the round's gate mode never runs a command (GateLLMVerdict), otherwise the command's pass/fail result.
 	GatePassed *bool
 }
 

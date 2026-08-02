@@ -6,8 +6,6 @@
 package loomengine
 
 // CheckID names one of the closed set of preconditions Preflight validates.
-// It is a machine-consumable classification a future phase machine can switch
-// on, paired with a human-readable Reason string per Failure.
 type CheckID string
 
 // The closed set of checks Preflight can report a failure against, per
@@ -50,30 +48,23 @@ const (
 	CheckHalfFinished CheckID = "half-finished"
 )
 
-// Failure is one determined precondition violation: which check failed
-// (Check) and a human-readable explanation (Reason) an operator can read
-// directly, distinct from the machine-classifiable Check.
+// Failure is one determined precondition violation: which check failed and why.
 type Failure struct {
 	Check  CheckID
 	Reason string
 }
 
 // Report is Preflight's determined verdict: OK reports whether every
-// precondition passed, and Failures lists every violation found. Preflight
-// collects rather than short-circuits (per check-ordering-and-collection),
-// so Failures may contain more than one entry when multiple preconditions
-// are unmet simultaneously. The invariant OK == (len(Failures) == 0) always
-// holds for a Report returned with a nil error.
+// precondition passed, and Failures lists every violation found.
+// The invariant OK == (len(Failures) == 0) always holds for a Report
+// returned with a nil error.
 type Report struct {
 	OK       bool
 	Failures []Failure
 }
 
-// addFailure appends a Failure built from check and reason to r.Failures and
-// keeps r.OK consistent (false, since a non-empty Failures list can never be
-// OK). It exists so Preflight's checkResolved can build up a Report across
-// several non-short-circuiting checks without hand-rolling the append+OK-flip
-// pair at each call site.
+// addFailure appends a Failure to r.Failures and keeps r.OK consistent with
+// the Failures list.
 func (r *Report) addFailure(check CheckID, reason string) {
 	r.Failures = append(r.Failures, Failure{Check: check, Reason: reason})
 	r.OK = false

@@ -44,8 +44,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// newScratchRepo initializes a fresh git repo at t.TempDir(), configures a
-// test identity, and returns its path.
+// newScratchRepo initializes a fresh git repo at t.TempDir() and returns its path.
 func newScratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -55,8 +54,7 @@ func newScratchRepo(t *testing.T) string {
 	return dir
 }
 
-// mustGit runs a git command in dir via gitexec.RunGit, failing the test on
-// any spawn error or non-zero exit.
+// mustGit runs a git command in dir via gitexec.RunGit.
 func mustGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	stdout, stderr, exitCode, err := gitexec.RunGit(args, dir)
@@ -69,8 +67,7 @@ func mustGit(t *testing.T, dir string, args ...string) string {
 	return stdout
 }
 
-// commitFile writes name/content in dir and commits it, returning the new
-// HEAD SHA.
+// commitFile writes name/content in dir and commits it, returning the new HEAD SHA.
 func commitFile(t *testing.T, dir, name, content, message string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -85,9 +82,7 @@ func commitFile(t *testing.T, dir, name, content, message string) string {
 	return strings.TrimSpace(mustGit(t, dir, "rev-parse", "HEAD"))
 }
 
-// verbsFakeReed is a hermetic shuttleengine.ReedOps double: AddStrand mints a
-// distinct GUID per call and registers it live, RemoveStrand records every
-// call and retires the guid, and the send/capture methods stay inert.
+// verbsFakeReed is a hermetic shuttleengine.ReedOps double.
 type verbsFakeReed struct {
 	mu             sync.Mutex
 	counter        int

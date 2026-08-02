@@ -134,8 +134,7 @@ func TestFingerprint_IgnoresNonMarkdownAndSubdirs(t *testing.T) {
 		t.Fatalf("Fingerprint() error = %v; want nil", err)
 	}
 
-	// Add a non-.md file and a subdirectory containing a .md file; neither
-	// should affect the fingerprint since only top-level *.md files count.
+	// Add a non-.md file and a nested .md file; neither should matter.
 	writeFiles(t, dir, map[string]string{
 		"notes.txt":           "ignored",
 		"reports/report-1.md": "also ignored: this is inside a subdirectory",

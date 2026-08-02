@@ -10,11 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// removeCmd builds the `remove <guid>` subcommand: deletes the strand
-// identified by the single positional guid argument. Removing a non-leaf
-// without --recursive is rejected by the engine ("strand has children, use
-// --recursive"); with --recursive the whole descendant subtree cascades
-// away. The success envelope lists every strand actually removed.
+// removeCmd builds the `remove <guid>` subcommand: deletes the strand identified by the guid argument.
 func (c *reedCLI) removeCmd() *cobra.Command {
 	var recursive bool
 

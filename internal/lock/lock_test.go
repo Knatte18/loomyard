@@ -65,11 +65,7 @@ func TestAcquireWriteLock(t *testing.T) {
 	})
 }
 
-// TestTryAcquireWriteLock proves the non-blocking contention contract:
-// success reports (lock, true, nil); a second attempt against an
-// already-held path reports (nil, false, nil) — never an error — so a
-// caller can fail fast with its own message rather than being told the
-// underlying flock error; and a released lock is immediately re-acquirable.
+// TestTryAcquireWriteLock verifies non-blocking acquisition and contention reporting.
 func TestTryAcquireWriteLock(t *testing.T) {
 	tmpDir := t.TempDir()
 

@@ -16,9 +16,7 @@ package reedcli
 
 import "syscall"
 
-// posixProcessAlive reports whether pid names a running process, tolerating
-// a caller that lacks permission to signal it (EPERM still means it
-// exists).
+// posixProcessAlive reports whether pid names a running process.
 func posixProcessAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || err == syscall.EPERM

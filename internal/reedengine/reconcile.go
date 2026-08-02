@@ -9,63 +9,9 @@ package reedengine
 
 import "fmt"
 
-// planReconcile is the pure planning half of reconcile: given the current
-// strand table and the live pane set list-panes just reported, it decides
-// which strands' pane bindings must be cleared and which panes must be
-// killed before the layout is re-applied. It never touches tmux itself, so
-// the decision logic is unit-testable without a running server.
-//
-// The kill-before-apply rule keeps the rendered window_layout string
-// consistent with tmux's actual pane set: a pane_dead=1 pane still
-// occupies a slot in list-panes' output, so leaving it un-killed while
-// excluding its strand from the layout would make the layout string
-// enumerate fewer panes than tmux still holds (GAP2). The one exception is
-// enforced by the session-survival rule: at least one pane must always
-// survive, since tmux offers no clean way to empty a window (under
-// remain-on-exit a last-pane kill corpses an alive pane rather than
-// refusing, and can end the session for a dead one — reed never asks). When
-// any pane is still alive, every dead pane is killable. When every pane is
-// dead, exactly one dead pane is kept (keptDeadPane) so the session — and
-// that strand's still-rebuildable record — survives until resume/remove; its
-// strand's binding is NOT cleared, since the pane is still present and render
-// must still place it. keptDeadPane (a pane id, non-empty only when a dead
-// pane is deliberately spared) names it, so callers/tests can assert on the
-// exception explicitly rather than inferring it from panesToKill.
-//
-// UNTRACKED panes — live panes no strand owns (an operator's raw
-// split-window into the reed session, or an orphan from a mid-op crash
-// before persist) — are also scheduled for killing, but only while reed owns
-// content in the window (>=1 strand bound to a present pane). Killing them
-// here, deterministically, replaces relying on select-layout's positional
-// reaping: tmux assigns layout cells to panes in window order and destroys
-// whichever panes sit BEYOND the emitted cell count, so with a foreign pane
-// present the reaped victim is positional — observed live to destroy a
-// TRACKED strand's pane while the foreign pane survived. With no bound
-// content at all, foreign panes are left untouched (reed has nothing to lay
-// out — the apply is skipped too, see anyPlacedStrand).
-//
-// For every other strand: (a) a strand whose PaneID is absent from live, or
-// whose pane was just scheduled for killing, has its GUID returned in
-// clearedGUIDs — the record survives (only RemoveStrand deletes one), but
-// its binding is gone so it renders as not-live; (b) a strand whose pane is
-// present and not being killed keeps its binding untouched — Live derives
-// true for it downstream, via toRenderStrands' liveIDs lookup.
-//
-// headerPaneID names the always-present header pane (empty when none is
-// tracked yet). It is deliberately NEVER folded into boundPaneIDs — that map
-// also gates anyBoundPresent below, and folding the header in would make
-// anyBoundPresent true whenever the header is merely live, reaping
-// operator/foreign panes even with zero strands bound and breaking the
-// documented "no bound content, foreign panes untouched" invariant. Instead
-// it is added ONLY to a separate exemptPaneIDs set that the untracked-pane
-// reap loop below checks, so the header pane itself is never killed as an
-// "untracked" pane while still never counting toward "reed owns bound
-// content" (Shared Decision header-is-not-a-strand). The header is spared
-// by the DEAD-pane kill loop too: a pane_dead=1 header corpse is kept
-// enumerable rather than killed, since only up/resume can rebuild a header
-// (ensureHeaderPaneLocked) and killing it here would leave every
-// intermediate add/remove running headerless with a stale HeaderPaneID —
-// see the comment at the kill loop.
+// planReconcile decides which pane bindings to clear and which panes to kill.
+// Pure logic; unit-testable without a running server.
+// Keeps at least one pane alive (session-survival rule); spares header pane.
 func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clearedGUIDs []string, panesToKill []string, keptDeadPane string) {
 	liveByID := make(map[string]LivePane, len(live))
 	for _, p := range live {
@@ -166,25 +112,16 @@ func planReconcile(strands []Strand, live []LivePane, headerPaneID string) (clea
 	return clearedGUIDs, panesToKill, keptDeadPaneID
 }
 
-// clearAllPaneBindings drops every strand's PaneID. It is used after a
-// session is freshly booted (server rebirth): tmux restarts pane numbering
-// from %0/%1, so a persisted binding can collide with a reborn pane id and be
-// mistaken for a live strand by reconcile. A just-booted session hosts none
-// of the prior strands, so every binding is stale by definition.
+// clearAllPaneBindings clears every strand's PaneID after server rebirth.
+// Prevents stale bindings from colliding with reborn pane ids.
 func clearAllPaneBindings(st *ReedState) {
 	for i := range st.Strands {
 		st.Strands[i].PaneID = ""
 	}
 }
 
-// reconcileLocked reconciles the persisted table against tmux's live pane
-// set: it kills each pane planReconcile schedules (dead-but-not-sole panes,
-// plus untracked panes while reed owns bound content), then clears the
-// PaneID of every strand whose pane is gone or was just killed (keeping the
-// record — only RemoveStrand deletes one). It assumes the op lock is
-// already held by the caller, mutates st in place, and returns the pane ids
-// actually killed so the caller can re-derive the post-kill live set
-// without a second list-panes round trip.
+// reconcileLocked reconciles the persisted table against live panes.
+// Kills panes per planReconcile's schedule; clears bindings for gone panes.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []string, err error) {
 	clearedGUIDs, panesToKill, _ := planReconcile(st.Strands, live, st.HeaderPaneID)
 

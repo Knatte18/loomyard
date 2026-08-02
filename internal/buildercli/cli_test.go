@@ -15,10 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestRunCLI_NoArgs verifies that "lyx builder" with no subcommand exits 0
-// and lists whatever subcommands are currently registered -- no git repo
-// is needed, since the PersistentPreRunE guard skips layout/config/engine
-// resolution for the group command itself.
+// TestRunCLI_NoArgs verifies "lyx builder" with no subcommand exits 0 and lists subcommands.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -30,10 +27,7 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1
-// and emits a JSON error envelope with ok=false, without needing a git repo
-// (the PersistentPreRunE guard for cmd.Name() == "builder" fires before
-// layout resolution).
+// TestRunCLI_UnknownSubcommand verifies unknown subcommand exits 1 with JSON error envelope.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 

@@ -28,18 +28,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// funcDeclPattern matches a top-level function declaration line
-// ("func Name(" or "func (recv Type) Name(") and captures the byte offset
-// of the function name within the line via the submatch index, so a
-// symbol's position can be located directly from source text without
-// loading a package graph — matching the engine's decoupling from
-// go/token (position.go's batch-local decision) and #008's approach of
-// resolving a known high-fan-in hubgeometry symbol.
+// funcDeclPattern matches top-level function declarations and captures the function name offset.
 var funcDeclPattern = regexp.MustCompile(`^func (?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\(`)
 
-// findFuncPosition scans file for a top-level declaration of funcName and
-// returns its Position (1-based line, 1-based byte column of the function
-// name itself, ready to hand to References via Query.Pos).
+// findFuncPosition returns the Position of a top-level function in a file.
 func findFuncPosition(t *testing.T, file, funcName string) Position {
 	t.Helper()
 	data, err := os.ReadFile(file)
@@ -61,8 +53,7 @@ func findFuncPosition(t *testing.T, file, funcName string) Position {
 	return Position{}
 }
 
-// repoRoot returns this worktree's module root: internal/scoutengine is
-// always two directories below it.
+// repoRoot returns this worktree's module root.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

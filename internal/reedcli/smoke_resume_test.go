@@ -15,14 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestSmokeCrashRecovery covers the discussion's "server dead (reboot)"
-// recovery state end-to-end against a live tmux server: after the server is
-// killed out from under reed, `up` must reboot the substrate and reconcile the
-// strand to not-live (its stale pane binding cleared, not mistaken for the
-// reborn session's reused initial pane id), and `resume` must then rebuild the
-// strand into a fresh live pane. This is the path the pane-id-collision fix
-// (clearAllPaneBindings on a booted session) exists for; the single-pane
-// TestSmokeUpAddStatusDown above never reaches it.
+// TestSmokeCrashRecovery covers crash recovery with server reboot.
 func TestSmokeCrashRecovery(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -37,7 +30,6 @@ func TestSmokeCrashRecovery(t *testing.T) {
 		RunCLI(&buf, []string{"down"})
 	})
 
-	// up + add one strand.
 	var out bytes.Buffer
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
@@ -55,7 +47,6 @@ func TestSmokeCrashRecovery(t *testing.T) {
 		t.Fatalf("add result missing guid: %v", addResult)
 	}
 
-	// Read the socket so we can kill the server directly (simulating a crash).
 	out.Reset()
 	if code := RunCLI(&out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())

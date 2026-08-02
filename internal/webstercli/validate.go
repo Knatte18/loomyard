@@ -24,14 +24,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// findingsEnvelope writes a single JSON error envelope carrying findings as
-// a structured array (check, card, detail per entry), rather than a
-// flattened error string: a Planner or human triaging validate's output
-// needs each finding machine-parseable, and internal/output.Err's message
-// field has no room for that. This mirrors output.Err's envelope shape
-// (ok:false) and exit code (1) exactly, adding only the "findings" field --
-// validate and run's automatic gate both share it, since both surface the
-// same Validate findings the same way.
+// findingsEnvelope writes a JSON error envelope carrying findings as a structured array.
 func findingsEnvelope(out io.Writer, findings []planparser.ValidationError) int {
 	entries := make([]map[string]string, len(findings))
 	for i, f := range findings {
@@ -46,10 +39,7 @@ func findingsEnvelope(out io.Writer, findings []planparser.ValidationError) int 
 	return 1
 }
 
-// validateCmd builds the `validate` subcommand: planparser.ParsePlan
-// followed by planparser.Validate, resolving every card's typed file-op
-// paths (Context/Edits/Creates/Deletes/Moves) against layout.Cwd -- the same
-// worktree-base anchoring every other websterCLI dir uses.
+// validateCmd builds the `validate` subcommand.
 func (c *websterCLI) validateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate",
@@ -71,9 +61,6 @@ Example:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
-			// A failing PersistentPreRunE has already written an error
-			// response and recorded the exit code; short-circuit rather
-			// than touch c's fields, which are unpopulated on that path.
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}

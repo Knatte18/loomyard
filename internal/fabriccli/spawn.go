@@ -9,8 +9,7 @@ package fabriccli
 import "github.com/Knatte18/loomyard/internal/fabricengine"
 
 // spawnPush launches a detached, weft-only push of weftPath via
-// fabricengine.SpawnDetachedPush. See that function's doc comment for the
-// skip-env gating, detached-child mechanics, and no-Wait posture.
+// fabricengine.SpawnDetachedPush.
 func spawnPush(weftPath string) error {
 	return fabricengine.SpawnDetachedPush("", weftPath)
 }

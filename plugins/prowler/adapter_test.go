@@ -11,10 +11,8 @@ import (
 	"testing"
 )
 
-// stubAdapter is a configurable siteAdapter for testing fetchPage's routing
-// loop in isolation: matches controls Matches' return value, fetchCalled
-// (when non-nil) records whether Fetch was invoked, and out/handled are
-// Fetch's canned return.
+// stubAdapter is a configurable siteAdapter for testing: matches controls
+// Matches' return value, fetchCalled records whether Fetch was invoked.
 type stubAdapter struct {
 	matches     bool
 	fetchCalled *bool
@@ -25,8 +23,8 @@ type stubAdapter struct {
 // Matches implements siteAdapter by returning the configured matches value.
 func (s stubAdapter) Matches(string) bool { return s.matches }
 
-// Fetch implements siteAdapter by recording that it was called (if
-// fetchCalled is set) and returning the configured canned result.
+// Fetch implements siteAdapter by recording the call and returning the
+// configured canned result.
 func (s stubAdapter) Fetch(context.Context, fetcher, string) (string, bool) {
 	if s.fetchCalled != nil {
 		*s.fetchCalled = true

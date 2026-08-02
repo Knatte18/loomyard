@@ -23,7 +23,6 @@ func TestHelpTree_RootNamesAllModules(t *testing.T) {
 	}
 
 	got := out.String()
-	// Every module must appear by name in the root help output.
 	requiredModules := []string{
 		"board", "config", "ide", "reed", "fabric", "selfreport", "shuttle", "burler", "perch", "builder", "scout", "webster",
 	}
@@ -33,8 +32,7 @@ func TestHelpTree_RootNamesAllModules(t *testing.T) {
 		}
 	}
 
-	// Assert that the reconcile subcommand is discoverable under config.
-	// Invoke "lyx config --help" which short-circuits cobra's help and exits 0.
+	// Verify reconcile subcommand is discoverable under config.
 	var configOut bytes.Buffer
 	if code := run([]string{"config", "--help"}, &configOut); code != 0 {
 		t.Fatalf("run([config --help]) = %d; want 0. output:\n%s", code, configOut.String())

@@ -8,17 +8,8 @@ package gitrepo
 
 import "fmt"
 
-// ResetHard resets this Repo's HEAD, index, and working tree to sha via
-// `git reset --hard`, discarding any local commits or uncommitted changes
-// past that point. sha must be a plain hex object name — validSHA rejects it
-// before any git spawn (exactly like ChangedFilesSince), returning
-// ErrInvalidSHA (checkable via errors.Is) so an option-shaped string (e.g.
-// "--hard") can never be parsed as a reset flag instead of a target commit.
-// On a spawn failure the underlying error is wrapped and returned; on any
-// other non-zero exit (a well-formed sha not present in this repo's history)
-// the returned error names the repo path and git's exit code without
-// including raw stderr, matching Pull's no-stderr-leak error style.
-// ResetHard is the primitive fabric's coordinated history recovery builds on.
+// ResetHard resets HEAD, index, and working tree to sha via `git reset --hard`.
+// sha must be a valid hex object name, or ErrInvalidSHA is returned.
 func (r *Repo) ResetHard(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA

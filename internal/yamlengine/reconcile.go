@@ -12,23 +12,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Reconcile merges a template with existing user configuration.
-//
-// It unmarshals both template and existing into yaml.Node trees, walks the
-// template tree to identify every leaf key-path, and for each leaf:
-//   - If the key exists in existing, overwrites the template leaf's Value with the existing value
-//   - If the key is absent from existing, reports it in added
-//   - Any key in existing but absent from template is reported in removed
-//
-// Comments and key order always come from the template. The merged result
-// is marshalled from the mutated template tree.
-//
-// An empty or absent existing (parses to null/empty document) yields merged output
-// equivalent to the template, with added containing all template key-paths and
-// removed empty — this is the init/migration case.
-//
-// Reconcile is idempotent: calling it twice on the same inputs produces the
-// same merged output and empty added/removed deltas.
+// Reconcile merges a template with existing user configuration, preserving
+// template comments and key order. Keys present in existing override template
+// defaults; keys absent from existing are reported in added, keys absent from
+// template are reported in removed. Reconcile is idempotent.
 func Reconcile(template, existing []byte) (merged []byte, added, removed []string, err error) {
 	// Parse template into node tree
 	var templateNode yaml.Node
@@ -84,11 +71,8 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 	return merged, added, removed, nil
 }
 
-// MissingKeys returns the leaf key-paths present in template but absent from existing.
-//
-// This is equivalent to the added set returned by Reconcile, without producing
-// the merged bytes. A key present with an empty value counts as present and is
-// NOT reported missing.
+// MissingKeys returns the leaf key-paths present in template but absent from
+// existing. A key present with an empty value counts as present.
 func MissingKeys(template, existing []byte) ([]string, error) {
 	// Parse template
 	var templateNode yaml.Node
@@ -127,10 +111,7 @@ func MissingKeys(template, existing []byte) ([]string, error) {
 }
 
 // applyExistingOverrides copies each existing leaf's value, tag, and style
-// onto the matching template leaf in place, leaving template leaves with no
-// counterpart in existing untouched. Both Reconcile and SetValues share this
-// merge step: it is the single definition of what "layer existing onto
-// template" means, so the two call sites cannot drift out of sync.
+// onto the matching template leaf, leaving template-only leaves untouched.
 func applyExistingOverrides(templateLeaves, existingLeaves map[string]*yaml.Node) {
 	for path, existingLeaf := range existingLeaves {
 		if templateLeaf, ok := templateLeaves[path]; ok {
@@ -143,16 +124,14 @@ func applyExistingOverrides(templateLeaves, existingLeaves map[string]*yaml.Node
 }
 
 // collectLeafPaths walks a YAML node tree and collects all leaf key-paths
-// (scalars accessible via mappings and sequences).
-//
-// It populates the leaves map with path -> *yaml.Node for each scalar leaf.
+// into the leaves map.
 func collectLeafPaths(node *yaml.Node, leaves map[string]*yaml.Node) {
 	var paths []string
 	collectLeafPathsHelper(node, "", leaves, &paths)
 }
 
-// collectLeafPathsHelper recursively walks a node and collects leaf key-paths.
-// It uses depth-first traversal with dotted notation for nested keys.
+// collectLeafPathsHelper recursively walks a node and collects leaf key-paths
+// using depth-first traversal with dotted notation for nested keys.
 func collectLeafPathsHelper(node *yaml.Node, prefix string, leaves map[string]*yaml.Node, paths *[]string) {
 	if node == nil {
 		return

@@ -10,34 +10,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// Role identifies which agent-facing directive variant Directive should
-// render. The zero Role is deliberately not one of the three named
-// constants below; Directive documents its behaviour for that case (the
-// empty string) rather than leaving it to fall through undocumented.
+// Role identifies which agent-facing directive variant Directive should render.
 type Role int
 
-// The three directive variants Directive knows how to render, one per agent
-// shape in the stack. See doc.go's "Why three roles, not one" section for
-// why each variant is worded the way it is.
+// The three directive variants Directive knows how to render, one per agent shape.
 const (
-	// RoleImplementer selects the pre-edit checklist used by any agent that
-	// edits code: builder's implementer, webster's fork, and loom's plan
-	// producer.
+	// RoleImplementer selects the pre-edit checklist for any agent that edits code.
 	RoleImplementer Role = iota + 1
-	// RoleReviewFix selects the combined review+fix variant used by the
-	// burler round, the one reviewing template in the set — it also fixes,
-	// so a pure reviewer-only variant would have no user.
+	// RoleReviewFix selects the combined review+fix variant for the burler round.
 	RoleReviewFix
-	// RoleOrchestrator selects the forking-only variant used by webster's
-	// Master session, which never edits code itself.
+	// RoleOrchestrator selects the forking-only variant for webster's Master session.
 	RoleOrchestrator
 )
 
-// implementerDirective is RoleImplementer's directive text. Every directive
-// constant in this file carries its own "##" heading inline so an inactive
-// render leaves no orphan heading behind, is phrased as an imperative
-// checklist rather than a single sentence, and names the literal relative
-// pointer "_pattern/PATTERN.md" rather than an interpolated absolute path.
+// implementerDirective is RoleImplementer's directive text, phrased as an imperative checklist with "_pattern/PATTERN.md" as a literal relative pointer (not interpolated).
 const implementerDirective = `## Constraints — do this before you write any code
 
 - **STOP.** Read _pattern/PATTERN.md in full before editing a single file.
@@ -46,8 +32,7 @@ const implementerDirective = `## Constraints — do this before you write any co
 - If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.
 `
 
-// reviewFixDirective is RoleReviewFix's directive text, covering both of the
-// burler round's phases (A-review, B-fix) in the round's own order.
+// reviewFixDirective is RoleReviewFix's directive text, covering both of the burler round's phases.
 const reviewFixDirective = `## Constraints — do this before you judge or change anything
 
 - Read _pattern/PATTERN.md in full before forming any judgment.
@@ -57,9 +42,7 @@ const reviewFixDirective = `## Constraints — do this before you judge or chang
 - If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.
 `
 
-// orchestratorDirective is RoleOrchestrator's directive text, worded for
-// forking rather than editing since webster's Master never edits code
-// itself.
+// orchestratorDirective is RoleOrchestrator's directive text, worded for forking rather than editing.
 const orchestratorDirective = `## Constraints — do this before you fork anything
 
 - Read _pattern/PATTERN.md in full before forking a single implementer.
@@ -76,23 +59,7 @@ const orchestratorDirective = `## Constraints — do this before you fork anythi
 // never reassigns it.
 var statFile = os.Stat
 
-// Directive reports whether PATTERN is active for the worktree l resolves
-// to and, if so, returns the role's directive text to inject into that
-// agent's prompt.
-//
-// It returns the empty string in three documented cases, each a deliberate
-// no-op rather than a panic or an error — because a slip in any one of them
-// would otherwise take down prompt assembly in every one of the five agent
-// paths that call Directive:
-//
-//   - l is nil (several Deps structs are assembled field-by-field by CLI
-//     callers that could leave Layout unset).
-//   - PATTERN is inactive for l (see isActive).
-//   - role is not one of RoleImplementer, RoleReviewFix, or
-//     RoleOrchestrator — including the zero Role.
-//
-// See doc.go for the full active-check rule and the rationale behind the
-// three role variants.
+// Directive reports whether PATTERN is active and returns the role's directive text to inject into the agent's prompt, or empty string if inactive or role is unknown.
 func Directive(l *hubgeometry.Layout, role Role) string {
 	if l == nil {
 		return ""
@@ -115,11 +82,7 @@ func Directive(l *hubgeometry.Layout, role Role) string {
 	}
 }
 
-// isActive reports whether PATTERN is active for the worktree l resolves
-// to. The rule is: an absent PatternFileHere() means inactive, and every
-// other stat outcome means active — with one exception, a directory in
-// PATTERN.md's place, which is also inactive because it is not a readable
-// index.
+// isActive reports whether PATTERN is active: an absent PatternFileHere() means inactive; a directory in its place is also inactive; otherwise active.
 func isActive(l *hubgeometry.Layout) bool {
 	info, err := statFile(l.PatternFileHere())
 	if err != nil {

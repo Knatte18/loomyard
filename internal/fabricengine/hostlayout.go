@@ -13,18 +13,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// hostLayoutFor returns the per-host-worktree Layout for a worktree enumerated by
-// hubgeometry.List, using the spawn-free Layout.SiblingLayout fast path for the
-// normal case (worktreeRoot is a hub sibling of l) and falling back to the
-// spawning, gate-free hubgeometry.ResolveWorktree for any worktree that lives
-// outside l's hub. Both paths are byte-for-byte equivalent to calling
-// hubgeometry.ResolveWorktree(worktreeRoot) directly, so the guard is purely a
-// spawn-count optimization with no behavior change: see hubgeometry's
-// SiblingLayout godoc and the hubgeometry_test.go equivalence test for the
-// proof. The fallback uses ResolveWorktree, not the gated Resolve: it derives
-// another worktree's geometry from its root, which sits above any subpath
-// anchor, so the cwd at-or-below gate (which fires only for a subpath-anchored
-// hub) would spuriously hard-error with ErrCwdOutsideAnchor here.
+// hostLayoutFor returns the per-host-worktree Layout using SiblingLayout for
+// hub siblings (spawn-free optimization) and falling back to ResolveWorktree for
+// worktrees outside the hub. Both paths are equivalent; the guard is purely a
+// spawn-count optimization.
 func hostLayoutFor(l *hubgeometry.Layout, worktreeRoot string) (*hubgeometry.Layout, error) {
 	if filepath.Dir(worktreeRoot) != l.Hub {
 		// worktreeRoot is not a direct child of l.Hub, so SiblingLayout's hardcoded

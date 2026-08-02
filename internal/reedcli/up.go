@@ -12,10 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// upCmd builds the `up` subcommand: ensures this hub's named tmux server
-// and this worktree's session exist, then reconciles and re-applies the
-// current strand layout. It follows Idiom B — ShouldAbort guard, engine
-// call, error/success envelope, always return nil.
+// upCmd builds the `up` subcommand.
 func (c *reedCLI) upCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "up",
@@ -61,8 +58,7 @@ Example:
 	}
 }
 
-// downCmd builds the `down` subcommand: kills this worktree's tmux session
-// and clears its persisted strand state.
+// downCmd builds the `down` subcommand.
 func (c *reedCLI) downCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "down",

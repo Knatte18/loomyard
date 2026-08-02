@@ -86,40 +86,28 @@ func appendSnapshotTrailers(message string, tags []string) (string, error) {
 	return result, nil
 }
 
-// trailerLinePattern matches a single git-trailer-shaped line: a token key
-// (letters, digits, hyphens) followed by a colon, at least one space, and a
-// non-empty value. It is used to decide whether a commit message's final
-// paragraph is already a trailer block (see endsInTrailerBlock), mirroring
-// git's own loose trailer-line recognition.
+// trailerLinePattern matches a single git-trailer-shaped line: key: value format.
+// It is used to decide whether a commit message's final paragraph is already a
+// trailer block, mirroring git's own loose trailer-line recognition.
 var trailerLinePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*:\s+\S.*$`)
 
-// appendWarpSHATrailer returns message with a "Warp-SHA: <warpSHA>" trailer
-// line appended, following git's trailer conventions (the same shape as a
-// "Co-authored-by:" trailer): the trailer line joins message's existing
-// trailer block directly if the message already ends in one (its final
-// paragraph is entirely trailer-shaped lines), or starts a new trailer block
+// appendWarpSHATrailer returns message with a "Warp-SHA: <warpSHA>" trailer line
+// appended, following git's trailer conventions: joins an existing trailer block
+// directly if the message already ends in one, or starts a new trailer block
 // separated from the body by a blank line otherwise.
 func appendWarpSHATrailer(message, warpSHA string) string {
 	trimmed := strings.TrimRight(message, "\n")
 	trailerLine := fmt.Sprintf("%s: %s", WarpSHATrailerKey, warpSHA)
 
 	if endsInTrailerBlock(trimmed) {
-		// The message's last paragraph is already trailer-shaped lines
-		// (e.g. a prior "Co-authored-by:"); join the new trailer directly so
-		// the whole trailer block stays one paragraph, per git convention.
 		return trimmed + "\n" + trailerLine
 	}
 	return trimmed + "\n\n" + trailerLine
 }
 
-// endsInTrailerBlock reports whether message's final paragraph (the lines
-// after its last blank line) consists entirely of trailer-shaped lines. The
-// FIRST paragraph is the commit subject and is never a trailer block, no
-// matter how trailer-shaped its lines look: a one-line message like
-// "builder: poll 01-json-flag done" matches the loose trailer pattern, and
-// treating it as a trailer block would join the appended Warp-SHA line into
-// the subject paragraph, polluting every such commit's `git log --oneline`
-// subject (found live in the fabric-cutover review, round fable-r1).
+// endsInTrailerBlock reports whether message's final paragraph (after its last
+// blank line) consists entirely of trailer-shaped lines. The subject paragraph
+// is never a trailer block, even if its lines match the trailer pattern.
 func endsInTrailerBlock(message string) bool {
 	if message == "" {
 		return false
@@ -127,7 +115,6 @@ func endsInTrailerBlock(message string) bool {
 
 	lines := strings.Split(message, "\n")
 
-	// Find the start of the final paragraph: one past the last blank line.
 	lastParagraphStart := 0
 	for i, line := range lines {
 		if strings.TrimSpace(line) == "" {
@@ -135,9 +122,6 @@ func endsInTrailerBlock(message string) bool {
 		}
 	}
 
-	// The subject paragraph can never be a trailer block: a trailer block
-	// only exists as a paragraph AFTER the subject (git's own convention --
-	// interpret-trailers never treats a subject-only message as trailers).
 	if lastParagraphStart == 0 {
 		return false
 	}
@@ -157,12 +141,9 @@ func endsInTrailerBlock(message string) bool {
 	return true
 }
 
-// parseWarpSHATrailer extracts the Warp-SHA trailer value from a full commit
-// message. When the message carries multiple "Warp-SHA:" lines (which should
-// not normally happen, but is tolerated rather than rejected), the last one
-// wins, matching git's own trailer semantics. Surrounding whitespace around
-// the key and value is tolerated. Reports ok=false when the message carries no
-// Warp-SHA trailer at all.
+// parseWarpSHATrailer extracts the Warp-SHA trailer value from a full commit message.
+// When multiple "Warp-SHA:" lines exist, the last one wins, matching git's trailer
+// semantics. Reports ok=false when the message carries no Warp-SHA trailer at all.
 func parseWarpSHATrailer(message string) (sha string, ok bool) {
 	prefix := WarpSHATrailerKey + ":"
 	for _, line := range strings.Split(message, "\n") {
@@ -174,7 +155,6 @@ func parseWarpSHATrailer(message string) (sha string, ok bool) {
 		if value == "" {
 			continue
 		}
-		// Overwrite on every match so the last occurrence wins.
 		sha, ok = value, true
 	}
 	return sha, ok

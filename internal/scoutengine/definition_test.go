@@ -14,14 +14,7 @@ import (
 	"time"
 )
 
-// TestDefinition_NonExistentServerBinaryYieldsErrServerNotFound points a
-// synthetic registry entry's Command at a binary that cannot exist on
-// $PATH and asserts Definition maps the resulting exec.LookPath failure to
-// ErrServerNotFoundSentinel — a direct copy of
-// TestReferences_NonExistentServerBinaryYieldsErrServerNotFound (refs_test.go)
-// but calling Definition instead of References, proving Definition goes
-// through acquireConnection's same error-mapping for the legacy path since
-// lookup is shared code between the two.
+// TestDefinition_NonExistentServerBinaryYieldsErrServerNotFound verifies Definition maps missing servers to ErrServerNotFoundSentinel.
 func TestDefinition_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 	dir := t.TempDir()
 	reg := Registry{

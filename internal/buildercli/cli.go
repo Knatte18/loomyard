@@ -72,19 +72,12 @@ type builderCLI struct {
 	reportsDir string
 }
 
-// runnerOrchestratorStarter adapts *shuttleengine.Runner to
-// builderengine.OrchestratorStarter: Runner.Start returns the concrete
-// *shuttleengine.Run, which satisfies builderengine.OrchestratorHandle
-// structurally (StrandGUID + Wait), but Go's typed method sets keep Runner
-// itself from satisfying the interface directly — this thin adapter bridges
-// that, so builderengine.Run can persist the orchestrator's strand identity
-// between the start and the blocking wait.
+// runnerOrchestratorStarter adapts Runner to OrchestratorStarter via a thin bridge.
 type runnerOrchestratorStarter struct {
 	runner *shuttleengine.Runner
 }
 
-// StartOrchestrator implements builderengine.OrchestratorStarter by
-// delegating to the shuttle Runner's non-blocking Start.
+// StartOrchestrator implements builderengine.OrchestratorStarter.
 func (s runnerOrchestratorStarter) StartOrchestrator(spec shuttleengine.Spec) (builderengine.OrchestratorHandle, error) {
 	run, err := s.runner.Start(spec)
 	if err != nil {
@@ -94,20 +87,8 @@ func (s runnerOrchestratorStarter) StartOrchestrator(spec shuttleengine.Spec) (b
 }
 
 // Command returns the cobra command tree for the builder module.
-//
-// The parent "builder" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> builder config -> model
-// registry -> resolved roles -> reed engine -> claude engine ->
-// shuttleengine.Runner into c, skipping that resolution entirely when the
-// group command itself is invoked (bare "lyx builder" listing or an
-// unknown-subcommand error via GroupRunE) so neither path requires a git
-// repository. Role resolution runs against every one of the config's four
-// roles as a pre-flight -- deliberately uniform across all six verbs, per
-// the discussion's role-selection decision (the discussion's
-// run/spawn-batch scoping is the minimum, not a ceiling) -- so a typo'd
-// role alias in builder.yaml aborts every verb here, before any agent
-// spawns, never surfacing only hours into a run when that role first
-// spawns.
+// Resolution is skipped when bare "lyx builder" is invoked so help doesn't require a git repo.
+// All six verbs run role resolution pre-flight to catch typos early.
 func Command() *cobra.Command {
 	c := &builderCLI{}
 
@@ -132,10 +113,6 @@ Verbs:
 		// through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: when the builder group command itself is invoked (bare
-			// listing or unknown-subcommand error path via GroupRunE), skip
-			// cwd/layout/config/engine resolution so that neither path
-			// requires a git repository to be present.
 			if cmd.Name() == "builder" {
 				return nil
 			}

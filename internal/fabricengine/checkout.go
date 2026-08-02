@@ -29,42 +29,15 @@ type CheckoutResult struct {
 	WeftWorktree string `json:"weft_worktree"`
 }
 
-// Checkout switches the host worktree to branch and its weft sibling to
-// WeftBranchName(branch) in an all-or-nothing operation.
-//
-// Steps:
-//  1. Precondition — refuse if the weft worktree has uncommitted changes (dirty check via
-//     git status --porcelain). Git's own refusal propagates naturally when the host switch
-//     would clobber uncommitted host changes.
-//  2. Capture the original host branch for rollback purposes.
-//  3. Switch the host worktree to branch via git switch.
-//  4. Resolve the weft sibling branch: if WeftBranchName(branch) exists in the weft repo,
-//     switch the weft worktree to it; if it does not (unmanaged target branch), fork a new
-//     weft branch from the weft branch the worktree was actually on before the switch,
-//     using the same adopt-or-create fork-point logic as Add.
-//  5. Re-point junctions via WireJunctions.
-//  6. On any failure at steps 4–5, roll back BOTH the host and the weft switches to
-//     their original branches and return the original error untouched; the pair is
-//     never left half-switched. (A step-5 failure happens after the weft has already
-//     switched in step 4, so a host-only rollback would strand the weft on the new
-//     branch — the very half-switch this contract forbids.)
-//  7. Refresh the pair's correspondence index for the new branch (discard + rebuild
-//     from the now-current weft branch's Warp-SHA trailers). The index file is
-//     per-worktree and would otherwise keep serving entries recorded on the previous
-//     branch — entries that still pass SHAExists but that the current branch's
-//     trailer history would never produce. A step-7 failure does NOT roll the switch
-//     back (the switch itself completed and is consistent); it is reported as an
-//     error naming the completed switch, and re-running checkout (including the
-//     no-argument in-place form) retries the refresh.
-//
-// Returns CheckoutResult on success or an error if any step fails.
+// Checkout switches the host worktree to branch and its weft sibling to WeftBranchName(branch)
+// in an all-or-nothing operation, refusing if the weft worktree has uncommitted changes,
+// forking new weft branches when their suffixed siblings don't exist, re-pointing junctions,
+// and refreshing the correspondence index — rolling back both sides on failure to preserve
+// all-or-nothing semantics.
 func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResult, error) {
 	weftWorktree := l.WeftWorktree()
 
-	// (1) Precondition: refuse if the weft worktree is dirty. A dirty weft would mean
-	// the branch switch could clobber or be blocked by uncommitted local changes, leaving
-	// the pair in an indeterminate state. We check weft before touching host so either
-	// both switch or neither does.
+	// Refuse if the weft worktree is dirty to prevent half-switched pairs.
 	weftStatus, _, exitCode, err := gitexec.RunGit(
 		[]string{"status", "--porcelain", "--untracked-files=no"},
 		weftWorktree,
@@ -79,12 +52,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 		return CheckoutResult{}, fmt.Errorf("weft worktree has uncommitted changes; stash or commit before checkout")
 	}
 
-	// (2) Capture the original host AND weft branches so a failure at any step
-	// after the weft switch rolls BOTH sides back — not just the host. Capturing
-	// the weft branch before touching either side is what lets a later junction
-	// failure (step 5) restore the pair to a consistent state instead of leaving
-	// the host rolled back but the weft stranded on the new branch (a
-	// half-switched pair, which this operation must never produce).
+	// Capture both original branches for rollback on later failure.
 	origBranchOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		l.WorktreeRoot,
@@ -111,8 +79,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 		}
 	}
 
-	// (3) Switch the host worktree to the target branch. Git propagates its own refusal
-	// (e.g., conflicting local changes) unchanged; we do not suppress it.
+	// Switch the host worktree to the target branch.
 	_, _, exitCode, err = gitexec.RunGit(
 		[]string{"switch", branch},
 		l.WorktreeRoot,
@@ -124,35 +91,21 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 		return CheckoutResult{}, fmt.Errorf("host switch to branch %q failed (git exit %d)", branch, exitCode)
 	}
 
-	// (4) Resolve the weft sibling branch. On any failure, roll back the host switch.
-	// The slug is derived from the current worktree's base name; it identifies which
-	// pair of junctions to re-point and which weft worktree path to switch.
+	// Resolve the weft sibling branch; roll back host on failure.
 	slug := filepath.Base(l.WorktreeRoot)
 	weftForked, err := t.switchOrForkWeft(l, branch)
 	if err != nil {
-		// switchOrForkWeft's git switch is atomic, so on failure the weft is
-		// still on its original branch and no fork was created; rolling both
-		// back restores the pair (the weft side is a no-op here) without
-		// special-casing this path.
 		t.rollbackSwitch(l, originalBranch, originalWeftBranch, "")
 		return CheckoutResult{}, err
 	}
 
-	// A later rollback must also delete the weft branch this Checkout itself
-	// forked — Add's rollback discipline: tear down only what the failed
-	// operation created, so no orphan branch survives a rolled-back switch.
+	// Track any forked weft branch for deletion on rollback.
 	forkedWeftBranch := ""
 	if weftForked {
 		forkedWeftBranch = WeftBranchName(branch)
 	}
 
-	// (5) Re-point the junction for the current worktree's slug. Source the wired
-	// name-set from the repo-wide BoardDir base (not any per-pair weft base or
-	// acting-worktree config): WireJunctions itself loads no config, so the
-	// caller must supply names, and every worktree must converge to the same
-	// repo-wide pathspec. On failure, roll back BOTH sides: the weft was
-	// already switched in step 4, so a host-only rollback would strand it on
-	// the new branch and leave a half-switched pair.
+	// Re-point junctions; roll back both sides on failure (weft already switched).
 	names, err := RepoWiredNames(l)
 	if err != nil {
 		t.rollbackSwitch(l, originalBranch, originalWeftBranch, forkedWeftBranch)
@@ -163,10 +116,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: %w", err)
 	}
 
-	// (7) Refresh the pair's correspondence index for the new branch. No rollback
-	// on failure — the switch itself is complete and consistent, and rolling back
-	// would need the very same refresh; the discard-first refresh leaves lookups
-	// missing honestly rather than answering from the previous branch's entries.
+	// Refresh correspondence index for the new branch; switch is complete regardless of failure.
 	if err := refreshCorrIndexAfterSwitch(l.WorktreeRoot, weftWorktree); err != nil {
 		return CheckoutResult{}, fmt.Errorf("checkout to %q completed, but refreshing the correspondence index failed (re-run `lyx fabric checkout` to retry): %w", branch, err)
 	}
@@ -177,25 +127,14 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	}, nil
 }
 
-// switchOrForkWeft switches the weft worktree to WeftBranchName(branch), or
-// forks it from the weft branch the worktree was actually on before the
-// switch when WeftBranchName(branch) does not yet exist in the weft repo.
-// It reports whether it forked a new weft branch (forked), so a later
-// rollback can delete exactly the branch this call created and nothing else.
-//
-// If the weft branch exists in the weft repo, runs git switch <weftBranch> in the weft
-// worktree. If it does not exist, captures the current weft HEAD branch (the weft
-// sibling of whatever host branch the pair was on before this call — the suffixed
-// sibling of the previous host branch for an in-sync pair) as the fork point and
-// creates the new branch in-place via git switch -c. This preserves the shared
-// merge-base needed for future squash-merge-back operations, matching Add's
-// adopt-or-create fork-point logic one suffix over.
+// switchOrForkWeft switches or forks the weft branch to match the host target,
+// reporting whether a new branch was created (forked) so rollback can clean it up.
 func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) (forked bool, err error) {
 	weftWorktree := l.WeftWorktree()
 	weftBranch := WeftBranchName(branch)
 
 	if weftBranchExists(l, weftBranch) {
-		// Branch already exists in the weft repo: switch the weft worktree to it.
+		// Branch exists: switch to it.
 		_, _, exitCode, err := gitexec.RunGit(
 			[]string{"switch", weftBranch},
 			weftWorktree,
@@ -209,11 +148,7 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) (forke
 		return false, nil
 	}
 
-	// Branch does not exist in the weft repo: fork it from the current weft HEAD,
-	// i.e. the weft branch corresponding to the branch the weft was on before this
-	// switch. Using the current weft HEAD preserves the shared merge-base needed for
-	// future squash-merge-back operations, matching Add's adopt-or-create fork-point
-	// logic one suffix over.
+	// Branch does not exist: fork from current weft HEAD to preserve merge-base.
 	parentWeftBranchOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		weftWorktree,
@@ -226,8 +161,7 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) (forke
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftBranchOut)
 
-	// Create the new weft branch forked from the parent weft branch and switch
-	// the weft worktree to it immediately via git switch -c.
+	// Create and switch to the new weft branch.
 	_, _, exitCode, err = gitexec.RunGit(
 		[]string{"switch", "-c", weftBranch, parentWeftBranch},
 		weftWorktree,
@@ -242,34 +176,9 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) (forke
 	return true, nil
 }
 
-// rollbackSwitch attempts to switch the host worktree back to originalBranch and
-// the weft worktree back to originalWeftBranch, restoring the pair to the state
-// it was in before Checkout began.
-//
-// Called when the weft switch (step 4) or junction wiring (step 5) fails after
-// the host has already been switched. Both sides are rolled back because a
-// step-5 failure occurs AFTER the weft was already switched in step 4: reverting
-// only the host would strand the weft on the new branch and leave a half-switched
-// pair — exactly the state Checkout's all-or-nothing contract forbids. For the
-// step-4 failure path the weft is still on its original branch, so its rollback
-// is a harmless no-op. originalWeftBranch is empty when the weft HEAD was
-// detached/unborn at capture time; in that abnormal case the weft side is
-// skipped (there is no branch name to switch back to).
-//
-// forkedWeftBranch, when non-empty, names the weft branch this very Checkout
-// forked in switchOrForkWeft; after the weft is switched back it is deleted so
-// a rolled-back switch leaves no orphan branch behind — Add's rollback
-// discipline (tear down only what the failed operation itself created). It is
-// empty when the target weft branch already existed (an adopted branch is
-// never deleted).
-//
-// Errors from the rollback are silently discarded: the caller already holds the
-// original error that triggered this rollback, and a best-effort restore is all
-// that can be promised. WireJunctions is NOT called here — either it was never
-// reached (step-4 path) or it was the step that failed (step-5 path); in both
-// cases the junction still points at the pair's own weft worktree directory
-// (whose path does not change across a branch switch), so it stays consistent
-// with the rolled-back branches without rewiring.
+// rollbackSwitch switches both host and weft back to their original branches on failure,
+// cleaning up any forked weft branch, with errors silently discarded.
+// The junction stays consistent without rewiring because the worktree directory path doesn't change.
 func (t *Topology) rollbackSwitch(l *hubgeometry.Layout, originalBranch, originalWeftBranch, forkedWeftBranch string) {
 	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreeRoot)
 	if originalWeftBranch != "" {

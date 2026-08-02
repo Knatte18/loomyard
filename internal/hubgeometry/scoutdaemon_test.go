@@ -38,11 +38,6 @@ func TestScoutDaemonLock(t *testing.T) {
 }
 
 func TestScoutDaemonStateFile_DistinctPerLanguage(t *testing.T) {
-	// Two different languages must resolve to distinct, non-colliding
-	// state files under the same worktree -- this is the one behavior
-	// specific to this accessor's per-lang scoping that
-	// LoomStatusFile/LoomStatusLock, which are not parameterized, have no
-	// equivalent test for.
 	l := &Layout{
 		WorktreeRoot: filepath.Join("home", "user", "repo"),
 		Cwd:          filepath.Join("home", "user", "repo"),

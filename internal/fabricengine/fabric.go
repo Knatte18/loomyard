@@ -40,16 +40,11 @@ func (e *ErrMissingPath) Error() string {
 	return fmt.Sprintf("fabricengine: path does not exist or is not a directory: %s", e.Path)
 }
 
-// Fabric is the cross-repo coordination handle over a paired warp (host) and
-// weft checkout, each wrapped as an internal/gitrepo.Repo. Fabric is the only
-// type in this module that knows both repos exist; Warp and Weft are exported
-// so uncoordinated, repo-specific operations used only inside
-// internal/fabricengine go straight through gitrepo with no forwarding-method
-// boilerplate on Fabric itself. A single-sided, uncoordinated op instead gets
-// a named Fabric method precisely when an out-of-package caller needs it —
-// preserving the one-repo illusion at the public API boundary — as
-// warpforward.go's CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard do
-// for warp.
+// Fabric is the cross-repo coordination handle over paired warp (host) and
+// weft checkouts. Warp and Weft are exported for uncoordinated, repo-specific
+// operations; cross-repo operations get their own Fabric methods. A
+// single-sided operation gets a named Fabric method only when out-of-package
+// callers need it.
 type Fabric struct {
 	Warp *gitrepo.Repo
 	Weft *gitrepo.Repo
@@ -58,13 +53,9 @@ type Fabric struct {
 	weftPath string
 }
 
-// New returns a Fabric wrapping the git checkouts at warpPath and weftPath.
-// Unlike gitrepo.New (which performs no I/O), New stat-checks that both paths
-// already exist as directories — repo topology (clone, worktree add) is
-// fabric's own job, so by the time a Fabric handle is constructed, both
-// checkouts are expected to be real — and returns an *ErrMissingPath naming
-// whichever path is absent or not a directory. warpPath is checked before
-// weftPath, so a caller with both missing sees the warp path named first.
+// New returns a Fabric wrapping git checkouts at warpPath and weftPath. Unlike
+// gitrepo.New, it stat-checks that both paths exist as directories, returning
+// an *ErrMissingPath naming any missing path. warpPath is checked first.
 func New(warpPath, weftPath string) (*Fabric, error) {
 	if err := requireDir(warpPath); err != nil {
 		return nil, err

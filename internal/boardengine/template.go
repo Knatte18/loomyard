@@ -11,9 +11,7 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default YAML template for board configuration.
-// The template uses ${env:VAR:-default} syntax for configuration values,
-// allowing environment-based overrides while preserving defaults when not set.
+// ConfigTemplate returns the default YAML template for board configuration, with ${env:VAR:-default} syntax for overrides.
 func ConfigTemplate() string {
 	return configTemplate
 }

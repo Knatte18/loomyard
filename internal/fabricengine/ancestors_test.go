@@ -8,13 +8,9 @@ import (
 	"testing"
 )
 
-// TestPruneEmptyAncestors tests the pruneEmptyAncestors helper.
-//
-// Test cases:
-//   - Empty mirrored ancestors are removed up to but not including the stop dir
-//   - A non-empty intermediate dir halts the walk (dirs above it survive)
-//   - Calling with start == stop is a no-op
-//   - The helper is idempotent on an already-pruned tree
+// TestPruneEmptyAncestors tests the pruneEmptyAncestors helper with various
+// scenarios: empty ancestors removed to stop, non-empty dirs halting walk,
+// start == stop no-op, and idempotency on already-pruned trees.
 func TestPruneEmptyAncestors(t *testing.T) {
 	tests := []struct {
 		name   string

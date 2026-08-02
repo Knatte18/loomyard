@@ -53,21 +53,9 @@ type Config struct {
 	PollWaitS int `yaml:"poll_wait_s"`
 }
 
-// LoadConfig loads and unmarshals configuration for the webster module.
-//
-// Calls configengine.Load with webster's ConfigTemplate() to strictly
-// validate the config file against the template, resolve environment
-// variables, and return resolved bytes. Unmarshals the resolved bytes into
-// a Config struct. The module name is threaded through by the caller
-// (never hardcoded to "webster" here), mirroring builderengine.LoadConfig.
-//
-// After unmarshal, each of the two role strings is checked against
-// modelspec.Parse for grammar only (registry resolution is a separate
-// pre-flight — see ResolveRoles); a grammar error is wrapped naming the
-// offending config key, so a hand-edited webster.yaml with a malformed spec
-// fails here rather than at spawn time.
-//
-// If <baseDir>/_lyx/ does not exist, returns an error containing
+// LoadConfig loads configuration from the webster module's config file,
+// validates role model-spec grammar, and returns a Config struct. If
+// <baseDir>/_lyx/ does not exist, returns an error containing
 // "not initialized here; run \"lyx fabric reconcile\"".
 func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
@@ -86,9 +74,6 @@ func LoadConfig(baseDir, module string) (Config, error) {
 		return Config{}, fmt.Errorf("unmarshal webster config: %w", err)
 	}
 
-	// Validate every role's model-spec grammar now, naming the offending
-	// key, so a malformed spec is caught at load time rather than silently
-	// carried into ResolveRoles or a spawn site.
 	roles := []struct {
 		key   string
 		value string

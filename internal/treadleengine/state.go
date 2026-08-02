@@ -31,16 +31,9 @@ const staleSuffix = ".stale"
 // same file it writes without recomputing the join itself.
 const PauseFlagName = "pause"
 
-// roundRecord is the persisted history entry for one completed round: the
-// round/attempt identity, the shuttle-level outcome that ended the last
-// attempt, the runner verdict and blocking count, every artifact path the
-// round produced (empty when that sub-step did not run — mirrors
-// RoundSummary), and the SessionID of the attempt that reached done, for
-// diagnosis. A round record is appended to runState.Rounds only on
-// completion — an interrupted round simply has no record, which is what
-// lets loadOrInitState tell "resume at the next round" apart from
-// "re-run the round that was interrupted" without a separate in-progress
-// flag.
+// roundRecord is the persisted history entry for one completed round: identity,
+// shuttle outcome, verdict, blocking count, artifact paths, and session ID.
+// Appended only on completion; an interrupted round has no record.
 type roundRecord struct {
 	Round           int    `json:"round"`
 	Attempts        int    `json:"attempts"`
@@ -71,14 +64,7 @@ type roundRecord struct {
 
 // runState is the persisted record for one treadle block, written as
 // <runDir>/state.json. ProfileHash and RoundCaps are stamped once at block
-// creation (RoundCaps after the caller's own default resolution, so a
-// resumed block always re-applies the ladder it actually started with, even
-// if the caller's own config later changes). Outcome is empty while the
-// block is in progress; a non-empty Outcome (with StuckReason set alongside
-// OutcomeStuck) marks the block terminal — loadOrInitState refuses to
-// resume a terminal state. The JSON key spellings here are a pinned
-// contract (state-json-compatibility shared decision): a block written by
-// an older binary resumes with zero migration.
+// creation. Outcome is empty while in progress; non-empty marks terminal.
 type runState struct {
 	ProfileHash string        `json:"profileHash"`
 	RoundCaps   []int         `json:"roundCaps"`

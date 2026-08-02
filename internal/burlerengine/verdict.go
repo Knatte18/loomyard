@@ -66,13 +66,8 @@ type reviewHeader struct {
 }
 
 // ParseReview parses the raw bytes of a burler review file into a Verdict
-// and its Findings. The file must open with a "---" line and contain a
-// closing "---" line delimiting YAML frontmatter (CRLF line endings are
-// tolerated); prose after the closing delimiter is unconstrained and
-// ignored. Every rule below is enforced fail-loud with a burler-prefixed
-// error, because a self-contradictory or malformed review file is a
-// reviewer-agent defect that must never be silently accepted as a passing
-// round:
+// and Findings. Every rule below is enforced fail-loud with a burler-prefixed
+// error because a self-contradictory or malformed file must never silently pass:
 //   - the frontmatter must be present, closed, and valid YAML;
 //   - verdict must be exactly "APPROVED" or "BLOCKING" (case-sensitive);
 //   - every finding must have a non-empty id, severity, location, summary;
@@ -198,7 +193,6 @@ func validateFindings(findings []Finding) error {
 		}
 		switch f.Severity {
 		case SeverityBlocking, SeverityMedium, SeverityLow, SeverityNit:
-			// within vocabulary
 		default:
 			return fmt.Errorf("burler: review file finding %q has unknown severity %q; want one of %q, %q, %q, %q", f.ID, f.Severity, SeverityBlocking, SeverityMedium, SeverityLow, SeverityNit)
 		}

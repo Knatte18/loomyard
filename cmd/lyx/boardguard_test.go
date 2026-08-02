@@ -59,9 +59,7 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 		t.Skip("go toolchain not on PATH")
 	}
 
-	// Resolve the module root via `go env GOMOD` rather than assuming the
-	// test's working directory, exactly as ghguard_test.go and
-	// gitrepoboundary_test.go do, so the walk is cwd-independent.
+	// Resolve the module root via `go env GOMOD` rather than assuming the test's working directory (cwd-independent).
 	out, err := exec.Command("go", "env", "GOMOD").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go env GOMOD failed: %v\n%s", err, out)
@@ -80,9 +78,7 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			// boardtest is a sibling package of integration tests that legitimately
-			// spawn git via lyxtest.CopyWeft -- this guard's import/shell-out ban
-			// applies to boardengine's own production code, not its test fixtures.
+			// boardtest is a sibling package of integration tests — skip it.
 			if d.Name() == "boardtest" {
 				return filepath.SkipDir
 			}
@@ -123,8 +119,7 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 		t.Fatalf("failed to walk internal/boardengine: %v", walkErr)
 	}
 
-	// Vacuous-scan protection: a mis-resolved root that still finds a handful of
-	// files must not pass.
+	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
 	if scanned < boardGuardMinScannedFiles {
 		t.Fatalf("board guard: only scanned %d non-test .go file(s) in %s; expected at least %d -- the directory resolution may be misconfigured", scanned, dir, boardGuardMinScannedFiles)
 	}
@@ -134,10 +129,7 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	}
 }
 
-// firstBannedBoardImport parses path's import declarations (using go/parser with
-// ImportsOnly, mirroring internal/pattern/leaf_enforcement_test.go's AST walk, so
-// only real import statements are inspected, never string literals in doc
-// comments) and reports the first import path found in boardGuardBannedImports.
+// firstBannedBoardImport parses path's import declarations and reports the first banned one.
 func firstBannedBoardImport(path string) (string, bool) {
 	fset := token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
@@ -153,24 +145,7 @@ func firstBannedBoardImport(path string) (string, bool) {
 	return "", false
 }
 
-// firstBannedGitSpawn reports the first banned git shell-out token found in
-// content. It runs two passes. The first is line-scoped (lineHasBannedGitSpawn):
-// the precise, common `exec.Command(..., "git", ...)` form, reported with its
-// same-line token pairing. The second is a file-level backstop for a git
-// shell-out whose "git" literal and exec.Command call land on DIFFERENT lines —
-// variable indirection (`g := "git"; exec.Command(g, ...)`) or a gofmt-split
-// multi-line call (`exec.Command(\n\t"git",\n)`) — both of which slip past the
-// same-line check yet are exactly the natural refactors that would reintroduce a
-// raw git shell-out into internal/boardengine. The backstop flags a file that
-// contains BOTH an exec spawn token and a standalone quoted "git" literal
-// anywhere in it. It cannot false-positive on internal/boardengine/spawn.go's
-// legitimate self-relaunch, which uses exec.Command but contains no "git"
-// literal at all; and matching the standalone quoted "git" token (not a bare
-// substring) keeps it from tripping on comments (`// git`) or non-standalone
-// mentions (`"run git"`). Dataflow-level evasion (building "git" from
-// non-literal parts, e.g. "gi"+"t") remains out of scope, as for every
-// grep-style guard in this repo — the AST import ban is the airtight primary
-// defense.
+// firstBannedGitSpawn reports the first banned git shell-out token found in content, using two-pass detection.
 func firstBannedGitSpawn(content string) (token string, bad bool) {
 	for _, line := range strings.Split(content, "\n") {
 		if spawnToken, bad := lineHasBannedGitSpawn(line); bad {
@@ -187,14 +162,7 @@ func firstBannedGitSpawn(content string) (token string, bad bool) {
 	return "", false
 }
 
-// lineHasBannedGitSpawn reports whether line contains both an exec.Command/
-// exec.CommandContext spawn token and the quoted "git" argument -- the pairing
-// that identifies a git shell-out regardless of how many arguments (e.g. a
-// leading context.Context) separate the two tokens on the line. This same-line
-// co-occurrence requirement (not a bare substring ban) is what lets
-// internal/boardengine/spawn.go's legitimate, git-free
-// exec.Command(exe, "board", "--board-path", abs, "sync") self-relaunch call
-// pass cleanly, since that line never mentions "git".
+// lineHasBannedGitSpawn reports whether line contains both a spawn token and "git" on the same line.
 func lineHasBannedGitSpawn(line string) (token string, bad bool) {
 	if !strings.Contains(line, `"git"`) {
 		return "", false
@@ -207,13 +175,7 @@ func lineHasBannedGitSpawn(line string) (token string, bad bool) {
 	return "", false
 }
 
-// TestBoardGuard_ShellOutDetection pins firstBannedGitSpawn's detection against
-// crafted source snippets rather than the live tree, proving the guard is sound
-// (not merely that it currently passes vacuously). It covers the naive same-line
-// shell-out AND the two natural evasions the earlier same-line-only check missed
-// — variable indirection and a gofmt-split multi-line call — while confirming
-// the two shapes that must stay unflagged: spawn.go's git-free self-relaunch
-// (exec.Command with no "git" literal) and a bare "git" literal with no spawn.
+// TestBoardGuard_ShellOutDetection verifies firstBannedGitSpawn's detection against crafted snippets.
 func TestBoardGuard_ShellOutDetection(t *testing.T) {
 	tests := []struct {
 		name    string

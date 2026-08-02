@@ -20,22 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// setupPreflightFixture builds a CopyPaired fixture, seeds a fabric config at
-// the weft base (Healthy/checkJunctionHealth now load fabric.yaml for the
-// wired junction name-set, so a fixture without one would see every junction
-// health check fail as "cannot load fabric.yaml" instead of exercising the
-// scenario under test — mirroring fabricengine's own newFabricFixture), seeds
-// the repo-wide fabric config at <hub>/_board/_lyx/config/fabric.yaml
-// (checkJunctionHealth/Healthy's wired-junction name-set read is migrated
-// there — see seedRepoWideFabricConfig), moves the weft primary onto fabric's
-// suffixed branch naming (CopyPaired's raw fixture leaves both sides on
-// "main", the warp-era equality convention; fabric's Healthy requires the
-// weft branch to be WeftBranchName(hostBranch)), wires the host-weft _lyx
-// junction (CopyPaired does not wire it — see WireJunctions' host-pristine
-// invariant), and seeds a fresh, coherent status.json through the wired
-// junction. Returns the fixture and the slug WireJunctions was keyed on,
-// since several scenarios (junction removal) need the slug to rebuild the
-// host link path.
+// setupPreflightFixture builds a fully-configured CopyPaired fixture with weft
+// and junction setup, returning the fixture and the slug for WireJunctions.
 func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	t.Helper()
 
@@ -66,13 +52,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
-// base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
-// Healthy) now read from. lyxtest.CopyPaired does not create a _board
-// dir, so this creates it (and its _lyx/config/) first; unlike
-// lyxtest.SeedConfig, _board is not a git repository, so the file is
-// written directly with no git add/commit step. Mirrors fabricengine's own
-// seedRepoWideFabricConfig (reconcile_stale_registration_test.go).
+// <hub>/_board/_lyx/config/fabric.yaml (directly written, not committed).
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
@@ -86,10 +66,7 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	}
 }
 
-// seedValidStatus writes a fresh, coherent status.json seed at
-// l.LoomStatusFile() via state.WriteJSON — the seed shape status-schema.md's
-// "The seed / handover" section documents: only the handoff fields
-// populated, every fresh-start field at its zero/null value.
+// seedValidStatus writes a fresh, coherent status.json seed with handoff fields only.
 func seedValidStatus(t *testing.T, l *hubgeometry.Layout) {
 	t.Helper()
 
@@ -105,12 +82,8 @@ func seedValidStatus(t *testing.T, l *hubgeometry.Layout) {
 	}
 }
 
-// commitWeftStatus commits the current state of the seeded status.json (and
-// its .lock sidecar) in the weft worktree, so a test that deliberately
-// rewrites or removes the seed after setupPreflightFixture's own baseline
-// commit stays weft-clean — isolating the scenario under test from the
-// unrelated CheckWorktreeClean failure Clean's weft-side check would
-// otherwise add.
+// commitWeftStatus commits the current state of status.json in the weft worktree,
+// isolating test scenarios from CheckWorktreeClean failures.
 func commitWeftStatus(t *testing.T, f lyxtest.PairedFixture) {
 	t.Helper()
 
@@ -118,19 +91,9 @@ func commitWeftStatus(t *testing.T, f lyxtest.PairedFixture) {
 	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "update status")
 }
 
-// restoreCwd saves the process cwd and restores it via t.Cleanup. It exists
-// for the two scenarios (not-a-git-repo, subdirectory invocation) that must
-// exercise the public Preflight() — which resolves the process cwd via
-// hubgeometry.Getwd() — rather than checkResolved's injected-Layout form.
-// Because os.Chdir is process-global, callers of restoreCwd must never run
-// under t.Parallel().
-//
-// Callers MUST invoke restoreCwd AFTER creating any t.TempDir()/fixture the
-// test will os.Chdir into, never before: t.Cleanup runs LIFO, and on Windows
-// a directory cannot be removed while it is the process's current working
-// directory. Registering restoreCwd's chdir-back last is what makes it run
-// before that TempDir's own removal, so cleanup lands back outside the
-// directory before Go tries to delete it.
+// restoreCwd saves the process cwd and restores it via t.Cleanup. Call it AFTER
+// creating any t.TempDir()/fixture: t.Cleanup runs LIFO, so chdir-back must run
+// before TempDir removal (required on Windows).
 func restoreCwd(t *testing.T) {
 	t.Helper()
 
@@ -145,10 +108,8 @@ func restoreCwd(t *testing.T) {
 	})
 }
 
-// assertCheckSet asserts that got's Failures carry exactly the given set of
-// CheckIDs (order-independent, no duplicates expected) — per the batch's
-// "assert only on the CheckID set, not exact Reason strings" instruction. An
-// empty want asserts Report.OK instead.
+// assertCheckSet asserts that got's Failures carry exactly the given CheckID set
+// (order-independent). An empty want asserts Report.OK.
 func assertCheckSet(t *testing.T, got Report, want ...CheckID) {
 	t.Helper()
 

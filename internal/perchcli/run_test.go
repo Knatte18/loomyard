@@ -26,11 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/perchengine"
 )
 
-// testModelRegistry is the fixed registry every decodeProfile test call
-// resolves against: "haiku" carries no defaults (mirroring the built-in
-// fallback set), "sonnet" carries a "medium" default effort (mirroring a
-// seeded models.yaml), matching what the FullValid/FullValidFieldMapping
-// fixtures below rely on.
+// testModelRegistry is the fixed registry every decodeProfile test call resolves against.
 var testModelRegistry = modelspec.Registry{
 	"haiku":  {Engine: "claude", Model: "haiku"},
 	"sonnet": {Engine: "claude", Model: "sonnet", Defaults: map[string]string{"effort": "medium"}},

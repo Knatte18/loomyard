@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// touchMarkers creates an empty file for each name directly under dir.
+// touchMarkers creates empty marker files.
 func touchMarkers(t *testing.T, dir string, names ...string) {
 	t.Helper()
 	for _, name := range names {

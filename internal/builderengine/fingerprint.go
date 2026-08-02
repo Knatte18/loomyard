@@ -17,15 +17,8 @@ import (
 )
 
 // Fingerprint computes a SHA-256 digest over every "*.md" file's name and
-// contents in planDir. Non-.md entries (including subdirectories) are
-// ignored, since only markdown plan files carry plan-format v2 content.
-// Filenames are sorted lexically before hashing so the result does not
-// depend on directory read order; each entry contributes
-// name + "\x00" + contents + "\x00" to the hash, so a rename (the name
-// changes) and a content edit (the name stays, the bytes change) each
-// change the result independently. Adding or removing a batch file changes
-// the set of names hashed, and so also changes the result. Returns the
-// digest as lowercase hex.
+// contents in planDir, used to detect stale plans across crash/resume.
+// Returns the digest as lowercase hex.
 func Fingerprint(planDir string) (string, error) {
 	entries, err := os.ReadDir(planDir)
 	if err != nil {

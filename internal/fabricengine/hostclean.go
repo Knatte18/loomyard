@@ -14,33 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// Clean reports whether both the host worktree at l.WorktreeRoot and its
-// paired weft worktree at l.WeftWorktree() have no dirty paths at all —
-// tracked or untracked. It is a package-level function, not a *Topology
-// method, because loomengine.Preflight calls it standalone against an
-// already-resolved Layout with no need for a Topology's config.
-//
-// Each side is checked with `git status --porcelain` and no
-// --untracked-files flag, deliberately stricter than add.go's pre-Add clean
-// check (--untracked-files=no): an untracked file left behind still counts
-// as dirty here. This is the Weft Git Invariant's host-repo-is-unrestricted
-// rationale in the other direction — the host worktree is the one place
-// Loomyard's own tooling never commits or gitignores on the caller's
-// behalf, so Preflight must surface even a stray untracked file rather than
-// silently treating it as clean; the weft worktree gets the same treatment
-// for symmetry.
-//
-// The weft-side check is skipped entirely — not attempted and not an
-// error — when l.WeftWorktree() does not exist on disk, since a missing
-// weft worktree is a distinct, prior condition
-// (loomengine.CheckWeftPairing) that this function must not turn into an
-// infra error.
-//
-// Returns (false, "", err) if a git spawn itself fails or exits non-zero
-// (wrapped with context — a "couldn't determine" infra failure, not a
-// determined dirty verdict). On success, clean reports whether both sides'
-// porcelain output was empty; when clean is false, reason describes which
-// side(s) are dirty and lists the dirty paths.
+// Clean reports whether both the host and weft worktrees have no dirty paths,
+// including untracked files. It is package-level for use by loomengine.Preflight.
+// The weft-side check is skipped when the weft worktree does not exist.
+// Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
 func Clean(l *hubgeometry.Layout) (clean bool, reason string, err error) {
 	hostReason, err := dirtyReason("git status --porcelain", l.WorktreeRoot)
 	if err != nil {

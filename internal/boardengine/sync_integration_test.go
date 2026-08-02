@@ -25,8 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// newBareRemote creates a bare git repository at <dir>/remote.git and returns
-// its path, ready to be added as an "origin" remote.
+// newBareRemote creates a bare git repository for testing.
 func newBareRemote(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -38,10 +37,7 @@ func newBareRemote(t *testing.T, dir string) string {
 	return bare
 }
 
-// newBoardRepo creates a fresh (non-cloned) git repository under dir/name on
-// branch main, with bareRemote configured as "origin" but no upstream
-// tracking branch yet — the state a real board checkout is in before its
-// very first sync.
+// newBoardRepo creates a fresh git repository in state before its very first sync.
 func newBoardRepo(t *testing.T, dir, name, bareRemote string) string {
 	t.Helper()
 
@@ -54,8 +50,7 @@ func newBoardRepo(t *testing.T, dir, name, bareRemote string) string {
 	return path
 }
 
-// writeBoardFile creates (or overwrites) name under dir with the given
-// content, dirtying the working tree for Sync's commitDirty step to pick up.
+// writeBoardFile creates or overwrites a file to dirty the working tree for Sync.
 func writeBoardFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 
@@ -64,8 +59,7 @@ func writeBoardFile(t *testing.T, dir, name, content string) {
 	}
 }
 
-// bareRemoteHead returns the bare remote's main branch SHA, or "" if main
-// does not exist there yet (nothing has been pushed).
+// bareRemoteHead returns the bare remote's main branch SHA, or "" if nothing was pushed.
 func bareRemoteHead(t *testing.T, bareRemote string) string {
 	t.Helper()
 
@@ -79,9 +73,7 @@ func bareRemoteHead(t *testing.T, bareRemote string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// TestSync_DirtyBoard_CommitsAndPushes asserts requirement (a): a dirty board
-// still commits the pending change and advances the bare origin's HEAD under
-// the delegated coalescing loop.
+// TestSync_DirtyBoard_CommitsAndPushes asserts a dirty board commits and pushes.
 func TestSync_DirtyBoard_CommitsAndPushes(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -98,10 +90,7 @@ func TestSync_DirtyBoard_CommitsAndPushes(t *testing.T) {
 	}
 }
 
-// TestSync_SeedsGitignoreWithLockAndManifestPatterns asserts requirement (b):
-// Sync seeds .gitignore with the lock-file and render-manifest patterns via
-// ensureLockfilesIgnored, now running as the first action of the delegated
-// loop's step closure rather than a pre-loop call.
+// TestSync_SeedsGitignoreWithLockAndManifestPatterns asserts Sync seeds .gitignore with lock and manifest patterns.
 func TestSync_SeedsGitignoreWithLockAndManifestPatterns(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -124,12 +113,7 @@ func TestSync_SeedsGitignoreWithLockAndManifestPatterns(t *testing.T) {
 	}
 }
 
-// TestSync_ConcurrentCallSerializesOnBoardPushLock asserts requirement (c):
-// the absorbing push lock still lives at filepath.Join(boardPath,
-// "board.push.lock") (unchanged name/location) — proven by holding a lock at
-// that exact path externally and confirming a concurrent Sync call blocks
-// behind it rather than proceeding or erroring, then completes once the
-// external hold releases.
+// TestSync_ConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on board.push.lock.
 func TestSync_ConcurrentCallSerializesOnBoardPushLock(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -156,7 +140,6 @@ func TestSync_ConcurrentCallSerializesOnBoardPushLock(t *testing.T) {
 		_ = held.Release()
 		t.Fatalf("Sync() returned (err=%v) while board.push.lock was externally held; want it to block", err)
 	case <-time.After(200 * time.Millisecond):
-		// Expected: the concurrent Sync call is blocked behind the held lock.
 	}
 
 	if err := held.Release(); err != nil {
@@ -168,9 +151,7 @@ func TestSync_ConcurrentCallSerializesOnBoardPushLock(t *testing.T) {
 	}
 }
 
-// TestSync_SkipPush_CommitsLocallyButDoesNotPush asserts requirement (d):
-// Sync(boardPath, false, true) commits locally but does not advance the
-// origin.
+// TestSync_SkipPush_CommitsLocallyButDoesNotPush asserts skipPush commits locally but doesn't push.
 func TestSync_SkipPush_CommitsLocallyButDoesNotPush(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)

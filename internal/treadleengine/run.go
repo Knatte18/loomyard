@@ -41,10 +41,8 @@ var ErrBlockBusy = errors.New("block is already running")
 // once.
 const runLockName = "run.lock"
 
-// roundOutcome captures what a round's retry loop produced once the runner
-// finally reached a done outcome: everything the round-loop body needs to
-// run the gate, evaluate convergence, run the stuck-ladder judge, and
-// persist a roundRecord.
+// roundOutcome captures what a round's retry loop produced when the runner
+// reached a done outcome.
 type roundOutcome struct {
 	Attempts        int
 	Verdict         Verdict

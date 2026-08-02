@@ -43,33 +43,17 @@ func (c Config) Outputs() Outputs {
 	}
 }
 
-// LoadConfig loads and unmarshals configuration for the board module.
-//
-// Calls configengine.Load with the board ConfigTemplate() to strictly validate
-// the config file against the template, resolve environment variables, and
-// return resolved bytes. Unmarshals the resolved bytes into a Config struct.
-//
-// If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx fabric reconcile\"".
-//
-// LoadConfig no longer resolves a data-dir path. Config.Path is always empty
-// on return; the caller is responsible for setting it (boardcli sets it via
-// hubgeometry.BoardDir or the --board-path flag).
+// LoadConfig loads and unmarshals the board module configuration.
 func LoadConfig(baseDir, module string) (Config, error) {
 	// Load and resolve the config file using the template.
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
-		// Wrap the generic error with a board-specific message so that callers
-		// surface a consistent "not initialized here" phrase rather than the
-		// lower-level configengine phrasing.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
 		}
 		return Config{}, err
 	}
 
-	// Unmarshal resolved bytes into Config. Path has yaml:"-" so it is never
-	// populated from the file; the caller sets it after LoadConfig returns.
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, fmt.Errorf("unmarshal board config: %w", err)

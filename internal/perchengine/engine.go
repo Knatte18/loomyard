@@ -24,59 +24,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
-// Burler is the seam Engine drives one round's review/fix pair through: the
-// subset of burlerengine's API a round needs, satisfied as-is by
-// *burlerengine.Engine in production and by a fake in unit tests. Kept
-// package-local, mirroring burlerengine's own Shuttle seam rationale: it
-// lets perchengine stay burler-agnostic and testable without wiring a real
-// shuttle or LLM provider. adapter.go's burlerAdapter is what actually
-// drives this seam, as treadleengine's RoundRunner.
+// Burler is the seam Engine drives one round's review/fix pair through.
 type Burler interface {
 	Run(burlerengine.Profile, burlerengine.RunOpts) (burlerengine.Result, error)
 }
 
-// var _ Burler = (*burlerengine.Engine)(nil) is the compile-time proof that
-// *burlerengine.Engine satisfies Burler as-is, so production wiring
-// (perchcli) never needs an adapter type.
+// Compile-time proof that *burlerengine.Engine satisfies Burler.
 var _ Burler = (*burlerengine.Engine)(nil)
 
-// Shuttle is perch's own name for the seam judge/triage calls ride,
-// aliased directly onto treadleengine.Shuttle (not a distinct interface)
-// so existing fakes across the codebase satisfy it unchanged — the
-// byte-identical-perch-api shared decision.
+// Shuttle is perch's name for the seam judge/triage calls ride, aliased onto treadleengine.Shuttle.
 type Shuttle = treadleengine.Shuttle
 
-// CommandRunner is the gate-command execution seam: it runs argv inside dir,
-// killing the command after timeout, and reports the raw combined
-// stdout+stderr output plus whether the command exited zero. A non-zero
-// exit AND a timeout are both reported as (output, false, nil): ordinary
-// gate failures the loop branches on (a hung command is an artifact signal
-// — most plausibly the round's own fix deadlocked it — and its partial
-// output feeds forward like any other failing gate). err is reserved for
-// could-not-start failures only (binary not found, permission denied),
-// where the gate never observed the artifact at all. perch-owned (not an
-// alias of treadleengine.CommandRunner), converted to treadle's identical
-// function type at wiring time inside Run.
+// CommandRunner is the gate-command execution seam: runs argv inside dir, killing after timeout, reports output and exit code.
 type CommandRunner func(argv []string, dir string, timeout time.Duration) (output []byte, exitZero bool, err error)
 
-// Options carries the two seams a caller may override; both fields default
-// when left zero-valued. A nil PauseRequested means "no pause source
-// wired" (the loop is never paused). A nil RunCommand means "use the real
-// exec runner", treadleengine's execGateCommand. New stores both fields
-// verbatim, nils included — Run is the single place that constructs
-// treadleengine.Options from them.
+// Options carries the two seams a caller may override; both fields default when left zero-valued.
 type Options struct {
 	PauseRequested func() bool
 	RunCommand     CommandRunner
 }
 
-// Engine drives one perch block's round loop: burler is the round driver,
-// shuttle is the seam the ephemeral judge/triage calls use, cfg holds the
-// resolved perch.yaml defaults, layout resolves the gate command's working
-// directory, and pauseRequested/runCommand are Options' fields stored
-// verbatim (see Options and New). Run itself is a thin adapter that builds
-// a treadleengine.Profile and a burler-backed treadleengine.RoundRunner
-// (adapter.go) and delegates to treadleengine.Engine.Run.
+// Engine drives one perch block's round loop over burler rounds.
 type Engine struct {
 	burler         Burler
 	shuttle        Shuttle
@@ -86,10 +54,7 @@ type Engine struct {
 	runCommand     CommandRunner
 }
 
-// New returns an Engine ready to run one perch block's round loop, driving
-// burler for every round and shuttle for the ephemeral judge/triage calls,
-// tuned by cfg and resolving paths against layout. opts' fields are stored
-// verbatim (nil allowed); Run substitutes their defaults at its entry.
+// New returns an Engine ready to run one perch block's round loop.
 func New(burler Burler, shuttle Shuttle, cfg Config, layout *hubgeometry.Layout, opts Options) *Engine {
 	return &Engine{
 		burler:         burler,

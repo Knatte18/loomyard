@@ -57,22 +57,9 @@ type Config struct {
 	BatchCardCap int `yaml:"batch_card_cap"`
 }
 
-// LoadConfig loads and unmarshals configuration for the builder module.
-//
-// Calls configengine.Load with builder's ConfigTemplate() to strictly
-// validate the config file against the template, resolve environment
-// variables, and return resolved bytes. Unmarshals the resolved bytes into
-// a Config struct. The module name is threaded through by the caller
-// (never hardcoded to "builder" here), mirroring perchengine.LoadConfig.
-//
-// After unmarshal, each of the four role strings is checked against
-// modelspec.Parse for grammar only (registry resolution is a separate
-// pre-flight — see ResolveRoles); a grammar error is wrapped naming the
-// offending config key, so a hand-edited builder.yaml with a malformed spec
-// fails here rather than at spawn time.
-//
-// If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx fabric reconcile\"".
+// LoadConfig loads and unmarshals builder configuration, validating role
+// model-spec grammar and wrapping errors with the offending config key.
+// Returns an error if _lyx is not initialized.
 func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {

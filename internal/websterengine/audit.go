@@ -50,11 +50,8 @@ const (
 	// batches itself or hand-writing a batch report.
 	ClassParentWrite AuditViolationClass = "parent-write"
 	// ClassForkContractWrite means a fork's own transcript wrote one of the run's
-	// two contract files (outcome.yaml, summary.md) — the exact mirror-image hole
-	// of ClassParentWrite: those files are MASTER's only permitted writes, and a
-	// fork writing them forges the run's own terminal judgment (observed live in
-	// round fable-r3: a misidentifying fork overwrote outcome.yaml with a forged
-	// "stuck" mid-run).
+	// two contract files (outcome.yaml, summary.md) — those are Master's only
+	// permitted writes, and a fork writing them forges the run's terminal judgment.
 	ClassForkContractWrite AuditViolationClass = "fork-contract-write"
 )
 
@@ -82,28 +79,11 @@ func (v AuditViolation) Error() string {
 	return fmt.Sprintf("webster: %s violation in %q: %s", v.Class, v.TranscriptPath, v.Detail)
 }
 
-// weftReferencePattern builds the regexp CheckFork and CheckParent use to detect a
-// Bash command that touches weft: an invocation of `lyx fabric`, or any command
-// referencing the weft worktree path (e.g. `git -C <weft-worktree> add`,
-// `cd <weft-worktree> && ...`). It is built at runtime from layout.WeftWorktree()
-// (this run's own weft sibling path) and the exported hubgeometry.WeftSuffix
-// constant (so any OTHER weft-suffixed path an agent might reference — not just this
-// run's own — is caught too), NEVER from a "-weft" string literal in this package:
-// a literal here would trip TestEnforcement_GeometryLiterals, which bans every
-// geometry-path token outside internal/hubgeometry.
-//
-// `lyx fabric` is the live spelling the Weft Git Invariant names ("not by shelling
-// lyx fabric"); the pre-cutover `lyx weft`/`lyx warp` spellings are matched too and
-// deliberately kept. Those commands no longer exist, but an agent reaching for one
-// is still attempting to drive weft git — a violation worth failing loudly on rather
-// than letting it surface as an opaque "unknown command" in a transcript.
-//
-// The optional `.exe` is not cosmetic. Windows is lyx's primary platform, so
-// `lyx.exe fabric sync` is an entirely natural spelling for an agent to reach for,
-// and without it the `\s+` after `lyx` refuses to match — the command runs, drives
-// weft git, and the audit that is the machine-checked half of the Weft Git
-// Invariant reports nothing. Nothing else in the alternation covers it either: the
-// weft-path and weft-suffix branches only fire when the command names a path.
+// weftReferencePattern builds the regexp CheckFork and CheckParent use to detect
+// a Bash command that touches weft (lyx fabric, old `lyx weft`/`lyx warp` spellings,
+// or commands referencing the weft worktree path). Built at runtime from
+// layout.WeftWorktree() and hubgeometry.WeftSuffix, never from string literals in
+// this package, to pass TestEnforcement_GeometryLiterals.
 func weftReferencePattern(layout *hubgeometry.Layout) *regexp.Regexp {
 	weftPath := regexp.QuoteMeta(layout.WeftWorktree())
 	weftSuffix := regexp.QuoteMeta(hubgeometry.WeftSuffix)
@@ -115,17 +95,9 @@ func weftReferencePattern(layout *hubgeometry.Layout) *regexp.Regexp {
 }
 
 // CheckFork evaluates one fork's transcript facts against webster's implementer
-// policy: Write/Edit and host-repo git are explicitly ALLOWED (a batch's per-card
-// commits are the whole implementer contract — the opposite of burlerengine's
-// read-only cluster-reviewer policy, which hard-bans any fork write). Three hard
-// violations remain for a fork: any attempted Agent call (forks cannot nest, even a
-// denied attempt — same posture as burler's nested-Agent ban), any write landing on
-// one of the run's two contract files, outcomePath or summaryPath (those are
-// MASTER's only permitted writes — a fork writing them forges the run's own
-// terminal judgment; each WritePaths entry is canonicalized via resolveWritePath
-// against workdir, exactly as CheckParent canonicalizes ParentWrites), and any Bash
-// command matching weftRef (an implementer fork must never touch weft; weft sync is
-// webstercli's own in-process job, per the Weft Git Invariant).
+// policy: Write/Edit and host-repo git are explicitly allowed. It bans three hard
+// violations: any attempted Agent call, any write to the two contract files
+// (outcomePath or summaryPath), and any Bash command touching weft.
 func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
 	var violations []AuditViolation
 
@@ -166,15 +138,9 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 	return violations
 }
 
-// resolveWritePath canonicalizes one transcript-recorded write path for
-// comparison against the run's absolute contract paths: cleaned, and — when the
-// transcript recorded a RELATIVE path — resolved against workdir, the pane's
-// working directory every agent's relative tool paths are anchored at. The
-// transcript records whatever file_path string the agent passed to its Write
-// tool, and agents freely mix absolute and relative spellings for the same file
-// (observed live in round fable-r3: one Master wrote "_lyx/webster/outcome.yaml",
-// the next wrote the absolute path — the unresolved comparison failed the first
-// run's exit audit with a false parent-write violation).
+// resolveWritePath canonicalizes a transcript-recorded write path: cleaned,
+// and — when relative — resolved against workdir. This prevents false matches
+// when agents mix absolute and relative spellings for the same file.
 func resolveWritePath(workdir, path string) string {
 	cleaned := filepath.Clean(path)
 	if isTranscriptPathAbsolute(path) {
@@ -199,23 +165,10 @@ func isTranscriptPathAbsolute(path string) bool {
 	return filepath.IsAbs(path) || strings.HasPrefix(path, "/")
 }
 
-// CheckParent evaluates Master's own parent-session facts against webster's Master
-// policy: the mirror image of CheckFork's write posture. A fork MUST write to
-// implement its batch; Master must NOT — except for the run's two contract files,
-// outcomePath and summaryPath (_lyx/webster/outcome.yaml and _lyx/webster/
-// summary.md), since a blanket write ban would break the outcome/summary contract
-// itself. workdir is the pane's working directory (layout.Cwd — the same dir the
-// fork audit keys transcripts on); each ParentWrites entry is canonicalized via
-// resolveWritePath before comparing, so a relative-vs-absolute or "./" spelling
-// difference between the transcript's raw entry and the caller-supplied absolute
-// contract paths never false-positives. Three hard violations:
-// any named spawn (silent context loss — same posture as burlerengine's
-// NamedSpawns check), any parent write outside the two contract files (Master
-// implementing a batch itself, or hand-writing a batch report — the same
-// silent-quality-degradation class as a named spawn), and any parent Bash command
-// matching weftRef (Master never drives weft directly; fabricengine's
-// CommitWeft/PushWeftAt run in-process inside webstercli's verbs, per the Weft
-// Git Invariant).
+// CheckParent evaluates Master's own parent-session facts: the mirror image of
+// CheckFork's policy. Master must NOT write except to the two contract files
+// (outcomePath and summaryPath). It bans three hard violations: any named spawn,
+// any parent write outside contract files, and any Bash command touching weft.
 func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
 	var violations []AuditViolation
 
@@ -307,13 +260,9 @@ type Sleeper interface {
 	Sleep(d time.Duration)
 }
 
-// NewTranscripts returns the ForkReport entries in audit whose TranscriptPath is
-// NOT a member of seen. It is a defensive re-filter that runs even when the
-// engine's own AuditForksIncremental already excluded seen transcripts (see
-// shuttleengine.Engine.AuditForksIncremental) — a caller that assembled audit from
-// AuditForks (the full, non-incremental read) instead, or that is re-deriving
-// attribution after a settle retry re-fetched everything, still gets the correct
-// new-since-seen set either way.
+// NewTranscripts returns the ForkReport entries in audit whose TranscriptPath
+// is NOT in seen. It is a defensive re-filter for callers that may not have used
+// AuditForksIncremental or that are re-deriving after a settle retry.
 func NewTranscripts(audit shuttleengine.ForkAudit, seen []string) []shuttleengine.ForkReport {
 	seenSet := make(map[string]bool, len(seen))
 	for _, path := range seen {

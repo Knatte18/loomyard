@@ -27,35 +27,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// pollRealClock is buildercli's own production clock for
-// builderengine.PollUntilTerminal: PollUntilTerminal's clk parameter is an
-// unexported interface, but Go's structural interface satisfaction lets any
-// type whose method set matches (Now/Sleep here) be passed across the
-// package boundary without ever naming the interface.
+// pollRealClock is the production clock for PollUntilTerminal,
+// using Go's structural interface satisfaction across package boundaries.
 type pollRealClock struct{}
 
 func (pollRealClock) Now() time.Time        { return time.Now() }
 func (pollRealClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// statReportPath is the seam gather's two report-existence checks (the
-// primary check and the pre-dead-classification re-check) both call instead
-// of os.Stat directly, mirroring pollRealClock's own test-injection pattern:
-// production always uses os.Stat, but a test can override this package
-// variable to script a distinct result per call -- in particular, a
-// non-ENOENT error on exactly the second (re-check) call, which a real
-// filesystem race cannot be scripted to reproduce deterministically.
+// statReportPath allows tests to inject distinct results per call
+// to script filesystem races deterministically.
 var statReportPath = os.Stat
 
-// digestFields converts a Digest into the map output.Ok expects: Digest's
-// own json tags already spell the pinned snake_case field names, so a
-// marshal/unmarshal round trip through map[string]any reuses them exactly
-// rather than re-listing every field by hand here. It then enforces the
-// digest contract's presence rules, which struct tags alone cannot express:
-// files_changed and dirty are "terminal, report-backed" fields — a running
-// or dead snapshot never measured them, so emitting a zero there would be a
-// false statement, while omitempty would wrongly drop a legitimate terminal
-// zero — and a running snapshot always carries elapsed_s, including the
-// omitempty-hostile 0 of its first second.
+// digestFields converts a Digest to output.Ok's map format, enforcing digest
+// contract presence rules that struct tags alone cannot express.
 func digestFields(d builderengine.Digest) map[string]any {
 	data, _ := json.Marshal(d)
 	var fields map[string]any

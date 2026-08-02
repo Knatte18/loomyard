@@ -259,8 +259,7 @@ Extra metadata is harmless.
 	}
 }
 
-// ledgerEntriesEqual reports whether a and b contain the same LedgerEntry
-// values in the same order.
+// ledgerEntriesEqual reports whether a and b contain the same LedgerEntry values.
 func ledgerEntriesEqual(a, b []LedgerEntry) bool {
 	if len(a) != len(b) {
 		return false

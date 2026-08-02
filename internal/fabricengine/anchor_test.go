@@ -11,17 +11,15 @@ import (
 	"testing"
 )
 
-// mapReachable returns a reachable predicate backed by a plain map: a warp
-// SHA present and true in reachableSHAs is reachable, anything else is not.
+// mapReachable returns a reachable predicate backed by a map.
 func mapReachable(reachableSHAs map[string]bool) func(string) (bool, error) {
 	return func(warpSHA string) (bool, error) {
 		return reachableSHAs[warpSHA], nil
 	}
 }
 
-// TestReachableAnchor_NewestReachable covers the common case: the newest
-// (highest-WarpSeq) entry is itself reachable, so it wins immediately without
-// the walk needing to consider any older entry.
+// TestReachableAnchor_NewestReachable covers the common case: the newest entry
+// is itself reachable.
 func TestReachableAnchor_NewestReachable(t *testing.T) {
 	entries := []corrEntry{
 		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
@@ -42,9 +40,7 @@ func TestReachableAnchor_NewestReachable(t *testing.T) {
 	}
 }
 
-// TestReachableAnchor_SingleBack covers the nearest-older case one step back:
-// the newest entry is unreachable (rebased away), the one directly before it
-// still is.
+// TestReachableAnchor_SingleBack covers the nearest-older case one step back.
 func TestReachableAnchor_SingleBack(t *testing.T) {
 	entries := []corrEntry{
 		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
@@ -65,9 +61,7 @@ func TestReachableAnchor_SingleBack(t *testing.T) {
 	}
 }
 
-// TestReachableAnchor_MultiBack covers the nearest-older case several steps
-// back: only the oldest entry survives, and the walk must not stop early at
-// any of the unreachable newer ones.
+// TestReachableAnchor_MultiBack covers the nearest-older case several steps back.
 func TestReachableAnchor_MultiBack(t *testing.T) {
 	entries := []corrEntry{
 		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
@@ -89,8 +83,7 @@ func TestReachableAnchor_MultiBack(t *testing.T) {
 	}
 }
 
-// TestReachableAnchor_NoneReachable covers the no-surviving-anchor case: every
-// recorded entry has been rewritten away, so the walk finds nothing.
+// TestReachableAnchor_NoneReachable covers the no-surviving-anchor case.
 func TestReachableAnchor_NoneReachable(t *testing.T) {
 	entries := []corrEntry{
 		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
@@ -110,8 +103,7 @@ func TestReachableAnchor_NoneReachable(t *testing.T) {
 	}
 }
 
-// TestReachableAnchor_EmptySlice covers the empty-index case: no correspondence
-// has ever been recorded, so there is nothing to walk.
+// TestReachableAnchor_EmptySlice covers the empty-index case.
 func TestReachableAnchor_EmptySlice(t *testing.T) {
 	got, found, err := reachableAnchor(nil, mapReachable(nil))
 	if err != nil {
@@ -126,9 +118,7 @@ func TestReachableAnchor_EmptySlice(t *testing.T) {
 }
 
 // TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk asserts that a
-// reachable error aborts the walk immediately: the error is returned
-// unchanged (never swallowed), and no entry older than the one that errored
-// is ever consulted.
+// reachable error aborts the walk immediately.
 func TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk(t *testing.T) {
 	wantErr := errors.New("boom")
 	entries := []corrEntry{

@@ -58,10 +58,7 @@ func TestDecideClone_HubPathComputation(t *testing.T) {
 	}
 }
 
-// stubResolveLyxProd stubs devBinPath to a non-existent path and lookPath to
-// return fakeLyxPath for "lyx", so resolveLyx deterministically resolves the
-// PATH-based sourceProd branch when decideClone resolves the binary at its
-// clone step. It returns a restore function for both seams.
+// stubResolveLyxProd stubs resolveLyx to return the sourceProd branch.
 func stubResolveLyxProd(t *testing.T, fakeLyxPath string) func() {
 	t.Helper()
 	oldDevBinPath := devBinPath
@@ -79,8 +76,7 @@ func stubResolveLyxProd(t *testing.T, fakeLyxPath string) func() {
 	}
 }
 
-// TestDecideClone_HubAbsent tests that cloneRun is invoked -- with the binary
-// resolveLyx resolved -- when the Hub does not exist.
+// TestDecideClone_HubAbsent tests that cloneRun is invoked when Hub doesn't exist.
 func TestDecideClone_HubAbsent(t *testing.T) {
 	tmpDir := t.TempDir()
 	hubPath := filepath.Join(tmpDir, hubName)
@@ -114,10 +110,7 @@ func TestDecideClone_HubAbsent(t *testing.T) {
 }
 
 // TestDecideClone_HubPresent_NoReset tests that cloneRun is not called when Hub
-// exists and reset is false. Deliberately no devBinPath/lookPath stub is set
-// up here: this proves the no-op path never resolves lyx at all, matching the
-// documented behaviour that it succeeds even with no dev binary and no PATH
-// lyx resolvable.
+// exists and reset is false.
 func TestDecideClone_HubPresent_NoReset(t *testing.T) {
 	tmpDir := t.TempDir()
 	hubPath := filepath.Join(tmpDir, hubName)

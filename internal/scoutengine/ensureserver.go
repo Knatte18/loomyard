@@ -50,34 +50,8 @@ const (
 	connKindLegacy
 )
 
-// ensureServer resolves entry's language server connection and returns it
-// already initialized and probed, alongside the connKind the caller needs
-// to pick the right teardown.
-//
-// ensureServer dispatches Go to the supervised strategy with native as its
-// fallback: it resolves the toolchain-managed binary once via
-// resolveGoToolchain, then calls ensureSupervised, returning
-// connKindSupervised on success. On any error from ensureSupervised it
-// falls back to ensureNative, returning connKindNative and ensureNative's
-// error verbatim on failure. This fallback ordering is deliberately
-// escalation-first, not escalation-instead-of: ensureSupervised's own
-// wedged-daemon escalation (its own doc comment) has already acquired the
-// spawn lock, re-dialed under it, and exhausted its own one restart before
-// ever returning a terminal error here, so this fallback only ever fires
-// after that recovery attempt has already failed, not as a substitute for
-// it.
-//
-// A toolchain-resolution failure never reaches the fallback: it is returned
-// directly, before ensureSupervised is ever attempted, since native needs
-// the identical pinned binary and would only reproduce the identical
-// failure at doubled latency — the toolchain resolve happening first, ahead
-// of the supervised attempt, is what enforces this structurally rather than
-// via a special-cased error check. ensureNative re-resolves the same
-// toolchain internally on the fallback path (a second resolveGoToolchain
-// call); this redundancy is accepted — it is a cached fast-path os.Stat
-// with negligible cost — rather than threading the already-resolved
-// binPath through ensureNative's own signature, which would change both it
-// and its TestEnsureNative_Integration call site for no real benefit.
+// ensureServer resolves, spawns or dials, and initializes a language server connection,
+// returning it ready for use alongside the connKind needed for correct teardown.
 func ensureServer(ctx context.Context, lang string, entry Entry, targetDir, worktreeRoot string, timeout time.Duration) (*lspClient, connKind, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {

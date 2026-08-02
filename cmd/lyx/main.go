@@ -38,54 +38,30 @@ import (
 
 func main() {
 	root := newRoot()
-	// Production path: split stdout and stderr so the terminal sees each on the
-	// correct stream. Errors are wrapped in the JSON envelope by RunRoot and
-	// written to os.Stdout (matching where domain errors land) so callers can
-	// parse all error output from a single stream.
+	// Production path: split stdout and stderr.
 	root.SetOut(os.Stdout)
 	root.SetErr(os.Stderr)
 	code := clihelp.RunRoot(root, os.Stdout)
-	// Force-open the durable sink on a non-zero exit even if no Info+ line
-	// was ever logged, so a failing invocation always leaves a trace file
-	// behind for post-mortem inspection (trigger (b) from discussion.md's
-	// sink-open-triggers decision). NotifyExit is a no-op under
-	// testing.Testing() with LYX_TRACE unset, so this call is always safe.
+	// Force-open the durable sink on a non-zero exit for post-mortem inspection.
 	logger.NotifyExit(code)
 	os.Exit(code)
 }
 
-// run is the testable seam: it builds a fresh root via newRoot(), merges stdout
-// and stderr into out (so tests capture all cobra text from one buffer), and
-// returns the process exit code. RunRoot handles exit-state seeding and JSON
-// error wrapping. The merged-output contract matches every module's RunCLI seam
-// so tests are symmetric.
+// run is the testable seam: it builds a fresh root, merges stdout/stderr, and returns the exit code.
 func run(args []string, out io.Writer) int {
 	root := newRoot()
-	// Merge stdout and stderr so tests capture cobra's error text alongside
-	// handler output from a single bytes.Buffer.
 	root.SetOut(out)
 	root.SetErr(out)
 	root.SetArgs(args)
 	code := clihelp.RunRoot(root, out)
-	// See main()'s matching call: force-open the durable sink on a non-zero
-	// exit. Safe to call unconditionally here too — testing.Testing() is
-	// true for every in-process call to run(), so NotifyExit stays a no-op
-	// unless LYX_TRACE=1 is explicitly set.
+	// Force-open the durable sink on a non-zero exit.
 	logger.NotifyExit(code)
 	return code
 }
 
-// newRoot builds and returns the lyx cobra root command with all module
-// subcommands added. It registers the persistent --json flag and installs the
-// JSON help renderer. SilenceUsage and SilenceErrors are set here and reinforced
-// by RunRoot so cobra never double-emits plain-text errors alongside the JSON
-// envelope that RunRoot writes to stdout.
+// newRoot builds the lyx cobra root with all module subcommands, --json flag, and JSON help.
 func newRoot() *cobra.Command {
-	// jsonFlag is captured by InstallJSONHelp so the help func can read it.
 	var jsonFlag bool
-	// verbosity is the repeat count of -v/--verbose, bound below and read in
-	// root's PersistentPreRunE to set the logger threshold before any
-	// subcommand body runs.
 	var verbosity int
 
 	root := &cobra.Command{
@@ -100,19 +76,10 @@ its own --help and --json help output.
 Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, perch, builder, scout, webster.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Several module groups (board, ide, reed) install their own
-		// PersistentPreRunE for config/layout resolution. EnableTraverseRunHooks
-		// (set below) makes cobra run root's hook first, then each ancestor's
-		// down to the target command, instead of only the nearest one — so this
-		// hook is guaranteed to fire before every module's own guard.
+		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			logger.SetVerbosity(verbosity)
-			// Suppress trace minting/export and durable-sink arming under
-			// testing.Testing() so unit and integration tests never write
-			// LYX_TRACE_ID into the process environment or open a real
-			// trace file, mirroring internal/reedengine/headerpane.go's
-			// headerLaunchLine precedent for gating a production code path
-			// on test detection.
+			// Suppress trace minting/export and sink arming under testing.Testing().
 			if !testing.Testing() {
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
@@ -121,21 +88,13 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		},
 	}
 
-	// --json is a persistent flag on the root so it is inherited by all descendants.
-	// InstallJSONHelp reads *jsonFlag inside the HelpFunc it installs.
 	root.PersistentFlags().BoolVar(&jsonFlag, "json", false, "emit help as structured JSON instead of plain text")
 	clihelp.InstallJSONHelp(root, &jsonFlag)
 
-	// -v/--verbose is a repeat-count persistent flag: absent (0) keeps the
-	// default Warn threshold, one -v raises it to Info, -vv (or more) to Debug.
 	root.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "increase log verbosity (-v info, -vv debug)")
 
-	// Run every ancestor's PersistentPreRunE (root's included), not just the
-	// nearest one to the invoked subcommand, so root's verbosity wiring above
-	// always fires alongside each module's own PersistentPreRunE.
 	cobra.EnableTraverseRunHooks = true
 
-	// Add every module's Command() as a direct child of the root.
 	root.AddCommand(
 		boardcli.Command(),
 		configcli.Command(),

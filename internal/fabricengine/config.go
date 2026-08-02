@@ -17,9 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the configuration for the fabric module: the host branch
-// prefix and the weft-sync pathspec, unified from fabric's two predecessor
-// config schemas into one file.
+// Config represents the fabric configuration: host branch prefix and weft-sync pathspec.
 type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
 	Pathspec     string `yaml:"pathspec"`
@@ -30,26 +28,17 @@ func (c Config) Dirs() []string {
 	return strings.Fields(c.Pathspec)
 }
 
-// LoadConfig loads and unmarshals configuration for the fabric module from baseDir.
-//
-// Calls configengine.Load with the fabric ConfigTemplate() to strictly validate
-// the config file against the template, resolve environment variables, and
-// return resolved bytes. Unmarshals the resolved bytes into a Config struct.
-//
-// If <baseDir>/_lyx/ does not exist, returns an error containing
-// "not initialized here; run \"lyx fabric reconcile\"".
+// LoadConfig loads and unmarshals fabric configuration from baseDir,
+// returning an error if not initialized (no _lyx/ directory).
 func LoadConfig(baseDir string) (Config, error) {
-	// Load and resolve the config file using the template
 	resolved, err := configengine.Load(baseDir, "fabric", []byte(ConfigTemplate()))
 	if err != nil {
-		// Wrap the generic error with a fabric-specific, actionable message.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
 		}
 		return Config{}, err
 	}
 
-	// Unmarshal resolved bytes into Config struct
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		return Config{}, fmt.Errorf("unmarshal fabric config: %w", err)

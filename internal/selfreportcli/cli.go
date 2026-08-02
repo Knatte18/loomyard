@@ -26,13 +26,8 @@ import (
 var stdin io.Reader = os.Stdin
 
 // Command builds the cobra command tree for the selfreport module.
-//
-// The parent command has no PersistentPreRunE and no persistent flags because
-// selfreport requires no shared setup — the only verb is "create", which is fully
-// self-contained and talks to a hardcoded external service (the GitHub REST API,
-// via go-github, against Knatte18/loomyard). Per-verb flags are declared as local
-// flags on the "create" subcommand; body and label resolution happens inside that
-// subcommand's RunE.
+// The parent command has no shared setup since selfreport requires none;
+// all flags and logic live on the "create" subcommand.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "selfreport",
@@ -75,23 +70,15 @@ Examples:
 	return cmd
 }
 
-// RunCLI is the public seam for the selfreport module.
-//
-// It delegates to clihelp.Execute(Command(), out, args) so in-process tests can
-// capture all output via a single io.Writer. Returns the exit code (0 on success,
-// 1 on error).
+// RunCLI is the public seam for the selfreport module,
+// delegating to clihelp.Execute for in-process test capture.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
 
-// runCreate executes the logic for "selfreport create <title>".
-//
-// It reads the title from args[0], resolves the body from the --body flag (nil
-// when the flag was not provided, full stdin content when set to "-", or the flag
-// string directly for any other value), applies the default "bug" label when no
-// --label flags are given, and delegates to selfreportengine.CreateIssue. The cmd parameter is the
-// cobra command for the "create" subcommand; the closure passes it so that
-// Changed("body") can distinguish "flag not set" from "flag set to empty string".
+// runCreate executes the logic for "selfreport create <title>",
+// resolving body from --body (or stdin if "-"), applying default "bug" label,
+// and delegating to selfreportengine.CreateIssue.
 func runCreate(out io.Writer, args []string, cmd *cobra.Command) int {
 	title := args[0]
 

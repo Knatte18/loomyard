@@ -19,16 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// runTargeting spawns the pre-round targeting call: an ephemeral agent that
-// reads previousHandoffPath (a handoff latestValidHandoff has already
-// confirmed reads and parses cleanly) and writes a short prose brief to
-// seedPath for the upcoming round's runner. Fail-safe like runCircling/
-// runMilestone/runTriage: any failure — stencil fill, shuttle Run error,
-// non-done Outcome, or a missing/empty seed file — logs a name-prefixed
-// logger.Warn naming the round and cause, and returns ("", false) rather
-// than an error, so the round simply runs without a seed. There is no
-// verdict to parse: the seed file is unconstrained prose, read directly by
-// the round's runner rather than by this package.
+// runTargeting spawns the pre-round targeting call: reads a handoff and
+// writes a prose seed brief. Fail-safe: any failure logs a Warn and returns
+// ("", false), so the round runs without a seed.
 func runTargeting(sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool) {
 	values := map[string]string{
 		"round":            strconv.Itoa(round),

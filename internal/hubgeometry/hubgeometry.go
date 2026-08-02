@@ -16,18 +16,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// Layout and geometry constants centralize the directory and file names used by the lyx
-// configuration system and the weft/board/hub geometry vocabulary. All code that constructs
-// paths from these names must import this package and use these constants — never inline
-// the string literals.
+// Layout and geometry constants define directory and file names used by lyx
+// configuration and weft/board/hub geometry. All path construction must use these
+// constants, never inline string literals.
 const (
 	// LyxDirName is the directory name for the lyx system directory within a worktree.
 	LyxDirName = "_lyx"
 
-	// dotLyxDirName is the directory name for the ephemeral, machine-bound lyx state
-	// directory within a worktree. It is deliberately distinct from LyxDirName ("_lyx"):
-	// "_lyx" (underscore) is durable and weft-synced, while ".lyx" (dot) is ephemeral and
-	// local to the machine (e.g. reed's runtime state and lock files never travel with weft).
+	// dotLyxDirName is the directory name for ephemeral, machine-bound lyx state (e.g. reed runtime
+	// state), distinct from LyxDirName ("_lyx") which is durable and weft-synced.
 	dotLyxDirName = ".lyx"
 
 	// configDirName is the subdirectory name within LyxDirName that holds configuration files.
@@ -37,9 +34,8 @@ const (
 	dotEnvName = ".env"
 
 	// WeftSuffix is the suffix appended to a host-worktree slug to form the weft sibling
-	// directory name (e.g. "feat" → "feat-weft"). It is the single source of this literal
-	// for the whole repo; use WeftSiblingPath/WeftRepoRoot/WeftWorktreePath rather than
-	// constructing the path from this constant directly.
+	// directory name (e.g. "feat" → "feat-weft"). Use WeftSiblingPath/WeftRepoRoot/WeftWorktreePath
+	// rather than this constant directly.
 	WeftSuffix = "-weft"
 
 	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
@@ -47,14 +43,11 @@ const (
 	BoardDirName = "_board"
 
 	// HubSuffix is the suffix appended to a repo name to form the hub container directory
-	// (e.g. "loomyard" → "loomyard-HUB"). It is the single source of this literal;
-	// use HubPath(parent, name) to obtain the full path.
+	// (e.g. "loomyard" → "loomyard-HUB"). Use HubPath(parent, name) to obtain the full path.
 	HubSuffix = "-HUB"
 
 	// PatternDirName is the directory name for the PATTERN constraint-injection surface
-	// within a worktree (i.e. <worktree>/_pattern), the durable file every agent consults
-	// for conditional constraint injection. It is the single source of this literal; use
-	// PatternDir(baseDir)/PatternFile(baseDir) to obtain the full paths.
+	// within a worktree (i.e. <worktree>/_pattern). Use PatternDir/PatternFile to obtain paths.
 	PatternDirName = "_pattern"
 )
 
@@ -62,15 +55,6 @@ const (
 var ErrNotAGitRepo = errors.New("not a git repository")
 
 // Layout represents the geometry of a worktree and container within a git repository.
-//
-// Fields:
-//   - Cwd: the current working directory (normalized via filepath.Clean)
-//   - WorktreeRoot: the root of the git repository (from git rev-parse --show-toplevel)
-//   - Hub: the parent directory of WorktreeRoot (the container directory, not a git repo)
-//   - RelPath: the relative path from WorktreeRoot to Cwd
-//   - Prime: the path to the main (first) worktree from List()
-//   - Repo: the repository name, filepath.Base(Prime), or filepath.Base(WorktreeRoot) when
-//     no main worktree is resolved
 type Layout struct {
 	Cwd          string
 	WorktreeRoot string
@@ -88,42 +72,24 @@ func Getwd() (string, error) {
 	return os.Getwd()
 }
 
-// Resolve builds a Layout from the given cwd, running git rev-parse --show-toplevel
-// to determine the repository root.
+// Resolve builds a Layout from the given cwd by running git rev-parse --show-toplevel
+// and reading the recorded .fabric-anchor marker for RelPath.
 //
-// Steps:
-//  1. Run git rev-parse --show-toplevel from cwd
-//  2. On error or non-zero exit, return ErrNotAGitRepo (with context)
-//  3. Normalize the output via filepath.FromSlash + filepath.Clean → WorktreeRoot
-//  4. Set Cwd = filepath.Clean(cwd)
-//  5. Set Hub = filepath.Dir(WorktreeRoot)
-//  6. Read the recorded .fabric-anchor marker (record wins) and set RelPath from it;
-//     validate cwd is at or below <WorktreeRoot>/<anchor>, returning ErrCwdOutsideAnchor
-//     when it is not. When the marker is absent, RelPath falls back to
-//     filepath.Rel(WorktreeRoot, Cwd), today's cwd-derived behavior.
-//  7. Call List(cwd) and set Prime to the Main==true entry's Path
+// When an anchor is recorded, it validates that cwd is at or below the anchored subpath,
+// returning ErrCwdOutsideAnchor if not. When absent, RelPath defaults to cwd-relative path.
+// Resolve does NOT check for _lyx/ (that stays in internal/configengine).
 //
-// Resolve does NOT check for _lyx/ (that authority stays in internal/configengine).
-//
-// Returns the Layout on success, ErrNotAGitRepo (wrapped with exec-layer context) when
-// the git subprocess itself fails to spawn, the bare ErrNotAGitRepo sentinel (with
-// no appended text) when git ran but reported a non-zero exit, or ErrCwdOutsideAnchor
-// (wrapped with the offending paths) when a recorded anchor is present and cwd sits
-// outside its subtree.
+// Returns the Layout on success, ErrNotAGitRepo when git fails or cwd is outside a git repo,
+// or ErrCwdOutsideAnchor when cwd violates a recorded anchor's subtree.
 func Resolve(cwd string) (*Layout, error) {
 	return resolveCore(cwd, true)
 }
 
-// ResolveWorktree builds a Layout for worktreeRoot exactly like Resolve, including
-// reading the recorded .fabric-anchor marker for RelPath, but applies NO cwd
-// at-or-below gate. It exists for internal callers that already hold a worktree
-// root — not an acting cwd — and need that worktree's geometry: the gate is
-// meaningless (and would spuriously fire) when the input is definitionally a
-// worktree root sitting above a subpath anchor. This is the resolver
-// fabricengine's hostLayoutFor must use for its non-sibling fallback, matching the
-// discussion's gate-scope caveat: the cwd hard-error gate applies only to the
-// entry Resolve(cwd), never to internal sibling-layout construction above a
-// subpath anchor.
+// ResolveWorktree builds a Layout like Resolve but applies NO cwd at-or-below gate.
+//
+// It exists for callers holding a worktree root (not an acting cwd) where the gate would
+// spuriously fire. The gate applies only to Resolve(cwd), not internal sibling-layout
+// construction above a subpath anchor.
 func ResolveWorktree(worktreeRoot string) (*Layout, error) {
 	return resolveCore(worktreeRoot, false)
 }
@@ -134,31 +100,21 @@ func ResolveWorktree(worktreeRoot string) (*Layout, error) {
 // Resolve's entry-point cwd; ResolveWorktree passes false because its input is
 // a worktree root, not an acting cwd, and must never be gated against itself.
 func resolveCore(cwd string, applyGate bool) (*Layout, error) {
-	// Step 1-2: Run git rev-parse --show-toplevel. stderr is discarded: it is git's raw,
-	// unwrapped text and must never leak into our JSON error envelope.
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
 	}
 	if exitCode != 0 {
-		// git ran and reported failure (e.g. cwd is outside any git repository);
-		// return the bare sentinel with no appended content.
 		return nil, ErrNotAGitRepo
 	}
 
-	// Step 3: Normalize output
 	workTreeRoot := filepath.FromSlash(strings.TrimSpace(stdout))
 	workTreeRoot = filepath.Clean(workTreeRoot)
 
-	// Step 4-5: Set layout fields
 	cleanCwd := filepath.Clean(cwd)
 	hub := filepath.Dir(workTreeRoot)
 	relPath, _ := filepath.Rel(workTreeRoot, cleanCwd)
 
-	// Step 6: The recorded anchor is truth when present; cwd is demoted to a
-	// validated at-or-below gate (entry Resolve only) with a cwd-derived
-	// fallback when the marker is absent (mid-clone, lyxtest synthetic hubs,
-	// non-fabric repos).
 	if anchor, found := readRecordedAnchor(hub); found {
 		relPath = anchor
 
@@ -171,7 +127,6 @@ func resolveCore(cwd string, applyGate bool) (*Layout, error) {
 		}
 	}
 
-	// Step 7: Get Prime from List
 	entries, err := List(cwd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get main worktree: %w", err)
@@ -197,13 +152,8 @@ func resolveCore(cwd string, applyGate bool) (*Layout, error) {
 	}, nil
 }
 
-// deriveRepo derives the repository name from an already-resolved Prime (main worktree
-// path) without spawning git. It exists so Resolve can populate Layout.Repo purely from
-// values it has already computed, rather than issuing an extra git call for a repo name.
-//
-// It returns filepath.Base(prime) when prime is non-empty; otherwise it falls back to
-// filepath.Base(worktreeRoot). The fallback never yields "." for a real worktree, because
-// worktreeRoot is always the non-empty git toplevel Resolve already validated.
+// deriveRepo derives the repository name from Prime without spawning git.
+// It returns filepath.Base(prime) when prime is non-empty; otherwise filepath.Base(worktreeRoot).
 func deriveRepo(prime, worktreeRoot string) string {
 	if prime != "" {
 		return filepath.Base(prime)
@@ -211,32 +161,14 @@ func deriveRepo(prime, worktreeRoot string) string {
 	return filepath.Base(worktreeRoot)
 }
 
-// SiblingLayout derives the Layout for a hub-sibling worktree from the receiver's
-// already-resolved Hub and Prime, without spawning git. It exists so callers that
-// already hold a resolved Layout and are iterating over hub-sibling worktrees (e.g.
-// fabricengine's Status/Reconcile scans) can avoid a per-iteration git rev-parse spawn.
+// SiblingLayout derives the Layout for a hub-sibling worktree without spawning git.
 //
-// Precondition: worktreeRoot must be an actual worktree root as returned by
-// hubgeometry.List (not an arbitrary subpath) and must be a direct child of l.Hub.
-// RelPath follows the recorded .fabric-anchor marker read from l.Hub (defaulting to
-// "." when the marker is absent); callers must guard the non-sibling case
-// (filepath.Dir(worktreeRoot) != l.Hub) themselves, since SiblingLayout performs no
-// such check and will silently reuse l.Hub even when it is wrong for a worktree
-// outside the hub. No cwd-legitimacy check is applied here: SiblingLayout derives
-// another worktree's geometry from its root, which sits above any subpath anchor, so
-// it must never hard-error the way Resolve's entry-point cwd gate does.
-//
-// For any worktreeRoot where filepath.Dir(worktreeRoot) == l.Hub, this is byte-for-byte
-// equivalent to ResolveWorktree(worktreeRoot) (the gate-free resolver): both set Cwd and
-// WorktreeRoot to filepath.Clean(worktreeRoot), Hub to the same hub, RelPath to the same
-// recorded-anchor-or-"." value, and Prime and Repo to the receiver's already-resolved
-// Prime and Repo (every hub-sibling worktree shares the same Prime, so Repo — derived
-// from Prime — is identical too).
+// Precondition: worktreeRoot must be a direct child of l.Hub. Callers must guard the
+// non-sibling case (filepath.Dir(worktreeRoot) != l.Hub) themselves; SiblingLayout performs
+// no check. Like ResolveWorktree, it applies no cwd-legitimacy gate.
 func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 	c := filepath.Clean(worktreeRoot)
 
-	// The recorded anchor is truth when present, matching resolveCore's "record
-	// wins" rule; SiblingLayout applies no cwd gate, only the RelPath lookup.
 	relPath := "."
 	if anchor, found := readRecordedAnchor(l.Hub); found {
 		relPath = anchor
@@ -253,230 +185,123 @@ func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 }
 
 // ConfigDir returns the path to the config directory within a baseDir.
-//
-// The config directory is where YAML configuration files are stored, organized by module.
-// Returns filepath.Join(baseDir, LyxDirName, configDirName).
 func ConfigDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, configDirName)
 }
 
 // ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.
-//
-// The file is constructed by joining the module name with ".yaml" and placing it
-// in the ConfigDir. This is used by callers like configengine.Load to resolve config paths.
-// Returns filepath.Join(ConfigDir(baseDir), module+".yaml").
 func ConfigFile(baseDir, module string) string {
 	return filepath.Join(ConfigDir(baseDir), module+".yaml")
 }
 
-// PerchRunsDir returns the path to the base directory for perch block run
-// dirs within a baseDir: the parent of every <PerchRunsDir>/<run-id>/
-// directory a perch run writes its round artifacts into. It lives under
-// _lyx so run artifacts are weft-synced via the host _lyx junction, like
-// every other durable lyx state. Per the Hub Geometry Invariant, no other
+// PerchRunsDir returns the path to the base directory for perch run artifacts.
+// It lives under _lyx so artifacts are weft-synced. Per the Hub Geometry Invariant, no other
 // package may construct this path.
-//
-// Returns filepath.Join(baseDir, LyxDirName, "perch").
 func PerchRunsDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "perch")
 }
 
-// PlanDir returns the path to the base directory for the plan's artifacts
-// within a baseDir: the directory holding 00-overview.md and one
-// NN-<slug>.md file per plan unit — a batch under plan-format v1/v2
-// (builder's consumer, see docs/reference/plan-format.md), a card under
-// plan-format v3 (loom's Planner producer, see
-// docs/reference/plan-format-v3.md). Both format generations share this
-// one physical `_lyx/plan` directory deliberately: a worktree holds one
-// plan at a time, and v2 retires when webster's flat-card rewrite lands.
-// It lives under _lyx so the plan is weft-synced via the host _lyx
-// junction, like every other durable lyx state. Per the Hub Geometry
-// Invariant, no other package may construct this path.
-//
-// Returns filepath.Join(baseDir, LyxDirName, "plan").
+// PlanDir returns the path to the plan's artifact directory within a baseDir.
+// It holds 00-overview.md and per-plan-unit files. Both v1/v2 and v3 formats share this directory.
+// It lives under _lyx so the plan is weft-synced. Per the Hub Geometry Invariant, no other
+// package may construct this path.
 func PlanDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "plan")
 }
 
-// PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`, the
-// relative counterpart to PlanDir(baseDir): callers that need a worktree-relative
-// plan-file pointer (one that resolves from the session cwd, not an absolute
-// baseDir-joined path — e.g. planparser's Card.SourcePath token) build it from this
-// accessor rather than an absolute PlanDir(baseDir) result. Like PlanDir, it keeps
-// the `_lyx/plan` path construction inside hubgeometry per the Hub Geometry
-// Invariant and PlanDir's own "no other package may construct this path" doc; it
-// uses the stdlib path package (not filepath) so the token is always forward-slash,
-// never OS-dependent.
-//
-// Returns path.Join(LyxDirName, "plan").
+// PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`.
+// Callers use this for relative plan-file pointers (e.g. planparser's Card.SourcePath token).
+// It uses the stdlib path package so the token is always forward-slash, never OS-dependent.
 func PlanDirRel() string {
 	return path.Join(LyxDirName, "plan")
 }
 
-// PlanDir returns the path to the Plan phase's output directory for this
-// worktree: the directory holding 00-overview.md and every
-// NN-<card-slug>.md card file (see PlanOverview). It delegates to the
-// free PlanDir function so the `_lyx/plan` path has exactly one definition.
-// It is deliberately WorktreeRoot-anchored, NOT Cwd-anchored, matching
-// DiscussionDir's rationale: the plan is the one true per-worktree
-// artifact, so a caller invoked from a subdirectory (Cwd != WorktreeRoot)
-// must still resolve the single `_lyx/plan/` at the worktree root. Per the
-// Hub Geometry Invariant, no other package may construct this path.
-//
-// Returns PlanDir(l.WorktreeRoot).
+// PlanDir returns the path to the Plan phase's output directory for this worktree.
+// It is WorktreeRoot-anchored, not Cwd-anchored, matching DiscussionDir's rationale.
+// Per the Hub Geometry Invariant, no other package may construct this path.
 func (l *Layout) PlanDir() string {
 	return PlanDir(l.WorktreeRoot)
 }
 
-// PlanOverview returns the path to the plan's overview file: the Plan
-// phase's done-sentinel and the Planner producer's sole Spec.OutputFiles
-// entry — written last, after every NN-<card-slug>.md card file the
-// producer also writes (see docs/reference/plan-format-v3.md). It shares
-// PlanDir's WorktreeRoot anchoring for the same reason: the overview must
-// resolve to the one true copy at the worktree root, not a per-subdirectory
-// copy. Per the Hub Geometry Invariant, no other package may construct this
-// path.
-//
-// Returns filepath.Join(l.PlanDir(), "00-overview.md").
+// PlanOverview returns the path to the plan's overview file: the Plan phase's done-sentinel
+// and the Planner producer's sole Spec.OutputFiles entry. It shares PlanDir's WorktreeRoot
+// anchoring. Per the Hub Geometry Invariant, no other package may construct this path.
 func (l *Layout) PlanOverview() string {
 	return filepath.Join(l.PlanDir(), "00-overview.md")
 }
 
-// BuilderDir returns the path to the base directory for builder's own
-// durable run state within a baseDir: state.json, the pause flag,
-// outcome.yaml, and the reports subdirectory (see BuilderReportsDir). It
-// lives under _lyx so builder's run state is weft-synced via the host _lyx
-// junction, like every other durable lyx state. Per the Hub Geometry
+// BuilderDir returns the path to the builder's durable run state directory (state.json,
+// pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
 // Invariant, no other package may construct this path.
-//
-// Returns filepath.Join(baseDir, LyxDirName, "builder").
 func BuilderDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "builder")
 }
 
-// BuilderReportsDir returns the path to the directory holding builder's
-// per-batch report files (NN-<batch-slug>.yaml, see
-// docs/reference/plan-format.md's batch-report contract) within a baseDir. It
-// lives under _lyx so reports are weft-synced via the host _lyx junction,
-// like every other durable lyx state. Per the Hub Geometry Invariant, no
+// BuilderReportsDir returns the path to the directory holding builder's per-batch report files.
+// It lives under _lyx so reports are weft-synced. Per the Hub Geometry Invariant, no
 // other package may construct this path.
-//
-// Returns filepath.Join(BuilderDir(baseDir), "reports").
 func BuilderReportsDir(baseDir string) string {
 	return filepath.Join(BuilderDir(baseDir), "reports")
 }
 
-// WebsterDir returns the path to the base directory for webster's own
-// durable run state within a baseDir: state.json, the pause flag,
-// outcome.yaml, and the reports/prompts subdirectories (see
-// WebsterReportsDir/WebsterPromptsDir). It lives under _lyx so webster's run
-// state is weft-synced via the host _lyx junction, like every other durable
-// lyx state. Per the Hub Geometry Invariant, no other package may construct
-// this path.
-//
-// Returns filepath.Join(baseDir, LyxDirName, "webster").
+// WebsterDir returns the path to the webster's durable run state directory (state.json,
+// pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
+// Invariant, no other package may construct this path.
 func WebsterDir(baseDir string) string {
 	return filepath.Join(baseDir, LyxDirName, "webster")
 }
 
-// WebsterReportsDir returns the path to the directory holding webster's
-// per-batch report files within a baseDir. It lives under _lyx so reports
-// are weft-synced via the host _lyx junction, like every other durable lyx
-// state. Per the Hub Geometry Invariant, no other package may construct this
-// path.
-//
-// Returns filepath.Join(WebsterDir(baseDir), "reports").
+// WebsterReportsDir returns the path to the directory holding webster's per-batch report files.
+// It lives under _lyx so reports are weft-synced. Per the Hub Geometry Invariant, no other
+// package may construct this path.
 func WebsterReportsDir(baseDir string) string {
 	return filepath.Join(WebsterDir(baseDir), "reports")
 }
 
-// WebsterPromptsDir returns the path to the directory holding webster's
-// rendered fork prompts within a baseDir. Prompts are machine-local,
-// re-renderable artifacts (rendered from templates + current state on every
-// fork) and are deliberately excluded from weft commits — only the state and
-// report artifacts under WebsterDir/WebsterReportsDir are durable. Per the
-// Hub Geometry Invariant, no other package may construct this path.
-//
-// Returns filepath.Join(WebsterDir(baseDir), "prompts").
+// WebsterPromptsDir returns the path to the directory holding webster's rendered fork prompts.
+// Prompts are machine-local, re-renderable artifacts excluded from weft commits.
+// Per the Hub Geometry Invariant, no other package may construct this path.
 func WebsterPromptsDir(baseDir string) string {
 	return filepath.Join(WebsterDir(baseDir), "prompts")
 }
 
 // DotEnv returns the path to the .env file within a baseDir.
-//
-// The .env file provides environment variable overrides for the worktree.
-// Returns filepath.Join(baseDir, dotEnvName).
 func DotEnv(baseDir string) string {
 	return filepath.Join(baseDir, dotEnvName)
 }
 
 // PatternDir returns the path to the _pattern directory within a baseDir.
-//
-// It is a pure bootstrap helper for callers that have no resolved Layout, parallel to
-// ConfigDir. The _pattern directory holds PATTERN.md, the constraint-injection surface
-// every agent consults. Per the Hub Geometry Invariant, no other package may construct
-// this path.
-//
-// Returns filepath.Join(baseDir, PatternDirName).
+// Per the Hub Geometry Invariant, no other package may construct this path.
 func PatternDir(baseDir string) string {
 	return filepath.Join(baseDir, PatternDirName)
 }
 
 // PatternFile returns the path to the PATTERN.md file within a baseDir.
-//
-// It is a pure bootstrap helper for callers that have no resolved Layout, parallel to
-// ConfigFile. Keeping the full path — directory and filename — in this one accessor is
-// what lets internal/pattern stay a leaf that never joins the two halves itself; "PATTERN.md"
-// is deliberately not a geometry constant since only this accessor ever needs it.
-//
-// Returns filepath.Join(PatternDir(baseDir), "PATTERN.md").
 func PatternFile(baseDir string) string {
 	return filepath.Join(PatternDir(baseDir), "PATTERN.md")
 }
 
-// WeftSiblingPath returns the absolute path to the weft sibling worktree for the
-// given slug inside hub.
-//
-// It is a pure bootstrap helper for callers that have no resolved Layout. The result
-// is filepath.Join(hub, slug+WeftSuffix), which is the canonical form of the
-// <hub>/<slug>-weft directory. The three weft Layout methods delegate here so that
-// the WeftSuffix constant is consumed in exactly one place.
+// WeftSiblingPath returns the absolute path to the weft sibling worktree for the given slug inside hub.
 func WeftSiblingPath(hub, slug string) string {
 	return filepath.Join(hub, slug+WeftSuffix)
 }
 
 // BoardDir returns the absolute path to the board data directory inside hub.
-//
-// It is a pure bootstrap helper for callers that have no resolved Layout. The result
-// is filepath.Join(hub, BoardDirName), which is the canonical form of the
-// <hub>/_board directory used by the board engine.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
 }
 
-// HubPath returns the absolute path to the hub container directory for the given repo name
-// inside parent.
-//
-// It is a pure bootstrap helper for callers that have no resolved Layout. The result
-// is filepath.Join(parent, name+HubSuffix), which is the canonical form of the
-// <parent>/<name>-HUB directory.
+// HubPath returns the absolute path to the hub container directory for the given repo name inside parent.
 func HubPath(parent, name string) string {
 	return filepath.Join(parent, name+HubSuffix)
 }
 
-// WeftHostSlug parses a weft sibling directory name and returns the host slug it
-// corresponds to.
-//
+// WeftHostSlug parses a weft sibling directory name and returns the host slug it corresponds to.
 // It reports whether name ends with WeftSuffix AND the stripped prefix is non-empty.
-// The non-empty guard rejects a bare "-weft" entry (which would yield an empty slug),
-// matching the skip condition in fabricengine/prune.go's hub scan. When ok is true,
-// slug is the result of strings.TrimSuffix(name, WeftSuffix) and may be passed
-// directly to any of the geometry constructors as the host slug.
 func WeftHostSlug(name string) (slug string, ok bool) {
 	if !strings.HasSuffix(name, WeftSuffix) {
 		return "", false
 	}
-	// Strip the suffix; reject a bare "-weft" name (empty slug).
 	s := strings.TrimSuffix(name, WeftSuffix)
 	if s == "" {
 		return "", false
@@ -484,37 +309,18 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 	return s, true
 }
 
-// HubReservedNames returns the hub-structural reserved name-set that
-// hubgeometry alone owns: the raddle dir (_raddle, reserved ahead of
-// wiring as a known-future junction name), the board passenger (_board),
-// and the portal/launcher mirrors (_portals, _launchers). This is the sole
-// source of that set — both IsReservedHubName (below) and fabricengine's
-// wiring-guard filter (which keeps a config-supplied junction name from
-// colliding with a hub-structural path) consume it, so the two call sites
-// can never drift apart into two independently-maintained lists.
-//
-// It deliberately excludes LyxDirName and PatternDirName: those two are
-// config-migrated junction names, no longer hardcoded here, and are folded
-// into the reserved set by IsReservedHubName's junctionNames parameter
-// instead.
+// HubReservedNames returns the hub-structural reserved name-set that hubgeometry owns:
+// _raddle, _board, _portals, _launchers. It deliberately excludes LyxDirName and PatternDirName,
+// which are config-migrated junction names folded into the reserved set by IsReservedHubName's
+// junctionNames parameter instead.
 func HubReservedNames() []string {
 	return []string{BoardDirName, "_portals", "_launchers", "_raddle"}
 }
 
-// IsReservedHubName reports whether name is one of the hub-level entry names
-// a worktree slug must never claim: hubgeometry's own hub-structural tokens
-// (HubReservedNames — the per-worktree geometry lyx composes at the hub
-// level, e.g. a worktree named "_portals" would have portal junctions
-// created inside it) UNION the caller-supplied junctionNames, the
-// weft-backed junction name-set injected from fabric config (pathspec) for
-// the worktree being validated. hubgeometry stays config-blind: the
-// junction/weft-backed portion of the reserved set is never hardcoded here,
-// it is passed in by the caller. Over the default junctionNames =
-// ["_lyx","_pattern"], the union reproduces exactly today's six reserved
-// names (_lyx, _pattern, _board, _portals, _launchers, _raddle). Slug
-// validation (fabric's Add) calls this so the hub-structural rejection
-// lives with the single owner of those literals while the junction-name
-// rejection reflects the caller's actual configured pathspec.
+// IsReservedHubName reports whether name is one of the hub-level entry names a worktree slug
+// must never claim: HubReservedNames UNION the caller-supplied junctionNames (the weft-backed
+// junction name-set injected from fabric config). hubgeometry stays config-blind; the junction
+// portion is passed in by the caller.
 func IsReservedHubName(name string, junctionNames []string) bool {
 	for _, reserved := range HubReservedNames() {
 		if name == reserved {
@@ -530,213 +336,116 @@ func IsReservedHubName(name string, junctionNames []string) bool {
 }
 
 // LyxDir returns the path to the _lyx directory in the current working directory.
-//
-// Returns filepath.Join(Cwd, LyxDirName).
 func (l *Layout) LyxDir() string {
 	return filepath.Join(l.Cwd, LyxDirName)
 }
 
-// DotLyxDir returns the path to the ephemeral .lyx directory in the current working
-// directory. This is where machine-bound, non-weft-synced runtime state lives (e.g. reed's
-// reed.json and reed.lock), distinct from the durable, weft-synced LyxDir() ("_lyx").
-//
-// Returns filepath.Join(Cwd, dotLyxDirName).
+// DotLyxDir returns the path to the ephemeral .lyx directory (machine-bound runtime state),
+// distinct from the durable, weft-synced LyxDir().
 func (l *Layout) DotLyxDir() string {
 	return filepath.Join(l.Cwd, dotLyxDirName)
 }
 
-// LoomStatusFile returns the path to the loom phase-machine's status.json
-// sidecar for this worktree. It is deliberately WorktreeRoot-anchored, NOT
-// built on LyxDir() (which is Cwd-anchored, see LyxDir above): the loom
-// status file records the state of the whole worktree, and a caller invoked
-// from a subdirectory (Cwd != WorktreeRoot) must still resolve the one true
-// status.json at the worktree root rather than misreading (or seeding) a
-// spurious copy scoped to its subdirectory.
-//
-// Returns filepath.Join(WorktreeRoot, LyxDirName, "status.json").
+// LoomStatusFile returns the path to the loom phase-machine's status.json sidecar for this worktree.
+// It is WorktreeRoot-anchored, not Cwd-anchored, to ensure a caller invoked from a subdirectory
+// resolves the one true status.json at the worktree root.
 func (l *Layout) LoomStatusFile() string {
 	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json")
 }
 
-// LoomStatusLock returns the path to the advisory lock file guarding
-// concurrent access to LoomStatusFile(). It shares LoomStatusFile's
-// WorktreeRoot anchoring for the same reason: the lock must fence the one
-// true status.json at the worktree root, not a per-subdirectory copy.
-//
-// Returns filepath.Join(WorktreeRoot, LyxDirName, "status.json.lock").
+// LoomStatusLock returns the path to the advisory lock file guarding concurrent access to LoomStatusFile().
+// It shares LoomStatusFile's WorktreeRoot anchoring.
 func (l *Layout) LoomStatusLock() string {
 	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json.lock")
 }
 
-// ScoutDaemonStateFile returns the path to the scout daemon's
-// runtime state file for the given language (e.g. "go"). It is
-// deliberately WorktreeRoot-anchored, NOT Cwd-anchored, for the same
-// reason LoomStatusFile above is: the supervised scout daemon must be
-// a worktree-wide singleton per language, so two lyx invocations from
-// different subdirectories of one worktree resolve to the same state file
-// and share one running gopls rather than each spawning its own. It lives
-// under dotLyxDirName (".lyx"), never LyxDirName ("_lyx"): DotLyxDir's own
-// doc comment already names reed's reed.json/reed.lock as exactly this
-// kind of machine-bound runtime daemon state, and a git-committed
-// PID/socket file would be actively wrong (stale the instant it is
-// committed). The lang path segment lets two different languages' daemons
-// (a future Python supervised daemon alongside Go's native one) coexist
-// under one worktree without colliding on a shared state file.
-//
-// Returns filepath.Join(WorktreeRoot, dotLyxDirName, "scout", lang, "daemon.json").
+// ScoutDaemonStateFile returns the path to the scout daemon's runtime state file for the given
+// language. It is WorktreeRoot-anchored so the daemon is a worktree-wide singleton per language.
+// It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
 func (l *Layout) ScoutDaemonStateFile(lang string) string {
 	return filepath.Join(l.WorktreeRoot, dotLyxDirName, "scout", lang, "daemon.json")
 }
 
-// ScoutDaemonLock returns the path to the advisory lock file guarding
-// concurrent access to ScoutDaemonStateFile(lang). It shares that
-// method's WorktreeRoot anchoring and per-lang scoping for the same
-// reasons: the lock must fence the one true per-language state file at the
-// worktree root, not a per-subdirectory or cross-language copy.
-//
-// Returns filepath.Join(WorktreeRoot, dotLyxDirName, "scout", lang, "daemon.lock").
+// ScoutDaemonLock returns the path to the advisory lock file guarding concurrent access to
+// ScoutDaemonStateFile(lang). It shares that method's WorktreeRoot anchoring and per-lang scoping.
 func (l *Layout) ScoutDaemonLock(lang string) string {
 	return filepath.Join(l.WorktreeRoot, dotLyxDirName, "scout", lang, "daemon.lock")
 }
 
-// DiscussionDir returns the path to the Discussion phase's output directory
-// for this worktree: the two-file `decision-record.md` / `support-log.md`
-// pair described in docs/reference/discussion-format.md. It is deliberately
-// WorktreeRoot-anchored, NOT built on LyxDir() (which is Cwd-anchored, see
-// LyxDir above): the discussion artifact is the one true per-worktree
-// artifact, like LoomStatusFile above, so a caller invoked from a
-// subdirectory (Cwd != WorktreeRoot) must still resolve the single
-// `_lyx/discussion/` at the worktree root. Per the Hub Geometry Invariant, no
-// other package may construct this path.
-//
-// Returns filepath.Join(WorktreeRoot, LyxDirName, "discussion").
+// DiscussionDir returns the path to the Discussion phase's output directory for this worktree
+// (the decision-record.md/support-log.md pair). It is WorktreeRoot-anchored, not Cwd-anchored.
+// Per the Hub Geometry Invariant, no other package may construct this path.
 func (l *Layout) DiscussionDir() string {
 	return filepath.Join(l.WorktreeRoot, LyxDirName, "discussion")
 }
 
-// DiscussionDecisionRecord returns the path to the distilled decision record
-// that is the Plan producer's sole input out of `_lyx/discussion/` (see
-// docs/reference/discussion-format.md). It shares DiscussionDir's
-// WorktreeRoot anchoring for the same reason: the record must resolve to the
-// one true copy at the worktree root, not a per-subdirectory copy. Per the
-// Hub Geometry Invariant, no other package may construct this path.
-//
-// Returns filepath.Join(DiscussionDir(), "decision-record.md").
+// DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
+// producer's sole input from `_lyx/discussion/`. It shares DiscussionDir's WorktreeRoot anchoring.
+// Per the Hub Geometry Invariant, no other package may construct this path.
 func (l *Layout) DiscussionDecisionRecord() string {
 	return filepath.Join(l.DiscussionDir(), "decision-record.md")
 }
 
-// DiscussionSupportLog returns the path to the raw support log read by the
-// Discussion-review gate only — never by the Plan producer (see
-// docs/reference/discussion-format.md). It shares DiscussionDir's
-// WorktreeRoot anchoring for the same reason: the log must resolve to the
-// one true copy at the worktree root, not a per-subdirectory copy. Per the
-// Hub Geometry Invariant, no other package may construct this path.
-//
-// Returns filepath.Join(DiscussionDir(), "support-log.md").
+// DiscussionSupportLog returns the path to the raw support log read by the Discussion-review gate only.
+// It shares DiscussionDir's WorktreeRoot anchoring. Per the Hub Geometry Invariant, no other
+// package may construct this path.
 func (l *Layout) DiscussionSupportLog() string {
 	return filepath.Join(l.DiscussionDir(), "support-log.md")
 }
 
-// HubLogsDir returns the path to the hub-level (not worktree-level) directory
-// where the shared per-hub reed server writes its runtime log. It is hub-anchored
-// because consumers like reed run exactly one shared server per hub and need one
-// deterministic machine-local place for its runtime logs — never one per
-// worktree. It lives under the ephemeral, machine-bound ".lyx" (dot) directory,
-// the same lifecycle rationale DotLyxDir documents: server logs are runtime
-// forensic artifacts, never weft-synced. HubLogsDir returns the path only; it
-// never creates the directory.
-//
-// Returns filepath.Join(Hub, dotLyxDirName, "logs").
+// HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
+// writes its runtime log. It is hub-anchored so one server per hub resolves to one deterministic place.
+// It lives under the ephemeral .lyx directory; server logs are runtime artifacts, never weft-synced.
 func (l *Layout) HubLogsDir() string {
 	return filepath.Join(l.Hub, dotLyxDirName, "logs")
 }
 
-// WorktreeLogsDir returns the path to the worktree-level directory where
-// internal/logger's durable trace sink writes one file per process. It is
-// WorktreeRoot-anchored, NOT Cwd-anchored: a caller invoked from a
-// subdirectory (Cwd != WorktreeRoot) must still resolve the one true logs
-// directory for the worktree, matching LoomStatusFile's anchoring
-// rationale above. It lives under the ephemeral, machine-bound ".lyx"
-// (dot) directory — the same lifecycle rationale DotLyxDir documents:
-// trace files are runtime forensic artifacts, never weft-synced.
-// WorktreeLogsDir returns the path only; it never creates the directory.
-//
-// Returns filepath.Join(WorktreeRoot, dotLyxDirName, "logs").
+// WorktreeLogsDir returns the path to the worktree-level directory where internal/logger's
+// durable trace sink writes one file per process. It is WorktreeRoot-anchored, not Cwd-anchored,
+// matching LoomStatusFile's anchoring. It lives under the ephemeral .lyx directory.
 func (l *Layout) WorktreeLogsDir() string {
 	return filepath.Join(l.WorktreeRoot, dotLyxDirName, "logs")
 }
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
-//
-// Returns filepath.Join(Hub, slug).
 func (l *Layout) WorktreePath(slug string) string {
 	return filepath.Join(l.Hub, slug)
 }
 
 // PortalsDir returns the path to the _portals directory in the hub.
-//
-// Returns filepath.Join(Hub, "_portals").
 func (l *Layout) PortalsDir() string {
 	return filepath.Join(l.Hub, "_portals")
 }
 
 // PortalLink returns the path to the mirrored portal junction link for the given slug.
-//
-// The portal link is mirrored into the repo subpath structure. At RelPath == ".",
-// this collapses to <Hub>/_portals/<slug>. For subpaths, it includes the
-// RelPath segments: <Hub>/_portals/<RelPath>/<slug>.
-//
-// Returns filepath.Join(Hub, "_portals", RelPath, slug).
+// It is mirrored into the repo subpath structure, including RelPath segments.
 func (l *Layout) PortalLink(slug string) string {
 	return filepath.Join(l.Hub, "_portals", l.RelPath, slug)
 }
 
 // PortalTarget returns the path to the _lyx directory within a portal for the given slug.
-//
-// The path is: <Hub>/<slug>/<RelPath>/_lyx
-//
-// Returns filepath.Join(Hub, slug, RelPath, LyxDirName).
 func (l *Layout) PortalTarget(slug string) string {
 	return filepath.Join(l.Hub, slug, l.RelPath, LyxDirName)
 }
 
 // LaunchersDir returns the path to the _launchers directory in the hub.
-//
-// This is the un-mirrored root used as a prune boundary and base for MkdirAll.
-//
-// Returns filepath.Join(Hub, "_launchers").
 func (l *Layout) LaunchersDir() string {
 	return filepath.Join(l.Hub, "_launchers")
 }
 
 // LauncherDir returns the path to the mirrored launcher directory for the given slug.
-//
-// The launcher directory is mirrored into the repo subpath structure. At RelPath == ".",
-// this collapses to <Hub>/_launchers/<slug>. For subpaths, it includes the
-// RelPath segments: <Hub>/_launchers/<RelPath>/<slug>.
-//
-// Returns filepath.Join(Hub, "_launchers", RelPath, slug).
+// It is mirrored into the repo subpath structure, including RelPath segments.
 func (l *Layout) LauncherDir(slug string) string {
 	return filepath.Join(l.Hub, "_launchers", l.RelPath, slug)
 }
 
 // MenuLauncherPath returns the path to the per-subpath menu launcher script.
-//
-// The menu launcher is mirrored into the repo subpath structure. At RelPath == ".",
-// this collapses to <Hub>/_launchers/ide-menu<ext>. For subpaths, it includes
-// the RelPath segments: <Hub>/_launchers/<RelPath>/ide-menu<ext>. The extension is
-// GOOS-selected: ".cmd" on Windows, ".sh" everywhere else.
-//
-// Returns filepath.Join(Hub, "_launchers", RelPath, menuLauncherName()).
+// It is mirrored into the repo subpath structure. The extension is GOOS-selected: ".cmd" on Windows, ".sh" elsewhere.
 func (l *Layout) MenuLauncherPath() string {
 	return filepath.Join(l.Hub, "_launchers", l.RelPath, menuLauncherName())
 }
 
-// menuLauncherName returns the OS-appropriate filename for the menu launcher
-// script: "ide-menu.cmd" on Windows, "ide-menu.sh" everywhere else. It is the
-// only geometry token that varies by GOOS; the "ide" and "fabric-checkout"
-// launcher filenames are built (and extension-selected) inside fabricengine.
+// menuLauncherName returns the OS-appropriate filename for the menu launcher script.
 func menuLauncherName() string {
 	if runtime.GOOS == "windows" {
 		return "ide-menu.cmd"
@@ -744,111 +453,60 @@ func menuLauncherName() string {
 	return "ide-menu.sh"
 }
 
-// LauncherSpawnRel returns the relative path from a launcher directory to the
-// target worktree's subpath for spawning.
-//
-// This climbs from <Hub>/_launchers/<RelPath>/<slug> to
-// <Hub>/<slug>/<RelPath>, yielding paths like (..\)^(2+N)<slug>\<sub>
-// on Windows (N = RelPath segment count). At RelPath == ".", it collapses to
-// ..\..\<slug>.
-//
-// Returns filepath.Rel(LauncherDir(slug), filepath.Join(WorktreePath(slug), RelPath)).
+// LauncherSpawnRel returns the relative path from a launcher directory to the target worktree's
+// subpath for spawning.
 func (l *Layout) LauncherSpawnRel(slug string) string {
 	rel, _ := filepath.Rel(l.LauncherDir(slug), filepath.Join(l.WorktreePath(slug), l.RelPath))
 	return rel
 }
 
-// MenuLauncherRel returns the relative path from the menu launcher directory to
-// the main worktree's subpath for menu spawning.
-//
-// This climbs from <Hub>/_launchers/<RelPath> to
-// <Hub>/<Prime>/<RelPath>, yielding paths like (..\)^(1+N)<prime>\<sub>
-// (N = RelPath segment count). At RelPath == ".", it collapses to ..\<prime>.
-//
-// Returns filepath.Rel(filepath.Dir(MenuLauncherPath()), filepath.Join(Prime, RelPath)).
+// MenuLauncherRel returns the relative path from the menu launcher directory to the main
+// worktree's subpath for menu spawning.
 func (l *Layout) MenuLauncherRel() string {
 	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.Prime, l.RelPath))
 	return rel
 }
 
 // PrimeName returns the base name of the main worktree.
-//
-// Returns filepath.Base(Prime).
 func (l *Layout) PrimeName() string {
 	return filepath.Base(l.Prime)
 }
 
-// Weft geometry methods
-//
-// The host link and the weft target for the same slug form the two ends of a seeded
-// junction: HostLyxLink(slug) ↔ WeftLyxDirFor(slug) are junctions that connect
-// the host and weft worktrees for that slug. Similarly, HostLyxLinkHere() ↔ WeftLyxDir()
-// are the junctions for the current worktree.
-
 // WeftRepoRoot returns the path to the weft Prime worktree (the git -C target for weft worktree add/remove).
-//
-// Returns WeftSiblingPath(Hub, PrimeName()), which is filepath.Join(Hub, PrimeName()+WeftSuffix).
 func (l *Layout) WeftRepoRoot() string {
 	return WeftSiblingPath(l.Hub, l.PrimeName())
 }
 
 // WeftWorktreePath returns the path to a sibling weft worktree with the given slug.
-//
-// Returns WeftSiblingPath(Hub, slug), parallel to WorktreePath(slug).
 func (l *Layout) WeftWorktreePath(slug string) string {
 	return WeftSiblingPath(l.Hub, slug)
 }
 
 // WeftWorktree returns the path to the weft worktree paired with the current host worktree.
-//
-// Returns WeftSiblingPath(Hub, filepath.Base(WorktreeRoot)), the weft analog of
-// WorktreeRoot. At the main worktree, this equals WeftRepoRoot().
 func (l *Layout) WeftWorktree() string {
 	return WeftSiblingPath(l.Hub, filepath.Base(l.WorktreeRoot))
 }
 
 // WeftLyxDir returns the path to the _lyx directory in the current worktree's weft sibling.
-//
-// The path is: <hub>/<current-worktree>-weft/<RelPath>/_lyx. This is the junction target
-// for lyx weft and the pathspec base for weft operations, with RelPath-mirroring like
-// PortalTarget (collapses to <weft>/_lyx at RelPath ".").
-//
-// Returns filepath.Join(WeftWorktree(), RelPath, LyxDirName).
+// It is the junction target for lyx weft and the pathspec base for weft operations.
 func (l *Layout) WeftLyxDir() string {
 	return filepath.Join(l.WeftWorktree(), l.RelPath, LyxDirName)
 }
 
 // WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
-//
-// The path is: <hub>/<slug>-weft/<RelPath>/_lyx. This is the junction target paired
-// by spawn seeds for <slug>, and pairs with HostLyxLink(slug) as the junction endpoints.
-// Parallel to HostLyxLink(slug).
-//
-// Returns filepath.Join(WeftWorktreePath(slug), RelPath, LyxDirName).
+// It is the junction target paired by spawn seeds and pairs with HostLyxLink(slug).
 func (l *Layout) WeftLyxDirFor(slug string) string {
 	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, LyxDirName)
 }
 
-// WeftPatternDir returns the path to the _pattern directory in the current worktree's weft
-// sibling.
-//
-// The path is: <hub>/<current-worktree>-weft/<RelPath>/_pattern. This mirrors WeftLyxDir
-// exactly and is the junction target for pattern weft, with RelPath-mirroring like
-// WeftLyxDir (collapses to <weft>/_pattern at RelPath ".").
-//
-// Returns filepath.Join(WeftWorktree(), RelPath, PatternDirName).
+// WeftPatternDir returns the path to the _pattern directory in the current worktree's weft sibling.
+// It mirrors WeftLyxDir exactly and is the junction target for pattern weft.
 func (l *Layout) WeftPatternDir() string {
 	return filepath.Join(l.WeftWorktree(), l.RelPath, PatternDirName)
 }
 
-// WeftPatternDirFor returns the path to the _pattern directory within a named slug's weft
-// worktree.
-//
-// The path is: <hub>/<slug>-weft/<RelPath>/_pattern. This mirrors WeftLyxDirFor exactly
-// and pairs with HostPatternLink(slug) as the junction endpoints, matching the
-// HostLyxLink(slug)/WeftLyxDirFor(slug) precedent.
-//
-// Returns filepath.Join(WeftWorktreePath(slug), RelPath, PatternDirName).
+// WeftPatternDirFor returns the path to the _pattern directory within a named slug's weft worktree.
+// It mirrors WeftLyxDirFor exactly and pairs with HostPatternLink(slug) as junction endpoints.
 func (l *Layout) WeftPatternDirFor(slug string) string {
 	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, PatternDirName)
 }
@@ -861,94 +519,49 @@ func (l *Layout) WeftRaddleDir() string {
 }
 
 // HostLyxLink returns the path to the _lyx junction link in a named slug's host worktree.
-//
-// The path is: <hub>/<slug>/<RelPath>/_lyx. This is the host-side junction endpoint that
-// points into the paired weft worktree via WeftLyxDirFor(slug).
-//
-// Returns filepath.Join(WorktreePath(slug), RelPath, LyxDirName).
+// It is the host-side junction endpoint that points into the paired weft worktree via WeftLyxDirFor(slug).
 func (l *Layout) HostLyxLink(slug string) string {
 	return filepath.Join(l.WorktreePath(slug), l.RelPath, LyxDirName)
 }
 
 // HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
-//
-// The path is: <hub>/<current-worktree>/<RelPath>/_lyx, derived from WorktreeRoot+RelPath,
-// not from Cwd. This is intentionally distinct from LyxDir() (which is Cwd-based) and serves
-// as the host-side junction endpoint paired with WeftLyxDir().
-//
-// Returns filepath.Join(WorktreeRoot, RelPath, LyxDirName).
+// Derived from WorktreeRoot+RelPath, not from Cwd. It serves as the host-side junction endpoint
+// paired with WeftLyxDir().
 func (l *Layout) HostLyxLinkHere() string {
 	return filepath.Join(l.WorktreeRoot, l.RelPath, LyxDirName)
 }
 
-// HostPatternLink returns the path to the _pattern junction link in a named slug's host
-// worktree.
-//
-// The path is: <hub>/<slug>/<RelPath>/_pattern. This mirrors HostLyxLink exactly: the
-// host-side junction endpoint that points into the paired weft worktree via
-// WeftPatternDirFor(slug).
-//
-// Returns filepath.Join(WorktreePath(slug), RelPath, PatternDirName).
+// HostPatternLink returns the path to the _pattern junction link in a named slug's host worktree.
+// It mirrors HostLyxLink exactly and points into the paired weft worktree via WeftPatternDirFor(slug).
 func (l *Layout) HostPatternLink(slug string) string {
 	return filepath.Join(l.WorktreePath(slug), l.RelPath, PatternDirName)
 }
 
-// HostPatternLinkHere returns the path to the _pattern junction link in the current host
-// worktree.
-//
-// The path is: <hub>/<current-worktree>/<RelPath>/_pattern, derived from WorktreeRoot+RelPath,
-// not from Cwd. This mirrors HostLyxLinkHere exactly and serves as the host-side junction
-// endpoint paired with WeftPatternDir().
-//
-// Returns filepath.Join(WorktreeRoot, RelPath, PatternDirName).
+// HostPatternLinkHere returns the path to the _pattern junction link in the current host worktree.
+// Derived from WorktreeRoot+RelPath, not from Cwd. It mirrors HostLyxLinkHere exactly and serves
+// as the host-side junction endpoint paired with WeftPatternDir().
 func (l *Layout) HostPatternLinkHere() string {
 	return filepath.Join(l.WorktreeRoot, l.RelPath, PatternDirName)
 }
 
 // PatternFileHere returns the path to the PATTERN.md file for the current worktree.
-//
-// It is anchored at WorktreeRoot+RelPath — not WorktreeRoot alone, and not Cwd — because
-// this is the accessor every agent calls to check whether PATTERN is active (batch 6's
-// active check): a WorktreeRoot-only anchor would miss the file entirely in any nested-hub
-// geometry (Cwd inside a subpath), silently rendering PATTERN inactive in all five agents,
-// while a bare Cwd anchor would drift from the junction endpoints above, which are all
-// WorktreeRoot+RelPath-anchored. On a Resolve-built Layout this is byte-for-byte equal to
-// PatternFile(l.Cwd), since Resolve sets RelPath = filepath.Rel(WorktreeRoot, Cwd).
-//
-// Returns PatternFile(filepath.Join(WorktreeRoot, RelPath)).
+// It is anchored at WorktreeRoot+RelPath to correctly handle nested-hub geometry and to stay
+// consistent with junction endpoints above, which are all WorktreeRoot+RelPath-anchored.
 func (l *Layout) PatternFileHere() string {
 	return PatternFile(filepath.Join(l.WorktreeRoot, l.RelPath))
 }
 
 // HostJunction represents a directory junction in the host worktree that links to a weft directory.
-//
-// It carries three fields because the two seeding operations (junction creation and
-// git-exclude entry) consume different ones:
-//   - Link: used by junction creation (fslink.CreateDirLink)
-//   - Target: used by junction creation (fslink.CreateDirLink)
-//   - Name: used by git-exclude seeding
 type HostJunction struct {
 	Name   string // Name is the directory name (e.g., "_lyx")
 	Link   string // Link is the host-side path to the junction
 	Target string // Target is the weft-side path the junction points to
 }
 
-// HostJunctions returns the list of host junctions for a given slug, one record per
-// name in names, in names's own order (no forced sort). Order now follows the injected
-// names slice: the default pathspec ("_lyx _pattern") keeps _lyx first as a property of
-// that default value, not an enforced invariant here.
-//
-// For each name in names, the returned record is {Name: name, Link:
-// filepath.Join(WorktreePath(slug), RelPath, name), Target:
-// filepath.Join(WeftWorktreePath(slug), RelPath, name)} — this generic form reproduces
-// today's per-name accessors (HostLyxLink/WeftLyxDirFor, HostPatternLink/WeftPatternDirFor)
-// exactly for name == LyxDirName / PatternDirName. An empty names slice yields no records.
-// The junction record carries Name, Link, and Target fields for use by the seeders in
-// internal/fabricengine.
-//
-// HostJunctions is Hub/slug-anchored: wiring, unwiring, and remove (which all act on a
-// named slug, not necessarily the current worktree) call this. See HostJunctionsHere
-// below for the Here-anchored, slug-free counterpart the health-check sites use instead.
+// HostJunctions returns the list of host junctions for a given slug, one record per name in names,
+// in names's own order (no forced sort). For each name, the record is {Name, Link, Target} where
+// Link and Target are computed from WorktreePath/WeftWorktreePath and RelPath.
+// HostJunctions is Hub/slug-anchored; HostJunctionsHere below is the Here-anchored counterpart.
 func (l *Layout) HostJunctions(slug string, names []string) []HostJunction {
 	junctions := make([]HostJunction, 0, len(names))
 	for _, name := range names {
@@ -962,22 +575,9 @@ func (l *Layout) HostJunctions(slug string, names []string) []HostJunction {
 }
 
 // HostJunctionsHere returns the same HostJunction records as HostJunctions(slug, names),
-// but resolved against the current worktree rather than a named slug: each entry's Link is
-// built from WorktreeRoot (the "…Here()" anchor) and each Target from the un-slugged weft
-// base (WeftWorktree()), mirroring the existing HostLyxLinkHere()/HostLyxLink(slug) and
-// WeftLyxDir()/WeftLyxDirFor(slug) pairs this precedent already establishes.
-//
-// It exists because HostJunctions(slug, names) is Hub/slug-anchored — the right shape for
-// wiring, unwiring, and remove, which always act on a named slug — while all three junction
-// health-check sites (internal/fabricengine/reconcile.go, status.go, and drift.go) have no
-// slug available and are Here-anchored instead. Healthy(l *hubgeometry.Layout) in
-// particular takes no slug parameter at all and is documented as stateless; threading a
-// slug into it would break that contract.
-//
-// For each name in names, the returned record is {Name: name, Link:
-// filepath.Join(WorktreeRoot, RelPath, name), Target: filepath.Join(WeftWorktree(), RelPath,
-// name)}, in names's own order (no forced sort), mirroring HostJunctions's ordering. An
-// empty names slice yields no records.
+// but resolved against the current worktree rather than a named slug: Link is built from
+// WorktreeRoot and each Target from WeftWorktree(). This mirrors HostLyxLinkHere()/HostLyxLink(slug).
+// It exists for health-check sites that are Here-anchored and have no slug available.
 func (l *Layout) HostJunctionsHere(names []string) []HostJunction {
 	junctions := make([]HostJunction, 0, len(names))
 	for _, name := range names {

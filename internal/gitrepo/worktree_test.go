@@ -38,12 +38,9 @@ func TestWorktreeChangedFiles_ReportsModifiedUntrackedAndStaged(t *testing.T) {
 	writeFile(t, dir, "b.txt", "initial")
 	commitAll(t, dir, "init")
 
-	// a.txt: modified-but-not-staged.
 	writeFile(t, dir, "a.txt", "changed")
-	// b.txt: modified and staged.
 	writeFile(t, dir, "b.txt", "changed")
 	lyxtest.MustRun(t, dir, "git", "add", "b.txt")
-	// c.txt: brand-new, untracked.
 	writeFile(t, dir, "c.txt", "new file")
 
 	got, err := repo.WorktreeChangedFiles()

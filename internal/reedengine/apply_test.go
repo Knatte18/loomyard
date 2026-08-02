@@ -76,15 +76,7 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 }
 
 // TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell pins planLayout's
-// header presence filter: a persisted HeaderPaneID naming a pane no longer
-// in the window (the header pane killed externally, or gone before the next
-// up/resume heals it) must render exactly as if no header existed — a real
-// tmux ACCEPTS a layout string naming an absent pane (exit 0, more cells
-// than panes) and assigns cells positionally, scrambling every strand's
-// height (observed live, tmux 3.6, fable-header-r1), so the stale cell must
-// never be emitted in the first place. A dead-but-PRESENT header corpse, by
-// contrast, must still get its cell (it occupies a window slot the layout
-// has to enumerate).
+// header presence filter: a stale absent header must render as if no header existed.
 func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21

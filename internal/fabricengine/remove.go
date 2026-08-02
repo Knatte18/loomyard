@@ -22,48 +22,21 @@ type RemoveResult struct {
 }
 
 // Remove removes a paired host and weft git worktree with all associated artifacts.
-//
-// The Layout l provides geometry information; all git operations use the appropriate cwd
-// (l.WorktreeRoot for host, l.WeftRepoRoot for weft). The slug is the name of the sibling
-// worktree to remove. If force is false, both host and weft worktrees must be clean.
-// If force is true, uncommitted changes are allowed in both and they are forcefully removed.
-//
-// Steps:
-//  1. (EARLY) removePortal(l, slug) and removeLaunchers(l, slug) — best-effort cleanup
-//     that runs BEFORE the exists check, so portal/launcher cleanup happens even when
-//     the worktree dir is already gone.
-//  2. Locate the target and check if it exists: error if not found.
-//  3. Host dirty gate (if !force): check host worktree for uncommitted changes; reject if any found.
-//  4. Weft dirty gate (if !force): check weft worktree for uncommitted changes; reject if any found.
-//  5. Explicitly remove host junctions via removeHostJunction (fslink.RemoveLinksIn only scans
-//     immediate children and misses a nested junction at RelPath != "."; this catches subpath
-//     junctions). names is sourced best-effort from the removed slug's own weft base — never
-//     t.cfg — and left nil on a load failure rather than hard-failing the teardown.
-//  6. Link cleanup: call fslink.RemoveLinksIn as root-level safety net for remaining links.
-//  7. Git remove: run `git worktree remove [--force] <target>` on host.
-//  8. Fallback: if git remove fails, use os.RemoveAll and optionally git worktree prune.
-//  9. Remove weft worktree and its branch (WeftBranchName(hostBranch)) via removeWeftWorktree.
-//
-// 10. Leave <container>/_launchers/ide-menu.cmd in place.
-//
-// Returns RemoveResult on success or an error if the target doesn't exist or other failures occur.
+// If force is false, both worktrees must be clean; if force is true, uncommitted
+// changes are forcefully removed. Portal and launcher cleanup run before the
+// exists check, ensuring cleanup even if the worktree directory is already gone.
 func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (RemoveResult, error) {
-	// Compute the host branch and its paired weft branch.
 	hostBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(hostBranch)
 
-	// (1) Early teardown: remove portal and launchers BEFORE exists check
-	// These are best-effort (errors masked)
 	_ = removePortal(l, slug)
 	_ = removeLaunchers(l, slug)
 
-	// (2) Locate the target and check if it exists
 	target := l.WorktreePath(slug)
 	if _, err := os.Stat(target); os.IsNotExist(err) {
 		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
 	}
 
-	// (3) Host dirty gate (only when !force)
 	if !force {
 		stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, target)
 		if err != nil {
@@ -77,42 +50,26 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 		}
 	}
 
-	// (4) Weft dirty gate (only when !force)
 	if !force {
 		weftTarget := l.WeftWorktreePath(slug)
 		stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, weftTarget)
 		if err != nil {
-			// Weft worktree might not exist or be invalid; skip the check.
-			// If it doesn't exist, the weft remove later will handle cleanup.
 		} else if exitCode == 0 && strings.TrimSpace(stdout) != "" {
 			return RemoveResult{}, fmt.Errorf("weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force")
 		}
 	}
 
-	// (5) Explicitly remove host junctions (catches nested junctions that
-	// fslink.RemoveLinksIn misses). Source names from the repo-wide BoardDir
-	// base, not t.cfg or the removed slug's own weft base — every worktree
-	// converges to the one repo-wide pathspec. This is deliberately
-	// best-effort: Remove is a teardown and must not hard-fail when the
-	// repo-wide config is absent or unreadable (a pair is often removed
-	// *because* it is broken). On a load error, names stays nil, so
-	// removeHostJunction removes nothing here; a nested (RelPath != ".")
-	// junction may then leak past step 6's root-level-only safety net — the
-	// accepted teardown-robustness trade-off (never hard-fail a teardown;
-	// never guess a wiring set).
 	names, namesErr := RepoWiredNames(l)
 	if namesErr != nil {
 		names = nil
 	}
 	_ = removeHostJunction(l, slug, names)
 
-	// (6) Link cleanup (root-level safety net)
 	linksRemoved, err := fslink.RemoveLinksIn(target)
 	if err != nil {
 		return RemoveResult{}, err
 	}
 
-	// (7) Git remove
 	args := []string{"worktree", "remove"}
 	if force {
 		args = append(args, "--force")
@@ -125,17 +82,13 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 	}
 
 	if exitCode != 0 {
-		// (8) Fallback: use os.RemoveAll
 		if err := os.RemoveAll(target); err != nil {
 			return RemoveResult{}, fmt.Errorf("fallback removal failed: %w", err)
 		}
 
-		// Best-effort prune
 		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
 	}
 
-	// (9) Remove weft worktree and branch. Remove always owns the branch
-	// deletion: destroying the pair is this verb's explicit, user-requested job.
 	_ = removeWeftWorktree(l, slug, weftBranch, force, true)
 
 	return RemoveResult{

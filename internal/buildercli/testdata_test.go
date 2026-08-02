@@ -22,10 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// pollFakeEngine is a minimal shuttleengine.Engine double for
-// builderengine.TurnEnded: only ParseEvents is scripted, mirroring
-// builderengine's own poll_test.go fakeEngine. Used by poll_test.go and
-// smoke_test.go, hence untagged here rather than integration-tagged.
+// pollFakeEngine is a minimal Engine double for TurnEnded, scripting only ParseEvents.
 type pollFakeEngine struct {
 	events []shuttleengine.Event
 }
@@ -43,28 +40,24 @@ func (e *pollFakeEngine) InterruptSequence() []shuttleengine.PaneInput      { re
 func (e *pollFakeEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
 func (e *pollFakeEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
 
-// AuditForks is never reached: this double never runs fork-mode specs.
+// AuditForks never runs: this double never executes fork-mode specs.
 func (e *pollFakeEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	return shuttleengine.ForkAudit{}, nil
 }
 
-// AuditForksIncremental is never reached, for the same reason as AuditForks.
+// AuditForksIncremental never runs for the same reason as AuditForks.
 func (e *pollFakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
 	return shuttleengine.ForkAudit{}, nil
 }
 
-// ModelSwitchSequence is never reached: poll never drives a model switch.
+// ModelSwitchSequence never runs: poll never drives a model switch.
 func (e *pollFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
 	return nil
 }
 
 var _ shuttleengine.Engine = (*pollFakeEngine)(nil)
 
-// pollFakeReed is a minimal shuttleengine.ReedOps double for
-// builderengine.StrandLive and poll's terminal cleanup: Status is scripted,
-// and RemoveStrand records every call so a test can assert whether the
-// terminal branch released the strand. Also used by run_test.go's
-// newRunFixture as an inert reed double.
+// pollFakeReed is a minimal ReedOps double, scripting Status and recording RemoveStrand calls.
 type pollFakeReed struct {
 	status         reedengine.StatusResult
 	removedStrands []string

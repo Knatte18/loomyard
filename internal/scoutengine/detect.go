@@ -12,24 +12,9 @@ import (
 	"sort"
 )
 
-// DetectLanguage identifies which registered language targetDir belongs to.
-//
-// If langOverride is non-empty, it is looked up directly in reg (bypassing
-// marker detection entirely); an unknown override is a loud error naming
-// every known language, sorted, so the caller sees valid options.
-//
-// Otherwise DetectLanguage walks the fixed precedence order and, for each
-// language present in reg, evaluates its Entry.Match against targetDir:
-// "all" requires every marker to exist under targetDir, "any" requires at
-// least one. Existence is checked via os.Stat on
-// filepath.Join(targetDir, marker) — a marker may itself be a file or a
-// directory (e.g. a bare extension like ".sln" is checked by glob-like
-// presence of any file/dir with that exact name, matching the registry's
-// literal marker strings). The first satisfied language wins.
-//
-// If no language matches, DetectLanguage returns ErrNoLanguage wrapped with
-// the markers that were searched, so errors.Is(err, ErrNoLanguage) still
-// succeeds.
+// DetectLanguage identifies which registered language targetDir belongs to,
+// using langOverride if provided or marker-based detection otherwise.
+// Returns ErrNoLanguage if no language matches.
 func DetectLanguage(targetDir string, reg Registry, langOverride string) (string, Entry, error) {
 	if langOverride != "" {
 		entry, ok := reg[langOverride]
@@ -54,9 +39,7 @@ func DetectLanguage(targetDir string, reg Registry, langOverride string) (string
 	return "", Entry{}, fmt.Errorf("scoutengine: %w: searched markers %v under %s", ErrNoLanguage, searched, targetDir)
 }
 
-// markersMatch reports whether entry's markers are satisfied under
-// targetDir, honoring entry.Match: "all" requires every marker to exist,
-// "any" requires at least one.
+// markersMatch reports whether entry's markers match targetDir per entry.Match.
 func markersMatch(targetDir string, entry Entry) bool {
 	switch entry.Match {
 	case "all":

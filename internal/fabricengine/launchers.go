@@ -15,19 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// writeLaunchers writes per-worktree launchers for the given slug.
-//
-// Creates l.LauncherDir(slug) and writes ide<ext> with content built from
-// l.LauncherSpawnRel(slug), which climbs from _launchers/<RelPath>/<slug> to
-// the target worktree's subpath, and fabric-checkout<ext> with the same climb
-// but invoking "lyx fabric checkout". The extension is ".cmd" on Windows and
-// ".sh" elsewhere (see launcherExt); the .sh files are written executable.
-//
-// Also ensures l.MenuLauncherPath() exists: create it only if absent (never
-// clobber) with content built from l.MenuLauncherRel(), which climbs from
-// _launchers/<RelPath> to the main worktree's subpath and invokes
-// "lyx ide menu". MenuLauncherPath is itself GOOS-aware (hubgeometry), so its
-// extension already matches launcherExt(runtime.GOOS).
+// writeLaunchers writes per-worktree launcher scripts (ide and fabric-checkout)
+// and ensures the menu launcher exists. The .cmd/.sh extension depends on GOOS;
+// .sh files are written executable.
 func writeLaunchers(l *hubgeometry.Layout, slug string) error {
 	ext := launcherExt(runtime.GOOS)
 
@@ -78,14 +68,9 @@ func writeLaunchers(l *hubgeometry.Layout, slug string) error {
 	return nil
 }
 
-// removeLaunchers removes the launcher directory for the given slug (idempotent).
-//
-// Uses os.RemoveAll to delete the entire l.LauncherDir(slug) directory, then
-// prunes empty mirrored ancestors up to but not including l.LaunchersDir().
-// Leaves l.MenuLauncherPath() (the per-subpath menu) in place; since it resides
-// in the leaf _launchers/<RelPath>/ dir, the prune stops there in practice,
-// removing only LauncherDir(slug) itself (intended asymmetry).
-// Returns nil if the directory does not exist (os.RemoveAll returns nil for non-existent paths).
+// removeLaunchers removes the launcher directory for the given slug, pruning
+// empty ancestors. The menu launcher is left in place. Returns nil if the
+// directory does not exist.
 func removeLaunchers(l *hubgeometry.Layout, slug string) error {
 	launcherDir := l.LauncherDir(slug)
 	if err := os.RemoveAll(launcherDir); err != nil {

@@ -29,8 +29,7 @@ import (
 	"time"
 )
 
-// testEvent is one line of `go test -json` output. Only the fields used here
-// are decoded; the stream carries more (e.g. per-line Output) that we ignore.
+// testEvent is one line of `go test -json` output (decoded fields only).
 type testEvent struct {
 	Action  string  // "start" | "run" | "pass" | "fail" | "skip" | "output" | ...
 	Package string  // import path, e.g. "github.com/Knatte18/loomyard/internal/boardengine"
@@ -69,7 +68,6 @@ func main() {
 func run(full bool, top int) error {
 	args := []string{"test", "./...", "-json", "-count=1"}
 	if full {
-		// -tags must precede the package pattern for `go test` to apply it.
 		args = []string{"test", "-tags", "integration", "./...", "-json", "-count=1"}
 	}
 
@@ -78,8 +76,6 @@ func run(full bool, top int) error {
 	if err != nil {
 		return fmt.Errorf("pipe stdout: %w", err)
 	}
-	// Build errors and `go test` diagnostics go to stderr — surface them live so
-	// a compile failure is not silently swallowed by the JSON parser.
 	cmd.Stderr = os.Stderr
 
 	tier := "Tier 1 (offline)"
@@ -121,8 +117,6 @@ func run(full bool, top int) error {
 
 	printReport(tier, cmdline, wall, pkgs, tests, top)
 
-	// Mirror `go test`'s exit status: a non-zero exit means a build or test
-	// failure. The table is still printed above so the failure is in context.
 	if wallErr != nil {
 		var exitErr *exec.ExitError
 		if errors.As(wallErr, &exitErr) {
@@ -133,8 +127,7 @@ func run(full bool, top int) error {
 	return nil
 }
 
-// parseLine decodes one JSON event and folds it into the package / test maps.
-// Non-JSON lines (rare on the -json stream) are ignored.
+// parseLine decodes one JSON event and folds it into the package/test maps.
 func parseLine(line []byte, pkgs map[string]*pkgResult, tests *[]testResult) {
 	var ev testEvent
 	if err := json.Unmarshal(line, &ev); err != nil {
@@ -150,8 +143,6 @@ func parseLine(line []byte, pkgs map[string]*pkgResult, tests *[]testResult) {
 		pkgs[ev.Package] = p
 	}
 
-	// A package with no test files emits an "output" line saying so, then a
-	// zero-elapsed skip. Flag it so the table distinguishes "no tests" from "0s".
 	if ev.Action == "output" && strings.Contains(ev.Output, "[no test files]") {
 		p.noTests = true
 		return
@@ -163,36 +154,32 @@ func parseLine(line []byte, pkgs map[string]*pkgResult, tests *[]testResult) {
 	}
 
 	if ev.Test == "" {
-		// Package-level result: Elapsed is the package wall time.
 		p.elapsed = ev.Elapsed
 		p.action = ev.Action
 		return
 	}
 
-	// Test-level result. Only keep top-level tests (no "/" => not a subtest) so
-	// the "slowest tests" list is not dominated by table-driven subtests.
+	// Only keep top-level tests (no "/" => not a subtest).
 	if strings.Contains(ev.Test, "/") {
 		return
 	}
 	*tests = append(*tests, testResult{pkg: ev.Package, test: ev.Test, elapsed: ev.Elapsed, action: ev.Action})
 }
 
-// shortPkg trims the module prefix so the table shows "internal/boardengine" rather
-// than the full import path.
+// shortPkg trims the module prefix from pkg for display.
 func shortPkg(pkg string) string {
 	const prefix = "github.com/Knatte18/loomyard/"
 	return strings.TrimPrefix(pkg, prefix)
 }
 
 func printReport(tier, cmdline string, wall time.Duration, pkgs map[string]*pkgResult, tests []testResult, top int) {
-	// Sort packages by elapsed descending; "no tests" packages sink to the bottom.
 	ordered := make([]*pkgResult, 0, len(pkgs))
 	for _, p := range pkgs {
 		ordered = append(ordered, p)
 	}
 	sort.Slice(ordered, func(i, j int) bool {
 		if ordered[i].noTests != ordered[j].noTests {
-			return !ordered[i].noTests // tested packages first
+			return !ordered[i].noTests
 		}
 		return ordered[i].elapsed > ordered[j].elapsed
 	})
@@ -224,7 +211,6 @@ func printReport(tier, cmdline string, wall time.Duration, pkgs map[string]*pkgR
 	fmt.Printf("Wall-clock: %.2fs   (sum of package times: %.2fs across %d packages)\n",
 		wall.Seconds(), sum, len(ordered))
 
-	// Slowest top-level tests.
 	sort.Slice(tests, func(i, j int) bool { return tests[i].elapsed > tests[j].elapsed })
 	if n := top; n > 0 && len(tests) > 0 {
 		if n > len(tests) {

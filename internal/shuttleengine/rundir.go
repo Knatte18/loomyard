@@ -87,16 +87,15 @@ func createRunDir(root string) (runID, runDir string, err error) {
 	return runID, runDir, nil
 }
 
-// saveRunState writes rs to <runDir>/run.json atomically under an
-// exclusive lock at <runDir>/run.json.lock.
+// saveRunState writes rs to <runDir>/run.json atomically.
 func saveRunState(runDir string, rs RunState) error {
 	path := filepath.Join(runDir, runStateFileName)
 	lockPath := path + ".lock"
 	return state.WriteJSON(path, lockPath, rs)
 }
 
-// loadRunState reads the RunState persisted at <runDir>/run.json under a
-// shared read lock. Returns (zero, false, nil) if the file is absent.
+// loadRunState reads the RunState persisted at <runDir>/run.json.
+// Returns (zero, false, nil) if the file is absent.
 func loadRunState(runDir string) (RunState, bool, error) {
 	path := filepath.Join(runDir, runStateFileName)
 	lockPath := path + ".lock"

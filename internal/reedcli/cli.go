@@ -18,13 +18,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// reedCLI is the receiver every reed verb hangs off of, so each subcommand's
-// RunE reads the same PersistentPreRunE-populated state. eng is the domain
-// handle every verb calls into, including for tmux-facing identity (attach,
-// card 27, reads the resolved tmux binary path via eng.TmuxPath() to build
-// its in-place attach-session invocation, alongside Socket/SessionName) — no
-// verb needs the resolved Config directly. The zero reedCLI is not valid
-// until PersistentPreRunE has populated eng.
+// reedCLI carries the resolved *reedengine.Engine for each reed verb; the zero value is invalid until PersistentPreRunE populates eng.
 type reedCLI struct {
 	eng *reedengine.Engine
 }
