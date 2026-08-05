@@ -201,6 +201,16 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", sub, err)
 	}
+
+	// Record "sub" as the recognized anchor so Resolve(sub) succeeds under the
+	// strict cwd gate with AnchorRel == "sub" -- an unrecorded subdirectory
+	// invocation is now ErrCwdOutsideAnchor, a hard error, not the soft
+	// CheckWorktreeRoot report this test exists to prove.
+	anchorPath := filepath.Join(lyxcwd.BoardDir(f.Layout.HubPath), lyxcwd.AnchorFileName)
+	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
+	}
+
 	if err := os.Chdir(sub); err != nil {
 		t.Fatalf("Chdir(%s): %v", sub, err)
 	}

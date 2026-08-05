@@ -110,6 +110,20 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
 	})
+
+	// Record "nested" as the recognized anchor -- exactly what a real `lyx
+	// init` run from <hub>/nested records -- so RunCLI's own lyxcwd.Resolve
+	// succeeds under the strict cwd gate with AnchorRel == "nested" rather
+	// than failing ErrCwdOutsideAnchor.
+	boardDir := lyxcwd.BoardDir(fixture.Layout.HubPath)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
+	if err := os.WriteFile(anchorPath, []byte("nested"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
+	}
+
 	t.Chdir(nested)
 
 	runDir := filepath.Join(lyxcwd.PerchRunsDir(nested), "nestedrun")

@@ -42,13 +42,22 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	// Resolve a nested layout: same worktree (l.WorktreePath()), but Cwd one
-	// level deeper — RelPath becomes "sub", matching the hub-wide nesting
-	// convention HostLyxLink/WeftLyxDirFor assume (every sibling worktree
-	// nests at the same RelPath offset as the caller's own).
+	// Resolve a nested layout: same worktree (l.WorktreePath()), but anchored
+	// one level deeper — AnchorRel becomes "sub", matching the hub-wide
+	// nesting convention HostLyxLink/WeftLyxDirFor assume (every sibling
+	// worktree nests at the same AnchorRel offset as the caller's own). The
+	// strict cwd gate requires the anchor to actually be recorded before
+	// Resolve(subDir) can succeed at that subpath.
 	subDir := filepath.Join(l.WorktreePath(), "sub")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", subDir, err)
+	}
+	anchorPath := filepath.Join(lyxcwd.BoardDir(l.HubPath), lyxcwd.AnchorFileName)
+	if err := os.MkdirAll(filepath.Dir(anchorPath), 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
 	}
 	nestedLayout, err := lyxcwd.Resolve(subDir)
 	if err != nil {
