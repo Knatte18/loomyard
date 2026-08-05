@@ -101,9 +101,12 @@ External interface batch 2 consumes: `configengine.LyxDirName`, `configengine.Co
   - `internal/fabricengine/unwire.go`
   - `internal/fabricengine/unwire_test.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/hubgeometry/discussionpath_test.go`
   - `internal/hubgeometry/enforcement_test.go`
   - `internal/hubgeometry/hubgeometry.go`
   - `internal/hubgeometry/hubgeometry_unit_test.go`
+  - `internal/hubgeometry/loomstatus_test.go`
+  - `internal/hubgeometry/planpath_test.go`
   - `internal/envsource/envsource_test.go`
   - `internal/ideengine/menu.go`
   - `internal/ideengine/menu_test.go`
