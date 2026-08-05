@@ -81,7 +81,7 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 		if m.Name == "fabric" {
 			// fabric's config is repo-wide, not per-worktree: pathspec/branch_prefix
 			// are materialized once at clone via ReconcileFabricAt, keyed on the
-			// board dir at hubgeometry.BoardDir(Hub), never on a worktree baseDir.
+			// board dir at lyxcwd.BoardDir(Hub), never on a worktree baseDir.
 			continue
 		}
 

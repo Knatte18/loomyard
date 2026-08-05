@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // ErrUnsupported is returned when vscode launch is attempted on an unsupported platform.
@@ -39,10 +39,10 @@ var mainColor = "#2d7d46"
 // here — pulling the entire fabric engine into a colour picker would
 // reintroduce a `git worktree list` subprocess per call); the prime-skip step
 // is omitted when primeName is empty.
-func PickColor(l *hubgeometry.Layout, primeName string) string {
+func PickColor(l *lyxcwd.Location, primeName string) string {
 	used := make(map[string]bool)
 
-	entries, err := os.ReadDir(l.Hub)
+	entries, err := os.ReadDir(l.HubPath)
 	if err != nil {
 		// Hub doesn't exist or unreadable; return first non-green
 		return palette[1]
@@ -58,9 +58,9 @@ func PickColor(l *hubgeometry.Layout, primeName string) string {
 		}
 
 		settingsPath := filepath.Join(
-			l.Hub,
+			l.HubPath,
 			entry.Name(),
-			l.RelPath,
+			l.AnchorRel,
 			".vscode",
 			"settings.json",
 		)

@@ -14,7 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // menu presents an interactive picker of available config modules. It prints
@@ -22,7 +22,7 @@ import (
 // "(default)" based on whether its config file exists. Reads one line from in,
 // handles 'q' to quit (return 0), parses selection as 1-indexed number, and
 // routes to editOne on valid choice or returns 1 on invalid input.
-func menu(l *hubgeometry.Layout, baseDir string, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc) int {
+func menu(l *lyxcwd.Location, baseDir string, in io.Reader, out io.Writer, edit configengine.EditorFunc, sync syncFunc) int {
 	// Get the list of available modules.
 	names := configreg.Names()
 

@@ -7,7 +7,7 @@ package pattern
 import (
 	"os"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // Role identifies which agent-facing directive variant Directive should render.
@@ -60,7 +60,7 @@ const orchestratorDirective = `## Constraints — do this before you fork anythi
 var statFile = os.Stat
 
 // Directive reports whether PATTERN is active and returns the role's directive text to inject into the agent's prompt, or empty string if inactive or role is unknown.
-func Directive(l *hubgeometry.Layout, role Role) string {
+func Directive(l *lyxcwd.Location, role Role) string {
 	if l == nil {
 		return ""
 	}
@@ -83,7 +83,7 @@ func Directive(l *hubgeometry.Layout, role Role) string {
 }
 
 // isActive reports whether PATTERN is active: an absent PatternFileHere() means inactive; a directory in its place is also inactive; otherwise active.
-func isActive(l *hubgeometry.Layout) bool {
+func isActive(l *lyxcwd.Location) bool {
 	info, err := statFile(l.PatternFileHere())
 	if err != nil {
 		// os.IsNotExist is the normal, common inactive case: PATTERN.md was

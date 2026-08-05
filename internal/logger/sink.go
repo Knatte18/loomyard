@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 const sinkMaxBytes = 8 * 1024 * 1024
@@ -71,18 +71,18 @@ func ensureDurableSink() (io.Writer, bool) {
 		armHeader()
 
 		if dir == "" {
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				sinkOK = false
 				return
 			}
-			layout, err := hubgeometry.Resolve(cwd)
+			layout, err := lyxcwd.Resolve(cwd)
 			if err != nil {
 				sinkOK = false
 				return
 			}
 			dir = layout.WorktreeLogsDir()
-			header.WorktreeRoot = layout.WorktreeRoot
+			header.WorktreeRoot = layout.WorktreePath()
 		}
 
 		if err := os.MkdirAll(dir, 0o755); err != nil {
