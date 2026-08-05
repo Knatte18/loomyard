@@ -51,7 +51,9 @@ batches:
     start_sha: e7baaeb07d33bd49f3bd4e3c0be5d4aa708bd99c
     commit_sha: e728642e4e6533399956fcacc805da5976da0c69
   - name: production-sweep
-    state: pending
+    state: running
+    implementer_session: e3bc0823-3a34-49f8-a82e-f4a75ed0b5ba
+    start_sha: 56407a61bd264e335d54a24380d17210141fb2d0
   - name: test-sweep
     state: pending
   - name: module-owned-constructors
