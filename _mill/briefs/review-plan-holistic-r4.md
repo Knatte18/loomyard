@@ -2,7 +2,7 @@
 
 You are an independent plan reviewer for **fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)**. You evaluate the complete plan (all batches) and produce a structured review.
 
-Reviewer model: **sonnetxhigh**. Round **4**.
+Reviewer model: **fablehigh**. Round **4**.
 
 **You MAY use Read, Grep, and Glob to verify claims against source files.**
 **CRITICAL: The one exception beyond that is Write -- use it exactly once, to write your full report to the file named in this brief's output-contract footer.**
@@ -477,18 +477,18 @@ Which docs are kept vs deleted (mechanical per-module docs vs durable design doc
 - /home/knatte/Code/loomyard/wts/fabric-illusion-core/manifest/designs/loom.md
 - /home/knatte/Code/loomyard/wts/fabric-illusion-core/manifest/designs/pattern.md
 - /home/knatte/Code/loomyard/wts/fabric-illusion-core/manifest/roadmap.md
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/docs/shared-libs/hubgeometry.md
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/discussionpath_test.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor_test.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/loomstatus_test.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelist_test.go
 - /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/webstergeom_test.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelogs_test.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/planpath_test.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/raddle_guard_test.go
-- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/testmain_test.go
 - /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/scoutdaemon_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelogs_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/raddle_guard_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/discussionpath_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/loomstatus_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/docs/shared-libs/hubgeometry.md
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/testmain_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/planpath_test.go
+- /home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelist_test.go
 
 ## Plan files to review
 - Overview: `/home/knatte/Code/loomyard/wts/fabric-illusion-core/_mill/plan/00-overview.md`
@@ -763,18 +763,18 @@ Read the overview and every batch listed above. Then read the source files refer
 - `/home/knatte/Code/loomyard/wts/fabric-illusion-core/manifest/designs/loom.md`
 - `/home/knatte/Code/loomyard/wts/fabric-illusion-core/manifest/designs/pattern.md`
 - `/home/knatte/Code/loomyard/wts/fabric-illusion-core/manifest/roadmap.md`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/docs/shared-libs/hubgeometry.md`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/discussionpath_test.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor_test.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/loomstatus_test.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelist_test.go`
 - `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/webstergeom_test.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelogs_test.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/planpath_test.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/raddle_guard_test.go`
-- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/testmain_test.go`
 - `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/scoutdaemon_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelogs_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/raddle_guard_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/discussionpath_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/loomstatus_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/anchor_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/docs/shared-libs/hubgeometry.md`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/testmain_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/planpath_test.go`
+- `/home/knatte/Code/loomyard/wts/fabric-illusion-core/internal/hubgeometry/worktreelist_test.go`
 
 ## Intentionally deleted (N=1)
 
@@ -824,7 +824,7 @@ MILL_REVIEW_BEGIN
 
 ```yaml
 verdict: APPROVE | REQUEST_CHANGES | NEED_CONTEXT
-reviewer_model: sonnetxhigh
+reviewer_model: fablehigh
 reviewer_self_id: <your own model self-identification, if known>
 reviewed_file: plan/
 date: <UTC YYYY-MM-DD>
