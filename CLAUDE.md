@@ -38,9 +38,13 @@ A task adding a module, changing observable CLI behavior, or introducing cross-c
 
 `manifest/roadmap.md` moves only on completing or adding a planned item — not for bugfixes, hardening, or polish passes; those are covered by git history and the module docs, not the roadmap.
 
-## Markdown: one line per paragraph, no hard-wrap
+## Markdown: semantic line breaks, no fixed-column hard-wrap
 
-Write markdown prose as a single continuous line per paragraph/list item — never break a line at a fixed column width. Let the reader's own viewer soft-wrap. A hard-wrapped raw file reads badly (mid-phrase breaks) and diffs badly (an edit anywhere in a paragraph touches every wrapped line in it, not just the changed words). Applies to every `.md` file in this repo, not just newly-written ones.
+Never hard-wrap prose at a fixed column — that breaks mid-phrase and makes every edit in a paragraph touch every wrapped line in it, not just the changed words.
+Instead, write one sentence per line, and also break inside a long sentence at an internal independent-clause boundary (a comma followed by a coordinating conjunction — "but"/"and"/"or" — or a semicolon, where what follows has its own subject and verb).
+Use a plain newline (soft break), never trailing double-spaces or a backslash — those force a real `<br>`.
+Applies to prose paragraphs and list items in every `.md` file in this repo, not just newly-written ones; table cells and blockquotes stay on one line per current mill convention.
+See the `mill:markdown` skill for the full rule and examples.
 
 ## Terminology: "Merriam" means webster's Master session
 
