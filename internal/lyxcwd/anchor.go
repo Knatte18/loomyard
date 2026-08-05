@@ -1,9 +1,9 @@
 // anchor.go implements the recorded lyx-anchor subpath marker: the plain
-// single-line ".fabric-anchor" file at the weft:main root that records the
+// single-line ".lyx-anchor" file at the weft:main root that records the
 // repo-wide subpath a fabric clone anchors lyx at (e.g. "backend" or ".").
 // It is read here, never written — the write side lives in fabricengine's
 // weft:main commit choke point (see the plan's "record wins" shared
-// decision). This file stays stdlib-only so hubgeometry never gains a YAML
+// decision). This file stays stdlib-only so lyxcwd never gains a YAML
 // dependency.
 
 package lyxcwd
@@ -17,13 +17,16 @@ import (
 	"strings"
 )
 
-// FabricAnchorName is the filename of the recorded lyx-anchor subpath marker
-// at the weft:main root (<BoardDir(hub)>/.fabric-anchor). It holds only the
+// AnchorFileName is the filename of the recorded lyx-anchor subpath marker
+// at the weft:main root (<BoardDir(hub)>/.lyx-anchor). It holds only the
 // subpath string (e.g. "backend" or "."). This is a structural geometry
 // artifact — a fixed per-repo anchor recorded once at clone/create — never a
-// config/env override; per the Hub Geometry Invariant, only hubgeometry
-// constructs and reads this path.
-const FabricAnchorName = ".fabric-anchor"
+// config/env override; per the Hub Geometry Invariant, only lyxcwd
+// constructs and reads this path. There is no compatibility fallback read for
+// the pre-rename ".fabric-anchor" name: the marker anchors the whole weft
+// repo, not the fabric module, so the old name is simply wrong now, not
+// merely renamed — see clone.go's stale-marker guard.
+const AnchorFileName = ".lyx-anchor"
 
 // ErrCwdOutsideAnchor is the hard-error sentinel Resolve returns when cwd does
 // not equal the anchored directory exactly. It exists so a lyx invocation from
@@ -70,11 +73,11 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 		return nil
 	}
 	return fmt.Errorf("%w: cwd %s does not equal the anchored directory %s (recorded by %s)",
-		ErrCwdOutsideAnchor, cwd, anchorAbs, FabricAnchorName)
+		ErrCwdOutsideAnchor, cwd, anchorAbs, AnchorFileName)
 }
 
 // readRecordedAnchor reads the recorded lyx-anchor subpath marker from
-// <BoardDir(hub)>/.fabric-anchor and reports whether a usable anchor was
+// <BoardDir(hub)>/.lyx-anchor and reports whether a usable anchor was
 // found. It returns ("", false) on any error — an absent board directory, an
 // absent marker file, or an unreadable file — because every one of those
 // cases means the caller must fall back to today's cwd-derived RelPath
@@ -83,7 +86,7 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 // an anchor must never resolve to an empty subpath. This helper spawns no
 // git and stays stdlib-only.
 func readRecordedAnchor(hub string) (anchor string, found bool) {
-	data, err := os.ReadFile(filepath.Join(BoardDir(hub), FabricAnchorName))
+	data, err := os.ReadFile(filepath.Join(BoardDir(hub), AnchorFileName))
 	if err != nil {
 		return "", false
 	}

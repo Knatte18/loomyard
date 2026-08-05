@@ -43,7 +43,7 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	}
 }
 
-// seedFabricAnchor records relPath as the .fabric-anchor marker under hub's
+// seedFabricAnchor records relPath as the .lyx-anchor marker under hub's
 // board directory, so Fabric.Commit's own hubgeometry.ResolveWorktree(warpPath)
 // call resolves l.RelPath to relPath instead of falling back to a
 // cwd-derived "." -- Commit re-resolves geometry from f.warpPath itself
@@ -57,7 +57,7 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, hubgeometry.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}

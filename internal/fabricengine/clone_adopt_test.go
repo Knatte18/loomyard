@@ -28,7 +28,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
@@ -155,7 +155,7 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 // commitFileOnBranch clones bareRemote into a scratch dir, checks out branch
 // (creating it if absent, seeded from the remote's default branch tip),
 // writes relPath with contents, commits, and pushes it back — used to seed a
-// weft remote fixture with a pre-committed .fabric-anchor marker for the
+// weft remote fixture with a pre-committed .lyx-anchor marker for the
 // adopt-path tests, mirroring how a real prior clone would have left it.
 func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents string) {
 	t.Helper()
@@ -208,12 +208,12 @@ func resolveGitCommonDir(t *testing.T, repoDir string) string {
 }
 
 // assertBoardIsWeftWorktree asserts that _board (resolved via
-// hubgeometry.BoardDir(hubPath)) shares its git-common-dir with weftPrime —
+// lyxcwd.BoardDir(hubPath)) shares its git-common-dir with weftPrime —
 // proving _board is a linked worktree of the same weft repo, not a separate
 // clone — and that _board is checked out on wantBranch.
 func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch string) {
 	t.Helper()
-	boardPath := hubgeometry.BoardDir(hubPath)
+	boardPath := lyxcwd.BoardDir(hubPath)
 
 	boardCommonDir := resolveGitCommonDir(t, boardPath)
 	weftCommonDir := resolveGitCommonDir(t, weftPrime)
@@ -283,7 +283,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
 	// The weft prime directory is the host name's weft sibling — resolved via
-	// hubgeometry so the assertion cannot rot against clone's own geometry.
+	// lyxcwd so the assertion cannot rot against clone's own geometry.
 	weftPrime := weftname.SiblingPath(hubPath, "adopt-host")
 
 	if got := currentBranch(t, weftPrime); got != "main-weft" {
@@ -374,7 +374,7 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	nonExistentWeft := filepath.Join(fixtures, "nonexistent-weft.git")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := hubgeometry.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+	expectedHubPath := lyxcwd.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
 
 	_, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(hostBare), filepath.ToSlash(nonExistentWeft), ".")
 	if err == nil {
@@ -424,7 +424,7 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	// out on "main", and itself carry no commits — proving the orphan branch
 	// shares no history with main-weft.
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
-	boardPath := hubgeometry.BoardDir(hubPath)
+	boardPath := lyxcwd.BoardDir(hubPath)
 	if !hasNoCommits(t, boardPath) {
 		t.Errorf("_board at %s has commits; want an unborn HEAD (fresh orphan branch)", boardPath)
 	}
@@ -464,13 +464,13 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 		t.Errorf("res.WeftBase is empty; want a resolved weft-side base directory")
 	}
 
-	markerPath := filepath.Join(res.BoardDir, hubgeometry.FabricAnchorName)
+	markerPath := filepath.Join(res.BoardDir, lyxcwd.AnchorFileName)
 	data, err := os.ReadFile(markerPath)
 	if err != nil {
 		t.Fatalf("read marker %s: %v", markerPath, err)
 	}
 	if got := strings.TrimSpace(string(data)); got != "backend" {
-		t.Errorf(".fabric-anchor content = %q; want %q", got, "backend")
+		t.Errorf(".lyx-anchor content = %q; want %q", got, "backend")
 	}
 }
 
@@ -485,7 +485,7 @@ func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "anchor-typo-weft")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := hubgeometry.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+	expectedHubPath := lyxcwd.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
 
 	_, err := fabricengine.CloneHub(
 		cloneParent,
@@ -525,18 +525,18 @@ func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 		t.Errorf("res.Anchor = %q; want %q", res.Anchor, ".")
 	}
 
-	markerPath := filepath.Join(res.BoardDir, hubgeometry.FabricAnchorName)
+	markerPath := filepath.Join(res.BoardDir, lyxcwd.AnchorFileName)
 	data, err := os.ReadFile(markerPath)
 	if err != nil {
 		t.Fatalf("read marker %s: %v", markerPath, err)
 	}
 	if got := strings.TrimSpace(string(data)); got != "." {
-		t.Errorf(".fabric-anchor content = %q; want %q", got, ".")
+		t.Errorf(".lyx-anchor content = %q; want %q", got, ".")
 	}
 }
 
 // TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote
-// already carrying a committed .fabric-anchor="backend" on its default
+// already carrying a committed .lyx-anchor="backend" on its default
 // branch (mirroring what CloneHub's own create path would have left, had the
 // CLI layer committed it onto weft:main): a re-clone with no --subpath reads
 // the recorded value; a conflicting non-default --subpath hard-errors; a
@@ -550,7 +550,7 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	// Seed the weft remote's main branch with a committed .fabric-anchor, the
 	// same file _board's checkout will already carry once cloned — this is
 	// what "adopt" means: the marker arrives via git history, not a write.
-	commitFileOnBranch(t, fixtures, weftBare, "main", hubgeometry.FabricAnchorName, "backend\n")
+	commitFileOnBranch(t, fixtures, weftBare, "main", lyxcwd.AnchorFileName, "backend\n")
 
 	// No --subpath: the recorded anchor is read and returned as-is.
 	cloneParent := t.TempDir()
@@ -595,5 +595,41 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(matchRes.HubPath) })
 	if matchRes.Anchor != "backend" {
 		t.Errorf("matchRes.Anchor = %q; want %q", matchRes.Anchor, "backend")
+	}
+}
+
+// TestCloneHub_StaleFabricAnchorHardErrors asserts that a weft remote
+// carrying a leftover pre-rename ".fabric-anchor" marker with no ".lyx-anchor"
+// beside it is a hard error naming re-clone as the remedy, and that
+// teardownHub removes the hub — an old clone must never silently fall
+// through to the create path and re-anchor under the new name.
+func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
+	fixtures := t.TempDir()
+
+	hostBare := makeBareRemoteWithSubdir(t, fixtures, "stale-anchor-host", "backend")
+	weftBare := makeBareRemote(t, fixtures, "stale-anchor-weft")
+
+	// Seed the weft remote's main branch with a committed .fabric-anchor
+	// under the pre-rename name only — no .lyx-anchor beside it — mirroring
+	// what an old clone's _board checkout would carry.
+	commitFileOnBranch(t, fixtures, weftBare, "main", ".fabric-anchor", "backend\n")
+
+	cloneParent := t.TempDir()
+	expectedHubPath := lyxcwd.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+
+	_, err := fabricengine.CloneHub(
+		cloneParent,
+		filepath.ToSlash(hostBare),
+		filepath.ToSlash(weftBare),
+		"",
+	)
+	if err == nil {
+		t.Fatalf("CloneHub() against a stale .fabric-anchor with no .lyx-anchor should have failed")
+	}
+	if !strings.Contains(err.Error(), "re-clone") {
+		t.Errorf("CloneHub() error = %q; want it to name re-clone as the remedy", err.Error())
+	}
+	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
+		t.Errorf("hub directory %s should have been removed by teardownHub after the stale-marker guard failure", expectedHubPath)
 	}
 }

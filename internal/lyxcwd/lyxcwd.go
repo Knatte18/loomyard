@@ -87,7 +87,7 @@ func Getwd() (string, error) {
 }
 
 // Resolve builds a Location from the given cwd by running
-// git rev-parse --show-toplevel and reading the recorded .fabric-anchor
+// git rev-parse --show-toplevel and reading the recorded .lyx-anchor
 // marker for AnchorRel, then requires cwd to equal the anchored directory
 // exactly.
 //

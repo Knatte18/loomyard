@@ -427,7 +427,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		}
 	}
 
-	// The .fabric-anchor marker and repo-wide fabric.yaml must be committed
+	// The .lyx-anchor marker and repo-wide fabric.yaml must be committed
 	// onto weft:main (the board worktree), not merely present on disk. This
 	// checks tracked-ness directly (git ls-files) rather than a blanket
 	// `git status --porcelain` cleanliness assertion: CommitWeftAt/PushWeftAt
@@ -439,7 +439,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	// clone orchestration introduces or is responsible for fixing.
 	boardDir := hubgeometry.BoardDir(hubPath)
 	for _, relPath := range []string{
-		hubgeometry.FabricAnchorName,
+		hubgeometry.AnchorFileName,
 		filepath.Join(configengine.LyxDirName, "config", "fabric.yaml"),
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))

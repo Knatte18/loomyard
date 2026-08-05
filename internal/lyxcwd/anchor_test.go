@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// writeAnchor writes the recorded .fabric-anchor marker into hub's board
+// writeAnchor writes the recorded .lyx-anchor marker into hub's board
 // directory, creating the board directory if needed. hub here is the
 // lyxcwd.Location.HubPath value (the container directory), not a worktree root.
 func writeAnchor(t *testing.T, hub, anchor string) {
@@ -27,7 +27,7 @@ func writeAnchor(t *testing.T, hub, anchor string) {
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, lyxcwd.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
@@ -163,7 +163,7 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 }
 
 // TestResolve_AnchorAbsentFallsBackToDot verifies that when no
-// .fabric-anchor marker is recorded, Resolve's AnchorRel falls back to "."
+// .lyx-anchor marker is recorded, Resolve's AnchorRel falls back to "."
 // with no error at the worktree root — never to a cwd-derived relative path,
 // which would make the Location name a lie — the mid-clone / lyxtest
 // synthetic hub / non-fabric repo case. The strict gate is hoisted to apply

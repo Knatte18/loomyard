@@ -2,7 +2,7 @@
 // of fabric wiring, the teardown successor to the deleted `lyx init --undo`.
 //
 // Unwire is per-worktree and never touches the repo-wide `weft:main` records
-// (`.fabric-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`) — those are
+// (`.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`) — those are
 // per-repo facts a later `lyx fabric reconcile` re-wire still needs. It is
 // distinct from Reconcile: Reconcile converges wiring toward the repo-wide
 // pathspec (may add, re-point, or remove junctions), while Unwire always

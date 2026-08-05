@@ -67,7 +67,7 @@ func newFabricPair(t *testing.T) (*fabricengine.Fabric, lyxtest.WeftFixture) {
 }
 
 // newFabricAtRelPath returns a *fabricengine.Fabric pairing a fresh
-// newWarpFixture warp repo — recorded, via a written .fabric-anchor marker,
+// newWarpFixture warp repo — recorded, via a written .lyx-anchor marker,
 // as anchored at rel — with the given SHARED weftPath. This is what lets a
 // single test exercise multiple RelPath depths against one weft checkout,
 // mirroring the real "multiple hubs at different RelPath depths share one
@@ -81,8 +81,8 @@ func newFabricAtRelPath(t *testing.T, weftPath, rel string) *fabricengine.Fabric
 	warpPath := newWarpFixture(t)
 	hub := filepath.Dir(warpPath)
 	seedRepoWideFabricConfig(t, hub)
-	if err := os.WriteFile(filepath.Join(hubgeometry.BoardDir(hub), hubgeometry.FabricAnchorName), []byte(rel), 0o644); err != nil {
-		t.Fatalf("write .fabric-anchor: %v", err)
+	if err := os.WriteFile(filepath.Join(hubgeometry.BoardDir(hub), hubgeometry.AnchorFileName), []byte(rel), 0o644); err != nil {
+		t.Fatalf("write .lyx-anchor: %v", err)
 	}
 
 	f, err := fabricengine.New(warpPath, weftPath)

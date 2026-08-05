@@ -199,7 +199,7 @@ func TestUnwire_NeverWiredHostIsIdempotentNoOp(t *testing.T) {
 }
 
 // TestUnwire_PreservesRepoWideRecords proves Unwire's per-worktree scope: the
-// repo-wide weft:main records (.fabric-anchor, <BoardDir>/_lyx/config/fabric.yaml)
+// repo-wide weft:main records (.lyx-anchor, <BoardDir>/_lyx/config/fabric.yaml)
 // survive a worktree's Unwire untouched, so a later `lyx fabric reconcile`
 // can still re-wire it.
 func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
@@ -213,9 +213,9 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	// newFabricFixture already seeded, mirroring what fabric clone commits
 	// onto weft:main.
 	boardDir := hubgeometry.BoardDir(l.Hub)
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, hubgeometry.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(".\n"), 0o644); err != nil {
-		t.Fatalf("seed .fabric-anchor: %v", err)
+		t.Fatalf("seed .lyx-anchor: %v", err)
 	}
 	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
 
@@ -236,7 +236,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	}
 
 	if _, statErr := os.Stat(anchorPath); statErr != nil {
-		t.Errorf(".fabric-anchor missing after Unwire: %v", statErr)
+		t.Errorf(".lyx-anchor missing after Unwire: %v", statErr)
 	}
 	if _, statErr := os.Stat(fabricConfigPath); statErr != nil {
 		t.Errorf("repo-wide fabric.yaml missing after Unwire: %v", statErr)

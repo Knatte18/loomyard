@@ -27,6 +27,13 @@ import (
 // inject errors into fabric's own clone-orchestration teardown path.
 var RemoveAll = os.RemoveAll
 
+// staleFabricAnchorName is the pre-rename lyx-anchor marker filename. It has
+// no compatibility fallback read (lyxcwd.AnchorFileName does not read it);
+// it exists here only so CloneHub can detect an old clone's leftover marker
+// and hard-error with re-clone as the remedy, rather than silently
+// re-anchoring at the wrong subpath.
+const staleFabricAnchorName = ".fabric-anchor"
+
 // CloneResult carries the resolved geometry CloneHub hands back to the caller
 // once the git-level clone, board-worktree materialization, and anchor
 // resolution are done. It is deliberately git/geometry-only — the CLI layer
@@ -110,12 +117,17 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// warnings fire on every subsequent git checkout within this repo.
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// the clone (the hook is belt-and-suspenders for usability, not correctness).
-	if hookLayout, err := lyxcwd.Resolve(hostWorktreePath); err == nil {
-		if hookErr := InstallPostCheckoutHook(hookLayout); hookErr != nil {
-			log.Printf("fabric clone: post-checkout hook install (non-fatal): %v", hookErr)
-		}
-	} else {
-		log.Printf("fabric clone: resolve layout for hook install (non-fatal): %v", err)
+	//
+	// hubPath and name are already in scope from steps 2 and 1; a direct
+	// struct construction is a simplification, not a correctness fix, since
+	// InstallPostCheckoutHook reads exactly one field (WorktreePath()) — it
+	// needs a path, not a resolution. Step 3 above aborts the clone if the hub
+	// already exists and step 4 creates it fresh, so at this point the hub is
+	// provably empty, <hubPath>/_board cannot exist, and a Resolve call here
+	// would always have succeeded — there is no failure path left to log.
+	hookLocation := &lyxcwd.Location{HubPath: hubPath, WorktreeName: name}
+	if hookErr := InstallPostCheckoutHook(hookLocation); hookErr != nil {
+		log.Printf("fabric clone: post-checkout hook install (non-fatal): %v", hookErr)
 	}
 
 	// Step 6: Clone weft repo
@@ -148,7 +160,22 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// marker to the board worktree ON DISK. The CLI layer commits it onto
 	// weft:main (config materialization and the commit both live in
 	// internal/fabriccli to avoid the fabricengine → configsync import cycle).
-	markerPath := filepath.Join(boardDir, lyxcwd.FabricAnchorName)
+	//
+	// A leftover pre-rename .fabric-anchor with no .lyx-anchor beside it is a
+	// hard error, not a silent fallback: without this check, an old clone
+	// would fall through to the create path below and re-anchor at "."
+	// (or the requested --subpath) even though a real anchor was already
+	// recorded under the old name, silently resolving _lyx to the wrong place
+	// for a subpath-anchored repo.
+	if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
+		if _, newErr := os.Stat(filepath.Join(boardDir, lyxcwd.AnchorFileName)); os.IsNotExist(newErr) {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
+				"found stale %s marker with no %s beside it at %s; re-clone this hub to migrate to the renamed marker",
+				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir))
+		}
+	}
+
+	markerPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	var anchor string
 	if data, statErr := os.ReadFile(markerPath); statErr == nil {
 		// Adopt path: ensureBoardWorktree checked out weft:main, which already

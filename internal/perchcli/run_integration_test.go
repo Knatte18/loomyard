@@ -38,7 +38,7 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	}
 }
 
-// seedFabricAnchor records relPath as the .fabric-anchor marker so Fabric.Commit resolves the correct RelPath.
+// seedFabricAnchor records relPath as the .lyx-anchor marker so Fabric.Commit resolves the correct RelPath.
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 
@@ -46,7 +46,7 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, hubgeometry.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}

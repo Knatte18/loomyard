@@ -264,7 +264,7 @@ the managed .gitignore ".lyx/" entry.
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
 always tears wiring down. It leaves the repo's anchor and repo-wide config
-(.fabric-anchor, fabric.yaml on weft:main) intact, so a later
+(.lyx-anchor, fabric.yaml on weft:main) intact, so a later
 "lyx fabric reconcile" can re-wire this worktree.
 
 Example:

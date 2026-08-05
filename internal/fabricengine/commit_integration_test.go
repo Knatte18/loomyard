@@ -465,7 +465,7 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 	}
 }
 
-// writeFabricAnchor records anchor as the .fabric-anchor marker under
+// writeFabricAnchor records anchor as the .lyx-anchor marker under
 // warpPath's hub board directory, so a subsequent hubgeometry.ResolveWorktree
 // call resolves l.RelPath to anchor rather than falling back to a
 // cwd-derived ".". Mirrors hubgeometry's own anchor_test.go writeAnchor,
@@ -478,7 +478,7 @@ func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, hubgeometry.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
