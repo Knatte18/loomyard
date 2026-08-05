@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: _mill/plan
@@ -31,4 +31,27 @@ plan-fix-r5  '2026-08-05T17:29:50Z'
 plan-review-r6  '2026-08-05T18:00:59Z'
 plan-fix-r6  '2026-08-05T18:00:59Z'
 planned  '2026-08-05T18:00:59Z'
+implementing  '2026-08-05T18:02:03Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: pre-moves
+    state: pending
+  - name: rename-and-reshape
+    state: pending
+  - name: production-sweep
+    state: pending
+  - name: test-sweep
+    state: pending
+  - name: module-owned-constructors
+    state: pending
+  - name: fabric-owns-the-illusion
+    state: pending
+  - name: board-junction
+    state: pending
+  - name: guard-and-docs
+    state: pending
 ```
