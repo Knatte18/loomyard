@@ -44,6 +44,7 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/buildercli/smoke_test.go`
   - `internal/buildercli/spawnbatch_test.go`
   - `internal/buildercli/testdata_test.go`
+  - `internal/builderengine/plan.go`
   - `internal/loomengine/discussion.go`
   - `internal/loomengine/plan.go`
   - `internal/loomengine/plan_test.go`
@@ -62,7 +63,7 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/lyxcwd/planpath_test.go` -> `internal/loomengine/planpath_test.go`
   - `internal/lyxcwd/discussionpath_test.go` -> `internal/loomengine/discussionpath_test.go`
   - `internal/lyxcwd/loomstatus_test.go` -> `internal/loomengine/loomstatus_test.go`
-- **Requirements:** Delete `PlanDir`, `PlanDirRel`, `(*Location).PlanDir`, `(*Location).PlanOverview`, `(*Location).DiscussionDir`, `(*Location).DiscussionDecisionRecord`, `(*Location).DiscussionSupportLog`, `(*Location).LoomStatusFile` and `(*Location).LoomStatusLock` from `internal/lyxcwd/lyxcwd.go`. Declare in `internal/planparser/parse.go`: `const PlanDirName = "plan"` and `func PlanDirRel() string` returning `path.Join(configengine.LyxDirName, PlanDirName)` using the stdlib `path` package so the token stays forward-slash, never OS-dependent; `parse.go:236` calls its own `PlanDirRel()`. Declare in `internal/loomengine`: `func PlanDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, planparser.PlanDirName)`, `func PlanOverview(l *lyxcwd.Location) string` = `filepath.Join(PlanDir(l), "00-overview.md")`, `func DiscussionDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, discussionDirName)` with `discussionDirName = "discussion"`, `DiscussionDecisionRecord` and `DiscussionSupportLog` joining `"decision-record.md"`/`"support-log.md"` onto it, and `LoomStatusFile`/`LoomStatusLock` joining `"status.json"`/`"status.json.lock"` onto `filepath.Join(l.AnchorPath(), configengine.LyxDirName)`. Retarget every listed caller. `buildercli/cli.go` and `webstercli/cli.go` already import `loomengine`; verify rather than assume. The module's own `lyxcwd_unit_test.go` exercises the deleted baseDir-form `PlanDir` at `:56-64`: delete that sub-test — its subject is gone, and the coverage is superseded by the moved `planpath_test.go` and card 28's anchoring table — or this batch's `go test ./internal/lyxcwd/...` fails to compile.
+- **Requirements:** Delete `PlanDir`, `PlanDirRel`, `(*Location).PlanDir`, `(*Location).PlanOverview`, `(*Location).DiscussionDir`, `(*Location).DiscussionDecisionRecord`, `(*Location).DiscussionSupportLog`, `(*Location).LoomStatusFile` and `(*Location).LoomStatusLock` from `internal/lyxcwd/lyxcwd.go`. Declare in `internal/planparser/parse.go`: `const PlanDirName = "plan"` and `func PlanDirRel() string` returning `path.Join(configengine.LyxDirName, PlanDirName)` using the stdlib `path` package so the token stays forward-slash, never OS-dependent; `parse.go:236` calls its own `PlanDirRel()`. Declare in `internal/loomengine`: `func PlanDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, planparser.PlanDirName)`, `func PlanOverview(l *lyxcwd.Location) string` = `filepath.Join(PlanDir(l), "00-overview.md")`, `func DiscussionDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, discussionDirName)` with `discussionDirName = "discussion"`, `DiscussionDecisionRecord` and `DiscussionSupportLog` joining `"decision-record.md"`/`"support-log.md"` onto it, and `LoomStatusFile`/`LoomStatusLock` joining `"status.json"`/`"status.json.lock"` onto `filepath.Join(l.AnchorPath(), configengine.LyxDirName)`. Retarget every listed caller. `buildercli/cli.go` and `webstercli/cli.go` already import `loomengine`; verify rather than assume. The module's own `lyxcwd_unit_test.go` exercises the deleted baseDir-form `PlanDir` at `:56-64`: delete that sub-test — its subject is gone, and the coverage is superseded by the moved `planpath_test.go` and card 28's anchoring table — or this batch's `go test ./internal/lyxcwd/...` fails to compile. Three comments name the relocated symbols under their batch-4 `lyxcwd.` spelling and go stale in this card unless corrected here: `builderengine/plan.go:33` ("resolved via `hubgeometry.PlanDir` by the caller" pre-sweep) becomes `loomengine.PlanDir` — the only reason that file is in this card's `Edits:` — and `websterengine/template_test.go:183`'s `PlanDirRel()` attribution and `buildercli/testdata_test.go:93`'s `PlanDir(hub)` attribution, both in files already listed, take the new `planparser.PlanDirRel()`/`loomengine.PlanDir` owners.
 - **Commit:** `refactor(loomengine): own the plan, discussion and loom-status paths`
 
 ### Card 21: builder's run-state paths
@@ -78,12 +79,13 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/buildercli/smoke_test.go`
   - `internal/buildercli/spawnbatch_test.go`
   - `internal/buildercli/status_test.go`
+  - `internal/builderengine/state.go`
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/lyxcwd/lyxcwd_unit_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete `BuilderDir` and `BuilderReportsDir` from `internal/lyxcwd/lyxcwd.go`, and with them `lyxcwd_unit_test.go`'s `BuilderDir` sub-test at `:68-76` — superseded by card 28's anchoring table, and package `lyxcwd` stops compiling if it stays. Declare in `internal/builderengine`: `const builderDirName = "builder"`, `func Dir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, builderDirName)` and `func ReportsDir(l *lyxcwd.Location) string` = `filepath.Join(Dir(l), "reports")`. Retarget `buildercli`'s production and test callers. Name them `Dir`/`ReportsDir` rather than `BuilderDir`/`BuilderReportsDir`: inside `builderengine` the prefix is redundant, and callers read `builderengine.Dir(l)`.
+- **Requirements:** Delete `BuilderDir` and `BuilderReportsDir` from `internal/lyxcwd/lyxcwd.go`, and with them **both** of `lyxcwd_unit_test.go`'s sub-tests over that pair — `BuilderDir` at `:68-78` **and** `BuilderReportsDir` at `:80-90` — superseded by card 28's anchoring table, and package `lyxcwd` stops compiling if either stays. `builderengine/state.go:8`'s comment names `BuilderDir` under its batch-4 `lyxcwd.` spelling; correct it to the in-package `Dir` this card declares — that comment correction is the only reason `state.go` is in this card's `Edits:`. Declare in `internal/builderengine`: `const builderDirName = "builder"`, `func Dir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, builderDirName)` and `func ReportsDir(l *lyxcwd.Location) string` = `filepath.Join(Dir(l), "reports")`. Retarget `buildercli`'s production and test callers. Name them `Dir`/`ReportsDir` rather than `BuilderDir`/`BuilderReportsDir`: inside `builderengine` the prefix is redundant, and callers read `builderengine.Dir(l)`.
 - **Commit:** `refactor(builderengine): own the builder run-state and reports paths`
 
 ### Card 22: webster's run-state, reports and prompts paths
@@ -92,16 +94,18 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/configengine/config.go`
   - `internal/websterengine/config.go`
 - **Edits:**
+  - `internal/fabricengine/weftgit.go`
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/webstercli/cli.go`
   - `internal/webstercli/cli_test.go`
   - `internal/webstercli/verbs_test.go`
   - `internal/websterengine/report.go`
+  - `internal/websterengine/state.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:**
   - `internal/lyxcwd/webstergeom_test.go` -> `internal/websterengine/webstergeom_test.go`
-- **Requirements:** Delete `WebsterDir`, `WebsterReportsDir` and `WebsterPromptsDir` from `internal/lyxcwd/lyxcwd.go`. Declare in `internal/websterengine`: `const websterDirName = "webster"`, `func Dir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)`, `func ReportsDir(l *lyxcwd.Location) string` = `filepath.Join(Dir(l), "reports")` and `func PromptsDir(l *lyxcwd.Location) string` = `filepath.Join(Dir(l), "prompts")`. Prompts stay under `webster/` and stay machine-local, re-renderable artifacts excluded from weft commits — the move must not change that. Retarget `webstercli`'s callers and `websterengine/report.go`'s two godoc references at lines 3 and 82.
+- **Requirements:** Delete `WebsterDir`, `WebsterReportsDir` and `WebsterPromptsDir` from `internal/lyxcwd/lyxcwd.go`. Declare in `internal/websterengine`: `const websterDirName = "webster"`, `func Dir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)`, `func ReportsDir(l *lyxcwd.Location) string` = `filepath.Join(Dir(l), "reports")` and `func PromptsDir(l *lyxcwd.Location) string` = `filepath.Join(Dir(l), "prompts")`. Prompts stay under `webster/` and stay machine-local, re-renderable artifacts excluded from weft commits — the move must not change that. Retarget `webstercli`'s callers and `websterengine/report.go`'s two godoc references at lines 3 and 82. Two more comments name this surface under its batch-4 `lyxcwd.` spelling and are corrected here, which is the only reason their files are in this card's `Edits:`: `websterengine/state.go:10` ("this file never constructs a `_lyx` path itself") takes the in-package `Dir`, and `fabricengine/weftgit.go:82-86`'s exclude-pattern rationale, whose `WebsterPromptsDir` attribution becomes `websterengine.PromptsDir` — the exclude patterns themselves (`:94-96`) already read `configengine.LyxDirName` from card 2 and are untouched.
 - **Commit:** `refactor(websterengine): own the webster run-state, reports and prompts paths`
 
 ### Card 23: perch's run-artifact path
@@ -115,10 +119,11 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/perchcli/cli.go`
   - `internal/perchcli/cli_integration_test.go`
   - `internal/perchcli/run_integration_test.go`
+  - `internal/perchengine/identity_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete `PerchRunsDir` from `internal/lyxcwd/lyxcwd.go`, and with it `lyxcwd_unit_test.go`'s `PerchRunsDir` sub-test at `:44-52` — superseded by card 28's anchoring table. Declare `const perchDirName = "perch"` and `func RunsDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, perchDirName)` in `internal/perchengine`. Retarget `perchcli/cli.go` and the two integration tests. `perchcli` already imports `perchengine`.
+- **Requirements:** Delete `PerchRunsDir` from `internal/lyxcwd/lyxcwd.go`, and with it `lyxcwd_unit_test.go`'s `PerchRunsDir` sub-test at `:44-52` — superseded by card 28's anchoring table. Declare `const perchDirName = "perch"` and `func RunsDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, perchDirName)` in `internal/perchengine`. Retarget `perchcli/cli.go` and the two integration tests. `perchcli` already imports `perchengine`. `perchengine/identity_test.go:77`'s comment names `PerchRunsDir` under its batch-4 `lyxcwd.` spelling; correct it to the in-package `RunsDir` — that comment correction is the only reason the file is in this card's `Edits:`.
 - **Commit:** `refactor(perchengine): own the perch run-artifact path`
 
 ### Card 24: scout's daemon state and lock paths
@@ -127,9 +132,12 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/scoutengine/daemonstate.go`
 - **Edits:**
+  - `CONSTRAINTS.md`
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/scoutengine/daemonstate.go`
+  - `internal/scoutengine/doc.go`
   - `internal/scoutengine/ensureserver.go`
+  - `internal/scoutengine/leaf_enforcement_test.go`
   - `internal/scoutengine/ensureserver_integration_test.go`
   - `internal/scoutengine/ensureserver_test.go`
   - `internal/scoutengine/refs_integration_test.go`
@@ -140,7 +148,7 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
 - **Deletes:** none
 - **Moves:**
   - `internal/lyxcwd/scoutdaemon_test.go` -> `internal/scoutengine/scoutdaemon_test.go`
-- **Requirements:** Delete `(*Location).ScoutDaemonStateFile` and `(*Location).ScoutDaemonLock` from `internal/lyxcwd/lyxcwd.go`, along with the `dotLyxDirName` const if no other `lyxcwd` symbol still uses it. Declare in `internal/scoutengine`: `const dotLyxDirName = ".lyx"` and `scoutDirName = "scout"`, then `func DaemonStateFile(worktreePath, lang string) string` = `filepath.Join(worktreePath, dotLyxDirName, scoutDirName, lang, "daemon.json")` and `func DaemonLock(worktreePath, lang string) string` for `daemon.lock`. Take a plain worktree path, not a `*Location`: these are the only two constructors whose caller (`ensureserver.go:300`) built a synthetic `Location` purely to reach them, and a plain-path signature deletes that literal outright rather than re-expressing it. Retarget every listed caller accordingly. `.lyx` stays unpoliced by the geometry guard this slice; slice 9 is where it gets an owner.
+- **Requirements:** Delete `(*Location).ScoutDaemonStateFile` and `(*Location).ScoutDaemonLock` from `internal/lyxcwd/lyxcwd.go`, along with the `dotLyxDirName` const if no other `lyxcwd` symbol still uses it. Declare in `internal/scoutengine`: `const dotLyxDirName = ".lyx"` and `scoutDirName = "scout"`, then `func DaemonStateFile(worktreePath, lang string) string` = `filepath.Join(worktreePath, dotLyxDirName, scoutDirName, lang, "daemon.json")` and `func DaemonLock(worktreePath, lang string) string` for `daemon.lock`. Take a plain worktree path, not a `*Location`: these are the only two constructors whose caller (`ensureserver.go:300`) built a synthetic `Location` purely to reach them, and a plain-path signature deletes that literal outright rather than re-expressing it. Retarget every listed caller accordingly. `.lyx` stays unpoliced by the geometry guard this slice; slice 9 is where it gets an owner. Deleting that synthetic-`Location` caller removes `scoutengine`'s **last** `internal/lyxcwd` import, so this card also drops the `internal/lyxcwd` entry from `scoutengine/leaf_enforcement_test.go`'s allowlist map — leaving it would allowlist an import the package no longer has, and an over-wide allowlist stops enforcing as quietly as a stale one — and updates the Scoutengine Leaf Invariant's import list in `CONSTRAINTS.md` in the same commit (card 18 left `internal/lyxcwd` on that line because it was still true at batch 4; after this card the list is stdlib, `internal/configengine`, `internal/lock`, `internal/proc`, `internal/logger`, `gopkg.in/yaml.v3`). `scoutengine/doc.go` follows the same movement: the `:25` import-ceiling enumeration card 12 wrote ("internal/lyxcwd and internal/configengine") drops `lyxcwd`, and the `:217` reference to the `Location`-method constructors is re-pointed at the in-package `DaemonStateFile`/`DaemonLock` this card declares.
 - **Commit:** `refactor(scoutengine): own the scout daemon state and lock paths`
 
 ### Card 25: pattern's own directory and file paths

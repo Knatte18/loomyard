@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)'
 slug: fabric-illusion-core
-approved: false
+approved: true
 started: 20260805-122944
 parent: main
 root: ""
@@ -190,6 +190,7 @@ batches:
 - `internal/configsync/configsync.go`
 - `internal/configsync/configsync_test.go`
 - `internal/envsource/envsource.go`
+- `internal/envsource/envsource_test.go`
 - `internal/fabriccli/cli_test.go`
 - `internal/fabriccli/clone.go`
 - `internal/fabriccli/fabric.go`
