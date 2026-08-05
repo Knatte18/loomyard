@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -63,9 +63,9 @@ type Injector interface {
 // choreography into Master's pane; Reed is the live reed query surface the
 // prior-recovery-strand reclaim consults (a dead-but-live recovery record a
 // fork batch is about to overwrite); WorktreeRoot is the host repo checkout
-// BeginBatch captures HeadSHA from; Layout is the resolved Layout
-// RenderForkPrompt uses for {{.worktree_root}} (filled from Layout.Cwd);
-// WebsterDir, ReportsDir, and PromptsDir are the hubgeometry-resolved
+// BeginBatch captures HeadSHA from; Layout is the resolved Location
+// RenderForkPrompt uses for {{.worktree_root}} (filled from Layout.AnchorPath());
+// WebsterDir, ReportsDir, and PromptsDir are the lyxcwd-resolved
 // _lyx/webster, _lyx/webster/reports, and _lyx/webster/prompts directories.
 type BeginDeps struct {
 	Plan         *planparser.Plan
@@ -77,7 +77,7 @@ type BeginDeps struct {
 	Injector     Injector
 	Reed         shuttleengine.ReedOps
 	WorktreeRoot string
-	Layout       *hubgeometry.Layout
+	Layout       *lyxcwd.Location
 	WebsterDir   string
 	ReportsDir   string
 	PromptsDir   string

@@ -32,7 +32,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -63,7 +63,7 @@ type RecoverDeps struct {
 	Engine       shuttleengine.Engine
 	Reed         shuttleengine.ReedOps
 	ShuttleCfg   shuttleengine.Config
-	Layout       *hubgeometry.Layout
+	Layout       *lyxcwd.Location
 	WorktreeRoot string
 	WebsterDir   string
 	ReportsDir   string

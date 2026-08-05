@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
@@ -85,7 +85,7 @@ func (v AuditViolation) Error() string {
 // or commands referencing the weft worktree path). Built at runtime from
 // layout.WeftWorktree() and weftname.Suffix, never from string literals in
 // this package, to pass TestEnforcement_GeometryLiterals.
-func weftReferencePattern(layout *hubgeometry.Layout) *regexp.Regexp {
+func weftReferencePattern(layout *lyxcwd.Location) *regexp.Regexp {
 	weftPath := regexp.QuoteMeta(layout.WeftWorktree())
 	weftSuffix := regexp.QuoteMeta(weftname.Suffix)
 	pattern := fmt.Sprintf(

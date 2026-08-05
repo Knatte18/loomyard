@@ -100,7 +100,7 @@ Example:
 				Engine:       c.engine,
 				Injector:     c.injector,
 				Reed:         c.reed,
-				WorktreeRoot: c.layout.Cwd,
+				WorktreeRoot: c.layout.AnchorPath(),
 				Layout:       c.layout,
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,
