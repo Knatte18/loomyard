@@ -1,0 +1,12 @@
+All 3 of 3 cards in this batch are committed (cards 5, 6, 7 — the full `rename-and-reshape` batch). The batch's verify command (`go build -tags integration ./internal/lyxcwd/... && go vet -tags integration ./internal/lyxcwd/...`) passes cleanly.
+
+Summary of work:
+- **Card 5** (`b414fc71`): `git mv internal/hubgeometry internal/lyxcwd`, renamed `Layout` to `Location` with fields `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`, added `WorktreePath()`/`AnchorPath()` accessors, rebased the `_lyx`-anchored constructors per the anchoring table, and converted every moved test file plus `internal/lyxtest/lyxtest.go` and `internal/fabricengine/{hostlayout,clone}.go`.
+- **Card 6** (`80e8f627`): extracted `samePath`/`checkCwdAnchorGate` into `internal/lyxcwd/anchor.go`, replaced the at-or-below gate with strict cwd-equals-anchor equality (hoisted to unconditional), added `ResolveWithAnchor`, and created `internal/lyxcwd/gate_test.go`. Also extended the plan (commit `0d26a6fb`) to cover the resulting test fallout in `anchor_test.go`/`lyxcwd_test.go`, since the strict gate invalidated several pre-existing at-or-below assertions.
+- **Card 7** (`e728642e`): renamed `FabricAnchorName` -> `AnchorFileName` (`.fabric-anchor` -> `.lyx-anchor`), added a stale-marker hard-error guard in `CloneHub`, simplified the step-5 hook-install construction, and retargeted every listed marker-filename reader/writer plus `fabriccli/fabric.go`'s user-facing help text.
+
+Key files touched: `internal/lyxcwd/{lyxcwd,anchor,gate_test}.go` and all moved test files, `internal/lyxtest/lyxtest.go`, `internal/fabricengine/{hostlayout,clone,doc,unwire}.go` and their test files, `internal/fabriccli/{fabric,cli_test}.go`, `internal/{buildercli,webstercli,perchcli}/*_integration_test.go`, and `_mill/plan/02-rename-and-reshape.md`.
+
+Note for the next batch: `go test -tags integration ./internal/lyxcwd/...` currently fails only on `TestEnforcement`/`TestEnforcement_GeometryLiterals` (both allowlist the literal directory `internal/hubgeometry`) -- this is explicitly called out in the plan as deferred to batch 4's card 19, not a defect from this batch.
+
+{"status":"success","commit_sha":"e728642e4e6533399956fcacc805da5976da0c69","session_id":"e9976f97-b029-420d-b085-9fa3c737f434","cards_done":[5,6,7]}
