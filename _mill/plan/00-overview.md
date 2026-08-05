@@ -240,7 +240,6 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/fabricengine/weftwiring_test.go`
 - `internal/fabricengine/worktreelist.go`
 - `internal/fabricengine/worktreelist_test.go`
-- `internal/hubgeometry/anchor_test.go`
 - `internal/hubgeometry/geometry_test.go`
 - `internal/hubgeometry/hubgeometry.go`
 - `internal/hubgeometry/hubgeometry_test.go`
