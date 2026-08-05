@@ -283,7 +283,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		argv = append(argv,
 			"-L", e.Socket(),
 			"new-session", "-d", "-s", session,
-			"-c", e.layout.Cwd,
+			"-c", e.layout.AnchorPath(),
 			"-x", strconv.Itoa(e.cfg.Width),
 			"-y", strconv.Itoa(e.cfg.Height),
 			e.cfg.Shell,
@@ -478,7 +478,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	// pane instead). Every subsequent strand split (spawn.go) always
 	// targets a non-header pane and inserts below it, so this is the only
 	// split in the whole engine that needs -b.
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.Cwd, "-P", "-F", "#{pane_id}")
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.AnchorPath(), "-P", "-F", "#{pane_id}")
 	if err != nil {
 		logger.Warn("reed: failed to split header pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)

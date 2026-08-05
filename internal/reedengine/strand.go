@@ -174,8 +174,8 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 
 	st.Strands = append(st.Strands, Strand{
 		GUID:      guid,
-		Name:      resolveStrandName(e.cfg.StrandName, spec, guid, e.layout.WorktreeRoot),
-		Worktree:  e.layout.WorktreeRoot,
+		Name:      resolveStrandName(e.cfg.StrandName, spec, guid, e.layout.WorktreePath()),
+		Worktree:  e.layout.WorktreePath(),
 		Parent:    spec.Parent,
 		Cmd:       spec.Cmd,
 		ResumeCmd: spec.ResumeCmd,
