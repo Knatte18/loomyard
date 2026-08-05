@@ -15,15 +15,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
-// It replaces (*hubgeometry.Layout).WorktreePath(slug), which collided with
+// It replaces (*lyxcwd.Location).WorktreePath(slug), which collided with
 // the no-arg WorktreePath() accessor the coming reshape introduces on the
 // same type.
-func WorktreePath(l *hubgeometry.Layout, slug string) string {
-	return filepath.Join(l.Hub, slug)
+func WorktreePath(l *lyxcwd.Location, slug string) string {
+	return filepath.Join(l.HubPath, slug)
 }
 
 // WireJunctions creates directory junctions and seeds git-exclude entries for
@@ -31,7 +31,7 @@ func WorktreePath(l *hubgeometry.Layout, slug string) string {
 // the filtered name-set (not loaded by this function). Idempotent. Enforces
 // the host-pristine invariant: returns an error if the host contains a real
 // directory predating weft.
-func WireJunctions(l *hubgeometry.Layout, slug string, names []string) error {
+func WireJunctions(l *lyxcwd.Location, slug string, names []string) error {
 	// Create or verify host junctions
 	if err := seedLyxJunction(l, slug, names); err != nil {
 		return err
@@ -49,7 +49,7 @@ func WireJunctions(l *hubgeometry.Layout, slug string, names []string) error {
 // to weft directories. Materializes each junction's weft-side target first.
 // A correct link is left alone; a dangling or wrong link is re-pointed;
 // a real directory is refused.
-func seedLyxJunction(l *hubgeometry.Layout, slug string, names []string) error {
+func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
 	junctions := l.HostJunctions(slug, names)
 
 	for _, j := range junctions {
@@ -159,7 +159,7 @@ type UnwireResult struct {
 // removal completed. A zero UnwireResult on a mid-loop failure would misreport a
 // partial removal as untouched — with two or more junctions, the first may
 // already be gone before the second fails.
-func UnwireJunctions(l *hubgeometry.Layout, slug string, names []string) (UnwireResult, error) {
+func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (UnwireResult, error) {
 	removed, err := unseedLyxJunction(l, slug, names)
 	if err != nil {
 		return UnwireResult{JunctionsRemoved: removed}, err
@@ -183,7 +183,7 @@ func UnwireJunctions(l *hubgeometry.Layout, slug string, names []string) (Unwire
 // Returns (nil, nil) if no junction exists — none were ever wired, or all were
 // already unwired; this is the legitimate no-op case, not an error. See
 // unseedJunctionRecords for the error cases.
-func unseedLyxJunction(l *hubgeometry.Layout, slug string, names []string) (removed []string, err error) {
+func unseedLyxJunction(l *lyxcwd.Location, slug string, names []string) (removed []string, err error) {
 	return unseedJunctionRecords(l.HostJunctions(slug, names))
 }
 
@@ -208,7 +208,7 @@ func unseedLyxJunction(l *hubgeometry.Layout, slug string, names []string) (remo
 // junction's host path is a real directory rather than a junction, or if it
 // resolves to an unexpected target — all of these indicate corruption or
 // external modification rather than a normal unwire.
-func unseedJunctionRecords(junctions []hubgeometry.HostJunction) (removed []string, err error) {
+func unseedJunctionRecords(junctions []lyxcwd.HostJunction) (removed []string, err error) {
 	for _, j := range junctions {
 		link := j.Link
 		target := j.Target
@@ -278,7 +278,7 @@ func unseedJunctionRecords(junctions []hubgeometry.HostJunction) (removed []stri
 //
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
-func unseedGitExclude(l *hubgeometry.Layout, slug string, names []string) (changed bool, err error) {
+func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed bool, err error) {
 	worktreePath := WorktreePath(l, slug)
 
 	stdout, stderr, exitCode, err := gitexec.RunGit(
@@ -341,7 +341,7 @@ func unseedGitExclude(l *hubgeometry.Layout, slug string, names []string) (chang
 // path is relative, joins it with the worktree path. Preserves line-exact
 // idempotency per name.
 // Idempotent: re-running when all junction names are already present is a no-op.
-func seedGitExclude(l *hubgeometry.Layout, slug string, names []string) error {
+func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
 	worktreePath := WorktreePath(l, slug)
 
 	// Get the exclude path via git rev-parse --git-path

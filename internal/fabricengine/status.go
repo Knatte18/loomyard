@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // PollutionEntry describes a single tracked path in the host index that should never
@@ -71,8 +71,8 @@ type StatusResult struct {
 // worktree, it reports branch status, in-sync verdict, junction health, and
 // host-tracked _lyx/_pattern/_raddle paths. Per-worktree errors are recorded
 // inline in PairStatus.DriftReason / PairStatus.JunctionReason.
-func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
-	entries, err := List(l.WorktreeRoot)
+func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
+	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("list worktrees: %w", err)
 	}

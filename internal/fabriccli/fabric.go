@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
@@ -288,17 +288,17 @@ func RunCLI(out io.Writer, args []string) int {
 
 // runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
 func runAdd(out io.Writer, args []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -325,17 +325,17 @@ func runAdd(out io.Writer, args []string) int {
 
 // runList parses and executes the fabric list subcommand.
 func runList(out io.Writer, _ []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -355,12 +355,12 @@ func runList(out io.Writer, _ []string) int {
 // supplied, it resolves the current host branch and performs an in-place
 // re-checkout, re-pointing junctions and re-syncing weft.
 func runCheckout(out io.Writer, args []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -371,7 +371,7 @@ func runCheckout(out io.Writer, args []string) int {
 	} else {
 		branchOut, _, exitCode, runErr := gitexec.RunGit(
 			[]string{"branch", "--show-current"},
-			l.WorktreeRoot,
+			l.WorktreePath(),
 		)
 		if runErr != nil {
 			return output.Err(out, runErr.Error())
@@ -386,7 +386,7 @@ func runCheckout(out io.Writer, args []string) int {
 		}
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -406,17 +406,17 @@ func runCheckout(out io.Writer, args []string) int {
 // runPairs executes the fabric pairs subcommand, enumerating all host↔weft
 // pairs with drift and pollution data.
 func runPairs(out io.Writer, _ []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -435,17 +435,17 @@ func runPairs(out io.Writer, _ []string) int {
 // runReconcile executes the fabric reconcile subcommand, walking and repairing
 // all host↔weft pairs.
 func runReconcile(out io.Writer, _ []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -463,17 +463,17 @@ func runReconcile(out io.Writer, _ []string) int {
 
 // runPruneWithFlag executes the prune logic with the resolved apply flag.
 func runPruneWithFlag(out io.Writer, apply bool) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -492,17 +492,17 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 // runCleanupWithFlags executes the cleanup logic with the resolved apply and
 // force flags.
 func runCleanupWithFlags(out io.Writer, apply, force bool) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -520,17 +520,17 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 
 // runRemoveWithFlag executes the remove logic with the resolved force flag.
 func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

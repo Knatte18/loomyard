@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // UnwireVerbResult summarizes what Unwire changed.
@@ -40,14 +40,14 @@ type UnwireVerbResult struct {
 // touches the repo-wide weft:main records; a later `lyx fabric reconcile` re-wire
 // can recreate this worktree's wiring.
 func Unwire(cwd string) (UnwireVerbResult, error) {
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
 
-	slug := filepath.Base(l.WorktreeRoot)
+	slug := filepath.Base(l.WorktreePath())
 
-	names, err := scanOnDiskJunctionNames(l.WorktreeRoot, l.RelPath)
+	names, err := scanOnDiskJunctionNames(l.WorktreePath(), l.AnchorRel)
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
@@ -78,11 +78,11 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 		}
 
 		opts := EnvSyncOptions()
-		f, err := New(l.WorktreeRoot, weftWorktree)
+		f, err := New(l.WorktreePath(), weftWorktree)
 		if err != nil {
 			return UnwireVerbResult{}, err
 		}
-		pathspec := ScopedPathspec(l.RelPath, []string{configengine.LyxDirName})
+		pathspec := ScopedPathspec(l.AnchorRel, []string{configengine.LyxDirName})
 		if _, _, err := f.commitWeft(pathspec, "lyx fabric unwire: clear _lyx", opts); err != nil {
 			return UnwireVerbResult{}, err
 		}

@@ -27,14 +27,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // weftRepoExists reports whether a weft repo exists and is a valid git
 // repository. An unresolvable weft repo root (PrimeName failure) reports
 // false, same as an absent directory — either way, there is no weft repo to
 // find.
-func weftRepoExists(l *hubgeometry.Layout) bool {
+func weftRepoExists(l *lyxcwd.Location) bool {
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		return false
@@ -56,7 +56,7 @@ func weftRepoExists(l *hubgeometry.Layout) bool {
 // weftBranchExists reports whether the weft branch exists in the weft repo.
 // An unresolvable weft repo root reports false, same as a branch that is
 // genuinely absent.
-func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
+func weftBranchExists(l *lyxcwd.Location, branch string) bool {
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		return false
@@ -73,7 +73,7 @@ func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
 
 // createWeftWorktree creates a new weft worktree on branch, forking from
 // startPoint to preserve the merge-base for future squash-merge-back.
-func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) error {
+func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
@@ -93,7 +93,7 @@ func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) 
 }
 
 // pushWeftBranch pushes the weft branch to origin, honoring SkipGit/SkipPush.
-func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions) error {
+func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
@@ -115,7 +115,7 @@ func pushWeftBranch(l *hubgeometry.Layout, slug, branch string, opts SyncOptions
 
 // removeHostJunction removes every host junction for slug via fslink.Remove.
 // Returns nil if all are absent (idempotent).
-func removeHostJunction(l *hubgeometry.Layout, slug string, names []string) error {
+func removeHostJunction(l *lyxcwd.Location, slug string, names []string) error {
 	return removeJunctionRecords(l.HostJunctions(slug, names))
 }
 
@@ -123,7 +123,7 @@ func removeHostJunction(l *hubgeometry.Layout, slug string, names []string) erro
 // best-effort loop, continuing past per-junction failures and accumulating
 // errors. Returns nil if empty or all absent (idempotent); non-nil error does
 // not mean no junction was removed.
-func removeJunctionRecords(junctions []hubgeometry.HostJunction) error {
+func removeJunctionRecords(junctions []lyxcwd.HostJunction) error {
 	var errs []error
 	for _, j := range junctions {
 		if err := fslink.Remove(j.Link); err != nil {
@@ -136,7 +136,7 @@ func removeJunctionRecords(junctions []hubgeometry.HostJunction) error {
 // removeWeftWorktree tears down the weft worktree, optionally its branch, and
 // prunes stale worktree entries. Returns the first error encountered, or nil
 // if all steps succeed.
-func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force, deleteBranch bool) error {
+func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, deleteBranch bool) error {
 	weftPath := l.WeftWorktreePath(slug)
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {

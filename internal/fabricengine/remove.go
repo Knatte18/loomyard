@@ -11,7 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // RemoveResult contains the result of successfully removing a worktree pair.
@@ -25,7 +25,7 @@ type RemoveResult struct {
 // If force is false, both worktrees must be clean; if force is true, uncommitted
 // changes are forcefully removed. Portal and launcher cleanup run before the
 // exists check, ensuring cleanup even if the worktree directory is already gone.
-func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (RemoveResult, error) {
+func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveResult, error) {
 	hostBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(hostBranch)
 
@@ -76,7 +76,7 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 	}
 	args = append(args, target)
 
-	_, _, exitCode, err := gitexec.RunGit(args, l.WorktreeRoot)
+	_, _, exitCode, err := gitexec.RunGit(args, l.WorktreePath())
 	if err != nil {
 		return RemoveResult{}, fmt.Errorf("failed to run git worktree remove: %v", err)
 	}
@@ -86,7 +86,7 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 			return RemoveResult{}, fmt.Errorf("fallback removal failed: %w", err)
 		}
 
-		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
+		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
 	}
 
 	_ = removeWeftWorktree(l, slug, weftBranch, force, true)

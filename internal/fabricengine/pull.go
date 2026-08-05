@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // PullResult reports what Fabric.Pull actually did, on both sides
@@ -266,8 +266,8 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 // touching _pattern/... is exactly the content a caller must treat as
 // potentially stale.
 //
-// The pathspec is hubgeometry.PatternDirName, NEVER a "_pattern" string
-// literal — the Hub Geometry Invariant reserves that token to hubgeometry.
+// The pathspec is lyxcwd.PatternDirName, NEVER a "_pattern" string
+// literal — the Hub Geometry Invariant reserves that token to lyxcwd.
 //
 // Separator placement: unlike scanWarpSHATrailers (which uses no
 // --name-only), --name-only appends each commit's changed-file list as
@@ -280,7 +280,7 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 // can never be confused by ordinary commit content.
 //
 // RelPath-blind scope (documented limitation): the pathspec is the bare
-// hubgeometry.PatternDirName at the weft worktree root, matching the slice's
+// lyxcwd.PatternDirName at the weft worktree root, matching the slice's
 // relpath-is-dot-for-slice-2 precedent (the same simplification Fabric.Commit
 // already accepts). A subpath-anchored hub whose _pattern lives at
 // RelPath/_pattern in a shared weft checkout is out of scope for this slice.
@@ -296,7 +296,7 @@ func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]Pattern
 
 	format := warpSHATrailerFormatRecordSep + "%H" + warpSHATrailerFormatUnitSep
 	rangeArg := fromWeftSHA + ".." + toWeftSHA
-	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--", hubgeometry.PatternDirName}
+	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--", lyxcwd.PatternDirName}
 
 	stdout, stderr, code, err := gitexec.RunGit(args, f.weftPath)
 	if err != nil {

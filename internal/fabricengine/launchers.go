@@ -12,13 +12,13 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // writeLaunchers writes per-worktree launcher scripts (ide and fabric-checkout)
 // and ensures the menu launcher exists. The .cmd/.sh extension depends on GOOS;
 // .sh files are written executable.
-func writeLaunchers(l *hubgeometry.Layout, slug string) error {
+func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	ext := launcherExt(runtime.GOOS)
 
 	// Create the mirrored launcher directory
@@ -78,7 +78,7 @@ func writeLaunchers(l *hubgeometry.Layout, slug string) error {
 // removeLaunchers removes the launcher directory for the given slug, pruning
 // empty ancestors. The menu launcher is left in place. Returns nil if the
 // directory does not exist.
-func removeLaunchers(l *hubgeometry.Layout, slug string) error {
+func removeLaunchers(l *lyxcwd.Location, slug string) error {
 	launcherDir := l.LauncherDir(slug)
 	if err := os.RemoveAll(launcherDir); err != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)

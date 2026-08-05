@@ -8,7 +8,7 @@
 //   - apply == true && force == true → also delete gate-protected task branches.
 //   - force == true && !apply       → report only; force does not imply apply.
 //
-// A weft branch's host sibling is recovered via hubgeometry.WeftHostSlug(branch) —
+// A weft branch's host sibling is recovered via lyxcwd.WeftHostSlug(branch) —
 // inverting WeftBranchName's suffix. The weft repo may also hold non-suffixed weft
 // branches inherited from history predating fabric's uniform naming scheme;
 // WeftHostSlug rejects those (ok == false), and by definition a non-suffixed weft
@@ -50,7 +50,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // CleanupBranchEntry describes the fate of one orphaned weft branch under Cleanup.
@@ -87,9 +87,9 @@ func raddleFoldedBack(_ string) bool {
 // Cleanup finds weft branches with no corresponding host worktree sibling
 // and reports or deletes them per the flag matrix: apply gates whether any deletion happens,
 // force bypasses the _raddle merge-back gate, checked-out branches are always protected.
-func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupResult, error) {
+func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult, error) {
 	// Enumerate host worktrees using git-registered entries only.
-	entries, err := List(l.WorktreeRoot)
+	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("list host worktrees: %w", err)
 	}
@@ -118,7 +118,7 @@ func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupRes
 
 		// Recover the host branch by inverting WeftBranchName's suffix.
 		// Non-fabric-managed branches are reported but never deleted.
-		hostBranch, ok := hubgeometry.WeftHostSlug(branch)
+		hostBranch, ok := lyxcwd.WeftHostSlug(branch)
 		if !ok {
 			result.Entries = append(result.Entries, CleanupBranchEntry{
 				Branch:    branch,
@@ -170,7 +170,7 @@ type weftBranchCheckout struct {
 }
 
 // listWeftBranches returns every branch in the weft repo with its checked-out worktree path if any.
-func listWeftBranches(l *hubgeometry.Layout) ([]weftBranchCheckout, error) {
+func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve weft repo root: %w", err)
@@ -206,7 +206,7 @@ func listWeftBranches(l *hubgeometry.Layout) ([]weftBranchCheckout, error) {
 }
 
 // deleteWeftBranch deletes a weft branch via git branch -D, recording errors in entry.
-func deleteWeftBranch(l *hubgeometry.Layout, branch string, entry *CleanupBranchEntry) bool {
+func deleteWeftBranch(l *lyxcwd.Location, branch string, entry *CleanupBranchEntry) bool {
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)

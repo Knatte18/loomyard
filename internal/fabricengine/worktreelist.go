@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -82,11 +82,11 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 
 // PrimeName resolves the base name of l's main worktree by scanning
 // `git worktree list --porcelain` for the FIRST (Main) entry. It replaces
-// hubgeometry's former per-Resolve prime scan: hubgeometry no longer performs
+// lyxcwd's former per-Resolve prime scan: lyxcwd no longer performs
 // this subprocess-backed lookup at all (see the Hub Geometry Invariant), so
 // every caller needing the prime's name now resolves it here, on demand.
-func PrimeName(l *hubgeometry.Layout) (string, error) {
-	entries, err := List(l.Cwd)
+func PrimeName(l *lyxcwd.Location) (string, error) {
+	entries, err := List(l.AnchorPath())
 	if err != nil {
 		return "", fmt.Errorf("resolve main worktree: %w", err)
 	}
@@ -98,15 +98,15 @@ func PrimeName(l *hubgeometry.Layout) (string, error) {
 			return filepath.Base(filepath.Clean(prime)), nil
 		}
 	}
-	return "", fmt.Errorf("no main worktree found in %q", l.Cwd)
+	return "", fmt.Errorf("no main worktree found in %q", l.AnchorPath())
 }
 
 // WeftRepoRoot returns the path to the weft prime worktree (the git -C target
 // for weft worktree add/remove), resolved via PrimeName.
-func WeftRepoRoot(l *hubgeometry.Layout) (string, error) {
+func WeftRepoRoot(l *lyxcwd.Location) (string, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {
 		return "", err
 	}
-	return weftname.SiblingPath(l.Hub, primeName), nil
+	return weftname.SiblingPath(l.HubPath, primeName), nil
 }

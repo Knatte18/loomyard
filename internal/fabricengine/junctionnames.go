@@ -9,17 +9,17 @@
 
 package fabricengine
 
-import "github.com/Knatte18/loomyard/internal/hubgeometry"
+import "github.com/Knatte18/loomyard/internal/lyxcwd"
 
 // filterHubReserved drops every name in names that is also present in
-// hubgeometry.HubReservedNames(), preserving the input order of the
+// lyxcwd.HubReservedNames(), preserving the input order of the
 // remaining names. This is the wiring guard: a hub-structural name
 // (_board, _portals, _launchers, _raddle) mis-added to fabric.yaml's
 // pathspec must never wire a per-worktree junction that would collide with
 // the hub-level path of the same name.
 func filterHubReserved(names []string) []string {
 	reserved := make(map[string]bool)
-	for _, r := range hubgeometry.HubReservedNames() {
+	for _, r := range lyxcwd.HubReservedNames() {
 		reserved[r] = true
 	}
 
@@ -36,7 +36,7 @@ func filterHubReserved(names []string) []string {
 // junctionNames loads the fabric config at baseDir and returns its
 // pathspec's directory names with the wiring guard applied (see
 // filterHubReserved). It is the in-package name-sourcing helper for sites
-// that already hold a *hubgeometry.Layout and can compute their own weft
+// that already hold a *lyxcwd.Location and can compute their own weft
 // base: the read-only health checks (Healthy, checkJunctionHealth,
 // junctionRepointedDetail) and checkout.go/reconcile.go's re-wire call
 // sites.
@@ -68,17 +68,17 @@ func WiredNames(baseDir string) ([]string, error) {
 }
 
 // repoWideFabricBase returns the single named source of the repo-wide fabric
-// config base: the `weft:main` checkout at hubgeometry.BoardDir(l.Hub) that
+// config base: the `weft:main` checkout at lyxcwd.BoardDir(l.HubPath) that
 // holds `_lyx/config/fabric.yaml`. It exists so every reconcile/status call
-// site names the same base instead of re-deriving BoardDir(l.Hub) inline.
-func repoWideFabricBase(l *hubgeometry.Layout) string {
-	return hubgeometry.BoardDir(l.Hub)
+// site names the same base instead of re-deriving BoardDir(l.HubPath) inline.
+func repoWideFabricBase(l *lyxcwd.Location) string {
+	return lyxcwd.BoardDir(l.HubPath)
 }
 
 // RepoWiredNames loads the repo-wide fabric config and returns its wired
 // name-set. It is a Layout-taking convenience for callers that want the
 // repo-wide junction name-set without re-deriving the base. Callers use this
 // so every worktree converges to the one repo-wide pathspec.
-func RepoWiredNames(l *hubgeometry.Layout) ([]string, error) {
+func RepoWiredNames(l *lyxcwd.Location) ([]string, error) {
 	return WiredNames(repoWideFabricBase(l))
 }

@@ -15,7 +15,7 @@ package fabriccli
 import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +38,7 @@ var weftVerbNames = map[string]bool{
 // only push, rejecting others with "subcommand requires a worktree context".
 func addWeftVerbs(cmd *cobra.Command) {
 	var (
-		l        *hubgeometry.Layout
+		l        *lyxcwd.Location
 		cfg      fabricengine.Config
 		pathspec []string
 		fab      *fabricengine.Fabric
@@ -76,14 +76,14 @@ func addWeftVerbs(cmd *cobra.Command) {
 			return nil
 		}
 
-		cwd, err := hubgeometry.Getwd()
+		cwd, err := lyxcwd.Getwd()
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)
 			return nil
 		}
 
-		resolved, err := hubgeometry.Resolve(cwd)
+		resolved, err := lyxcwd.Resolve(cwd)
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)
@@ -91,7 +91,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		loadedCfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+		loadedCfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)
@@ -99,9 +99,9 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		cfg = loadedCfg
 
-		pathspec = fabricengine.ScopedPathspec(l.RelPath, cfg.Dirs())
+		pathspec = fabricengine.ScopedPathspec(l.AnchorRel, cfg.Dirs())
 
-		resolvedFabric, err := fabricengine.New(l.WorktreeRoot, l.WeftWorktree())
+		resolvedFabric, err := fabricengine.New(l.WorktreePath(), l.WeftWorktree())
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)

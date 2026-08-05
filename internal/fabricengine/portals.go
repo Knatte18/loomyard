@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // createPortal creates a portal junction from <container>/_portals/<RelPath>/<slug> to <container>/<slug>/<relpath>/_lyx.
 //
 // Delegates to fslink.CreateDirLink with the computed link and target paths.
 // fslink.CreateDirLink already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.
-func createPortal(l *hubgeometry.Layout, slug string) error {
+func createPortal(l *lyxcwd.Location, slug string) error {
 	link := l.PortalLink(slug)
 	target := l.PortalTarget(slug)
 	return fslink.CreateDirLink(link, target)
@@ -23,7 +23,7 @@ func createPortal(l *hubgeometry.Layout, slug string) error {
 
 // removePortal removes the portal junction, deletes only the link (not the
 // target), and prunes empty ancestors. Returns nil if the link does not exist.
-func removePortal(l *hubgeometry.Layout, slug string) error {
+func removePortal(l *lyxcwd.Location, slug string) error {
 	link := l.PortalLink(slug)
 	if err := fslink.Remove(link); err != nil {
 		return fmt.Errorf("remove portal %s: %w", link, err)

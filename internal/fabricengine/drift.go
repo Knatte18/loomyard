@@ -13,7 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // Healthy reports whether the host worktree and its paired weft worktree are
@@ -23,11 +23,11 @@ import (
 // Healthy is stateless.
 // Returns (true, "", nil) if in sync; (false, reason, nil) if out of sync;
 // (false, "", err) if a system error occurs.
-func Healthy(l *hubgeometry.Layout) (ok bool, reason string, err error) {
+func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	// Verify the host worktree's current branch via rev-parse --abbrev-ref HEAD.
 	hostOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		l.WorktreeRoot,
+		l.WorktreePath(),
 	)
 	if err != nil {
 		return false, "", fmt.Errorf("get host branch: %w", err)

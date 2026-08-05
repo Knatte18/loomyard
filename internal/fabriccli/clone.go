@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -27,7 +27,7 @@ import (
 // commits, host junctions, .gitignore, and per-worktree config. On error, the
 // clone is left intact; the operator completes wiring with reconcile.
 func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -45,7 +45,7 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		if name == "" {
 			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", hostURL))
 		}
-		hubPath := hubgeometry.HubPath(cwd, name)
+		hubPath := lyxcwd.HubPath(cwd, name)
 		if err := fabricengine.RemoveAll(hubPath); err != nil {
 			return output.Err(out, fmt.Sprintf("reset: remove hub at %s: %v", hubPath, err))
 		}
@@ -68,7 +68,7 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(res.PrimeCwd)
+	l, err := lyxcwd.Resolve(res.PrimeCwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -76,11 +76,11 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	if err := fabricengine.WireJunctions(l, filepath.Base(l.WorktreeRoot), names); err != nil {
+	if err := fabricengine.WireJunctions(l, filepath.Base(l.WorktreePath()), names); err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	if _, err := gitignore.Ensure(l.Cwd, ".lyx/"); err != nil {
+	if _, err := gitignore.Ensure(l.AnchorPath(), ".lyx/"); err != nil {
 		return output.Err(out, err.Error())
 	}
 	if _, err := configsync.ReconcileAll(res.WeftBase, true); err != nil {
