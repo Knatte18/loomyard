@@ -5,7 +5,7 @@ task: 'fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)'
 batch: module-owned-constructors
 number: 5
 cards: 10
-verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/...
+verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/... && go test -tags integration ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/...
 depends-on: [4]
 ```
 

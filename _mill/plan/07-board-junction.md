@@ -5,7 +5,7 @@ task: 'fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)'
 batch: board-junction
 number: 7
 cards: 4
-verify: go vet -tags "integration smoke scout" ./... && go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/...
+verify: go vet -tags "integration smoke scout" ./... && go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/... && go test -tags integration ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/...
 depends-on: [6]
 ```
 
@@ -84,6 +84,6 @@ Batch-local decision — `_board` is **not** added to `fabric.yaml`'s `pathspec`
 
 ## Batch Tests
 
-`verify` runs the repo-wide tagged type-check plus the `fabricengine`, `fabriccli`, `lyxcwd` and `cmd/lyx` suites. The new coverage in card 40 is integration-tagged because it needs a real clone and real filesystem links, so it is reached by the tagged `go vet` at every batch boundary and by `-tags integration` runs, not by the untagged `go test`.
+`verify` runs the repo-wide tagged type-check plus the `fabricengine`, `fabriccli`, `lyxcwd` and `cmd/lyx` suites. The new coverage in card 40 is integration-tagged because it needs a real clone and real filesystem links, so `verify` **executes** it: the third command is `go test -tags integration` over the same package trees as the untagged run. That is not decoration — a `go vet -tags` pass only type-checks a tagged file, and every assertion this card adds is a runtime one, so without the tagged execution the `_board` link's wiring, its absence from `filterHubReserved`/`ScopedPathspec`, and its invisibility to `Healthy` would all be compiled and never checked.
 
 The two assertions worth naming separately are the negative ones, because they pin decisions rather than behaviour: the broken-link-still-reports-healthy row is what keeps a convenience artifact from blocking loom preflight, and the absent-from-`filterHubReserved`-and-`ScopedPathspec` row is what stops a later "simplification" from folding `_board` back into a list that also feeds the weft commit scope.

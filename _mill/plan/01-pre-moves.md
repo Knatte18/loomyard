@@ -5,7 +5,7 @@ task: 'fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)'
 batch: pre-moves
 number: 1
 cards: 4
-verify: go vet -tags "integration smoke scout" ./... && go test ./...
+verify: go vet -tags "integration smoke scout" ./... && go test ./... && go test -tags integration ./...
 depends-on: []
 ```
 

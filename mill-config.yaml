@@ -117,10 +117,12 @@ pipeline:
   auto_report: true
   autonomous_mode: false  # Set true by mill-autofix; read by mill-go and mill-plan for autonomous stuck-handling
   # done_gate: repo-wide safety net for this task. Batch verify commands are scoped
-  # per-package (boardengine/boardcli/fabricengine/fabriccli/cmd/lyx); this catches
-  # cross-package regressions (e.g. a CloneHub signature change breaking a caller in
-  # a package no single batch's verify command covers) before mill-go marks done.
-  done_gate: "go test ./..."
+  # per-package; this catches cross-package regressions (e.g. a CloneHub signature
+  # change breaking a caller in a package no single batch's verify covers) before
+  # mill-go marks done. The tagged half is not redundant: `go test` without tags does
+  # not execute integration-tagged files at all, and this task's new _board-junction
+  # and stale-anchor assertions are all Tier 2. Budget ~128 s for it.
+  done_gate: "go test ./... && go test -tags integration ./..."
   # Batch-size caps. The defaults (10 cards / 120000 context tokens) are sized for a
   # 200k-context implementer; mill-go's implementer here is Sonnet with a 1M window, so
   # both are raised. 700000 tokens ~= 2.8 MB of Context:/Edits:/Creates: files per batch,

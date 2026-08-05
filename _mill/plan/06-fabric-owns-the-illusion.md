@@ -5,7 +5,7 @@ task: 'fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)'
 batch: fabric-owns-the-illusion
 number: 6
 cards: 7
-verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/...
+verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/... && go test -tags integration ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/...
 depends-on: [5]
 ```
 

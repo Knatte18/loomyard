@@ -20,7 +20,7 @@ batches:
     name: pre-moves
     file: 01-pre-moves.md
     depends-on: []
-    verify: go vet -tags "integration smoke scout" ./... && go test ./...
+    verify: go vet -tags "integration smoke scout" ./... && go test ./... && go test -tags integration ./...
   - number: 2
     name: rename-and-reshape
     file: 02-rename-and-reshape.md
@@ -35,22 +35,22 @@ batches:
     name: test-sweep
     file: 04-test-sweep.md
     depends-on: [3]
-    verify: go vet -tags "integration smoke scout" ./... && go test ./...
+    verify: go vet -tags "integration smoke scout" ./... && go test ./... && go test -tags integration ./...
   - number: 5
     name: module-owned-constructors
     file: 05-module-owned-constructors.md
     depends-on: [4]
-    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/...
+    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/... && go test -tags integration ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/...
   - number: 6
     name: fabric-owns-the-illusion
     file: 06-fabric-owns-the-illusion.md
     depends-on: [5]
-    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/...
+    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/... && go test -tags integration ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/...
   - number: 7
     name: board-junction
     file: 07-board-junction.md
     depends-on: [6]
-    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/...
+    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/... && go test -tags integration ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/...
   - number: 8
     name: guard-and-docs
     file: 08-guard-and-docs.md
@@ -96,10 +96,10 @@ batches:
 - **Rationale:** The guard is only a real assertion when it names an ownership that already exists. Written up front it would assert a layout the tree does not have; written only at the end it would leave five batches red, because `enforcement_test.go:420` allowlists the literal directory `internal/hubgeometry` and the rename alone breaks it — which is also why the guard's own directory switch sits in batch 4, the first batch after the rename whose gate actually runs the test. Moving each entry with its owner is also what proves each batch **moved** ownership rather than copying code.
 - **Applies to:** pre-moves, test-sweep, fabric-owns-the-illusion, guard-and-docs
 
-### Decision: `verify` pairs a tagged type-check with an untagged test run
+### Decision: every gate that can run Tier 2 does, because this slice's new tests are all Tier 2
 
-- **Decision:** Every batch's `verify` pairs `go vet -tags "integration smoke scout" ./...` with a `go test` over the packages that batch touches, except batches 2 and 3, whose gates are documented separately above. Batches 1 and 4 use an unbounded `go test ./...`.
-- **Rationale:** `go test` without tags does not compile `integration`/`smoke`/`scout`-tagged test files at all, and this task edits roughly 60 of them, so a broken tagged file would pass unnoticed until a later tagged run. The tagged `go vet` type-checks every package including its tagged tests and takes about 7 seconds, which is cheap enough to run at every batch boundary. The unbounded `go test` in batches 1 and 4 is justified by the config-path move and the rename each touching every importer in the tree, which makes any narrower scope meaningless; batches 5-8 scope to the packages they touch, with `pipeline.done_gate` (`go test ./...`) as the repo-wide backstop before mill-go marks the task done.
+- **Decision:** Each batch's `verify` is up to three commands: `go vet -tags "integration smoke scout" ./...`, then `go test` over the packages that batch touches, then `go test -tags integration` over the same packages. Batches 1 and 4 use `./...` for both test runs. Batches 2 and 3 have no test run at all — see the red-tree decision above. Batch 8 runs no tagged tests because its only code change is to an untagged file. `pipeline.done_gate` is `go test ./... && go test -tags integration ./...`.
+- **Rationale:** The tagged `go vet` alone is not a test — it type-checks tagged files and executes nothing. Every new runtime assertion this slice adds is Tier 2: the `_board` junction's wiring, its absence from `filterHubReserved`/`ScopedPathspec`, its invisibility to `Healthy`, and the stale-`.fabric-anchor` hard error all need a real clone and real filesystem links. Without an explicit `-tags integration` execution they would be compiled and never checked, which is worse than not writing them. The vet stage still earns its place: it is the only thing that catches a *broken* tagged file in batches 2 and 3, where nothing can run. Cost is roughly 128 s per tagged run (`docs/benchmarks/running-tests.md`), and the repo's own guidance is that `-tags integration` is warranted precisely when changing fabric / hubgeometry / board / ide git behaviour — which is this entire task.
 - **Applies to:** all batches
 
 ### Decision: test call sites are in scope and are the bulk of the diff
