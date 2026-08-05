@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-pre-moves
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-review-r6  '2026-08-05T18:00:59Z'
 plan-fix-r6  '2026-08-05T18:00:59Z'
 planned  '2026-08-05T18:00:59Z'
 implementing  '2026-08-05T18:02:03Z'
+approved-pre-moves  '2026-08-05T19:00:58Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ implementing  '2026-08-05T18:02:03Z'
 ```yaml
 batches:
   - name: pre-moves
-    state: running
+    state: approved
     implementer_session: b1d5d8e9-6bd3-40ae-8a6a-d915176ec397
     start_sha: 9bb4ad10ac2518072a35805f9682a41fcfc67fe3
+    commit_sha: f78d47d7584f056fdca89ad723641aad63bda7d6
   - name: rename-and-reshape
     state: pending
   - name: production-sweep
