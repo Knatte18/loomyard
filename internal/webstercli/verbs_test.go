@@ -35,8 +35,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -201,8 +201,8 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	worktree := newScratchRepo(t)
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
-	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree, RelPath: "."}
-	seedValidPlanDir(t, hubgeometry.PlanDir(worktree))
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "."}
+	seedValidPlanDir(t, lyxcwd.PlanDir(worktree))
 
 	reed := &verbsFakeReed{}
 	engine := &verbsFakeEngine{}
@@ -238,10 +238,10 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		},
 		roles:      roles,
 		batcher:    activeBatcher,
-		planDir:    hubgeometry.PlanDir(worktree),
-		websterDir: hubgeometry.WebsterDir(worktree),
-		reportsDir: hubgeometry.WebsterReportsDir(worktree),
-		promptsDir: hubgeometry.WebsterPromptsDir(worktree),
+		planDir:    lyxcwd.PlanDir(worktree),
+		websterDir: lyxcwd.WebsterDir(worktree),
+		reportsDir: lyxcwd.WebsterReportsDir(worktree),
+		promptsDir: lyxcwd.WebsterPromptsDir(worktree),
 	}
 
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}

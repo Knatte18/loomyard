@@ -31,28 +31,28 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// testLayout returns a *hubgeometry.Layout anchored at a fixed, non-existent
+// testLayout returns a *lyxcwd.Location anchored at a fixed, non-existent
 // "/worktree" path — every RenderForkPrompt/RenderRecoveryPrompt test in
 // this file that does not itself exercise pattern_directive's active branch
 // uses this fixture, since pattern.Directive's os.Stat on a path that never
 // exists on disk always resolves PATTERN inactive, matching every one of
 // these tests' pre-existing expectation of an empty pattern_directive.
-func testLayout() *hubgeometry.Layout {
-	return &hubgeometry.Layout{Cwd: "/worktree", WorktreeRoot: "/worktree", RelPath: "."}
+func testLayout() *lyxcwd.Location {
+	return &lyxcwd.Location{HubPath: filepath.Dir("/worktree"), WorktreeName: filepath.Base("/worktree"), AnchorRel: "."}
 }
 
-// patternActiveLayout builds a *hubgeometry.Layout rooted at a real
+// patternActiveLayout builds a *lyxcwd.Location rooted at a real
 // t.TempDir() that contains a real _pattern/PATTERN.md file, so
 // pattern.Directive returns non-empty — mirroring pattern.isActive's own
 // PatternFileHere() check (see internal/pattern/pattern_test.go's
 // writePatternFile/layoutAt fixtures).
-func patternActiveLayout(t *testing.T) *hubgeometry.Layout {
+func patternActiveLayout(t *testing.T) *lyxcwd.Location {
 	t.Helper()
 	root := t.TempDir()
 	dir := filepath.Join(root, "_pattern")
@@ -62,7 +62,7 @@ func patternActiveLayout(t *testing.T) *hubgeometry.Layout {
 	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
 	}
-	return &hubgeometry.Layout{Cwd: root, WorktreeRoot: root, RelPath: "."}
+	return &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: "."}
 }
 
 // requireContains fails the test, naming the missing needle, if text does
@@ -180,7 +180,7 @@ func recoveryTemplateMarkerValues() map[string]string {
 // cardWithSourcePath returns a minimal planparser.Card with SourcePath set
 // by hand: the inline fixture batches in this file are hand-built
 // batcher.Batch{Cards: [...]} values, not produced by ParsePlan, so
-// SourcePath — normally computed by planparser from hubgeometry.PlanDirRel()
+// SourcePath — normally computed by planparser from lyxcwd.PlanDirRel()
 // plus the card's own NN-<slug>.md filename — must be set explicitly here.
 func cardWithSourcePath(number int, slug, intent string) planparser.Card {
 	return planparser.Card{
@@ -188,7 +188,7 @@ func cardWithSourcePath(number int, slug, intent string) planparser.Card {
 		Slug:       slug,
 		Title:      slug,
 		Intent:     intent,
-		SourcePath: fmt.Sprintf("%s/%02d-%s.md", hubgeometry.PlanDirRel(), number, slug),
+		SourcePath: fmt.Sprintf("%s/%02d-%s.md", lyxcwd.PlanDirRel(), number, slug),
 	}
 }
 
