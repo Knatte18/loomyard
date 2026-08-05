@@ -203,6 +203,7 @@ External interface batch 2 consumes: `configengine.LyxDirName`, `configengine.Co
   - `internal/fabricengine/hostlayout.go`
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/junction_pattern_integration_test.go`
+  - `internal/fabricengine/junction_test.go`
   - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/reconcile_stale_removal_test.go`
   - `internal/fabricengine/remove.go`
