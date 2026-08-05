@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newIntegrationEngine builds an Engine rooted at a fresh t.TempDir() hub, with
@@ -47,12 +47,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	// wants to exercise, rather than relying on LYX_REED_MOUSE env plumbing.
 	cfg.Mouse = mouse
 
-	layout := &hubgeometry.Layout{
-		Cwd:          worktreeDir,
-		WorktreeRoot: worktreeDir,
-		Hub:          hubDir,
-		RelPath:      ".",
-	}
+	layout := &lyxcwd.Location{HubPath: hubDir, WorktreeName: filepath.Base(worktreeDir), AnchorRel: "."}
 	e := New(cfg, layout)
 
 	t.Cleanup(func() {

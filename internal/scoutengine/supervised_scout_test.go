@@ -16,14 +16,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestEnsureSupervised_StaleSocketCleanupAllowsRebind verifies stale sockets are cleaned up before rebind.
 func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	statePath := layout.ScoutDaemonStateFile(lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
@@ -88,7 +88,7 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	statePath := layout.ScoutDaemonStateFile(lang)
 	logPath := filepath.Join(filepath.Dir(statePath), "daemon.log")
 

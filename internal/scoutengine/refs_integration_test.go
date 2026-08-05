@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // funcDeclPattern matches top-level function declarations and captures the function name offset.
@@ -70,8 +70,8 @@ func TestReferences_Integration(t *testing.T) {
 		}
 
 		root := repoRoot(t)
-		hubgeometryFile := filepath.Join(root, "internal", "hubgeometry", "hubgeometry.go")
-		pos := findFuncPosition(t, hubgeometryFile, "Resolve")
+		lyxcwdFile := filepath.Join(root, "internal", "lyxcwd", "lyxcwd.go")
+		pos := findFuncPosition(t, lyxcwdFile, "Resolve")
 
 		// Since the engine-supervised-flip batch, Go's registry entry
 		// dispatches through ensureServer -> ensureSupervised, which spawns a
@@ -81,7 +81,7 @@ func TestReferences_Integration(t *testing.T) {
 		// binary's cwd and leaks the daemon; an isolated t.TempDir() plus a
 		// state-file-driven reap avoids both.
 		worktreeRoot := t.TempDir()
-		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 		statePath := layout.ScoutDaemonStateFile("go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
@@ -97,21 +97,21 @@ func TestReferences_Integration(t *testing.T) {
 			Timeout:      30 * time.Second,
 		})
 		if err != nil {
-			t.Fatalf("References(hubgeometry.Resolve) returned unexpected error: %v", err)
+			t.Fatalf("References(lyxcwd.Resolve) returned unexpected error: %v", err)
 		}
 		if len(refs) == 0 {
-			t.Fatal("References(hubgeometry.Resolve) returned zero references; want the declaration site plus its call sites")
+			t.Fatal("References(lyxcwd.Resolve) returned zero references; want the declaration site plus its call sites")
 		}
 
 		foundDeclSite := false
 		for _, ref := range refs {
-			if filepath.Clean(ref.File) == filepath.Clean(hubgeometryFile) && ref.Line == pos.Line {
+			if filepath.Clean(ref.File) == filepath.Clean(lyxcwdFile) && ref.Line == pos.Line {
 				foundDeclSite = true
 				break
 			}
 		}
 		if !foundDeclSite {
-			t.Errorf("References(hubgeometry.Resolve) = %+v; want it to include the declaration site %s:%d", refs, hubgeometryFile, pos.Line)
+			t.Errorf("References(lyxcwd.Resolve) = %+v; want it to include the declaration site %s:%d", refs, lyxcwdFile, pos.Line)
 		}
 	})
 
@@ -191,15 +191,15 @@ func TestReferences_InFile_Integration(t *testing.T) {
 
 	t.Run("single-match resolve", func(t *testing.T) {
 		root := repoRoot(t)
-		hubgeometryFile := filepath.Join(root, "internal", "hubgeometry", "hubgeometry.go")
-		pos := findFuncPosition(t, hubgeometryFile, "Resolve")
+		lyxcwdFile := filepath.Join(root, "internal", "lyxcwd", "lyxcwd.go")
+		pos := findFuncPosition(t, lyxcwdFile, "Resolve")
 
 		// TargetDir stays the real repo root (correct indexing), but
 		// WorktreeRoot is an isolated temp dir so the supervised daemon this
 		// call spawns anchors there, never the real repo's own
 		// .lyx/scout/go/.
 		worktreeRoot := t.TempDir()
-		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 		statePath := layout.ScoutDaemonStateFile("go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
@@ -211,25 +211,25 @@ func TestReferences_InFile_Integration(t *testing.T) {
 			TargetDir:    root,
 			WorktreeRoot: worktreeRoot,
 			Lang:         "go",
-			Query:        Query{InFile: &InFileQuery{File: hubgeometryFile, Name: "Resolve"}},
+			Query:        Query{InFile: &InFileQuery{File: lyxcwdFile, Name: "Resolve"}},
 			Timeout:      30 * time.Second,
 		})
 		if err != nil {
-			t.Fatalf("References(InFile hubgeometry.Resolve) returned unexpected error: %v", err)
+			t.Fatalf("References(InFile lyxcwd.Resolve) returned unexpected error: %v", err)
 		}
 		if len(refs) == 0 {
-			t.Fatal("References(InFile hubgeometry.Resolve) returned zero references; want the declaration site plus its call sites")
+			t.Fatal("References(InFile lyxcwd.Resolve) returned zero references; want the declaration site plus its call sites")
 		}
 
 		foundDeclSite := false
 		for _, ref := range refs {
-			if filepath.Clean(ref.File) == filepath.Clean(hubgeometryFile) && ref.Line == pos.Line {
+			if filepath.Clean(ref.File) == filepath.Clean(lyxcwdFile) && ref.Line == pos.Line {
 				foundDeclSite = true
 				break
 			}
 		}
 		if !foundDeclSite {
-			t.Errorf("References(InFile hubgeometry.Resolve) = %+v; want it to include the declaration site %s:%d", refs, hubgeometryFile, pos.Line)
+			t.Errorf("References(InFile lyxcwd.Resolve) = %+v; want it to include the declaration site %s:%d", refs, lyxcwdFile, pos.Line)
 		}
 	})
 
@@ -238,7 +238,7 @@ func TestReferences_InFile_Integration(t *testing.T) {
 		writeAmbiguousModule(t, modRoot)
 
 		worktreeRoot := t.TempDir()
-		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 		statePath := layout.ScoutDaemonStateFile("go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 

@@ -52,7 +52,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -267,19 +267,19 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	// does, but keep the *Run handle Start returns instead of blocking on
 	// Runner.Run — the test needs it to Interrupt/Send while Wait blocks in
 	// a goroutine below.
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
-		t.Fatalf("hubgeometry.Getwd: %v", err)
+		t.Fatalf("lyxcwd.Getwd: %v", err)
 	}
-	layout, err := hubgeometry.Resolve(cwd)
+	layout, err := lyxcwd.Resolve(cwd)
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve: %v", err)
+		t.Fatalf("lyxcwd.Resolve: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(layout.Cwd, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 	if err != nil {
 		t.Fatalf("shuttleengine.LoadConfig: %v", err)
 	}
-	reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
+	reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
 	if err != nil {
 		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}

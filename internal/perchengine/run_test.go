@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -236,12 +236,12 @@ func testProfile(mode GateMode, command []string, caps []int) Profile {
 	}
 }
 
-// newTestLayout returns a *hubgeometry.Layout rooted at a fresh temp
+// newTestLayout returns a *lyxcwd.Location rooted at a fresh temp
 // directory, standing in for the worktree root a command gate's cwd
 // resolves against.
-func newTestLayout(t *testing.T) *hubgeometry.Layout {
+func newTestLayout(t *testing.T) *lyxcwd.Location {
 	t.Helper()
-	return &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+	return &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 }
 
 // TestRun_LoopUntilDry proves the base convergence path under
@@ -730,8 +730,8 @@ func TestRun_GateModes(t *testing.T) {
 		if !found {
 			t.Errorf("round 2 PriorReviews = %v; want it to include the failing gate path %q", round2Profile.PriorReviews, wantGatePath)
 		}
-		if fcr.calls[0].dir != layout.WorktreeRoot {
-			t.Errorf("gate command dir = %q; want layout.WorktreeRoot %q", fcr.calls[0].dir, layout.WorktreeRoot)
+		if fcr.calls[0].dir != layout.WorktreePath() {
+			t.Errorf("gate command dir = %q; want layout.WorktreePath() %q", fcr.calls[0].dir, layout.WorktreePath())
 		}
 	})
 

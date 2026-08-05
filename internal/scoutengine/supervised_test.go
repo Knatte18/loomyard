@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -67,7 +67,7 @@ func spawnAndHoldSubprocess(t *testing.T) int {
 func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	statePath := layout.ScoutDaemonStateFile(lang)
 	lockPath := layout.ScoutDaemonLock(lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
@@ -135,7 +135,7 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	statePath := layout.ScoutDaemonStateFile(lang)
 	lockPath := layout.ScoutDaemonLock(lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
@@ -216,7 +216,7 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	statePath := layout.ScoutDaemonStateFile(lang)
 	lockPath := layout.ScoutDaemonLock(lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")

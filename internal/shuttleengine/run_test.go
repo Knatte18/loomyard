@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -22,10 +22,10 @@ import (
 // newTestRunner returns a Runner over reed/engine scoped to a fresh temp
 // worktree, with tuning knobs small enough that any later Wait-driving test
 // built on top of it runs fast.
-func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (*Runner, *hubgeometry.Layout) {
+func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (*Runner, *lyxcwd.Location) {
 	t.Helper()
 	root := t.TempDir()
-	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}
 	return NewRunner(reed, engine, layout, cfg), layout
 }
@@ -159,7 +159,7 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
 	worktree := t.TempDir()
-	layout := &hubgeometry.Layout{Cwd: worktree, WorktreeRoot: worktree}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
 	// Seed a corrupt reed.json so reedengine.LoadState errors during Start's
@@ -191,7 +191,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
 	worktree := t.TempDir()
-	layout := &hubgeometry.Layout{Cwd: worktree, WorktreeRoot: worktree}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
 	if err := os.MkdirAll(layout.DotLyxDir(), 0o755); err != nil {
@@ -224,7 +224,7 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 func newInterruptTestRun(t *testing.T, reed ReedOps, engine Engine) *Run {
 	t.Helper()
 	root := t.TempDir()
-	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
 	runner := NewRunner(reed, engine, layout, Config{})
 	return &Run{
 		runner: runner,

@@ -30,11 +30,12 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // errNoWorkspaceSymbolCandidates reports when workspace/symbol returns no candidates.
@@ -141,7 +142,7 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 	// isolated from any other scout test's own supervised daemon,
 	// matching TestEnsureSupervised_Integration's own isolation.
 	worktreeRoot := t.TempDir()
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	statePath := layout.ScoutDaemonStateFile("go")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

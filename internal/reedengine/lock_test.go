@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newTestEngine builds an Engine rooted at a fresh t.TempDir(), suitable
@@ -23,11 +23,7 @@ import (
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
 	root := t.TempDir()
-	layout := &hubgeometry.Layout{
-		Cwd:          root,
-		WorktreeRoot: root,
-		Hub:          filepath.Dir(root),
-	}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
 	cfg := Config{
 		Tmux:               filepath.Join(root, "does-not-exist-tmux.exe"),
 		Shell:              filepath.Join(root, "does-not-exist-shell.exe"),
@@ -55,7 +51,7 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		t.Fatalf("withOpLock: %v", err)
 	}
 
-	dotLyx := filepath.Join(e.layout.Cwd, ".lyx")
+	dotLyx := filepath.Join(e.layout.AnchorPath(), ".lyx")
 	if filepath.Dir(sawPath) != dotLyx {
 		t.Errorf("lock path = %q, want under %q (per-worktree, not shared across worktrees)", sawPath, dotLyx)
 	}
@@ -134,12 +130,12 @@ func TestWithOpLock_ReacquireAfterReleaseSucceeds(t *testing.T) {
 func TestEngine_SocketAndSessionName(t *testing.T) {
 	e := newTestEngine(t)
 
-	wantSocket := ServerName(e.layout.Hub)
+	wantSocket := ServerName(e.layout.HubPath)
 	if got := e.Socket(); got != wantSocket {
 		t.Errorf("Socket() = %q, want %q", got, wantSocket)
 	}
 
-	wantSession := filepath.Base(e.layout.WorktreeRoot)
+	wantSession := filepath.Base(e.layout.WorktreePath())
 	if got := e.SessionName(); got != wantSession {
 		t.Errorf("SessionName() = %q, want %q", got, wantSession)
 	}

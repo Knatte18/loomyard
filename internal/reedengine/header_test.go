@@ -1,6 +1,6 @@
 // header_test.go covers HeaderText and ValidateHeader hermetically: an
-// Engine built from Config/*hubgeometry.Layout struct literals (no
-// hubgeometry.Resolve, no tmux spawn), per the Test Tier Purity Invariant.
+// Engine built from Config/*lyxcwd.Location struct literals (no
+// lyxcwd.Resolve, no tmux spawn), per the Test Tier Purity Invariant.
 
 package reedengine
 
@@ -8,15 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newHeaderTestEngine builds a test Engine with the given header template.
 func newHeaderTestEngine(template string) *Engine {
-	layout := &hubgeometry.Layout{
-		Hub:  "test-hub",
-		Repo: "test-repo",
-	}
+	layout := &lyxcwd.Location{RepoName: "test-repo", HubPath: "test-hub"}
 	cfg := Config{
 		Header: HeaderConfig{Template: template},
 	}
@@ -31,7 +28,7 @@ func TestHeaderText_EmptyTemplateRendersEmbeddedDefault(t *testing.T) {
 		t.Fatalf("HeaderText() unexpected error: %v", err)
 	}
 
-	want := "hub: " + e.layout.Hub
+	want := "hub: " + e.layout.HubPath
 	if strings.TrimSpace(got) != want {
 		t.Errorf("HeaderText() = %q; want %q", strings.TrimSpace(got), want)
 	}
@@ -45,7 +42,7 @@ func TestHeaderText_ConfiguredTemplateRendersFromConfig(t *testing.T) {
 		t.Fatalf("HeaderText() unexpected error: %v", err)
 	}
 
-	want := "repo: " + e.layout.Repo
+	want := "repo: " + e.layout.RepoName
 	if got != want {
 		t.Errorf("HeaderText() = %q; want %q", got, want)
 	}

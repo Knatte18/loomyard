@@ -344,7 +344,7 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	// The embedded default template renders "hub: {{.hub}}"; the fixture's
 	// hub is its temp container. A JSON error body in the pane (the pre-fix
 	// symptom) can never contain this line.
-	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.Hub, 20*time.Second)
+	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.HubPath, 20*time.Second)
 
 	// The 1-row regression (fable-header-r1 F10): once a strand exists the
 	// header clamps to its configured single row (height_rows: 1), and
@@ -358,7 +358,7 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	if out, err := addCmd.CombinedOutput(); err != nil {
 		t.Fatalf("built-binary add: %v\n%s", err, out)
 	}
-	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.Hub, 20*time.Second)
+	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.HubPath, 20*time.Second)
 }
 
 // TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane

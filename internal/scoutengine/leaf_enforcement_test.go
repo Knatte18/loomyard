@@ -22,7 +22,7 @@ import (
 
 // allowedImports lists the only non-stdlib imports allowed in production code.
 var allowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/hubgeometry":  true,
+	"github.com/Knatte18/loomyard/internal/lyxcwd":       true,
 	"github.com/Knatte18/loomyard/internal/configengine": true,
 	"github.com/Knatte18/loomyard/internal/lock":         true,
 	"github.com/Knatte18/loomyard/internal/proc":         true,

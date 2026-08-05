@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -28,7 +28,7 @@ import (
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -42,11 +42,11 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.AnchorFileName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
@@ -272,7 +272,7 @@ func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 	// the weft tests above). runDirBase resolves against the HOST cwd, so
 	// hold the run.lock there; the dirty weft file proves the skipped sync
 	// had real material.
-	hostRunDir := filepath.Join(hubgeometry.PerchRunsDir(fixture.Hub), "busyblock")
+	hostRunDir := filepath.Join(lyxcwd.PerchRunsDir(fixture.Hub), "busyblock")
 	if err := os.MkdirAll(hostRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir host run dir: %v", err)
 	}

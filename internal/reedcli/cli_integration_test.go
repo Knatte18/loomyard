@@ -108,8 +108,8 @@ func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
 		Socket:  "test-socket",
 		Session: "test-session",
 		Strands: []reedengine.Strand{
-			{GUID: "strand-one", Name: "one", Worktree: fixture.Layout.WorktreeRoot, Cmd: "true"},
-			{GUID: "strand-two", Name: "two", Worktree: fixture.Layout.WorktreeRoot, Cmd: "true"},
+			{GUID: "strand-one", Name: "one", Worktree: fixture.Layout.WorktreePath(), Cmd: "true"},
+			{GUID: "strand-two", Name: "two", Worktree: fixture.Layout.WorktreePath(), Cmd: "true"},
 		},
 	}
 	if err := reedengine.SaveState(fixture.Layout.DotLyxDir(), st); err != nil {

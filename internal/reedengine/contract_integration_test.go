@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
@@ -402,15 +402,11 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	// A real *hubgeometry.Layout rooted at a scratch tmpDir, mirroring
+	// A real *lyxcwd.Location rooted at a scratch tmpDir, mirroring
 	// newTestEngine's (lock_test.go) Cwd/WorktreeRoot/Hub shape but built
 	// against the real, LoadConfig-resolved cfg rather than the
 	// does-not-exist stub paths newTestEngine deliberately uses.
-	layout := &hubgeometry.Layout{
-		Cwd:          tmpDir,
-		WorktreeRoot: tmpDir,
-		Hub:          filepath.Dir(tmpDir),
-	}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(tmpDir), WorktreeName: filepath.Base(tmpDir)}
 	e := New(cfg, layout)
 
 	t.Cleanup(func() {
@@ -512,11 +508,7 @@ func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	layout := &hubgeometry.Layout{
-		Cwd:          tmpDir,
-		WorktreeRoot: tmpDir,
-		Hub:          filepath.Dir(tmpDir),
-	}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(tmpDir), WorktreeName: filepath.Base(tmpDir)}
 	e := New(cfg, layout)
 
 	t.Cleanup(func() {
