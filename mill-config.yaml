@@ -121,6 +121,14 @@ pipeline:
   # cross-package regressions (e.g. a CloneHub signature change breaking a caller in
   # a package no single batch's verify command covers) before mill-go marks done.
   done_gate: "go test ./..."
+  # Batch-size caps. The defaults (10 cards / 120000 context tokens) are sized for a
+  # 200k-context implementer; mill-go's implementer here is Sonnet with a 1M window, so
+  # both are raised. 700000 tokens ~= 2.8 MB of Context:/Edits:/Creates: files per batch,
+  # which is what a repo-wide package rename sweep across ~240 Go files costs — splitting
+  # such a sweep would leave the tree uncompilable at the batch boundary. The cap is
+  # deliberately slack: batching is a design decision, not something a byte budget drives.
+  max_cards_per_batch: 20
+  max_batch_context_tokens: 700000
 
 # ---------------------------------------------------------------------------
 # Reviewer roles
