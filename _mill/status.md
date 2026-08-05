@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-05T10:10:11Z'
+discussion-fix-r6  '2026-08-05T12:20:52Z'
+discussed  '2026-08-05T12:20:52Z'
 ```
