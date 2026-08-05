@@ -88,14 +88,15 @@ func Getwd() (string, error) {
 
 // Resolve builds a Location from the given cwd by running
 // git rev-parse --show-toplevel and reading the recorded .fabric-anchor
-// marker for AnchorRel.
+// marker for AnchorRel, then requires cwd to equal the anchored directory
+// exactly.
 //
-// When an anchor is recorded, it validates that cwd is at or below the anchored subpath,
-// returning ErrCwdOutsideAnchor if not. When absent, AnchorRel defaults to ".".
+// AnchorRel defaults to "." when no anchor is recorded.
 // Resolve does NOT check for _lyx/ (that stays in internal/configengine).
 //
-// Returns the Location on success, ErrNotAGitRepo when git fails or cwd is outside a git repo,
-// or ErrCwdOutsideAnchor when cwd violates a recorded anchor's subtree.
+// Returns the Location on success, ErrNotAGitRepo when git fails or cwd is
+// outside a git repo, or ErrCwdOutsideAnchor when cwd is not exactly the
+// anchored directory.
 func Resolve(cwd string) (*Location, error) {
 	return resolveCore(cwd, true)
 }
@@ -109,24 +110,29 @@ func ResolveWorktree(worktreeRoot string) (*Location, error) {
 	return resolveCore(worktreeRoot, false)
 }
 
+// ResolveWithAnchor builds a Location exactly as Resolve does, but takes the
+// anchor as a parameter instead of reading the recorded marker, and applies
+// NO cwd gate. It is a deliberate bypass, not a general-purpose resolver: a
+// caller reaching for it to escape a gate failure is misusing it — the
+// correct fix is to stand in the anchored directory. It must stay ungated
+// because both its callers stand somewhere the gate would reject: fabric's
+// clone passes the freshly-cloned worktree root while the anchor may be a
+// non-"." subpath, and lyxtest injects anchors into synthetic hubs.
+func ResolveWithAnchor(cwd, anchor string) (*Location, error) {
+	return resolveWithAnchorCore(cwd, anchor, false)
+}
+
 // resolveCore is the shared body behind Resolve and ResolveWorktree: it runs
 // git rev-parse --show-toplevel, reads the recorded anchor for AnchorRel, and
 // optionally applies the strict cwd gate. applyGate is true only for
 // Resolve's entry-point cwd; ResolveWorktree passes false because its input is
 // a worktree root, not an acting cwd, and must never be gated against itself.
 func resolveCore(cwd string, applyGate bool) (*Location, error) {
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
+	workTreeRoot, err := gitWorktreeRoot(cwd)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
-	}
-	if exitCode != 0 {
-		return nil, ErrNotAGitRepo
+		return nil, err
 	}
 
-	workTreeRoot := filepath.FromSlash(strings.TrimSpace(stdout))
-	workTreeRoot = filepath.Clean(workTreeRoot)
-
-	cleanCwd := filepath.Clean(cwd)
 	hubPath := filepath.Dir(workTreeRoot)
 
 	// AnchorRel falls back to "." rather than a cwd-derived relative path: the
@@ -134,16 +140,47 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	// otherwise resolve to a different place depending on where the user
 	// happened to stand.
 	anchorRel := "."
-
 	if anchor, found := readRecordedAnchor(hubPath); found {
 		anchorRel = anchor
+	}
 
-		if applyGate {
-			anchorAbs := filepath.Join(workTreeRoot, anchor)
-			rel, err := filepath.Rel(anchorAbs, cleanCwd)
-			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				return nil, fmt.Errorf("%w: cwd %s is not at or below %s", ErrCwdOutsideAnchor, cleanCwd, anchorAbs)
-			}
+	return buildLocation(cwd, workTreeRoot, hubPath, anchorRel, applyGate)
+}
+
+// resolveWithAnchorCore is the shared body behind ResolveWithAnchor: it runs
+// git rev-parse --show-toplevel exactly as resolveCore does, but takes anchor
+// as a parameter instead of reading the recorded marker.
+func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error) {
+	workTreeRoot, err := gitWorktreeRoot(cwd)
+	if err != nil {
+		return nil, err
+	}
+
+	hubPath := filepath.Dir(workTreeRoot)
+	return buildLocation(cwd, workTreeRoot, hubPath, anchor, applyGate)
+}
+
+// gitWorktreeRoot runs git rev-parse --show-toplevel at cwd and returns the
+// cleaned, OS-native worktree root path.
+func gitWorktreeRoot(cwd string) (string, error) {
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
+	}
+	if exitCode != 0 {
+		return "", ErrNotAGitRepo
+	}
+
+	workTreeRoot := filepath.FromSlash(strings.TrimSpace(stdout))
+	return filepath.Clean(workTreeRoot), nil
+}
+
+// buildLocation assembles the Location from its resolved parts and optionally
+// applies the strict cwd gate before returning it.
+func buildLocation(cwd, workTreeRoot, hubPath, anchorRel string, applyGate bool) (*Location, error) {
+	if applyGate {
+		if err := checkCwdAnchorGate(filepath.Clean(cwd), anchorRel, workTreeRoot); err != nil {
+			return nil, err
 		}
 	}
 

@@ -70,8 +70,9 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 }
 
 // TestResolve_FromSubdirectory verifies that, for an unanchored repo, Resolve
-// from a subdirectory still yields AnchorRel "." — not the cwd-derived
-// relative path — since AnchorRel only ever reflects a recorded anchor marker.
+// from a subdirectory errors under the strict cwd gate: with no anchor
+// recorded, AnchorRel is only ever ".", so cwd is only ever accepted at the
+// worktree root itself, never in a subdirectory.
 func TestResolve_FromSubdirectory(t *testing.T) {
 	t.Parallel()
 
@@ -85,20 +86,11 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 	}
 
 	layout, err := lyxcwd.Resolve(subDir)
-	if err != nil {
-		t.Fatalf("Resolve() error = %v; want nil", err)
+	if layout != nil {
+		t.Errorf("Resolve(%q) returned non-nil layout; want nil", subDir)
 	}
-
-	if layout == nil {
-		t.Fatal("Resolve() returned nil layout")
-	}
-
-	if layout.AnchorRel != "." {
-		t.Errorf("layout.AnchorRel = %q; want %q", layout.AnchorRel, ".")
-	}
-
-	if layout.WorktreePath() != filepath.Clean(hub) {
-		t.Errorf("layout.WorktreePath() = %q; want %q", layout.WorktreePath(), filepath.Clean(hub))
+	if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
+		t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", subDir, err)
 	}
 }
 
@@ -227,15 +219,12 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			subDir := filepath.Join(hub, "services", "api")
-			if err := os.MkdirAll(subDir, 0755); err != nil {
-				t.Fatalf("failed to create subdir: %v", err)
-			}
-
-			layout, err := lyxcwd.Resolve(subDir)
-			if err != nil {
-				t.Fatalf("Resolve() error = %v; want nil", err)
-			}
+			// A hand-built Location at a nested AnchorRel, rather than a real
+			// Resolve(subDir): under the strict cwd gate, Resolve only ever
+			// succeeds at the recorded anchor itself, so exercising
+			// PortalLink's subpath-mirroring here is pure path arithmetic on
+			// a synthetic Location, matching pattern_test.go/weft_test.go.
+			layout := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
 
 			slug := "test-slug"
 			got := layout.PortalLink(slug)
@@ -248,24 +237,8 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("no collision between different subpaths", func(t *testing.T) {
 			t.Parallel()
 
-			subDir1 := filepath.Join(hub, "services", "api")
-			subDir2 := filepath.Join(hub, "services", "web")
-			if err := os.MkdirAll(subDir1, 0755); err != nil {
-				t.Fatalf("failed to create subdir1: %v", err)
-			}
-			if err := os.MkdirAll(subDir2, 0755); err != nil {
-				t.Fatalf("failed to create subdir2: %v", err)
-			}
-
-			layout1, err := lyxcwd.Resolve(subDir1)
-			if err != nil {
-				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
-			}
-
-			layout2, err := lyxcwd.Resolve(subDir2)
-			if err != nil {
-				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
-			}
+			layout1 := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
+			layout2 := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "web"))
 
 			slug := "test-slug"
 			link1 := layout1.PortalLink(slug)
@@ -300,15 +273,9 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			subDir := filepath.Join(hub, "services", "api")
-			if err := os.MkdirAll(subDir, 0755); err != nil {
-				t.Fatalf("failed to create subdir: %v", err)
-			}
-
-			layout, err := lyxcwd.Resolve(subDir)
-			if err != nil {
-				t.Fatalf("Resolve() error = %v; want nil", err)
-			}
+			// A hand-built Location at a nested AnchorRel: see PortalLink's
+			// "at subpath" sub-test above for why this replaces Resolve(subDir).
+			layout := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
 
 			slug := "test-slug"
 			got := layout.LauncherDir(slug)
@@ -321,24 +288,8 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("no collision between different subpaths", func(t *testing.T) {
 			t.Parallel()
 
-			subDir1 := filepath.Join(hub, "services", "api")
-			subDir2 := filepath.Join(hub, "services", "web")
-			if err := os.MkdirAll(subDir1, 0755); err != nil {
-				t.Fatalf("failed to create subdir1: %v", err)
-			}
-			if err := os.MkdirAll(subDir2, 0755); err != nil {
-				t.Fatalf("failed to create subdir2: %v", err)
-			}
-
-			layout1, err := lyxcwd.Resolve(subDir1)
-			if err != nil {
-				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
-			}
-
-			layout2, err := lyxcwd.Resolve(subDir2)
-			if err != nil {
-				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
-			}
+			layout1 := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
+			layout2 := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "web"))
 
 			slug := "test-slug"
 			dir1 := layout1.LauncherDir(slug)
@@ -371,15 +322,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			subDir := filepath.Join(hub, "services", "api")
-			if err := os.MkdirAll(subDir, 0755); err != nil {
-				t.Fatalf("failed to create subdir: %v", err)
-			}
-
-			layout, err := lyxcwd.Resolve(subDir)
-			if err != nil {
-				t.Fatalf("Resolve() error = %v; want nil", err)
-			}
+			layout := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
 
 			got := layout.MenuLauncherPath()
 			want := filepath.Join(layout.HubPath, "_launchers", "services", "api", wantMenuLauncherName())
@@ -416,15 +359,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			subDir := filepath.Join(hub, "services", "api")
-			if err := os.MkdirAll(subDir, 0755); err != nil {
-				t.Fatalf("failed to create subdir: %v", err)
-			}
-
-			layout, err := lyxcwd.Resolve(subDir)
-			if err != nil {
-				t.Fatalf("Resolve() error = %v; want nil", err)
-			}
+			layout := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
 
 			slug := "test-slug"
 			got := layout.LauncherSpawnRel(slug)
@@ -471,20 +406,11 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at subpath", func(t *testing.T) {
 			t.Parallel()
 
-			subDir := filepath.Join(hub, "services", "api")
-			if err := os.MkdirAll(subDir, 0755); err != nil {
-				t.Fatalf("failed to create subdir: %v", err)
-			}
-
-			layout, err := lyxcwd.Resolve(subDir)
-			if err != nil {
-				t.Fatalf("Resolve() error = %v; want nil", err)
-			}
-
 			// primeName is the fixture's own main-worktree basename, same
 			// reasoning as the "at root" sub-test above: hub's git worktree list
 			// still resolves hub itself as the sole (Main) entry, regardless of
-			// which subdirectory Resolve was called from.
+			// which subpath this synthetic Location is anchored at.
+			layout := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
 			primeName := filepath.Base(hub)
 			got := layout.MenuLauncherRel(primeName)
 
@@ -670,15 +596,10 @@ func TestHostJunctionsHere(t *testing.T) {
 	t.Run("at nested subpath", func(t *testing.T) {
 		t.Parallel()
 
-		subDir := filepath.Join(hub, "services", "api")
-		if err := os.MkdirAll(subDir, 0755); err != nil {
-			t.Fatalf("failed to create subdir: %v", err)
-		}
-
-		layout, err := lyxcwd.Resolve(subDir)
-		if err != nil {
-			t.Fatalf("Resolve() error = %v; want nil", err)
-		}
+		// A hand-built Location at a nested AnchorRel, rather than a real
+		// Resolve(subDir): under the strict cwd gate, Resolve only ever
+		// succeeds at the recorded anchor itself.
+		layout := newTestLocation(filepath.Dir(hub), hub, filepath.Join("services", "api"))
 
 		junctions := layout.HostJunctionsHere([]string{"_lyx", "_pattern"})
 		if len(junctions) != 2 {

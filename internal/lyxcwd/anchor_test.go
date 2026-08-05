@@ -1,9 +1,9 @@
 //go:build integration
 
 // anchor_test.go covers recorded-anchor AnchorRel resolution: Resolve's
-// record-wins + cwd at-or-below gate, the marker-absent "." fallback, and
-// ResolveWorktree's gate-free counterpart used by internal callers that
-// resolve geometry from a worktree root rather than an acting cwd.
+// record-wins + strict cwd-equals-anchor gate, the marker-absent "."
+// fallback, and ResolveWorktree's gate-free counterpart used by internal
+// callers that resolve geometry from a worktree root rather than an acting cwd.
 
 package lyxcwd_test
 
@@ -34,8 +34,9 @@ func writeAnchor(t *testing.T, hub, anchor string) {
 }
 
 // TestResolve_RootAnchor verifies that a root ("." ) recorded anchor resolves
-// RelPath="." from both the worktree root and a subdirectory, and never
-// triggers the cwd gate (every cwd under the root is at or below ".").
+// AnchorRel="." from exactly the worktree root, and that the strict gate now
+// rejects a subdirectory of that root — the user-visible behaviour change
+// documented in this batch's card 6 commit.
 func TestResolve_RootAnchor(t *testing.T) {
 	t.Parallel()
 
@@ -53,29 +54,30 @@ func TestResolve_RootAnchor(t *testing.T) {
 		t.Fatalf("mkdir subdir: %v", err)
 	}
 
-	tests := []struct {
-		name string
-		cwd  string
-	}{
-		{"at root", root},
-		{"at subdirectory", subDir},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			layout, err := lyxcwd.Resolve(tt.cwd)
-			if err != nil {
-				t.Fatalf("Resolve(%q) error = %v; want nil", tt.cwd, err)
-			}
-			if layout.AnchorRel != "." {
-				t.Errorf("Resolve(%q).AnchorRel = %q; want %q", tt.cwd, layout.AnchorRel, ".")
-			}
-		})
-	}
+	t.Run("at root resolves", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(root)
+		if err != nil {
+			t.Fatalf("Resolve(%q) error = %v; want nil", root, err)
+		}
+		if layout.AnchorRel != "." {
+			t.Errorf("Resolve(%q).AnchorRel = %q; want %q", root, layout.AnchorRel, ".")
+		}
+	})
+
+	t.Run("at subdirectory errors under the strict gate", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(subDir)
+		if layout != nil {
+			t.Errorf("Resolve(%q) returned non-nil layout; want nil", subDir)
+		}
+		if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
+			t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", subDir, err)
+		}
+	})
 }
 
 // TestResolve_SubpathAnchor verifies that a recorded subpath anchor
-// ("backend") resolves RelPath="backend" both at the anchored directory itself
-// and at a descendant of it.
+// ("backend") resolves AnchorRel="backend" exactly at the anchored directory,
+// and that the strict gate now rejects a descendant of it.
 func TestResolve_SubpathAnchor(t *testing.T) {
 	t.Parallel()
 
@@ -94,24 +96,25 @@ func TestResolve_SubpathAnchor(t *testing.T) {
 		t.Fatalf("mkdir backend/deeper: %v", err)
 	}
 
-	tests := []struct {
-		name string
-		cwd  string
-	}{
-		{"at anchored directory", backendDir},
-		{"at descendant of anchored directory", deeperDir},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			layout, err := lyxcwd.Resolve(tt.cwd)
-			if err != nil {
-				t.Fatalf("Resolve(%q) error = %v; want nil", tt.cwd, err)
-			}
-			if layout.AnchorRel != "backend" {
-				t.Errorf("Resolve(%q).AnchorRel = %q; want %q", tt.cwd, layout.AnchorRel, "backend")
-			}
-		})
-	}
+	t.Run("at anchored directory resolves", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(backendDir)
+		if err != nil {
+			t.Fatalf("Resolve(%q) error = %v; want nil", backendDir, err)
+		}
+		if layout.AnchorRel != "backend" {
+			t.Errorf("Resolve(%q).AnchorRel = %q; want %q", backendDir, layout.AnchorRel, "backend")
+		}
+	})
+
+	t.Run("at descendant of anchored directory errors under the strict gate", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(deeperDir)
+		if layout != nil {
+			t.Errorf("Resolve(%q) returned non-nil layout; want nil", deeperDir)
+		}
+		if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
+			t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", deeperDir, err)
+		}
+	})
 }
 
 // TestResolve_CwdOutsideAnchor verifies that a cwd outside the recorded
@@ -161,9 +164,11 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 
 // TestResolve_AnchorAbsentFallsBackToDot verifies that when no
 // .fabric-anchor marker is recorded, Resolve's AnchorRel falls back to "."
-// with no error — never to a cwd-derived relative path, which would make the
-// Location name a lie — the mid-clone / lyxtest synthetic hub / non-fabric
-// repo case.
+// with no error at the worktree root — never to a cwd-derived relative path,
+// which would make the Location name a lie — the mid-clone / lyxtest
+// synthetic hub / non-fabric repo case. The strict gate is hoisted to apply
+// unconditionally (card 6), so with no anchor recorded lyx is accepted only
+// at the worktree root, never in a subdirectory: a subdirectory now errors.
 func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	t.Parallel()
 
@@ -175,13 +180,25 @@ func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 		t.Fatalf("mkdir subdir: %v", err)
 	}
 
-	layout, err := lyxcwd.Resolve(subDir)
-	if err != nil {
-		t.Fatalf("Resolve(%q) error = %v; want nil", subDir, err)
-	}
-	if layout.AnchorRel != "." {
-		t.Errorf("Resolve(%q).AnchorRel = %q; want %q (no-anchor fallback)", subDir, layout.AnchorRel, ".")
-	}
+	t.Run("at root resolves with AnchorRel dot", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(root)
+		if err != nil {
+			t.Fatalf("Resolve(%q) error = %v; want nil", root, err)
+		}
+		if layout.AnchorRel != "." {
+			t.Errorf("Resolve(%q).AnchorRel = %q; want %q (no-anchor fallback)", root, layout.AnchorRel, ".")
+		}
+	})
+
+	t.Run("at subdirectory errors under the strict gate", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(subDir)
+		if layout != nil {
+			t.Errorf("Resolve(%q) returned non-nil layout; want nil", subDir)
+		}
+		if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
+			t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", subDir, err)
+		}
+	})
 }
 
 // TestResolveWorktree_SubpathAnchorNoGate verifies the exact geometry
