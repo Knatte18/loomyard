@@ -1,8 +1,8 @@
-// tracedaemon_test.go tests the WorktreeRoot-anchored
+// scoutdaemon_test.go tests the WorktreePath-anchored
 // ScoutDaemonStateFile/ScoutDaemonLock accessors on a hand-built
-// Layout — pure path arithmetic, no spawning, untagged (Tier 1).
+// Location — pure path arithmetic, no spawning, untagged (Tier 1).
 
-package hubgeometry
+package lyxcwd
 
 import (
 	"path/filepath"
@@ -10,37 +10,38 @@ import (
 )
 
 func TestScoutDaemonStateFile(t *testing.T) {
-	l := &Layout{
-		WorktreeRoot: filepath.Join("home", "user", "repo"),
-		// Cwd deliberately differs from WorktreeRoot to prove the accessor
-		// ignores Cwd and stays anchored to WorktreeRoot.
-		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
+	l := &Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		// AnchorRel deliberately set to prove the accessor ignores it and
+		// stays anchored to WorktreePath.
+		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, ".lyx", "scout", "go", "daemon.json")
+	want := filepath.Join(l.WorktreePath(), ".lyx", "scout", "go", "daemon.json")
 	if got := l.ScoutDaemonStateFile("go"); got != want {
 		t.Errorf("ScoutDaemonStateFile(%q) = %q; want %q", "go", got, want)
 	}
 }
 
 func TestScoutDaemonLock(t *testing.T) {
-	l := &Layout{
-		WorktreeRoot: filepath.Join("home", "user", "repo"),
-		// Cwd deliberately differs from WorktreeRoot to prove the accessor
-		// ignores Cwd and stays anchored to WorktreeRoot.
-		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
+	l := &Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, ".lyx", "scout", "go", "daemon.lock")
+	want := filepath.Join(l.WorktreePath(), ".lyx", "scout", "go", "daemon.lock")
 	if got := l.ScoutDaemonLock("go"); got != want {
 		t.Errorf("ScoutDaemonLock(%q) = %q; want %q", "go", got, want)
 	}
 }
 
 func TestScoutDaemonStateFile_DistinctPerLanguage(t *testing.T) {
-	l := &Layout{
-		WorktreeRoot: filepath.Join("home", "user", "repo"),
-		Cwd:          filepath.Join("home", "user", "repo"),
+	l := &Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    ".",
 	}
 
 	goPath := l.ScoutDaemonStateFile("go")
@@ -49,20 +50,21 @@ func TestScoutDaemonStateFile_DistinctPerLanguage(t *testing.T) {
 		t.Errorf("ScoutDaemonStateFile(%q) and ScoutDaemonStateFile(%q) collided: both %q", "go", "python", goPath)
 	}
 
-	wantGo := filepath.Join(l.WorktreeRoot, ".lyx", "scout", "go", "daemon.json")
+	wantGo := filepath.Join(l.WorktreePath(), ".lyx", "scout", "go", "daemon.json")
 	if goPath != wantGo {
 		t.Errorf("ScoutDaemonStateFile(%q) = %q; want %q", "go", goPath, wantGo)
 	}
-	wantPython := filepath.Join(l.WorktreeRoot, ".lyx", "scout", "python", "daemon.json")
+	wantPython := filepath.Join(l.WorktreePath(), ".lyx", "scout", "python", "daemon.json")
 	if pythonPath != wantPython {
 		t.Errorf("ScoutDaemonStateFile(%q) = %q; want %q", "python", pythonPath, wantPython)
 	}
 }
 
 func TestScoutDaemonLock_DistinctPerLanguage(t *testing.T) {
-	l := &Layout{
-		WorktreeRoot: filepath.Join("home", "user", "repo"),
-		Cwd:          filepath.Join("home", "user", "repo"),
+	l := &Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    ".",
 	}
 
 	goPath := l.ScoutDaemonLock("go")
@@ -71,11 +73,11 @@ func TestScoutDaemonLock_DistinctPerLanguage(t *testing.T) {
 		t.Errorf("ScoutDaemonLock(%q) and ScoutDaemonLock(%q) collided: both %q", "go", "python", goPath)
 	}
 
-	wantGo := filepath.Join(l.WorktreeRoot, ".lyx", "scout", "go", "daemon.lock")
+	wantGo := filepath.Join(l.WorktreePath(), ".lyx", "scout", "go", "daemon.lock")
 	if goPath != wantGo {
 		t.Errorf("ScoutDaemonLock(%q) = %q; want %q", "go", goPath, wantGo)
 	}
-	wantPython := filepath.Join(l.WorktreeRoot, ".lyx", "scout", "python", "daemon.lock")
+	wantPython := filepath.Join(l.WorktreePath(), ".lyx", "scout", "python", "daemon.lock")
 	if pythonPath != wantPython {
 		t.Errorf("ScoutDaemonLock(%q) = %q; want %q", "python", pythonPath, wantPython)
 	}

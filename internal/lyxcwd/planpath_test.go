@@ -1,50 +1,51 @@
-// planpath_test.go tests the WorktreeRoot-anchored PlanDir/PlanOverview
-// accessors on a hand-built Layout — pure path arithmetic, no spawning,
+// planpath_test.go tests the AnchorPath-anchored PlanDir/PlanOverview
+// accessors on a hand-built Location — pure path arithmetic, no spawning,
 // untagged (Tier 1). It mirrors discussionpath_test.go's construction and
-// WorktreeRoot-vs-Cwd assertion shape.
+// AnchorPath-vs-WorktreePath assertion shape.
 
-package hubgeometry
+package lyxcwd
 
 import (
 	"path/filepath"
 	"testing"
 )
 
-func TestLayoutPlanDir(t *testing.T) {
-	l := &Layout{
-		WorktreeRoot: filepath.Join("home", "user", "repo"),
-		// Cwd deliberately differs from WorktreeRoot to prove the accessor
-		// ignores Cwd and stays anchored to WorktreeRoot.
-		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
+func TestLocationPlanDir(t *testing.T) {
+	l := &Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		// AnchorRel deliberately differs from "." to prove the accessor
+		// follows the anchored subpath, not the bare worktree root.
+		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, lyxDirName, "plan")
+	want := filepath.Join(l.AnchorPath(), lyxDirName, "plan")
 	if got := l.PlanDir(); got != want {
 		t.Errorf("PlanDir() = %q; want %q", got, want)
 	}
 }
 
-func TestLayoutPlanOverview(t *testing.T) {
-	l := &Layout{
-		WorktreeRoot: filepath.Join("home", "user", "repo"),
-		// Cwd deliberately differs from WorktreeRoot to prove the accessor
-		// ignores Cwd and stays anchored to WorktreeRoot.
-		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
+func TestLocationPlanOverview(t *testing.T) {
+	l := &Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, lyxDirName, "plan", "00-overview.md")
+	want := filepath.Join(l.AnchorPath(), lyxDirName, "plan", "00-overview.md")
 	if got := l.PlanOverview(); got != want {
 		t.Errorf("PlanOverview() = %q; want %q", got, want)
 	}
 }
 
-func TestLayoutPlanDir_CwdEqualsWorktreeRoot(t *testing.T) {
-	l := &Layout{
-		WorktreeRoot: filepath.Join("home", "user", "repo"),
-		Cwd:          filepath.Join("home", "user", "repo"),
+func TestLocationPlanDir_UnanchoredEqualsWorktreePath(t *testing.T) {
+	l := &Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    ".",
 	}
 
-	want := filepath.Join(l.WorktreeRoot, lyxDirName, "plan")
+	want := filepath.Join(l.WorktreePath(), lyxDirName, "plan")
 	if got := l.PlanDir(); got != want {
 		t.Errorf("PlanDir() = %q; want %q", got, want)
 	}

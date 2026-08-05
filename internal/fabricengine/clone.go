@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -38,7 +38,7 @@ var RemoveAll = os.RemoveAll
 type CloneResult struct {
 	HubPath  string // HubPath is the created <name>-HUB container directory.
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
-	BoardDir string // BoardDir is hubgeometry.BoardDir(HubPath), the weft:main checkout.
+	BoardDir string // BoardDir is lyxcwd.BoardDir(HubPath), the weft:main checkout.
 	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
 	PrimeCwd string // PrimeCwd is the resolved prime host worktree path at Anchor.
 }
@@ -88,7 +88,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	}
 
 	// Step 2: Compute Hub path
-	hubPath := hubgeometry.HubPath(cwd, name)
+	hubPath := lyxcwd.HubPath(cwd, name)
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
@@ -110,7 +110,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// warnings fire on every subsequent git checkout within this repo.
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// the clone (the hook is belt-and-suspenders for usability, not correctness).
-	if hookLayout, err := hubgeometry.Resolve(hostWorktreePath); err == nil {
+	if hookLayout, err := lyxcwd.Resolve(hostWorktreePath); err == nil {
 		if hookErr := InstallPostCheckoutHook(hookLayout); hookErr != nil {
 			log.Printf("fabric clone: post-checkout hook install (non-fatal): %v", hookErr)
 		}
@@ -139,7 +139,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// on hostBranch — adopted if that branch already exists locally from
 	// step 6's clone, freshly orphan-created otherwise (a genuinely empty
 	// weft remote).
-	boardDir := hubgeometry.BoardDir(hubPath)
+	boardDir := lyxcwd.BoardDir(hubPath)
 	if err := ensureBoardWorktree(weftPath, hostBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
@@ -148,7 +148,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// marker to the board worktree ON DISK. The CLI layer commits it onto
 	// weft:main (config materialization and the commit both live in
 	// internal/fabriccli to avoid the fabricengine → configsync import cycle).
-	markerPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	markerPath := filepath.Join(boardDir, lyxcwd.FabricAnchorName)
 	var anchor string
 	if data, statErr := os.ReadFile(markerPath); statErr == nil {
 		// Adopt path: ensureBoardWorktree checked out weft:main, which already
@@ -181,11 +181,11 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// Resolve the prime layout now that the marker exists on disk, so
 	// RelPath — and therefore WeftBase — reflects the resolved anchor.
 	primeCwd := filepath.Join(hostWorktreePath, anchor)
-	l, err := hubgeometry.Resolve(primeCwd)
+	l, err := lyxcwd.Resolve(primeCwd)
 	if err != nil {
 		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
 	}
-	weftBase := filepath.Join(l.WeftWorktree(), l.RelPath)
+	weftBase := filepath.Join(l.WeftWorktree(), l.AnchorRel)
 
 	return CloneResult{
 		HubPath:  hubPath,

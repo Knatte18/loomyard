@@ -1,10 +1,10 @@
-// raddle_guard_test.go is a guard to ensure that internal/hubgeometry never
-// discovers or enumerates the _raddle directory. This documents that hubgeometry
+// raddle_guard_test.go is a guard to ensure that internal/lyxcwd never
+// discovers or enumerates the _raddle directory. This documents that lyxcwd
 // never scans the worktree to mirror dirs — a future nested/ignored _raddle
 // can never be treated as a sibling. Geometry methods like WeftRaddleDir() are
 // exceptions: they compute paths purely via filepath.Join with no discovery logic.
 
-package hubgeometry
+package lyxcwd
 
 import (
 	"io/fs"
@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-// TestRaddleGuard verifies that no production source file in internal/hubgeometry
+// TestRaddleGuard verifies that no production source file in internal/lyxcwd
 // contains the literal substring _raddle.
 func TestRaddleGuard(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
@@ -24,7 +24,7 @@ func TestRaddleGuard(t *testing.T) {
 		if !ok {
 			t.Fatal("could not determine test file location")
 		}
-		// One level up from internal/hubgeometry/raddle_guard_test.go → package dir
+		// One level up from internal/lyxcwd/raddle_guard_test.go → package dir
 		pkgDir := filepath.Dir(file)
 
 		// Predicate: returns true if the bytes contain _raddle.
@@ -42,10 +42,10 @@ func TestRaddleGuard(t *testing.T) {
 
 			// Only check .go files that are not _test.go files.
 			if !d.IsDir() && strings.HasSuffix(d.Name(), ".go") && !strings.HasSuffix(d.Name(), "_test.go") {
-				// Skip hubgeometry.go: it contains geometry methods like WeftRaddleDir() that compute
+				// Skip lyxcwd.go: it contains geometry methods like WeftRaddleDir() that compute
 				// paths purely via filepath.Join, which is allowed. The guard applies only to
 				// discovery/enumeration logic, not to geometry computation.
-				if d.Name() == "hubgeometry.go" {
+				if d.Name() == "lyxcwd.go" {
 					return nil
 				}
 				data, err := os.ReadFile(path)

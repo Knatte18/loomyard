@@ -3,7 +3,7 @@
 // not require a git repository and run under standard unit test
 // verification.
 
-package hubgeometry
+package lyxcwd
 
 import (
 	"path/filepath"

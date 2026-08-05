@@ -1,9 +1,9 @@
 //go:build integration
 
-// hubgeometry_test.go covers Layout resolution, the geometry accessors, and the
+// lyxcwd_test.go covers Location resolution, the geometry accessors, and the
 // ErrNotAGitRepo path for directories outside a git repo.
 
-package hubgeometry_test
+package lyxcwd_test
 
 import (
 	"errors"
@@ -13,12 +13,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // wantMenuLauncherName returns the expected menu launcher filename for the
-// current runtime.GOOS, mirroring the GOOS-aware selection in hubgeometry.go
+// current runtime.GOOS, mirroring the GOOS-aware selection in lyxcwd.go
 // so these tests are green on the Windows host now and on Linux later.
 func wantMenuLauncherName() string {
 	if runtime.GOOS == "windows" {
@@ -28,14 +28,14 @@ func wantMenuLauncherName() string {
 }
 
 // TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root
-// yields empty RelPath (or ".") and correct other fields.
+// yields AnchorRel "." and correct other fields.
 func TestResolve_FromWorktreeRoot(t *testing.T) {
 	t.Parallel()
 
 	fix := lyxtest.CopyHostHub(t)
 	hub := fix.Hub
 
-	layout, err := hubgeometry.Resolve(hub)
+	layout, err := lyxcwd.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -44,33 +44,34 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 		t.Fatal("Resolve() returned nil layout")
 	}
 
-	// RelPath should be "." when cwd == worktree root
-	if layout.RelPath != "." {
-		t.Errorf("layout.RelPath = %q; want %q", layout.RelPath, ".")
+	// AnchorRel should be "." when no anchor is recorded, regardless of cwd.
+	if layout.AnchorRel != "." {
+		t.Errorf("layout.AnchorRel = %q; want %q", layout.AnchorRel, ".")
 	}
 
-	// Cwd should be the hub (worktree root)
-	if layout.Cwd != layout.WorktreeRoot {
-		t.Errorf("layout.Cwd = %q; layout.WorktreeRoot = %q; want equal", layout.Cwd, layout.WorktreeRoot)
+	// WorktreePath() should be the hub (worktree root)
+	if layout.WorktreePath() != filepath.Clean(hub) {
+		t.Errorf("layout.WorktreePath() = %q; want %q", layout.WorktreePath(), filepath.Clean(hub))
 	}
 
-	// Hub should be the parent of WorktreeRoot
+	// HubPath should be the parent of WorktreePath()
 	expectedContainer := filepath.Dir(hub)
-	if layout.Hub != expectedContainer {
-		t.Errorf("layout.Hub = %q; want %q", layout.Hub, expectedContainer)
+	if layout.HubPath != expectedContainer {
+		t.Errorf("layout.HubPath = %q; want %q", layout.HubPath, expectedContainer)
 	}
 
-	// Repo is derived by trimming HubSuffix off the container directory's base
-	// name — this fixture's container has no "-HUB" suffix, so Repo is simply
+	// RepoName is derived by trimming HubSuffix off the container directory's base
+	// name — this fixture's container has no "-HUB" suffix, so RepoName is simply
 	// its base name unchanged.
-	wantRepo := strings.TrimSuffix(filepath.Base(layout.Hub), hubgeometry.HubSuffix)
-	if layout.Repo != wantRepo {
-		t.Errorf("layout.Repo = %q; want %q", layout.Repo, wantRepo)
+	wantRepoName := strings.TrimSuffix(filepath.Base(layout.HubPath), lyxcwd.HubSuffix)
+	if layout.RepoName != wantRepoName {
+		t.Errorf("layout.RepoName = %q; want %q", layout.RepoName, wantRepoName)
 	}
 }
 
-// TestResolve_FromSubdirectory verifies that Resolve from a subdirectory
-// yields the correct relative RelPath.
+// TestResolve_FromSubdirectory verifies that, for an unanchored repo, Resolve
+// from a subdirectory still yields AnchorRel "." — not the cwd-derived
+// relative path — since AnchorRel only ever reflects a recorded anchor marker.
 func TestResolve_FromSubdirectory(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +84,7 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 		t.Fatalf("failed to create subdirectory: %v", err)
 	}
 
-	layout, err := hubgeometry.Resolve(subDir)
+	layout, err := lyxcwd.Resolve(subDir)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -92,15 +93,12 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 		t.Fatal("Resolve() returned nil layout")
 	}
 
-	// RelPath should reflect the subdirectory
-	expectedRelPath := filepath.Join("subdir", "nested")
-	if layout.RelPath != expectedRelPath {
-		t.Errorf("layout.RelPath = %q; want %q", layout.RelPath, expectedRelPath)
+	if layout.AnchorRel != "." {
+		t.Errorf("layout.AnchorRel = %q; want %q", layout.AnchorRel, ".")
 	}
 
-	// Cwd should be the subdir
-	if layout.Cwd != subDir {
-		t.Errorf("layout.Cwd = %q; want %q", layout.Cwd, subDir)
+	if layout.WorktreePath() != filepath.Clean(hub) {
+		t.Errorf("layout.WorktreePath() = %q; want %q", layout.WorktreePath(), filepath.Clean(hub))
 	}
 }
 
@@ -111,7 +109,7 @@ func TestResolve_GeometryMethods(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	hub := fix.Hub
 
-	layout, err := hubgeometry.Resolve(hub)
+	layout, err := lyxcwd.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -128,19 +126,19 @@ func TestResolve_GeometryMethods(t *testing.T) {
 	slug := "test-wt"
 
 	// Test PortalsDir
-	expectedPortalsDir := filepath.Join(layout.Hub, "_portals")
+	expectedPortalsDir := filepath.Join(layout.HubPath, "_portals")
 	if got := layout.PortalsDir(); got != expectedPortalsDir {
 		t.Errorf("PortalsDir() = %q; want %q", got, expectedPortalsDir)
 	}
 
 	// Test PortalTarget
-	expectedPortalTarget := filepath.Join(layout.Hub, slug, ".", "_lyx")
+	expectedPortalTarget := filepath.Join(layout.HubPath, slug, ".", "_lyx")
 	if got := layout.PortalTarget(slug); got != expectedPortalTarget {
 		t.Errorf("PortalTarget(%q) = %q; want %q", slug, got, expectedPortalTarget)
 	}
 
 	// Test LaunchersDir
-	expectedLaunchersDir := filepath.Join(layout.Hub, "_launchers")
+	expectedLaunchersDir := filepath.Join(layout.HubPath, "_launchers")
 	if got := layout.LaunchersDir(); got != expectedLaunchersDir {
 		t.Errorf("LaunchersDir() = %q; want %q", got, expectedLaunchersDir)
 	}
@@ -162,18 +160,14 @@ func TestResolve_ForwardSlashNormalization(t *testing.T) {
 	hub := fix.Hub
 
 	// Call Resolve normally; both cwd and --show-toplevel output get normalized
-	layout, err := hubgeometry.Resolve(hub)
+	layout, err := lyxcwd.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
 
 	// Verify paths are clean and use the platform's separator
-	if layout.Cwd != filepath.Clean(hub) {
-		t.Errorf("layout.Cwd = %q; want %q", layout.Cwd, filepath.Clean(hub))
-	}
-
-	if layout.WorktreeRoot != filepath.Clean(hub) {
-		t.Errorf("layout.WorktreeRoot = %q; want %q", layout.WorktreeRoot, filepath.Clean(hub))
+	if layout.WorktreePath() != filepath.Clean(hub) {
+		t.Errorf("layout.WorktreePath() = %q; want %q", layout.WorktreePath(), filepath.Clean(hub))
 	}
 }
 
@@ -184,13 +178,13 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 
 	nonGitDir := t.TempDir()
 
-	layout, err := hubgeometry.Resolve(nonGitDir)
+	layout, err := lyxcwd.Resolve(nonGitDir)
 
 	if layout != nil {
 		t.Errorf("Resolve() returned non-nil layout in non-git dir: %v", layout)
 	}
 
-	if !errors.Is(err, hubgeometry.ErrNotAGitRepo) {
+	if !errors.Is(err, lyxcwd.ErrNotAGitRepo) {
 		t.Errorf("Resolve() error = %v; want wrapped ErrNotAGitRepo", err)
 	}
 
@@ -199,8 +193,8 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 	if strings.Contains(err.Error(), "fatal:") {
 		t.Errorf("Resolve() error = %q; must not contain raw git stderr (\"fatal:\")", err.Error())
 	}
-	if err.Error() != hubgeometry.ErrNotAGitRepo.Error() {
-		t.Errorf("Resolve() error = %q; want exactly %q", err.Error(), hubgeometry.ErrNotAGitRepo.Error())
+	if err.Error() != lyxcwd.ErrNotAGitRepo.Error() {
+		t.Errorf("Resolve() error = %q; want exactly %q", err.Error(), lyxcwd.ErrNotAGitRepo.Error())
 	}
 }
 
@@ -217,14 +211,14 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := hubgeometry.Resolve(hub)
+			layout, err := lyxcwd.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
 
 			slug := "test-slug"
 			got := layout.PortalLink(slug)
-			want := filepath.Join(layout.Hub, "_portals", slug)
+			want := filepath.Join(layout.HubPath, "_portals", slug)
 			if got != want {
 				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
 			}
@@ -238,14 +232,14 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := hubgeometry.Resolve(subDir)
+			layout, err := lyxcwd.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
 
 			slug := "test-slug"
 			got := layout.PortalLink(slug)
-			want := filepath.Join(layout.Hub, "_portals", "services", "api", slug)
+			want := filepath.Join(layout.HubPath, "_portals", "services", "api", slug)
 			if got != want {
 				t.Errorf("PortalLink(%q) = %q; want %q", slug, got, want)
 			}
@@ -263,12 +257,12 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir2: %v", err)
 			}
 
-			layout1, err := hubgeometry.Resolve(subDir1)
+			layout1, err := lyxcwd.Resolve(subDir1)
 			if err != nil {
 				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
 			}
 
-			layout2, err := hubgeometry.Resolve(subDir2)
+			layout2, err := lyxcwd.Resolve(subDir2)
 			if err != nil {
 				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
 			}
@@ -289,7 +283,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root (backward compat)", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := hubgeometry.Resolve(hub)
+			layout, err := lyxcwd.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -311,14 +305,14 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := hubgeometry.Resolve(subDir)
+			layout, err := lyxcwd.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
 
 			slug := "test-slug"
 			got := layout.LauncherDir(slug)
-			want := filepath.Join(layout.Hub, "_launchers", "services", "api", slug)
+			want := filepath.Join(layout.HubPath, "_launchers", "services", "api", slug)
 			if got != want {
 				t.Errorf("LauncherDir(%q) = %q; want %q", slug, got, want)
 			}
@@ -336,12 +330,12 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir2: %v", err)
 			}
 
-			layout1, err := hubgeometry.Resolve(subDir1)
+			layout1, err := lyxcwd.Resolve(subDir1)
 			if err != nil {
 				t.Fatalf("Resolve(subDir1) error = %v; want nil", err)
 			}
 
-			layout2, err := hubgeometry.Resolve(subDir2)
+			layout2, err := lyxcwd.Resolve(subDir2)
 			if err != nil {
 				t.Fatalf("Resolve(subDir2) error = %v; want nil", err)
 			}
@@ -362,13 +356,13 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := hubgeometry.Resolve(hub)
+			layout, err := lyxcwd.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
 
 			got := layout.MenuLauncherPath()
-			want := filepath.Join(layout.Hub, "_launchers", wantMenuLauncherName())
+			want := filepath.Join(layout.HubPath, "_launchers", wantMenuLauncherName())
 			if got != want {
 				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
 			}
@@ -382,13 +376,13 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := hubgeometry.Resolve(subDir)
+			layout, err := lyxcwd.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
 
 			got := layout.MenuLauncherPath()
-			want := filepath.Join(layout.Hub, "_launchers", "services", "api", wantMenuLauncherName())
+			want := filepath.Join(layout.HubPath, "_launchers", "services", "api", wantMenuLauncherName())
 			if got != want {
 				t.Errorf("MenuLauncherPath() = %q; want %q", got, want)
 			}
@@ -401,7 +395,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := hubgeometry.Resolve(hub)
+			layout, err := lyxcwd.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -411,7 +405,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			launcherDir := layout.LauncherDir(slug)
-			targetPath := filepath.Join(filepath.Join(layout.Hub, slug), layout.RelPath)
+			targetPath := filepath.Join(filepath.Join(layout.HubPath, slug), layout.AnchorRel)
 			want, _ := filepath.Rel(launcherDir, targetPath)
 
 			if got != want {
@@ -427,7 +421,7 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := hubgeometry.Resolve(subDir)
+			layout, err := lyxcwd.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -437,7 +431,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			launcherDir := layout.LauncherDir(slug)
-			targetPath := filepath.Join(filepath.Join(layout.Hub, slug), layout.RelPath)
+			targetPath := filepath.Join(filepath.Join(layout.HubPath, slug), layout.AnchorRel)
 			want, _ := filepath.Rel(launcherDir, targetPath)
 
 			if got != want {
@@ -452,7 +446,7 @@ func TestMirroredMethods(t *testing.T) {
 		t.Run("at root", func(t *testing.T) {
 			t.Parallel()
 
-			layout, err := hubgeometry.Resolve(hub)
+			layout, err := lyxcwd.Resolve(hub)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -466,7 +460,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			menuDir := filepath.Dir(layout.MenuLauncherPath())
-			targetPath := filepath.Join(layout.Hub, primeName, layout.RelPath)
+			targetPath := filepath.Join(layout.HubPath, primeName, layout.AnchorRel)
 			want, _ := filepath.Rel(menuDir, targetPath)
 
 			if got != want {
@@ -482,7 +476,7 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("failed to create subdir: %v", err)
 			}
 
-			layout, err := hubgeometry.Resolve(subDir)
+			layout, err := lyxcwd.Resolve(subDir)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -496,7 +490,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			menuDir := filepath.Dir(layout.MenuLauncherPath())
-			targetPath := filepath.Join(layout.Hub, primeName, layout.RelPath)
+			targetPath := filepath.Join(layout.HubPath, primeName, layout.AnchorRel)
 			want, _ := filepath.Rel(menuDir, targetPath)
 
 			if got != want {
@@ -514,7 +508,7 @@ func TestRefactoredMethods(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	hub := fix.Hub
 
-	layout, err := hubgeometry.Resolve(hub)
+	layout, err := lyxcwd.Resolve(hub)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -535,7 +529,7 @@ func TestRefactoredMethods(t *testing.T) {
 
 		slug := "test-slug"
 		got := layout.PortalTarget(slug)
-		want := filepath.Join(layout.Hub, slug, ".", "_lyx")
+		want := filepath.Join(layout.HubPath, slug, ".", "_lyx")
 
 		if got != want {
 			t.Errorf("PortalTarget(%q) = %q; want %q", slug, got, want)
@@ -570,7 +564,7 @@ func TestRefactoredMethods(t *testing.T) {
 
 		slug := "test-slug"
 		got := layout.HostLyxLink(slug)
-		want := filepath.Join(filepath.Join(layout.Hub, slug), ".", "_lyx")
+		want := filepath.Join(filepath.Join(layout.HubPath, slug), ".", "_lyx")
 
 		if got != want {
 			t.Errorf("HostLyxLink(%q) = %q; want %q", slug, got, want)
@@ -581,7 +575,7 @@ func TestRefactoredMethods(t *testing.T) {
 		t.Parallel()
 
 		got := layout.HostLyxLinkHere()
-		want := filepath.Join(layout.WorktreeRoot, ".", "_lyx")
+		want := filepath.Join(layout.WorktreePath(), ".", "_lyx")
 
 		if got != want {
 			t.Errorf("HostLyxLinkHere() = %q; want %q", got, want)
@@ -636,7 +630,7 @@ func TestHostJunctionsHere(t *testing.T) {
 	t.Run("at root", func(t *testing.T) {
 		t.Parallel()
 
-		layout, err := hubgeometry.Resolve(hub)
+		layout, err := lyxcwd.Resolve(hub)
 		if err != nil {
 			t.Fatalf("Resolve() error = %v; want nil", err)
 		}
@@ -681,7 +675,7 @@ func TestHostJunctionsHere(t *testing.T) {
 			t.Fatalf("failed to create subdir: %v", err)
 		}
 
-		layout, err := hubgeometry.Resolve(subDir)
+		layout, err := lyxcwd.Resolve(subDir)
 		if err != nil {
 			t.Fatalf("Resolve() error = %v; want nil", err)
 		}
@@ -715,14 +709,14 @@ func TestHostJunctionsHere(t *testing.T) {
 	t.Run("agrees with HostJunctions when slug matches current worktree", func(t *testing.T) {
 		t.Parallel()
 
-		layout, err := hubgeometry.Resolve(hub)
+		layout, err := lyxcwd.Resolve(hub)
 		if err != nil {
 			t.Fatalf("Resolve() error = %v; want nil", err)
 		}
 
 		// The current worktree's own base name is the slug that makes HostJunctions(slug)
 		// resolve to the same host worktree HostJunctionsHere() is already anchored at.
-		slug := filepath.Base(layout.WorktreeRoot)
+		slug := filepath.Base(layout.WorktreePath())
 		names := []string{"_lyx", "_pattern"}
 
 		here := layout.HostJunctionsHere(names)
@@ -741,7 +735,7 @@ func TestHostJunctionsHere(t *testing.T) {
 	t.Run("names ordering regressions", func(t *testing.T) {
 		t.Parallel()
 
-		layout, err := hubgeometry.Resolve(hub)
+		layout, err := lyxcwd.Resolve(hub)
 		if err != nil {
 			t.Fatalf("Resolve() error = %v; want nil", err)
 		}
@@ -766,11 +760,11 @@ func TestHostJunctionsHere(t *testing.T) {
 					if got.Name != wantName {
 						t.Errorf("HostJunctionsHere(%v)[%d].Name = %q; want %q", rt.names, i, got.Name, wantName)
 					}
-					wantLink := filepath.Join(layout.WorktreeRoot, layout.RelPath, wantName)
+					wantLink := filepath.Join(layout.WorktreePath(), layout.AnchorRel, wantName)
 					if got.Link != wantLink {
 						t.Errorf("HostJunctionsHere(%v)[%d].Link = %q; want %q", rt.names, i, got.Link, wantLink)
 					}
-					wantTarget := filepath.Join(layout.WeftWorktree(), layout.RelPath, wantName)
+					wantTarget := filepath.Join(layout.WeftWorktree(), layout.AnchorRel, wantName)
 					if got.Target != wantTarget {
 						t.Errorf("HostJunctionsHere(%v)[%d].Target = %q; want %q", rt.names, i, got.Target, wantTarget)
 					}
@@ -787,7 +781,7 @@ func TestHostJunctionsHere(t *testing.T) {
 func TestIsReservedHubName_Pattern(t *testing.T) {
 	t.Parallel()
 
-	if got := hubgeometry.IsReservedHubName("_pattern", []string{"_lyx", "_pattern"}); !got {
+	if got := lyxcwd.IsReservedHubName("_pattern", []string{"_lyx", "_pattern"}); !got {
 		t.Errorf("IsReservedHubName(%q, %v) = %v; want true", "_pattern", []string{"_lyx", "_pattern"}, got)
 	}
 }

@@ -1,11 +1,11 @@
 //go:build integration
 
-// anchor_test.go covers recorded-anchor RelPath resolution: Resolve's
-// record-wins + cwd at-or-below gate, the marker-absent cwd fallback, and
+// anchor_test.go covers recorded-anchor AnchorRel resolution: Resolve's
+// record-wins + cwd at-or-below gate, the marker-absent "." fallback, and
 // ResolveWorktree's gate-free counterpart used by internal callers that
 // resolve geometry from a worktree root rather than an acting cwd.
 
-package hubgeometry_test
+package lyxcwd_test
 
 import (
 	"errors"
@@ -13,21 +13,21 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // writeAnchor writes the recorded .fabric-anchor marker into hub's board
 // directory, creating the board directory if needed. hub here is the
-// hubgeometry.Layout.Hub value (the container directory), not a worktree root.
+// lyxcwd.Location.HubPath value (the container directory), not a worktree root.
 func writeAnchor(t *testing.T, hub, anchor string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.FabricAnchorName)
 	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
@@ -42,11 +42,11 @@ func TestResolve_RootAnchor(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	root := fix.Hub
 
-	base, err := hubgeometry.Resolve(root)
+	base, err := lyxcwd.Resolve(root)
 	if err != nil {
 		t.Fatalf("Resolve(root) error = %v; want nil", err)
 	}
-	writeAnchor(t, base.Hub, ".")
+	writeAnchor(t, base.HubPath, ".")
 
 	subDir := filepath.Join(root, "sub")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
@@ -62,12 +62,12 @@ func TestResolve_RootAnchor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout, err := hubgeometry.Resolve(tt.cwd)
+			layout, err := lyxcwd.Resolve(tt.cwd)
 			if err != nil {
 				t.Fatalf("Resolve(%q) error = %v; want nil", tt.cwd, err)
 			}
-			if layout.RelPath != "." {
-				t.Errorf("Resolve(%q).RelPath = %q; want %q", tt.cwd, layout.RelPath, ".")
+			if layout.AnchorRel != "." {
+				t.Errorf("Resolve(%q).AnchorRel = %q; want %q", tt.cwd, layout.AnchorRel, ".")
 			}
 		})
 	}
@@ -82,11 +82,11 @@ func TestResolve_SubpathAnchor(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	root := fix.Hub
 
-	base, err := hubgeometry.Resolve(root)
+	base, err := lyxcwd.Resolve(root)
 	if err != nil {
 		t.Fatalf("Resolve(root) error = %v; want nil", err)
 	}
-	writeAnchor(t, base.Hub, "backend")
+	writeAnchor(t, base.HubPath, "backend")
 
 	backendDir := filepath.Join(root, "backend")
 	deeperDir := filepath.Join(backendDir, "deeper")
@@ -103,12 +103,12 @@ func TestResolve_SubpathAnchor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout, err := hubgeometry.Resolve(tt.cwd)
+			layout, err := lyxcwd.Resolve(tt.cwd)
 			if err != nil {
 				t.Fatalf("Resolve(%q) error = %v; want nil", tt.cwd, err)
 			}
-			if layout.RelPath != "backend" {
-				t.Errorf("Resolve(%q).RelPath = %q; want %q", tt.cwd, layout.RelPath, "backend")
+			if layout.AnchorRel != "backend" {
+				t.Errorf("Resolve(%q).AnchorRel = %q; want %q", tt.cwd, layout.AnchorRel, "backend")
 			}
 		})
 	}
@@ -124,11 +124,11 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	root := fix.Hub
 
-	base, err := hubgeometry.Resolve(root)
+	base, err := lyxcwd.Resolve(root)
 	if err != nil {
 		t.Fatalf("Resolve(root) error = %v; want nil", err)
 	}
-	writeAnchor(t, base.Hub, "backend")
+	writeAnchor(t, base.HubPath, "backend")
 
 	backendDir := filepath.Join(root, "backend")
 	frontendDir := filepath.Join(root, "frontend")
@@ -148,22 +148,23 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout, err := hubgeometry.Resolve(tt.cwd)
+			layout, err := lyxcwd.Resolve(tt.cwd)
 			if layout != nil {
 				t.Errorf("Resolve(%q) returned non-nil layout; want nil", tt.cwd)
 			}
-			if !errors.Is(err, hubgeometry.ErrCwdOutsideAnchor) {
+			if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
 				t.Errorf("Resolve(%q) error = %v; want wrapped ErrCwdOutsideAnchor", tt.cwd, err)
 			}
 		})
 	}
 }
 
-// TestResolve_AnchorAbsentFallsBackToCwd verifies that when no
-// .fabric-anchor marker is recorded, Resolve falls back to today's
-// cwd-derived RelPath with no error — the mid-clone / lyxtest synthetic hub /
-// non-fabric repo case.
-func TestResolve_AnchorAbsentFallsBackToCwd(t *testing.T) {
+// TestResolve_AnchorAbsentFallsBackToDot verifies that when no
+// .fabric-anchor marker is recorded, Resolve's AnchorRel falls back to "."
+// with no error — never to a cwd-derived relative path, which would make the
+// Location name a lie — the mid-clone / lyxtest synthetic hub / non-fabric
+// repo case.
+func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	t.Parallel()
 
 	fix := lyxtest.CopyHostHub(t)
@@ -174,13 +175,12 @@ func TestResolve_AnchorAbsentFallsBackToCwd(t *testing.T) {
 		t.Fatalf("mkdir subdir: %v", err)
 	}
 
-	layout, err := hubgeometry.Resolve(subDir)
+	layout, err := lyxcwd.Resolve(subDir)
 	if err != nil {
 		t.Fatalf("Resolve(%q) error = %v; want nil", subDir, err)
 	}
-	want := filepath.Join("sub", "nested")
-	if layout.RelPath != want {
-		t.Errorf("Resolve(%q).RelPath = %q; want %q (cwd-derived fallback)", subDir, layout.RelPath, want)
+	if layout.AnchorRel != "." {
+		t.Errorf("Resolve(%q).AnchorRel = %q; want %q (no-anchor fallback)", subDir, layout.AnchorRel, ".")
 	}
 }
 
@@ -195,20 +195,20 @@ func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 	fix := lyxtest.CopyHostHub(t)
 	root := fix.Hub
 
-	base, err := hubgeometry.Resolve(root)
+	base, err := lyxcwd.Resolve(root)
 	if err != nil {
 		t.Fatalf("Resolve(root) error = %v; want nil", err)
 	}
-	writeAnchor(t, base.Hub, "backend")
+	writeAnchor(t, base.HubPath, "backend")
 
-	layout, err := hubgeometry.ResolveWorktree(root)
+	layout, err := lyxcwd.ResolveWorktree(root)
 	if err != nil {
 		t.Fatalf("ResolveWorktree(%q) error = %v; want nil", root, err)
 	}
-	if errors.Is(err, hubgeometry.ErrCwdOutsideAnchor) {
+	if errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
 		t.Errorf("ResolveWorktree(%q) error wraps ErrCwdOutsideAnchor; want no gate applied", root)
 	}
-	if layout.RelPath != "backend" {
-		t.Errorf("ResolveWorktree(%q).RelPath = %q; want %q", root, layout.RelPath, "backend")
+	if layout.AnchorRel != "backend" {
+		t.Errorf("ResolveWorktree(%q).AnchorRel = %q; want %q", root, layout.AnchorRel, "backend")
 	}
 }

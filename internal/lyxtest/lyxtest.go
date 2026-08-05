@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -266,7 +266,7 @@ type PairedFixture struct {
 	Bare      string
 	WeftPrime string
 	WeftBare  string
-	Layout    *hubgeometry.Layout
+	Layout    *lyxcwd.Location
 }
 
 // WeftFixture represents an isolated copy of the weft-only template (with upstream tracking).
@@ -472,9 +472,9 @@ func CopyPaired(tb testing.TB) PairedFixture {
 	}
 
 	// Get layout from copied hub
-	layout, err := hubgeometry.Resolve(copiedHub)
+	layout, err := lyxcwd.Resolve(copiedHub)
 	if err != nil {
-		tb.Fatalf("hubgeometry.Resolve: %v", err)
+		tb.Fatalf("lyxcwd.Resolve: %v", err)
 	}
 
 	return PairedFixture{
@@ -529,9 +529,9 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 	}
 
 	// Get layout from copied hub
-	layout, err := hubgeometry.Resolve(copiedHub)
+	layout, err := lyxcwd.Resolve(copiedHub)
 	if err != nil {
-		tb.Fatalf("hubgeometry.Resolve: %v", err)
+		tb.Fatalf("lyxcwd.Resolve: %v", err)
 	}
 
 	return PairedFixture{

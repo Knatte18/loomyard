@@ -6,7 +6,7 @@
 // decision). This file stays stdlib-only so hubgeometry never gains a YAML
 // dependency.
 
-package hubgeometry
+package lyxcwd
 
 import (
 	"errors"

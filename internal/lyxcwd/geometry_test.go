@@ -1,14 +1,14 @@
 // geometry_test.go covers the pure geometry constructors and the WeftHostSlug reverse
 // parser added in the paths-foundation batch. It also asserts parity between the
-// refactored weft Layout methods and their weftname.SiblingPath equivalents.
+// refactored weft Location methods and their weftname.SiblingPath equivalents.
 
-package hubgeometry_test
+package lyxcwd_test
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -58,18 +58,18 @@ func TestBoardDir(t *testing.T) {
 		{
 			name: "simple hub",
 			hub:  "/h",
-			want: filepath.Join("/h", hubgeometry.BoardDirName),
+			want: filepath.Join("/h", lyxcwd.BoardDirName),
 		},
 		{
 			name: "nested hub",
 			hub:  "/repos/loomyard-HUB",
-			want: filepath.Join("/repos/loomyard-HUB", hubgeometry.BoardDirName),
+			want: filepath.Join("/repos/loomyard-HUB", lyxcwd.BoardDirName),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := hubgeometry.BoardDir(tt.hub)
+			got := lyxcwd.BoardDir(tt.hub)
 			if got != tt.want {
 				t.Errorf("BoardDir(%q) = %q; want %q", tt.hub, got, tt.want)
 			}
@@ -91,19 +91,19 @@ func TestHubPath(t *testing.T) {
 			name:     "simple repo name",
 			parent:   "/repos",
 			repoName: "loomyard",
-			want:     filepath.Join("/repos", "loomyard"+hubgeometry.HubSuffix),
+			want:     filepath.Join("/repos", "loomyard"+lyxcwd.HubSuffix),
 		},
 		{
 			name:     "nested parent",
 			parent:   "/home/user/code",
 			repoName: "myproject",
-			want:     filepath.Join("/home/user/code", "myproject"+hubgeometry.HubSuffix),
+			want:     filepath.Join("/home/user/code", "myproject"+lyxcwd.HubSuffix),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := hubgeometry.HubPath(tt.parent, tt.repoName)
+			got := lyxcwd.HubPath(tt.parent, tt.repoName)
 			if got != tt.want {
 				t.Errorf("HubPath(%q, %q) = %q; want %q", tt.parent, tt.repoName, got, tt.want)
 			}
@@ -155,7 +155,7 @@ func TestWeftHostSlug(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotSlug, gotOK := hubgeometry.WeftHostSlug(tt.input)
+			gotSlug, gotOK := lyxcwd.WeftHostSlug(tt.input)
 			if gotSlug != tt.wantSlug || gotOK != tt.wantOK {
 				t.Errorf("WeftHostSlug(%q) = (%q, %v); want (%q, %v)",
 					tt.input, gotSlug, gotOK, tt.wantSlug, tt.wantOK)
@@ -164,7 +164,7 @@ func TestWeftHostSlug(t *testing.T) {
 	}
 }
 
-// TestWeftLayoutMethodParity asserts that the refactored weft Layout methods produce
+// TestWeftLayoutMethodParity asserts that the refactored weft Location methods produce
 // byte-identical results to the direct WeftSiblingPath form.
 func TestWeftLayoutMethodParity(t *testing.T) {
 	t.Parallel()
@@ -172,15 +172,14 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 	hub := "/h"
 	slug := "feat"
 
-	layout := &hubgeometry.Layout{
-		Cwd:          filepath.Join(hub, slug),
-		WorktreeRoot: filepath.Join(hub, slug),
-		Hub:          hub,
-		RelPath:      ".",
+	loc := &lyxcwd.Location{
+		HubPath:      hub,
+		WorktreeName: slug,
+		AnchorRel:    ".",
 	}
 
 	// WeftWorktreePath(slug) must equal weftname.SiblingPath(hub, slug).
-	gotWorktreePath := layout.WeftWorktreePath(slug)
+	gotWorktreePath := loc.WeftWorktreePath(slug)
 	wantWorktreePath := weftname.SiblingPath(hub, slug)
 	if gotWorktreePath != wantWorktreePath {
 		t.Errorf("WeftWorktreePath(%q) = %q; want SiblingPath(%q, %q) = %q",
@@ -189,15 +188,15 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 
 	// WeftRepoRoot's replacement (fabricengine.WeftRepoRoot) lives outside this
 	// package now, and its property is held by fabricengine's own retargeted
-	// test callers — an in-package hubgeometry test cannot import fabricengine,
-	// which imports hubgeometry.
+	// test callers — an in-package lyxcwd test cannot import fabricengine,
+	// which imports lyxcwd.
 
-	// WeftWorktree() must equal weftname.SiblingPath(hub, filepath.Base(WorktreeRoot)).
-	gotWorktree := layout.WeftWorktree()
-	wantWorktree := weftname.SiblingPath(hub, filepath.Base(layout.WorktreeRoot))
-	if gotWorktree != wantWorktree {
+	// WeftWorktree() must equal weftname.SiblingPath(hub, WorktreeName).
+	gotWeftWorktree := loc.WeftWorktree()
+	wantWeftWorktree := weftname.SiblingPath(hub, loc.WorktreeName)
+	if gotWeftWorktree != wantWeftWorktree {
 		t.Errorf("WeftWorktree() = %q; want SiblingPath(%q, %q) = %q",
-			gotWorktree, hub, filepath.Base(layout.WorktreeRoot), wantWorktree)
+			gotWeftWorktree, hub, loc.WorktreeName, wantWeftWorktree)
 	}
 }
 
@@ -228,7 +227,7 @@ func TestIsReservedHubName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := hubgeometry.IsReservedHubName(tt.input, junctionNames); got != tt.want {
+			if got := lyxcwd.IsReservedHubName(tt.input, junctionNames); got != tt.want {
 				t.Errorf("IsReservedHubName(%q, %v) = %v; want %v", tt.input, junctionNames, got, tt.want)
 			}
 		})
@@ -241,7 +240,7 @@ func TestIsReservedHubName(t *testing.T) {
 		t.Parallel()
 
 		for _, hubStructural := range []string{"_board", "_portals", "_launchers", "_raddle"} {
-			if got := hubgeometry.IsReservedHubName(hubStructural, []string{}); !got {
+			if got := lyxcwd.IsReservedHubName(hubStructural, []string{}); !got {
 				t.Errorf("IsReservedHubName(%q, []) = %v; want true", hubStructural, got)
 			}
 		}
@@ -253,7 +252,7 @@ func TestIsReservedHubName(t *testing.T) {
 	t.Run("junction-only name is reserved", func(t *testing.T) {
 		t.Parallel()
 
-		if got := hubgeometry.IsReservedHubName("_custom", []string{"_custom"}); !got {
+		if got := lyxcwd.IsReservedHubName("_custom", []string{"_custom"}); !got {
 			t.Errorf("IsReservedHubName(%q, %v) = %v; want true", "_custom", []string{"_custom"}, got)
 		}
 	})
@@ -263,7 +262,7 @@ func TestIsReservedHubName(t *testing.T) {
 	t.Run("unrelated name is not reserved", func(t *testing.T) {
 		t.Parallel()
 
-		if got := hubgeometry.IsReservedHubName("_other", []string{"_custom"}); got {
+		if got := lyxcwd.IsReservedHubName("_other", []string{"_custom"}); got {
 			t.Errorf("IsReservedHubName(%q, %v) = %v; want false", "_other", []string{"_custom"}, got)
 		}
 	})
@@ -276,11 +275,11 @@ func TestIsReservedHubName(t *testing.T) {
 
 		wantReserved := []string{"_lyx", "_pattern", "_board", "_portals", "_launchers", "_raddle"}
 		for _, name := range wantReserved {
-			if got := hubgeometry.IsReservedHubName(name, junctionNames); !got {
+			if got := lyxcwd.IsReservedHubName(name, junctionNames); !got {
 				t.Errorf("IsReservedHubName(%q, %v) = %v; want true", name, junctionNames, got)
 			}
 		}
-		if got := hubgeometry.IsReservedHubName("not-reserved", junctionNames); got {
+		if got := lyxcwd.IsReservedHubName("not-reserved", junctionNames); got {
 			t.Errorf("IsReservedHubName(%q, %v) = %v; want false", "not-reserved", junctionNames, got)
 		}
 	})

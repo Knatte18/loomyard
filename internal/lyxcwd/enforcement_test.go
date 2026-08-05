@@ -2,7 +2,7 @@
 // the build if any file outside internal/hubgeometry reaches for raw cwd or top-level
 // git geometry, keeping internal/hubgeometry the sole geometry owner.
 
-package hubgeometry
+package lyxcwd
 
 import (
 	"go/ast"
