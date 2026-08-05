@@ -39,7 +39,9 @@ implementing  '2026-08-05T18:02:03Z'
 ```yaml
 batches:
   - name: pre-moves
-    state: pending
+    state: running
+    implementer_session: b1d5d8e9-6bd3-40ae-8a6a-d915176ec397
+    start_sha: 9bb4ad10ac2518072a35805f9682a41fcfc67fe3
   - name: rename-and-reshape
     state: pending
   - name: production-sweep
