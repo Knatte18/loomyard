@@ -4,7 +4,7 @@
 // than spawning its own, plus the two-part staleness check that decides
 // whether a recorded daemon is still safe to reuse. This file does no
 // filesystem-location resolution of its own — every function here takes a
-// plain caller-supplied path string, leaving hubgeometry.Layout.
+// plain caller-supplied path string, leaving lyxcwd.Location.
 // ScoutDaemonStateFile/ScoutDaemonLock resolution to batch 6's
 // ensureSupervised, the sole production caller.
 

@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -297,7 +297,7 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 // escalation is what keeps a single wedged daemon from stranding every
 // caller in this worktree indefinitely.
 func ensureSupervised(ctx context.Context, command []string, lang, targetDir, worktreeRoot string, timeout time.Duration) (*lspClient, error) {
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	statePath := layout.ScoutDaemonStateFile(lang)
 	lockPath := layout.ScoutDaemonLock(lang)
 	// The daemon's socket path is a deterministic function of

@@ -16,8 +16,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -28,13 +28,13 @@ import (
 type Runner struct {
 	reed   ReedOps
 	engine Engine
-	layout *hubgeometry.Layout
+	layout *lyxcwd.Location
 	cfg    Config
 }
 
 // NewRunner returns a Runner ready to start runs against reed and engine,
 // scoped to layout's worktree and cfg's tuning knobs.
-func NewRunner(reed ReedOps, engine Engine, layout *hubgeometry.Layout, cfg Config) *Runner {
+func NewRunner(reed ReedOps, engine Engine, layout *lyxcwd.Location, cfg Config) *Runner {
 	return &Runner{reed: reed, engine: engine, layout: layout, cfg: cfg}
 }
 
@@ -88,7 +88,7 @@ const (
 // is removed. On a run.json persistence failure after AddStrand, both the
 // directory and strand are cleaned up to avoid leaking an untracked agent pane.
 func (r *Runner) Start(spec Spec) (*Run, error) {
-	if err := spec.validate(r.layout.WorktreeRoot, r.cfg); err != nil {
+	if err := spec.validate(r.layout.WorktreePath(), r.cfg); err != nil {
 		return nil, err
 	}
 

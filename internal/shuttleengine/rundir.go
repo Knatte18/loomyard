@@ -1,5 +1,5 @@
 // rundir.go implements the per-run directory lifecycle: minting a run id,
-// resolving the run-dir root from Config/hubgeometry, persisting a run's
+// resolving the run-dir root from Config/lyxcwd, persisting a run's
 // RunState as run.json, looking a run up by its owning strand guid, and
 // sweeping orphaned run dirs left behind when a strand no longer exists in
 // reed state. Everything here is pure I/O over a caller-supplied root and
@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -37,18 +37,18 @@ func newRunID() (string, error) {
 
 // runDirRoot resolves the directory under which every run's subdirectory is
 // created. cfg.RunDir wins when non-empty — a relative value is resolved
-// against layout.WorktreeRoot, an already-absolute value is used verbatim.
+// against layout.WorktreePath(), an already-absolute value is used verbatim.
 // When cfg.RunDir is empty, the default is
 // filepath.Join(layout.DotLyxDir(), "shuttle"): the ephemeral, machine-local
 // .lyx tree, never a literal ".lyx" (Hub Geometry Invariant).
-func runDirRoot(cfg Config, layout *hubgeometry.Layout) string {
+func runDirRoot(cfg Config, layout *lyxcwd.Location) string {
 	if cfg.RunDir == "" {
 		return filepath.Join(layout.DotLyxDir(), "shuttle")
 	}
 	if filepath.IsAbs(cfg.RunDir) {
 		return cfg.RunDir
 	}
-	return filepath.Join(layout.WorktreeRoot, cfg.RunDir)
+	return filepath.Join(layout.WorktreePath(), cfg.RunDir)
 }
 
 // RunState is the persisted record for one shuttle run, written as
@@ -144,7 +144,7 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 // other out-of-process caller) turn an operator-supplied guid into the run
 // they need to act on, confirming the guid actually names a shuttle run
 // before ever touching reed.
-func FindRun(cfg Config, layout *hubgeometry.Layout, guid string) (RunState, string, error) {
+func FindRun(cfg Config, layout *lyxcwd.Location, guid string) (RunState, string, error) {
 	return findRunByStrand(runDirRoot(cfg, layout), guid)
 }
 

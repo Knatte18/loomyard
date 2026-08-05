@@ -1,5 +1,5 @@
 // lock.go defines the Engine type — the domain kernel's public handle,
-// holding a resolved Config, the worktree's hubgeometry.Layout, and the
+// holding a resolved Config, the worktree's lyxcwd.Location, and the
 // TmuxCmd bound to this hub's socket — plus the single reed-operation lock
 // every public engine op acquires exactly once at its outer boundary. Every
 // other file in this package (reconcile.go, apply.go, spawn.go, strand.go,
@@ -12,8 +12,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // reedLockFileName is the reed operation lock's file name inside a Layout's
@@ -31,27 +31,27 @@ const reedLockFileName = "reed.lock"
 // The zero Engine is not valid; build one via New.
 type Engine struct {
 	cfg    Config
-	layout *hubgeometry.Layout
+	layout *lyxcwd.Location
 	tmux   TmuxCmd
 }
 
 // New builds an Engine for the given Config and Layout.
-func New(cfg Config, layout *hubgeometry.Layout) *Engine {
+func New(cfg Config, layout *lyxcwd.Location) *Engine {
 	return &Engine{
 		cfg:    cfg,
 		layout: layout,
-		tmux:   NewTmuxCmd(cfg.Tmux, socketName(layout.Hub)),
+		tmux:   NewTmuxCmd(cfg.Tmux, socketName(layout.HubPath)),
 	}
 }
 
 // Socket returns this engine's tmux -L socket name.
 func (e *Engine) Socket() string {
-	return socketName(e.layout.Hub)
+	return socketName(e.layout.HubPath)
 }
 
 // SessionName returns this engine's tmux session name.
 func (e *Engine) SessionName() string {
-	return SessionName(e.layout.WorktreeRoot)
+	return SessionName(e.layout.WorktreePath())
 }
 
 // TmuxPath returns the resolved tmux binary path this engine uses.
