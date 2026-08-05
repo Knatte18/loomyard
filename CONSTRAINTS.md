@@ -4,13 +4,16 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 
 ## Hub Geometry Invariant
 
-`internal/hubgeometry` owns all cwd, worktree-root, and geometry resolution.
+`internal/hubgeometry` owns only cwd/worktree-root/anchor resolution — never weft, never any per-module path.
 
+- **`root` always means the git worktree/repo root; the current working directory is `cwd`.** Never name a parameter, field, or local variable `root` for a value that is actually `cwd`, or vice versa.
 - All cwd/worktree-root queries go through `hubgeometry.Getwd()`/`Resolve()`. Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/hubgeometry` and `cmd/lyx/main.go`.
-- Geometry tokens (`_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_lyx`, `_pattern`) are owned solely by `internal/hubgeometry`; no other package may use them in a path-construction context (`filepath.Join` arg, `+` operand, or string `const`).
-- `_lyx`, its `config/` subdir, and any `<module>.yaml` resolve through `hubgeometry.LyxDirName`/`ConfigDir(base)`/`ConfigFile(base, module)` — in test code too.
+- `hubgeometry.Resolve` exposes only `Cwd`, the worktree root, `Hub`, and (from the recorded anchor) `RelPath`. It never resolves or exposes a weft path, a junction path, or any per-module subdirectory — those are not geometry `hubgeometry` owns.
+- A module's own durable-storage subdirectory (e.g. `_lyx/plan`, `_lyx/webster`) is that module's own private relative-path constant, joined onto `cwd` directly — never a `hubgeometry` function call. Adding a module's own subdirectory is never a `hubgeometry` change.
+- Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `hubgeometry`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths, and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `hubgeometry` never mentions weft.
+- `_board` (a real `weft:main` worktree at `<Hub>/_board`, not a junction) is the one hub-structural token `hubgeometry` still owns directly, because it needs the name itself to read `<Hub>/_board/.fabric-anchor`. Every other geometry token (`_lyx`, `_pattern`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`) is owned by `fabricengine`, not `hubgeometry`.
 - Geometry is structural, never config/env-overridable.
-- The weft-backed junction name-set is injected from fabric config, not enumerated in `hubgeometry`; `hubgeometry` exposes it via `HubReservedNames() []string` and takes name-sets as explicit `[]string` params (`HostJunctions`, `HostJunctionsHere`, `IsReservedHubName`).
+- The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`, read at `<Hub>/_board/_lyx/config/fabric.yaml`) — `fabricengine`'s concern, not `hubgeometry`'s.
 - `RelPath` resolves from the recorded `.fabric-anchor` marker, not positionally from cwd; cwd is a validated at-or-below gate (`ErrCwdOutsideAnchor` if violated), falling back to cwd-derived `RelPath` only when the marker is absent. `ResolveWorktree`/`SiblingLayout` read the same anchor with no cwd gate.
 - **Enforced by** `internal/hubgeometry/enforcement_test.go` (`TestEnforcement_GeometryLiterals`).
 
