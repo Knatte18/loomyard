@@ -1,6 +1,6 @@
 // enforcement_test.go is a repo-wide guard: it walks every package and fails
-// the build if any file outside internal/hubgeometry reaches for raw cwd or top-level
-// git geometry, keeping internal/hubgeometry the sole geometry owner.
+// the build if any file outside internal/lyxcwd reaches for raw cwd or top-level
+// git geometry, keeping internal/lyxcwd the sole geometry owner.
 
 package lyxcwd
 
@@ -62,7 +62,7 @@ func TestStripGoComments(t *testing.T) {
 	}{
 		{
 			name:    "line comment mentioning token is stripped",
-			src:     "package p\n// hubgeometry.Getwd is the only permitted os.Getwd caller\nvar _ = 1\n",
+			src:     "package p\n// lyxcwd.Getwd is the only permitted os.Getwd caller\nvar _ = 1\n",
 			present: false,
 		},
 		{
@@ -87,7 +87,7 @@ func TestStripGoComments(t *testing.T) {
 }
 
 // TestEnforcement walks the repo source tree and verifies that no source file
-// outside internal/hubgeometry and cmd/lyx contains the raw cwd/root primitives
+// outside internal/lyxcwd and cmd/lyx contains the raw cwd/root primitives
 // os.Getwd or git rev-parse --show-toplevel.
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
@@ -96,7 +96,7 @@ func TestEnforcement(t *testing.T) {
 		if !ok {
 			t.Fatal("could not determine test file location")
 		}
-		// Two levels up from internal/hubgeometry/enforcement_test.go → repo root
+		// Two levels up from internal/lyxcwd/enforcement_test.go → repo root
 		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(file)))
 
 		// Predicate: returns true if the bytes contain a banned token.
@@ -134,8 +134,8 @@ func TestEnforcement(t *testing.T) {
 				// Normalize path separators to forward slashes for comparison.
 				pkgDir = filepath.ToSlash(pkgDir)
 
-				// Check allowlist: internal/hubgeometry, cmd/lyx/main.go
-				isAllowed := pkgDir == "internal/hubgeometry" ||
+				// Check allowlist: internal/lyxcwd, cmd/lyx/main.go
+				isAllowed := pkgDir == "internal/lyxcwd" ||
 					(pkgDir == "cmd/lyx" && d.Name() == "main.go")
 
 				// Skip files in the allowlist (they are allowed to contain banned tokens).
@@ -145,7 +145,7 @@ func TestEnforcement(t *testing.T) {
 
 				// Check the file for banned tokens. Comments are stripped first so
 				// that a file which merely *names* a banned token in an explanatory
-				// comment (e.g. scoutcli/cli.go documenting why hubgeometry.Getwd
+				// comment (e.g. scoutcli/cli.go documenting why lyxcwd.Getwd
 				// is the only permitted os.Getwd caller) is not falsely flagged; the
 				// guard is about real code usage, not prose.
 				data, err := os.ReadFile(path)
@@ -234,23 +234,23 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// context. This card converts the guard from a single allowlisted
 	// directory into a per-token map: "-weft" moves to internal/weftname
 	// (the new stdlib-only leaf that owns the "-weft" naming convention),
-	// while every other token stays with internal/hubgeometry, reproducing
+	// while every other token stays with internal/lyxcwd, reproducing
 	// today's behaviour for all of them. Later cards add further owners
 	// (and transitional co-owners) to this map, one token at a time, in
 	// lockstep with the card that moves that token's declaration.
 	geometryTokenOwners := map[string][]string{
-		"_board":     {"internal/hubgeometry"},
+		"_board":     {"internal/lyxcwd"},
 		"-weft":      {"internal/weftname"},
-		"-HUB":       {"internal/hubgeometry"},
-		"_portals":   {"internal/hubgeometry"},
-		"_launchers": {"internal/hubgeometry"},
-		"_raddle":    {"internal/hubgeometry"},
+		"-HUB":       {"internal/lyxcwd"},
+		"_portals":   {"internal/lyxcwd"},
+		"_launchers": {"internal/lyxcwd"},
+		"_raddle":    {"internal/lyxcwd"},
 		// "_lyx" is transitionally co-owned: internal/configengine.LyxDirName is
-		// the single exported declarer, but internal/hubgeometry still declares
+		// the single exported declarer, but internal/lyxcwd still declares
 		// the private, unexported lyxDirName const for its own remaining
 		// _lyx-anchored methods, removed once those methods relocate.
-		"_lyx":     {"internal/configengine", "internal/hubgeometry"},
-		"_pattern": {"internal/hubgeometry"},
+		"_lyx":     {"internal/configengine", "internal/lyxcwd"},
+		"_pattern": {"internal/lyxcwd"},
 	}
 
 	// tokenOwnedByDir reports whether dir is one of tok's registered owners.
@@ -497,7 +497,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		if !ok {
 			t.Fatal("could not determine test file location via runtime.Caller")
 		}
-		// Two filepath.Dir calls walk from internal/hubgeometry/enforcement_test.go → repo root.
+		// Two filepath.Dir calls walk from internal/lyxcwd/enforcement_test.go → repo root.
 		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 
 		var scanned int
@@ -542,12 +542,12 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			t.Fatalf("failed to walk repo tree: %v", err)
 		}
 
-		// Sanity check: at least one production file outside internal/hubgeometry must have
+		// Sanity check: at least one production file outside internal/lyxcwd must have
 		// been scanned so a misconfigured walk (wrong root, all files skipped) cannot
 		// silently produce a vacuous all-pass result.
 		t.Run("scanned_non_empty", func(t *testing.T) {
 			if scanned == 0 {
-				t.Error("geometry-literal guard: no production Go files scanned outside internal/hubgeometry; the AST walk may be misconfigured")
+				t.Error("geometry-literal guard: no production Go files scanned outside internal/lyxcwd; the AST walk may be misconfigured")
 			}
 		})
 
