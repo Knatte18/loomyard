@@ -60,14 +60,12 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 		t.Errorf("layout.Hub = %q; want %q", layout.Hub, expectedContainer)
 	}
 
-	// Prime should be set to the hub path
-	if layout.Prime != hub {
-		t.Errorf("layout.Prime = %q; want %q", layout.Prime, hub)
-	}
-
-	// Repo should be derived from Prime for a resolved real worktree.
-	if layout.Repo != filepath.Base(layout.Prime) {
-		t.Errorf("layout.Repo = %q; want %q", layout.Repo, filepath.Base(layout.Prime))
+	// Repo is derived by trimming HubSuffix off the container directory's base
+	// name — this fixture's container has no "-HUB" suffix, so Repo is simply
+	// its base name unchanged.
+	wantRepo := strings.TrimSuffix(filepath.Base(layout.Hub), hubgeometry.HubSuffix)
+	if layout.Repo != wantRepo {
+		t.Errorf("layout.Repo = %q; want %q", layout.Repo, wantRepo)
 	}
 }
 
@@ -155,11 +153,6 @@ func TestResolve_GeometryMethods(t *testing.T) {
 		t.Errorf("LauncherDir(%q) = %q; want %q", slug, got, expectedLauncherDir)
 	}
 
-	// Test PrimeName
-	expectedHubName := filepath.Base(hub)
-	if got := layout.PrimeName(); got != expectedHubName {
-		t.Errorf("PrimeName() = %q; want %q", got, expectedHubName)
-	}
 }
 
 // TestResolve_ForwardSlashNormalization verifies that forward-slash output
@@ -466,15 +459,20 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
 
-			got := layout.MenuLauncherRel()
+			// primeName is the fixture's own main-worktree basename — CopyHostHub
+			// creates a single-worktree fixture, so hub is its own prime — the
+			// value MenuLauncherRel formerly read off layout.Prime, now sourced
+			// explicitly since fabricengine.PrimeName owns that resolution.
+			primeName := filepath.Base(hub)
+			got := layout.MenuLauncherRel(primeName)
 
 			// Recompute expected via filepath.Rel
 			menuDir := filepath.Dir(layout.MenuLauncherPath())
-			targetPath := filepath.Join(layout.Prime, layout.RelPath)
+			targetPath := filepath.Join(layout.Hub, primeName, layout.RelPath)
 			want, _ := filepath.Rel(menuDir, targetPath)
 
 			if got != want {
-				t.Errorf("MenuLauncherRel() = %q; want %q", got, want)
+				t.Errorf("MenuLauncherRel(%q) = %q; want %q", primeName, got, want)
 			}
 		})
 
@@ -491,15 +489,20 @@ func TestMirroredMethods(t *testing.T) {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
 
-			got := layout.MenuLauncherRel()
+			// primeName is the fixture's own main-worktree basename, same
+			// reasoning as the "at root" sub-test above: hub's git worktree list
+			// still resolves hub itself as the sole (Main) entry, regardless of
+			// which subdirectory Resolve was called from.
+			primeName := filepath.Base(hub)
+			got := layout.MenuLauncherRel(primeName)
 
 			// Recompute expected via filepath.Rel
 			menuDir := filepath.Dir(layout.MenuLauncherPath())
-			targetPath := filepath.Join(layout.Prime, layout.RelPath)
+			targetPath := filepath.Join(layout.Hub, primeName, layout.RelPath)
 			want, _ := filepath.Rel(menuDir, targetPath)
 
 			if got != want {
-				t.Errorf("MenuLauncherRel() = %q; want %q", got, want)
+				t.Errorf("MenuLauncherRel(%q) = %q; want %q", primeName, got, want)
 			}
 		})
 	})

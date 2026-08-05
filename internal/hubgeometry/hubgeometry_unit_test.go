@@ -1,9 +1,7 @@
-// hubgeometry_unit_test.go — pure path-math unit tests for config helpers, constants,
-// and the unexported deriveRepo helper. These tests do not require a git repository and
-// run under standard unit test verification. This file uses the internal `hubgeometry`
-// package (rather than `hubgeometry_test`) specifically so TestDeriveRepo can call the
-// unexported deriveRepo directly without going through Resolve (Test Tier Purity:
-// untagged tests spawn nothing).
+// hubgeometry_unit_test.go — pure path-math unit tests for the _lyx-anchored
+// path helpers that remain in this package and a couple of Layout methods with
+// distinct anchoring rules (DotLyxDir, HubLogsDir). These tests do not require
+// a git repository and run under standard unit test verification.
 
 package hubgeometry
 
@@ -105,48 +103,5 @@ func TestHubLogsDir(t *testing.T) {
 
 	if got != want {
 		t.Errorf("HubLogsDir() = %q; want %q", got, want)
-	}
-}
-
-// TestDeriveRepo covers deriveRepo's two branches (non-empty Prime, empty-Prime
-// fallback to worktreeRoot) plus a trailing-slash input, using plain string inputs
-// rather than a resolved Layout — deriveRepo is pure and deliberately spawn-free.
-func TestDeriveRepo(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name         string
-		prime        string
-		worktreeRoot string
-		want         string
-	}{
-		{
-			name:         "non-empty prime yields base of prime",
-			prime:        filepath.Join("home", "user", "loomyard-HUB", "loomyard"),
-			worktreeRoot: filepath.Join("home", "user", "loomyard-HUB", "feature-branch"),
-			want:         "loomyard",
-		},
-		{
-			name:         "empty prime falls back to worktreeRoot",
-			prime:        "",
-			worktreeRoot: filepath.Join("home", "user", "loomyard-HUB", "loomyard"),
-			want:         "loomyard",
-		},
-		{
-			name:         "trailing slash on prime is handled by filepath.Base",
-			prime:        filepath.Join("home", "user", "loomyard-HUB", "loomyard") + string(filepath.Separator),
-			worktreeRoot: filepath.Join("home", "user", "loomyard-HUB", "feature-branch"),
-			want:         "loomyard",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := deriveRepo(tt.prime, tt.worktreeRoot)
-			if got != tt.want {
-				t.Errorf("deriveRepo(%q, %q) = %q; want %q", tt.prime, tt.worktreeRoot, got, tt.want)
-			}
-		})
 	}
 }

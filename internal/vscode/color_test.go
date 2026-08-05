@@ -114,11 +114,10 @@ func TestPickColor(t *testing.T) {
 
 			layout := &hubgeometry.Layout{
 				Hub:     tmpDir,
-				Prime:   mainPath,
 				RelPath: tt.RelPath,
 			}
 
-			color := PickColor(layout)
+			color := PickColor(layout, filepath.Base(mainPath))
 
 			// Check wantNot constraint
 			if tt.wantNot != "" && color == tt.wantNot {

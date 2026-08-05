@@ -51,7 +51,6 @@ func TestSpawn(t *testing.T) {
 
 			layout := &hubgeometry.Layout{
 				Hub:     container,
-				Prime:   mainWorktreePath,
 				RelPath: tt.relpath,
 			}
 

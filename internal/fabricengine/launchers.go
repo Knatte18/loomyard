@@ -59,8 +59,15 @@ func writeLaunchers(l *hubgeometry.Layout, slug string) error {
 		return fmt.Errorf("mkdir menu launcher dir: %w", err)
 	}
 
-	// Build menu content from MenuLauncherRel
-	menuContent, menuMode := launcherScript(runtime.GOOS, l.MenuLauncherRel(), "ide menu")
+	// Build menu content from MenuLauncherRel, sourcing the prime worktree's
+	// name via the package-local PrimeName rather than a Layout field — a
+	// launcher pointing at an unresolved prime is worse than a failed wire, so
+	// propagate the error rather than degrading to an empty prime name.
+	primeName, err := PrimeName(l)
+	if err != nil {
+		return fmt.Errorf("resolve prime worktree name: %w", err)
+	}
+	menuContent, menuMode := launcherScript(runtime.GOOS, l.MenuLauncherRel(primeName), "ide menu")
 	if err := os.WriteFile(menuPath, menuContent, menuMode); err != nil {
 		return fmt.Errorf("write menu launcher: %w", err)
 	}

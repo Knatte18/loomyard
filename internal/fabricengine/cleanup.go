@@ -89,7 +89,7 @@ func raddleFoldedBack(_ string) bool {
 // force bypasses the _raddle merge-back gate, checked-out branches are always protected.
 func (t *Topology) Cleanup(l *hubgeometry.Layout, apply, force bool) (CleanupResult, error) {
 	// Enumerate host worktrees using git-registered entries only.
-	entries, err := hubgeometry.List(l.WorktreeRoot)
+	entries, err := List(l.WorktreeRoot)
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("list host worktrees: %w", err)
 	}
@@ -171,9 +171,13 @@ type weftBranchCheckout struct {
 
 // listWeftBranches returns every branch in the weft repo with its checked-out worktree path if any.
 func listWeftBranches(l *hubgeometry.Layout) ([]weftBranchCheckout, error) {
+	weftRepoRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		return nil, fmt.Errorf("resolve weft repo root: %w", err)
+	}
 	out, _, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "--format=%(refname:short)\x1f%(worktreepath)"},
-		l.WeftRepoRoot(),
+		weftRepoRoot,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("git branch: %w", err)
@@ -203,9 +207,14 @@ func listWeftBranches(l *hubgeometry.Layout) ([]weftBranchCheckout, error) {
 
 // deleteWeftBranch deletes a weft branch via git branch -D, recording errors in entry.
 func deleteWeftBranch(l *hubgeometry.Layout, branch string, entry *CleanupBranchEntry) bool {
+	weftRepoRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
+		return false
+	}
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "-D", branch},
-		l.WeftRepoRoot(),
+		weftRepoRoot,
 	)
 	if err != nil {
 		entry.Error = fmt.Sprintf("git branch -D %s: %v", branch, err)

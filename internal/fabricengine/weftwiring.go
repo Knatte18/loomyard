@@ -31,9 +31,14 @@ import (
 )
 
 // weftRepoExists reports whether a weft repo exists and is a valid git
-// repository.
+// repository. An unresolvable weft repo root (PrimeName failure) reports
+// false, same as an absent directory — either way, there is no weft repo to
+// find.
 func weftRepoExists(l *hubgeometry.Layout) bool {
-	weftRepoRoot := l.WeftRepoRoot()
+	weftRepoRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		return false
+	}
 
 	info, err := os.Stat(weftRepoRoot)
 	if err != nil || !info.IsDir() {
@@ -49,10 +54,16 @@ func weftRepoExists(l *hubgeometry.Layout) bool {
 }
 
 // weftBranchExists reports whether the weft branch exists in the weft repo.
+// An unresolvable weft repo root reports false, same as a branch that is
+// genuinely absent.
 func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
+	weftRepoRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		return false
+	}
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--verify", "refs/heads/" + branch},
-		l.WeftRepoRoot(),
+		weftRepoRoot,
 	)
 	if err != nil {
 		return false
@@ -64,9 +75,13 @@ func weftBranchExists(l *hubgeometry.Layout, branch string) bool {
 // startPoint to preserve the merge-base for future squash-merge-back.
 func createWeftWorktree(l *hubgeometry.Layout, slug, branch, startPoint string) error {
 	weftPath := l.WeftWorktreePath(slug)
+	weftRepoRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		return fmt.Errorf("resolve weft repo root: %w", err)
+	}
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
-		l.WeftRepoRoot(),
+		weftRepoRoot,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run git worktree add for weft: %w", err)
@@ -123,7 +138,10 @@ func removeJunctionRecords(junctions []hubgeometry.HostJunction) error {
 // if all steps succeed.
 func removeWeftWorktree(l *hubgeometry.Layout, slug, branch string, force, deleteBranch bool) error {
 	weftPath := l.WeftWorktreePath(slug)
-	weftRoot := l.WeftRepoRoot()
+	weftRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		return fmt.Errorf("resolve weft repo root: %w", err)
+	}
 
 	var firstErr error
 

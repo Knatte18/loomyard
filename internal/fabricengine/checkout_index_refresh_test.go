@@ -47,7 +47,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	// correspondence-carrying commit recorded on the original branch.
 	const targetBranch = "index-refresh-target"
 	lyxtest.MustRun(t, l.WorktreeRoot, "git", "branch", targetBranch)
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "branch", fabricengine.WeftBranchName(targetBranch))
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
 	f, err := fabricengine.New(l.WorktreeRoot, l.WeftWorktree())
 	if err != nil {

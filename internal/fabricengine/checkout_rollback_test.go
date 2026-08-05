@@ -45,7 +45,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	lyxtest.MustRun(t, l.WorktreeRoot, "git", "branch", targetBranch)
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "branch", fabricengine.WeftBranchName(targetBranch))
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
 	originalHostBranch := currentBranchOf(t, l.WorktreeRoot)
 	originalWeftBranch := currentBranchOf(t, l.WeftWorktree())
@@ -77,7 +77,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 
 	// The target weft branch pre-existed this Checkout (adopted, not forked), so
 	// the rollback must NOT have deleted it.
-	if !branchExistsAt(t, l.WeftRepoRoot(), fabricengine.WeftBranchName(targetBranch)) {
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(targetBranch)) {
 		t.Errorf("pre-existing weft branch %q deleted by rollback; want it untouched", fabricengine.WeftBranchName(targetBranch))
 	}
 }
@@ -131,7 +131,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	// The branch step 4 forked must be gone: the rolled-back Checkout tears down
 	// exactly what it created.
 	forked := fabricengine.WeftBranchName(targetBranch)
-	if branchExistsAt(t, l.WeftRepoRoot(), forked) {
+	if branchExistsAt(t, mustWeftRepoRoot(t, l), forked) {
 		t.Errorf("forked weft branch %q survived the rollback; want it deleted (orphan branch stranded by fabric's own failed operation)", forked)
 	}
 }

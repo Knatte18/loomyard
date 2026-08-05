@@ -68,18 +68,15 @@ func TestTokenResolve(t *testing.T) {
 	}
 }
 
-// TestTokenResolve_RepoFromEmptyPrimeFallback verifies the repo token reflects
-// Layout.Repo exactly even when Repo was populated via deriveRepo's empty-Prime
-// fallback (hubgeometry's fallback branch, added in batch 1) rather than from a
-// resolved Prime worktree — the token has no opinion about how Repo was derived,
-// only that it reads the field verbatim.
-func TestTokenResolve_RepoFromEmptyPrimeFallback(t *testing.T) {
+// TestTokenResolve_RepoReadsFieldVerbatim verifies the repo token reflects
+// Layout.Repo exactly regardless of how Repo was derived (resolveCore's
+// -HUB-trim derivation, a hand-built literal, or any future derivation) — the
+// token has no opinion about Repo's provenance, only that it reads the field
+// verbatim.
+func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 	t.Parallel()
 
-	// A Layout as hubgeometry.Resolve would produce when Prime resolves empty:
-	// deriveRepo falls back to filepath.Base(WorktreeRoot), so Repo lands here
-	// with no Prime involved at all.
-	layout := &hubgeometry.Layout{Repo: "feature-branch", Prime: ""}
+	layout := &hubgeometry.Layout{Repo: "feature-branch"}
 
 	got := tokenByName(t, "repo").Resolve(Ctx{Layout: layout})
 	if got != "feature-branch" {

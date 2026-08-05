@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -38,6 +39,20 @@ func shaOf(t *testing.T, dir, rev string) string {
 		t.Fatalf("rev-parse %s in %s: err=%v exit=%d", rev, dir, err, exitCode)
 	}
 	return strings.TrimSpace(out)
+}
+
+// mustWeftRepoRoot resolves fabricengine.WeftRepoRoot(l), failing the test on
+// any error — the shared test-package helper for the many call sites across
+// this package's tests that need the weft prime worktree path, now that it is
+// a fabricengine-owned resolution rather than a Layout method.
+func mustWeftRepoRoot(t *testing.T, l *hubgeometry.Layout) string {
+	t.Helper()
+
+	root, err := fabricengine.WeftRepoRoot(l)
+	if err != nil {
+		t.Fatalf("WeftRepoRoot: %v", err)
+	}
+	return root
 }
 
 // TestAddRollback_AdoptedWeftBranchSurvives pre-creates a weft branch carrying
@@ -70,14 +85,14 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// the history the rollback must not destroy. The seeding worktree is
 	// removed again so the branch is free for Add to adopt.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
 	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
 		t.Fatalf("write precious.txt: %v", err)
 	}
 	lyxtest.MustRun(t, seedDir, "git", "add", "precious.txt")
 	lyxtest.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
 	preciousSHA := shaOf(t, seedDir, "HEAD")
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "worktree", "remove", seedDir)
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Inject a deterministic failure AFTER the adopt: a blocker file at the
 	// portal location makes step 9 (createPortal) fail, triggering rollback.
@@ -95,10 +110,10 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 
 	// The adopted branch survives the rollback, still at its unique commit.
-	if !branchExistsAt(t, l.WeftRepoRoot(), weftBranch) {
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := shaOf(t, l.WeftRepoRoot(), "refs/heads/"+weftBranch)
+	branchSHA := shaOf(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}
@@ -185,14 +200,14 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// Pre-create the weft branch with a unique commit that predates the Add,
 	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
 	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
 		t.Fatalf("write precious.txt: %v", err)
 	}
 	lyxtest.MustRun(t, seedDir, "git", "add", "precious.txt")
 	lyxtest.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
 	preciousSHA := shaOf(t, seedDir, "HEAD")
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "worktree", "remove", seedDir)
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the host origin remote so step 11's push fails AFTER step 10b has
 	// already wired the junctions — the mid-add failure this test covers.
@@ -218,10 +233,10 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 
 	// The adopted branch still survives the rollback, exactly as the portal-
 	// blocker variant of this scenario asserts.
-	if !branchExistsAt(t, l.WeftRepoRoot(), weftBranch) {
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Fatalf("adopted weft branch %q was deleted by Add's rollback; want it preserved", weftBranch)
 	}
-	branchSHA := shaOf(t, l.WeftRepoRoot(), "refs/heads/"+weftBranch)
+	branchSHA := shaOf(t, mustWeftRepoRoot(t, l), "refs/heads/"+weftBranch)
 	if branchSHA != preciousSHA {
 		t.Errorf("adopted weft branch %q = %s; want the pre-existing commit %s", weftBranch, branchSHA, preciousSHA)
 	}

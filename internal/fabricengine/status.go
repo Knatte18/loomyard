@@ -1,7 +1,7 @@
 // status.go implements the paired host↔weft status view and host-pollution detection
 // for fabric.
 //
-// Status enumerates all host worktrees via hubgeometry.List, pairs each with its weft
+// Status enumerates all host worktrees via List, pairs each with its weft
 // sibling, reports branch, in-sync verdict, junction health, and scans the host index
 // for any _lyx, _pattern, or _raddle paths that have been accidentally git-tracked
 // (host pollution). A pair is InSync when weftBranch == WeftBranchName(hostBranch),
@@ -72,7 +72,7 @@ type StatusResult struct {
 // host-tracked _lyx/_pattern/_raddle paths. Per-worktree errors are recorded
 // inline in PairStatus.DriftReason / PairStatus.JunctionReason.
 func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
-	entries, err := hubgeometry.List(l.WorktreeRoot)
+	entries, err := List(l.WorktreeRoot)
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("list worktrees: %w", err)
 	}

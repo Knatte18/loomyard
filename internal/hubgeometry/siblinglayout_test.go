@@ -72,9 +72,6 @@ func TestSiblingLayout_EquivalentToResolve(t *testing.T) {
 			if got.RelPath != want.RelPath {
 				t.Errorf("RelPath = %q; want %q", got.RelPath, want.RelPath)
 			}
-			if got.Prime != want.Prime {
-				t.Errorf("Prime = %q; want %q", got.Prime, want.Prime)
-			}
 		})
 	}
 

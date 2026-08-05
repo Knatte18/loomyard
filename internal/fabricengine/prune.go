@@ -42,7 +42,7 @@ type PruneResult struct {
 // weft worktrees and associated portal/launcher directories when apply is true.
 // Per-entry removal errors are recorded in PruneEntry.Error.
 func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error) {
-	entries, err := hubgeometry.List(l.WorktreeRoot)
+	entries, err := List(l.WorktreeRoot)
 	if err != nil {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -129,12 +129,18 @@ func removeStalePair(l *hubgeometry.Layout, slug, weftPath string, pe *PruneEntr
 	_ = removePortal(l, slug)
 	_ = removeLaunchers(l, slug)
 
+	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+	if weftRepoRootErr != nil {
+		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
+		return false
+	}
+
 	removed := false
 
 	if _, statErr := os.Stat(weftPath); statErr == nil {
 		_, _, exitCode, err := gitexec.RunGit(
 			[]string{"worktree", "remove", "--force", weftPath},
-			l.WeftRepoRoot(),
+			weftRepoRoot,
 		)
 		if err != nil {
 			pe.Error = fmt.Sprintf("git worktree remove: %v", err)
@@ -149,8 +155,8 @@ func removeStalePair(l *hubgeometry.Layout, slug, weftPath string, pe *PruneEntr
 		removed = true
 	}
 
-	gitexec.RunGit([]string{"worktree", "prune"}, l.WeftRepoRoot()) //nolint:errcheck
-	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)   //nolint:errcheck
+	gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)   //nolint:errcheck
+	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot) //nolint:errcheck
 
 	return removed
 }

@@ -21,7 +21,6 @@ func newTestLayout(hub, worktreeRoot, relPath string) *hubgeometry.Layout {
 		WorktreeRoot: worktreeRoot,
 		Hub:          hub,
 		RelPath:      relPath,
-		Prime:        worktreeRoot,
 		Repo:         filepath.Base(worktreeRoot),
 	}
 }

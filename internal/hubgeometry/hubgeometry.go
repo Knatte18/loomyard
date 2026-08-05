@@ -55,7 +55,6 @@ type Layout struct {
 	WorktreeRoot string
 	Hub          string
 	RelPath      string
-	Prime        string
 	Repo         string
 }
 
@@ -122,38 +121,13 @@ func resolveCore(cwd string, applyGate bool) (*Layout, error) {
 		}
 	}
 
-	entries, err := List(cwd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get main worktree: %w", err)
-	}
-
-	prime := ""
-	for _, entry := range entries {
-		if entry.Main {
-			// Normalize prime path (git may emit forward slashes)
-			prime = filepath.FromSlash(entry.Path)
-			prime = filepath.Clean(prime)
-			break
-		}
-	}
-
 	return &Layout{
 		Cwd:          cleanCwd,
 		WorktreeRoot: workTreeRoot,
 		Hub:          hub,
 		RelPath:      relPath,
-		Prime:        prime,
-		Repo:         deriveRepo(prime, workTreeRoot),
+		Repo:         strings.TrimSuffix(filepath.Base(hub), HubSuffix),
 	}, nil
-}
-
-// deriveRepo derives the repository name from Prime without spawning git.
-// It returns filepath.Base(prime) when prime is non-empty; otherwise filepath.Base(worktreeRoot).
-func deriveRepo(prime, worktreeRoot string) string {
-	if prime != "" {
-		return filepath.Base(prime)
-	}
-	return filepath.Base(worktreeRoot)
 }
 
 // SiblingLayout derives the Layout for a hub-sibling worktree without spawning git.
@@ -174,7 +148,6 @@ func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 		WorktreeRoot: c,
 		Hub:          l.Hub,
 		RelPath:      relPath,
-		Prime:        l.Prime,
 		Repo:         l.Repo,
 	}
 }
@@ -435,21 +408,14 @@ func (l *Layout) LauncherSpawnRel(slug string) string {
 	return rel
 }
 
-// MenuLauncherRel returns the relative path from the menu launcher directory to the main
-// worktree's subpath for menu spawning.
-func (l *Layout) MenuLauncherRel() string {
-	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.Prime, l.RelPath))
+// MenuLauncherRel returns the relative path from the menu launcher directory to the
+// primeName worktree's subpath for menu spawning. primeName is the main worktree's
+// base name, sourced by the caller via fabricengine.PrimeName(l) — hubgeometry no
+// longer resolves the main worktree itself (that subprocess-backed lookup is
+// fabricengine's, per the Hub Geometry Invariant).
+func (l *Layout) MenuLauncherRel(primeName string) string {
+	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.Hub, primeName, l.RelPath))
 	return rel
-}
-
-// PrimeName returns the base name of the main worktree.
-func (l *Layout) PrimeName() string {
-	return filepath.Base(l.Prime)
-}
-
-// WeftRepoRoot returns the path to the weft Prime worktree (the git -C target for weft worktree add/remove).
-func (l *Layout) WeftRepoRoot() string {
-	return weftname.SiblingPath(l.Hub, l.PrimeName())
 }
 
 // WeftWorktreePath returns the path to a sibling weft worktree with the given slug.

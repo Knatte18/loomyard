@@ -212,24 +212,6 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	assertCheckSet(t, report, CheckWorktreeRoot)
 }
 
-// TestPreflight_EmptyPrime asserts that an injected Layout with no resolved
-// Prime (main worktree) reports a geometry failure, short-circuiting before
-// any of checks 2-4 run.
-func TestPreflight_EmptyPrime(t *testing.T) {
-	t.Parallel()
-
-	f, _ := setupPreflightFixture(t)
-
-	l := *f.Layout
-	l.Prime = ""
-
-	report, err := checkResolved(&l)
-	if err != nil {
-		t.Fatalf("checkResolved: %v", err)
-	}
-	assertCheckSet(t, report, CheckGeometry)
-}
-
 // TestPreflight_HostDirty covers all three ways Clean can observe a dirty
 // host worktree (a tracked-and-modified file, a staged file, and an
 // untracked-only file), plus the genuinely-new weft-dirty-only and

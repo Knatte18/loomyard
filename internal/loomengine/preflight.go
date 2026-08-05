@@ -61,10 +61,12 @@ func Preflight() (Report, error) {
 // checkResolved runs checks 1b–4 against an already-resolved Layout, allowing
 // tests to exercise preconditions in isolation.
 func checkResolved(l *hubgeometry.Layout) (Report, error) {
-	// Check 1b: geometry sanity. Resolve can succeed with no Prime when List
-	// found no main-worktree entry — treat that the same as "not a git repo"
-	// for Preflight's purposes, since there is no coherent worktree to check.
-	if l.Prime == "" {
+	// Check 1b: geometry sanity. A PrimeName resolution failure (List found no
+	// main-worktree entry, or the git subprocess itself failed) is treated the
+	// same as "not a git repo" for Preflight's purposes, since there is no
+	// coherent worktree to check — never a hard error, preserving Preflight's
+	// report-not-error contract.
+	if _, err := fabricengine.PrimeName(l); err != nil {
 		return Report{
 			OK:       false,
 			Failures: []Failure{{Check: CheckGeometry, Reason: "no main worktree resolved"}},

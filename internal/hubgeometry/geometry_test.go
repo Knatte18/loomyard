@@ -170,7 +170,6 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 	t.Parallel()
 
 	hub := "/h"
-	prime := filepath.Join(hub, "main")
 	slug := "feat"
 
 	layout := &hubgeometry.Layout{
@@ -178,7 +177,6 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 		WorktreeRoot: filepath.Join(hub, slug),
 		Hub:          hub,
 		RelPath:      ".",
-		Prime:        prime,
 	}
 
 	// WeftWorktreePath(slug) must equal weftname.SiblingPath(hub, slug).
@@ -189,13 +187,10 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 			slug, gotWorktreePath, hub, slug, wantWorktreePath)
 	}
 
-	// WeftRepoRoot() must equal weftname.SiblingPath(hub, filepath.Base(prime)).
-	gotRepoRoot := layout.WeftRepoRoot()
-	wantRepoRoot := weftname.SiblingPath(hub, filepath.Base(prime))
-	if gotRepoRoot != wantRepoRoot {
-		t.Errorf("WeftRepoRoot() = %q; want SiblingPath(%q, %q) = %q",
-			gotRepoRoot, hub, filepath.Base(prime), wantRepoRoot)
-	}
+	// WeftRepoRoot's replacement (fabricengine.WeftRepoRoot) lives outside this
+	// package now, and its property is held by fabricengine's own retargeted
+	// test callers — an in-package hubgeometry test cannot import fabricengine,
+	// which imports hubgeometry.
 
 	// WeftWorktree() must equal weftname.SiblingPath(hub, filepath.Base(WorktreeRoot)).
 	gotWorktree := layout.WeftWorktree()

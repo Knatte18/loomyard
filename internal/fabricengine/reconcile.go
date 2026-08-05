@@ -90,7 +90,7 @@ type ReconcileResult struct {
 // junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs. Per-worktree
 // errors are recorded in ReconcilePairResult.Error.
 func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
-	entries, err := hubgeometry.List(l.WorktreeRoot)
+	entries, err := List(l.WorktreeRoot)
 	if err != nil {
 		return ReconcileResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -170,7 +170,9 @@ func (t *Topology) reconcileMissingWeft(
 	weftBranch := WeftBranchName(hostBranch)
 
 	if weftBranchExists(hostLayout, weftBranch) {
-		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, hostLayout.WeftRepoRoot())
+		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(hostLayout); weftRepoRootErr == nil {
+			_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)
+		}
 
 		if err := adoptWeftWorktree(hostLayout, weftPath, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("recreate weft worktree: %v", err)
@@ -200,9 +202,13 @@ func (t *Topology) reconcileMissingWeft(
 // adoptWeftWorktree creates a git worktree at weftPath for the existing branch in
 // the weft repo. The branch already exists, so no -b flag is used.
 func adoptWeftWorktree(hostLayout *hubgeometry.Layout, weftPath, branch string) error {
+	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(hostLayout)
+	if weftRepoRootErr != nil {
+		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
+	}
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", weftPath, branch},
-		hostLayout.WeftRepoRoot(),
+		weftRepoRoot,
 	)
 	if err != nil {
 		return fmt.Errorf("git worktree add: %w", err)
@@ -225,7 +231,10 @@ func isRawHostWorktree(hostPath string) bool {
 // worktree, leaving it dormant (no junction wiring). The weft branch forks from
 // the current weft HEAD.
 func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, slug, weftBranch string) error {
-	weftRoot := hostLayout.WeftRepoRoot()
+	weftRoot, err := WeftRepoRoot(hostLayout)
+	if err != nil {
+		return fmt.Errorf("resolve weft repo root: %w", err)
+	}
 
 	parentWeftOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},

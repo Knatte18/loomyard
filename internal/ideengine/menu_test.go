@@ -65,7 +65,6 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 
 	layout := &hubgeometry.Layout{
 		Hub:     container,
-		Prime:   mainWorktreePath,
 		RelPath: ".",
 		Cwd:     mainWorktreePath,
 	}
@@ -124,7 +123,6 @@ design_prefix: proposal-
 
 	layout := &hubgeometry.Layout{
 		Hub:     container,
-		Prime:   mainWorktreePath,
 		RelPath: ".",
 		Cwd:     mainWorktreePath,
 	}
@@ -184,7 +182,6 @@ design_prefix: proposal-
 
 	layout := &hubgeometry.Layout{
 		Hub:     container,
-		Prime:   mainWorktreePath,
 		RelPath: ".",
 		Cwd:     mainWorktreePath,
 	}
@@ -250,7 +247,6 @@ design_prefix: proposal-
 
 	layout := &hubgeometry.Layout{
 		Hub:     container,
-		Prime:   mainWorktreePath,
 		RelPath: ".",
 		Cwd:     mainWorktreePath,
 	}

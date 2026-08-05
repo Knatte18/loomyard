@@ -16,11 +16,11 @@ func TestWeftGeometryMethods(t *testing.T) {
 	tests := []struct {
 		name    string
 		hub     string
-		prime   string
 		slug    string
 		relPath string
-		// Expected results for all eight methods (computed in the test)
-		wantWeftRepoRoot     string
+		// Expected results for the remaining seven methods (computed in the
+		// test); WeftRepoRoot's replacement lives in fabricengine now, and its
+		// property is held by that package's own retargeted test callers.
 		wantWeftWorktree     string
 		wantWeftWorktreePath string
 		wantWeftLyxDir       string
@@ -32,10 +32,8 @@ func TestWeftGeometryMethods(t *testing.T) {
 		{
 			name:                 "/h /h/main feat . case",
 			hub:                  "/h",
-			prime:                "/h/main",
 			slug:                 "x",
 			relPath:              ".",
-			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
 			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "_lyx"),
@@ -47,10 +45,8 @@ func TestWeftGeometryMethods(t *testing.T) {
 		{
 			name:                 "/h /h/main feat sub case",
 			hub:                  "/h",
-			prime:                "/h/main",
 			slug:                 "x",
 			relPath:              "sub",
-			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
 			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub", "_lyx"),
@@ -62,10 +58,8 @@ func TestWeftGeometryMethods(t *testing.T) {
 		{
 			name:                 "/h /h/main feat sub/dir case",
 			hub:                  "/h",
-			prime:                "/h/main",
 			slug:                 "y",
 			relPath:              "sub/dir",
-			wantWeftRepoRoot:     filepath.Join("/h", "main-weft"),
 			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
 			wantWeftWorktreePath: filepath.Join("/h", "y-weft"),
 			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub/dir", "_lyx"),
@@ -83,12 +77,6 @@ func TestWeftGeometryMethods(t *testing.T) {
 				WorktreeRoot: filepath.Join(tt.hub, "feat"),
 				Hub:          tt.hub,
 				RelPath:      tt.relPath,
-				Prime:        tt.prime,
-			}
-
-			// Test WeftRepoRoot()
-			if got := layout.WeftRepoRoot(); got != tt.wantWeftRepoRoot {
-				t.Errorf("WeftRepoRoot() = %q; want %q", got, tt.wantWeftRepoRoot)
 			}
 
 			// Test WeftWorktree()
@@ -163,7 +151,6 @@ func TestHostLyxLinkHereDivergesFromLyxDir(t *testing.T) {
 		WorktreeRoot: filepath.Join("/h", "feat"),
 		Hub:          "/h",
 		RelPath:      ".",
-		Prime:        "/h/main",
 	}
 	if atRoot.HostLyxLinkHere() != atRoot.LyxDir() {
 		t.Errorf("HostLyxLinkHere() = %q; want it to equal LyxDir() = %q when Cwd == WorktreeRoot",
@@ -178,32 +165,10 @@ func TestHostLyxLinkHereDivergesFromLyxDir(t *testing.T) {
 		WorktreeRoot: filepath.Join("/h", "feat"),
 		Hub:          "/h",
 		RelPath:      "sub",
-		Prime:        "/h/main",
 	}
 	if atSub.HostLyxLinkHere() == atSub.LyxDir() {
 		t.Errorf("HostLyxLinkHere() = %q; want it to differ from LyxDir() = %q when Cwd != WorktreeRoot+RelPath",
 			atSub.HostLyxLinkHere(), atSub.LyxDir())
-	}
-}
-
-// TestWeftGeometryAtMainWorktree verifies that WeftRepoRoot and WeftWorktree are equal
-// when resolving at the main worktree.
-func TestWeftGeometryAtMainWorktree(t *testing.T) {
-	hub := "/h"
-	main := "/h/main"
-	layout := &hubgeometry.Layout{
-		Cwd:          main,
-		WorktreeRoot: main,
-		Hub:          hub,
-		RelPath:      ".",
-		Prime:        main,
-	}
-
-	weftRepoRoot := layout.WeftRepoRoot()
-	weftWorktree := layout.WeftWorktree()
-
-	if weftRepoRoot != weftWorktree {
-		t.Errorf("At main: WeftRepoRoot() = %q, WeftWorktree() = %q; want equal", weftRepoRoot, weftWorktree)
 	}
 }
 
@@ -216,7 +181,6 @@ func TestHostJunctions(t *testing.T) {
 	tests := []struct {
 		name    string
 		hub     string
-		prime   string
 		slug    string
 		relPath string
 		names   []string
@@ -224,7 +188,6 @@ func TestHostJunctions(t *testing.T) {
 		{
 			name:    "prime-derived layout, root case",
 			hub:     "/h",
-			prime:   "/h/main",
 			slug:    "feat",
 			relPath: ".",
 			names:   []string{"_lyx", "_pattern"},
@@ -232,7 +195,6 @@ func TestHostJunctions(t *testing.T) {
 		{
 			name:    "non-prime worktree layout, root case",
 			hub:     "/h",
-			prime:   "/h/main",
 			slug:    "other",
 			relPath: ".",
 			names:   []string{"_lyx", "_pattern"},
@@ -240,7 +202,6 @@ func TestHostJunctions(t *testing.T) {
 		{
 			name:    "subpath case",
 			hub:     "/h",
-			prime:   "/h/main",
 			slug:    "feat",
 			relPath: "sub",
 			names:   []string{"_lyx", "_pattern"},
@@ -248,7 +209,6 @@ func TestHostJunctions(t *testing.T) {
 		{
 			name:    "empty names yields zero records",
 			hub:     "/h",
-			prime:   "/h/main",
 			slug:    "feat",
 			relPath: ".",
 			names:   []string{},
@@ -256,7 +216,6 @@ func TestHostJunctions(t *testing.T) {
 		{
 			name:    "3-name slice yields three records in input order",
 			hub:     "/h",
-			prime:   "/h/main",
 			slug:    "feat",
 			relPath: ".",
 			names:   []string{"_lyx", "_pattern", "_extra"},
@@ -264,7 +223,6 @@ func TestHostJunctions(t *testing.T) {
 		{
 			name:    "reversed 2-name slice preserves given order, no forced sort",
 			hub:     "/h",
-			prime:   "/h/main",
 			slug:    "feat",
 			relPath: ".",
 			names:   []string{"_pattern", "_lyx"},
@@ -278,7 +236,6 @@ func TestHostJunctions(t *testing.T) {
 				WorktreeRoot: filepath.Join(tt.hub, tt.slug),
 				Hub:          tt.hub,
 				RelPath:      tt.relPath,
-				Prime:        tt.prime,
 			}
 
 			junctions := layout.HostJunctions(tt.slug, tt.names)
@@ -315,7 +272,6 @@ func TestHostJunctions(t *testing.T) {
 			WorktreeRoot: filepath.Join("/h", "main"),
 			Hub:          "/h",
 			RelPath:      ".",
-			Prime:        filepath.Join("/h", "main"),
 		}
 
 		junctions := layout.HostJunctions("slug", []string{"_lyx", "_pattern"})

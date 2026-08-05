@@ -52,7 +52,6 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 		WorktreeRoot: worktreeDir,
 		Hub:          hubDir,
 		RelPath:      ".",
-		Prime:        worktreeDir,
 	}
 	e := New(cfg, layout)
 

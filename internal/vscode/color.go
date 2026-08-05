@@ -34,8 +34,12 @@ var mainColor = "#2d7d46"
 
 // PickColor selects an unused non-green color for a child worktree, scanning
 // sibling .vscode/settings.json files for existing assignments. Returns the
-// first unused non-green palette color.
-func PickColor(l *hubgeometry.Layout) string {
+// first unused non-green palette color. primeName is the main worktree's base
+// name (the caller sources it via fabricengine.PrimeName(l), never resolved
+// here — pulling the entire fabric engine into a colour picker would
+// reintroduce a `git worktree list` subprocess per call); the prime-skip step
+// is omitted when primeName is empty.
+func PickColor(l *hubgeometry.Layout, primeName string) string {
 	used := make(map[string]bool)
 
 	entries, err := os.ReadDir(l.Hub)
@@ -44,14 +48,12 @@ func PickColor(l *hubgeometry.Layout) string {
 		return palette[1]
 	}
 
-	primeBase := filepath.Base(l.Prime)
-
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
-		if entry.Name() == primeBase {
+		if primeName != "" && entry.Name() == primeName {
 			continue
 		}
 

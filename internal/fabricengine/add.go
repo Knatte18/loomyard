@@ -106,7 +106,11 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	}
 
 	if !weftRepoExists(l) {
-		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", l.WeftRepoRoot())
+		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+		if weftRepoRootErr != nil {
+			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
+		}
+		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", weftRepoRoot)
 	}
 
 	weftTarget := l.WeftWorktreePath(slug)
@@ -144,10 +148,14 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 
 	weftPath := l.WeftWorktreePath(slug)
 	if weftBranchAlreadyExists {
+		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+		if weftRepoRootErr != nil {
+			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
+		}
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
 		_, _, exitCode, err := gitexec.RunGit(
 			[]string{"worktree", "add", weftPath, weftBranch},
-			l.WeftRepoRoot(),
+			weftRepoRoot,
 		)
 		if err != nil {
 			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
