@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
@@ -81,7 +82,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 		if err != nil {
 			return UnwireVerbResult{}, err
 		}
-		pathspec := ScopedPathspec(l.RelPath, []string{hubgeometry.LyxDirName})
+		pathspec := ScopedPathspec(l.RelPath, []string{configengine.LyxDirName})
 		if _, _, err := f.commitWeft(pathspec, "lyx fabric unwire: clear _lyx", opts); err != nil {
 			return UnwireVerbResult{}, err
 		}

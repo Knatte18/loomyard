@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestLoadConfig_HappyPath tests that LoadConfig loads a valid config
@@ -21,17 +21,17 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write a config file with both keys
-	configFile := hubgeometry.ConfigFile(tmpDir, "fabric")
+	configFile := configengine.ConfigFile(tmpDir, "fabric")
 	content := "branch_prefix: hanf/\npathspec: _lyx _raddle\n"
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -64,16 +64,16 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 func TestLoadConfig_EmptyBranchPrefix(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	configFile := hubgeometry.ConfigFile(tmpDir, "fabric")
+	configFile := configengine.ConfigFile(tmpDir, "fabric")
 	content := "branch_prefix: \"\"\npathspec: _lyx\n"
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
@@ -95,16 +95,16 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("TEST_FABRIC_BRANCH_PREFIX", "feature/")
 
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	configFile := hubgeometry.ConfigFile(tmpDir, "fabric")
+	configFile := configengine.ConfigFile(tmpDir, "fabric")
 	content := "branch_prefix: ${env:TEST_FABRIC_BRANCH_PREFIX}\npathspec: _lyx\n"
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)

@@ -17,7 +17,7 @@ func TestLoomStatusFile(t *testing.T) {
 		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "status.json")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "status.json")
 	if got := l.LoomStatusFile(); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}
@@ -31,7 +31,7 @@ func TestLoomStatusLock(t *testing.T) {
 		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "status.json.lock")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "status.json.lock")
 	if got := l.LoomStatusLock(); got != want {
 		t.Errorf("LoomStatusLock() = %q; want %q", got, want)
 	}
@@ -43,7 +43,7 @@ func TestLoomStatusFile_CwdEqualsWorktreeRoot(t *testing.T) {
 		Cwd:          filepath.Join("home", "user", "repo"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "status.json")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "status.json")
 	if got := l.LoomStatusFile(); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}

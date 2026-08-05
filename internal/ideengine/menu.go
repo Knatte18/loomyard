@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
@@ -50,7 +51,7 @@ func Menu(l *hubgeometry.Layout, in io.Reader, out io.Writer) error {
 
 		slug := filepath.Base(entry.Path)
 
-		lyxPath := filepath.Join(entry.Path, l.RelPath, hubgeometry.LyxDirName)
+		lyxPath := filepath.Join(entry.Path, l.RelPath, configengine.LyxDirName)
 		stat, err := os.Stat(lyxPath)
 		if err != nil || !stat.IsDir() {
 			continue

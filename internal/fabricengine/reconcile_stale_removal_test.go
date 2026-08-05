@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -62,7 +63,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
 	boardDir := hubgeometry.BoardDir(l.Hub)
-	cfgPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 
 	// Narrow the repo-wide pathspec to "_lyx" alone before Add: batch 5 card
 	// 20 makes Add eagerly wire the repo-wide pathspec it sees at call time
@@ -203,7 +204,7 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	// is reserved (hubgeometry.HubReservedNames), so a custom name is used
 	// instead, per the batch's own test-plan wording.
 	boardDir := hubgeometry.BoardDir(l.Hub)
-	cfgPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _pattern _extra\n"), 0o644); err != nil {
 		t.Fatalf("widen repo-wide pathspec: %v", err)
 	}
@@ -248,7 +249,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 
 	// Corrupt the repo-wide fabric.yaml into unparseable YAML.
 	boardDir := hubgeometry.BoardDir(l.Hub)
-	cfgPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(cfgPath, []byte("not-valid-yaml: [unterminated"), 0o644); err != nil {
 		t.Fatalf("corrupt repo-wide config: %v", err)
 	}

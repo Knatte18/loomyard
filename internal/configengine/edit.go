@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"runtime"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -89,9 +88,9 @@ func Edit(baseDir, module, template string, edit EditorFunc) error {
 		return err
 	}
 
-	path := hubgeometry.ConfigFile(baseDir, module)
+	path := ConfigFile(baseDir, module)
 
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := ConfigDir(baseDir)
 	scaffolded, err := scaffoldIfMissing(path, configDir, template)
 	if err != nil {
 		return err

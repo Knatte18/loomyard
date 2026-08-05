@@ -13,6 +13,7 @@ package webstercli
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
@@ -21,7 +22,7 @@ import (
 func weftCommit(layout *hubgeometry.Layout, label string) (bool, error) {
 	weftWorktree := layout.WeftWorktree()
 	opts := fabricengine.EnvSyncOptions()
-	files := fabricengine.ScopedPathspec(layout.RelPath, []string{hubgeometry.LyxDirName})
+	files := fabricengine.ScopedPathspec(layout.RelPath, []string{configengine.LyxDirName})
 
 	var committed bool
 	if !opts.SkipGit {

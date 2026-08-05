@@ -11,7 +11,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -26,8 +25,8 @@ func Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, err
 		return nil, err
 	}
 
-	path := hubgeometry.ConfigFile(baseDir, module)
-	configDir := hubgeometry.ConfigDir(baseDir)
+	path := ConfigFile(baseDir, module)
+	configDir := ConfigDir(baseDir)
 
 	scaffolded, err := scaffoldIfMissing(path, configDir, template)
 	if err != nil {

@@ -1,7 +1,7 @@
 // leaf_enforcement_test.go enforces the Modelspec Leaf Invariant: production
 // code in internal/modelspec imports ONLY the standard library,
-// internal/hubgeometry, and gopkg.in/yaml.v3 — never configreg, configengine,
-// envsource, yamlengine, or any feature package. Unlike lyxtest's
+// internal/configengine, and gopkg.in/yaml.v3 — never configreg, envsource,
+// yamlengine, hubgeometry, or any feature package. Unlike lyxtest's
 // leaf_enforcement_test.go (a banned-import denylist), this check is an
 // ALLOWLIST: any import outside the allowed set fails the test, so a future
 // stray dependency is caught with no list maintenance required.
@@ -21,7 +21,7 @@ import (
 // allowedImports are the only non-stdlib import paths production code in
 // this package may use.
 var allowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/hubgeometry": true,
+	"github.com/Knatte18/loomyard/internal/configengine": true,
 	"gopkg.in/yaml.v3": true,
 }
 
@@ -84,6 +84,6 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("Modelspec Leaf Invariant violated; imports outside the allowlist (stdlib + hubgeometry + yaml.v3) found: %v", failures)
+		t.Errorf("Modelspec Leaf Invariant violated; imports outside the allowlist (stdlib + configengine + yaml.v3) found: %v", failures)
 	}
 }

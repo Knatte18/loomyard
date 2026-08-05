@@ -21,18 +21,17 @@ import (
 // configuration and weft/board/hub geometry. All path construction must use these
 // constants, never inline string literals.
 const (
-	// LyxDirName is the directory name for the lyx system directory within a worktree.
-	LyxDirName = "_lyx"
+	// lyxDirName is the directory name for the lyx system directory within a worktree.
+	// internal/configengine.LyxDirName is the single exported declarer of this token now;
+	// this private const is a transitional second declarer for hubgeometry's own
+	// remaining _lyx-anchored methods (PerchRunsDir, PlanDir, BuilderDir, WebsterDir,
+	// LyxDir, LoomStatusFile, LoomStatusLock, DiscussionDir, PortalTarget, HostLyxLink,
+	// HostLyxLinkHere, WeftLyxDir, WeftLyxDirFor), removed once those methods relocate.
+	lyxDirName = "_lyx"
 
 	// dotLyxDirName is the directory name for ephemeral, machine-bound lyx state (e.g. reed runtime
-	// state), distinct from LyxDirName ("_lyx") which is durable and weft-synced.
+	// state), distinct from lyxDirName ("_lyx") which is durable and weft-synced.
 	dotLyxDirName = ".lyx"
-
-	// configDirName is the subdirectory name within LyxDirName that holds configuration files.
-	configDirName = "config"
-
-	// dotEnvName is the filename for environment variable overrides.
-	dotEnvName = ".env"
 
 	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
 	// It is the single source of this literal; use BoardDir(hub) to obtain the full path.
@@ -180,21 +179,11 @@ func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
 	}
 }
 
-// ConfigDir returns the path to the config directory within a baseDir.
-func ConfigDir(baseDir string) string {
-	return filepath.Join(baseDir, LyxDirName, configDirName)
-}
-
-// ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.
-func ConfigFile(baseDir, module string) string {
-	return filepath.Join(ConfigDir(baseDir), module+".yaml")
-}
-
 // PerchRunsDir returns the path to the base directory for perch run artifacts.
 // It lives under _lyx so artifacts are weft-synced. Per the Hub Geometry Invariant, no other
 // package may construct this path.
 func PerchRunsDir(baseDir string) string {
-	return filepath.Join(baseDir, LyxDirName, "perch")
+	return filepath.Join(baseDir, lyxDirName, "perch")
 }
 
 // PlanDir returns the path to the plan's artifact directory within a baseDir.
@@ -202,14 +191,14 @@ func PerchRunsDir(baseDir string) string {
 // It lives under _lyx so the plan is weft-synced. Per the Hub Geometry Invariant, no other
 // package may construct this path.
 func PlanDir(baseDir string) string {
-	return filepath.Join(baseDir, LyxDirName, "plan")
+	return filepath.Join(baseDir, lyxDirName, "plan")
 }
 
 // PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`.
 // Callers use this for relative plan-file pointers (e.g. planparser's Card.SourcePath token).
 // It uses the stdlib path package so the token is always forward-slash, never OS-dependent.
 func PlanDirRel() string {
-	return path.Join(LyxDirName, "plan")
+	return path.Join(lyxDirName, "plan")
 }
 
 // PlanDir returns the path to the Plan phase's output directory for this worktree.
@@ -230,7 +219,7 @@ func (l *Layout) PlanOverview() string {
 // pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
 // Invariant, no other package may construct this path.
 func BuilderDir(baseDir string) string {
-	return filepath.Join(baseDir, LyxDirName, "builder")
+	return filepath.Join(baseDir, lyxDirName, "builder")
 }
 
 // BuilderReportsDir returns the path to the directory holding builder's per-batch report files.
@@ -244,7 +233,7 @@ func BuilderReportsDir(baseDir string) string {
 // pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
 // Invariant, no other package may construct this path.
 func WebsterDir(baseDir string) string {
-	return filepath.Join(baseDir, LyxDirName, "webster")
+	return filepath.Join(baseDir, lyxDirName, "webster")
 }
 
 // WebsterReportsDir returns the path to the directory holding webster's per-batch report files.
@@ -259,11 +248,6 @@ func WebsterReportsDir(baseDir string) string {
 // Per the Hub Geometry Invariant, no other package may construct this path.
 func WebsterPromptsDir(baseDir string) string {
 	return filepath.Join(WebsterDir(baseDir), "prompts")
-}
-
-// DotEnv returns the path to the .env file within a baseDir.
-func DotEnv(baseDir string) string {
-	return filepath.Join(baseDir, dotEnvName)
 }
 
 // PatternDir returns the path to the _pattern directory within a baseDir.
@@ -301,7 +285,7 @@ func WeftHostSlug(name string) (slug string, ok bool) {
 }
 
 // HubReservedNames returns the hub-structural reserved name-set that hubgeometry owns:
-// _raddle, _board, _portals, _launchers. It deliberately excludes LyxDirName and PatternDirName,
+// _raddle, _board, _portals, _launchers. It deliberately excludes configengine.LyxDirName and PatternDirName,
 // which are config-migrated junction names folded into the reserved set by IsReservedHubName's
 // junctionNames parameter instead.
 func HubReservedNames() []string {
@@ -328,7 +312,7 @@ func IsReservedHubName(name string, junctionNames []string) bool {
 
 // LyxDir returns the path to the _lyx directory in the current working directory.
 func (l *Layout) LyxDir() string {
-	return filepath.Join(l.Cwd, LyxDirName)
+	return filepath.Join(l.Cwd, lyxDirName)
 }
 
 // DotLyxDir returns the path to the ephemeral .lyx directory (machine-bound runtime state),
@@ -341,13 +325,13 @@ func (l *Layout) DotLyxDir() string {
 // It is WorktreeRoot-anchored, not Cwd-anchored, to ensure a caller invoked from a subdirectory
 // resolves the one true status.json at the worktree root.
 func (l *Layout) LoomStatusFile() string {
-	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json")
+	return filepath.Join(l.WorktreeRoot, lyxDirName, "status.json")
 }
 
 // LoomStatusLock returns the path to the advisory lock file guarding concurrent access to LoomStatusFile().
 // It shares LoomStatusFile's WorktreeRoot anchoring.
 func (l *Layout) LoomStatusLock() string {
-	return filepath.Join(l.WorktreeRoot, LyxDirName, "status.json.lock")
+	return filepath.Join(l.WorktreeRoot, lyxDirName, "status.json.lock")
 }
 
 // ScoutDaemonStateFile returns the path to the scout daemon's runtime state file for the given
@@ -367,7 +351,7 @@ func (l *Layout) ScoutDaemonLock(lang string) string {
 // (the decision-record.md/support-log.md pair). It is WorktreeRoot-anchored, not Cwd-anchored.
 // Per the Hub Geometry Invariant, no other package may construct this path.
 func (l *Layout) DiscussionDir() string {
-	return filepath.Join(l.WorktreeRoot, LyxDirName, "discussion")
+	return filepath.Join(l.WorktreeRoot, lyxDirName, "discussion")
 }
 
 // DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
@@ -416,7 +400,7 @@ func (l *Layout) PortalLink(slug string) string {
 
 // PortalTarget returns the path to the _lyx directory within a portal for the given slug.
 func (l *Layout) PortalTarget(slug string) string {
-	return filepath.Join(l.Hub, slug, l.RelPath, LyxDirName)
+	return filepath.Join(l.Hub, slug, l.RelPath, lyxDirName)
 }
 
 // LaunchersDir returns the path to the _launchers directory in the hub.
@@ -481,13 +465,13 @@ func (l *Layout) WeftWorktree() string {
 // WeftLyxDir returns the path to the _lyx directory in the current worktree's weft sibling.
 // It is the junction target for lyx weft and the pathspec base for weft operations.
 func (l *Layout) WeftLyxDir() string {
-	return filepath.Join(l.WeftWorktree(), l.RelPath, LyxDirName)
+	return filepath.Join(l.WeftWorktree(), l.RelPath, lyxDirName)
 }
 
 // WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
 // It is the junction target paired by spawn seeds and pairs with HostLyxLink(slug).
 func (l *Layout) WeftLyxDirFor(slug string) string {
-	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, LyxDirName)
+	return filepath.Join(l.WeftWorktreePath(slug), l.RelPath, lyxDirName)
 }
 
 // WeftPatternDir returns the path to the _pattern directory in the current worktree's weft sibling.
@@ -512,14 +496,14 @@ func (l *Layout) WeftRaddleDir() string {
 // HostLyxLink returns the path to the _lyx junction link in a named slug's host worktree.
 // It is the host-side junction endpoint that points into the paired weft worktree via WeftLyxDirFor(slug).
 func (l *Layout) HostLyxLink(slug string) string {
-	return filepath.Join(l.WorktreePath(slug), l.RelPath, LyxDirName)
+	return filepath.Join(l.WorktreePath(slug), l.RelPath, lyxDirName)
 }
 
 // HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
 // Derived from WorktreeRoot+RelPath, not from Cwd. It serves as the host-side junction endpoint
 // paired with WeftLyxDir().
 func (l *Layout) HostLyxLinkHere() string {
-	return filepath.Join(l.WorktreeRoot, l.RelPath, LyxDirName)
+	return filepath.Join(l.WorktreeRoot, l.RelPath, lyxDirName)
 }
 
 // HostPatternLink returns the path to the _pattern junction link in a named slug's host worktree.

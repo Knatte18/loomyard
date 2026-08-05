@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
@@ -50,7 +51,7 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "add", ".")
 	mustRunMenu(t, mainWorktreePath, "git", "commit", "-m", "initial")
 
-	if err := os.MkdirAll(filepath.Join(mainWorktreePath, hubgeometry.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(mainWorktreePath, configengine.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create main _lyx: %v", err)
 	}
 
@@ -94,15 +95,15 @@ func TestMenuExcludesMain(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	if err := os.MkdirAll(filepath.Join(childPath, hubgeometry.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(childPath, configengine.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create child _lyx: %v", err)
 	}
 
-	configDir := hubgeometry.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-
@@ -158,11 +159,11 @@ func TestMenuRequiresLyxDir(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	configDir := hubgeometry.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-
@@ -210,7 +211,7 @@ func TestMenuNumericSelection(t *testing.T) {
 	for _, child := range []string{"child1", "child2"} {
 		childPath := filepath.Join(container, child)
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", child+"-branch", childPath)
-		if err := os.MkdirAll(filepath.Join(childPath, hubgeometry.LyxDirName), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(childPath, configengine.LyxDirName), 0o755); err != nil {
 			t.Fatalf("failed to create %s _lyx: %v", child, err)
 		}
 	}
@@ -223,11 +224,11 @@ func TestMenuNumericSelection(t *testing.T) {
 		}
 	}()
 
-	configDir := hubgeometry.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-

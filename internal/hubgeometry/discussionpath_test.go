@@ -18,7 +18,7 @@ func TestDiscussionDir(t *testing.T) {
 		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "discussion")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "discussion")
 	if got := l.DiscussionDir(); got != want {
 		t.Errorf("DiscussionDir() = %q; want %q", got, want)
 	}
@@ -32,7 +32,7 @@ func TestDiscussionDecisionRecord(t *testing.T) {
 		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "discussion", "decision-record.md")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "discussion", "decision-record.md")
 	if got := l.DiscussionDecisionRecord(); got != want {
 		t.Errorf("DiscussionDecisionRecord() = %q; want %q", got, want)
 	}
@@ -46,7 +46,7 @@ func TestDiscussionSupportLog(t *testing.T) {
 		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "discussion", "support-log.md")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "discussion", "support-log.md")
 	if got := l.DiscussionSupportLog(); got != want {
 		t.Errorf("DiscussionSupportLog() = %q; want %q", got, want)
 	}
@@ -58,7 +58,7 @@ func TestDiscussionDir_CwdEqualsWorktreeRoot(t *testing.T) {
 		Cwd:          filepath.Join("home", "user", "repo"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "discussion")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "discussion")
 	if got := l.DiscussionDir(); got != want {
 		t.Errorf("DiscussionDir() = %q; want %q", got, want)
 	}

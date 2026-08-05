@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -41,10 +42,10 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
 	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
@@ -87,7 +88,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 	commitFile(t, weft, "base.txt", "base", "weft base commit")
 
 	// Uncommitted changes for CommitWeft to stage, plus exclusion artifacts.
-	builderDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "builder")
+	builderDir := filepath.Join(weft, relPath, configengine.LyxDirName, "builder")
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		t.Fatalf("mkdir weft _lyx: %v", err)
 	}
@@ -102,7 +103,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 	}
 
 	// Webster's tree: durable state rides a builder commit, not machine-local.
-	websterDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "webster")
+	websterDir := filepath.Join(weft, relPath, configengine.LyxDirName, "webster")
 	if err := os.MkdirAll(filepath.Join(websterDir, "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir weft webster dir: %v", err)
 	}
@@ -187,9 +188,9 @@ func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 
 			// git reports paths with forward slashes regardless of OS.
-			base := hubgeometry.LyxDirName
+			base := configengine.LyxDirName
 			if tt.relPath != "." {
-				base = filepath.ToSlash(tt.relPath) + "/" + hubgeometry.LyxDirName
+				base = filepath.ToSlash(tt.relPath) + "/" + configengine.LyxDirName
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 

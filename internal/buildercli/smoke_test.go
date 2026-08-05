@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -40,11 +41,11 @@ func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string
 	commitFile(t, hub, "base.txt", "base", "base commit")
 	seedPlanFixture(t, hub, builderengineTestdataDir("plan-valid"))
 
-	configDir := hubgeometry.ConfigDir(hub)
+	configDir := configengine.ConfigDir(hub)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(hub, "reed"), []byte(reedengine.ConfigTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(hub, "reed"), []byte(reedengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write reed config: %v", err)
 	}
 

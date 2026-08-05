@@ -23,7 +23,7 @@
 //
 // scoutengine is a leaf package: it returns typed Go results and typed
 // errors and imports nothing beyond stdlib, internal/hubgeometry,
-// internal/lock, internal/proc, and gopkg.in/yaml.v3 — no io.Writer, no exit
+// internal/configengine, internal/lock, internal/proc, and gopkg.in/yaml.v3 — no io.Writer, no exit
 // codes, no internal/output. internal/scoutcli is the sole consumer
 // that maps engine results/errors onto the internal/output JSON envelope
 // (output.Ok/output.Err), exactly the CLI/Cobra Invariant's "engine returns
@@ -109,7 +109,7 @@
 //     BuiltinRegistry() exposes this to any caller (the CLI uses it when no
 //     lyx-hub overlay base is resolvable).
 //   - Optional servers.yaml overlay (LoadRegistry(baseDir)): loaded via
-//     hubgeometry.ConfigFile(baseDir, "servers") — never hand-joined, per the
+//     configengine.ConfigFile(baseDir, "servers") — never hand-joined, per the
 //     Hub Geometry Invariant. An absent file is not an error (built-ins
 //     suffice); a present file decodes with yaml.Decoder.KnownFields(true)
 //     (an unknown field anywhere is a loud error naming the offending entry

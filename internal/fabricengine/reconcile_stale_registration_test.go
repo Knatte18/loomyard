@@ -32,6 +32,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -123,10 +124,10 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
 	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}

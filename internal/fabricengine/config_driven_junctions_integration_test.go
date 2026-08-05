@@ -22,6 +22,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -105,10 +106,10 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	// seedRepoWideFabricConfig but with this test's narrow "_lyx"-only
 	// pathspec instead of the default template.
 	boardDir := hubgeometry.BoardDir(fixture.Layout.Hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))

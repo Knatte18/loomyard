@@ -18,7 +18,7 @@ func TestLayoutPlanDir(t *testing.T) {
 		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "plan")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "plan")
 	if got := l.PlanDir(); got != want {
 		t.Errorf("PlanDir() = %q; want %q", got, want)
 	}
@@ -32,7 +32,7 @@ func TestLayoutPlanOverview(t *testing.T) {
 		Cwd: filepath.Join("home", "user", "repo", "sub", "dir"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "plan", "00-overview.md")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "plan", "00-overview.md")
 	if got := l.PlanOverview(); got != want {
 		t.Errorf("PlanOverview() = %q; want %q", got, want)
 	}
@@ -44,7 +44,7 @@ func TestLayoutPlanDir_CwdEqualsWorktreeRoot(t *testing.T) {
 		Cwd:          filepath.Join("home", "user", "repo"),
 	}
 
-	want := filepath.Join(l.WorktreeRoot, LyxDirName, "plan")
+	want := filepath.Join(l.WorktreeRoot, lyxDirName, "plan")
 	if got := l.PlanDir(); got != want {
 		t.Errorf("PlanDir() = %q; want %q", got, want)
 	}

@@ -14,8 +14,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestReconcile_DryRun verifies that "lyx config reconcile" without --apply writes
@@ -31,12 +31,12 @@ func TestReconcile_DryRun(t *testing.T) {
 	}
 
 	// Create config directory with a sample board file.
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
 
-	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
+	boardPath := configengine.ConfigFile(tmpDir, "board")
 	originalContent := "path: board\nstale_key: old_value\n"
 	if err := os.WriteFile(boardPath, []byte(originalContent), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
@@ -121,7 +121,7 @@ func TestReconcile_Apply(t *testing.T) {
 	}
 
 	// Create config directory.
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestReconcile_Apply(t *testing.T) {
 	// entirely (its config is repo-wide at hubgeometry.BoardDir, materialized
 	// via ReconcileFabricAt at clone time, never per-worktree), "board" is the
 	// generic module this reconcile-writes-to-disk assertion exercises instead.
-	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
+	boardPath := configengine.ConfigFile(tmpDir, "board")
 	if _, err := os.Stat(boardPath); err != nil {
 		t.Errorf("board.yaml not created: %v", err)
 	}

@@ -245,8 +245,12 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		"_portals":   {"internal/hubgeometry"},
 		"_launchers": {"internal/hubgeometry"},
 		"_raddle":    {"internal/hubgeometry"},
-		"_lyx":       {"internal/hubgeometry"},
-		"_pattern":   {"internal/hubgeometry"},
+		// "_lyx" is transitionally co-owned: internal/configengine.LyxDirName is
+		// the single exported declarer, but internal/hubgeometry still declares
+		// the private, unexported lyxDirName const for its own remaining
+		// _lyx-anchored methods, removed once those methods relocate.
+		"_lyx":     {"internal/configengine", "internal/hubgeometry"},
+		"_pattern": {"internal/hubgeometry"},
 	}
 
 	// tokenOwnedByDir reports whether dir is one of tok's registered owners.

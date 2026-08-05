@@ -29,7 +29,7 @@ func menu(l *hubgeometry.Layout, baseDir string, in io.Reader, out io.Writer, ed
 	// Print numbered picker with configured/default status.
 	for i, name := range names {
 		// Check if config file exists.
-		configPath := hubgeometry.ConfigFile(baseDir, name)
+		configPath := configengine.ConfigFile(baseDir, name)
 		_, err := os.Stat(configPath)
 		status := "(default)"
 		if err == nil {

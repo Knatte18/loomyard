@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
@@ -43,16 +44,16 @@ func seedCwd(t *testing.T) string {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	if err := os.MkdirAll(filepath.Join(cwd, hubgeometry.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cwd, configengine.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	if err := os.MkdirAll(hubgeometry.ConfigDir(cwd), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(cwd), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write board config with all template keys; path: is no longer a template key.
 	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
-	if err := os.WriteFile(hubgeometry.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -799,11 +800,11 @@ func TestCLIBoardPathResolution(t *testing.T) {
 	}
 
 	// Seed _lyx/config/board.yaml without path: (not a template key).
-	if err := os.MkdirAll(hubgeometry.ConfigDir(worktree), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(worktree), 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
 	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
-	if err := os.WriteFile(hubgeometry.ConfigFile(worktree, "board"), []byte(configContent), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(worktree, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
 

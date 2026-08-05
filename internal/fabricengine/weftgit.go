@@ -14,9 +14,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -68,7 +68,7 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // through, makes every committer correct by construction without fabric
 // needing to import any module's CLI/engine package.
 //
-// Each pattern is `**/` + hubgeometry.LyxDirName + "/*/" + <name>, matching
+// Each pattern is `**/` + configengine.LyxDirName + "/*/" + <name>, matching
 // at ANY depth (multiple hubs at different RelPath depths share one weft
 // checkout) and at exactly one module-name segment. The lock pattern instead
 // uses "/*/**/*.lock" — one more `**` segment — so it also reaches locks
@@ -91,9 +91,9 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // future module adopting either convention is covered with no fabricengine
 // change.
 var crossModuleMachineLocalExcludes = []string{
-	"**/" + hubgeometry.LyxDirName + "/*/**/*.lock",
-	"**/" + hubgeometry.LyxDirName + "/*/pause",
-	"**/" + hubgeometry.LyxDirName + "/*/prompts/",
+	"**/" + configengine.LyxDirName + "/*/**/*.lock",
+	"**/" + configengine.LyxDirName + "/*/pause",
+	"**/" + configengine.LyxDirName + "/*/prompts/",
 }
 
 // seedWeftArtifactExcludes appends fabric's own operational artifacts (the

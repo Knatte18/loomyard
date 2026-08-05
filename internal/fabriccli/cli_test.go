@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -41,10 +42,10 @@ func setupCLIRepo(t *testing.T) string {
 	t.Chdir(f.Hub)
 
 	boardDir := hubgeometry.BoardDir(filepath.Dir(f.Hub))
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: wt-\npathspec: _lyx\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: wt-\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write fabric.yaml: %v", err)
 	}
 	return f.Hub
@@ -244,10 +245,10 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	// fixture.Container is the real hubgeometry Hub (fixture.Hub's parent; see
 	// CopyPaired's own doc comment), matching hubgeometry.Resolve(fixture.Hub).Hub.
 	boardDir := hubgeometry.BoardDir(fixture.Container)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create board config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write board fabric.yaml: %v", err)
 	}
 
@@ -256,7 +257,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	t.Chdir(fixture.Hub)
 
 	// Modify a file in the weft config that would be committed.
-	weftConfigFile := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -414,7 +415,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// The prime host worktree's _lyx/_pattern junctions must be wired.
 	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
-	for _, name := range []string{hubgeometry.LyxDirName, hubgeometry.PatternDirName} {
+	for _, name := range []string{configengine.LyxDirName, hubgeometry.PatternDirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {
@@ -439,7 +440,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	boardDir := hubgeometry.BoardDir(hubPath)
 	for _, relPath := range []string{
 		hubgeometry.FabricAnchorName,
-		filepath.Join(hubgeometry.LyxDirName, "config", "fabric.yaml"),
+		filepath.Join(configengine.LyxDirName, "config", "fabric.yaml"),
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
 		if tracked == "" {
@@ -450,7 +451,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	// Per-worktree module configs (e.g. "board") must have been reconciled
 	// on the weft side.
 	weftBase := filepath.Join(weftname.SiblingPath(hubPath, "clonecli-host"), "backend")
-	boardConfigPath := hubgeometry.ConfigFile(weftBase, "board")
+	boardConfigPath := configengine.ConfigFile(weftBase, "board")
 	if _, err := os.Stat(boardConfigPath); err != nil {
 		t.Errorf("per-worktree board config missing at %s: %v", boardConfigPath, err)
 	}

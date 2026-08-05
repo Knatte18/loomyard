@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -33,10 +34,10 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
 	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
@@ -93,7 +94,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 	// Uncommitted changes under the webster pathspec, so CommitWeft has
 	// something real to commit -- plus the three artifacts the exclusion set
 	// must keep out of that commit.
-	websterDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "webster")
+	websterDir := filepath.Join(weft, relPath, configengine.LyxDirName, "webster")
 	if err := os.MkdirAll(filepath.Join(websterDir, "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir weft _lyx: %v", err)
 	}
@@ -110,7 +111,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 
 	// Builder's own tree, in the same shared _lyx: its durable state must
 	// still ride a webster commit, its pause flag must not.
-	builderDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "builder")
+	builderDir := filepath.Join(weft, relPath, configengine.LyxDirName, "builder")
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		t.Fatalf("mkdir weft builder dir: %v", err)
 	}
@@ -218,9 +219,9 @@ func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 
 			// git always reports commit contents with forward slashes,
 			// regardless of the OS-native separators the layout carries.
-			base := hubgeometry.LyxDirName
+			base := configengine.LyxDirName
 			if tt.relPath != "." {
-				base = filepath.ToSlash(tt.relPath) + "/" + hubgeometry.LyxDirName
+				base = filepath.ToSlash(tt.relPath) + "/" + configengine.LyxDirName
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 

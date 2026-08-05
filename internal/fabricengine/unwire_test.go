@@ -22,6 +22,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
@@ -62,13 +63,13 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 
 	got := slices.Clone(res.JunctionsRemoved)
 	sort.Strings(got)
-	want := []string{"_extra", hubgeometry.LyxDirName, hubgeometry.PatternDirName}
+	want := []string{"_extra", configengine.LyxDirName, hubgeometry.PatternDirName}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("res.JunctionsRemoved (sorted) = %v; want %v", got, want)
 	}
 
-	for _, name := range []string{"_extra", hubgeometry.LyxDirName, hubgeometry.PatternDirName} {
+	for _, name := range []string{"_extra", configengine.LyxDirName, hubgeometry.PatternDirName} {
 		link := filepath.Join(hostLayout.WorktreeRoot, name)
 		if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
 			t.Errorf("junction %s still exists after Unwire (stat err: %v)", link, statErr)
@@ -216,7 +217,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	if err := os.WriteFile(anchorPath, []byte(".\n"), 0o644); err != nil {
 		t.Fatalf("seed .fabric-anchor: %v", err)
 	}
-	fabricConfigPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
@@ -240,7 +241,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	if _, statErr := os.Stat(fabricConfigPath); statErr != nil {
 		t.Errorf("repo-wide fabric.yaml missing after Unwire: %v", statErr)
 	}
-	hostLyxLink := filepath.Join(hostLayout.WorktreeRoot, hubgeometry.LyxDirName)
+	hostLyxLink := filepath.Join(hostLayout.WorktreeRoot, configengine.LyxDirName)
 	if _, statErr := os.Lstat(hostLyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("host _lyx junction %s still exists after Unwire (stat err: %v)", hostLyxLink, statErr)
 	}

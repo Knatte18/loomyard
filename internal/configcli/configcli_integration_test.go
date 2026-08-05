@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -109,7 +110,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Assert _lyx/config/fabric.yaml is tracked/committed in the weft worktree.
 	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
-	configRelPath := hubgeometry.ConfigFile(".", "fabric")
+	configRelPath := configengine.ConfigFile(".", "fabric")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")
@@ -272,10 +273,10 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
 	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}

@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // TestLoadConfig_HappyPath tests that LoadConfig loads a valid config
@@ -23,17 +23,17 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write a config file with all template keys (path: is not a template key)
-	configFile := hubgeometry.ConfigFile(tmpDir, "board")
+	configFile := configengine.ConfigFile(tmpDir, "board")
 	content := `readme: Home.md
 design_prefix: proposal-
 `
@@ -66,17 +66,17 @@ func TestLoadConfig_AbsolutePathResolution(t *testing.T) {
 	absBoard := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write config with an absolute path: key that should be ignored.
-	configFile := hubgeometry.ConfigFile(tmpDir, "board")
+	configFile := configengine.ConfigFile(tmpDir, "board")
 	content := `path: ` + absBoard + `
 readme: Home.md
 design_prefix: proposal-
@@ -104,17 +104,17 @@ func TestLoadConfig_RelativePathResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write config with a relative path: key that should be ignored.
-	configFile := hubgeometry.ConfigFile(tmpDir, "board")
+	configFile := configengine.ConfigFile(tmpDir, "board")
 	content := `path: ../custom_board
 readme: Home.md
 design_prefix: proposal-
@@ -145,17 +145,17 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 	t.Setenv("TEST_BOARD_PATH", absBoard)
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write config with an env-variable path: key that should be ignored.
-	configFile := hubgeometry.ConfigFile(tmpDir, "board")
+	configFile := configengine.ConfigFile(tmpDir, "board")
 	content := `path: ${env:TEST_BOARD_PATH}
 readme: Home.md
 design_prefix: proposal-

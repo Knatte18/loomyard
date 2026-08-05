@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 func TestRunDispatchesToBoard(t *testing.T) {
@@ -33,15 +33,15 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(cwd)
+	configDir := configengine.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(cwd, "board")
+	configPath := configengine.ConfigFile(cwd, "board")
 	// Write a template-complete board config. path: is no longer a template key
 	// (the board data dir is paths-owned), so only readme/design_prefix remain.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
@@ -75,15 +75,15 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(cwd)
+	configDir := configengine.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(cwd, "board")
+	configPath := configengine.ConfigFile(cwd, "board")
 	// Write a template-complete board config.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
@@ -193,11 +193,11 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(cwd)
+	configDir := configengine.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}

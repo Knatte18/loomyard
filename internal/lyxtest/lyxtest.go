@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
@@ -36,14 +37,14 @@ func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string)
 	tb.Helper()
 
 	// Create config directory if it doesn't exist.
-	configDir := hubgeometry.ConfigDir(repoDir)
+	configDir := configengine.ConfigDir(repoDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		tb.Fatalf("mkdir config dir: %v", err)
 	}
 
 	// Write each module's config file.
 	for module, content := range configByModule {
-		configPath := hubgeometry.ConfigFile(repoDir, module)
+		configPath := configengine.ConfigFile(repoDir, module)
 		if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 			tb.Fatalf("write config file %s: %v", module, err)
 		}
@@ -179,7 +180,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 
 		// Create _lyx/config with neutral placeholder (no real config files).
 		// Tests needing real config seed it via SeedConfig.
-		lyxConfigDir := hubgeometry.ConfigDir(weftPrime)
+		lyxConfigDir := configengine.ConfigDir(weftPrime)
 		if err := os.MkdirAll(lyxConfigDir, 0o755); err != nil {
 			panic(err)
 		}
@@ -226,7 +227,7 @@ func buildWeftOnly() (weftPath, bare string) {
 		// TestPushIntegration can commit the "_lyx" pathspec. This fixture only
 		// needs some tracked file under _lyx, not a real config layout; tests that
 		// need real config call SeedConfig after CopyWeft.
-		lyxDir := filepath.Join(weftPath, hubgeometry.LyxDirName)
+		lyxDir := filepath.Join(weftPath, configengine.LyxDirName)
 		if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 			panic(err)
 		}

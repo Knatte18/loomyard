@@ -13,14 +13,24 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/envsource"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
+
+// LyxDirName is the directory name for the lyx system directory within a
+// worktree. internal/configengine is the single declarer of this token; every
+// other module joins its own private relative-path constant onto a baseDir
+// directly, never onto a fused "_lyx/..." literal (per the Hub Geometry
+// Invariant's per-segment join rule).
+const LyxDirName = "_lyx"
+
+// configDirName is the subdirectory name within LyxDirName that holds
+// configuration files.
+const configDirName = "config"
 
 // FindBaseDir checks if <cwd>/_lyx exists, performing a strict check without
 // walking up to parent directories. Returns cwd on success or an error on failure.
 func FindBaseDir(cwd string) (string, error) {
-	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(cwd, LyxDirName)
 	_, err := os.Stat(lyxDir)
 	if os.IsNotExist(err) {
 		return "", fmt.Errorf("not initialized: _lyx/ directory not found")
@@ -28,6 +38,16 @@ func FindBaseDir(cwd string) (string, error) {
 		return "", fmt.Errorf("stat _lyx: %w", err)
 	}
 	return cwd, nil
+}
+
+// ConfigDir returns the path to the config directory within a baseDir.
+func ConfigDir(baseDir string) string {
+	return filepath.Join(baseDir, LyxDirName, configDirName)
+}
+
+// ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.
+func ConfigFile(baseDir, module string) string {
+	return filepath.Join(ConfigDir(baseDir), module+".yaml")
 }
 
 // Load loads and resolves configuration from a YAML file using a template.
@@ -39,7 +59,7 @@ func Load(baseDir, module string, template []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	cfgPath := hubgeometry.ConfigFile(baseDir, module)
+	cfgPath := ConfigFile(baseDir, module)
 	fileBytes, err := os.ReadFile(cfgPath)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("config file %s not found; run \"lyx config reconcile\"", cfgPath)

@@ -27,7 +27,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -62,7 +62,7 @@ func ConfigTemplate() string {
 // LoadConfig reads burler.yaml. A missing file returns zero Config.
 // When present, it is decoded with strict yaml.Decoder.
 func LoadConfig(baseDir string) (Config, error) {
-	path := hubgeometry.ConfigFile(baseDir, "burler")
+	path := configengine.ConfigFile(baseDir, "burler")
 
 	data, err := os.ReadFile(path)
 	if err != nil {

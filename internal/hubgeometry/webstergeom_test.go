@@ -19,7 +19,7 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 
 		baseDir := "/home/user/project"
 		got := WebsterDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "webster")
+		want := filepath.Join(baseDir, lyxDirName, "webster")
 
 		if got != want {
 			t.Errorf("WebsterDir(%q) = %q; want %q", baseDir, got, want)
@@ -31,7 +31,7 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 
 		baseDir := "/home/user/project"
 		got := WebsterReportsDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "webster", "reports")
+		want := filepath.Join(baseDir, lyxDirName, "webster", "reports")
 
 		if got != want {
 			t.Errorf("WebsterReportsDir(%q) = %q; want %q", baseDir, got, want)
@@ -43,7 +43,7 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 
 		baseDir := "/home/user/project"
 		got := WebsterPromptsDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "webster", "prompts")
+		want := filepath.Join(baseDir, lyxDirName, "webster", "prompts")
 
 		if got != want {
 			t.Errorf("WebsterPromptsDir(%q) = %q; want %q", baseDir, got, want)

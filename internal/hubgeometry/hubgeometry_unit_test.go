@@ -12,41 +12,22 @@ import (
 	"testing"
 )
 
-// TestConfigHelpers tests the free-function config path helpers.
+// TestConfigHelpers tests the free-function _lyx-anchored path helpers that
+// remain in hubgeometry (PerchRunsDir, PlanDir, BuilderDir, BuilderReportsDir).
+// ConfigDir, ConfigFile, DotEnv and the exported LyxDirName constant moved to
+// internal/configengine (and DotEnv to internal/envsource); their own
+// coverage now lives in those packages' test files. The want-expressions here
+// use the private, unexported lyxDirName transitional const, since this file
+// is in-package and these methods still anchor on it until they relocate.
 func TestConfigHelpers(t *testing.T) {
 	t.Parallel()
-
-	t.Run("ConfigDir", func(t *testing.T) {
-		t.Parallel()
-
-		baseDir := "/home/user/project"
-		got := ConfigDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "config")
-
-		if got != want {
-			t.Errorf("ConfigDir(%q) = %q; want %q", baseDir, got, want)
-		}
-	})
-
-	t.Run("ConfigFile", func(t *testing.T) {
-		t.Parallel()
-
-		baseDir := "/home/user/project"
-		module := "myapp"
-		got := ConfigFile(baseDir, module)
-		want := filepath.Join(baseDir, LyxDirName, "config", "myapp.yaml")
-
-		if got != want {
-			t.Errorf("ConfigFile(%q, %q) = %q; want %q", baseDir, module, got, want)
-		}
-	})
 
 	t.Run("PerchRunsDir", func(t *testing.T) {
 		t.Parallel()
 
 		baseDir := "/home/user/project"
 		got := PerchRunsDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "perch")
+		want := filepath.Join(baseDir, lyxDirName, "perch")
 
 		if got != want {
 			t.Errorf("PerchRunsDir(%q) = %q; want %q", baseDir, got, want)
@@ -58,7 +39,7 @@ func TestConfigHelpers(t *testing.T) {
 
 		baseDir := "/home/user/project"
 		got := PlanDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "plan")
+		want := filepath.Join(baseDir, lyxDirName, "plan")
 
 		if got != want {
 			t.Errorf("PlanDir(%q) = %q; want %q", baseDir, got, want)
@@ -70,7 +51,7 @@ func TestConfigHelpers(t *testing.T) {
 
 		baseDir := "/home/user/project"
 		got := BuilderDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "builder")
+		want := filepath.Join(baseDir, lyxDirName, "builder")
 
 		if got != want {
 			t.Errorf("BuilderDir(%q) = %q; want %q", baseDir, got, want)
@@ -82,33 +63,12 @@ func TestConfigHelpers(t *testing.T) {
 
 		baseDir := "/home/user/project"
 		got := BuilderReportsDir(baseDir)
-		want := filepath.Join(baseDir, LyxDirName, "builder", "reports")
+		want := filepath.Join(baseDir, lyxDirName, "builder", "reports")
 
 		if got != want {
 			t.Errorf("BuilderReportsDir(%q) = %q; want %q", baseDir, got, want)
 		}
 	})
-
-	t.Run("DotEnv", func(t *testing.T) {
-		t.Parallel()
-
-		baseDir := "/home/user/project"
-		got := DotEnv(baseDir)
-		want := filepath.Join(baseDir, ".env")
-
-		if got != want {
-			t.Errorf("DotEnv(%q) = %q; want %q", baseDir, got, want)
-		}
-	})
-}
-
-// TestLyxDirNameConstant verifies that LyxDirName is exported and has the expected value.
-func TestLyxDirNameConstant(t *testing.T) {
-	t.Parallel()
-
-	if LyxDirName != "_lyx" {
-		t.Errorf("LyxDirName = %q; want %q", LyxDirName, "_lyx")
-	}
 }
 
 // TestDotLyxDir verifies that DotLyxDir resolves to "<Cwd>/.lyx" and is distinct from

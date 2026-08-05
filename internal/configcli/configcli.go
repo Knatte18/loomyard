@@ -42,7 +42,7 @@ func printModule(baseDir string, out io.Writer, module string) int {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
-	path := hubgeometry.ConfigFile(baseDir, module)
+	path := configengine.ConfigFile(baseDir, module)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -71,7 +71,7 @@ func printAll(baseDir string, out io.Writer) int {
 		// Write a section delimiter so the reader can separate module blocks.
 		fmt.Fprintf(out, "# %s\n", name)
 
-		path := hubgeometry.ConfigFile(baseDir, name)
+		path := configengine.ConfigFile(baseDir, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {

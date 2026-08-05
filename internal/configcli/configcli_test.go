@@ -53,13 +53,13 @@ func TestEditOneSuccess(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -85,13 +85,13 @@ func TestEditOneUnknownModule(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -129,13 +129,13 @@ func TestEditOneAbort(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -160,13 +160,13 @@ func TestEditOneSyncFails(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -196,13 +196,13 @@ func TestMenuSelection(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -234,13 +234,13 @@ func TestMenuQuit(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -267,13 +267,13 @@ func TestMenuInvalidSelection(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create a fake _lyx/config/board.yaml to satisfy FindBaseDir
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# temp\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -304,16 +304,16 @@ func TestMenuStatus(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Create _lyx/config directory
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
 	// Create board.yaml and fabric.yaml to mark them as (configured)
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "board"), []byte("# board\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "board"), []byte("# board\n"), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, "fabric"), []byte("# fabric\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, "fabric"), []byte("# fabric\n"), 0o644); err != nil {
 		t.Fatalf("failed to write fabric.yaml: %v", err)
 	}
 	// builder.yaml not created, so it should show (default)
@@ -362,11 +362,11 @@ func makeLayoutAt(baseDir string) *hubgeometry.Layout {
 // seedModuleConfig writes YAML content to the config file for the named module under baseDir.
 func seedModuleConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()
-	dir := hubgeometry.ConfigDir(baseDir)
+	dir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(baseDir, module), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(baseDir, module), []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to seed config for module %s: %v", module, err)
 	}
 }
@@ -445,7 +445,7 @@ func TestPrintModule_Seeded(t *testing.T) {
 func TestPrintModule_KnownButUnseeded(t *testing.T) {
 	baseDir := t.TempDir()
 	// Create the config directory but not the fabric.yaml file.
-	if err := os.MkdirAll(hubgeometry.ConfigDir(baseDir), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 
