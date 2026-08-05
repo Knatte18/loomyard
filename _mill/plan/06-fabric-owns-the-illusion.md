@@ -77,11 +77,15 @@ External interface batch 7 consumes: `fabricengine.BoardDir(hubPath)`, and the n
   - `internal/fabricengine/unwire.go`
   - `internal/fabricengine/warpforward_integration_test.go`
   - `internal/fabricengine/weftwiring.go`
+  - `internal/lyxcwd/geometry_test.go`
   - `internal/lyxcwd/lyxcwd.go`
-- **Creates:** none
+  - `internal/lyxcwd/lyxcwd_test.go`
+  - `internal/lyxcwd/weft_test.go`
+- **Creates:**
+  - `internal/fabricengine/weftpaths_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete `WeftWorktree`, `WeftWorktreePath`, `WeftLyxDir`, `WeftLyxDirFor`, `WeftRaddleDir` and `WeftHostSlug` from `internal/lyxcwd/lyxcwd.go`. Re-declare each in `internal/fabricengine/weftwiring.go` as a function taking `*lyxcwd.Location`, unexported unless card 30 already exported it: `weftWorktreePath(l, slug)`, `weftLyxDirFor(l, slug)`, `weftRaddleDir(l)`, `WeftHostSlug(name)` (exported — `cleanup.go` and `prune.go` are in-package but `branchname.go`'s parsing is part of the package's public naming contract; keep it exported only if an out-of-package caller exists, otherwise unexport it). `WeftWorktreePath` has **9 production call sites, all inside `fabricengine`** (`add.go:111,144`, `weftwiring.go:66,86,125`, `reconcile.go:104`, `remove.go:54`, `status.go:86`, `prune.go:61`), so it is a pure in-package privatization with no external fallout. `WeftRaddleDir` has zero callers anywhere; delete it outright rather than relocating dead surface. `fabriccli/weft_verbs.go` is the one out-of-package caller and takes the card-24 accessor. Every relocated body keeps `weftname.SiblingPath` as its name source — the `-weft` token stays owned by `internal/weftname`, and `fabricengine` must not re-declare it.
+- **Requirements:** Delete `WeftWorktree`, `WeftWorktreePath`, `WeftLyxDir`, `WeftLyxDirFor`, `WeftRaddleDir` and `WeftHostSlug` from `internal/lyxcwd/lyxcwd.go`. **The module's own tests go with them**, or package `lyxcwd` stops compiling the moment the methods leave: `weft_test.go`, `lyxcwd_test.go` and `geometry_test.go` between them hold ~67 references to this surface. Lift those sub-tests into the new `internal/fabricengine/weftpaths_test.go` — untagged, same table shapes, rewritten against the relocated functions (`weftWorktreePath(l, slug)` in place of `layout.WeftWorktreePath(slug)`) over a `&lyxcwd.Location{...}` literal instead of a `*Layout` one. Do not delete the coverage: these tables pin the `-weft` sibling naming across the container/base/subpath combinations that the illusion depends on, and they are the reason a wrong `HubPath`-vs-`WorktreePath()` base would be caught here rather than at runtime. `TestHostLyxLinkHereDivergesFromLyxDir` (`weft_test.go:154-186`) belongs to card 32's surface, not this one — leave it in place for that card to move. Re-declare each in `internal/fabricengine/weftwiring.go` as a function taking `*lyxcwd.Location`, unexported unless card 30 already exported it: `weftWorktreePath(l, slug)`, `weftLyxDirFor(l, slug)`, `WeftHostSlug(name)` (exported — `cleanup.go` and `prune.go` are in-package but `branchname.go`'s parsing is part of the package's public naming contract; keep it exported only if an out-of-package caller exists, otherwise unexport it). `WeftWorktreePath` has **9 production call sites, all inside `fabricengine`** (`add.go:111,144`, `weftwiring.go:66,86,125`, `reconcile.go:104`, `remove.go:54`, `status.go:86`, `prune.go:61`), so it is a pure in-package privatization with no external fallout. `WeftRaddleDir` has zero callers anywhere; delete it outright rather than relocating dead surface — which is why it is absent from the re-declare list above, not an omission. `fabriccli/weft_verbs.go` is the one out-of-package caller and takes the accessor card 30 adds. Every relocated body keeps `weftname.SiblingPath` as its name source — the `-weft` token stays owned by `internal/weftname`, and `fabricengine` must not re-declare it.
 - **Commit:** `refactor(fabricengine): own the weft path surface`
 
 ### Card 32: move the host-junction surface into fabricengine
@@ -90,6 +94,7 @@ External interface batch 7 consumes: `fabricengine.BoardDir(hubPath)`, and the n
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/configengine/config.go`
 - **Edits:**
+  - `internal/fabricengine/checkout_rollback_test.go`
   - `internal/fabricengine/config_driven_junctions_integration_test.go`
   - `internal/fabricengine/doc.go`
   - `internal/fabricengine/drift.go`
@@ -98,16 +103,21 @@ External interface batch 7 consumes: `fabricengine.BoardDir(hubPath)`, and the n
   - `internal/fabricengine/junction_repoint_test.go`
   - `internal/fabricengine/junction_test.go`
   - `internal/fabricengine/reconcile.go`
+  - `internal/fabricengine/reconcile_stale_registration_test.go`
+  - `internal/fabricengine/reconcile_stale_removal_test.go`
   - `internal/fabricengine/remove_junctions_integration_test.go`
   - `internal/fabricengine/unwire.go`
   - `internal/fabricengine/unwire_test.go`
   - `internal/fabricengine/weftwiring.go`
   - `internal/fabricengine/weftwiring_test.go`
   - `internal/lyxcwd/lyxcwd.go`
-- **Creates:** none
+  - `internal/lyxcwd/lyxcwd_test.go`
+  - `internal/lyxcwd/weft_test.go`
+- **Creates:**
+  - `internal/fabricengine/hostjunction_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete the `HostJunction` type and the `HostLyxLink`, `HostLyxLinkHere`, `HostJunctions` and `HostJunctionsHere` methods from `internal/lyxcwd/lyxcwd.go`. Re-declare `HostJunction` and the four constructors in `internal/fabricengine/junction.go` as functions over `*lyxcwd.Location`, unexported: `hostLyxLink(l, slug)`, `hostJunctions(l, slug, names)`, `hostJunctionsHere(l, names)`. `HostLyxLinkHere` (`lyxcwd.go:530`) does not match the `Host*Link` shape the discussion's glob describes and has **zero production callers outside the module**; delete it if card 32 finds no in-package caller, and relocate it unexported only if one exists. Keep `HostJunction`'s three fields and their meaning unchanged — `Name`, `Link`, `Target` — because `seedGitExclude` reads only `j.Name` off the record and batch 7 depends on that shape. The relocated bodies join `configengine.LyxDirName` per segment, never a fused literal. `drift.go`'s `Healthy` and `reconcile.go`'s `checkJunctionHealth`/`junctionRepointedDetail` keep iterating `hostJunctionsHere(l, RepoWiredNames(l))` exactly as they do today — this card changes where the function lives, not what any of them checks.
+- **Requirements:** Delete the `HostJunction` type and the `HostLyxLink`, `HostLyxLinkHere`, `HostJunctions` and `HostJunctionsHere` methods from `internal/lyxcwd/lyxcwd.go`. Re-declare `HostJunction` and the four constructors in `internal/fabricengine/junction.go` as functions over `*lyxcwd.Location`, unexported: `hostLyxLink(l, slug)`, `hostJunctions(l, slug, names)`, `hostJunctionsHere(l, names)`. `HostLyxLinkHere` (`lyxcwd.go:530`) does not match the `Host*Link` shape the discussion's glob describes and has zero *production* callers outside the module — but it is **not** dead, so relocate it as unexported `hostLyxLinkHere(l)` in `internal/fabricengine/junction.go` rather than deleting it. Seven live callers sit in `fabricengine`'s own tests, in four files, all four in this card's `Edits:`: `checkout_rollback_test.go:56,111`, `reconcile_stale_removal_test.go:130,269,379`, `reconcile_stale_registration_test.go:485` and `junction_pattern_integration_test.go:385`. The first six are plain `hostLayout.HostLyxLinkHere()` calls and become `hostLyxLinkHere(hostLayout)`. The seventh is a func value in a table — `linkFor: func(l *hubgeometry.Layout) string { return l.HostLyxLinkHere() }` — and becomes `func(l *lyxcwd.Location) string { return hostLyxLinkHere(l) }`, the type parameter changing with the rename. Three of those four files are also edited under card 31 for an unrelated reason; that card retargets the `Weft*` calls and this one the host-junction calls, so the two edits do not overlap within a file. Keep `HostJunction`'s three fields and their meaning unchanged — `Name`, `Link`, `Target` — because `seedGitExclude` reads only `j.Name` off the record and batch 7 depends on that shape. The relocated bodies join `configengine.LyxDirName` per segment, never a fused literal. `drift.go`'s `Healthy` and `reconcile.go`'s `checkJunctionHealth`/`junctionRepointedDetail` keep iterating `hostJunctionsHere(l, RepoWiredNames(l))` exactly as they do today — this card changes where the function lives, not what any of them checks. As in card 31, the module's own coverage moves with the surface: `lyxcwd_test.go` and `weft_test.go` hold ~86 references to these four methods and the `HostJunction` record, and package `lyxcwd` will not compile once they leave. Lift those sub-tests into the new `internal/fabricengine/hostjunction_test.go` — untagged — including `TestHostLyxLinkHereDivergesFromLyxDir` (`weft_test.go:154-186`), which is the one assertion that pins *why* the two differ: `hostLyxLinkHere` is anchored on the worktree root while the `_lyx` durable directory is anchored on `AnchorPath()`, so they coincide at the worktree root and diverge under a subpath anchor. That distinction is exactly what batch 2's rebase onto `AnchorPath()` puts at risk, so the test is load-bearing rather than incidental and must survive the move intact.
 - **Commit:** `refactor(fabricengine): own the host-junction records`
 
 ### Card 33: move the portal and launcher surface into fabricengine

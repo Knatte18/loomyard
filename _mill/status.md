@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: _mill/plan
@@ -22,4 +22,6 @@ plan-review-r1  '2026-08-05T13:10:47Z'
 plan-fix-r1  '2026-08-05T13:10:47Z'
 plan-review-r2  '2026-08-05T13:21:16Z'
 plan-fix-r2  '2026-08-05T13:21:16Z'
+plan-review-r3  '2026-08-05T13:49:29Z'
+plan-fix-r3  '2026-08-05T13:49:29Z'
 ```

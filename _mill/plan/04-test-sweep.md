@@ -185,7 +185,7 @@ External interface batch 5 consumes: a green tree, `configengine.LyxDirName` as 
 - **Requirements:** Same mechanical substitution as cards 8-12, applied to test files. Each synthetic `hubgeometry.Layout` struct literal becomes a `lyxcwd.Location` literal supplying `HubPath`/`WorktreeName`/`AnchorRel` in place of `Hub`/`WorktreeRoot`/`RelPath`, with `Cwd` dropped. A literal that set only `WorktreeRoot` becomes `HubPath: filepath.Dir(<old value>), WorktreeName: filepath.Base(<old value>)`. A literal that set `Cwd` to a value different from `WorktreeRoot` was exercising a subdirectory invocation; under the strict gate that case is now `ErrCwdOutsideAnchor`, so the test either sets `AnchorRel` to the intended subpath or asserts the error — decide per test from what it is actually checking, and never by loosening the gate. `cmd/lyx/main_integration_test.go` and `exitcode_test.go` exercise the CLI end to end from a fixture; a subdirectory invocation there is now `ErrCwdOutsideAnchor` and the assertion must reflect that rather than be relaxed.
 - **Commit:** `test(config,board,ide): point tests at lyxcwd.Location`
 
-### Card 18: update the leaf and seam invariants
+### Card 18: update the leaf and seam invariants, and sweep the comment-only references
 
 - **Context:**
   - `internal/lyxcwd/lyxcwd.go`
@@ -193,17 +193,42 @@ External interface batch 5 consumes: a green tree, `configengine.LyxDirName` as 
   - `manifest/designs/fabric-unified-view.md`
 - **Edits:**
   - `CONSTRAINTS.md`
-  - `internal/modelspec/leaf_enforcement_test.go`
-  - `internal/scoutengine/leaf_enforcement_test.go`
-  - `internal/tokenvocab/leaf_enforcement_test.go`
-  - `internal/pattern/leaf_enforcement_test.go`
+  - `cmd/lyx/registration_test.go`
+  - `cmd/lyx/unknown_subcommand_test.go`
+  - `internal/boardengine/boardtest/bench_cli_test.go`
+  - `internal/builderengine/doc.go`
+  - `internal/builderengine/plan.go`
+  - `internal/builderengine/state.go`
+  - `internal/burlerengine/prompt.go`
+  - `internal/configcli/reconcile_test.go`
+  - `internal/fabricengine/snapshot_integration_test.go`
+  - `internal/gitrepo/doc.go`
+  - `internal/idecli/cli_test.go`
+  - `internal/logger/retention.go`
+  - `internal/logger/sink_test.go`
+  - `internal/lyxtest/doc.go`
   - `internal/lyxtest/leaf_enforcement_test.go`
+  - `internal/modelspec/leaf_enforcement_test.go`
+  - `internal/pattern/leaf_enforcement_test.go`
+  - `internal/perchengine/identity_test.go`
+  - `internal/reedengine/server.go`
+  - `internal/scoutcli/cli_test.go`
+  - `internal/scoutengine/leaf_enforcement_test.go`
+  - `internal/scoutengine/toolchain.go`
+  - `internal/tokenvocab/doc.go`
+  - `internal/tokenvocab/leaf_enforcement_test.go`
+  - `internal/treadleengine/doc.go`
+  - `internal/treadleengine/engine.go`
   - `internal/treadleengine/seam_enforcement_test.go`
+  - `internal/websterengine/doc.go`
+  - `internal/websterengine/state.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Rename `internal/hubgeometry` to `internal/lyxcwd` in the allowlist maps of `modelspec`, `scoutengine`, `tokenvocab` and `pattern`, and in every doc comment naming the package across all six enforcement files. A stale package name in a leaf allowlist silently stops enforcing, and an over-wide allowlist stops enforcing just as quietly, so neither is cosmetic. `modelspec` and `scoutengine` also carry `internal/configengine` from card 2 — verify, do not duplicate. `tokenvocab` and `pattern` are **not** widened: `tokenvocab` holds only a `*Location` and reads `RepoName`, `pattern` keeps only worktree-side constructors, so `internal/lyxcwd` alone remains each one's correct non-stdlib entry. **Correction to the discussion's `leaf-invariant-updates` decision**, which called for widening `lyxtest`'s allowlist: `lyxtest/leaf_enforcement_test.go` enforces a **banned-imports list**, not an allowlist, and `weftname`/`configengine`/`lyxcwd` are not on it — so the test needs only its doc-comment wording updated, and adding those imports requires no code change there. In `CONSTRAINTS.md`, retitle the **Hub Geometry Invariant** to the **Cwd Resolution Invariant** and rewrite it to the narrow post-shrink contract: `internal/lyxcwd` owns cwd resolution and nothing else; `Resolve` exposes only `RepoName`/`HubPath`/`WorktreeName`/`AnchorRel` and the two derived accessors, never a weft path, a junction path or any per-module subdirectory; cwd must equal `AnchorPath()` exactly, with `ErrCwdOutsideAnchor` otherwise; `ResolveWithAnchor` and `ResolveWorktree` are ungated and the first is a documented bypass; the module's imports are capped at stdlib plus `internal/gitexec`, which is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic; and a module's own durable subdirectory is that module's private relative-path constant joined onto `AnchorPath()` — replacing the current line-12 wording that says `cwd`, which must land in step with `manifest/designs/fabric-unified-view.md` in batch 8 so the two never disagree. Update the `internal/hubgeometry` name in the other five invariants. Leave the enforcement pointer at line 18 naming `enforcement_test.go`; card 19 moves the file path.
-- **Commit:** `docs(constraints): retitle Hub Geometry to the Cwd Resolution Invariant`
+
+  Then sweep the **comment-only** survivors. Twenty-three files outside `internal/lyxcwd` name `hubgeometry` or `Layout` in godoc or an inline comment while importing neither, so cards 8-17 never touch them and the build never complains — they are listed above and are the entire remaining set as of planning time. Rename the package and type in that prose. This is the same argument card 18 already makes for the leaf allowlists: a stale package name stops meaning anything, and a reader who greps `hubgeometry` after this slice should find the module that exists, not a ghost. Three of them carry more than a name: `internal/logger/retention.go` and `internal/reedengine/server.go` describe log directories in terms of the old geometry accessors, and `internal/lyxtest/doc.go` describes the fixture in terms of `Layout` fields that no longer exist — reword those to the post-shrink vocabulary (`Location`, `AnchorPath()`, the owning module's own constructor) rather than doing a blind identifier substitution. Verify the sweep is complete with `grep -rln 'hubgeometry\|\bLayout\b' --include='*.go' internal cmd | grep -v '^internal/lyxcwd/'`, which must return nothing once cards 8-17 have landed.
+- **Commit:** `docs(constraints): retitle Hub Geometry to the Cwd Resolution Invariant and sweep stale comments`
 
 ### Card 19: batch-1 slice of the enforcement-guard rewrite
 
@@ -216,11 +241,11 @@ External interface batch 5 consumes: a green tree, `configengine.LyxDirName` as 
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Switch both allowlisted directory literals — `enforcement_test.go:138` (`TestEnforcement`'s `os.Getwd`/`--show-toplevel` ban) and `:420` (`TestEnforcement_GeometryLiterals`) — from `internal/hubgeometry` to `internal/lyxcwd`, along with every doc comment and failure message naming the old directory. The package rename alone would fail this test from card 5 onward, which is why the guard is rewritten incrementally rather than once in batch 8. Then replace the single-package allowlist in `TestEnforcement_GeometryLiterals` with a per-token ownership map keyed by token value, seeded with exactly the rows this batch earns: `-weft` owned by `internal/weftname`, and `_lyx` owned by `internal/configengine` **and**, transitionally, `internal/lyxcwd` for the private `lyxDirName` const card 2 left behind. Every other token (`_board`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_pattern`) keeps `internal/lyxcwd` as its owner for now; batch 6 moves those rows and batch 8 removes the transitional `_lyx` co-owner. A per-token map is strictly stronger than a blanket allowlist — it encodes *who* owns each token rather than "one package owns all of them", and it is what proves each batch moved ownership rather than copying code. Keep the existing `predicate` sub-test shape (synthetic positive/negative Go snippets parsed with `go/parser`, whole-token matching by exact equality after `strconv.Unquote`, so `_boardroom` and `-weft-bare` stay negatives) and keep the `scanned_non_empty` sanity sub-test — a misconfigured walk must not produce a vacuous pass. `.lyx` stays unpoliced this slice, as it is today; slice 9 is where it gets an owner, and adding it now would have to be undone one slice later.
+- **Requirements:** Switch both allowlisted directory literals — `enforcement_test.go:138` (`TestEnforcement`'s `os.Getwd`/`--show-toplevel` ban) and `:420` (`TestEnforcement_GeometryLiterals`) — from `internal/hubgeometry` to `internal/lyxcwd`, along with every doc comment and failure message naming the old directory. The package rename alone would fail this test from card 5 onward, which is why the guard is rewritten incrementally rather than once in batch 8. The ownership map itself already exists: cards 1 and 2 built it, because each had to register its own token's row in the same card that declared the token — so this card only **retargets the directory values**, replacing every remaining `internal/hubgeometry` with `internal/lyxcwd`. That is the transitional `_lyx` co-owner row and the six tokens still owned by the shrinking module (`_board`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_pattern`); `-weft`'s `internal/weftname` and `_lyx`'s `internal/configengine` are untouched, being already correct. Batch 5 moves the `_pattern` row, batch 6 the remaining five, and batch 8 removes the transitional `_lyx` co-owner. A per-token map is strictly stronger than a blanket allowlist — it encodes *who* owns each token rather than "one package owns all of them", and it is what proves each batch moved ownership rather than copying code. Keep the existing `predicate` sub-test shape (synthetic positive/negative Go snippets parsed with `go/parser`, whole-token matching by exact equality after `strconv.Unquote`, so `_boardroom` and `-weft-bare` stay negatives) and keep the `scanned_non_empty` sanity sub-test — a misconfigured walk must not produce a vacuous pass. `.lyx` stays unpoliced this slice, as it is today; slice 9 is where it gets an owner, and adding it now would have to be undone one slice later.
 - **Commit:** `test(lyxcwd): stage the geometry guard onto a per-token ownership map`
 
 ## Batch Tests
 
 `verify` runs the repo-wide tagged type-check plus the full untagged suite (`go test ./...`), unbounded on purpose: this is the batch that has to prove the whole rename landed, so any narrower scope would leave exactly the regressions it exists to catch. It is also the first execution of the `gate_test.go` table created in batch 2 and of the `weftname` round-trips from batch 1.
 
-Two assertions in this batch pin decisions rather than mechanics. `cmd/lyx/main_integration_test.go` and `exitcode_test.go` drive the CLI end to end from a fixture, so a subdirectory invocation there now returns `ErrCwdOutsideAnchor` — the assertion must be updated to expect the error, and relaxing the gate to keep the old assertion green would discard the whole point of the strict-equality change. And `TestEnforcement_GeometryLiterals` must pass with the staged map: `-weft` owned by `internal/weftname` and `_lyx` owned by `internal/configengine` plus the transitional `internal/lyxcwd` entry, with every other token still on `internal/lyxcwd`. A token that batches 1-2 copied rather than moved fails that guard loudly, which is the property the staging exists to give.
+Two assertions in this batch pin decisions rather than mechanics. `cmd/lyx/main_integration_test.go` and `exitcode_test.go` drive the CLI end to end from a fixture, so a subdirectory invocation there now returns `ErrCwdOutsideAnchor` — the assertion must be updated to expect the error, and relaxing the gate to keep the old assertion green would discard the whole point of the strict-equality change. And `TestEnforcement_GeometryLiterals` must pass with the map as batches 1-2 built it and this card retargeted it: `-weft` owned by `internal/weftname` and `_lyx` owned by `internal/configengine` plus the transitional `internal/lyxcwd` entry, with every other token still on `internal/lyxcwd`. A token that batches 1-2 copied rather than moved fails that guard loudly, which is the property the staging exists to give.

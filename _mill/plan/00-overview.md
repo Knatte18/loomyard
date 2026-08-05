@@ -122,12 +122,12 @@ batches:
 
 ## All Files Touched
 
-_Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across every batch, sorted alphabetically (Move **source** paths are excluded — they disappear, like `Deletes:` tokens)._
-
 - `CONSTRAINTS.md`
 - `cmd/lyx/constructoranchoring_test.go`
 - `cmd/lyx/exitcode_test.go`
 - `cmd/lyx/main_integration_test.go`
+- `cmd/lyx/registration_test.go`
+- `cmd/lyx/unknown_subcommand_test.go`
 - `docs/overview.md`
 - `docs/reference/builder-contract.md`
 - `docs/reference/discussion-format.md`
@@ -141,6 +141,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/boardcli/cli.go`
 - `internal/boardcli/cli_test.go`
 - `internal/boardcli/notes_test.go`
+- `internal/boardengine/boardtest/bench_cli_test.go`
 - `internal/boardengine/boardtest/bench_test.go`
 - `internal/boardengine/config.go`
 - `internal/boardengine/config_test.go`
@@ -160,14 +161,18 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/buildercli/weft.go`
 - `internal/buildercli/weft_integration_test.go`
 - `internal/buildercli/weft_test.go`
+- `internal/builderengine/doc.go`
+- `internal/builderengine/plan.go`
 - `internal/builderengine/spawn.go`
 - `internal/builderengine/spawn_test.go`
+- `internal/builderengine/state.go`
 - `internal/burlercli/cli.go`
 - `internal/burlerengine/config.go`
 - `internal/burlerengine/config_test.go`
 - `internal/burlerengine/doc.go`
 - `internal/burlerengine/engine.go`
 - `internal/burlerengine/engine_test.go`
+- `internal/burlerengine/prompt.go`
 - `internal/burlerengine/smoke_cluster_test.go`
 - `internal/burlerengine/smoke_round_test.go`
 - `internal/configcli/configcli.go`
@@ -175,6 +180,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/configcli/configcli_test.go`
 - `internal/configcli/menu.go`
 - `internal/configcli/reconcile_integration_test.go`
+- `internal/configcli/reconcile_test.go`
 - `internal/configengine/config.go`
 - `internal/configengine/config_test.go`
 - `internal/configengine/edit.go`
@@ -212,6 +218,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/fabricengine/hook.go`
 - `internal/fabricengine/hook_test.go`
 - `internal/fabricengine/hostclean.go`
+- `internal/fabricengine/hostjunction_test.go`
 - `internal/fabricengine/hostlayout.go`
 - `internal/fabricengine/junction.go`
 - `internal/fabricengine/junction_pattern_integration_test.go`
@@ -230,27 +237,36 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/fabricengine/reconcile_stale_removal_test.go`
 - `internal/fabricengine/remove.go`
 - `internal/fabricengine/remove_junctions_integration_test.go`
+- `internal/fabricengine/snapshot_integration_test.go`
 - `internal/fabricengine/status.go`
 - `internal/fabricengine/unwire.go`
 - `internal/fabricengine/unwire_test.go`
 - `internal/fabricengine/warpforward_integration_test.go`
 - `internal/fabricengine/weftgit.go`
 - `internal/fabricengine/weftgit_exclude_test.go`
+- `internal/fabricengine/weftpaths_test.go`
 - `internal/fabricengine/weftwiring.go`
 - `internal/fabricengine/weftwiring_test.go`
 - `internal/fabricengine/worktreelist.go`
 - `internal/fabricengine/worktreelist_test.go`
+- `internal/gitrepo/doc.go`
+- `internal/hubgeometry/enforcement_test.go`
 - `internal/hubgeometry/geometry_test.go`
 - `internal/hubgeometry/hubgeometry.go`
 - `internal/hubgeometry/hubgeometry_test.go`
 - `internal/hubgeometry/hubgeometry_unit_test.go`
+- `internal/hubgeometry/pattern_test.go`
+- `internal/hubgeometry/weft_test.go`
 - `internal/idecli/cli.go`
+- `internal/idecli/cli_test.go`
 - `internal/ideengine/menu.go`
 - `internal/ideengine/menu_test.go`
 - `internal/ideengine/spawn.go`
 - `internal/ideengine/spawn_test.go`
 - `internal/logger/logger.go`
+- `internal/logger/retention.go`
 - `internal/logger/sink.go`
+- `internal/logger/sink_test.go`
 - `internal/logger/worktreelogs_test.go`
 - `internal/loomengine/discussion.go`
 - `internal/loomengine/discussion_test.go`
@@ -279,6 +295,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/lyxcwd/webstergeom_test.go`
 - `internal/lyxcwd/weft_test.go`
 - `internal/lyxcwd/worktreelogs_test.go`
+- `internal/lyxtest/doc.go`
 - `internal/lyxtest/leaf_enforcement_test.go`
 - `internal/lyxtest/lyxtest.go`
 - `internal/lyxtest/lyxtest_test.go`
@@ -299,6 +316,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/perchengine/config_test.go`
 - `internal/perchengine/doc.go`
 - `internal/perchengine/engine.go`
+- `internal/perchengine/identity_test.go`
 - `internal/perchengine/run_test.go`
 - `internal/planparser/parse.go`
 - `internal/reedcli/cli.go`
@@ -311,11 +329,13 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/reedengine/lock.go`
 - `internal/reedengine/lock_test.go`
 - `internal/reedengine/mouse_boot_integration_test.go`
+- `internal/reedengine/server.go`
 - `internal/reedengine/spawn.go`
 - `internal/reedengine/spawn_test.go`
 - `internal/reedengine/strand.go`
 - `internal/reedengine/strand_test.go`
 - `internal/scoutcli/cli.go`
+- `internal/scoutcli/cli_test.go`
 - `internal/scoutengine/daemonstate.go`
 - `internal/scoutengine/doc.go`
 - `internal/scoutengine/ensureserver.go`
@@ -329,6 +349,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/scoutengine/supervised_integration_test.go`
 - `internal/scoutengine/supervised_scout_test.go`
 - `internal/scoutengine/supervised_test.go`
+- `internal/scoutengine/toolchain.go`
 - `internal/shuttlecli/cli.go`
 - `internal/shuttlecli/cli_test.go`
 - `internal/shuttlecli/smoke_interrupt_test.go`
@@ -340,9 +361,12 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/shuttleengine/rundir_test.go`
 - `internal/shuttleengine/wait.go`
 - `internal/shuttleengine/wait_test.go`
+- `internal/tokenvocab/doc.go`
 - `internal/tokenvocab/leaf_enforcement_test.go`
 - `internal/tokenvocab/tokenvocab.go`
 - `internal/tokenvocab/tokenvocab_test.go`
+- `internal/treadleengine/doc.go`
+- `internal/treadleengine/engine.go`
 - `internal/treadleengine/seam_enforcement_test.go`
 - `internal/treadleengine/smoke_judge_test.go`
 - `internal/vscode/color.go`
@@ -363,6 +387,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/websterengine/beginbatch.go`
 - `internal/websterengine/beginbatch_test.go`
 - `internal/websterengine/config_test.go`
+- `internal/websterengine/doc.go`
 - `internal/websterengine/recordbatch.go`
 - `internal/websterengine/recordbatch_test.go`
 - `internal/websterengine/recoverbatch.go`
@@ -371,6 +396,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/websterengine/report.go`
 - `internal/websterengine/runlevel.go`
 - `internal/websterengine/runlevel_test.go`
+- `internal/websterengine/state.go`
 - `internal/websterengine/template_test.go`
 - `internal/websterengine/webstergeom_test.go`
 - `internal/weftname/weftname.go`
