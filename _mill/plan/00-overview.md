@@ -68,7 +68,7 @@ batches:
 
 ### Decision: a red intermediate tree is allowed only between batches 2 and 4, and never ungated
 
-- **Decision:** Batch 2 verifies with `go build ./internal/lyxcwd/... && go vet ./internal/lyxcwd/...`; batch 3 verifies with `go build ./...`; batch 4 restores the full `go test ./...`. No batch anywhere in this plan uses `verify: null`.
+- **Decision:** Batch 2 verifies with `go build -tags integration ./internal/lyxcwd/... && go vet -tags integration ./internal/lyxcwd/...`; batch 3 verifies with `go build ./...`; batch 4 restores the repo-wide gate — tagged vet, the full untagged `go test ./...`, and `go test -tags integration ./...`. No batch anywhere in this plan uses `verify: null`.
 - **Rationale:** The discussion requires each batch to leave the tree green, and batches 1 and 4-8 do. Batches 2 and 3 cannot: the moment `Layout` becomes `Location` the ~190 field consumers stop compiling, and sweeping them in the same batch is exactly the oversized unit the split above exists to avoid. The deviation is bounded to two batches and each still carries the strongest gate that is *true* at that point — batch 2 proves the renamed module compiles and vets on its own, batch 3 proves all ~85 production cutovers type-check together. `verify: null` was the alternative and is rejected: it would leave those batches with no gate at all, which is a strictly worse trade than a narrower one. `pipeline.done_gate` (`go test ./...`) is the repo-wide backstop before mill-go marks the task done.
 - **Applies to:** rename-and-reshape, production-sweep
 
@@ -92,9 +92,9 @@ batches:
 
 ### Decision: the guard is staged token by token, in lockstep with each owner
 
-- **Decision:** `TestEnforcement_GeometryLiterals` is not rewritten once at the end. Each token's ownership row lands in the same batch that moves that token's owner: batch 4 switches the two allowlisted directory literals to `internal/lyxcwd` and registers `-weft` and `_lyx` (the owners of which batch 1 created); batch 5 touches the guard not at all; batch 6 registers `_portals`, `_launchers`, `_raddle`, `_pattern`, `_board` and `-HUB`; batch 8 collapses the remaining scaffolding and removes the transitional `_lyx` co-owner.
+- **Decision:** `TestEnforcement_GeometryLiterals` is not rewritten once at the end. Each token's ownership row lands in the same card that declares or deletes that token's literal: batch 1's cards 1 and 2 convert the allowlist to the per-token ownership map and register `-weft` and `_lyx` in the same cards that declare them; batch 4's card 19 only retargets the surviving directory values from `internal/hubgeometry` to `internal/lyxcwd`; batch 5's card 25 moves `_pattern`'s row when it declares `pattern.DirName`, keeping a transitional `internal/lyxcwd` co-owner for the retained `PatternDirName` const; batch 6 registers `_portals`, `_launchers`, `_raddle`, `_board` and `-HUB` (card 36) and finishes `_pattern`'s row (card 35, swapping the transitional entry for `internal/fabricengine` when the pathspec const moves); batch 8 collapses the remaining scaffolding and removes the transitional `_lyx` co-owner.
 - **Rationale:** The guard is only a real assertion when it names an ownership that already exists. Written up front it would assert a layout the tree does not have; written only at the end it would leave five batches red, because `enforcement_test.go:420` allowlists the literal directory `internal/hubgeometry` and the rename alone breaks it — which is also why the guard's own directory switch sits in batch 4, the first batch after the rename whose gate actually runs the test. Moving each entry with its owner is also what proves each batch **moved** ownership rather than copying code.
-- **Applies to:** pre-moves, test-sweep, fabric-owns-the-illusion, guard-and-docs
+- **Applies to:** pre-moves, test-sweep, module-owned-constructors, fabric-owns-the-illusion, guard-and-docs
 
 ### Decision: every gate that can run Tier 2 does, because this slice's new tests are all Tier 2
 
