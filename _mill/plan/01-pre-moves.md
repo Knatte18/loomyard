@@ -107,6 +107,7 @@ External interface batch 2 consumes: `configengine.LyxDirName`, `configengine.Co
   - `internal/hubgeometry/hubgeometry_unit_test.go`
   - `internal/hubgeometry/loomstatus_test.go`
   - `internal/hubgeometry/planpath_test.go`
+  - `internal/hubgeometry/webstergeom_test.go`
   - `internal/envsource/envsource_test.go`
   - `internal/ideengine/menu.go`
   - `internal/ideengine/menu_test.go`
