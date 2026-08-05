@@ -228,6 +228,7 @@ batches:
 - `internal/fabricengine/junctionnames_test.go`
 - `internal/fabricengine/launchers.go`
 - `internal/fabricengine/list.go`
+- `internal/fabricengine/portallauncher_test.go`
 - `internal/fabricengine/portals.go`
 - `internal/fabricengine/prune.go`
 - `internal/fabricengine/pull.go`
@@ -239,6 +240,7 @@ batches:
 - `internal/fabricengine/remove_junctions_integration_test.go`
 - `internal/fabricengine/snapshot_integration_test.go`
 - `internal/fabricengine/status.go`
+- `internal/fabricengine/topology.go`
 - `internal/fabricengine/unwire.go`
 - `internal/fabricengine/unwire_test.go`
 - `internal/fabricengine/warpforward_integration_test.go`
