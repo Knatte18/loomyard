@@ -226,7 +226,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	// Create a child worktree pair directly via git worktree add — fabricengine's
 	// own Add verb lands in a later batch; this test only needs a host/weft
 	// worktree pair on disk to exercise the hook script itself.
-	childHost := l.WorktreePath(slug)
+	childHost := WorktreePath(l, slug)
 	lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", childHost, "-b", slug)
 
 	weftBranch := WeftBranchName(slug)

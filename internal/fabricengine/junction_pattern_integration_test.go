@@ -39,7 +39,7 @@ import (
 func readExcludeLines(t *testing.T, l *hubgeometry.Layout, slug string) []string {
 	t.Helper()
 
-	worktreePath := l.WorktreePath(slug)
+	worktreePath := fabricengine.WorktreePath(l, slug)
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git rev-parse --git-path info/exclude failed: %v (exit %d)", err, exitCode)
@@ -452,7 +452,7 @@ func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -511,7 +511,7 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -534,7 +534,7 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 		t.Fatalf("Status: %v", err)
 	}
 
-	hostPath := l.WorktreePath(slug)
+	hostPath := fabricengine.WorktreePath(l, slug)
 	var found bool
 	for _, pair := range result.Pairs {
 		if pair.HostWorktree != filepath.ToSlash(hostPath) {

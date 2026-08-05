@@ -44,7 +44,7 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -92,7 +92,7 @@ func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -147,7 +147,7 @@ func TestUnwire_RevertsGitignore(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -223,7 +223,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}

@@ -79,7 +79,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -148,7 +148,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -214,7 +214,7 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	}
 
 	for _, slug := range slugs {
-		hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+		hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 		if err != nil {
 			t.Fatalf("hubgeometry.Resolve(%s): %v", slug, err)
 		}
@@ -239,7 +239,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -291,7 +291,7 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}
@@ -370,7 +370,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	if _, err := topology.Add(l, removeSlug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add(%s): %v", removeSlug, err)
 	}
-	removeHostLayout, err := hubgeometry.Resolve(l.WorktreePath(removeSlug))
+	removeHostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, removeSlug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(%s): %v", removeSlug, err)
 	}

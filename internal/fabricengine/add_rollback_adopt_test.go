@@ -123,8 +123,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	if _, err := os.Stat(l.WeftWorktreePath(slug)); !os.IsNotExist(err) {
 		t.Errorf("weft worktree dir still exists at %s", l.WeftWorktreePath(slug))
 	}
-	if _, err := os.Stat(l.WorktreePath(slug)); !os.IsNotExist(err) {
-		t.Errorf("host worktree dir still exists at %s", l.WorktreePath(slug))
+	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("host worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
 	if branchExistsAt(t, l.WorktreeRoot, slug) {
 		t.Errorf("host branch %q still exists", slug)
@@ -246,8 +246,8 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	if _, err := os.Stat(l.WeftWorktreePath(slug)); !os.IsNotExist(err) {
 		t.Errorf("weft worktree dir still exists at %s", l.WeftWorktreePath(slug))
 	}
-	if _, err := os.Stat(l.WorktreePath(slug)); !os.IsNotExist(err) {
-		t.Errorf("host worktree dir still exists at %s", l.WorktreePath(slug))
+	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("host worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
 	if branchExistsAt(t, l.WorktreeRoot, slug) {
 		t.Errorf("host branch %q still exists", slug)

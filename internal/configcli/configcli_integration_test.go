@@ -70,7 +70,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 
 	// Resolve layout for the new host worktree.
-	hostWorktreePath := f.Layout.WorktreePath(slug)
+	hostWorktreePath := fabricengine.WorktreePath(f.Layout, slug)
 	hostLayout, err := hubgeometry.Resolve(hostWorktreePath)
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(%q): %v", hostWorktreePath, err)

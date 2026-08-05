@@ -116,7 +116,7 @@ func TestWeftGeometryMethods(t *testing.T) {
 
 			// Verify junction pairing: HostLyxLink(slug) and WeftLyxDirFor(slug) are
 			// siblings differing only by the -weft suffix on the worktree dir
-			hostWtName := filepath.Base(layout.WorktreePath(tt.slug))
+			hostWtName := filepath.Base(filepath.Join(layout.Hub, tt.slug))
 			weftWtName := filepath.Base(layout.WeftWorktreePath(tt.slug))
 
 			// The junction pair should differ only by -weft in the worktree name
@@ -253,7 +253,7 @@ func TestHostJunctions(t *testing.T) {
 				if got.Name != wantName {
 					t.Errorf("HostJunctions(%q, %v)[%d].Name = %q; want %q", tt.slug, tt.names, i, got.Name, wantName)
 				}
-				wantLink := filepath.Join(layout.WorktreePath(tt.slug), layout.RelPath, wantName)
+				wantLink := filepath.Join(filepath.Join(layout.Hub, tt.slug), layout.RelPath, wantName)
 				if got.Link != wantLink {
 					t.Errorf("HostJunctions(%q, %v)[%d].Link = %q; want %q", tt.slug, tt.names, i, got.Link, wantLink)
 				}

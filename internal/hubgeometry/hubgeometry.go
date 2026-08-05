@@ -130,28 +130,6 @@ func resolveCore(cwd string, applyGate bool) (*Layout, error) {
 	}, nil
 }
 
-// SiblingLayout derives the Layout for a hub-sibling worktree without spawning git.
-//
-// Precondition: worktreeRoot must be a direct child of l.Hub. Callers must guard the
-// non-sibling case (filepath.Dir(worktreeRoot) != l.Hub) themselves; SiblingLayout performs
-// no check. Like ResolveWorktree, it applies no cwd-legitimacy gate.
-func (l *Layout) SiblingLayout(worktreeRoot string) *Layout {
-	c := filepath.Clean(worktreeRoot)
-
-	relPath := "."
-	if anchor, found := readRecordedAnchor(l.Hub); found {
-		relPath = anchor
-	}
-
-	return &Layout{
-		Cwd:          c,
-		WorktreeRoot: c,
-		Hub:          l.Hub,
-		RelPath:      relPath,
-		Repo:         l.Repo,
-	}
-}
-
 // PerchRunsDir returns the path to the base directory for perch run artifacts.
 // It lives under _lyx so artifacts are weft-synced. Per the Hub Geometry Invariant, no other
 // package may construct this path.
@@ -355,11 +333,6 @@ func (l *Layout) WorktreeLogsDir() string {
 	return filepath.Join(l.WorktreeRoot, dotLyxDirName, "logs")
 }
 
-// WorktreePath returns the path to a sibling worktree with the given slug.
-func (l *Layout) WorktreePath(slug string) string {
-	return filepath.Join(l.Hub, slug)
-}
-
 // PortalsDir returns the path to the _portals directory in the hub.
 func (l *Layout) PortalsDir() string {
 	return filepath.Join(l.Hub, "_portals")
@@ -404,7 +377,7 @@ func menuLauncherName() string {
 // LauncherSpawnRel returns the relative path from a launcher directory to the target worktree's
 // subpath for spawning.
 func (l *Layout) LauncherSpawnRel(slug string) string {
-	rel, _ := filepath.Rel(l.LauncherDir(slug), filepath.Join(l.WorktreePath(slug), l.RelPath))
+	rel, _ := filepath.Rel(l.LauncherDir(slug), filepath.Join(filepath.Join(l.Hub, slug), l.RelPath))
 	return rel
 }
 
@@ -462,7 +435,7 @@ func (l *Layout) WeftRaddleDir() string {
 // HostLyxLink returns the path to the _lyx junction link in a named slug's host worktree.
 // It is the host-side junction endpoint that points into the paired weft worktree via WeftLyxDirFor(slug).
 func (l *Layout) HostLyxLink(slug string) string {
-	return filepath.Join(l.WorktreePath(slug), l.RelPath, lyxDirName)
+	return filepath.Join(l.Hub, slug, l.RelPath, lyxDirName)
 }
 
 // HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
@@ -475,7 +448,7 @@ func (l *Layout) HostLyxLinkHere() string {
 // HostPatternLink returns the path to the _pattern junction link in a named slug's host worktree.
 // It mirrors HostLyxLink exactly and points into the paired weft worktree via WeftPatternDirFor(slug).
 func (l *Layout) HostPatternLink(slug string) string {
-	return filepath.Join(l.WorktreePath(slug), l.RelPath, PatternDirName)
+	return filepath.Join(l.Hub, slug, l.RelPath, PatternDirName)
 }
 
 // HostPatternLinkHere returns the path to the _pattern junction link in the current host worktree.
@@ -501,14 +474,15 @@ type HostJunction struct {
 
 // HostJunctions returns the list of host junctions for a given slug, one record per name in names,
 // in names's own order (no forced sort). For each name, the record is {Name, Link, Target} where
-// Link and Target are computed from WorktreePath/WeftWorktreePath and RelPath.
+// Link is Hub/slug-anchored (inlined here since fabricengine.WorktreePath is not importable from
+// this in-module method) and Target is computed from WeftWorktreePath and RelPath.
 // HostJunctions is Hub/slug-anchored; HostJunctionsHere below is the Here-anchored counterpart.
 func (l *Layout) HostJunctions(slug string, names []string) []HostJunction {
 	junctions := make([]HostJunction, 0, len(names))
 	for _, name := range names {
 		junctions = append(junctions, HostJunction{
 			Name:   name,
-			Link:   filepath.Join(l.WorktreePath(slug), l.RelPath, name),
+			Link:   filepath.Join(l.Hub, slug, l.RelPath, name),
 			Target: filepath.Join(l.WeftWorktreePath(slug), l.RelPath, name),
 		})
 	}

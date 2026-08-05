@@ -18,6 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
+// WorktreePath returns the path to a sibling worktree with the given slug.
+// It replaces (*hubgeometry.Layout).WorktreePath(slug), which collided with
+// the no-arg WorktreePath() accessor the coming reshape introduces on the
+// same type.
+func WorktreePath(l *hubgeometry.Layout, slug string) string {
+	return filepath.Join(l.Hub, slug)
+}
+
 // WireJunctions creates directory junctions and seeds git-exclude entries for
 // the given slug over the caller-supplied wired name-set. The caller must supply
 // the filtered name-set (not loaded by this function). Idempotent. Enforces
@@ -271,7 +279,7 @@ func unseedJunctionRecords(junctions []hubgeometry.HostJunction) (removed []stri
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
 func unseedGitExclude(l *hubgeometry.Layout, slug string, names []string) (changed bool, err error) {
-	worktreePath := l.WorktreePath(slug)
+	worktreePath := WorktreePath(l, slug)
 
 	stdout, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--git-path", "info/exclude"},
@@ -334,7 +342,7 @@ func unseedGitExclude(l *hubgeometry.Layout, slug string, names []string) (chang
 // idempotency per name.
 // Idempotent: re-running when all junction names are already present is a no-op.
 func seedGitExclude(l *hubgeometry.Layout, slug string, names []string) error {
-	worktreePath := l.WorktreePath(slug)
+	worktreePath := WorktreePath(l, slug)
 
 	// Get the exclude path via git rev-parse --git-path
 	stdout, _, exitCode, err := gitexec.RunGit(

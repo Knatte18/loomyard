@@ -102,7 +102,7 @@ func TestLayout_PatternAccessors(t *testing.T) {
 
 			t.Run("HostPatternLink", func(t *testing.T) {
 				got := l.HostPatternLink(slug)
-				want := filepath.Join(l.WorktreePath(slug), l.RelPath, "_pattern")
+				want := filepath.Join(filepath.Join(l.Hub, slug), l.RelPath, "_pattern")
 				if got != want {
 					t.Errorf("HostPatternLink(%q) = %q; want %q", slug, got, want)
 				}

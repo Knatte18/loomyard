@@ -213,7 +213,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostPath := l.WorktreePath(slug)
+	hostPath := fabricengine.WorktreePath(l, slug)
 	portalLink := l.PortalLink(slug)
 	launcherDir := l.LauncherDir(slug)
 
@@ -268,7 +268,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
 		}
-		hostPath := l.WorktreePath(slug)
+		hostPath := fabricengine.WorktreePath(l, slug)
 		weftPath := l.WeftWorktreePath(slug)
 
 		// Bare removal of the host directory leaves the git worktree
@@ -311,7 +311,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
 		}
-		hostPath := l.WorktreePath(slug)
+		hostPath := fabricengine.WorktreePath(l, slug)
 		weftPath := l.WeftWorktreePath(slug)
 
 		// Bare-remove BOTH sides, leaving both registrations stale. With the
@@ -425,7 +425,7 @@ func TestCleanup_DetachedHostHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	// Detach the host worktree's HEAD so branch-space liveness cannot see the
 	// pair is live; only the checked-out protection stands between Cleanup
 	// and the pair's weft branch.
-	hostPath := l.WorktreePath(slug)
+	hostPath := fabricengine.WorktreePath(l, slug)
 	lyxtest.MustRun(t, hostPath, "git", "checkout", "--detach")
 
 	weftBranch := fabricengine.WeftBranchName(slug)
@@ -476,7 +476,7 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
 		t.Fatalf("hubgeometry.Resolve(host): %v", err)
 	}

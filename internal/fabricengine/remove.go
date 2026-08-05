@@ -32,7 +32,7 @@ func (t *Topology) Remove(l *hubgeometry.Layout, slug string, force bool) (Remov
 	_ = removePortal(l, slug)
 	_ = removeLaunchers(l, slug)
 
-	target := l.WorktreePath(slug)
+	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); os.IsNotExist(err) {
 		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
 	}

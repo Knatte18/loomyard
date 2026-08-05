@@ -89,7 +89,7 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		)
 	}
 
-	target := l.WorktreePath(slug)
+	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		return AddResult{}, fmt.Errorf("worktree directory %q already exists", target)
 	}

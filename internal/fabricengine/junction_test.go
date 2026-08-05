@@ -33,6 +33,24 @@ func wireTestJunction(t *testing.T, link, target string) {
 	}
 }
 
+// TestWorktreePath verifies that WorktreePath(l, slug) joins Hub and slug —
+// moved here from hubgeometry's own unit test now that fabricengine is the
+// sole owner of this path shape (the method it replaced,
+// (*hubgeometry.Layout).WorktreePath(slug), collided with the no-arg
+// accessor the coming reshape introduces on the same type).
+func TestWorktreePath(t *testing.T) {
+	t.Parallel()
+
+	l := &hubgeometry.Layout{Hub: filepath.Join("home", "user", "project-HUB")}
+	slug := "test-wt"
+
+	got := WorktreePath(l, slug)
+	want := filepath.Join(l.Hub, slug)
+	if got != want {
+		t.Errorf("WorktreePath(l, %q) = %q; want %q", slug, got, want)
+	}
+}
+
 // TestUnseedJunctionRecords_AccumulatesBeforeAbort is card 8's regression
 // guard for the bug it fixes: when a later junction in the slice fails to
 // unwire after an earlier one succeeded, the returned removed slice names the

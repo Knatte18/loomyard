@@ -122,12 +122,10 @@ func TestResolve_GeometryMethods(t *testing.T) {
 		t.Errorf("LyxDir() = %q; want %q", got, expectedLyxDir)
 	}
 
-	// Test WorktreePath
+	// WorktreePath(slug) itself moved to fabricengine.WorktreePath(l, slug) in
+	// this card; its own coverage now lives with fabricengine's retargeted
+	// callers. The slug below is still needed by PortalTarget/LauncherDir.
 	slug := "test-wt"
-	expectedWtPath := filepath.Join(layout.Hub, slug)
-	if got := layout.WorktreePath(slug); got != expectedWtPath {
-		t.Errorf("WorktreePath(%q) = %q; want %q", slug, got, expectedWtPath)
-	}
 
 	// Test PortalsDir
 	expectedPortalsDir := filepath.Join(layout.Hub, "_portals")
@@ -413,7 +411,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			launcherDir := layout.LauncherDir(slug)
-			targetPath := filepath.Join(layout.WorktreePath(slug), layout.RelPath)
+			targetPath := filepath.Join(filepath.Join(layout.Hub, slug), layout.RelPath)
 			want, _ := filepath.Rel(launcherDir, targetPath)
 
 			if got != want {
@@ -439,7 +437,7 @@ func TestMirroredMethods(t *testing.T) {
 
 			// Recompute expected via filepath.Rel
 			launcherDir := layout.LauncherDir(slug)
-			targetPath := filepath.Join(layout.WorktreePath(slug), layout.RelPath)
+			targetPath := filepath.Join(filepath.Join(layout.Hub, slug), layout.RelPath)
 			want, _ := filepath.Rel(launcherDir, targetPath)
 
 			if got != want {
@@ -572,7 +570,7 @@ func TestRefactoredMethods(t *testing.T) {
 
 		slug := "test-slug"
 		got := layout.HostLyxLink(slug)
-		want := filepath.Join(layout.WorktreePath(slug), ".", "_lyx")
+		want := filepath.Join(filepath.Join(layout.Hub, slug), ".", "_lyx")
 
 		if got != want {
 			t.Errorf("HostLyxLink(%q) = %q; want %q", slug, got, want)

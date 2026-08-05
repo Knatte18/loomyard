@@ -51,7 +51,7 @@ func TestAdd_RejectsSeparatorSlug(t *testing.T) {
 // TestAdd_RejectsEmptySlug asserts that Add refuses an empty or whitespace-only
 // slug before touching git or the filesystem. An empty slug has no name for the
 // pair and would otherwise fail deep in step 4 with a misleading "worktree
-// directory <HUB> already exists" (l.WorktreePath("") is the hub root).
+// directory <HUB> already exists" (fabricengine.WorktreePath(l, "") is the hub root).
 // Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsEmptySlug(t *testing.T) {
 	tests := []struct {
@@ -80,7 +80,7 @@ func TestAdd_RejectsEmptySlug(t *testing.T) {
 
 // TestAdd_RejectsWeftSuffixSlug asserts that Add refuses a slug ending in the
 // weft suffix before touching git or the filesystem. Such a slug names a host
-// worktree directory (l.WorktreePath(slug)) that is indistinguishable from a
+// worktree directory (fabricengine.WorktreePath(l, slug)) that is indistinguishable from a
 // weft worktree directory: hubgeometry.WeftHostSlug accepts it, so prune's hub
 // scan misclassifies the host worktree as an orphaned weft and — under
 // --apply — os.RemoveAll's it, destroying the host worktree and any uncommitted

@@ -18,7 +18,7 @@ var CodeLauncher = vscode.Launch
 
 // Spawn generates a worktree's .vscode/ config (if absent) and launches VS Code.
 func Spawn(l *hubgeometry.Layout, slug string) error {
-	worktreeDir := l.WorktreePath(slug)
+	worktreeDir := fabricengine.WorktreePath(l, slug)
 	// A prime-resolution failure degrades to an empty prime name (PickColor
 	// then skips the prime-skip step) rather than failing the spawn — a wrong
 	// title-bar color is cosmetic, not worth aborting over.
