@@ -1,7 +1,7 @@
 //go:build integration
 
 // main_integration_test.go holds the module-dispatcher tests that spawn
-// gitexec.RunGit(["init"], …) to seed a real git repo so hubgeometry.Resolve
+// gitexec.RunGit(["init"], …) to seed a real git repo so lyxcwd.Resolve
 // succeeds, so this file is integration-tagged per the Test Tier Purity
 // Invariant.
 
@@ -28,7 +28,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so hubgeometry.Resolve succeeds.
+	// Initialize a git repo so lyxcwd.Resolve succeeds.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
@@ -70,7 +70,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so hubgeometry.Resolve succeeds.
+	// Initialize a git repo so lyxcwd.Resolve succeeds.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
@@ -127,7 +127,7 @@ func buildLyxBinary(t *testing.T) string {
 func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 	lyxExe := buildLyxBinary(t)
 
-	// Initialize a git repo so the spawned process's hubgeometry.Resolve succeeds.
+	// Initialize a git repo so the spawned process's lyxcwd.Resolve succeeds.
 	cwd := t.TempDir()
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
@@ -187,7 +187,7 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	// configcli.RunCLI should recognize the subcommand and produce JSON output.
 	cwd := t.TempDir()
 
-	// Initialize git repo so hubgeometry.Resolve succeeds.
+	// Initialize git repo so lyxcwd.Resolve succeeds.
 	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)

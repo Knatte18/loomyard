@@ -1,8 +1,8 @@
 // tokenvocab_test.go is the hermetic unit test suite for tokenvocab: each
 // registry token's Resolve, Build's aggregate output, Render's happy path and its
 // propagated unfilled-marker error, and a demonstration of the "one registry entry
-// per token" extension rule. Every case builds a hubgeometry.Layout struct literal
-// directly — never hubgeometry.Resolve — so this suite stays untagged and
+// per token" extension rule. Every case builds a lyxcwd.Location struct literal
+// directly — never lyxcwd.Resolve — so this suite stays untagged and
 // spawn-free (Test Tier Purity). It is a same-package test so the token-by-token
 // cases can inspect the unexported registry directly, rather than only observing
 // it through Build's aggregated map.
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // tokenByName returns the registry entry named name, failing the test if no such
@@ -39,19 +39,19 @@ func TestTokenResolve(t *testing.T) {
 	tests := []struct {
 		name      string
 		tokenName string
-		layout    *hubgeometry.Layout
+		layout    *lyxcwd.Location
 		want      string
 	}{
 		{
 			name:      "repo reads Layout.Repo",
 			tokenName: "repo",
-			layout:    &hubgeometry.Layout{Repo: "loomyard", Hub: "unrelated-hub-value"},
+			layout:    &lyxcwd.Location{RepoName: "loomyard", HubPath: "unrelated-hub-value"},
 			want:      "loomyard",
 		},
 		{
 			name:      "hub reads Layout.Hub",
 			tokenName: "hub",
-			layout:    &hubgeometry.Layout{Repo: "unrelated-repo-value", Hub: "/hub/loomyard-HUB"},
+			layout:    &lyxcwd.Location{RepoName: "unrelated-repo-value", HubPath: "/hub/loomyard-HUB"},
 			want:      "/hub/loomyard-HUB",
 		},
 	}
@@ -76,7 +76,7 @@ func TestTokenResolve(t *testing.T) {
 func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 	t.Parallel()
 
-	layout := &hubgeometry.Layout{Repo: "feature-branch"}
+	layout := &lyxcwd.Location{RepoName: "feature-branch"}
 
 	got := tokenByName(t, "repo").Resolve(Ctx{Layout: layout})
 	if got != "feature-branch" {
@@ -90,7 +90,7 @@ func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 func TestBuild_ReturnsBothKeys(t *testing.T) {
 	t.Parallel()
 
-	layout := &hubgeometry.Layout{Repo: "loomyard", Hub: "/hub/loomyard-HUB"}
+	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
 	got := Build(Ctx{Layout: layout})
 
 	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-HUB"}
@@ -109,7 +109,7 @@ func TestBuild_ReturnsBothKeys(t *testing.T) {
 func TestRender_FillsTemplateVerbatim(t *testing.T) {
 	t.Parallel()
 
-	layout := &hubgeometry.Layout{Repo: "loomyard", Hub: "/hub/loomyard-HUB"}
+	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
 	template := []byte("{{.hub}}/{{.repo}}")
 
 	got, err := Render(template, Ctx{Layout: layout})
@@ -130,7 +130,7 @@ func TestRender_FillsTemplateVerbatim(t *testing.T) {
 func TestRender_PropagatesUnknownTokenError(t *testing.T) {
 	t.Parallel()
 
-	layout := &hubgeometry.Layout{Repo: "loomyard", Hub: "/hub/loomyard-HUB"}
+	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
 	template := []byte("{{.slug}}")
 
 	_, err := Render(template, Ctx{Layout: layout})
@@ -157,7 +157,7 @@ func TestRegistry_AddingATokenIsOneEntry(t *testing.T) {
 		Resolve: func(c Ctx) string { return "example-slug" },
 	})
 
-	layout := &hubgeometry.Layout{Repo: "loomyard", Hub: "/hub/loomyard-HUB"}
+	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
 	got := make(map[string]string, len(hypothetical))
 	for _, token := range hypothetical {
 		got[token.Name] = token.Resolve(Ctx{Layout: layout})

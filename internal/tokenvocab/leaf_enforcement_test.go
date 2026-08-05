@@ -20,8 +20,8 @@ import (
 // allowedImports are the only non-stdlib import paths production code in
 // this package may use.
 var allowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/hubgeometry": true,
-	"github.com/Knatte18/loomyard/internal/stencil":     true,
+	"github.com/Knatte18/loomyard/internal/lyxcwd":  true,
+	"github.com/Knatte18/loomyard/internal/stencil": true,
 }
 
 // TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in

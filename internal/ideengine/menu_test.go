@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 func mustRunMenu(t *testing.T, dir string, args ...string) {
@@ -63,11 +63,7 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	var out bytes.Buffer
 	in := strings.NewReader("")
@@ -121,11 +117,7 @@ design_prefix: proposal-
 		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	originalLauncher := CodeLauncher
 	defer func() { CodeLauncher = originalLauncher }()
@@ -180,11 +172,7 @@ design_prefix: proposal-
 		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	var out bytes.Buffer
 	in := strings.NewReader("")
@@ -245,11 +233,7 @@ design_prefix: proposal-
 		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	var launchCount int
 	originalLauncher := CodeLauncher

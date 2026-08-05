@@ -350,7 +350,7 @@ func TestFindBaseDir_Absent(t *testing.T) {
 }
 
 // TestConfigDir verifies that ConfigDir joins baseDir with LyxDirName and the
-// "config" subdirectory — moved here from hubgeometry's own unit test now that
+// "config" subdirectory — moved here from lyxcwd's own unit test now that
 // configengine is the single declarer of the "_lyx/config" path shape.
 func TestConfigDir(t *testing.T) {
 	t.Parallel()
@@ -365,7 +365,7 @@ func TestConfigDir(t *testing.T) {
 }
 
 // TestConfigFile verifies that ConfigFile joins ConfigDir with the module's
-// ".yaml" filename — moved here from hubgeometry's own unit test alongside
+// ".yaml" filename — moved here from lyxcwd's own unit test alongside
 // TestConfigDir.
 func TestConfigFile(t *testing.T) {
 	t.Parallel()
@@ -381,7 +381,7 @@ func TestConfigFile(t *testing.T) {
 }
 
 // TestLyxDirNameConstant verifies that LyxDirName is exported and has the
-// expected value — moved here from hubgeometry's own unit test now that
+// expected value — moved here from lyxcwd's own unit test now that
 // configengine is the single declarer of the "_lyx" token.
 func TestLyxDirNameConstant(t *testing.T) {
 	t.Parallel()

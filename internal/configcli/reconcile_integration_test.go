@@ -24,7 +24,7 @@ import (
 func TestReconcile_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Initialize a minimal git repo so hubgeometry.Resolve works.
+	// Initialize a minimal git repo so lyxcwd.Resolve works.
 	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, tmpDir)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
@@ -42,7 +42,7 @@ func TestReconcile_DryRun(t *testing.T) {
 		t.Fatalf("write board.yaml: %v", err)
 	}
 
-	// Chdir into the temp repo so hubgeometry.Getwd inside RunCLI resolves to a git repo.
+	// Chdir into the temp repo so lyxcwd.Getwd inside RunCLI resolves to a git repo.
 	oldCwd, err2 := os.Getwd()
 	if err2 != nil {
 		t.Fatalf("getwd: %v", err2)
@@ -161,7 +161,7 @@ func TestReconcile_Apply(t *testing.T) {
 
 	// Verify board.yaml was created on disk. "fabric" is deliberately excluded
 	// from this assertion: since configsync.ReconcileAll skips "fabric"
-	// entirely (its config is repo-wide at hubgeometry.BoardDir, materialized
+	// entirely (its config is repo-wide at lyxcwd.BoardDir, materialized
 	// via ReconcileFabricAt at clone time, never per-worktree), "board" is the
 	// generic module this reconcile-writes-to-disk assertion exercises instead.
 	boardPath := configengine.ConfigFile(tmpDir, "board")

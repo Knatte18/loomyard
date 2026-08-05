@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 func TestSpawn(t *testing.T) {
@@ -49,10 +49,7 @@ func TestSpawn(t *testing.T) {
 				}
 			}
 
-			layout := &hubgeometry.Layout{
-				Hub:     container,
-				RelPath: tt.relpath,
-			}
+			layout := &lyxcwd.Location{HubPath: container, AnchorRel: tt.relpath}
 
 			var launchedDir string
 			CodeLauncher = func(dir string) error {

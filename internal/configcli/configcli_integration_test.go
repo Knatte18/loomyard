@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -47,13 +47,13 @@ func TestE2ESyncIntegration(t *testing.T) {
 	// step has no "main-weft" ref to fork the new pair's weft branch from.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
-	// Seed the repo-wide fabric config at hubgeometry.BoardDir(f.Layout.Hub):
+	// Seed the repo-wide fabric config at lyxcwd.BoardDir(f.Layout.HubPath):
 	// batch 5's eager wiring makes Topology.Add read the wired junction
 	// name-set via fabricengine.RepoWiredNames, which loads fabric.yaml from
 	// the repo-wide board dir, not this fixture's per-worktree weft config
 	// seeded above. Without this, Add below fails with "load fabric config:
 	// not initialized here" before it ever wires a junction.
-	seedRepoWideFabricConfig(t, f.Layout.Hub)
+	seedRepoWideFabricConfig(t, f.Layout.HubPath)
 
 	// FIRST: Create the host worktree via fabricengine.NewTopology().Add() (which is dormant).
 	// Then wire the host _lyx junction via WireJunctions.
@@ -71,9 +71,9 @@ func TestE2ESyncIntegration(t *testing.T) {
 
 	// Resolve layout for the new host worktree.
 	hostWorktreePath := fabricengine.WorktreePath(f.Layout, slug)
-	hostLayout, err := hubgeometry.Resolve(hostWorktreePath)
+	hostLayout, err := lyxcwd.Resolve(hostWorktreePath)
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(%q): %v", hostWorktreePath, err)
+		t.Fatalf("lyxcwd.Resolve(%q): %v", hostWorktreePath, err)
 	}
 
 	// Chdir into the host worktree so fabriccli.RunCLI's cwd resolution lands on the fixture.
@@ -177,7 +177,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 // stops silently destroying the key first.
 //
 // Uses "board" rather than "fabric": since configsync.ReconcileAll now skips
-// "fabric" entirely (its config is repo-wide at hubgeometry.BoardDir, never
+// "fabric" entirely (its config is repo-wide at lyxcwd.BoardDir, never
 // per-worktree — see ReconcileAll's doc comment), a module RunCLI(reconcile)
 // still processes generically is needed to exercise this drift-detection
 // path; "board" is that generic module, and the scenario under test (a
@@ -186,7 +186,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Initialize a minimal git repo so hubgeometry.Resolve works for the
+	// Initialize a minimal git repo so lyxcwd.Resolve works for the
 	// reconcile call below (RunCLI resolves its layout from cwd).
 	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, tmpDir)
 	if err != nil || exitCode != 0 {
@@ -197,7 +197,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 
 	// Run --set via dispatch, exactly as
 	// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning does, using an
-	// explicit *hubgeometry.Layout (dispatch takes one directly, unlike
+	// explicit *lyxcwd.Location (dispatch takes one directly, unlike
 	// RunCLI which resolves it from cwd).
 	var setOut bytes.Buffer
 	setCode := dispatch(makeLayoutAt(tmpDir), nil, &setOut, []string{"board"}, makeNeverCalledEditor(t), (&fakeSyncTracker{exitCode: 0}).syncFunc(), false, []string{"design_prefix=new-"})
@@ -205,7 +205,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 	}
 
-	// Chdir into the temp repo so hubgeometry.Getwd inside RunCLI resolves
+	// Chdir into the temp repo so lyxcwd.Getwd inside RunCLI resolves
 	// there, then run reconcile.
 	oldCwd, err := os.Getwd()
 	if err != nil {
@@ -261,7 +261,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// hubgeometry.BoardDir(hub) -- <hub>/_board/_lyx/config/fabric.yaml -- the
+// lyxcwd.BoardDir(hub) -- <hub>/_board/_lyx/config/fabric.yaml -- the
 // base fabricengine.RepoWiredNames (and every migrated call site downstream
 // of it, including Topology.Add's eager wiring) reads from. lyxtest.CopyPaired
 // does not create a _board dir, so this creates it (and its _lyx/config/)
@@ -272,7 +272,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}

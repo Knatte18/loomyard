@@ -15,12 +15,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // fakeEditor returns a fake EditorFunc that writes the given valid YAML
@@ -206,10 +207,7 @@ func TestMenuSelection(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	l := &hubgeometry.Layout{
-		WorktreeRoot: baseDir,
-		RelPath:      ".",
-	}
+	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 
 	// Simulate user input: select item 1 (board), then quit
 	input := strings.NewReader("1\nq\n")
@@ -244,10 +242,7 @@ func TestMenuQuit(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	l := &hubgeometry.Layout{
-		WorktreeRoot: baseDir,
-		RelPath:      ".",
-	}
+	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 
 	input := strings.NewReader("q\n")
 	var out bytes.Buffer
@@ -277,10 +272,7 @@ func TestMenuInvalidSelection(t *testing.T) {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
-	l := &hubgeometry.Layout{
-		WorktreeRoot: baseDir,
-		RelPath:      ".",
-	}
+	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 
 	input := strings.NewReader("999\n")
 	var out bytes.Buffer
@@ -318,10 +310,7 @@ func TestMenuStatus(t *testing.T) {
 	}
 	// builder.yaml not created, so it should show (default)
 
-	l := &hubgeometry.Layout{
-		WorktreeRoot: baseDir,
-		RelPath:      ".",
-	}
+	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 
 	input := strings.NewReader("q\n")
 	var out bytes.Buffer
@@ -351,12 +340,9 @@ func makeNeverCalledEditor(t *testing.T) configengine.EditorFunc {
 	}
 }
 
-// makeLayoutAt returns a minimal *hubgeometry.Layout with WorktreeRoot at baseDir and RelPath ".".
-func makeLayoutAt(baseDir string) *hubgeometry.Layout {
-	return &hubgeometry.Layout{
-		WorktreeRoot: baseDir,
-		RelPath:      ".",
-	}
+// makeLayoutAt returns a minimal *lyxcwd.Location with WorktreeRoot at baseDir and RelPath ".".
+func makeLayoutAt(baseDir string) *lyxcwd.Location {
+	return &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 }
 
 // seedModuleConfig writes YAML content to the config file for the named module under baseDir.

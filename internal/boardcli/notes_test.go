@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestCLINotesContract tests the JSON envelope shape and exit code behavior
@@ -47,7 +47,7 @@ func TestCLINotesContract(t *testing.T) {
 			wantFieldExist: "task",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
 				// The write must land in notes.json, not tasks.json, in the board dir.
-				boardDir := hubgeometry.BoardDir(filepath.Dir(cwd))
+				boardDir := lyxcwd.BoardDir(filepath.Dir(cwd))
 				notesPath := filepath.Join(boardDir, "notes.json")
 				if _, err := os.Stat(notesPath); err != nil {
 					t.Fatalf("notes.json not created at %q: %v", notesPath, err)
@@ -125,7 +125,7 @@ func TestCLINotesContract(t *testing.T) {
 				}
 
 				// tasks.json must be untouched by a notes-scoped remove.
-				boardDir := hubgeometry.BoardDir(filepath.Dir(cwd))
+				boardDir := lyxcwd.BoardDir(filepath.Dir(cwd))
 				tasksPath := filepath.Join(boardDir, "tasks.json")
 				if _, err := os.Stat(tasksPath); err == nil {
 					t.Fatalf("tasks.json unexpectedly present after notes remove at %q", tasksPath)
