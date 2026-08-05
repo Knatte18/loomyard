@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -45,7 +45,7 @@ func shaOf(t *testing.T, dir, rev string) string {
 // any error — the shared test-package helper for the many call sites across
 // this package's tests that need the weft prime worktree path, now that it is
 // a fabricengine-owned resolution rather than a Layout method.
-func mustWeftRepoRoot(t *testing.T, l *hubgeometry.Layout) string {
+func mustWeftRepoRoot(t *testing.T, l *lyxcwd.Location) string {
 	t.Helper()
 
 	root, err := fabricengine.WeftRepoRoot(l)
@@ -67,13 +67,13 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	// Card 20 folds RepoWiredNames(l) — WiredNames(hubgeometry.BoardDir(l.Hub))
+	// Card 20 folds RepoWiredNames(l) — WiredNames(lyxcwd.BoardDir(l.HubPath))
 	// — into Add's eager-wiring step, hard-failing via rollbackAdd on a
 	// name-set load error, so the fixture must also materialize the
 	// repo-wide fabric.yaml at BoardDir(Hub), not just the per-pair weft
 	// base above. seedRepoWideFabricConfig is the same helper
 	// newFabricFixture uses for this (reconcile_stale_registration_test.go).
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	// Mirror CloneHub's post-clone state so the fixture matches a real fabric
 	// hub: the weft primary sits on the suffixed sibling of the host's branch.
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
@@ -126,7 +126,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("host worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
-	if branchExistsAt(t, l.WorktreeRoot, slug) {
+	if branchExistsAt(t, l.WorktreePath(), slug) {
 		t.Errorf("host branch %q still exists", slug)
 	}
 }
@@ -191,7 +191,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	l := fixture.Layout
@@ -211,7 +211,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 
 	// Break the host origin remote so step 11's push fails AFTER step 10b has
 	// already wired the junctions — the mid-add failure this test covers.
-	lyxtest.MustRun(t, l.WorktreeRoot, "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
@@ -249,7 +249,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("host worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
-	if branchExistsAt(t, l.WorktreeRoot, slug) {
+	if branchExistsAt(t, l.WorktreePath(), slug) {
 		t.Errorf("host branch %q still exists", slug)
 	}
 }

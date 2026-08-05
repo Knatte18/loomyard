@@ -24,7 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below
@@ -42,20 +42,20 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	// Resolve a nested layout: same worktree (l.WorktreeRoot), but Cwd one
+	// Resolve a nested layout: same worktree (l.WorktreePath()), but Cwd one
 	// level deeper — RelPath becomes "sub", matching the hub-wide nesting
 	// convention HostLyxLink/WeftLyxDirFor assume (every sibling worktree
 	// nests at the same RelPath offset as the caller's own).
-	subDir := filepath.Join(l.WorktreeRoot, "sub")
+	subDir := filepath.Join(l.WorktreePath(), "sub")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", subDir, err)
 	}
-	nestedLayout, err := hubgeometry.Resolve(subDir)
+	nestedLayout, err := lyxcwd.Resolve(subDir)
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(%s): %v", subDir, err)
+		t.Fatalf("lyxcwd.Resolve(%s): %v", subDir, err)
 	}
-	if nestedLayout.RelPath != "sub" {
-		t.Fatalf("nestedLayout.RelPath = %q; want %q", nestedLayout.RelPath, "sub")
+	if nestedLayout.AnchorRel != "sub" {
+		t.Fatalf("nestedLayout.AnchorRel = %q; want %q", nestedLayout.AnchorRel, "sub")
 	}
 
 	if err := fabricengine.WireJunctions(nestedLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
@@ -73,7 +73,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 
 	// Remove loads the repo-wide config (best-effort) to know which nested
 	// junctions to tear down — newFabricFixture already materialized it at
-	// hubgeometry.BoardDir(l.Hub) via seedRepoWideFabricConfig, so Remove's
+	// lyxcwd.BoardDir(l.HubPath) via seedRepoWideFabricConfig, so Remove's
 	// name-load finds "_lyx _pattern" (the default pathspec) regardless of
 	// this pair's RelPath, and the happy-path nested teardown below is
 	// actually exercised, not just the degraded nothing-removed path.

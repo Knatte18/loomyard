@@ -5,11 +5,12 @@
 package fabricengine_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -35,7 +36,7 @@ func TestAdd_RejectsSeparatorSlug(t *testing.T) {
 			// The layout points at a non-repo temp dir: validation must
 			// reject the slug before Add ever consults the layout, so no
 			// git error can mask the validation error.
-			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
 			if err == nil {
@@ -65,7 +66,7 @@ func TestAdd_RejectsEmptySlug(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			topology := fabricengine.NewTopology(fabricengine.Config{})
-			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
 			if err == nil {
@@ -81,7 +82,7 @@ func TestAdd_RejectsEmptySlug(t *testing.T) {
 // TestAdd_RejectsWeftSuffixSlug asserts that Add refuses a slug ending in the
 // weft suffix before touching git or the filesystem. Such a slug names a host
 // worktree directory (fabricengine.WorktreePath(l, slug)) that is indistinguishable from a
-// weft worktree directory: hubgeometry.WeftHostSlug accepts it, so prune's hub
+// weft worktree directory: lyxcwd.WeftHostSlug accepts it, so prune's hub
 // scan misclassifies the host worktree as an orphaned weft and — under
 // --apply — os.RemoveAll's it, destroying the host worktree and any uncommitted
 // work. Rejecting the collision at the source is fabric's job (it owns the weft
@@ -102,7 +103,7 @@ func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
 			// The layout points at a non-repo temp dir: validation must reject
 			// the slug before Add consults the layout, so no git or stat error
 			// can mask the validation error.
-			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
 			if err == nil {
@@ -137,11 +138,11 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Config{Pathspec: "_lyx _pattern"} injects the junction-name half
 			// of the reserved union: after card 1 removed _lyx/_pattern from
-			// hubgeometry.HubReservedNames(), those two are rejected only via
+			// lyxcwd.HubReservedNames(), those two are rejected only via
 			// this injected pathspec, while _board/_portals/_launchers/_raddle
 			// stay rejected via HubReservedNames() regardless of pathspec.
 			topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern"})
-			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
 			if err == nil {
@@ -159,14 +160,14 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 
 // TestAdd_RejectsPathspecJunctionNameSlug asserts that Add refuses a slug
 // equal to a current pathspec junction name that is NOT one of
-// hubgeometry.HubReservedNames()'s hub-structural tokens — proving the
+// lyxcwd.HubReservedNames()'s hub-structural tokens — proving the
 // config-driven arm of IsReservedHubName's union, not only the hub-structural
 // arm TestAdd_RejectsReservedHubNameSlug already covers. "_extra" here is
 // reserved only because it is in this Topology's configured pathspec.
 // Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsPathspecJunctionNameSlug(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern _extra"})
-	layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 	_, err := topology.Add(layout, "_extra", fabricengine.AddOptions{})
 	if err == nil {

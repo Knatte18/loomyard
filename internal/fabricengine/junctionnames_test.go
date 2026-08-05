@@ -10,7 +10,7 @@ package fabricengine
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a
@@ -31,7 +31,7 @@ func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
 // TestFilterHubReserved covers filterHubReserved's table of shapes: mixed
 // reserved/non-reserved input, all-reserved input, and no-reserved input.
 func TestFilterHubReserved(t *testing.T) {
-	reserved := hubgeometry.HubReservedNames()
+	reserved := lyxcwd.HubReservedNames()
 
 	tests := []struct {
 		name  string
@@ -81,7 +81,7 @@ func TestFilterHubReserved(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("hubgeometry.HubReservedNames() = %v; want it to contain %q", reserved, want)
+			t.Errorf("lyxcwd.HubReservedNames() = %v; want it to contain %q", reserved, want)
 		}
 	}
 }

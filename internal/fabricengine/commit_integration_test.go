@@ -34,17 +34,17 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's
 // classify step now reads via RepoWiredNames — the `weft:main` base at
-// hubgeometry.BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's
+// lyxcwd.BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's
 // classifier needs. warpPath is a bare t.TempDir() plain-git checkout (this
 // file's newPlainWarpRepo/newUnbornWarpRepo fixtures, not a real hub tree),
-// so hubgeometry.ResolveWorktree(warpPath)'s Hub — warpPath's parent
+// so lyxcwd.ResolveWorktree(warpPath)'s HubPath — warpPath's parent
 // directory — stands in for the hub; _board is not itself a git repository,
 // so the file is written directly with no git add/commit step. Mirrors
 // reconcile_stale_registration_test.go's seedRepoWideFabricConfig, which
@@ -53,7 +53,7 @@ import (
 func seedFabricConfig(t *testing.T, warpPath string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(filepath.Dir(warpPath))
+	boardDir := lyxcwd.BoardDir(filepath.Dir(warpPath))
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -466,19 +466,19 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 }
 
 // writeFabricAnchor records anchor as the .lyx-anchor marker under
-// warpPath's hub board directory, so a subsequent hubgeometry.ResolveWorktree
-// call resolves l.RelPath to anchor rather than falling back to a
-// cwd-derived ".". Mirrors hubgeometry's own anchor_test.go writeAnchor,
+// warpPath's hub board directory, so a subsequent lyxcwd.ResolveWorktree
+// call resolves l.AnchorRel to anchor rather than falling back to a
+// cwd-derived ".". Mirrors lyxcwd's own anchor_test.go writeAnchor,
 // duplicated here rather than imported since that helper lives in the
-// hubgeometry_test package.
+// lyxcwd_test package.
 func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(filepath.Dir(warpPath))
+	boardDir := lyxcwd.BoardDir(filepath.Dir(warpPath))
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.AnchorFileName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(anchor), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}

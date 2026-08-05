@@ -35,7 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -106,13 +106,13 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 	return fixture
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
+// lyxcwd.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
 // Healthy, Reconcile, Topology.Checkout, Topology.Remove,
 // junctionRepointedDetail) now read from. lyxtest.CopyPaired/CopyPairedLocal
@@ -123,7 +123,7 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -476,9 +476,9 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
 	// Replace the junction with a real directory — the drift shape a

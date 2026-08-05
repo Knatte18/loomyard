@@ -1,5 +1,5 @@
 // junction_test.go unit-tests unseedJunctionRecords directly against synthetic
-// hubgeometry.HostJunction slices — no build tag, since it touches only plain
+// lyxcwd.HostJunction slices — no build tag, since it touches only plain
 // directories and fslink, never git. It exists because l.HostJunctions(slug)
 // still returns exactly one entry in this batch (a second entry is batch 5's
 // job), so the abort-and-accumulate contract this card gives unseedLyxJunction
@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // wireTestJunction creates a real link at link pointing to target (creating
@@ -33,19 +33,19 @@ func wireTestJunction(t *testing.T, link, target string) {
 	}
 }
 
-// TestWorktreePath verifies that WorktreePath(l, slug) joins Hub and slug —
-// moved here from hubgeometry's own unit test now that fabricengine is the
+// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug —
+// moved here from lyxcwd's own unit test now that fabricengine is the
 // sole owner of this path shape (the method it replaced,
-// (*hubgeometry.Layout).WorktreePath(slug), collided with the no-arg
+// (*lyxcwd.Location).WorktreePath(slug), collided with the no-arg
 // accessor the coming reshape introduces on the same type).
 func TestWorktreePath(t *testing.T) {
 	t.Parallel()
 
-	l := &hubgeometry.Layout{Hub: filepath.Join("home", "user", "project-HUB")}
+	l := &lyxcwd.Location{HubPath: filepath.Join("home", "user", "project-HUB")}
 	slug := "test-wt"
 
 	got := WorktreePath(l, slug)
-	want := filepath.Join(l.Hub, slug)
+	want := filepath.Join(l.HubPath, slug)
 	if got != want {
 		t.Errorf("WorktreePath(l, %q) = %q; want %q", slug, got, want)
 	}
@@ -73,7 +73,7 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 		t.Fatalf("mkdir real second-link dir: %v", err)
 	}
 
-	junctions := []hubgeometry.HostJunction{
+	junctions := []lyxcwd.HostJunction{
 		{Name: "first", Link: firstLink, Target: firstTarget},
 		{Name: "second", Link: secondLink, Target: filepath.Join(root, "second-target")},
 	}
@@ -126,7 +126,7 @@ func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 	secondTarget := filepath.Join(root, "second-target")
 	wireTestJunction(t, secondLink, secondTarget)
 
-	junctions := []hubgeometry.HostJunction{
+	junctions := []lyxcwd.HostJunction{
 		{Name: "first", Link: firstLink, Target: firstTarget},
 		{Name: "second", Link: secondLink, Target: secondTarget},
 	}

@@ -25,7 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -81,7 +81,7 @@ func newFabricAtRelPath(t *testing.T, weftPath, rel string) *fabricengine.Fabric
 	warpPath := newWarpFixture(t)
 	hub := filepath.Dir(warpPath)
 	seedRepoWideFabricConfig(t, hub)
-	if err := os.WriteFile(filepath.Join(hubgeometry.BoardDir(hub), hubgeometry.AnchorFileName), []byte(rel), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(lyxcwd.BoardDir(hub), lyxcwd.AnchorFileName), []byte(rel), 0o644); err != nil {
 		t.Fatalf("write .lyx-anchor: %v", err)
 	}
 

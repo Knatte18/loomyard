@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -36,7 +36,7 @@ import (
 // file, mirroring the resolution logic seedGitExclude/unseedGitExclude use
 // (git rev-parse --git-path info/exclude, joined with the worktree path if
 // relative) so this test observes the same path the production code writes.
-func readExcludeLines(t *testing.T, l *hubgeometry.Layout, slug string) []string {
+func readExcludeLines(t *testing.T, l *lyxcwd.Location, slug string) []string {
 	t.Helper()
 
 	worktreePath := fabricengine.WorktreePath(l, slug)
@@ -120,7 +120,7 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -176,7 +176,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -187,8 +187,8 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if lines := readExcludeLines(t, l, slug); !containsLine(lines, configengine.LyxDirName) {
 		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", configengine.LyxDirName, lines)
 	}
-	if lines := readExcludeLines(t, l, slug); !containsLine(lines, hubgeometry.PatternDirName) {
-		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", hubgeometry.PatternDirName, lines)
+	if lines := readExcludeLines(t, l, slug); !containsLine(lines, lyxcwd.PatternDirName) {
+		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", lyxcwd.PatternDirName, lines)
 	}
 
 	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_pattern"})
@@ -196,7 +196,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 		t.Fatalf("UnwireJunctions: %v", err)
 	}
 
-	if want := []string{configengine.LyxDirName, hubgeometry.PatternDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+	if want := []string{configengine.LyxDirName, lyxcwd.PatternDirName}; !slices.Equal(result.JunctionsRemoved, want) {
 		t.Errorf("JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 	}
 	if !result.ExcludeChanged {
@@ -214,8 +214,8 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if lines := readExcludeLines(t, l, slug); containsLine(lines, configengine.LyxDirName) {
 		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", configengine.LyxDirName, lines)
 	}
-	if lines := readExcludeLines(t, l, slug); containsLine(lines, hubgeometry.PatternDirName) {
-		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", hubgeometry.PatternDirName, lines)
+	if lines := readExcludeLines(t, l, slug); containsLine(lines, lyxcwd.PatternDirName) {
+		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", lyxcwd.PatternDirName, lines)
 	}
 }
 
@@ -229,7 +229,7 @@ func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -272,7 +272,7 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	// Track a file under _pattern directly in the host worktree's index —
 	// the "hand-authored _pattern content accidentally committed to host"
 	// mistake this scan exists to catch.
-	hostPatternDir := filepath.Join(l.WorktreeRoot, hubgeometry.PatternDirName)
+	hostPatternDir := filepath.Join(l.WorktreePath(), lyxcwd.PatternDirName)
 	if err := os.MkdirAll(hostPatternDir, 0o755); err != nil {
 		t.Fatalf("mkdir host _pattern dir: %v", err)
 	}
@@ -280,8 +280,8 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	lyxtest.MustRun(t, l.WorktreeRoot, "git", "add", "--", hubgeometry.PatternDirName)
-	lyxtest.MustRun(t, l.WorktreeRoot, "git", "commit", "-m", "accidentally track _pattern")
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", lyxcwd.PatternDirName)
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _pattern")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	result, err := topology.Status(l)
@@ -377,20 +377,20 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	junctions := []struct {
 		name      string
 		dirName   string
-		linkFor   func(l *hubgeometry.Layout) string
-		targetFor func(l *hubgeometry.Layout) string
+		linkFor   func(l *lyxcwd.Location) string
+		targetFor func(l *lyxcwd.Location) string
 	}{
 		{
 			name:      "Lyx",
 			dirName:   configengine.LyxDirName,
-			linkFor:   func(l *hubgeometry.Layout) string { return l.HostLyxLinkHere() },
-			targetFor: func(l *hubgeometry.Layout) string { return l.WeftLyxDir() },
+			linkFor:   func(l *lyxcwd.Location) string { return l.HostLyxLinkHere() },
+			targetFor: func(l *lyxcwd.Location) string { return l.WeftLyxDir() },
 		},
 		{
 			name:      "Pattern",
-			dirName:   hubgeometry.PatternDirName,
-			linkFor:   func(l *hubgeometry.Layout) string { return l.HostPatternLinkHere() },
-			targetFor: func(l *hubgeometry.Layout) string { return l.WeftPatternDir() },
+			dirName:   lyxcwd.PatternDirName,
+			linkFor:   func(l *lyxcwd.Location) string { return l.HostPatternLinkHere() },
+			targetFor: func(l *lyxcwd.Location) string { return l.WeftPatternDir() },
 		},
 	}
 
@@ -403,7 +403,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 				lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 					"fabric": fabricengine.ConfigTemplate(),
 				})
-				seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+				seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 				lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 				l := fixture.Layout
@@ -452,9 +452,9 @@ func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
 	// _lyx stays healthy; only _pattern goes missing.
@@ -511,9 +511,9 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(fabricengine.WorktreePath(l, slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
 	// _lyx stays healthy; only _pattern is re-pointed at an unrelated directory.
@@ -544,8 +544,8 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 		if pair.JunctionHealthy {
 			t.Error("JunctionHealthy = true; want false")
 		}
-		if !strings.Contains(pair.JunctionReason, hubgeometry.PatternDirName) {
-			t.Errorf("JunctionReason = %q; want it to name %q", pair.JunctionReason, hubgeometry.PatternDirName)
+		if !strings.Contains(pair.JunctionReason, lyxcwd.PatternDirName) {
+			t.Errorf("JunctionReason = %q; want it to name %q", pair.JunctionReason, lyxcwd.PatternDirName)
 		}
 		if pair.InSync {
 			t.Error("InSync = true; want false")
@@ -569,7 +569,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)

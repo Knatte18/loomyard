@@ -37,7 +37,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	top := fabricengine.NewTopology(fabricengine.Config{})
 
 	// Healthy junction so Checkout's wiring step succeeds.
-	slug := filepath.Base(l.WorktreeRoot)
+	slug := filepath.Base(l.WorktreePath())
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
@@ -46,10 +46,10 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	// the target weft branch's history predates (and never contains) the
 	// correspondence-carrying commit recorded on the original branch.
 	const targetBranch = "index-refresh-target"
-	lyxtest.MustRun(t, l.WorktreeRoot, "git", "branch", targetBranch)
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	f, err := fabricengine.New(l.WorktreeRoot, l.WeftWorktree())
+	f, err := fabricengine.New(l.WorktreePath(), l.WeftWorktree())
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}

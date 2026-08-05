@@ -59,7 +59,7 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreeRoot, fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
@@ -68,29 +68,29 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentBranch (before detach): %v", err)
 	}
-	olderSHA := currentSHAOf(t, fixture.Layout.WorktreeRoot)
+	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
 
 	// A later commit on warp gives CheckoutDetached somewhere to detach FROM,
 	// and something the eventual RestoreBranch must land back on top of.
-	commitFile(t, fixture.Layout.WorktreeRoot, "round-trip.txt", "v1", "round-trip commit")
+	commitFile(t, fixture.Layout.WorktreePath(), "round-trip.txt", "v1", "round-trip commit")
 
 	if err := f.CheckoutDetached(olderSHA); err != nil {
 		t.Fatalf("CheckoutDetached(%q): %v", olderSHA, err)
 	}
-	if got := currentSHAOf(t, fixture.Layout.WorktreeRoot); got != olderSHA {
+	if got := currentSHAOf(t, fixture.Layout.WorktreePath()); got != olderSHA {
 		t.Errorf("HEAD SHA after CheckoutDetached = %q; want %q", got, olderSHA)
 	}
 	// A detached HEAD reports the literal "HEAD" for --abbrev-ref, never a
 	// branch name; this is the same signal gitrepo.Repo.CurrentBranch itself
 	// rejects.
-	if got := currentBranchOf(t, fixture.Layout.WorktreeRoot); got != "HEAD" {
+	if got := currentBranchOf(t, fixture.Layout.WorktreePath()); got != "HEAD" {
 		t.Errorf("HEAD ref after CheckoutDetached = %q; want %q (detached)", got, "HEAD")
 	}
 
 	if err := f.RestoreBranch(originalBranch); err != nil {
 		t.Fatalf("RestoreBranch(%q): %v", originalBranch, err)
 	}
-	if got := currentBranchOf(t, fixture.Layout.WorktreeRoot); got != originalBranch {
+	if got := currentBranchOf(t, fixture.Layout.WorktreePath()); got != originalBranch {
 		t.Errorf("branch after RestoreBranch = %q; want %q (original)", got, originalBranch)
 	}
 }
@@ -102,7 +102,7 @@ func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreeRoot, fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
@@ -119,17 +119,17 @@ func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreeRoot, fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
 
-	olderSHA := currentSHAOf(t, fixture.Layout.WorktreeRoot)
+	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
 
 	// A committed change past olderSHA, then an uncommitted change on top —
 	// ResetHard must discard both in one call.
-	laterPath := filepath.Join(fixture.Layout.WorktreeRoot, "reset-hard-later.txt")
-	commitFile(t, fixture.Layout.WorktreeRoot, "reset-hard-later.txt", "committed", "later commit past olderSHA")
+	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
+	commitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
 	if err := os.WriteFile(laterPath, []byte("uncommitted edit"), 0o644); err != nil {
 		t.Fatalf("write uncommitted change: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
 		t.Fatalf("ResetHard(%q): %v", olderSHA, err)
 	}
 
-	if got := currentSHAOf(t, fixture.Layout.WorktreeRoot); got != olderSHA {
+	if got := currentSHAOf(t, fixture.Layout.WorktreePath()); got != olderSHA {
 		t.Errorf("HEAD SHA after ResetHard = %q; want %q", got, olderSHA)
 	}
 	if _, err := os.Stat(laterPath); !os.IsNotExist(err) {
@@ -153,12 +153,12 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreeRoot, fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
 
-	lyxtest.MustRun(t, fixture.Layout.WorktreeRoot, "git", "checkout", "--detach")
+	lyxtest.MustRun(t, fixture.Layout.WorktreePath(), "git", "checkout", "--detach")
 
 	if _, err := f.CurrentBranch(); err == nil {
 		t.Fatalf("CurrentBranch() on detached HEAD error = nil; want non-nil")
