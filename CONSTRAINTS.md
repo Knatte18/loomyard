@@ -2,31 +2,32 @@
 
 Short, authoritative list of the repo's structural invariants. Each is partly machine-enforced (named test, fails `go test`/CI) and partly a review obligation. This file states rules only — no rationale, no incident narratives, no historical justification. Fuller design/how-to lives in godoc and `docs/`.
 
-## Hub Geometry Invariant
+## Cwd Resolution Invariant
 
-`internal/hubgeometry` owns only cwd/worktree-root/anchor resolution — never weft, never any per-module path.
+`internal/lyxcwd` owns cwd resolution and nothing else — never weft, never a junction path, never any per-module subdirectory.
 
 - **`root` always means the git worktree/repo root; the current working directory is `cwd`.** Never name a parameter, field, or local variable `root` for a value that is actually `cwd`, or vice versa.
-- All cwd/worktree-root queries go through `hubgeometry.Getwd()`/`Resolve()`. Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/hubgeometry` and `cmd/lyx/main.go`.
-- `hubgeometry.Resolve` exposes only `Cwd`, the worktree root, `Hub`, and (from the recorded anchor) `RelPath`. It never resolves or exposes a weft path, a junction path, or any per-module subdirectory — those are not geometry `hubgeometry` owns.
-- A module's own durable-storage subdirectory (e.g. `_lyx/plan`, `_lyx/webster`) is that module's own private relative-path constant, joined onto `cwd` directly — never a `hubgeometry` function call. Adding a module's own subdirectory is never a `hubgeometry` change.
-- Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `hubgeometry`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths, and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `hubgeometry` never mentions weft.
-- `_board` (a real `weft:main` worktree at `<Hub>/_board`, not a junction) is the one hub-structural token `hubgeometry` still owns directly, because it needs the name itself to read `<Hub>/_board/.fabric-anchor`. Every other geometry token (`_lyx`, `_pattern`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`) is owned by `fabricengine`, not `hubgeometry`.
+- All cwd/worktree-root queries go through `lyxcwd.Getwd()`/`Resolve()`. Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lyxcwd` and `cmd/lyx/main.go`.
+- `lyxcwd.Resolve` exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`, and the two derived accessors (`WorktreePath()`, `AnchorPath()`) built from them. It never resolves or exposes a weft path, a junction path, or any per-module subdirectory — those are not geometry `lyxcwd` owns.
+- cwd must equal `AnchorPath()` exactly; `Resolve` returns `ErrCwdOutsideAnchor` otherwise. `ResolveWithAnchor` and `ResolveWorktree` are ungated — `ResolveWithAnchor` is a documented bypass, used only by callers that legitimately stand somewhere the gate would reject (fabric's clone, lyxtest's synthetic hubs).
+- A module's own durable-storage subdirectory (e.g. `_lyx/plan`, `_lyx/webster`) is that module's own private relative-path constant, joined onto `AnchorPath()` directly — never a `lyxcwd` function call. Adding a module's own subdirectory is never a `lyxcwd` change.
+- `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — this is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic.
+- Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths, and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `lyxcwd` never mentions weft.
 - Geometry is structural, never config/env-overridable.
-- The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`, read at `<Hub>/_board/_lyx/config/fabric.yaml`) — `fabricengine`'s concern, not `hubgeometry`'s.
-- `RelPath` resolves from the recorded `.fabric-anchor` marker, not positionally from cwd; cwd is a validated at-or-below gate (`ErrCwdOutsideAnchor` if violated), falling back to cwd-derived `RelPath` only when the marker is absent. `ResolveWorktree`/`SiblingLayout` read the same anchor with no cwd gate.
-- **Enforced by** `internal/hubgeometry/enforcement_test.go` (`TestEnforcement_GeometryLiterals`).
+- The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`, read at `<Hub>/_board/_lyx/config/fabric.yaml`) — `fabricengine`'s concern, not `lyxcwd`'s.
+- `AnchorRel` resolves from the recorded `.fabric-anchor` marker, not positionally from cwd; cwd is a validated at-or-below gate (`ErrCwdOutsideAnchor` if violated), falling back to `"."` only when the marker is absent. `ResolveWorktree`/`ResolveWithAnchor` read the same anchor with no cwd gate.
+- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`).
 
 ## lyxtest Leaf Invariant
 
-`internal/lyxtest` stays a leaf: imports only stdlib and `internal/hubgeometry` — never `internal/configreg` or any feature package.
+`internal/lyxtest` is policed by a banned-imports list (`internal/configreg`, the feature packages, `internal/fabricengine`/`fabriccli`), not an allowlist; its import set is stdlib plus `internal/lyxcwd`, `internal/weftname`, and `internal/configengine`.
 
 - Tests needing real config call `lyxtest.SeedConfig(tb, dir, map[string]string{...})`.
 - **Enforced by** `internal/lyxtest/leaf_enforcement_test.go`.
 
 ## Modelspec Leaf Invariant
 
-`internal/modelspec` production code imports only stdlib, `internal/hubgeometry`, and `gopkg.in/yaml.v3`.
+`internal/modelspec` production code imports only stdlib, `internal/configengine`, and `gopkg.in/yaml.v3`.
 
 - `configreg` → `modelspec` is allowed (for `modelspec.ConfigTemplate`); the reverse is never allowed.
 - **Enforced by** `internal/modelspec/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
@@ -35,26 +36,26 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 
 `internal/treadleengine` never imports `internal/burlerengine` or any `internal/*cli` package; round runners adapt onto treadle's `RoundRunner` vocabulary in their own packages.
 
-- Import allowlist: stdlib, `internal/lock`, `internal/logger`, `internal/state`, `internal/stencil`, `internal/shuttleengine`, `gopkg.in/yaml.v3` — not `internal/hubgeometry` directly. Policed on direct imports only, not the transitive closure.
+- Import allowlist: stdlib, `internal/lock`, `internal/logger`, `internal/state`, `internal/stencil`, `internal/shuttleengine`, `gopkg.in/yaml.v3` — not `internal/lyxcwd` directly. Policed on direct imports only, not the transitive closure.
 - **Enforced by** `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
 ## Tokenvocab Leaf Invariant
 
-`internal/tokenvocab` production code imports only stdlib, `internal/hubgeometry`, and `internal/stencil`.
+`internal/tokenvocab` production code imports only stdlib, `internal/lyxcwd`, and `internal/stencil`.
 
 - Reverse import (`tokenvocab` → `reed`/`loom`/any feature package) is never allowed.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
 ## Scoutengine Leaf Invariant
 
-`internal/scoutengine` production code imports only stdlib, `internal/hubgeometry`, `internal/lock`, `internal/proc`, `internal/logger`, and `gopkg.in/yaml.v3` — no `internal/output`, `cobra`, or `internal/*cli`. Returns typed `(T, error)`, never touches `io.Writer`/exit codes/the output envelope; `internal/scoutcli` maps engine results into that envelope.
+`internal/scoutengine` production code imports only stdlib, `internal/lyxcwd`, `internal/configengine`, `internal/lock`, `internal/proc`, `internal/logger`, and `gopkg.in/yaml.v3` — no `internal/output`, `cobra`, or `internal/*cli`. Returns typed `(T, error)`, never touches `io.Writer`/exit codes/the output envelope; `internal/scoutcli` maps engine results into that envelope.
 
 - `scoutcli` → `scoutengine` is the only allowed direction.
 - **Enforced by** `internal/scoutengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
 ## Pattern Leaf Invariant
 
-`internal/pattern` production code imports only stdlib and `internal/hubgeometry` — never `builderengine`, `websterengine`, `burlerengine`, `loomengine`, or any other feature package. Reverse import never allowed.
+`internal/pattern` production code imports only stdlib and `internal/lyxcwd` — never `builderengine`, `websterengine`, `burlerengine`, `loomengine`, or any other feature package. Reverse import never allowed.
 
 - **Enforced by** `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
@@ -152,7 +153,7 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
 `internal/planparser` is the SOLE parser of the on-disk plan format (`_lyx/plan/`).
 
 - No other package parses `00-overview.md`/`NN-<card-slug>.md`; consumers read plan-level sections only from the `planparser.Plan` model a caller hands in.
-- Resolves `_lyx/plan/` via `hubgeometry`, never string literals.
+- Resolves `_lyx/plan/` via `lyxcwd`, never string literals.
 - **Enforced by** review obligation today (candidate future import/grep guard).
 
 ## Batcher Registry+Config Invariant

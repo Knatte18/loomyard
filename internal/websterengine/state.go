@@ -7,8 +7,8 @@
 // batch. LoadState/SaveState are state.json's only readers/writers; every
 // other websterengine file mutates the in-memory *State the caller loaded
 // and calls SaveState to persist it back. Callers resolve websterDir via
-// hubgeometry.WebsterDir — this file never constructs a _lyx path itself
-// (Hub Geometry Invariant).
+// lyxcwd.WebsterDir — this file never constructs a _lyx path itself
+// (Cwd Resolution Invariant).
 //
 // webster's State is its own schema, independent of builderengine.State: the
 // two modules' state files never share a Go type or a sentinel error, so

@@ -15,12 +15,12 @@ import (
 )
 
 // TestReconcile_NotAGitRepo verifies that "lyx config reconcile" run from a
-// non-git temp directory surfaces hubgeometry's bare ErrNotAGitRepo sentinel
+// non-git temp directory surfaces lyxcwd's bare ErrNotAGitRepo sentinel
 // with no "resolve layout:" prefix and no raw "fatal:" git stderr.
 func TestReconcile_NotAGitRepo(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Chdir into the non-git temp dir so hubgeometry.Getwd inside RunCLI resolves there.
+	// Chdir into the non-git temp dir so lyxcwd.Getwd inside RunCLI resolves there.
 	oldCwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)

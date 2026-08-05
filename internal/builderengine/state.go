@@ -5,8 +5,8 @@
 // SHA. LoadState/SaveState are state.json's only readers/writers; every
 // other builderengine file mutates the in-memory *State the caller loaded
 // and calls SaveState to persist it back. Callers resolve builderDir via
-// hubgeometry.BuilderDir — this file never constructs a _lyx path itself
-// (Hub Geometry Invariant).
+// lyxcwd.BuilderDir — this file never constructs a _lyx path itself
+// (Cwd Resolution Invariant).
 
 package builderengine
 

@@ -30,7 +30,7 @@ const overviewFileName = "00-overview.md"
 // PlanBatch).
 type Plan struct {
 	// Dir is the plan directory ParsePlan was given: _lyx/plan in
-	// production (resolved via hubgeometry.PlanDir by the caller), a plain
+	// production (resolved via lyxcwd.PlanDir by the caller), a plain
 	// testdata directory in tests.
 	Dir string
 

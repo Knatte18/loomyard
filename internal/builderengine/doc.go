@@ -47,9 +47,9 @@
 // the pinned plan-format contract, not incidental caller choices — even
 // though every entry point (ParsePlan, LoadState, SpawnDeps.BuilderDir/
 // ReportsDir, etc.) takes an already-resolved directory string. Resolving
-// `_lyx/plan` and `_lyx/builder` via the internal/hubgeometry helpers
+// `_lyx/plan` and `_lyx/builder` via the internal/lyxcwd helpers
 // (PlanDir/BuilderDir/BuilderReportsDir) is internal/buildercli's job, done
-// once in its PersistentPreRunE, per the Hub Geometry Invariant. This is
+// once in its PersistentPreRunE, per the Cwd Resolution Invariant. This is
 // the one documented difference from perchengine's pattern (which treats
 // its working directory as fully incidental). builderengine is nonetheless
 // weft-BLIND: every weft commit of a builder artifact (a batch report,

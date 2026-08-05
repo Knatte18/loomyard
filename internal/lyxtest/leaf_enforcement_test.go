@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-// TestLeafInvariant verifies that lyxtest imports only stdlib and internal/hubgeometry,
+// TestLeafInvariant verifies that lyxtest imports only stdlib and internal/lyxcwd,
 // never internal/configreg or any feature package (boardengine/boardcli,
 // ideengine/idecli, selfreportengine/selfreportcli, or fabricengine/fabriccli). It
 // uses go/parser to read actual import paths, avoiding false positives from string
