@@ -3,10 +3,10 @@
 ```yaml
 task: 'fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)'
 batch: module-owned-constructors
-number: 2
+number: 5
 cards: 10
 verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/...
-depends-on: [1]
+depends-on: [4]
 ```
 
 ## Rename mechanic
@@ -20,7 +20,7 @@ For each `Moves:` pair the implementer MUST:
 
 ## Batch Scope
 
-This batch delivers the bottleneck fix GitHub issue #127 named: each of the ~20 per-module path constructors moves out of the shrunk module into the module that owns the directory, as a local constructor over a private relative-path constant. After it, adding a module subdirectory under `_lyx` is a change to that module, never to a shared package. Every card here is pure relocation — batch 1 already rewrote every signature and every field read, so no call site changes shape, only its package qualifier.
+This batch delivers the bottleneck fix GitHub issue #127 named: each of the ~20 per-module path constructors moves out of the shrunk module into the module that owns the directory, as a local constructor over a private relative-path constant. After it, adding a module subdirectory under `_lyx` is a change to that module, never to a shared package. Every card here is pure relocation — batches 1-4 already rewrote every signature and every field read, so no call site changes shape, only its package qualifier.
 
 The batch is one unit because the guard invariant it must not break is global: `configengine.LyxDirName` is the single declarer of `_lyx`, and each relocated constructor joins **per segment** (`filepath.Join(l.AnchorPath(), configengine.LyxDirName, planDirName)`), never a fused `"_lyx/plan"` literal. A fused literal is invisible to the whole-token guard and would make the `_lyx` ownership row police a token nobody declares. Card 29 is the zero-diff gate that proves no card in this batch introduced one.
 
@@ -28,7 +28,7 @@ Batch-local decision — `PlanDirRel` goes to `internal/planparser`, not `intern
 
 Batch-local decision — the relocated constructors keep the base each has today, per the anchoring table in the overview's Shared Decisions. There is no single base, and a blanket "join onto `AnchorPath()`" would silently relocate four of them: `HubLogsDir` is hub-anchored so one reed server per hub resolves to one place, and `WorktreeLogsDir`/`ScoutDaemonStateFile`/`ScoutDaemonLock` live under the ephemeral `.lyx`, never the git-tracked `_lyx`, because they are PIDs, sockets and rotating logs.
 
-External interface batch 3 consumes: nothing new — batch 3 depends on this batch only so the two do not edit `internal/lyxcwd/lyxcwd.go` concurrently.
+External interface batch 6 consumes: nothing new — batch 6 depends on this batch only so the two do not edit `internal/lyxcwd/lyxcwd.go` concurrently.
 
 ## Cards
 
@@ -154,7 +154,7 @@ External interface batch 3 consumes: nothing new — batch 3 depends on this bat
 - **Deletes:** none
 - **Moves:**
   - `internal/lyxcwd/pattern_test.go` -> `internal/pattern/patternpath_test.go`
-- **Requirements:** Delete `PatternDir`, `PatternFile`, `(*Location).PatternFileHere` and the `PatternDirName` const from `internal/lyxcwd/lyxcwd.go`. Declare in `internal/pattern`: `const DirName = "_pattern"`, `func Dir(baseDir string) string` = `filepath.Join(baseDir, DirName)`, `func File(baseDir string) string` = `filepath.Join(Dir(baseDir), "PATTERN.md")` and `func FileHere(l *lyxcwd.Location) string` = `File(l.AnchorPath())`. `internal/pattern` becomes a declarer of `_pattern`; `fabricengine` remains the other, for the bare name as a git pathspec (`pull.go:299`) — batch 3 registers both rows. The Pattern Leaf Invariant needs no widening: `internal/pattern` imports stdlib plus `internal/lyxcwd` and `internal/configengine` only, never `fabricengine` and never `weftname`. The moved test file drops the sub-tests covering `WeftPatternDir`/`WeftPatternDirFor`/`HostPatternLink`/`HostPatternLinkHere` (`pattern_test.go:88-118`) — those four accessors are deleted in batch 3 and the coverage they stood in for is re-asserted there against the generic junction path — and keeps everything else. Rename the file to `patternpath_test.go` so it does not collide with the existing `internal/pattern/pattern_test.go`.
+- **Requirements:** Delete `PatternDir`, `PatternFile`, `(*Location).PatternFileHere` and the `PatternDirName` const from `internal/lyxcwd/lyxcwd.go`. Declare in `internal/pattern`: `const DirName = "_pattern"`, `func Dir(baseDir string) string` = `filepath.Join(baseDir, DirName)`, `func File(baseDir string) string` = `filepath.Join(Dir(baseDir), "PATTERN.md")` and `func FileHere(l *lyxcwd.Location) string` = `File(l.AnchorPath())`. `internal/pattern` becomes a declarer of `_pattern`; `fabricengine` remains the other, for the bare name as a git pathspec (`pull.go:299`) — batch 6 registers both rows. The Pattern Leaf Invariant needs no widening: `internal/pattern` imports stdlib plus `internal/lyxcwd` and `internal/configengine` only, never `fabricengine` and never `weftname`. The moved test file drops the sub-tests covering `WeftPatternDir`/`WeftPatternDirFor`/`HostPatternLink`/`HostPatternLinkHere` (`pattern_test.go:88-118`) — those four accessors are deleted in batch 6 and the coverage they stood in for is re-asserted there against the generic junction path — and keeps everything else. Rename the file to `patternpath_test.go` so it does not collide with the existing `internal/pattern/pattern_test.go`.
 - **Commit:** `refactor(pattern): own the _pattern directory and PATTERN.md paths`
 
 ### Card 26: logger's trace directory and reed's hub log directory
@@ -201,7 +201,7 @@ External interface batch 3 consumes: nothing new — batch 3 depends on this bat
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete `(*Location).LyxDir` and `(*Location).DotLyxDir` from `internal/lyxcwd/lyxcwd.go` and the `dotLyxDirName` const with them, leaving the module with no directory-name constant at all beyond `HubSuffix` and `BoardDirName` (which batch 3 handles). Each caller joins the segment itself: `burlerengine`, `reedengine` and `shuttleengine` each declare their own private `dotLyxDirName = ".lyx"` and build `filepath.Join(l.WorktreePath(), dotLyxDirName, …)` at the sites that called `DotLyxDir()`. `reedcli`'s two tagged tests join the same way against the fixture's location. `.lyx` is deliberately duplicated across these packages: it stays unpoliced this slice, and slice 9 — which registers it as a pathspec junction and removes `crossModuleMachineLocalExcludes` — is where it gets a single owner. Adding it to the ownership map now would have to be undone one slice later. Do not change any resulting path: every one of these is byte-identical before and after for `AnchorRel == "."`, and the `.lyx` group is byte-identical for a subpath-anchored repo too, because it was already `WorktreeRoot`-anchored.
+- **Requirements:** Delete `(*Location).LyxDir` and `(*Location).DotLyxDir` from `internal/lyxcwd/lyxcwd.go` and the `dotLyxDirName` const with them, leaving the module with no directory-name constant at all beyond `HubSuffix` and `BoardDirName` (which batch 6 handles). Each caller joins the segment itself: `burlerengine`, `reedengine` and `shuttleengine` each declare their own private `dotLyxDirName = ".lyx"` and build `filepath.Join(l.WorktreePath(), dotLyxDirName, …)` at the sites that called `DotLyxDir()`. `reedcli`'s two tagged tests join the same way against the fixture's location. `.lyx` is deliberately duplicated across these packages: it stays unpoliced this slice, and slice 9 — which registers it as a pathspec junction and removes `crossModuleMachineLocalExcludes` — is where it gets a single owner. Adding it to the ownership map now would have to be undone one slice later. Do not change any resulting path: every one of these is byte-identical before and after for `AnchorRel == "."`, and the `.lyx` group is byte-identical for a subpath-anchored repo too, because it was already `WorktreeRoot`-anchored.
 - **Commit:** `refactor: join .lyx in each owning module instead of via lyxcwd`
 
 ### Card 28: anchoring-table equivalence test
@@ -239,11 +239,11 @@ External interface batch 3 consumes: nothing new — batch 3 depends on this bat
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Zero-diff gate. Confirm by grep that no card in this batch introduced a fused geometry literal — `grep -rn '"_lyx/' --include='*.go' internal cmd` must return nothing, and every relocated constructor must reach `_lyx` through `configengine.LyxDirName` rather than a local string. Confirm that `TestEnforcement_GeometryLiterals` still passes unchanged: this batch registers **no** new `_lyx` owner, because under the per-segment form no relocated constructor declares the token. An earlier draft of the staging plan said batch 2 would register owners; that is wrong under the pinned constant form, and if this grep finds a fused literal the fix is to split the join, never to add an ownership row. If either check fails, fix the offending constructor in this batch before proceeding — do not defer it to batch 5.
+- **Requirements:** Zero-diff gate. Confirm by grep that no card in this batch introduced a fused geometry literal — `grep -rn '"_lyx/' --include='*.go' internal cmd` must return nothing, and every relocated constructor must reach `_lyx` through `configengine.LyxDirName` rather than a local string. Confirm that `TestEnforcement_GeometryLiterals` still passes unchanged: this batch registers **no** new `_lyx` owner, because under the per-segment form no relocated constructor declares the token. An earlier draft of the staging plan said this batch would register owners; that is wrong under the pinned constant form, and if this grep finds a fused literal the fix is to split the join, never to add an ownership row. If either check fails, fix the offending constructor in this batch before proceeding — do not defer it to batch 8.
 - **Commit:** none
 
 ## Batch Tests
 
-`verify` runs the repo-wide tagged type-check followed by the untagged suites of every package that gains or loses a constructor. The scope is per-batch rather than repo-wide because batch 1 already landed the rename that touched everything; what moves here is confined to the listed packages and their callers.
+`verify` runs the repo-wide tagged type-check followed by the untagged suites of every package that gains or loses a constructor. The scope is per-batch rather than repo-wide because batches 1-4 already landed the rename that touched everything; what moves here is confined to the listed packages and their callers.
 
 The load-bearing new coverage is `cmd/lyx/constructoranchoring_test.go` (card 28), which is what makes this batch safe to review: it pins all three anchoring groups over both an unanchored and a subpath-anchored fixture, so a constructor silently re-based onto the wrong root fails immediately rather than at runtime in a subpath-anchored repo. The relocated test files (`planpath_test.go`, `discussionpath_test.go`, `loomstatus_test.go`, `webstergeom_test.go`, `scoutdaemon_test.go`, `worktreelogs_test.go`, `patternpath_test.go`) move with their symbols rather than being deleted — losing that coverage would be the silent cost of this refactor. Card 29 is a zero-diff grep gate, not a test.

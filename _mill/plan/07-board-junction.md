@@ -3,10 +3,10 @@
 ```yaml
 task: 'fabric: shrink hubgeometry to the minimal illusion primitive (slice 7)'
 batch: board-junction
-number: 4
+number: 7
 cards: 4
 verify: go vet -tags "integration smoke scout" ./... && go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/...
-depends-on: [3]
+depends-on: [6]
 ```
 
 ## Batch Scope

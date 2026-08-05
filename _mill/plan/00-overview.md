@@ -17,43 +17,64 @@ _The fenced yaml block below is the authoritative DAG mill-go reads to schedule 
 ```yaml
 batches:
   - number: 1
-    name: core-reshape
-    file: 01-core-reshape.md
+    name: pre-moves
+    file: 01-pre-moves.md
     depends-on: []
     verify: go vet -tags "integration smoke scout" ./... && go test ./...
   - number: 2
-    name: module-owned-constructors
-    file: 02-module-owned-constructors.md
+    name: rename-and-reshape
+    file: 02-rename-and-reshape.md
     depends-on: [1]
-    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/...
+    verify: go build -tags integration ./internal/lyxcwd/... && go vet -tags integration ./internal/lyxcwd/...
   - number: 3
-    name: fabric-owns-the-illusion
-    file: 03-fabric-owns-the-illusion.md
+    name: production-sweep
+    file: 03-production-sweep.md
     depends-on: [2]
-    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/...
+    verify: go build ./...
   - number: 4
-    name: board-junction
-    file: 04-board-junction.md
+    name: test-sweep
+    file: 04-test-sweep.md
     depends-on: [3]
-    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/...
+    verify: go vet -tags "integration smoke scout" ./... && go test ./...
   - number: 5
-    name: guard-and-docs
-    file: 05-guard-and-docs.md
+    name: module-owned-constructors
+    file: 05-module-owned-constructors.md
     depends-on: [4]
+    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/loomengine/... ./internal/planparser/... ./internal/builderengine/... ./internal/buildercli/... ./internal/websterengine/... ./internal/webstercli/... ./internal/perchengine/... ./internal/perchcli/... ./internal/scoutengine/... ./internal/pattern/... ./internal/logger/... ./internal/reedengine/... ./internal/reedcli/... ./internal/burlerengine/... ./internal/shuttleengine/... ./cmd/lyx/...
+  - number: 6
+    name: fabric-owns-the-illusion
+    file: 06-fabric-owns-the-illusion.md
+    depends-on: [5]
+    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxtest/... ./internal/pattern/... ./internal/loomengine/... ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/perchcli/... ./internal/boardcli/... ./internal/boardengine/... ./internal/configcli/... ./internal/configsync/... ./internal/ideengine/... ./cmd/lyx/...
+  - number: 7
+    name: board-junction
+    file: 07-board-junction.md
+    depends-on: [6]
+    verify: go vet -tags "integration smoke scout" ./... && go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/lyxcwd/... ./cmd/lyx/...
+  - number: 8
+    name: guard-and-docs
+    file: 08-guard-and-docs.md
+    depends-on: [7]
     verify: go vet -tags "integration smoke scout" ./... && go test ./internal/lyxcwd/... ./cmd/lyx/...
 ```
 
 ## Shared Decisions
 
-### Decision: batching follows the discussion, five batches, strictly serial
+### Decision: eight batches, strictly serial, sized by implementer session rather than by logic
 
-- **Decision:** Five batches in the order the discussion's `batching` decision fixes, each depending on the one before. Batch 1 is the reshape plus full consumer rewrite; batches 2, 3 and 4 are pure relocation and wiring; batch 5 is guard consolidation and documentation. No batch runs in parallel with another.
-- **Rationale:** Each batch must leave `go build ./...` and the full suite green, and the package rename in batch 1 touches every importer, so it must land first and touch each importer's import block once. Doing the field rewrite in the same pass means each importer is opened once, not three times. Batches 2-4 change no signature — batch 1 already did — so their diffs are readable as relocation, which is the property that makes them reviewable at all. Serial ordering is forced by that same fact: every batch edits `internal/lyxcwd/lyxcwd.go`.
+- **Decision:** Eight batches, each depending on the one before, none running in parallel. The discussion's `batching` decision draws five; batches 1-4 here are its batch 1 split four ways (pre-moves, rename-and-reshape, production-sweep, test-sweep), and batches 5-8 are its batches 2-5 unchanged.
+- **Rationale:** The discussion's batch 1 is correct as a *logical* unit — the rename cannot be split, and rewriting every field consumer in the same pass means each importer is opened once, not three times. But as a *work* unit it is 19 cards and roughly 200 file-edits in a single implementer session, which is a turn-exhaustion risk, not a context one: mill-go would land in `stuck_type: incomplete` and recover by warm resume, and planning to rely on that recovery is planning badly. The split keeps the logical unit intact — the four batches are consecutive, serial, and no other work interleaves — while capping any one implementer session at seven cards. Batches 5-8 need no split: the largest is ten cards of pure relocation.
 - **Applies to:** all batches
+
+### Decision: a red intermediate tree is allowed only between batches 2 and 4, and never ungated
+
+- **Decision:** Batch 2 verifies with `go build ./internal/lyxcwd/... && go vet ./internal/lyxcwd/...`; batch 3 verifies with `go build ./...`; batch 4 restores the full `go test ./...`. No batch anywhere in this plan uses `verify: null`.
+- **Rationale:** The discussion requires each batch to leave the tree green, and batches 1 and 4-8 do. Batches 2 and 3 cannot: the moment `Layout` becomes `Location` the ~190 field consumers stop compiling, and sweeping them in the same batch is exactly the oversized unit the split above exists to avoid. The deviation is bounded to two batches and each still carries the strongest gate that is *true* at that point — batch 2 proves the renamed module compiles and vets on its own, batch 3 proves all ~85 production cutovers type-check together. `verify: null` was the alternative and is rejected: it would leave those batches with no gate at all, which is a strictly worse trade than a narrower one. `pipeline.done_gate` (`go test ./...`) is the repo-wide backstop before mill-go marks the task done.
+- **Applies to:** rename-and-reshape, production-sweep
 
 ### Decision: within a batch, one card is one subsystem
 
-- **Decision:** No card's `Edits:` spans more than one package family. Batch 1's ~190-file consumer sweep is ten cards (five production, five test), split by family — fabric, webster, builder/burler/loom, config/board/ide/leaf-libs, and the runtime engines.
+- **Decision:** No card's `Edits:` spans more than one package family. The ~190-file consumer sweep is ten cards split by family — fabric, webster, builder/burler/loom, config/board/ide/leaf-libs, and the runtime engines — five production cards in batch 3 and five test cards in batch 4. The largest is 27 files.
 - **Rationale:** A card is one commit and one unit of implementer attention. A 100-file card is neither reviewable as a diff nor holdable as a unit of work, however mechanical its content. Splitting by package family rather than by file count keeps each card's diff one subsystem's cutover, so a reviewer reads a coherent change instead of an alphabetical slice.
 - **Applies to:** all batches
 
@@ -61,7 +82,7 @@ batches:
 
 - **Decision:** Each relocated constructor keeps the base it has today. `AnchorPath()` for the durable, weft-synced, git-tracked `_lyx` group: `PlanDir`, `PlanOverview`, `DiscussionDir`, `DiscussionDecisionRecord`, `DiscussionSupportLog`, `LoomStatusFile`, `LoomStatusLock`, `BuilderDir`, `BuilderReportsDir`, `WebsterDir`, `WebsterReportsDir`, `WebsterPromptsDir`, `PerchRunsDir`, `PatternDir`, `PatternFile`, `PatternFileHere`. `WorktreePath()` for the ephemeral, machine-bound, never-git-tracked `.lyx` group: `WorktreeLogsDir`, `ScoutDaemonStateFile`, `ScoutDaemonLock`. `HubPath` for `HubLogsDir` alone.
 - **Rationale:** A blanket "join onto `AnchorPath()`" would silently relocate four constructors. `HubLogsDir` is hub-anchored on purpose so one reed server per hub resolves to one deterministic place. The other three use `.lyx`, not `_lyx` — these are PIDs, sockets and rotating logs, which must never be git-tracked. The `_lyx` group moves from `WorktreeRoot` to `AnchorPath()` because the `_lyx` junction itself lives at worktree-root plus anchor; for an unanchored repo that is the same directory, and for a subpath-anchored repo the old base was pointing above the junction. The equivalence test in batch 2 is therefore **anchor-aware, not byte-identical**, and runs over both an unanchored and a subpath-anchored fixture so the intended move is asserted rather than assumed.
-- **Applies to:** core-reshape, module-owned-constructors
+- **Applies to:** rename-and-reshape, module-owned-constructors
 
 ### Decision: `_lyx` is joined per segment, never as a fused literal
 
@@ -71,20 +92,20 @@ batches:
 
 ### Decision: the guard is staged token by token, in lockstep with each owner
 
-- **Decision:** `TestEnforcement_GeometryLiterals` is not rewritten once at the end. Each token's ownership row lands in the same batch that moves that token's owner: batch 1 switches the two allowlisted directory literals to `internal/lyxcwd` and registers `-weft` and `_lyx`; batch 2 touches the guard not at all; batch 3 registers `_portals`, `_launchers`, `_raddle`, `_pattern`, `_board` and `-HUB`; batch 5 collapses the remaining scaffolding and removes the transitional `_lyx` co-owner.
-- **Rationale:** The guard is only a real assertion when it names an ownership that already exists. Written up front it would assert a layout the tree does not have; written only at the end it would leave four batches red, because `enforcement_test.go:420` allowlists the literal directory `internal/hubgeometry` and the rename alone breaks it. Moving each entry with its owner is also what proves each batch **moved** ownership rather than copying code.
-- **Applies to:** core-reshape, fabric-owns-the-illusion, guard-and-docs
+- **Decision:** `TestEnforcement_GeometryLiterals` is not rewritten once at the end. Each token's ownership row lands in the same batch that moves that token's owner: batch 4 switches the two allowlisted directory literals to `internal/lyxcwd` and registers `-weft` and `_lyx` (the owners of which batch 1 created); batch 5 touches the guard not at all; batch 6 registers `_portals`, `_launchers`, `_raddle`, `_pattern`, `_board` and `-HUB`; batch 8 collapses the remaining scaffolding and removes the transitional `_lyx` co-owner.
+- **Rationale:** The guard is only a real assertion when it names an ownership that already exists. Written up front it would assert a layout the tree does not have; written only at the end it would leave five batches red, because `enforcement_test.go:420` allowlists the literal directory `internal/hubgeometry` and the rename alone breaks it — which is also why the guard's own directory switch sits in batch 4, the first batch after the rename whose gate actually runs the test. Moving each entry with its owner is also what proves each batch **moved** ownership rather than copying code.
+- **Applies to:** pre-moves, test-sweep, fabric-owns-the-illusion, guard-and-docs
 
 ### Decision: `verify` pairs a tagged type-check with an untagged test run
 
-- **Decision:** Every batch's `verify` is `go vet -tags "integration smoke scout" ./...` followed by `go test` over the packages that batch touches. Batch 1 alone uses an unbounded `go test ./...`.
-- **Rationale:** `go test` without tags does not compile `integration`/`smoke`/`scout`-tagged test files at all, and this task edits roughly 60 of them, so a broken tagged file would pass unnoticed until a later tagged run. The tagged `go vet` type-checks every package including its tagged tests and takes about 7 seconds, which is cheap enough to run at every batch boundary. Batch 1's unbounded `go test` is justified by the rename touching every importer in the tree, which makes any narrower scope meaningless; batches 2-5 scope to the packages they touch, with `pipeline.done_gate` (`go test ./...`) as the repo-wide backstop before mill-go marks the task done.
+- **Decision:** Every batch's `verify` pairs `go vet -tags "integration smoke scout" ./...` with a `go test` over the packages that batch touches, except batches 2 and 3, whose gates are documented separately above. Batches 1 and 4 use an unbounded `go test ./...`.
+- **Rationale:** `go test` without tags does not compile `integration`/`smoke`/`scout`-tagged test files at all, and this task edits roughly 60 of them, so a broken tagged file would pass unnoticed until a later tagged run. The tagged `go vet` type-checks every package including its tagged tests and takes about 7 seconds, which is cheap enough to run at every batch boundary. The unbounded `go test` in batches 1 and 4 is justified by the config-path move and the rename each touching every importer in the tree, which makes any narrower scope meaningless; batches 5-8 scope to the packages they touch, with `pipeline.done_gate` (`go test ./...`) as the repo-wide backstop before mill-go marks the task done.
 - **Applies to:** all batches
 
 ### Decision: test call sites are in scope and are the bulk of the diff
 
 - **Decision:** Every relocation list in the discussion and in these batch files is production-only unless it says otherwise, and the test call sites are planned, budgeted and listed explicitly alongside them.
-- **Rationale:** `go test ./...` must stay green, so a test file calling a moved or privatized symbol breaks a batch exactly as a production file does. Measured, not estimated: the config-symbol move alone is 228 hits across 34 files, and roughly 60 further synthetic `Layout` literals live in test files across ~20 packages. Batch 1's real shape is a small number of substantive rewrites inside a large mechanical sweep — review it accordingly, because a reviewer expecting the mechanical portion to be small will be looking at roughly five times that.
+- **Rationale:** `go test ./...` must stay green, so a test file calling a moved or privatized symbol breaks a batch exactly as a production file does. Measured, not estimated: the config-symbol move alone is 228 hits across 34 files, and roughly 60 further synthetic `Layout` literals live in test files across ~20 packages. Batches 1-4's real shape is a small number of substantive rewrites inside a large mechanical sweep — review them accordingly, because a reviewer expecting the mechanical portion to be small will be looking at roughly five times that.
 - **Applies to:** all batches
 
 ### Decision: `PlanDirRel` goes to `internal/planparser`, not `internal/loomengine`
@@ -96,7 +117,7 @@ batches:
 ### Decision: batch-size caps were raised in `mill-config.yaml` before planning
 
 - **Decision:** `pipeline.max_cards_per_batch` is 20 and `pipeline.max_batch_context_tokens` is 700000. Both were raised as an orchestrator config change before this plan was written; no card edits `mill-config.yaml`.
-- **Rationale:** The defaults (10 cards, 120000 tokens) are sized for a 200k-context implementer. mill-go's implementer here is Sonnet with a 1M window, and batch 1's file union is ~200 files at roughly 514000 estimated tokens — a repo-wide package rename cannot be split without leaving the tree uncompilable at the batch boundary, so the cap must not be what decides the batching. The raised value is deliberately slack: it exists to stop the validator from vetoing a correct design, not to license large batches. The per-card rule above is what actually bounds implementer and reviewer load.
+- **Rationale:** The defaults (10 cards, 120000 tokens) are sized for a 200k-context implementer. mill-go's implementer here is Sonnet with a 1M window, and the consumer sweep's file union is ~200 files at roughly 514000 estimated tokens — a repo-wide package rename cannot be split without leaving the tree uncompilable, so the cap must not be what decides the batching. The raised value is deliberately slack: it exists to stop the validator from vetoing a correct design, not to license large batches. The two rules above — one card is one package family, and no batch exceeds ten cards in practice — are what actually bound implementer and reviewer load.
 - **Applies to:** all batches
 
 ## All Files Touched
