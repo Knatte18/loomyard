@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -32,19 +32,19 @@ import (
 // Returns (Report{}, err) when Preflight could not determine an answer at all
 // — the caller must escalate, not treat this as "not ready".
 func Preflight() (Report, error) {
-	// Resolve cwd via hubgeometry.Getwd(), the only permitted raw-cwd read
+	// Resolve cwd via lyxcwd.Getwd(), the only permitted raw-cwd read
 	// outside cmd/lyx/main.go (per the Hub Geometry Invariant).
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return Report{}, err
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		// ErrNotAGitRepo is a determined verdict (check 1: not inside a git
 		// repository at all), not an infra failure — short-circuit with a single
 		// geometry failure rather than escalating.
-		if errors.Is(err, hubgeometry.ErrNotAGitRepo) {
+		if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
 			return Report{
 				OK:       false,
 				Failures: []Failure{{Check: CheckGeometry, Reason: "not inside a git repository"}},
@@ -60,7 +60,7 @@ func Preflight() (Report, error) {
 
 // checkResolved runs checks 1b–4 against an already-resolved Layout, allowing
 // tests to exercise preconditions in isolation.
-func checkResolved(l *hubgeometry.Layout) (Report, error) {
+func checkResolved(l *lyxcwd.Location) (Report, error) {
 	// Check 1b: geometry sanity. A PrimeName resolution failure (List found no
 	// main-worktree entry, or the git subprocess itself failed) is treated the
 	// same as "not a git repo" for Preflight's purposes, since there is no
@@ -76,11 +76,11 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 	// since checks 2-4 all read state anchored at WorktreeRoot. A subdirectory
 	// invocation is reported distinctly (and short-circuits) rather than
 	// silently validating the wrong scope.
-	if l.RelPath != "." {
+	if l.AnchorRel != "." {
 		return Report{
 			OK: false,
 			Failures: []Failure{
-				{Check: CheckWorktreeRoot, Reason: fmt.Sprintf("invoked from subdirectory %q, not the worktree root", l.RelPath)},
+				{Check: CheckWorktreeRoot, Reason: fmt.Sprintf("invoked from subdirectory %q, not the worktree root", l.AnchorRel)},
 			},
 		}, nil
 	}

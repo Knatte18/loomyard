@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -29,14 +29,14 @@ var _ Shuttle = (*shuttleengine.Runner)(nil)
 // lens/fan library.
 type Engine struct {
 	shuttle Shuttle
-	layout  *hubgeometry.Layout
+	layout  *lyxcwd.Location
 	cfg     Config
 }
 
 // New returns an Engine ready to run rounds against shuttle, resolving
-// relative Profile paths against layout.WorktreeRoot and any Profile.ClusterFan
+// relative Profile paths against layout.WorktreePath() and any Profile.ClusterFan
 // against cfg (the burler.yaml lens/fan library, loaded via LoadConfig).
-func New(shuttle Shuttle, layout *hubgeometry.Layout, cfg Config) *Engine {
+func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config) *Engine {
 	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg}
 }
 
@@ -93,7 +93,7 @@ type Result struct {
 // defaulted verdict could silently terminate a caller's round loop on a
 // malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
-	if err := p.validate(e.layout.WorktreeRoot, e.cfg); err != nil {
+	if err := p.validate(e.layout.WorktreePath(), e.cfg); err != nil {
 		return Result{}, err
 	}
 

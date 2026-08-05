@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
-func DiscussionSpec(layout *hubgeometry.Layout, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
+func DiscussionSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: slug must not be empty")
 	}

@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -49,7 +49,7 @@ func composePlanPrompt(decisionRecordPath, planDir, overviewPath, patternDirecti
 }
 
 // PlanSpec builds the shuttleengine.Spec for one Plan producer run.
-func PlanSpec(layout *hubgeometry.Layout, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+func PlanSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: plan role model-spec: %w", err)

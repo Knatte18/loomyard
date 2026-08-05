@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"gopkg.in/yaml.v3"
 )
 
@@ -232,8 +232,8 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 		Number: entry.Number,
 		Slug:   entry.Slug,
 		Intent: entry.Intent,
-		// SourcePath is built from hubgeometry.PlanDirRel (the `_lyx/plan` segment) joined with fileName.
-		SourcePath: path.Join(hubgeometry.PlanDirRel(), fileName),
+		// SourcePath is built from lyxcwd.PlanDirRel (the `_lyx/plan` segment) joined with fileName.
+		SourcePath: path.Join(lyxcwd.PlanDirRel(), fileName),
 	}
 
 	filePath := filepath.Join(planDir, fileName)
