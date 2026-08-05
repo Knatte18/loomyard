@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +43,7 @@ sync, all under one module.
 
 Branch scheme: every fabric weft branch is named after the paired host branch
 plus a fixed suffix (e.g. host branch "wt-foo" pairs with weft branch
-"wt-foo` + hubgeometry.WeftSuffix + `") — uniform for every pair, including the
+"wt-foo` + weftname.Suffix + `") — uniform for every pair, including the
 clone-time primary.
 
 fabric is the sole host↔weft git-coordination module. See docs/overview.md.
@@ -64,7 +65,7 @@ subpath, repo-wide config, host junctions, .gitignore, and per-worktree module
 configs — a single command, no follow-up activation step required.
 
   <host-name>            — host prime (the main working repo)
-  <host-name>` + hubgeometry.WeftSuffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
+  <host-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 
@@ -75,7 +76,7 @@ subpath is adopted from weft:main; an explicit --subpath that disagrees with
 it is a hard error.
 
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
-"main` + hubgeometry.WeftSuffix + `" for default branch "main") — fabric's
+"main` + weftname.Suffix + `" for default branch "main") — fabric's
 uniform branch scheme applies from the very first pair. When the weft remote
 already carries that suffixed branch (a re-clone of a hub with synced weft
 history), it is adopted as a tracking branch, inheriting the existing weft

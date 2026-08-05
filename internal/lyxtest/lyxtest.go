@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // MustRun runs a command in the specified directory, calling tb.Fatalf on failure.
@@ -169,7 +170,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 			panic(err)
 		}
 
-		weftPrime := hubgeometry.WeftSiblingPath(tmpDir, base)
+		weftPrime := weftname.SiblingPath(tmpDir, base)
 		if err := os.Mkdir(weftPrime, 0o755); err != nil {
 			panic(err)
 		}
@@ -191,7 +192,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 		commitAll(weftPrime, "init")
 
 		// Create bare remote and add it as origin (left empty; no push).
-		weftBare := filepath.Join(tmpDir, base+"-weft-bare")
+		weftBare := weftname.BareSiblingPath(tmpDir, base)
 		initBareRemote(weftBare, weftPrime)
 
 		weftPrimePath = weftPrime
@@ -449,13 +450,13 @@ func CopyPaired(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix)
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := hubgeometry.WeftSiblingPath(tempContainer, base)
+	copiedWeftPrime := weftname.SiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}
 
 	// Copy weft-bare
-	copiedWeftBare := filepath.Join(tempContainer, base+"-weft-bare")
+	copiedWeftBare := weftname.BareSiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftBare, copiedWeftBare); err != nil {
 		tb.Fatalf("copyDirRecursive weftBare: %v", err)
 	}
@@ -515,7 +516,7 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix); omit weft-bare
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := hubgeometry.WeftSiblingPath(tempContainer, base)
+	copiedWeftPrime := weftname.SiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}

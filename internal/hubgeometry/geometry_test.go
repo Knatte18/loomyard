@@ -1,6 +1,6 @@
 // geometry_test.go covers the pure geometry constructors and the WeftHostSlug reverse
 // parser added in the paths-foundation batch. It also asserts parity between the
-// refactored weft Layout methods and their WeftSiblingPath equivalents.
+// refactored weft Layout methods and their weftname.SiblingPath equivalents.
 
 package hubgeometry_test
 
@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestWeftSiblingPath verifies that WeftSiblingPath joins hub and slug with WeftSuffix.
+// TestWeftSiblingPath verifies that weftname.SiblingPath joins hub and slug with weftname.Suffix.
 func TestWeftSiblingPath(t *testing.T) {
 	t.Parallel()
 
@@ -25,21 +26,21 @@ func TestWeftSiblingPath(t *testing.T) {
 			name: "simple slug",
 			hub:  "/h",
 			slug: "feat",
-			want: filepath.Join("/h", "feat"+hubgeometry.WeftSuffix),
+			want: filepath.Join("/h", "feat"+weftname.Suffix),
 		},
 		{
 			name: "nested hub",
 			hub:  "/repos/loomyard-HUB",
 			slug: "main",
-			want: filepath.Join("/repos/loomyard-HUB", "main"+hubgeometry.WeftSuffix),
+			want: filepath.Join("/repos/loomyard-HUB", "main"+weftname.Suffix),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := hubgeometry.WeftSiblingPath(tt.hub, tt.slug)
+			got := weftname.SiblingPath(tt.hub, tt.slug)
 			if got != tt.want {
-				t.Errorf("WeftSiblingPath(%q, %q) = %q; want %q", tt.hub, tt.slug, got, tt.want)
+				t.Errorf("SiblingPath(%q, %q) = %q; want %q", tt.hub, tt.slug, got, tt.want)
 			}
 		})
 	}
@@ -180,27 +181,27 @@ func TestWeftLayoutMethodParity(t *testing.T) {
 		Prime:        prime,
 	}
 
-	// WeftWorktreePath(slug) must equal WeftSiblingPath(hub, slug).
+	// WeftWorktreePath(slug) must equal weftname.SiblingPath(hub, slug).
 	gotWorktreePath := layout.WeftWorktreePath(slug)
-	wantWorktreePath := hubgeometry.WeftSiblingPath(hub, slug)
+	wantWorktreePath := weftname.SiblingPath(hub, slug)
 	if gotWorktreePath != wantWorktreePath {
-		t.Errorf("WeftWorktreePath(%q) = %q; want WeftSiblingPath(%q, %q) = %q",
+		t.Errorf("WeftWorktreePath(%q) = %q; want SiblingPath(%q, %q) = %q",
 			slug, gotWorktreePath, hub, slug, wantWorktreePath)
 	}
 
-	// WeftRepoRoot() must equal WeftSiblingPath(hub, filepath.Base(prime)).
+	// WeftRepoRoot() must equal weftname.SiblingPath(hub, filepath.Base(prime)).
 	gotRepoRoot := layout.WeftRepoRoot()
-	wantRepoRoot := hubgeometry.WeftSiblingPath(hub, filepath.Base(prime))
+	wantRepoRoot := weftname.SiblingPath(hub, filepath.Base(prime))
 	if gotRepoRoot != wantRepoRoot {
-		t.Errorf("WeftRepoRoot() = %q; want WeftSiblingPath(%q, %q) = %q",
+		t.Errorf("WeftRepoRoot() = %q; want SiblingPath(%q, %q) = %q",
 			gotRepoRoot, hub, filepath.Base(prime), wantRepoRoot)
 	}
 
-	// WeftWorktree() must equal WeftSiblingPath(hub, filepath.Base(WorktreeRoot)).
+	// WeftWorktree() must equal weftname.SiblingPath(hub, filepath.Base(WorktreeRoot)).
 	gotWorktree := layout.WeftWorktree()
-	wantWorktree := hubgeometry.WeftSiblingPath(hub, filepath.Base(layout.WorktreeRoot))
+	wantWorktree := weftname.SiblingPath(hub, filepath.Base(layout.WorktreeRoot))
 	if gotWorktree != wantWorktree {
-		t.Errorf("WeftWorktree() = %q; want WeftSiblingPath(%q, %q) = %q",
+		t.Errorf("WeftWorktree() = %q; want SiblingPath(%q, %q) = %q",
 			gotWorktree, hub, filepath.Base(layout.WorktreeRoot), wantWorktree)
 	}
 }

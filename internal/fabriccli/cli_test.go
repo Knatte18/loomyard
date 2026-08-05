@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and writes a
@@ -448,7 +449,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// Per-worktree module configs (e.g. "board") must have been reconciled
 	// on the weft side.
-	weftBase := filepath.Join(hubgeometry.WeftSiblingPath(hubPath, "clonecli-host"), "backend")
+	weftBase := filepath.Join(weftname.SiblingPath(hubPath, "clonecli-host"), "backend")
 	boardConfigPath := hubgeometry.ConfigFile(weftBase, "board")
 	if _, err := os.Stat(boardConfigPath); err != nil {
 		t.Errorf("per-worktree board config missing at %s: %v", boardConfigPath, err)

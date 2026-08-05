@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // TestAdd_RejectsSeparatorSlug asserts that Add refuses a slug containing a
@@ -91,9 +92,9 @@ func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
 		name string
 		slug string
 	}{
-		{"PlainWeftSuffix", "zed" + hubgeometry.WeftSuffix},
-		{"BareWeftSuffix", hubgeometry.WeftSuffix},
-		{"NestedLookingWeftSuffix", "feature" + hubgeometry.WeftSuffix},
+		{"PlainWeftSuffix", "zed" + weftname.Suffix},
+		{"BareWeftSuffix", weftname.Suffix},
+		{"NestedLookingWeftSuffix", "feature" + weftname.Suffix},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

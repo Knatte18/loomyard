@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // makeBareRemote creates a bare git repository with a single commit on the main
@@ -283,7 +284,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 
 	// The weft prime directory is the host name's weft sibling — resolved via
 	// hubgeometry so the assertion cannot rot against clone's own geometry.
-	weftPrime := hubgeometry.WeftSiblingPath(hubPath, "adopt-host")
+	weftPrime := weftname.SiblingPath(hubPath, "adopt-host")
 
 	if got := currentBranch(t, weftPrime); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
@@ -341,7 +342,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 		t.Fatalf("host clone missing .git: %v", err)
 	}
 
-	weftPrime := hubgeometry.WeftSiblingPath(hubPath, "fresh-host")
+	weftPrime := weftname.SiblingPath(hubPath, "fresh-host")
 	want := fabricengine.WeftBranchName("main")
 	if got := currentBranch(t, weftPrime); got != want {
 		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
@@ -411,7 +412,7 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	hubPath := res.HubPath
 	t.Cleanup(func() { _ = os.RemoveAll(hubPath) })
 
-	weftPrime := hubgeometry.WeftSiblingPath(hubPath, "orphan-host")
+	weftPrime := weftname.SiblingPath(hubPath, "orphan-host")
 	if got := currentBranch(t, weftPrime); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}

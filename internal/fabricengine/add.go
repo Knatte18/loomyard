@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // AddOptions controls optional behaviour for Add. It is an alias of
@@ -50,8 +51,8 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	}
 
 	// Reject slugs ending with weft suffix to prevent collision with weft worktree directory naming.
-	if strings.HasSuffix(slug, hubgeometry.WeftSuffix) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, hubgeometry.WeftSuffix)
+	if strings.HasSuffix(slug, weftname.Suffix) {
+		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, weftname.Suffix)
 	}
 
 	// Reject reserved hub-level geometry names that would collide with hub structure.

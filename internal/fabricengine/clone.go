@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to
@@ -118,7 +119,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	}
 
 	// Step 6: Clone weft repo
-	weftPath := hubgeometry.WeftSiblingPath(hubPath, name)
+	weftPath := weftname.SiblingPath(hubPath, name)
 	if err := cloneRepo(weftURL, weftPath); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}

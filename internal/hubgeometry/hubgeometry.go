@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // Layout and geometry constants define directory and file names used by lyx
@@ -32,11 +33,6 @@ const (
 
 	// dotEnvName is the filename for environment variable overrides.
 	dotEnvName = ".env"
-
-	// WeftSuffix is the suffix appended to a host-worktree slug to form the weft sibling
-	// directory name (e.g. "feat" → "feat-weft"). Use WeftSiblingPath/WeftRepoRoot/WeftWorktreePath
-	// rather than this constant directly.
-	WeftSuffix = "-weft"
 
 	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
 	// It is the single source of this literal; use BoardDir(hub) to obtain the full path.
@@ -281,11 +277,6 @@ func PatternFile(baseDir string) string {
 	return filepath.Join(PatternDir(baseDir), "PATTERN.md")
 }
 
-// WeftSiblingPath returns the absolute path to the weft sibling worktree for the given slug inside hub.
-func WeftSiblingPath(hub, slug string) string {
-	return filepath.Join(hub, slug+WeftSuffix)
-}
-
 // BoardDir returns the absolute path to the board data directory inside hub.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
@@ -297,12 +288,12 @@ func HubPath(parent, name string) string {
 }
 
 // WeftHostSlug parses a weft sibling directory name and returns the host slug it corresponds to.
-// It reports whether name ends with WeftSuffix AND the stripped prefix is non-empty.
+// It reports whether name ends with weftname.Suffix AND the stripped prefix is non-empty.
 func WeftHostSlug(name string) (slug string, ok bool) {
-	if !strings.HasSuffix(name, WeftSuffix) {
+	if !strings.HasSuffix(name, weftname.Suffix) {
 		return "", false
 	}
-	s := strings.TrimSuffix(name, WeftSuffix)
+	s := strings.TrimSuffix(name, weftname.Suffix)
 	if s == "" {
 		return "", false
 	}
@@ -474,17 +465,17 @@ func (l *Layout) PrimeName() string {
 
 // WeftRepoRoot returns the path to the weft Prime worktree (the git -C target for weft worktree add/remove).
 func (l *Layout) WeftRepoRoot() string {
-	return WeftSiblingPath(l.Hub, l.PrimeName())
+	return weftname.SiblingPath(l.Hub, l.PrimeName())
 }
 
 // WeftWorktreePath returns the path to a sibling weft worktree with the given slug.
 func (l *Layout) WeftWorktreePath(slug string) string {
-	return WeftSiblingPath(l.Hub, slug)
+	return weftname.SiblingPath(l.Hub, slug)
 }
 
 // WeftWorktree returns the path to the weft worktree paired with the current host worktree.
 func (l *Layout) WeftWorktree() string {
-	return WeftSiblingPath(l.Hub, filepath.Base(l.WorktreeRoot))
+	return weftname.SiblingPath(l.Hub, filepath.Base(l.WorktreeRoot))
 }
 
 // WeftLyxDir returns the path to the _lyx directory in the current worktree's weft sibling.

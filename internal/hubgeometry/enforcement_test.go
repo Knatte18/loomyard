@@ -210,19 +210,51 @@ func TestEnforcement(t *testing.T) {
 }
 
 // TestEnforcement_GeometryLiterals walks the repo source tree and verifies that no
-// production file outside internal/hubgeometry constructs a geometry path token as a string
-// literal in a path-construction context: a filepath.Join argument, a binary +
+// production file outside each token's registered owner directory (or directories,
+// during a transitional co-ownership window) constructs a geometry path token as a
+// string literal in a path-construction context: a filepath.Join argument, a binary +
 // operand, or a string const declaration value. Whole-token matching (exact equality,
 // not substring) avoids false positives on compound names such as "_boardroom" or
 // "-weft-bare". Test files (*_test.go) are excluded because test geometry is a review
 // rule, not a machine-enforced invariant.
 func TestEnforcement_GeometryLiterals(t *testing.T) {
-	// geometryToken reports whether s is exactly one of the forbidden geometry path
-	// tokens. Only internal/hubgeometry is permitted to use these in path-construction context.
+	// geometryToken reports whether s is exactly one of the policed geometry path
+	// tokens. Only a token's registered owner directory (below) may use it in
+	// path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
 		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_raddle", "_lyx", "_pattern":
 			return true
+		}
+		return false
+	}
+
+	// geometryTokenOwners maps each policed geometry token to the set of
+	// directories permitted to declare or construct it in path-construction
+	// context. This card converts the guard from a single allowlisted
+	// directory into a per-token map: "-weft" moves to internal/weftname
+	// (the new stdlib-only leaf that owns the "-weft" naming convention),
+	// while every other token stays with internal/hubgeometry, reproducing
+	// today's behaviour for all of them. Later cards add further owners
+	// (and transitional co-owners) to this map, one token at a time, in
+	// lockstep with the card that moves that token's declaration.
+	geometryTokenOwners := map[string][]string{
+		"_board":     {"internal/hubgeometry"},
+		"-weft":      {"internal/weftname"},
+		"-HUB":       {"internal/hubgeometry"},
+		"_portals":   {"internal/hubgeometry"},
+		"_launchers": {"internal/hubgeometry"},
+		"_raddle":    {"internal/hubgeometry"},
+		"_lyx":       {"internal/hubgeometry"},
+		"_pattern":   {"internal/hubgeometry"},
+	}
+
+	// tokenOwnedByDir reports whether dir is one of tok's registered owners.
+	tokenOwnedByDir := func(tok, dir string) bool {
+		for _, owner := range geometryTokenOwners[tok] {
+			if owner == dir {
+				return true
+			}
 		}
 		return false
 	}
@@ -306,6 +338,76 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		return found
 	}
 
+	// geometryLiteralTokensInConstructionContext returns every policed geometry
+	// token found in path-construction context in f, in AST-visitation order
+	// (a token may repeat if the file constructs it more than once). It shares
+	// hasGeometryLiteralInConstructionContext's three contexts, but does not
+	// stop at the first match: the tree-scan sub-test below needs every distinct
+	// token a file constructs, so it can check each one's ownership separately
+	// rather than only knowing that *some* token was found.
+	geometryLiteralTokensInConstructionContext := func(f *ast.File) []string {
+		var tokens []string
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.CallExpr:
+				sel, ok := node.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "Join" {
+					break
+				}
+				ident, ok2 := sel.X.(*ast.Ident)
+				if !ok2 || ident.Name != "filepath" {
+					break
+				}
+				for _, arg := range node.Args {
+					lit, ok3 := arg.(*ast.BasicLit)
+					if !ok3 || lit.Kind != token.STRING {
+						continue
+					}
+					v, err := strconv.Unquote(lit.Value)
+					if err == nil && geometryToken(v) {
+						tokens = append(tokens, v)
+					}
+				}
+			case *ast.BinaryExpr:
+				if node.Op != token.ADD {
+					break
+				}
+				for _, operand := range []ast.Expr{node.X, node.Y} {
+					lit, ok := operand.(*ast.BasicLit)
+					if !ok || lit.Kind != token.STRING {
+						continue
+					}
+					v, err := strconv.Unquote(lit.Value)
+					if err == nil && geometryToken(v) {
+						tokens = append(tokens, v)
+					}
+				}
+			case *ast.GenDecl:
+				if node.Tok != token.CONST {
+					break
+				}
+				for _, spec := range node.Specs {
+					valSpec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for _, val := range valSpec.Values {
+						lit, ok2 := val.(*ast.BasicLit)
+						if !ok2 || lit.Kind != token.STRING {
+							continue
+						}
+						v, err := strconv.Unquote(lit.Value)
+						if err == nil && geometryToken(v) {
+							tokens = append(tokens, v)
+						}
+					}
+				}
+			}
+			return true
+		})
+		return tokens
+	}
+
 	// predicate sub-test: validates the AST detector against synthetic Go snippets
 	// parsed with go/parser. Positives must be detected; negatives must not.
 	t.Run("predicate", func(t *testing.T) {
@@ -383,9 +485,9 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		}
 	})
 
-	// tree-scan sub-test: walks every production Go file in the repo (excluding test
-	// files and the internal/hubgeometry allowlist) and fails if any file constructs a
-	// geometry token in a path context.
+	// tree-scan sub-test: walks every production Go file in the repo and fails if
+	// any file constructs a geometry token in a path context outside that
+	// token's registered owner directory (or directories, per geometryTokenOwners).
 	t.Run("tree-scan", func(t *testing.T) {
 		_, thisFile, _, ok := runtime.Caller(0)
 		if !ok {
@@ -415,11 +517,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			if relErr != nil {
 				return relErr
 			}
-			// Allowlist: internal/hubgeometry is the sole permitted owner of geometry literals
-			// in path-construction context.
-			if filepath.ToSlash(filepath.Dir(relPath)) == "internal/hubgeometry" {
-				return nil
-			}
+			relDir := filepath.ToSlash(filepath.Dir(relPath))
 
 			fset := token.NewFileSet()
 			f, parseErr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
@@ -428,8 +526,11 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 				return nil
 			}
 			scanned++
-			if hasGeometryLiteralInConstructionContext(f) {
-				failures = append(failures, filepath.ToSlash(relPath))
+			for _, tok := range geometryLiteralTokensInConstructionContext(f) {
+				if !tokenOwnedByDir(tok, relDir) {
+					failures = append(failures, filepath.ToSlash(relPath))
+					break
+				}
 			}
 			return nil
 		})
@@ -447,7 +548,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		})
 
 		if len(failures) > 0 {
-			t.Errorf("geometry-literal construction found outside internal/hubgeometry in:\n%v", failures)
+			t.Errorf("geometry-literal construction found outside its registered owner directory in:\n%v", failures)
 		}
 	})
 }
