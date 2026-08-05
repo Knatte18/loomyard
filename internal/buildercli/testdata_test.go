@@ -17,7 +17,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -90,7 +90,7 @@ func builderengineTestdataDir(name string) string {
 
 // seedPlanFixture copies every top-level file from srcDir (one of
 // builderengine's own testdata plan fixtures) into hub's plan dir
-// (hubgeometry.PlanDir(hub)) -- the Hub Geometry Invariant's own helper,
+// (lyxcwd.PlanDir(hub)) -- the Hub Geometry Invariant's own helper,
 // never a hand-joined path -- AND into hub itself. The second copy matters
 // because validateCmd resolves every card's typed file-op paths against
 // c.layout.Cwd (hub, this package's worktreeRoot), never against planDir;
@@ -104,7 +104,7 @@ func builderengineTestdataDir(name string) string {
 func seedPlanFixture(t *testing.T, hub, srcDir string) {
 	t.Helper()
 
-	dstDir := hubgeometry.PlanDir(hub)
+	dstDir := lyxcwd.PlanDir(hub)
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}

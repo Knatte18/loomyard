@@ -17,8 +17,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -77,7 +77,7 @@ func newRunFixture(t *testing.T) *runFixture {
 	hub := t.TempDir()
 	seedPlanFixture(t, hub, builderengineTestdataDir("plan-valid"))
 
-	layout := &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	runner := &fakeOrchestratorStarter{}
 
 	roles := map[builderengine.Role]modelspec.Resolved{
@@ -96,9 +96,9 @@ func newRunFixture(t *testing.T) *runFixture {
 			BatchCardCap:           10,
 		},
 		roles:      roles,
-		planDir:    hubgeometry.PlanDir(hub),
-		builderDir: hubgeometry.BuilderDir(hub),
-		reportsDir: hubgeometry.BuilderReportsDir(hub),
+		planDir:    lyxcwd.PlanDir(hub),
+		builderDir: lyxcwd.BuilderDir(hub),
+		reportsDir: lyxcwd.BuilderReportsDir(hub),
 	}
 
 	return &runFixture{CLI: c, Runner: runner, Hub: hub}

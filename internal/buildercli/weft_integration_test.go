@@ -7,7 +7,7 @@
 // reported as committed=true alongside the error, never swallowed into a
 // false "no commit was made"), and the weft repo's .git/info/exclude
 // actually keeping the right files out of every commit at every
-// layout.RelPath depth, which only real git can decide.
+// layout.AnchorRel depth, which only real git can decide.
 
 package buildercli
 
@@ -19,21 +19,21 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // newHostWeftPair builds a hub with host and host-weft git repos plus an
 // uncommitted _lyx change in weft, returning the layout and weft path.
-// RelPath is "."; use newHostWeftPairAt for nested layouts.
-func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
+// AnchorRel is "."; use newHostWeftPairAt for nested layouts.
+func newHostWeftPair(t *testing.T) (*lyxcwd.Location, string) {
 	t.Helper()
 	return newHostWeftPairAt(t, ".")
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml
 // Fabric.Commit's classify step reads via RepoWiredNames (the `weft:main`
-// base at hubgeometry.BoardDir(hub)) -- required since weftCommit moved onto
+// base at lyxcwd.BoardDir(hub)) -- required since weftCommit moved onto
 // Fabric.Commit, which resolves the wired name-set itself rather than
 // trusting a caller-built pathspec. Mirrors
 // commit_integration_test.go's seedFabricConfig in package fabricengine,
@@ -41,7 +41,7 @@ func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -56,21 +56,21 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.AnchorFileName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
 }
 
-// newHostWeftPairAt is newHostWeftPair with an explicit RelPath: the
+// newHostWeftPairAt is newHostWeftPair with an explicit AnchorRel: the
 // weft-side _lyx is mirrored at <weft>/<relPath>/_lyx, and seeds builder
 // and webster state with machine-local artifacts so callers can assert
 // what the commit includes and excludes.
-func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, string) {
+func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 	t.Helper()
 
 	hub := t.TempDir()
@@ -120,11 +120,10 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 	seedRepoWideFabricConfig(t, hub)
 	seedFabricAnchor(t, hub, filepath.ToSlash(relPath))
 
-	return &hubgeometry.Layout{
-		Hub:          hub,
-		WorktreeRoot: host,
-		Cwd:          filepath.Join(host, relPath),
-		RelPath:      relPath,
+	return &lyxcwd.Location{
+		HubPath:      hub,
+		WorktreeName: filepath.Base(host),
+		AnchorRel:    relPath,
 	}, weft
 }
 
@@ -161,7 +160,7 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 
 // TestWeftCommit_CommitsAtEveryRelPathDepth proves that machine-local
 // transients (locks, pause flags, rendered prompts) stay excluded from
-// REAL git commits at every RelPath depth via .git/info/exclude exclusion.
+// REAL git commits at every AnchorRel depth via .git/info/exclude exclusion.
 func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
 		name    string

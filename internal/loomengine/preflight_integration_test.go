@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -27,12 +27,12 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	t.Helper()
 
 	f := lyxtest.CopyPaired(t)
-	slug := filepath.Base(f.Layout.WorktreeRoot)
+	slug := filepath.Base(f.Layout.WorktreePath())
 
 	lyxtest.SeedConfig(t, f.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, f.Layout.Hub)
+	seedRepoWideFabricConfig(t, f.Layout.HubPath)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
@@ -57,7 +57,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := lyxcwd.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -68,7 +68,7 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 }
 
 // seedValidStatus writes a fresh, coherent status.json seed with handoff fields only.
-func seedValidStatus(t *testing.T, l *hubgeometry.Layout) {
+func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 	t.Helper()
 
 	s := Status{
@@ -166,7 +166,7 @@ func TestPreflight_HealthyPairAndSeed(t *testing.T) {
 // TestPreflight_NotAGitRepo asserts that Preflight() invoked outside any git
 // repository reports a single geometry failure with no error. This exercises
 // the public Preflight() (not checkResolved) because it needs
-// hubgeometry.Getwd() to observe a non-repo cwd.
+// lyxcwd.Getwd() to observe a non-repo cwd.
 func TestPreflight_NotAGitRepo(t *testing.T) {
 	// t.TempDir() must be created before restoreCwd registers its cleanup —
 	// see restoreCwd's doc comment: on Windows, cleanup must chdir back out of
@@ -464,7 +464,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	}
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.HostWorktree != filepath.ToSlash(f.Layout.WorktreeRoot) {
+		if pair.HostWorktree != filepath.ToSlash(f.Layout.WorktreePath()) {
 			continue
 		}
 		found = true
@@ -476,7 +476,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("Reconcile result has no pair for host worktree %s: %+v", f.Layout.WorktreeRoot, result.Pairs)
+		t.Fatalf("Reconcile result has no pair for host worktree %s: %+v", f.Layout.WorktreePath(), result.Pairs)
 	}
 
 	// The junction now resolves.

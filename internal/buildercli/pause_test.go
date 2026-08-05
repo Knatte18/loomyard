@@ -9,19 +9,20 @@ package buildercli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 func TestPauseCmd_WritesFlagAndOkEnvelope(t *testing.T) {
 	hub := t.TempDir()
 	c := &builderCLI{
-		layout:     &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."},
-		builderDir: hubgeometry.BuilderDir(hub),
+		layout:     &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."},
+		builderDir: lyxcwd.BuilderDir(hub),
 	}
 
 	var out bytes.Buffer
@@ -41,8 +42,8 @@ func TestPauseCmd_WritesFlagAndOkEnvelope(t *testing.T) {
 func TestPauseCmd_IdempotentRePause(t *testing.T) {
 	hub := t.TempDir()
 	c := &builderCLI{
-		layout:     &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."},
-		builderDir: hubgeometry.BuilderDir(hub),
+		layout:     &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."},
+		builderDir: lyxcwd.BuilderDir(hub),
 	}
 
 	var out1 bytes.Buffer

@@ -7,7 +7,7 @@
 // hard shuttle error, and the per-round instruction-file materialization
 // step (happy path writes exactly three files under layout.DotLyxDir(),
 // and a materialization failure returns a hard error before the shuttle
-// ever runs). Every *hubgeometry.Layout built here sets Cwd, not only
+// ever runs). Every *lyxcwd.Location built here sets Cwd, not only
 // WorktreeRoot — DotLyxDir() is Cwd-anchored, so an unset Cwd would resolve
 // materialization into the real package source tree instead of a test
 // temp dir.
@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -62,7 +62,7 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 
 // newEngineTestProfile builds a minimal valid Profile (relative paths — the
 // engine resolves them against root via validate) plus the *Engine wired
-// to a *hubgeometry.Layout rooted at root and to shuttle.
+// to a *lyxcwd.Location rooted at root and to shuttle.
 func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 	t.Helper()
 	root = t.TempDir()
@@ -86,7 +86,7 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 }
 
 func newEngineForTest(root string, shuttle Shuttle) *Engine {
-	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, Config{})
+	return New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{})
 }
 
 const (
@@ -173,7 +173,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 				},
 			},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -190,7 +190,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -224,7 +224,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err == nil {
@@ -249,7 +249,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -274,7 +274,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 				ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}},
 			},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -462,7 +462,7 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 		fixerContent:  "nothing fixed",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	layout := &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
 	e := New(shuttle, layout, Config{})
 
 	if _, err := e.Run(p, RunOpts{}); err != nil {
@@ -512,7 +512,7 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	}
 
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: notdir}, Config{})
+	e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: "notdir"}, Config{})
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {

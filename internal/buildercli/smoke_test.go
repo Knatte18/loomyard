@@ -26,7 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -34,7 +34,7 @@ import (
 )
 
 // bootRealReed builds a scratch hub and boots a REAL tmux server with teardown.
-func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string) {
+func bootRealReed(t *testing.T) (*reedengine.Engine, *lyxcwd.Location, string) {
 	t.Helper()
 
 	hub := newScratchRepo(t)
@@ -57,7 +57,7 @@ func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string
 		t.Skipf("configured tmux binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	layout := &hubgeometry.Layout{Hub: hub, WorktreeRoot: hub, Cwd: hub, RelPath: "."}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	eng := reedengine.New(cfg, layout)
 	if _, err := eng.Up(); err != nil {
 		t.Fatalf("reed Up: %v", err)
@@ -136,9 +136,9 @@ func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 		reed:       eng,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    hubgeometry.PlanDir(hub),
-		builderDir: hubgeometry.BuilderDir(hub),
-		reportsDir: hubgeometry.BuilderReportsDir(hub),
+		planDir:    lyxcwd.PlanDir(hub),
+		builderDir: lyxcwd.BuilderDir(hub),
+		reportsDir: lyxcwd.BuilderReportsDir(hub),
 	}
 
 	startSHA := strings.TrimSpace(mustGit(t, hub, "rev-parse", "HEAD"))
@@ -212,7 +212,7 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "02-list-tests")
 
-	planDir := hubgeometry.PlanDir(hub)
+	planDir := lyxcwd.PlanDir(hub)
 	plan, err := builderengine.ParsePlan(planDir)
 	if err != nil {
 		t.Fatalf("ParsePlan: %v", err)
@@ -237,8 +237,8 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 		},
 		Config:       builderengine.Config{SelfFixCap: 2, BatchTimeoutMin: 45},
 		WorktreeRoot: hub,
-		BuilderDir:   hubgeometry.BuilderDir(hub),
-		ReportsDir:   hubgeometry.BuilderReportsDir(hub),
+		BuilderDir:   lyxcwd.BuilderDir(hub),
+		ReportsDir:   lyxcwd.BuilderReportsDir(hub),
 		Layout:       layout,
 		Reed:         eng,
 	}
@@ -258,12 +258,12 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 	eng, _, hub := bootRealReed(t)
 	orphanGUID := addLivePane(t, eng, "orchestrator", "")
 
-	planDir := hubgeometry.PlanDir(hub)
+	planDir := lyxcwd.PlanDir(hub)
 	fingerprint, err := builderengine.Fingerprint(planDir)
 	if err != nil {
 		t.Fatalf("Fingerprint: %v", err)
 	}
-	builderDir := hubgeometry.BuilderDir(hub)
+	builderDir := lyxcwd.BuilderDir(hub)
 	seeded := &builderengine.State{
 		RunGUID:            "smoke-orphan-run",
 		PlanFingerprint:    fingerprint,
@@ -291,7 +291,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 		},
 		PlanDir:      planDir,
 		BuilderDir:   builderDir,
-		ReportsDir:   hubgeometry.BuilderReportsDir(hub),
+		ReportsDir:   lyxcwd.BuilderReportsDir(hub),
 		WorktreeRoot: hub,
 	}
 

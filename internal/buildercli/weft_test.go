@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree proves the WEFT_SKIP_GIT
@@ -26,12 +26,7 @@ func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 
 	// Neither the host worktree nor its -weft sibling exists on disk.
 	hub := t.TempDir()
-	layout := &hubgeometry.Layout{
-		Hub:          hub,
-		WorktreeRoot: filepath.Join(hub, "host"),
-		Cwd:          filepath.Join(hub, "host"),
-		RelPath:      ".",
-	}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "host")), AnchorRel: "."}
 
 	committed, err := weftCommit(layout, "bypass probe")
 	if err != nil {
@@ -49,12 +44,7 @@ func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
 	hub := t.TempDir()
-	layout := &hubgeometry.Layout{
-		Hub:          hub,
-		WorktreeRoot: filepath.Join(hub, "host"),
-		Cwd:          filepath.Join(hub, "host"),
-		RelPath:      ".",
-	}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "host")), AnchorRel: "."}
 
 	committed, err := weftCommit(layout, "missing-pair probe")
 	if committed {

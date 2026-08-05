@@ -176,8 +176,8 @@ func TestCopyPaired(t *testing.T) {
 	if fixture.Layout == nil {
 		t.Errorf("Layout is nil")
 	}
-	if fixture.Layout.Hub == "" {
-		t.Errorf("Layout.Hub is empty")
+	if fixture.Layout.HubPath == "" {
+		t.Errorf("Layout.HubPath is empty")
 	}
 }
 
