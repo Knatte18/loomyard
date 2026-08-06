@@ -212,6 +212,15 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	if err != nil {
 		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
 	}
+
+	// Wire the operator-convenience _board junction as a named special case,
+	// the same point pathspec junctions are wired at the CLI layer (see
+	// internal/fabriccli/clone.go) — but here directly, since _board needs no
+	// fabric.yaml load and CloneHub must not import configsync.
+	if err := wireBoardLink(l, filepath.Base(hostWorktreePath)); err != nil {
+		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("wire board junction: %w", err))
+	}
+
 	weftBase := filepath.Join(WeftWorktree(l), l.AnchorRel)
 
 	return CloneResult{
