@@ -5,10 +5,8 @@ approved: true
 
 # Plan: add --json to lyx board list
 
-Add a --json output mode to lyx board list, emitting one JSON object per row via the
-internal/output envelope, with tests and help text updated. A trailing deferred-verify
-chain (batches 03-04) and one oversized batch (05) extend the worked example with
-plan-format v2 validation coverage.
+Add a --json output mode to lyx board list, emitting one JSON object per row via the internal/output envelope, with tests and help text updated.
+A trailing deferred-verify chain (batches 03-04) and one oversized batch (05) extend the worked example with plan-format v2 validation coverage.
 
 ## Batch Index
 

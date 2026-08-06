@@ -6,7 +6,8 @@ argument-hint: "<owner/repo> [path] [question]"
 
 This skill browses a public or accessible-to-you GitHub repository's file tree and reads individual files through the `gh` CLI, without ever cloning the repository.
 
-**Hard prerequisite:** `gh` must be installed and authenticated (`gh auth status`). There is no fallback path — if `gh` is missing or unauthenticated, report that and stop.
+**Hard prerequisite:** `gh` must be installed and authenticated (`gh auth status`).
+There is no fallback path — if `gh` is missing or unauthenticated, report that and stop.
 
 **Resolve the default branch first:** `gh api repos/{owner}/{repo} --jq .default_branch`.
 

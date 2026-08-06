@@ -4,16 +4,24 @@
 
 ## The problem this responds to
 
-Grep/text-search finds literal keyword matches. It cannot answer "find code that does X" when the code implementing X uses none of the words a caller would naturally search for — e.g. "show me the error-handling patterns in this codebase" when error handling is spelled out in prose inside docstrings and comments but never literally contains the word "error" everywhere it matters. `scout` (see [scout-redesign.md](scout-redesign.md)) doesn't solve this either — it answers "what exactly references/defines this symbol," a precise, compiler-derived question, not "what have we conceptually written that's similar to this."
+Grep/text-search finds literal keyword matches.
+It cannot answer "find code that does X" when the code implementing X uses none of the words a caller would naturally search for — e.g. "show me the error-handling patterns in this codebase" when error handling is spelled out in prose inside docstrings and comments but never literally contains the word "error" everywhere it matters. `scout` (see [scout-redesign.md](scout-redesign.md)) doesn't solve this either — it answers "what exactly references/defines this symbol," a precise, compiler-derived question, not "what have we conceptually written that's similar to this."
 
 ## Core mechanism, adapted from Enzyme
 
-Enzyme indexes a personal notes vault; the same shape maps onto a codebase's descriptive text (docstrings, comments, package `doc.go` headers):
+Enzyme indexes a personal notes vault;
+the same shape maps onto a codebase's descriptive text (docstrings, comments, package `doc.go` headers):
 
-1. **Catalyst generation.** Enzyme derives "thematic questions" from actual content per tag/link/ folder in a notes vault. For code, the analogous unit is likely per-package or per-module: derive thematic questions from that package's docstrings, comments, and `doc.go` header.
-2. **Vector embedding.** Catalysts are embedded as vectors, with cosine similarity precomputed against every text chunk (docstring, comment block, doc header).
-3. **Temporal decay weighting.** Recently written/modified text influences the index more heavily than old, rarely-touched text — the index shifts with the codebase's current shape, not a static snapshot taken once. For code specifically, "recency" is naturally available from git history (`git log` per file/function) — plausibly the same kind of SHA-diffing `internal/gitrepo` already does for other consumers, rather than a new mechanism.
-4. **Semantic retrieval.** An agent searches catalyst vectors instead of guessing grep terms, surfacing conceptually related code across files/packages that share no literal vocabulary.
+1. **Catalyst generation.**
+   Enzyme derives "thematic questions" from actual content per tag/link/ folder in a notes vault.
+   For code, the analogous unit is likely per-package or per-module: derive thematic questions from that package's docstrings, comments, and `doc.go` header.
+2. **Vector embedding.**
+   Catalysts are embedded as vectors, with cosine similarity precomputed against every text chunk (docstring, comment block, doc header).
+3. **Temporal decay weighting.**
+   Recently written/modified text influences the index more heavily than old, rarely-touched text — the index shifts with the codebase's current shape, not a static snapshot taken once.
+   For code specifically, "recency" is naturally available from git history (`git log` per file/function) — plausibly the same kind of SHA-diffing `internal/gitrepo` already does for other consumers, rather than a new mechanism.
+4. **Semantic retrieval.**
+   An agent searches catalyst vectors instead of guessing grep terms, surfacing conceptually related code across files/packages that share no literal vocabulary.
 
 ## Relationship to `scout` and `raddle` — complementary, not overlapping
 
@@ -29,14 +37,21 @@ None of these three replace either of the others — different question, differe
 
 ## Open questions (genuinely unscoped)
 
-- **Indexing granularity.** Per-function docstring, per-file, or per-package `doc.go` — Enzyme's own granularity (tag/link/folder) doesn't map onto code 1:1; needs its own design pass.
-- **Embedding provider.** Self-hosted vs. API-based — cost, latency, and offline/air-gapped operation all matter differently here than for a personal notes tool.
-- **Temporal decay source.** Whether it reuses `gitrepo`'s `ChangedFilesSince`/SHA machinery directly, or needs its own recency signal.
-- **Standalone vs. baked into loomyard.** Same question asked of `scout` and `raddle` — lean build-inside-first, extract only once a second concrete consumer exists.
-- **Consumer.** Presumably the planner (finding existing similar implementations before writing a card) and webster forks (finding a pattern to follow) — not yet concretely designed.
+- **Indexing granularity.**
+  Per-function docstring, per-file, or per-package `doc.go` — Enzyme's own granularity (tag/link/folder) doesn't map onto code 1:1;
+  needs its own design pass.
+- **Embedding provider.**
+  Self-hosted vs. API-based — cost, latency, and offline/air-gapped operation all matter differently here than for a personal notes tool.
+- **Temporal decay source.**
+  Whether it reuses `gitrepo`'s `ChangedFilesSince`/SHA machinery directly, or needs its own recency signal.
+- **Standalone vs. baked into loomyard.**
+  Same question asked of `scout` and `raddle` — lean build-inside-first, extract only once a second concrete consumer exists.
+- **Consumer.**
+  Presumably the planner (finding existing similar implementations before writing a card) and webster forks (finding a pattern to follow) — not yet concretely designed.
 
 ## Related
 
-- [scout-redesign.md](scout-redesign.md) — the precise, compiler-derived sibling; named this as an out-of-scope, deferred idea.
+- [scout-redesign.md](scout-redesign.md) — the precise, compiler-derived sibling;
+  named this as an out-of-scope, deferred idea.
 - [raddle.md](raddle.md) — the curated-narrative sibling.
 - [`internal/gitrepo`](../../internal/gitrepo/doc.go) — plausible source of the temporal-decay recency signal.
