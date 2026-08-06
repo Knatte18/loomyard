@@ -36,7 +36,7 @@ This task removes the *need* for that interim guard by putting the files where t
 - Replacing the three `crossModuleMachineLocalExcludes` patterns with a single `.lyx/` entry in the weft repo's `.git/info/exclude`, seeded at wiring time, and deleting the `crossModuleMachineLocalExcludes` var.
 - Recognising `<hub>/.lyx` as a hub-level geometry element owned by fabric, the way `<hub>/_board` already is.
 - Two enforcement tests (single-declarer AST rule for the two directory tokens; a runtime no-transients-under-`_lyx` test).
-- Docs in the same commit: `CONSTRAINTS.md`, `docs/overview.md`, the affected package docs, `manifest/designs/fabric-unified-view.md` slice 9, `tools/sandbox/SANDBOX-BUILDER-SUITE.md`, `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` and `docs/reference/builder-contract.md`.
+- Docs in the same commit: `CONSTRAINTS.md`, `docs/overview.md`, the affected package docs, `manifest/designs/fabric-unified-view.md` (slice 9 status **and** the as-built anchoring table at `:60-64`), `docs/shared-libs/README.md:35`, `tools/sandbox/SANDBOX-BUILDER-SUITE.md`, `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` and `docs/reference/builder-contract.md`.
 
 **Out:**
 
@@ -135,6 +135,8 @@ This task removes the *need* for that interim guard by putting the files where t
   This is an intentional output-envelope change and is recorded in the module doc;
   the envelope invariant governs *using* `output.Ok`/`output.Err`, which is unaffected.
   The weft-side `.lyx` is never touched by unwire either; it disappears with the weft worktree when `Remove` tears the pair down.
+  `Remove` gets no new contract for that case: its `git worktree remove --force` deletes whatever is under the weft worktree, and on Windows an open handle inside `.lyx` makes the removal fail with an OS error that surfaces as-is.
+  The remedy is the same as adoption's — stop the daemons and re-run — and it is stated in the docs rather than special-cased in code, because `Remove` is an explicit whole-pair teardown the operator asked for.
 - Rationale: "unwire" means the inverse of "wire" — remove the junction coupling — not "delete the source directory".
   The current behaviour is already self-inconsistent: `unwire.go:30` records that weft `_pattern` content is *preserved by design* while `_lyx` is deleted and the deletion committed, with no stated reason for the asymmetry, and the doc comment simultaneously promises that "a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring" — true of the wiring, false of the content it destroyed.
   Once `.lyx` lives in the weft worktree the stakes rise sharply: `_lyx` deletions are at least recoverable from git history, whereas `.lyx` is never committed, so any deletion of it is final.
@@ -153,6 +155,19 @@ This task removes the *need* for that interim guard by putting the files where t
 - Rejected: moving the junction to `WorktreePath()` (makes `.lyx` the only junction not `AnchorRel`-anchored);
   leaving those sites alone (two legal `.lyx` roots).
 - Note: `reedengine.HubLogsDir` (`lifecycle.go:38`) is hub-anchored and deliberately unaffected — see the hub-level decision below.
+- **Scout is not a one-line edit and must not be treated as one.**
+  `DaemonStateFile`/`DaemonLock` (`daemonstate.go:42,49`) take a plain `worktreePath string`; the anchor is chosen in `internal/scoutcli` by `resolveWorktreeRoot` (`cli.go:474-477`, called at `cli.go:151,297,418`) and threaded through `scoutengine.Options.WorktreeRoot` into `ensureSupervised` (`ensureserver.go:298-300`).
+  Editing `daemonstate.go:43,50` alone changes nothing, and scoutengine cannot derive `AnchorPath()` itself — its leaf allowlist excludes `lyxcwd`.
+  **Decision: thread a separate anchor value, do not re-purpose `WorktreeRoot`.**
+  `WorktreeRoot` also keys the daemon singleton and the LSP root, so overloading it would change daemon identity as a side effect of a path fix.
+  `scoutcli` (which may import `lyxcwd`) computes the anchor path alongside `resolveWorktreeRoot` and passes it in a new `Options` field; `DaemonStateFile`/`DaemonLock` take that value.
+- **Logger's exported accessor is renamed:** `logger.WorktreeLogsDir` becomes `logger.LogsDir`, since the name would otherwise assert an anchor it no longer uses.
+  Call sites: the definition (`sink.go:36`) and its doc comment, `sink.go:97`, `internal/logger/worktreelogs_test.go`, and `cmd/lyx/constructoranchoring_test.go`.
+  `header.WorktreeRoot` (`sink.go:45,98,147`) is a separate concern — it records the worktree root as trace metadata and keeps both its name and its `WorktreePath()` value.
+- **Shuttle's config branch re-anchors too.**
+  `runDirRoot` (`rundir.go:49-57`) has two bases: the `.lyx/shuttle` default at `:51` and the relative-`cfg.RunDir` branch at `:56`.
+  Both move to `AnchorPath()`, so one function never resolves against two different bases when `AnchorRel != "."`.
+  An absolute `cfg.RunDir` stays verbatim, unchanged.
 
 ### dotlyx-content-adoption-no-other-migration
 
@@ -272,7 +287,10 @@ This task removes the *need* for that interim guard by putting the files where t
 
 ### hub-level-dotlyx-is-a-recognised-geometry-element
 
-- Decision: `<hub>/.lyx` (today `reedengine.HubLogsDir` at `<hub>/.lyx/logs`) becomes a fabric-recognised hub-level geometry element, the way `<hub>/_board` already is: created and named by fabric using `lyxdirs.DotLyxDirName`, documented in the geometry invariant, and reserved so no worktree slug can claim the name.
+- Decision: `<hub>/.lyx` (today `reedengine.HubLogsDir` at `<hub>/.lyx/logs`) becomes a fabric-recognised hub-level geometry element, the way `<hub>/_board` already is: created by fabric in `CloneHub`'s hub-materialisation path (`fabricengine/clone.go:103`, where `hubPath` itself is `MkdirAll`ed), named through `lyxdirs.DotLyxDirName`, documented in the geometry invariant, and reserved so no worktree slug can claim the name.
+  **Reed keeps its own idempotent `MkdirAll` (`reedengine/lifecycle.go:250-253`).**
+  It is not redundant: it must still work on hubs created before this change, and reed can boot without any fabric verb having run first.
+  Its documented reason — the directory must exist and be pruned before the boot loop, so a fresh server's log lands somewhere that already exists — is unaffected.
   It stays a **real directory, not a junction** — `<hub>` is not a git repo, so there is nothing to exclude and no weft to point at.
   `reedengine` stops declaring the name itself.
 - Rationale: "all machine-local data in `.lyx`" holds at hub level too, and one shared reed server per hub needs a deterministic hub-anchored place for its log.
@@ -393,6 +411,11 @@ Run in a scratch repo with `.lyx/` in `.git/info/exclude`:
   The sandbox is also the one known repo carrying a committed `.gitignore` `.lyx/` block from a pre-fix binary.
 - `tools/sandbox/SANDBOX-WEBSTER-SUITE.md:128` — names `_lyx/webster/prompts/02-*.md`.
 - `docs/reference/builder-contract.md:166` — describes `*.lock` and `*/builder/pause` being kept out "solely at the git-exclude layer (`fabricengine.seedWeftArtifactExcludes`)", the mechanism this task deletes.
+- `manifest/designs/fabric-unified-view.md:60-64` — the **as-built anchoring table**, which states the `.lyx` group (`WorktreeLogsDir`, `ScoutDaemonStateFile`, `ScoutDaemonLock`) joins onto `Location.WorktreePath()`.
+  This slice inverts exactly that line, so the paragraph is corrected in the same commit as the slice-9 status update, not just marked shipped.
+  It also claims the table is "mirrored verbatim in `CONSTRAINTS.md`'s Cwd Resolution Invariant" — **that mirror does not exist**: CONSTRAINTS carries the per-segment join rule but no per-symbol anchoring table, so the stale cross-reference is dropped rather than chased.
+- `docs/shared-libs/README.md:35` — describes the durable sink as "worktree-anchored (`.lyx/logs`, lazily opened …)".
+  Both halves change: the anchor becomes `AnchorPath()`, and the sink is no longer a lazily-opened persistent handle.
 
 ## Constraints
 
@@ -477,7 +500,9 @@ Locking still serialises correctly when the lock file sits in a sibling tree fro
 **Anchor re-parenting** — for a synthetic hub with `AnchorRel != "."`, every relocated and every pre-existing `.lyx` consumer resolves under `AnchorPath()`, and there is exactly one `.lyx` root in the worktree.
 Regression test for the two-roots bug.
 Existing tests assert the **old** `WorktreePath()` anchoring and must be rewritten, not merely re-run: `cmd/lyx/constructoranchoring_test.go:77-85,123-131` (its "`.lyx` group: stays WorktreePath-anchored, ignoring AnchorRel" case inverts), `internal/logger/worktreelogs_test.go:20,40`, and `internal/burlerengine/engine_test.go:461,501`.
-`logger.WorktreeLogsDir`'s name should change with its anchor.
+Scout's anchoring is asserted end-to-end rather than at `daemonstate.go` alone: a lookup in a subpath-anchored worktree resolves `daemon.json`/`daemon.lock` under `AnchorPath()/.lyx/scout/<lang>/`, while the daemon singleton key derived from `WorktreeRoot` is unchanged.
+
+**Hub-level `<hub>/.lyx`** — `CloneHub` creates it, and reed's own `MkdirAll` remains idempotent against an already-created directory (assert both, since the second is what covers pre-fix hubs).
 
 **`internal/logger`** — the durable sink writes correctly with no persistent handle: records from the same process append to one file across many calls, the header is still written exactly once, `sinkBytesWritten` accounting and the `sinkMaxBytes` truncation marker behave as before, and no file handle survives a `writeDurable` call.
 The last point is the one that matters for adoption and is the TDD candidate: assert it by moving/renaming the logs directory between two log records, which fails today and must succeed after.
@@ -514,3 +539,7 @@ The adoption path's busy-directory behaviour is the one genuinely platform-diver
 - **Q (gap r4):** Holder det å utelate `.lyx` fra commit-rutingen? **A:** Nei, det er verre enn å la den være. `classifyPaths` er et to-veis skille der alt som ikke treffer et weft-prefiks faller gjennom til **warp** — altså brukerens eget repo. Den trenger en tredje bøtte, og `Commit` må gi hard feil som navngir stien.
 - **Q (gap r4):** Kan seamen holdes til rene `(dir string)`-signaturer? **A:** Nei. `LoadState`/`SaveState` i webster og builder utleder både `state.json` og `state.json.lock` fra ett katalogargument, og denne tasken skiller nettopp de to. Alle fire får et scratch-dir-parameter, og `RunDeps` får et scratch-felt for de motor-interne kallene.
 - **Q (gap r4):** Hva blir `unwire`s resultatvokabular? **A:** `weft_content` blir `"preserved"` | `"not_present"`; `gitignore`-nøkkelen fjernes helt, siden mekanismen den rapporterer om er borte.
+- **Q (gap r5):** Holder det å re-ankre `daemonstate.go` for scout? **A:** Nei — den tar en `worktreePath string`, og ankeret velges i `scoutcli.resolveWorktreeRoot` og tres gjennom `Options.WorktreeRoot`. En egen anker-verdi tres inn i stedet for å gjenbruke `WorktreeRoot`, som også nøkler daemon-singletonen.
+- **Q (gap r5):** Skal `logger.WorktreeLogsDir` få nytt navn? **A:** Ja — `logger.LogsDir`. Navnet ville ellers påstått et anker den ikke lenger bruker.
+- **Q (gap r5):** Hvem oppretter `<hub>/.lyx`? **A:** Fabric, i `CloneHub`s hub-materialisering (`clone.go:103`). Reed beholder sin idempotente `MkdirAll` — den må virke på hubber laget før denne endringen, og reed kan boote uten at noen fabric-verb har kjørt.
+- **Q (gap r5):** Re-ankres shuttles konfigurerte `cfg.RunDir` også? **A:** Ja, den relative grenen. Ellers ville én funksjon resolvet mot to ulike baser. Absolutt `cfg.RunDir` står uendret.
