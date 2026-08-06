@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: nits-fixed-holistic
+phase: done
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: _mill/plan
@@ -46,6 +46,7 @@ holistic-reviewing  '2026-08-06T08:07:49Z'
 holistic-fixing  '2026-08-06T08:19:31Z'
 holistic-approved  '2026-08-06T08:25:24Z'
 nits-fixed-holistic  '2026-08-06T08:26:48Z'
+done  '2026-08-06T08:38:19Z'
 ```
 
 ## Batches
