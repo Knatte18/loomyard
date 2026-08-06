@@ -165,10 +165,10 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	// Seed a corrupt reed.json so reedengine.LoadState errors during Start's
 	// opportunistic orphan sweep — Start must log and continue rather than
 	// fail the whole run over a housekeeping error.
-	if err := os.MkdirAll(layout.DotLyxDir(), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(layout.WorktreePath(), dotLyxDirName), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.DotLyxDir(), "reed.json"), []byte("not json"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(layout.WorktreePath(), dotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
 		t.Fatalf("seed corrupt reed.json: %v", err)
 	}
 
@@ -194,10 +194,10 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
-	if err := os.MkdirAll(layout.DotLyxDir(), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(layout.WorktreePath(), dotLyxDirName), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.DotLyxDir(), "reed.json"), []byte("not json"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(layout.WorktreePath(), dotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
 		t.Fatalf("seed corrupt reed.json: %v", err)
 	}
 

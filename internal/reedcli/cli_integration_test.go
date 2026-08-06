@@ -10,6 +10,7 @@ package reedcli
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -112,7 +113,7 @@ func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
 			{GUID: "strand-two", Name: "two", Worktree: fixture.Layout.WorktreePath(), Cmd: "true"},
 		},
 	}
-	if err := reedengine.SaveState(fixture.Layout.DotLyxDir(), st); err != nil {
+	if err := reedengine.SaveState(filepath.Join(fixture.Layout.WorktreePath(), ".lyx"), st); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 

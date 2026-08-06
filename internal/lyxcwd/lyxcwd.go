@@ -26,13 +26,9 @@ const (
 	// lyxDirName is the directory name for the lyx system directory within a worktree.
 	// internal/configengine.LyxDirName is the single exported declarer of this token now;
 	// this private const is a transitional second declarer for lyxcwd's own
-	// remaining _lyx-anchored methods (LyxDir, PortalTarget, HostLyxLink,
-	// HostLyxLinkHere, WeftLyxDir, WeftLyxDirFor), removed once those methods relocate.
+	// remaining _lyx-anchored methods (PortalTarget, HostLyxLink, HostLyxLinkHere,
+	// WeftLyxDir, WeftLyxDirFor), removed once those methods relocate.
 	lyxDirName = "_lyx"
-
-	// dotLyxDirName is the directory name for ephemeral, machine-bound lyx state (e.g. reed runtime
-	// state), distinct from lyxDirName ("_lyx") which is durable and weft-synced.
-	dotLyxDirName = ".lyx"
 
 	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
 	// It is the single source of this literal; use BoardDir(hub) to obtain the full path.
@@ -43,7 +39,11 @@ const (
 	HubSuffix = "-HUB"
 
 	// PatternDirName is the directory name for the PATTERN constraint-injection surface
-	// within a worktree (i.e. <worktree>/_pattern). Use PatternDir/PatternFile to obtain paths.
+	// within a worktree (i.e. <worktree>/_pattern). It is a transitional second
+	// declarer of that token, read as a git pathspec by internal/fabricengine and
+	// its tests until batch 6's card 35 cuts them over to that package's own
+	// const; internal/pattern is the new owner for everything else. Use
+	// internal/pattern's Dir/File/FileHere to obtain the paths built from it.
 	PatternDirName = "_pattern"
 )
 
@@ -237,17 +237,6 @@ func IsReservedHubName(name string, junctionNames []string) bool {
 		}
 	}
 	return false
-}
-
-// LyxDir returns the path to the _lyx directory in the current working directory.
-func (l *Location) LyxDir() string {
-	return filepath.Join(l.AnchorPath(), lyxDirName)
-}
-
-// DotLyxDir returns the path to the ephemeral .lyx directory (machine-bound runtime state),
-// distinct from the durable, weft-synced LyxDir().
-func (l *Location) DotLyxDir() string {
-	return filepath.Join(l.AnchorPath(), dotLyxDirName)
 }
 
 // PortalsDir returns the path to the _portals directory in the hub.

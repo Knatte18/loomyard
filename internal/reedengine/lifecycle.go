@@ -543,7 +543,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	}
 
 	st.HeaderPaneID = paneID
-	if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+	if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), st); err != nil {
 		return fmt.Errorf("persist header pane id: %w", err)
 	}
 	return nil
@@ -673,7 +673,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			// same orphan-avoidance as AddStrand: if a later launch or apply
 			// fails, this pane is already tracked, so it is never reaped as
 			// untracked or double-launched by the next resume.
-			if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+			if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), st); err != nil {
 				return fmt.Errorf("persist strand: %w", err)
 			}
 			// Re-apply the layout after each launch, not once at the end:
@@ -775,7 +775,7 @@ func (e *Engine) Down() (DownResult, error) {
 			return serverErr
 		}
 
-		path := filepath.Join(e.layout.DotLyxDir(), reedStateFileName)
+		path := filepath.Join(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), reedStateFileName)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("delete state: %w", err)
 		}
@@ -958,7 +958,7 @@ func (e *Engine) requireSessionLocked() error {
 	// never part of Strands, so this count is already correct by
 	// construction.
 	strandCount := 0
-	if st, err := LoadState(e.layout.DotLyxDir()); err == nil && st != nil {
+	if st, err := LoadState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName)); err == nil && st != nil {
 		strandCount = len(st.Strands)
 	}
 	return errors.New(noSessionMessage(strandCount))

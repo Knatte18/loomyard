@@ -18,7 +18,7 @@ import (
 func TestRunDirRoot_DefaultUsesDotLyxShuttle(t *testing.T) {
 	layout := &lyxcwd.Location{}
 	got := runDirRoot(Config{}, layout)
-	want := filepath.Join(layout.DotLyxDir(), "shuttle")
+	want := filepath.Join(layout.WorktreePath(), dotLyxDirName, "shuttle")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}

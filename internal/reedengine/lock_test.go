@@ -41,7 +41,7 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 
 	var sawPath string
 	err := e.withOpLock(func() error {
-		sawPath = filepath.Join(e.layout.DotLyxDir(), reedLockFileName)
+		sawPath = filepath.Join(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), reedLockFileName)
 		if _, statErr := os.Stat(sawPath); statErr != nil {
 			t.Errorf("lock file not present while held: %v", statErr)
 		}

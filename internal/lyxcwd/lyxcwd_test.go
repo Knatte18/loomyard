@@ -119,12 +119,6 @@ func TestResolve_GeometryMethods(t *testing.T) {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
 
-	// Test LyxDir
-	expectedLyxDir := filepath.Join(hub, "_lyx")
-	if got := layout.LyxDir(); got != expectedLyxDir {
-		t.Errorf("LyxDir() = %q; want %q", got, expectedLyxDir)
-	}
-
 	// WorktreePath(slug) itself moved to fabricengine.WorktreePath(l, slug) in
 	// this card; its own coverage now lives with fabricengine's retargeted
 	// callers. The slug below is still needed by PortalTarget/LauncherDir.
@@ -451,17 +445,6 @@ func TestRefactoredMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
-
-	t.Run("LyxDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := layout.LyxDir()
-		want := filepath.Join(hub, "_lyx")
-
-		if got != want {
-			t.Errorf("LyxDir() = %q; want %q", got, want)
-		}
-	})
 
 	t.Run("PortalTarget", func(t *testing.T) {
 		t.Parallel()

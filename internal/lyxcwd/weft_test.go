@@ -136,33 +136,6 @@ func TestWeftGeometryMethods(t *testing.T) {
 	}
 }
 
-// TestLyxDirEqualsHostLyxLinkHere verifies that, under the strict cwd gate,
-// LyxDir() (AnchorPath-anchored) and HostLyxLinkHere() (WorktreePath+AnchorRel-
-// anchored) always resolve to the same _lyx directory: AnchorPath() is defined
-// as filepath.Join(WorktreePath(), AnchorRel), so the two are the same path by
-// construction, at both the root and a nested AnchorRel.
-func TestLyxDirEqualsHostLyxLinkHere(t *testing.T) {
-	atRoot := &lyxcwd.Location{
-		HubPath:      "/h",
-		WorktreeName: "feat",
-		AnchorRel:    ".",
-	}
-	if atRoot.HostLyxLinkHere() != atRoot.LyxDir() {
-		t.Errorf("HostLyxLinkHere() = %q; want it to equal LyxDir() = %q at AnchorRel \".\"",
-			atRoot.HostLyxLinkHere(), atRoot.LyxDir())
-	}
-
-	atSub := &lyxcwd.Location{
-		HubPath:      "/h",
-		WorktreeName: "feat",
-		AnchorRel:    "sub",
-	}
-	if atSub.HostLyxLinkHere() != atSub.LyxDir() {
-		t.Errorf("HostLyxLinkHere() = %q; want it to equal LyxDir() = %q at a nested AnchorRel",
-			atSub.HostLyxLinkHere(), atSub.LyxDir())
-	}
-}
-
 // TestHostJunctions verifies that HostJunctions(slug, names) returns one record per name
 // in names, in names's own input order, with Link/Target correctly composed from the
 // Location's WorktreePath/WeftWorktreePath and AnchorRel, at AnchorRel == "." and at a nested

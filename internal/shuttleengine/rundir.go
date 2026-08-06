@@ -23,6 +23,11 @@ import (
 // runStateFileName is the run.json file name inside a per-run directory.
 const runStateFileName = "run.json"
 
+// dotLyxDirName is the directory name for the ephemeral, machine-bound .lyx
+// directory, this package's own declaration of the token for the joins
+// below. It stays unpoliced this slice; slice 9 registers a single owner.
+const dotLyxDirName = ".lyx"
+
 // newRunID returns a 128-bit random identifier, hex-encoded, generated from
 // crypto/rand — the same recipe as reedengine's newGUID. This is the
 // directory-naming identity for one shuttle run; it is distinct from the
@@ -39,11 +44,12 @@ func newRunID() (string, error) {
 // created. cfg.RunDir wins when non-empty — a relative value is resolved
 // against layout.WorktreePath(), an already-absolute value is used verbatim.
 // When cfg.RunDir is empty, the default is
-// filepath.Join(layout.DotLyxDir(), "shuttle"): the ephemeral, machine-local
-// .lyx tree, never a literal ".lyx" (Hub Geometry Invariant).
+// filepath.Join(layout.WorktreePath(), dotLyxDirName, "shuttle"): the
+// ephemeral, machine-local .lyx tree, built from this package's own
+// dotLyxDirName const, never a literal ".lyx" inline.
 func runDirRoot(cfg Config, layout *lyxcwd.Location) string {
 	if cfg.RunDir == "" {
-		return filepath.Join(layout.DotLyxDir(), "shuttle")
+		return filepath.Join(layout.WorktreePath(), dotLyxDirName, "shuttle")
 	}
 	if filepath.IsAbs(cfg.RunDir) {
 		return cfg.RunDir
