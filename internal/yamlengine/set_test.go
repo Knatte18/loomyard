@@ -1,7 +1,4 @@
-// set_test.go contains table-driven and individual tests for SetValues, covering
-// unknown-key rejection, byte-for-byte round-tripping of tricky values, comment/order
-// preservation, and the partial-existing regression case that motivated Card 1's
-// always-mutate-the-template-tree design.
+// set_test.go contains table-driven and individual tests for SetValues, covering unknown-key rejection, byte-for-byte round-tripping of tricky values, comment/order preservation, and the partial-existing regression case that motivated Card 1's always-mutate-the-template-tree design.
 
 package yamlengine
 
@@ -10,10 +7,7 @@ import (
 	"testing"
 )
 
-// TestSetValues_UnknownKeyRejectsWholeCall verifies that when any key among
-// multiple pairs is unknown, SetValues returns a non-empty Unknown and a nil
-// Merged — no partial mutation is observable, even though the other keys in
-// the same call are valid.
+// TestSetValues_UnknownKeyRejectsWholeCall verifies that when any key among multiple pairs is unknown, SetValues returns a non-empty Unknown and a nil Merged — no partial mutation is observable, even though the other keys in the same call are valid.
 func TestSetValues_UnknownKeyRejectsWholeCall(t *testing.T) {
 	template := []byte("key1: default1\nkey2: default2\n")
 
@@ -33,8 +27,7 @@ func TestSetValues_UnknownKeyRejectsWholeCall(t *testing.T) {
 	}
 }
 
-// TestSetValues_ValueWithEqualsRoundTrips verifies that a value containing an
-// '=' character is preserved byte-for-byte in Merged.
+// TestSetValues_ValueWithEqualsRoundTrips verifies that a value containing an '=' character is preserved byte-for-byte in Merged.
 func TestSetValues_ValueWithEqualsRoundTrips(t *testing.T) {
 	template := []byte("key1: default\n")
 	const want = "a=b=c"
@@ -46,8 +39,7 @@ func TestSetValues_ValueWithEqualsRoundTrips(t *testing.T) {
 	assertMergedKeyValue(t, result, "key1", want)
 }
 
-// TestSetValues_ValueWithSpacesRoundTrips verifies that a value containing
-// spaces is preserved byte-for-byte in Merged.
+// TestSetValues_ValueWithSpacesRoundTrips verifies that a value containing spaces is preserved byte-for-byte in Merged.
 func TestSetValues_ValueWithSpacesRoundTrips(t *testing.T) {
 	template := []byte("key1: default\n")
 	const want = "hello there world"
@@ -59,8 +51,7 @@ func TestSetValues_ValueWithSpacesRoundTrips(t *testing.T) {
 	assertMergedKeyValue(t, result, "key1", want)
 }
 
-// TestSetValues_MultiplePairsAllApplied verifies that multiple valid pairs in
-// one call are all reflected in Merged.
+// TestSetValues_MultiplePairsAllApplied verifies that multiple valid pairs in one call are all reflected in Merged.
 func TestSetValues_MultiplePairsAllApplied(t *testing.T) {
 	template := []byte("key1: default1\nkey2: default2\nkey3: default3\n")
 
@@ -76,9 +67,8 @@ func TestSetValues_MultiplePairsAllApplied(t *testing.T) {
 	assertMergedKeyValue(t, result, "key2", "default2")
 }
 
-// TestSetValues_CommentsAndOrderPreserved mirrors the idempotency-style
-// assertions in TestReconcile_TemplateCommentsAndOrder: template comments and
-// key order survive in Merged, and only the requested key's value changes.
+// TestSetValues_CommentsAndOrderPreserved mirrors the idempotency-style assertions in TestReconcile_TemplateCommentsAndOrder: template comments and key order survive in Merged,
+// and only the requested key's value changes.
 func TestSetValues_CommentsAndOrderPreserved(t *testing.T) {
 	template := []byte("# Key 1 comment\nkey1: template_val1\n# Key 2 comment\nkey2: template_val2\n")
 	existing := []byte("key2: user_val2\nkey1: user_val1\n")
@@ -107,9 +97,7 @@ func TestSetValues_CommentsAndOrderPreserved(t *testing.T) {
 	}
 }
 
-// TestSetValues_EmptyExistingBehavesLikeTemplate verifies that an empty
-// existing behaves like Reconcile's empty-existing case: Merged is equivalent
-// to the template with the requested keys set.
+// TestSetValues_EmptyExistingBehavesLikeTemplate verifies that an empty existing behaves like Reconcile's empty-existing case: Merged is equivalent to the template with the requested keys set.
 func TestSetValues_EmptyExistingBehavesLikeTemplate(t *testing.T) {
 	template := []byte("key1: default1\nkey2: default2\n")
 
@@ -121,13 +109,7 @@ func TestSetValues_EmptyExistingBehavesLikeTemplate(t *testing.T) {
 	assertMergedKeyValue(t, result, "key2", "default2")
 }
 
-// TestSetValues_PartialExistingDoesNotSuppressSet is the plan-review round-1
-// regression case: a pairs[i].Key present in template (so it passes Known
-// validation) but absent from a non-empty, partial existing (which only has
-// one of the template's three keys) must still be applied in Merged rather
-// than silently dropped, because the working tree is always templateNode —
-// never a bare parse of existing — so every template leaf has a real node
-// regardless of what existing does or doesn't contain.
+// TestSetValues_PartialExistingDoesNotSuppressSet is the plan-review round-1 regression case: a pairs[i].Key present in template (so it passes Known validation) but absent from a non-empty, partial existing (which only has one of the template's three keys) must still be applied in Merged rather than silently dropped, because the working tree is always templateNode — never a bare parse of existing — so every template leaf has a real node regardless of what existing does or doesn't contain.
 func TestSetValues_PartialExistingDoesNotSuppressSet(t *testing.T) {
 	template := []byte("key1: default1\nkey2: default2\nkey3: default3\n")
 	// existing has only key1; key2 and key3 have no corresponding node here.
@@ -148,10 +130,7 @@ func TestSetValues_PartialExistingDoesNotSuppressSet(t *testing.T) {
 	assertMergedKeyValue(t, result, "key3", "default3")
 }
 
-// TestSetValues_PreservesUnknownExistingKey verifies that a top-level key in
-// existing with no counterpart in the template survives verbatim in Merged,
-// is reported in SetResult.Preserved, is marked with the preserved marker
-// comment, and is appended after every template key.
+// TestSetValues_PreservesUnknownExistingKey verifies that a top-level key in existing with no counterpart in the template survives verbatim in Merged, is reported in SetResult.Preserved, is marked with the preserved marker comment, and is appended after every template key.
 func TestSetValues_PreservesUnknownExistingKey(t *testing.T) {
 	template := []byte("key1: default1\nkey2: default2\n")
 	existing := []byte("key1: user_val1\nkey2: user_val2\npath: ../_board\n")
@@ -185,9 +164,7 @@ func TestSetValues_PreservesUnknownExistingKey(t *testing.T) {
 	}
 }
 
-// TestSetValues_PreservesMultipleUnknownKeysSorted verifies that when existing
-// has multiple top-level orphan keys given in non-alphabetical order,
-// SetResult.Preserved is sorted alphabetically and every orphan survives.
+// TestSetValues_PreservesMultipleUnknownKeysSorted verifies that when existing has multiple top-level orphan keys given in non-alphabetical order, SetResult.Preserved is sorted alphabetically and every orphan survives.
 func TestSetValues_PreservesMultipleUnknownKeysSorted(t *testing.T) {
 	template := []byte("key1: default1\n")
 	existing := []byte("key1: user_val1\nzebra: z_val\napple: a_val\nmango: m_val\n")
@@ -212,9 +189,7 @@ func TestSetValues_PreservesMultipleUnknownKeysSorted(t *testing.T) {
 	assertMergedKeyValue(t, result, "zebra", "z_val")
 }
 
-// TestSetValues_NoPreservedWhenAllKeysKnown is an explicit regression guard
-// for the new Preserved field on the ordinary, no-orphan path: when every
-// key in existing is already present in the template, nothing is grafted.
+// TestSetValues_NoPreservedWhenAllKeysKnown is an explicit regression guard for the new Preserved field on the ordinary, no-orphan path: when every key in existing is already present in the template, nothing is grafted.
 func TestSetValues_NoPreservedWhenAllKeysKnown(t *testing.T) {
 	template := []byte("key1: default1\nkey2: default2\n")
 	existing := []byte("key1: user_val1\nkey2: user_val2\n")
@@ -232,10 +207,7 @@ func TestSetValues_NoPreservedWhenAllKeysKnown(t *testing.T) {
 	}
 }
 
-// TestSetValues_PreservedKeyIdempotent proves that the marker-comment-set-
-// not-appended rule makes a preserving --set idempotent: calling SetValues
-// again with existing set to the first call's Merged must reproduce the
-// same Merged bytes and the same Preserved list, with no comment growth.
+// TestSetValues_PreservedKeyIdempotent proves that the marker-comment-set- not-appended rule makes a preserving --set idempotent: calling SetValues again with existing set to the first call's Merged must reproduce the same Merged bytes and the same Preserved list, with no comment growth.
 func TestSetValues_PreservedKeyIdempotent(t *testing.T) {
 	template := []byte("key1: default1\n")
 	existing := []byte("key1: user_val1\npath: ../_board\n")
@@ -265,11 +237,8 @@ func TestSetValues_PreservedKeyIdempotent(t *testing.T) {
 	}
 }
 
-// TestSetValues_PreservesNonFlatOrphanWhole verifies root-key-granularity
-// preservation handles a non-flat orphan (a nested mapping under a top-level
-// key absent from the template) without any special-case logic: the whole
-// subtree survives verbatim, and Preserved records only the top-level key
-// name, not a flattened dotted path into the nested structure.
+// TestSetValues_PreservesNonFlatOrphanWhole verifies root-key-granularity preservation handles a non-flat orphan (a nested mapping under a top-level key absent from the template) without any special-case logic: the whole subtree survives verbatim,
+// and Preserved records only the top-level key name, not a flattened dotted path into the nested structure.
 func TestSetValues_PreservesNonFlatOrphanWhole(t *testing.T) {
 	template := []byte("key1: default1\n")
 	existing := []byte("key1: user_val1\nextra:\n  nested: value\n")

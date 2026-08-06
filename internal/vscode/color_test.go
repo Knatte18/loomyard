@@ -1,5 +1,4 @@
-// color_test.go covers the palette picker, including scanning sibling worktrees'
-// VS Code settings for colors already in use.
+// color_test.go covers the palette picker, including scanning sibling worktrees' VS Code settings for colors already in use.
 
 package vscode
 
