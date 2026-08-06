@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -25,4 +25,27 @@ plan-fix-r2  '2026-08-06T19:24:07Z'
 plan-review-r3  '2026-08-06T19:38:04Z'
 plan-fix-r3  '2026-08-06T19:38:04Z'
 planned  '2026-08-06T19:39:17Z'
+implementing  '2026-08-06T19:40:29Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: fabric API expand
+    state: pending
+  - name: typed Healthy reason and Clean reword
+    state: pending
+  - name: consumer call-site migration
+    state: pending
+  - name: constructor contract (unexport)
+    state: pending
+  - name: templates describe one repo
+    state: pending
+  - name: comment and test vocabulary sweep
+    state: pending
+  - name: vocabulary enforcement test
+    state: pending
+  - name: documentation
+    state: pending
 ```
