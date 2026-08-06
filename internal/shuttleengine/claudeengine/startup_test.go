@@ -1,7 +1,4 @@
-// startup_test.go table-tests Startup's classification of pane-capture
-// fixtures (trust screen, ready via the input marker, ready via the
-// shortcuts footer, and a still-booting capture) and checks the fixed shape
-// of InterruptSequence and ComposeSend.
+// startup_test.go table-tests Startup's classification of pane-capture fixtures (trust screen, ready via the input marker, ready via the shortcuts footer, and a still-booting capture) and checks the fixed shape of InterruptSequence and ComposeSend.
 
 package claudeengine
 

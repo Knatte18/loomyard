@@ -1,7 +1,4 @@
-// run.go implements the `run` shuttle verb: the flag-to-Spec mapper that
-// turns a "lyx shuttle run" invocation into a blocking
-// shuttleengine.Runner.Run call and prints its classified outcome as a
-// single JSON envelope.
+// run.go implements the `run` shuttle verb: the flag-to-Spec mapper that turns a "lyx shuttle run" invocation into a blocking shuttleengine.Runner.Run call and prints its classified outcome as a single JSON envelope.
 
 package shuttlecli
 

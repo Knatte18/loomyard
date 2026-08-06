@@ -1,8 +1,5 @@
-// claudeengine.go defines the Claude type and its compile-time assertion
-// against shuttleengine.Engine. The type itself carries no state — every
-// method it implements is a pure function of its arguments (see command.go,
-// settings.go, events.go, startup.go) — which is what makes the whole
-// adapter hermetically testable without tmux or a real claude process.
+// claudeengine.go defines the Claude type and its compile-time assertion against shuttleengine.Engine.
+// The type itself carries no state — every method it implements is a pure function of its arguments (see command.go, settings.go, events.go, startup.go) — which is what makes the whole adapter hermetically testable without tmux or a real claude process.
 
 package claudeengine
 

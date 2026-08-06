@@ -1,9 +1,5 @@
-// audit_parentfacts_test.go covers the parent-session write/bash fact
-// extraction AuditForks populates onto ForkAudit: ParentWriteCalls,
-// ParentWrites, and ParentBashCommands. Fixture transcripts are written
-// directly with os.WriteFile (Tier 1: no fixture files, no subprocess) rather
-// than reusing audit_test.go's testdata fixtures, since this file's cases are
-// specific to the parent-fact fields those fixtures do not exercise.
+// audit_parentfacts_test.go covers the parent-session write/bash fact extraction AuditForks populates onto ForkAudit: ParentWriteCalls, ParentWrites, and ParentBashCommands.
+// Fixture transcripts are written directly with os.WriteFile (Tier 1: no fixture files, no subprocess) rather than reusing audit_test.go's testdata fixtures, since this file's cases are specific to the parent-fact fields those fixtures do not exercise.
 
 package claudeengine
 
@@ -31,11 +27,7 @@ func writeParentTranscript(t *testing.T, projectDir, sessionID string, lines []s
 	}
 }
 
-// TestAuditForks_ParentWritesAndBashInOrder proves a parent transcript's own
-// Write/Edit/NotebookEdit and Bash tool_use blocks populate
-// ParentWriteCalls/ParentWrites/ParentBashCommands in transcript order,
-// alongside the existing SpawnCalls/NamedSpawns facts — and that the
-// missing-subagents-dir zero-fork finding still carries these fields.
+// TestAuditForks_ParentWritesAndBashInOrder proves a parent transcript's own Write/Edit/NotebookEdit and Bash tool_use blocks populate ParentWriteCalls/ParentWrites/ParentBashCommands in transcript order, alongside the existing SpawnCalls/NamedSpawns facts — and that the missing-subagents-dir zero-fork finding still carries these fields.
 func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -95,10 +87,8 @@ func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
 	}
 }
 
-// TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked proves a
-// Write-family tool_use block whose input carries neither file_path nor
-// notebook_path does not panic — it still increments ParentWriteCalls, but
-// contributes no entry to ParentWrites.
+// TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked proves a Write-family tool_use block whose input carries neither file_path nor notebook_path does not panic — it still increments ParentWriteCalls,
+// but contributes no entry to ParentWrites.
 func TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -128,11 +118,7 @@ func TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked(t *testing.T) {
 	}
 }
 
-// TestAuditForks_ExistingZeroForkAndForkFactsUnchanged proves this batch's
-// parent-fact additions leave the pre-existing zero-fork and fork-report
-// behaviour untouched: a parent transcript with no writes/bash still reports
-// empty ParentWrites/ParentBashCommands (not nil-vs-empty confusion) and the
-// existing SpawnCalls/NamedSpawns/Forks facts are unaffected.
+// TestAuditForks_ExistingZeroForkAndForkFactsUnchanged proves this batch's parent-fact additions leave the pre-existing zero-fork and fork-report behaviour untouched: a parent transcript with no writes/bash still reports empty ParentWrites/ParentBashCommands (not nil-vs-empty confusion) and the existing SpawnCalls/NamedSpawns/Forks facts are unaffected.
 func TestAuditForks_ExistingZeroForkAndForkFactsUnchanged(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
