@@ -61,7 +61,11 @@ func readExcludeLines(t *testing.T, l *lyxcwd.Location, slug string) []string {
 	return strings.Split(string(content), "\n")
 }
 
-// TestWireJunctions_MaterialisesMissingWeftTarget is card 6's regression guard: seedLyxJunction must create the weft-side target directory when it is missing (the checkout/reconcile-left-dangling shape), leaving a junction that resolves immediately, and a second WireJunctions call on the same worktree must succeed rather than hard-erroring — the bug this card fixes.
+// TestWireJunctions_MaterialisesMissingWeftTarget is card 6's regression
+// guard: seedLyxJunction must create the weft-side target directory when it
+// is missing (the checkout/reconcile-left-dangling shape), leaving a junction
+// that resolves immediately, and a second WireJunctions call on the same
+// worktree must succeed rather than hard-erroring — the bug this card fixes.
 func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	t.Parallel()
 
@@ -103,7 +107,13 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_RefusesRealHostDirectory is card 7's regression guard: a real, non-link directory sitting at the host junction path is still refused — fabric never moves or deletes user content — and the returned error names both the offending path and the re-run-`lyx fabric reconcile` remedy this card's reworded message introduces, replacing the old "migrate via the hub-creator" clause that pointed at a tool that does not address this case.
+// TestWireJunctions_RefusesRealHostDirectory is card 7's regression guard: a
+// real, non-link directory sitting at the host junction path is still
+// refused — fabric never moves or deletes user content — and the returned
+// error names both the offending path and the re-run-`lyx fabric reconcile`
+// remedy this card's reworded message introduces, replacing the old
+// "migrate via the hub-creator" clause that pointed at a tool that does not
+// address this case.
 func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -153,8 +163,13 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 	}
 }
 
-// TestUnwireJunctions_ReportsAndClearsEveryJunction is card 8's base-case regression guard: wiring then unwiring reports every junction Name in UnwireResult.JunctionsRemoved and removes every corresponding line from .git/info/exclude.
-// From card 15 onward HostJunctions returns two entries (_lyx and _pattern), so this now runs against a genuinely two-junction world — the precondition batch 5's second junction depends on this machinery already handling correctly.
+// TestUnwireJunctions_ReportsAndClearsEveryJunction is card 8's base-case
+// regression guard: wiring then unwiring reports every junction Name in
+// UnwireResult.JunctionsRemoved and removes every corresponding line from
+// .git/info/exclude. From card 15 onward HostJunctions returns two entries
+// (_lyx and _pattern), so this now runs against a genuinely two-junction
+// world — the precondition batch 5's second junction depends on this
+// machinery already handling correctly.
 func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	t.Parallel()
 
@@ -205,7 +220,9 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	}
 }
 
-// TestUnwireJunctions_AlreadyUnwiredIsNoOp asserts that unwiring a worktree whose junctions were never wired (or already unwired) is a legitimate no-op: an empty JunctionsRemoved and a nil error, never an error.
+// TestUnwireJunctions_AlreadyUnwiredIsNoOp asserts that unwiring a worktree
+// whose junctions were never wired (or already unwired) is a legitimate
+// no-op: an empty JunctionsRemoved and a nil error, never an error.
 func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	t.Parallel()
 
@@ -241,7 +258,12 @@ func containsLine(lines []string, name string) bool {
 	return false
 }
 
-// TestDetectHostPollution_PatternTrackedAsRestorable is card 18's regression guard: a tracked path under _pattern in the host index must be reported as pollution with the same automated restore remedy _lyx pollution gets (git rm --cached plus a reminder to restore the junction/exclude entry) — never report-only like _raddle, since _pattern has a junction from card 15 onward.
+// TestDetectHostPollution_PatternTrackedAsRestorable is card 18's regression
+// guard: a tracked path under _pattern in the host index must be reported as
+// pollution with the same automated restore remedy _lyx pollution gets (git
+// rm --cached plus a reminder to restore the junction/exclude entry) — never
+// report-only like _raddle, since _pattern has a junction from card 15
+// onward.
 func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	t.Parallel()
 
@@ -293,8 +315,15 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	}
 }
 
-// TestHealthy_JunctionDriftShapes is card 11's regression guard: each of Healthy's three junction-drift shapes — missing, not-a-link, and points-elsewhere — produces reason wording naming the junction, aligned with checkJunctionHealth's wording (card 10) for the same shape.
-// From card 15 onward, each drift shape is exercised against BOTH junctions (_lyx and _pattern), proving Healthy's HostJunctionsHere() loop — drift.go does not share checkJunctionHealth's code path, so this is not redundant with reconcile.go's or status.go's own coverage — reports the correct wording for the second, non-_lyx junction too.
+// TestHealthy_JunctionDriftShapes is card 11's regression guard: each of
+// Healthy's three junction-drift shapes — missing, not-a-link, and
+// points-elsewhere — produces reason wording naming the junction, aligned
+// with checkJunctionHealth's wording (card 10) for the same shape. From card
+// 15 onward, each drift shape is exercised against BOTH junctions (_lyx and
+// _pattern), proving Healthy's HostJunctionsHere() loop — drift.go does
+// not share checkJunctionHealth's code path, so this is not redundant with
+// reconcile.go's or status.go's own coverage — reports the correct wording
+// for the second, non-_lyx junction too.
 func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	shapes := []struct {
 		name       string
@@ -408,8 +437,12 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	}
 }
 
-// TestReconcile_RepairsPatternOnlyDrift is the reconcile.go site of card 19's per-site health-check coverage: with _lyx healthy and _pattern missing, Reconcile must repair (ReconcileActionJunctionRepointed) rather than report ReconcileActionAlreadyHealthy.
-// reconcile.go does not share drift.go's Healthy code path (see checkJunctionHealth), so this is not redundant with TestHealthy_JunctionDriftShapes above.
+// TestReconcile_RepairsPatternOnlyDrift is the reconcile.go site of card 19's
+// per-site health-check coverage: with _lyx healthy and _pattern missing,
+// Reconcile must repair (ReconcileActionJunctionRepointed) rather than report
+// ReconcileActionAlreadyHealthy. reconcile.go does not share drift.go's
+// Healthy code path (see checkJunctionHealth), so this is not redundant
+// with TestHealthy_JunctionDriftShapes above.
 func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 	t.Parallel()
 
@@ -463,8 +496,12 @@ func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 	}
 }
 
-// TestStatus_ReportsPatternJunctionUnhealthy is the status.go site of card 19's per-site health-check coverage: with _lyx healthy and _pattern mis-pointed, Status must report JunctionHealthy false, a JunctionReason naming _pattern, and the pair not in sync.
-// status.go computes its verdict inline (see status.go's own doc comment) rather than sharing drift.go's Healthy, so this is not redundant with TestHealthy_JunctionDriftShapes.
+// TestStatus_ReportsPatternJunctionUnhealthy is the status.go site of card
+// 19's per-site health-check coverage: with _lyx healthy and _pattern
+// mis-pointed, Status must report JunctionHealthy false, a JunctionReason
+// naming _pattern, and the pair not in sync. status.go computes its verdict
+// inline (see status.go's own doc comment) rather than sharing drift.go's
+// Healthy, so this is not redundant with TestHealthy_JunctionDriftShapes.
 func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 	t.Parallel()
 
@@ -524,8 +561,12 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth is the wiring-idempotency upgrade path: a worktree with _lyx already wired and _pattern not yet wired at all (the shape every pre-card-15 worktree is in) completes a WireJunctions call without error and adds only the missing _pattern junction — it must not error,
-// and it must not need to touch the already-healthy _lyx junction to succeed.
+// TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth is the wiring-idempotency
+// upgrade path: a worktree with _lyx already wired and _pattern not yet wired
+// at all (the shape every pre-card-15 worktree is in) completes a
+// WireJunctions call without error and adds only the missing _pattern
+// junction — it must not error, and it must not need to touch the
+// already-healthy _lyx junction to succeed.
 func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	t.Parallel()
 

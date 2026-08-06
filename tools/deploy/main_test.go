@@ -1,5 +1,7 @@
-// main_test.go covers resolveDest, the destination-directory resolution logic for the -dev / -dest flags.
-// Tests are Go-native and Tier-1 pure: no go build / go env spawns, so the goBinDir() fallback (which shells out to `go env`) is intentionally left uncovered here.
+// main_test.go covers resolveDest, the destination-directory resolution logic
+// for the -dev / -dest flags. Tests are Go-native and Tier-1 pure: no
+// go build / go env spawns, so the goBinDir() fallback (which shells out to
+// `go env`) is intentionally left uncovered here.
 
 package main
 

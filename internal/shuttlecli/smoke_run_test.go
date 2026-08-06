@@ -230,8 +230,14 @@ func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 	return nil, false
 }
 
-// TestSmokeShuttleRunWritesOutputAndCleans drives one full `lyx shuttle run` against a REAL claude in a REAL tmux pane: `up` boots the substrate first (a strand must exist in an up'd session before AddStrand can bind a pane to it), then `run` blocks until the agent writes the requested output file and the run loop classifies it "done".
-// Asserts the file-contract output, the envelope's outcome, and that both the strand and run directory are cleaned up afterward — the same happy path the sandbox suite's S1 scenario exercises manually.
+// TestSmokeShuttleRunWritesOutputAndCleans drives one full `lyx shuttle run`
+// against a REAL claude in a REAL tmux pane: `up` boots the substrate first
+// (a strand must exist in an up'd session before AddStrand can bind a pane
+// to it), then `run` blocks until the agent writes the requested output file
+// and the run loop classifies it "done". Asserts the file-contract output,
+// the envelope's outcome, and that both the strand and run directory are
+// cleaned up afterward — the same happy path the sandbox suite's S1
+// scenario exercises manually.
 func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 	claudeBinaryPath(t)
 

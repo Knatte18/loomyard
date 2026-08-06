@@ -1,6 +1,11 @@
-// selfreport_test.go is selfreportengine's own test suite, covering CreateIssue directly through the NewGitHubClient seam.
-// The package had no tests of its own before this batch -- every case previously lived one layer up in selfreportcli, driving the now-deleted RunGH seam.
-// Each case here injects a real go-github client pointed at an httptest server (or a dead address, for the network-failure case) or a factory closure that itself fails, so no test ever reaches real token resolution, a real git spawn, a real process, or a fixture tree -- untagged Tier 1.
+// selfreport_test.go is selfreportengine's own test suite, covering CreateIssue
+// directly through the NewGitHubClient seam. The package had no tests of its
+// own before this batch -- every case previously lived one layer up in
+// selfreportcli, driving the now-deleted RunGH seam. Each case here injects a
+// real go-github client pointed at an httptest server (or a dead address, for
+// the network-failure case) or a factory closure that itself fails, so no
+// test ever reaches real token resolution, a real git spawn, a real process,
+// or a fixture tree -- untagged Tier 1.
 
 package selfreportengine
 
@@ -92,8 +97,9 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 	t.Cleanup(func() { NewGitHubClient = orig })
 }
 
-// TestCreateIssue_Success drives the normal successful path: the returned url and number match the server's typed response,
-// and the request sent carries the expected method, path, title, body, and labels in order.
+// TestCreateIssue_Success drives the normal successful path: the returned url
+// and number match the server's typed response, and the request sent carries
+// the expected method, path, title, body, and labels in order.
 func TestCreateIssue_Success(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/42"
 	var captured []requestCapture
@@ -137,7 +143,8 @@ func TestCreateIssue_Success(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_NoBodyOmitsField verifies that a nil body pointer produces a request with no "body" field at all, rather than an empty string.
+// TestCreateIssue_NoBodyOmitsField verifies that a nil body pointer produces
+// a request with no "body" field at all, rather than an empty string.
 func TestCreateIssue_NoBodyOmitsField(t *testing.T) {
 	var captured []requestCapture
 	server := newIssueServer(t, http.StatusCreated, `{"html_url":"https://github.com/Knatte18/loomyard/issues/1","number":1}`, &captured)
@@ -155,7 +162,9 @@ func TestCreateIssue_NoBodyOmitsField(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_TokenNotResolvable covers the new token-not-resolvable path: when the NewGitHubClient factory itself fails, CreateIssue must surface a typed error rather than proceeding with a nil client.
+// TestCreateIssue_TokenNotResolvable covers the new token-not-resolvable
+// path: when the NewGitHubClient factory itself fails, CreateIssue must
+// surface a typed error rather than proceeding with a nil client.
 func TestCreateIssue_TokenNotResolvable(t *testing.T) {
 	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
 
@@ -169,7 +178,10 @@ func TestCreateIssue_TokenNotResolvable(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_NetworkFailure covers a transport/network failure (the server address refuses the connection), asserting it is neither a token-resolution failure nor an API rejection -- a network problem calls for different operator action than either.
+// TestCreateIssue_NetworkFailure covers a transport/network failure (the
+// server address refuses the connection), asserting it is neither a
+// token-resolution failure nor an API rejection -- a network problem calls
+// for different operator action than either.
 func TestCreateIssue_NetworkFailure(t *testing.T) {
 	installGitHubClientPointedAtDeadAddress(t)
 
@@ -190,7 +202,9 @@ func TestCreateIssue_NetworkFailure(t *testing.T) {
 	}
 }
 
-// TestCreateIssue_NonSuccessResponse covers a non-2xx GitHub response, asserting the returned error surfaces the response's message and is distinct from both other error cases.
+// TestCreateIssue_NonSuccessResponse covers a non-2xx GitHub response,
+// asserting the returned error surfaces the response's message and is
+// distinct from both other error cases.
 func TestCreateIssue_NonSuccessResponse(t *testing.T) {
 	const errMessage = "Validation Failed"
 	var captured []requestCapture

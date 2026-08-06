@@ -199,7 +199,8 @@ func deferHubRelease(t *testing.T, hub string) {
 	})
 }
 
-// TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check progress judge call against a real claude, proving the machinery works.
+// TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check
+// progress judge call against a real claude, proving the machinery works.
 func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	claudeBinaryPath(t)
 

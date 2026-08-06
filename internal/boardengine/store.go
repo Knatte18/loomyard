@@ -1,7 +1,9 @@
 // store.go — the in-memory task store over tasks.json.
 //
-// Load/Save plus all CRUD and validation: dangling-dependency, isolated/deferred rules, and cycle detection, with batch and merge applied atomically.
-// Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written file.
+// Load/Save plus all CRUD and validation: dangling-dependency, isolated/deferred
+// rules, and cycle detection, with batch and merge applied atomically. Save and
+// Load take the fine-grained swap lock so a concurrent read never sees a
+// half-written file.
 
 package boardengine
 
@@ -197,9 +199,9 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 }
 
 // MergeStatusUpdate carries the resolved set_status step for a MergeTasks call.
-// Selector is a Go string when the task is identified by slug,
-// or float64 when identified by numeric id (JSON numbers decode as float64).
-// Status is nil to clear the status field.
+// Selector is a Go string when the task is identified by slug, or float64 when
+// identified by numeric id (JSON numbers decode as float64). Status is nil to
+// clear the status field.
 type MergeStatusUpdate struct {
 	Selector any
 	Status   *string
@@ -506,9 +508,9 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 }
 
 // MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
-// setStatus is the resolved status-update step,
-// or nil to skip it.
-// When setStatus targets a missing task, SetStatus returns an error and writeOp discards the in-memory mutation without saving, leaving the on-disk state unchanged.
+// setStatus is the resolved status-update step, or nil to skip it. When setStatus
+// targets a missing task, SetStatus returns an error and writeOp discards the
+// in-memory mutation without saving, leaving the on-disk state unchanged.
 func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {

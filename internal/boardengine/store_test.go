@@ -1,6 +1,7 @@
 // store_test.go — unit tests for the Store (store.go).
 //
-// CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/deferred constraints, cycle detection, and batch/merge atomicity.
+// CRUD, sequential ID assignment, and every validation rule: dangling deps,
+// isolated/deferred constraints, cycle detection, and batch/merge atomicity.
 
 package boardengine_test
 
@@ -109,7 +110,8 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 	}
 }
 
-// TestUpsertFieldAllowlist verifies that the store chokepoint rejects unknown upsert fields on all three entry points: UpsertTask, UpsertTasksBatch, and MergeTasks.
+// TestUpsertFieldAllowlist verifies that the store chokepoint rejects unknown upsert
+// fields on all three entry points: UpsertTask, UpsertTasksBatch, and MergeTasks.
 // Also verifies that `status` IS in the allowed set and is persisted correctly.
 func TestUpsertFieldAllowlist(t *testing.T) {
 	t.Run("upsert_stray_phase_key_errors", func(t *testing.T) {
@@ -231,7 +233,9 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 	})
 }
 
-// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency configurations with precise error messages: dangling deps, depending on isolated tasks, and depending on deferred tasks.
+// TestValidateDependencyErrors verifies that UpsertTask rejects all invalid dependency
+// configurations with precise error messages: dangling deps, depending on isolated tasks,
+// and depending on deferred tasks.
 //
 // Folds: TestValidateDanglingDependency, TestValidateDependencyOnIsolated, TestValidateDependencyOnDeferred
 func TestValidateDependencyErrors(t *testing.T) {
@@ -384,7 +388,8 @@ func TestRemoveTaskMissing(t *testing.T) {
 	}
 }
 
-// TestSetStatus verifies SetStatus behaviour: clearing status via nil and the current silent no-op for a missing slug (changed to an error in Card 3).
+// TestSetStatus verifies SetStatus behaviour: clearing status via nil and the
+// current silent no-op for a missing slug (changed to an error in Card 3).
 //
 // Folds: TestSetPhaseNil, TestSetPhaseMissing
 func TestSetStatus(t *testing.T) {
@@ -432,7 +437,8 @@ func TestSetStatus(t *testing.T) {
 	})
 }
 
-// TestMergeTasks verifies both the happy path (atomic remove+upsert+set_phase) and the rollback path (validation error leaves store unchanged).
+// TestMergeTasks verifies both the happy path (atomic remove+upsert+set_phase) and
+// the rollback path (validation error leaves store unchanged).
 //
 // Folds: TestMergeTasksAtomic, TestMergeTasksValidationRollback
 func TestMergeTasks(t *testing.T) {
@@ -556,8 +562,10 @@ func TestMergeTasks(t *testing.T) {
 	})
 }
 
-// TestMergeTasksSetStatusRollback verifies that a merge whose set_status targets a non-existent slug returns an error and leaves the store unchanged.
-// The remove and upsert steps are applied in-memory but writeOp discards them when mutate errors — confirmed by loading a fresh store from disk and asserting the task list is identical.
+// TestMergeTasksSetStatusRollback verifies that a merge whose set_status targets a
+// non-existent slug returns an error and leaves the store unchanged. The remove and
+// upsert steps are applied in-memory but writeOp discards them when mutate errors —
+// confirmed by loading a fresh store from disk and asserting the task list is identical.
 func TestMergeTasksSetStatusRollback(t *testing.T) {
 	tmpDir := t.TempDir()
 	taskPath := filepath.Join(tmpDir, "tasks.json")
@@ -649,7 +657,8 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	}
 }
 
-// TestSetDeps verifies both the valid update path and the cycle-detection rollback for SetDeps.
+// TestSetDeps verifies both the valid update path and the cycle-detection rollback
+// for SetDeps.
 //
 // Folds: TestSetDepsValid, TestSetDepsCycleRollback
 func TestSetDeps(t *testing.T) {
@@ -723,7 +732,8 @@ func TestSetDeps(t *testing.T) {
 	})
 }
 
-// TestUpsertTasksBatch verifies that a valid batch upserts all tasks and that an invalid batch returns an error without mutating the store.
+// TestUpsertTasksBatch verifies that a valid batch upserts all tasks and that an
+// invalid batch returns an error without mutating the store.
 //
 // Folds: TestUpsertTasksBatchValid, TestUpsertTasksBatchInvalid
 func TestUpsertTasksBatch(t *testing.T) {
@@ -836,7 +846,8 @@ func TestUpsertTasksBatch(t *testing.T) {
 	})
 }
 
-// TestLoadNilDependsOnNormalization verifies that Load normalizes a nil DependsOn to an empty slice and that a missing file yields an empty store with no error.
+// TestLoadNilDependsOnNormalization verifies that Load normalizes a nil DependsOn
+// to an empty slice and that a missing file yields an empty store with no error.
 //
 // Folds: TestLoadNormalizesNilDependsOn, TestLoadMissingFileReturnsEmpty
 func TestLoadNilDependsOnNormalization(t *testing.T) {
@@ -888,7 +899,8 @@ func TestLoadNilDependsOnNormalization(t *testing.T) {
 	})
 }
 
-// TestLoadCorruptTasksJSON verifies that Load surfaces a corrupt tasks.json as an error instead of silently producing an empty task list.
+// TestLoadCorruptTasksJSON verifies that Load surfaces a corrupt tasks.json
+// as an error instead of silently producing an empty task list.
 func TestLoadCorruptTasksJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	taskPath := filepath.Join(tmpDir, "tasks.json")

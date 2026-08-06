@@ -1,10 +1,13 @@
 // checkout.go implements the coordinated host+weft branch switch with rollback.
 //
-// Checkout switches the host worktree to branch and its weft sibling to WeftBranchName(branch) in an all-or-nothing operation.
-// Preconditions are checked first;
-// on any weft-side or junction-wiring failure both switches are rolled back to their original branches so the pair is never left half-switched.
-// The weft target is always the suffixed sibling of the host target,
-// and switchOrForkWeft's fork-from-parent start point is the weft branch the worktree was actually on before the switch — for an in-sync pair, the suffixed sibling of the previous host branch.
+// Checkout switches the host worktree to branch and its weft sibling to
+// WeftBranchName(branch) in an all-or-nothing operation. Preconditions are
+// checked first; on any weft-side or junction-wiring failure both switches are
+// rolled back to their original branches so the pair is never left
+// half-switched. The weft target is always the suffixed sibling of the host
+// target, and switchOrForkWeft's fork-from-parent start point is the weft
+// branch the worktree was actually on before the switch — for an in-sync
+// pair, the suffixed sibling of the previous host branch.
 
 package fabricengine
 
@@ -26,7 +29,11 @@ type CheckoutResult struct {
 	WeftWorktree string `json:"weft_worktree"`
 }
 
-// Checkout switches the host worktree to branch and its weft sibling to WeftBranchName(branch) in an all-or-nothing operation, refusing if the weft worktree has uncommitted changes, forking new weft branches when their suffixed siblings don't exist, re-pointing junctions, and refreshing the correspondence index — rolling back both sides on failure to preserve all-or-nothing semantics.
+// Checkout switches the host worktree to branch and its weft sibling to WeftBranchName(branch)
+// in an all-or-nothing operation, refusing if the weft worktree has uncommitted changes,
+// forking new weft branches when their suffixed siblings don't exist, re-pointing junctions,
+// and refreshing the correspondence index — rolling back both sides on failure to preserve
+// all-or-nothing semantics.
 func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, error) {
 	weftWorktree := WeftWorktree(l)
 

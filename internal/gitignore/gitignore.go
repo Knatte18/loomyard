@@ -1,7 +1,9 @@
-// Package gitignore manages a single lyx-managed block in .gitignore that is shared across multiple modules.
+// Package gitignore manages a single lyx-managed block in .gitignore
+// that is shared across multiple modules.
 //
-// The Ensure function maintains entries as a set: multiple modules can contribute entries without clobbering each other.
-// The block is delimited by # === lyx-managed === and # === end lyx-managed ===.
+// The Ensure function maintains entries as a set: multiple modules can
+// contribute entries without clobbering each other. The block is delimited
+// by # === lyx-managed === and # === end lyx-managed ===.
 package gitignore
 
 import (
@@ -17,8 +19,9 @@ const (
 	endMarker   = "# === end lyx-managed ==="
 )
 
-// Ensure maintains the lyx-managed block in <repoRoot>/.gitignore with the given entries, treated as a set and deduplicated.
-// Returns changed=true when the file is created or the block changes, false when unchanged (idempotent).
+// Ensure maintains the lyx-managed block in <repoRoot>/.gitignore with the
+// given entries, treated as a set and deduplicated. Returns changed=true when
+// the file is created or the block changes, false when unchanged (idempotent).
 func Ensure(repoRoot string, entries ...string) (changed bool, err error) {
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")
 
@@ -76,8 +79,9 @@ func Ensure(repoRoot string, entries ...string) (changed bool, err error) {
 	return true, nil
 }
 
-// Remove deletes entries from the lyx-managed block in <repoRoot>/.gitignore, leaving other entries and outside content untouched.
-// Returns changed=true when the file is rewritten, false when nothing to remove or file missing.
+// Remove deletes entries from the lyx-managed block in <repoRoot>/.gitignore,
+// leaving other entries and outside content untouched. Returns changed=true
+// when the file is rewritten, false when nothing to remove or file missing.
 func Remove(repoRoot string, entries ...string) (changed bool, err error) {
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")
 

@@ -1,5 +1,12 @@
-// digest.go implements webster's own state Digest — the batch-outcome snapshot internal/webstercli persists into state.json and the resume trail (consumed there via a digestFields adapter, wired in batch 9) — and distill, which computes a terminal Done/Stuck digest from a fork's Report.
-// This replaces builderengine.Digest/Distill entirely: webster carries the fork-return facts (status, head SHA, informational deviation list) plus recovery metadata, and drops builder's out_of_scope/DriftUnreported/scope-drift model wholesale, since the flat plan format has no `## Scope` for a changed file to drift against.
+// digest.go implements webster's own state Digest — the batch-outcome
+// snapshot internal/webstercli persists into state.json and the resume
+// trail (consumed there via a digestFields adapter, wired in batch 9) — and
+// distill, which computes a terminal Done/Stuck digest from a fork's
+// Report. This replaces builderengine.Digest/Distill entirely: webster
+// carries the fork-return facts (status, head SHA, informational
+// deviation list) plus recovery metadata, and drops builder's
+// out_of_scope/DriftUnreported/scope-drift model wholesale, since the flat
+// plan format has no `## Scope` for a changed file to drift against.
 
 package websterengine
 
@@ -11,7 +18,8 @@ const (
 	DigestStatusDead    = "dead"
 )
 
-// The three legal Digest.DeadReason values, set only when Status is DigestStatusDead.
+// The three legal Digest.DeadReason values, set only when Status is
+// DigestStatusDead.
 const (
 	DeadReasonAsking  = "asking"
 	DeadReasonTimeout = "timeout"
@@ -19,8 +27,7 @@ const (
 )
 
 // Digest is webster's batch-outcome snapshot recorded into state.json and resume trail.
-// Running snapshots carry only Batch, Status, and ElapsedS;
-// other fields populate at terminal.
+// Running snapshots carry only Batch, Status, and ElapsedS; other fields populate at terminal.
 type Digest struct {
 	Batch      string   `json:"batch"`
 	Status     string   `json:"status"` // DigestStatusRunning, Done, Stuck, or Dead

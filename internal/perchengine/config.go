@@ -1,9 +1,13 @@
 // config.go — configuration for the perch module.
 //
-// Defines the Config type mirroring perch.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the perch config file;
-// perch never reads config files or knows their on-disk layout itself.
-// judge_model is a model-spec string (docs/reference/model-spec.md);
-// ResolveModelSpec is the ONE shared implementation LoadConfigWithRegistry and perchcli's decodeProfile both call, so the two config surfaces (perch.yaml and profile files) can never diverge on grammar, resolution, or the perch-layer params check.
+// Defines the Config type mirroring perch.yaml's keys and LoadConfig, which
+// uses internal/configengine.Load with ConfigTemplate() to strictly
+// validate and resolve the perch config file; perch never reads config
+// files or knows their on-disk layout itself. judge_model is a model-spec
+// string (docs/reference/model-spec.md); ResolveModelSpec is the ONE shared
+// implementation LoadConfigWithRegistry and perchcli's decodeProfile both
+// call, so the two config surfaces (perch.yaml and profile files) can never
+// diverge on grammar, resolution, or the perch-layer params check.
 
 package perchengine
 

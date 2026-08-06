@@ -1,5 +1,10 @@
-// leaf_enforcement_test.go enforces the Modelspec Leaf Invariant: production code in internal/modelspec imports ONLY the standard library, internal/configengine, and gopkg.in/yaml.v3 — never configreg, envsource, yamlengine, lyxcwd, or any feature package.
-// Unlike lyxtest's leaf_enforcement_test.go (a banned-import denylist), this check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray dependency is caught with no list maintenance required.
+// leaf_enforcement_test.go enforces the Modelspec Leaf Invariant: production
+// code in internal/modelspec imports ONLY the standard library,
+// internal/configengine, and gopkg.in/yaml.v3 — never configreg, envsource,
+// yamlengine, lyxcwd, or any feature package. Unlike lyxtest's
+// leaf_enforcement_test.go (a banned-import denylist), this check is an
+// ALLOWLIST: any import outside the allowed set fails the test, so a future
+// stray dependency is caught with no list maintenance required.
 
 package modelspec
 
@@ -20,9 +25,11 @@ var allowedImports = map[string]bool{
 	"gopkg.in/yaml.v3": true,
 }
 
-// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in this package directory imports only stdlib (no '.'
-// in the first path segment) or an entry in allowedImports.
-// It uses go/parser with ImportsOnly so only real import declarations are inspected, never string literals in doc comments.
+// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in
+// this package directory imports only stdlib (no '.' in the first path
+// segment) or an entry in allowedImports. It uses go/parser with
+// ImportsOnly so only real import declarations are inspected, never string
+// literals in doc comments.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

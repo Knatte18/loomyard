@@ -1,8 +1,19 @@
-// config.go defines the lens/fan configuration for burler cluster review: the Config decode shape, the embedded seed template, the direct-read loader, and the fan-to-lens resolver.
+// config.go defines the lens/fan configuration for burler cluster review: the
+// Config decode shape, the embedded seed template, the direct-read loader,
+// and the fan-to-lens resolver.
 //
-// burler.yaml is registered in configreg as a SEED-ONLY module (see configreg.go): its lens/fan key set is open-ended and operator-owned, the same posture models.yaml has for its aliases.
-// Reconciling this file like an ordinary module would route it through yamlengine.Reconcile, whose default merge reports every operator-added lens or fan as "removed" (they are not present in the template) and deletes them on the next --apply — seed-only materialization (configsync.ReconcileAll) instead writes the template VERBATIM once, only when the file is absent, and never rewrites a present file again.
-// Consequently LoadConfig follows modelspec.LoadRegistry's direct-read pattern — os.ReadFile plus a strict top-level decode — rather than configengine.Load, whose MissingKeys gate would also wrongly reject an operator who deliberately removed a standard lens they don't want.
+// burler.yaml is registered in configreg as a SEED-ONLY module (see
+// configreg.go): its lens/fan key set is open-ended and operator-owned, the
+// same posture models.yaml has for its aliases. Reconciling this file like an
+// ordinary module would route it through yamlengine.Reconcile, whose default
+// merge reports every operator-added lens or fan as "removed" (they are not
+// present in the template) and deletes them on the next --apply — seed-only
+// materialization (configsync.ReconcileAll) instead writes the template
+// VERBATIM once, only when the file is absent, and never rewrites a present
+// file again. Consequently LoadConfig follows modelspec.LoadRegistry's
+// direct-read pattern — os.ReadFile plus a strict top-level decode — rather
+// than configengine.Load, whose MissingKeys gate would also wrongly reject an
+// operator who deliberately removed a standard lens they don't want.
 
 package burlerengine
 
@@ -35,19 +46,20 @@ type Config struct {
 	Fans map[string][]string `yaml:"fans"`
 }
 
-// Lens is one resolved fan entry: the lens name and the review prose it contributes to a fork's prompt.
+// Lens is one resolved fan entry: the lens name and the review prose it
+// contributes to a fork's prompt.
 type Lens struct {
 	Name string
 	Text string
 }
 
-// ConfigTemplate returns the seed content for burler.yaml: the standard lens library and standard/full fans, embedded from template.yaml.
+// ConfigTemplate returns the seed content for burler.yaml: the standard lens
+// library and standard/full fans, embedded from template.yaml.
 func ConfigTemplate() string {
 	return configTemplate
 }
 
-// LoadConfig reads burler.yaml.
-// A missing file returns zero Config.
+// LoadConfig reads burler.yaml. A missing file returns zero Config.
 // When present, it is decoded with strict yaml.Decoder.
 func LoadConfig(baseDir string) (Config, error) {
 	path := configengine.ConfigFile(baseDir, "burler")
@@ -75,9 +87,8 @@ func LoadConfig(baseDir string) (Config, error) {
 	return cfg, nil
 }
 
-// ResolveFan resolves a fan name against cfg into its ordered []Lens.
-// It is fail-loud and never degrades.
-// The returned slice preserves fan order exactly.
+// ResolveFan resolves a fan name against cfg into its ordered []Lens. It is
+// fail-loud and never degrades. The returned slice preserves fan order exactly.
 func ResolveFan(cfg Config, name string) ([]Lens, error) {
 	entries, ok := cfg.Fans[name]
 	if !ok {

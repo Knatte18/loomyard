@@ -1,7 +1,9 @@
 // main_test.go — tests for the module dispatcher (main.go).
 //
-// Drives run() directly: argument routing, unknown-module handling, and that a dispatched module's exit code and output propagate unchanged.
-// The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in main_integration_test.go per the Test Tier Purity Invariant.
+// Drives run() directly: argument routing, unknown-module handling, and that a
+// dispatched module's exit code and output propagate unchanged. The three
+// tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live
+// in main_integration_test.go per the Test Tier Purity Invariant.
 
 package main
 

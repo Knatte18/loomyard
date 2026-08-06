@@ -1,11 +1,26 @@
-// recoverbatch.go implements webster's re-entrant, bounded long-poll exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach (the only place webster spawns a genuinely separate process — escalating a batch a fork reported stuck, or never reported at all, to a cold implementer strand at the recovery role, rendering the SEPARATE, full cold-start recovery prompt via RenderRecoveryPrompt — deliberately distinct from RenderForkPrompt's thin in-session fork prompt, since the recovery strand inherits no session context, per the fork-context-hygiene Shared Decision), RecoverAwait (the bounded wait, over webster's own classification machinery — Classify/PollUntilTerminal/ TurnEnded/StrandLive), and PersistRecoveryTerminal (the terminal digest merge into a freshly reloaded state).
-// First call spawns and records;
-// every call (the first included) blocks at most one wait window and returns either the terminal digest or a running snapshot;
-// a caller (webstercli) re-calls until terminal.
+// recoverbatch.go implements webster's re-entrant, bounded long-poll
+// exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach
+// (the only place webster spawns a genuinely separate process — escalating
+// a batch a fork reported stuck, or never reported at all, to a cold
+// implementer strand at the recovery role, rendering the SEPARATE, full
+// cold-start recovery prompt via RenderRecoveryPrompt — deliberately
+// distinct from RenderForkPrompt's thin in-session fork prompt, since the
+// recovery strand inherits no session context, per the
+// fork-context-hygiene Shared Decision), RecoverAwait (the bounded wait, over
+// webster's own classification machinery — Classify/PollUntilTerminal/
+// TurnEnded/StrandLive), and PersistRecoveryTerminal (the terminal digest
+// merge into a freshly reloaded state). First call spawns and records;
+// every call (the first included) blocks at most one wait window and
+// returns either the terminal digest or a running snapshot; a caller
+// (webstercli) re-calls until terminal.
 //
-// The three-phase split exists for the state-mutation lease: the caller holds it across spawn-or-attach and across the terminal persist,
-// but NEVER across the bounded wait between them (see AcquireStateMutation's never-across-a-long-block contract).
-// Nothing here touches weft: the caller weft-commits state.json after the spawn record and again at terminal persistence, mirroring builder's own weft-commit-boundary discipline.
+// The three-phase split exists for the state-mutation lease: the caller
+// holds it across spawn-or-attach and across the terminal persist, but
+// NEVER across the bounded wait between them (see AcquireStateMutation's
+// never-across-a-long-block contract). Nothing here touches weft: the
+// caller weft-commits state.json after the spawn record and again at
+// terminal persistence, mirroring builder's own weft-commit-boundary
+// discipline.
 
 package websterengine
 
@@ -23,14 +38,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// Clock abstracts time.Now/time.Sleep so RecoverBatch's bounded wait runs instantly under test, mirroring shuttleengine's wait.go seam and webster's own poll.go clock.
-// Clock is deliberately a plain, exported webster-local interface — it structurally satisfies poll.go's unexported clock interface (identical Now/Sleep method set), which is what lets RecoverBatch hand a Clock value straight to PollUntilTerminal without any adapter: Go interface satisfaction is structural, not by declared type identity.
+// Clock abstracts time.Now/time.Sleep so RecoverBatch's bounded wait runs
+// instantly under test, mirroring shuttleengine's wait.go seam and
+// webster's own poll.go clock. Clock is deliberately a plain, exported
+// webster-local interface — it structurally satisfies poll.go's unexported
+// clock interface (identical Now/Sleep method set), which is what lets
+// RecoverBatch hand a Clock value straight to PollUntilTerminal without any
+// adapter: Go interface satisfaction is structural, not by declared type
+// identity.
 type Clock interface {
 	Now() time.Time
 	Sleep(time.Duration)
 }
 
-// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config, Engine, Reed, ShuttleCfg, Layout, WorktreeRoot, WebsterDir, ReportsDir.
+// RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State,
+// Roles, Config, Engine, Reed, ShuttleCfg, Layout, WorktreeRoot, WebsterDir, ReportsDir.
 type RecoverDeps struct {
 	Starter      Starter
 	Plan         *planparser.Plan
@@ -47,7 +69,9 @@ type RecoverDeps struct {
 	ReportsDir   string
 }
 
-// RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures).
+// RecoverResult is what one RecoverAwait call hands back: Digest (nil while
+// Running), Running (true if wait elapsed non-terminal), ElapsedS (since
+// spawn), and Warnings (non-fatal substrate-cleanup failures).
 type RecoverResult struct {
 	Digest   *Digest
 	Running  bool
@@ -181,8 +205,8 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}, nil
 }
 
-// RecoverSpawnOrAttach decides spawn-or-attach: if a recorded, non-terminal recovery BatchState exists, ATTACH and return it;
-// otherwise SPAWN fresh.
+// RecoverSpawnOrAttach decides spawn-or-attach: if a recorded, non-terminal
+// recovery BatchState exists, ATTACH and return it; otherwise SPAWN fresh.
 // Caller persists deps.State via SaveState when spawned is true.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
@@ -214,7 +238,8 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	return fresh, true, nil
 }
 
-// RecoverAwait drives the bounded wait for a recovery strand: the long-poll classification loop (see awaitTerminal) plus substrate release on terminal.
+// RecoverAwait drives the bounded wait for a recovery strand: the long-poll
+// classification loop (see awaitTerminal) plus substrate release on terminal.
 // Caller runs this with the state-mutation lease RELEASED.
 func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.Duration, clk Clock) (*RecoverResult, error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
@@ -224,8 +249,9 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 	return awaitTerminal(deps, batch, bs, wait, clk)
 }
 
-// PersistRecoveryTerminal merges a terminal digest into st (loaded fresh under the lease after the unleased wait).
-// Marks batch terminal and clears the in-flight cursor.
+// PersistRecoveryTerminal merges a terminal digest into st (loaded fresh
+// under the lease after the unleased wait). Marks batch terminal and clears
+// the in-flight cursor.
 func PersistRecoveryTerminal(st *State, batchNumber int, digest *Digest) error {
 	bs, ok := st.Batches[batchNumber]
 	if !ok || bs == nil {

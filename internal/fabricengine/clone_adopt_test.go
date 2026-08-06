@@ -240,7 +240,10 @@ func hasNoCommits(t *testing.T, dir string) bool {
 	return strings.TrimSpace(string(out)) == ""
 }
 
-// TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch re-clones against a weft remote whose main-weft branch is ahead of main and asserts the fresh weft primary adopted it: checked out on main-weft, at the remote branch's tip (the synced marker file present), with origin/main-weft as its upstream.
+// TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch re-clones against a weft
+// remote whose main-weft branch is ahead of main and asserts the fresh weft
+// primary adopted it: checked out on main-weft, at the remote branch's tip
+// (the synced marker file present), with origin/main-weft as its upstream.
 func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -311,7 +314,11 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 }
 
-// TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that when the weft remote carries no existing WeftBranchName-suffixed branch (a genuinely new hub — the non-adopt path), CloneHub creates the weft primary's suffixed branch fresh at the cloned HEAD rather than requiring a pre-existing remote ref to adopt.
+// TestCloneHub_CreatesFreshWeftPrimaryBranch asserts that when the weft
+// remote carries no existing WeftBranchName-suffixed branch (a genuinely new
+// hub — the non-adopt path), CloneHub creates the weft primary's suffixed
+// branch fresh at the cloned HEAD rather than requiring a pre-existing
+// remote ref to adopt.
 func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -356,7 +363,10 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	}
 }
 
-// TestCloneHub_StrictAbortRemovesHubOnFailure covers teardownHub's cleanup-on-failure behaviour: a failing weft clone leaves no residual Hub directory behind, torn down through fabricengine's own RemoveAll teardown seam (clone.go's teardownHub).
+// TestCloneHub_StrictAbortRemovesHubOnFailure covers teardownHub's
+// cleanup-on-failure behaviour: a failing weft clone leaves no residual Hub
+// directory behind, torn down through fabricengine's own RemoveAll teardown
+// seam (clone.go's teardownHub).
 func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -375,7 +385,12 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	}
 }
 
-// TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote asserts that when the weft remote is genuinely empty (no commits, so cloneRepo leaves no local hostBranch ref to adopt), ensureBoardWorktree's orphan path fires: _board is materialized as a second weft worktree on a freshly orphan- created "main" branch that shares no history with the weft primary's "main-weft" branch — both end up with no commits at all.
+// TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote asserts that when
+// the weft remote is genuinely empty (no commits, so cloneRepo leaves no
+// local hostBranch ref to adopt), ensureBoardWorktree's orphan path fires:
+// _board is materialized as a second weft worktree on a freshly orphan-
+// created "main" branch that shares no history with the weft primary's
+// "main-weft" branch — both end up with no commits at all.
 func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -415,7 +430,9 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	}
 }
 
-// TestCloneHub_AnchorCreatePath asserts the create path: a first-ever clone with an existing "backend" subdirectory in the host writes the marker to disk and returns a fully-populated CloneResult naming it.
+// TestCloneHub_AnchorCreatePath asserts the create path: a first-ever clone
+// with an existing "backend" subdirectory in the host writes the marker to
+// disk and returns a fully-populated CloneResult naming it.
 func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -457,8 +474,10 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	}
 }
 
-// TestCloneHub_AnchorTypoPathHardErrors asserts that a create-path clone against a subpath that does not exist in the host worktree (a typo like "backedn") is a hard error,
-// and that teardownHub removes the hub — mirroring TestCloneHub_StrictAbortRemovesHubOnFailure's coverage for the anchor guard.
+// TestCloneHub_AnchorTypoPathHardErrors asserts that a create-path clone
+// against a subpath that does not exist in the host worktree (a typo like
+// "backedn") is a hard error, and that teardownHub removes the hub — mirroring
+// TestCloneHub_StrictAbortRemovesHubOnFailure's coverage for the anchor guard.
 func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -482,9 +501,8 @@ func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
 	}
 }
 
-// TestCloneHub_AnchorRootDefaultPath asserts the create path with an explicit "."
-// subpath writes "."
-// to the marker and returns Anchor == ".".
+// TestCloneHub_AnchorRootDefaultPath asserts the create path with an explicit
+// "." subpath writes "." to the marker and returns Anchor == ".".
 func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -517,9 +535,12 @@ func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 	}
 }
 
-// TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote already carrying a committed .lyx-anchor="backend" on its default branch (mirroring what CloneHub's own create path would have left, had the CLI layer committed it onto weft:main): a re-clone with no --subpath reads the recorded value;
-// a conflicting non-default --subpath hard-errors;
-// a matching --subpath succeeds.
+// TestCloneHub_AnchorAdoptPath covers the adopt path against a weft remote
+// already carrying a committed .lyx-anchor="backend" on its default
+// branch (mirroring what CloneHub's own create path would have left, had the
+// CLI layer committed it onto weft:main): a re-clone with no --subpath reads
+// the recorded value; a conflicting non-default --subpath hard-errors; a
+// matching --subpath succeeds.
 func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -577,8 +598,11 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	}
 }
 
-// TestCloneHub_StaleFabricAnchorHardErrors asserts that a weft remote carrying a leftover pre-rename ".fabric-anchor" marker with no ".lyx-anchor" beside it is a hard error naming re-clone as the remedy,
-// and that teardownHub removes the hub — an old clone must never silently fall through to the create path and re-anchor under the new name.
+// TestCloneHub_StaleFabricAnchorHardErrors asserts that a weft remote
+// carrying a leftover pre-rename ".fabric-anchor" marker with no ".lyx-anchor"
+// beside it is a hard error naming re-clone as the remedy, and that
+// teardownHub removes the hub — an old clone must never silently fall
+// through to the create path and re-anchor under the new name.
 func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	fixtures := t.TempDir()
 

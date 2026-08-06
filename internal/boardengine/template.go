@@ -1,7 +1,8 @@
 // template.go — board.yaml template accessor.
 //
-// Provides the default YAML template for board configuration, embedded directly from template.yaml at build time.
-// The template uses ${env:VAR:-default} syntax for environment-based overrides.
+// Provides the default YAML template for board configuration, embedded
+// directly from template.yaml at build time. The template uses
+// ${env:VAR:-default} syntax for environment-based overrides.
 
 package boardengine
 

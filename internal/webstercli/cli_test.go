@@ -1,8 +1,18 @@
-// cli_test.go covers the webstercli cobra seam through RunCLI: bare-group listing, the unknown-subcommand JSON envelope, the PersistentPreRunE group-command guard, and the help-tree Short completeness check -- mirroring buildercli's own cli_test.go (internal/buildercli/cli_test.go).
-// It also covers the three spawn-free verbs (validate/status/pause) and weftCommit's SkipGit-before-New guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
-// Pathspec-shape coverage now lives in weft_integration_test.go, which proves the exclude-file transients stay uncommitted through a real git repo rather than asserting a pathspec string shape against a since-deleted helper.
-// Every fixture here builds a *websterCLI literal directly, bypassing Command()'s PersistentPreRunE, the package-local injection point buildercli's own tests establish.
-// Every other verb's own behavior (begin-batch, record-batch, recover-batch, run) is covered by verbs_test.go.
+// cli_test.go covers the webstercli cobra seam through RunCLI: bare-group
+// listing, the unknown-subcommand JSON envelope, the PersistentPreRunE
+// group-command guard, and the help-tree Short completeness check --
+// mirroring buildercli's own cli_test.go (internal/buildercli/cli_test.go).
+// It also covers the three spawn-free verbs (validate/status/pause) and
+// weftCommit's SkipGit-before-New guard ordering directly, since none of
+// those need a live tmux/claude substrate or even a git repository beyond a
+// plain t.TempDir(). Pathspec-shape coverage now lives in
+// weft_integration_test.go, which proves the exclude-file transients stay
+// uncommitted through a real git repo rather than asserting a pathspec
+// string shape against a since-deleted helper. Every fixture here builds a
+// *websterCLI literal directly, bypassing Command()'s PersistentPreRunE, the
+// package-local injection point buildercli's own tests establish. Every
+// other verb's own behavior (begin-batch, record-batch, recover-batch, run)
+// is covered by verbs_test.go.
 package webstercli
 
 import (

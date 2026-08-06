@@ -1,12 +1,17 @@
-// spawn_test.go — Tier-1 (untagged, no git spawn, no process fork) tests for SpawnDetachedPush's skip-env/both-paths-empty gating and PushWarpAt's SkipGit/SkipPush gating.
-// The real fork path is intentionally not exercised here — forking from the test binary would re-exec the test binary itself;
-// the real both-sides push is covered by the batch's integration test (internal/fabriccli/pushbypass_integration_test.go).
+// spawn_test.go — Tier-1 (untagged, no git spawn, no process fork) tests for
+// SpawnDetachedPush's skip-env/both-paths-empty gating and PushWarpAt's
+// SkipGit/SkipPush gating. The real fork path is intentionally not exercised
+// here — forking from the test binary would re-exec the test binary itself;
+// the real both-sides push is covered by the batch's integration test
+// (internal/fabriccli/pushbypass_integration_test.go).
 
 package fabricengine
 
 import "testing"
 
-// TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers every case where SpawnDetachedPush must return nil without forking a child: WEFT_SKIP_GIT set, WEFT_SKIP_PUSH set, and both paths empty (with neither env var set).
+// TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers every case where
+// SpawnDetachedPush must return nil without forking a child: WEFT_SKIP_GIT
+// set, WEFT_SKIP_PUSH set, and both paths empty (with neither env var set).
 func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -30,7 +35,9 @@ func TestSpawnDetachedPush_SkipEnvAndEmptyPaths(t *testing.T) {
 	}
 }
 
-// TestPushWarpAt_Gating covers PushWarpAt's SkipGit/SkipPush early-out, which returns nil without ever constructing a real gitrepo.Repo push — no git spawn, since PushCoalesced is never reached.
+// TestPushWarpAt_Gating covers PushWarpAt's SkipGit/SkipPush early-out, which
+// returns nil without ever constructing a real gitrepo.Repo push — no git
+// spawn, since PushCoalesced is never reached.
 func TestPushWarpAt_Gating(t *testing.T) {
 	tests := []struct {
 		name string

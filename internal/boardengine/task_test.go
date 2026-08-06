@@ -1,7 +1,6 @@
 // task_test.go — unit tests for Task construction (task.go).
 //
-// NewTask defaults and type validation;
-// ApplyPatch field overlay.
+// NewTask defaults and type validation; ApplyPatch field overlay.
 
 package boardengine_test
 

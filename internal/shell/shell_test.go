@@ -1,5 +1,8 @@
-// shell_test.go table-tests both pane-shell implementations: argument quoting across plain, space-containing, and quote-containing inputs, and the exact Invoke/ReadFile/ WithEnv output each impl composes.
-// The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so the coverage moves with the logic it tests.
+// shell_test.go table-tests both pane-shell implementations: argument quoting across
+// plain, space-containing, and quote-containing inputs, and the exact Invoke/ReadFile/
+// WithEnv output each impl composes. The pwsh quoting cases are migrated verbatim from
+// claudeengine's former TestPwshSingleQuote so the coverage moves with the logic it
+// tests.
 
 package shell
 

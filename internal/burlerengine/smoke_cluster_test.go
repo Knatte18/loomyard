@@ -141,8 +141,14 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, lyxtest.PairedFi
 	return engine, fixture
 }
 
-// TestSmokeBurlerClusterCleanFan drives one cluster round naming the "clean" fan (two well-behaved generic forks) against a REAL claude handler and REAL fork subagents,
-// and asserts the round completes cleanly: it reaches shuttleengine.OutcomeDone, Result.ForkAudit carries exactly 2 forks with zero AgentCalls/WriteCalls (the enforcement layers had nothing to catch), and the consolidated review file parses successfully (Engine.Run itself enforces this — ParseReview's strict frontmatter contract — so a nil error here already proves a well-formed consolidated structure).
+// TestSmokeBurlerClusterCleanFan drives one cluster round naming the "clean"
+// fan (two well-behaved generic forks) against a REAL claude handler and
+// REAL fork subagents, and asserts the round completes cleanly: it reaches
+// shuttleengine.OutcomeDone, Result.ForkAudit carries exactly 2 forks with
+// zero AgentCalls/WriteCalls (the enforcement layers had nothing to catch),
+// and the consolidated review file parses successfully (Engine.Run itself
+// enforces this — ParseReview's strict frontmatter contract — so a nil
+// error here already proves a well-formed consolidated structure).
 func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 	engine, fixture := newClusterSmokeEngine(t)
 	targetPath := writeClusterSmokeFixture(t, fixture.Hub)

@@ -1,5 +1,13 @@
-// validate_test.go covers Validate's checks against plan-format v2: the plan-valid fixture must yield zero findings, plan-unapproved and plan-broken-chain must trip their designed checks, and synthetic in-memory plans exercise the checks that need disk state or cap values the hand-written fixtures do not exercise (index-file-mismatch, verify-missing, batch-oversized, scope-malformed) plus the five move-* checks (move-format, move-redundant, move-source-missing, move-target-collision, move-mechanic-missing).
-// batch-oversized sums Scope plus every card's typed file-op paths and compares len(PlanBatch.Cards) against the card cap.
+// validate_test.go covers Validate's checks against plan-format v2: the
+// plan-valid fixture must yield zero findings, plan-unapproved and
+// plan-broken-chain must trip their designed checks, and synthetic
+// in-memory plans exercise the checks that need disk state or cap values
+// the hand-written fixtures do not exercise (index-file-mismatch,
+// verify-missing, batch-oversized, scope-malformed) plus the five move-*
+// checks (move-format, move-redundant, move-source-missing,
+// move-target-collision, move-mechanic-missing). batch-oversized sums Scope
+// plus every card's typed file-op paths and compares len(PlanBatch.Cards)
+// against the card cap.
 
 package builderengine_test
 
@@ -83,7 +91,10 @@ func TestValidate_PlanBrokenChain_TripsCheck4Twice(t *testing.T) {
 	}
 }
 
-// TestValidate_ChainEndWithoutDeferred proves a batch declaring chain-end: next to a real verify: command trips chain-end-dangling: chain membership keys on chain-end: alone, so such a batch silently joins the chain's destructive rollback set while never deferring anything.
+// TestValidate_ChainEndWithoutDeferred proves a batch declaring chain-end:
+// next to a real verify: command trips chain-end-dangling: chain membership
+// keys on chain-end: alone, so such a batch silently joins the chain's
+// destructive rollback set while never deferring anything.
 func TestValidate_ChainEndWithoutDeferred(t *testing.T) {
 	t.Parallel()
 
@@ -397,8 +408,10 @@ func TestValidate_FormatUnrecognized(t *testing.T) {
 	}
 }
 
-// TestValidate_MoveFormat covers move-format: a malformed Moves: bullet (retained verbatim in PlanCard.MovesRaw by the parser) yields one finding citing the card and quoting the raw entry;
-// a well-formed pair produces none.
+// TestValidate_MoveFormat covers move-format: a malformed Moves: bullet
+// (retained verbatim in PlanCard.MovesRaw by the parser) yields one finding
+// citing the card and quoting the raw entry; a well-formed pair produces
+// none.
 func TestValidate_MoveFormat(t *testing.T) {
 	t.Parallel()
 
@@ -448,8 +461,9 @@ func TestValidate_MoveFormat(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveRedundant covers move-redundant: an endpoint duplicated into the same batch's Creates: is flagged,
-// but a rename plus a DIFFERENT Creates: path (extraction alongside a rename) is not.
+// TestValidate_MoveRedundant covers move-redundant: an endpoint duplicated
+// into the same batch's Creates: is flagged, but a rename plus a DIFFERENT
+// Creates: path (extraction alongside a rename) is not.
 func TestValidate_MoveRedundant(t *testing.T) {
 	t.Parallel()
 
@@ -500,9 +514,11 @@ func TestValidate_MoveRedundant(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveSourceMissing covers move-source-missing: a source path with no on-disk file and no plan-wide Creates:/Moves-target suppression is flagged;
-// a source satisfied by another batch's Creates: is suppressed;
-// and a chained rename across two batches (A: x -> y, B: y -> z) is suppressed regardless of batch order.
+// TestValidate_MoveSourceMissing covers move-source-missing: a source path
+// with no on-disk file and no plan-wide Creates:/Moves-target suppression is
+// flagged; a source satisfied by another batch's Creates: is suppressed; and
+// a chained rename across two batches (A: x -> y, B: y -> z) is suppressed
+// regardless of batch order.
 func TestValidate_MoveSourceMissing(t *testing.T) {
 	t.Parallel()
 
@@ -584,7 +600,10 @@ func TestValidate_MoveSourceMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveTargetCollision covers move-target-collision's three OR'd conditions: an existing on-disk target, two batches targeting the same path, and a cross-batch Creates: collision (same-batch overlap is move-redundant's job, deliberately not re-flagged here).
+// TestValidate_MoveTargetCollision covers move-target-collision's three
+// OR'd conditions: an existing on-disk target, two batches targeting the
+// same path, and a cross-batch Creates: collision (same-batch overlap is
+// move-redundant's job, deliberately not re-flagged here).
 func TestValidate_MoveTargetCollision(t *testing.T) {
 	t.Parallel()
 
@@ -666,9 +685,10 @@ func TestValidate_MoveTargetCollision(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveMechanicMissing covers move-mechanic-missing: a batch with a Moves: pair but no "## Rename mechanic" section is flagged;
-// the same batch with the section is clean;
-// and a batch whose every Moves: field is "none" (zero pairs) is clean even without the section.
+// TestValidate_MoveMechanicMissing covers move-mechanic-missing: a batch
+// with a Moves: pair but no "## Rename mechanic" section is flagged; the
+// same batch with the section is clean; and a batch whose every Moves:
+// field is "none" (zero pairs) is clean even without the section.
 func TestValidate_MoveMechanicMissing(t *testing.T) {
 	t.Parallel()
 
@@ -729,8 +749,10 @@ func TestValidate_MoveMechanicMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_CardMissingField covers card-missing-field: each of the six required fields (What:/Context:/Edits:/Creates:/Deletes:/Moves:) is flagged individually when absent,
-// and a present-but-"none" field (empty non-nil slice, HasX == true) is not flagged.
+// TestValidate_CardMissingField covers card-missing-field: each of the six
+// required fields (What:/Context:/Edits:/Creates:/Deletes:/Moves:) is
+// flagged individually when absent, and a present-but-"none" field (empty
+// non-nil slice, HasX == true) is not flagged.
 func TestValidate_CardMissingField(t *testing.T) {
 	t.Parallel()
 
@@ -787,8 +809,9 @@ func TestValidate_CardMissingField(t *testing.T) {
 	})
 }
 
-// TestValidate_CardFieldOverlap covers card-field-overlap: the same path in one card's Edits: and Creates: is flagged,
-// but the same path split across two different cards' Creates:/Edits: (in the same batch) is not.
+// TestValidate_CardFieldOverlap covers card-field-overlap: the same path in
+// one card's Edits: and Creates: is flagged, but the same path split across
+// two different cards' Creates:/Edits: (in the same batch) is not.
 func TestValidate_CardFieldOverlap(t *testing.T) {
 	t.Parallel()
 
@@ -841,7 +864,9 @@ func TestValidate_CardFieldOverlap(t *testing.T) {
 	})
 }
 
-// TestValidate_ScopeMalformed_CardPaths covers checkScopeMalformed's extension to card paths: a ".."-escaping or absolute card path is flagged as scope-malformed citing the offending card.
+// TestValidate_ScopeMalformed_CardPaths covers checkScopeMalformed's
+// extension to card paths: a ".."-escaping or absolute card path is flagged
+// as scope-malformed citing the offending card.
 func TestValidate_ScopeMalformed_CardPaths(t *testing.T) {
 	t.Parallel()
 
@@ -894,8 +919,9 @@ func TestValidate_ScopeMalformed_CardPaths(t *testing.T) {
 	})
 }
 
-// TestValidate_CardNumbering covers card-numbering's two independent violations: a card heading whose batch prefix disagrees with the batch's own number,
-// and a card Number sequence with a duplicate or a gap.
+// TestValidate_CardNumbering covers card-numbering's two independent
+// violations: a card heading whose batch prefix disagrees with the batch's
+// own number, and a card Number sequence with a duplicate or a gap.
 func TestValidate_CardNumbering(t *testing.T) {
 	t.Parallel()
 
@@ -962,7 +988,8 @@ func TestValidate_CardNumbering(t *testing.T) {
 	})
 }
 
-// TestValidate_CardCountMismatch covers card-count-mismatch: the Batch Index's IndexCardCount must equal len(PlanBatch.Cards).
+// TestValidate_CardCountMismatch covers card-count-mismatch: the Batch
+// Index's IndexCardCount must equal len(PlanBatch.Cards).
 func TestValidate_CardCountMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -989,8 +1016,10 @@ func TestValidate_CardCountMismatch(t *testing.T) {
 	}
 }
 
-// TestValidate_PathMissing covers path-missing: a card's Edits: path that does not exist on disk is flagged,
-// but the same defect is suppressed when another batch's Creates: satisfies it (the plan-wide suppression set move-source-missing also consults).
+// TestValidate_PathMissing covers path-missing: a card's Edits: path that
+// does not exist on disk is flagged, but the same defect is suppressed when
+// another batch's Creates: satisfies it (the plan-wide suppression set
+// move-source-missing also consults).
 func TestValidate_PathMissing(t *testing.T) {
 	t.Parallel()
 
@@ -1046,9 +1075,10 @@ func TestValidate_PathMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_CardOutsideScope covers card-outside-scope: an Edits: path not covered by any Scope entry is flagged,
-// but the same path in Context: (exempt) is not;
-// and Scope's boundary semantics apply ("internal/foo" must not cover "internal/foobar").
+// TestValidate_CardOutsideScope covers card-outside-scope: an Edits: path
+// not covered by any Scope entry is flagged, but the same path in Context:
+// (exempt) is not; and Scope's boundary semantics apply ("internal/foo"
+// must not cover "internal/foobar").
 func TestValidate_CardOutsideScope(t *testing.T) {
 	t.Parallel()
 
@@ -1122,8 +1152,9 @@ func TestValidate_CardOutsideScope(t *testing.T) {
 	})
 }
 
-// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a Commit: value matching its own card's "NN.C: " prefix is clean;
-// a value with the wrong prefix is flagged.
+// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a
+// Commit: value matching its own card's "NN.C: " prefix is clean; a value
+// with the wrong prefix is flagged.
 func TestValidate_CommitSubjectMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -1185,7 +1216,9 @@ func hasFinding(findings []builderengine.ValidationError, check, batch string) b
 	return false
 }
 
-// TestValidate_FindingsOrderedByCheckThenBatch pins the deterministic ordering Validate promises: findings are grouped by check (in check-1..6 order) and, within a check, by ascending batch number.
+// TestValidate_FindingsOrderedByCheckThenBatch pins the deterministic
+// ordering Validate promises: findings are grouped by check (in check-1..6
+// order) and, within a check, by ascending batch number.
 func TestValidate_FindingsOrderedByCheckThenBatch(t *testing.T) {
 	t.Parallel()
 
@@ -1220,8 +1253,9 @@ func TestValidate_FindingsOrderedByCheckThenBatch(t *testing.T) {
 	}
 }
 
-// TestValidate_ValidationErrorImplementsError pins ValidationError's Error() formatting, which lets a finding be used directly wherever a single error value is expected (e.g.
-// an errors.New-style substring assertion).
+// TestValidate_ValidationErrorImplementsError pins ValidationError's Error()
+// formatting, which lets a finding be used directly wherever a single error
+// value is expected (e.g. an errors.New-style substring assertion).
 func TestValidate_ValidationErrorImplementsError(t *testing.T) {
 	t.Parallel()
 

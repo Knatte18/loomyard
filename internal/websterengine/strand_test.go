@@ -1,5 +1,9 @@
-// strand_test.go covers StrandLive against a fake shuttleengine.ReedOps double (present/live, present/not-live, absent), TurnEnded against a fake shuttleengine.Engine double (stop event, no stop event, missing events file, a ParseEvents error), and removeStrandIfLive's three cases (live, not-live, a failed removal of a live strand).
-// Tier 1: no git, only local fakes.
+// strand_test.go covers StrandLive against a fake shuttleengine.ReedOps
+// double (present/live, present/not-live, absent), TurnEnded against a fake
+// shuttleengine.Engine double (stop event, no stop event, missing events
+// file, a ParseEvents error), and removeStrandIfLive's three cases (live,
+// not-live, a failed removal of a live strand). Tier 1: no git, only local
+// fakes.
 
 package websterengine
 

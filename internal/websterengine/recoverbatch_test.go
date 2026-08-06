@@ -261,7 +261,13 @@ func driveRecoverBatch(deps websterengine.RecoverDeps, batchNumber int, wait tim
 	}, nil
 }
 
-// TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand proves the first call for a batch with no live recovery record spawns a fresh recovery strand: a stale report at the batch's own report path is archived (renamed with a timestamp suffix, never deleted), a prior recorded strand still reported live by the reed is stopped, the fresh BatchState's strand fields are recorded, and — with no report landing inside the wait window — the call returns Running with Spawned: true.
+// TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand
+// proves the first call for a batch with no live recovery record spawns a
+// fresh recovery strand: a stale report at the batch's own report path is
+// archived (renamed with a timestamp suffix, never deleted), a prior
+// recorded strand still reported live by the reed is stopped, the fresh
+// BatchState's strand fields are recorded, and — with no report landing
+// inside the wait window — the call returns Running with Spawned: true.
 func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *testing.T) {
 	fx := newRecoverFixture(t)
 
@@ -357,7 +363,12 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 	}
 }
 
-// TestRecoverBatch_DoneReportRefusedUnlessPriorDead proves the finished-work guard: a batch whose on-disk report already parses to status: done is refused (recover-batch never archives finished work — record-batch is the consuming verb), EXCEPT when the batch's persisted state is terminal dead, builder's dead-orphan late-report case, where the report is archived and the spawn proceeds.
+// TestRecoverBatch_DoneReportRefusedUnlessPriorDead proves the
+// finished-work guard: a batch whose on-disk report already parses to
+// status: done is refused (recover-batch never archives finished work —
+// record-batch is the consuming verb), EXCEPT when the batch's persisted
+// state is terminal dead, builder's dead-orphan late-report case, where the
+// report is archived and the spawn proceeds.
 func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
 	doneReport := "status: OK\nhead_sha: deadbeef\n"
 
@@ -402,7 +413,12 @@ func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
 	})
 }
 
-// TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest proves a re-entrant second call for the same batch, while the recovery strand is still recorded and non-terminal, ATTACHES rather than re-spawning (the fake Starter's Prepare call count stays at 1), and once the batch's own report has landed, returns the terminal digest with state persisted and the done-classified substrate released (strand removed, run dir removed).
+// TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest proves a
+// re-entrant second call for the same batch, while the recovery strand is
+// still recorded and non-terminal, ATTACHES rather than re-spawning (the
+// fake Starter's Prepare call count stays at 1), and once the batch's own
+// report has landed, returns the terminal digest with state persisted and
+// the done-classified substrate released (strand removed, run dir removed).
 func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -482,7 +498,12 @@ func TestRecoverBatch_SecondCallAttachesAndPersistsDoneDigest(t *testing.T) {
 	}
 }
 
-// TestRecoverBatch_ReportHeadSHAMismatchIsHardError proves the recovery path applies RecordBatch's own head_sha cross-check: a recovery report whose self-reported head_sha disagrees with the worktree's actual HEAD is refused loud rather than persisted into the digest and the bisect trail (crucible round fable-r1's F4 — before this check, only the fork path verified the report against the repo it claimed to describe).
+// TestRecoverBatch_ReportHeadSHAMismatchIsHardError proves the recovery
+// path applies RecordBatch's own head_sha cross-check: a recovery report
+// whose self-reported head_sha disagrees with the worktree's actual HEAD is
+// refused loud rather than persisted into the digest and the bisect trail
+// (crucible round fable-r1's F4 — before this check, only the fork path
+// verified the report against the repo it claimed to describe).
 func TestRecoverBatch_ReportHeadSHAMismatchIsHardError(t *testing.T) {
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
@@ -511,7 +532,13 @@ func TestRecoverBatch_ReportHeadSHAMismatchIsHardError(t *testing.T) {
 	}
 }
 
-// TestRecoverBatch_TimeoutAcrossCallsClassifiesDead proves RecoveryTimeoutMin is measured from the recorded SpawnedAt ACROSS re-entrant calls, not reset per call: virtual time advanced well past the configured timeout between two calls classifies dead/timeout on the second call even though neither call's own wait budget alone would ever cross it, and the dead classification keeps BOTH the strand and the run directory (diagnosis material), never removing either.
+// TestRecoverBatch_TimeoutAcrossCallsClassifiesDead proves
+// RecoveryTimeoutMin is measured from the recorded SpawnedAt ACROSS
+// re-entrant calls, not reset per call: virtual time advanced well past the
+// configured timeout between two calls classifies dead/timeout on the
+// second call even though neither call's own wait budget alone would ever
+// cross it, and the dead classification keeps BOTH the strand and the run
+// directory (diagnosis material), never removing either.
 func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	fx := newRecoverFixture(t)
 	fx.Deps.Config.RecoveryTimeoutMin = 1 // 1 minute
@@ -560,7 +587,11 @@ func TestRecoverBatch_TimeoutAcrossCallsClassifiesDead(t *testing.T) {
 	}
 }
 
-// TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh proves the spawn-or-attach decision spawns fresh — never attaches — both when the batch has no recorded BatchState at all and when a prior recovery attempt already reached a terminal classification, in contrast to a recorded, non-terminal recovery BatchState, which attaches.
+// TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh proves the
+// spawn-or-attach decision spawns fresh — never attaches — both when the
+// batch has no recorded BatchState at all and when a prior recovery attempt
+// already reached a terminal classification, in contrast to a recorded,
+// non-terminal recovery BatchState, which attaches.
 func TestRecoverBatch_UnrecordedOrTerminalBatchSpawnsFresh(t *testing.T) {
 	tests := []struct {
 		name   string

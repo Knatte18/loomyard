@@ -1,6 +1,9 @@
-// engine.go defines the provider seam: the Engine interface every LLM adapter implements,
-// and the plain value types that cross it (Launch, PaneInput, Event, StartupState, Outcome).
-// shuttleengine owns this seam and never imports a concrete engine — the provider-seam import rule, enforced by seam_enforcement_test.go — so a second provider only ever needs to satisfy Engine, never touch the run loop or CLI machinery.
+// engine.go defines the provider seam: the Engine interface every LLM
+// adapter implements, and the plain value types that cross it (Launch,
+// PaneInput, Event, StartupState, Outcome). shuttleengine owns this
+// seam and never imports a concrete engine — the provider-seam import rule,
+// enforced by seam_enforcement_test.go — so a second provider only ever
+// needs to satisfy Engine, never touch the run loop or CLI machinery.
 
 package shuttleengine
 
@@ -14,8 +17,7 @@ const (
 	// OutcomeAsking: agent ended turn without writing output files, last message reads as a question.
 	OutcomeAsking Outcome = "asking"
 	// OutcomeDied: pane died (or provider never became ready inside startup window) before output files written.
-	// Pane death is the only observable process failure;
-	// a provider crash mid-run behind a live pane shell classifies OutcomeTimeout instead.
+	// Pane death is the only observable process failure; a provider crash mid-run behind a live pane shell classifies OutcomeTimeout instead.
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout: wall-clock Timeout elapsed before output files written.
 	// This also covers provider crashes mid-run behind a still-live pane shell (pane tells the operator which happened).
@@ -24,8 +26,7 @@ const (
 
 // Launch carries the opaque, provider-specific command strings an Engine's Prepare produces.
 // Cmd is typed into a fresh pane to start, ResumeCmd to reattach an existing session (both name the session via SessionID).
-// shuttle sends Cmd/ResumeCmd verbatim;
-// it never parses or modifies them.
+// shuttle sends Cmd/ResumeCmd verbatim; it never parses or modifies them.
 type Launch struct {
 	Cmd       string
 	ResumeCmd string
@@ -33,8 +34,7 @@ type Launch struct {
 }
 
 // PaneInput is one step of provider-specific key choreography sent to a pane via reed's send-keys.
-// Exactly one of Key or Text is set;
-// when Submit is true and Text is set, an Enter key follows Text.
+// Exactly one of Key or Text is set; when Submit is true and Text is set, an Enter key follows Text.
 type PaneInput struct {
 	Key      string // Tmux named key (e.g. "Escape"); empty if this step types Text instead.
 	Text     string // Literal text typed into the pane; empty if this step sends a Key.
@@ -55,8 +55,7 @@ const (
 )
 
 // Event is one parsed line from events.jsonl: either a turn-end signal (EventStop) or a live ask (EventAsk).
-// Message carries the agent's final message (EventStop) or question text (EventAsk);
-// Raw is the exact JSON line.
+// Message carries the agent's final message (EventStop) or question text (EventAsk); Raw is the exact JSON line.
 type Event struct {
 	Kind    EventKind // Discriminates which signal this Event carries.
 	Message string    // Agent's final message (EventStop) or question text (EventAsk); "" if event carried none.
@@ -78,8 +77,7 @@ const (
 
 // Engine is the provider seam: the interface every LLM adapter implements so the run loop can drive any provider identically.
 // shuttleengine defines Engine and never imports a concrete implementation (the provider-seam import rule);
-// concrete engines (e.g.
-// claudeengine) import shuttleengine and satisfy this interface.
+// concrete engines (e.g. claudeengine) import shuttleengine and satisfy this interface.
 type Engine interface {
 	// Prepare writes provider-specific artifacts (prompt file, settings/hooks) and returns opaque Launch command strings.
 	Prepare(runDir string, spec Spec, cfg Config) (Launch, error)

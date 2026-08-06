@@ -1,6 +1,14 @@
-// status.go implements the `status` webster verb: an instant, side-effect- free snapshot of _lyx/webster/state.json -- the same navigation refresher buildercli's own status.go documents (human- and loom-facing).
-// It never spawns an agent, never weft-commits, and never mutates state.json;
-// unlike builder (which only learns a batch's terminal status from poll's own next tick or a live report-file scan), webster's own record-batch/recover-batch persist BatchState.Status/Terminal/Digest directly onto state.json the moment the batch reaches a terminal classification, so status here is a plain read of the persisted record and needs no separate reports-dir scan -- builder-parity in verb shape (a pure snapshot, never a mutation), not in mechanism.
+// status.go implements the `status` webster verb: an instant, side-effect-
+// free snapshot of _lyx/webster/state.json -- the same navigation refresher
+// buildercli's own status.go documents (human- and loom-facing). It never
+// spawns an agent, never weft-commits, and never mutates state.json; unlike
+// builder (which only learns a batch's terminal status from poll's own next
+// tick or a live report-file scan), webster's own record-batch/recover-batch
+// persist BatchState.Status/Terminal/Digest directly onto state.json the
+// moment the batch reaches a terminal classification, so status here is a
+// plain read of the persisted record and needs no separate reports-dir scan
+// -- builder-parity in verb shape (a pure snapshot, never a mutation), not
+// in mechanism.
 package webstercli
 
 import (

@@ -13,7 +13,10 @@ import (
 	"testing"
 )
 
-// TestCLIPromoteNote seeds a note via "notes upsert", promotes it, and asserts the move landed: the promoted task's fields round-trip, the slug is gone from notes.json (notes get returns task:null), and the same slug is now present via the task-verb "get" (tasks.json).
+// TestCLIPromoteNote seeds a note via "notes upsert", promotes it, and
+// asserts the move landed: the promoted task's fields round-trip, the slug
+// is gone from notes.json (notes get returns task:null), and the same slug
+// is now present via the task-verb "get" (tasks.json).
 func TestCLIPromoteNote(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)
@@ -82,7 +85,8 @@ func TestCLIPromoteNote(t *testing.T) {
 	}
 }
 
-// TestCLIPromoteNote_NeverANote asserts that promoting a slug that was never a note errors with a message containing "note not found".
+// TestCLIPromoteNote_NeverANote asserts that promoting a slug that was never
+// a note errors with a message containing "note not found".
 func TestCLIPromoteNote_NeverANote(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	seedCwd(t)

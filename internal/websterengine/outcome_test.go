@@ -1,5 +1,6 @@
-// outcome_test.go exercises parseOutcome's accept/reject table and archiveStaleOutcome's rename/preserve/no-op/collision behavior.
-// Tier 1: no git, only t.TempDir() plus an injected now.
+// outcome_test.go exercises parseOutcome's accept/reject table and
+// archiveStaleOutcome's rename/preserve/no-op/collision behavior. Tier 1:
+// no git, only t.TempDir() plus an injected now.
 
 package websterengine
 
@@ -23,8 +24,11 @@ func outcomeWriteFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParseOutcome_AcceptReject tables every outcome.yaml accept/reject case parseOutcome's fail-loud discipline pins: a well-formed done/stuck/paused file parses;
-// an unrecognized outcome value, a stuck file missing stuck_reason, and an unknown extra key are all rejected loudly.
+// TestParseOutcome_AcceptReject tables every outcome.yaml accept/reject
+// case parseOutcome's fail-loud discipline pins: a well-formed
+// done/stuck/paused file parses; an unrecognized outcome value, a stuck
+// file missing stuck_reason, and an unknown extra key are all rejected
+// loudly.
 func TestParseOutcome_AcceptReject(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -97,7 +101,8 @@ func TestParseOutcome_AcceptReject(t *testing.T) {
 	}
 }
 
-// TestParseOutcome_MissingFile asserts a missing outcome.yaml is a wrapped error, not a guessed nil result.
+// TestParseOutcome_MissingFile asserts a missing outcome.yaml is a wrapped
+// error, not a guessed nil result.
 func TestParseOutcome_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "outcome.yaml")
@@ -107,7 +112,8 @@ func TestParseOutcome_MissingFile(t *testing.T) {
 	}
 }
 
-// TestArchiveStaleOutcome_AbsentFileIsNoOp asserts archiving a webster dir with no outcome.yaml at all returns ("", nil) — not an error.
+// TestArchiveStaleOutcome_AbsentFileIsNoOp asserts archiving a webster dir
+// with no outcome.yaml at all returns ("", nil) — not an error.
 func TestArchiveStaleOutcome_AbsentFileIsNoOp(t *testing.T) {
 	dir := t.TempDir()
 
@@ -120,7 +126,10 @@ func TestArchiveStaleOutcome_AbsentFileIsNoOp(t *testing.T) {
 	}
 }
 
-// TestArchiveStaleOutcome_RenamesAndPreservesContent asserts a present outcome.yaml is renamed (never copied-and-left, never deleted) to outcome-<UTC-compact-timestamp>.yaml in the same directory, with its content preserved byte-for-byte, and the original path no longer exists.
+// TestArchiveStaleOutcome_RenamesAndPreservesContent asserts a present
+// outcome.yaml is renamed (never copied-and-left, never deleted) to
+// outcome-<UTC-compact-timestamp>.yaml in the same directory, with its
+// content preserved byte-for-byte, and the original path no longer exists.
 func TestArchiveStaleOutcome_RenamesAndPreservesContent(t *testing.T) {
 	dir := t.TempDir()
 	original := filepath.Join(dir, "outcome.yaml")
@@ -151,7 +160,9 @@ func TestArchiveStaleOutcome_RenamesAndPreservesContent(t *testing.T) {
 	}
 }
 
-// TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix asserts a second archive call whose now() truncates to the same compact timestamp does not clobber the first archive: it appends a numeric suffix instead.
+// TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix asserts a second
+// archive call whose now() truncates to the same compact timestamp does not
+// clobber the first archive: it appends a numeric suffix instead.
 func TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix(t *testing.T) {
 	dir := t.TempDir()
 	clk := archiveFixedClock(time.Date(2026, 7, 11, 13, 45, 0, 0, time.UTC))

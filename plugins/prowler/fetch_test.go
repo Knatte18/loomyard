@@ -1,5 +1,6 @@
-// fetch_test.go exercises the static-fetch extraction cascade with a stubbed fetcher.do (canned responses keyed by request URL) and a stubbed fetcher.browser.
-// No network, no Chrome.
+// fetch_test.go exercises the static-fetch extraction cascade with a stubbed
+// fetcher.do (canned responses keyed by request URL) and a stubbed
+// fetcher.browser. No network, no Chrome.
 
 package main
 

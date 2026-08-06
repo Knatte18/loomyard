@@ -1,5 +1,7 @@
-// mouse_test.go exercises mouseOption's validate/normalize contract: valid on/off inputs (in every case/whitespace variant) resolve to the canonical lowercase form,
-// and every other input — including the empty string — errors rather than silently defaulting.
+// mouse_test.go exercises mouseOption's validate/normalize contract: valid
+// on/off inputs (in every case/whitespace variant) resolve to the canonical
+// lowercase form, and every other input — including the empty string —
+// errors rather than silently defaulting.
 
 package reedengine
 

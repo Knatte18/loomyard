@@ -1,4 +1,8 @@
-// config_test.go verifies perch.yaml's template parses, judge_model model-spec strings resolve through LoadConfig/LoadConfigWithRegistry, the old split-key (judge_effort) format fails loud, and the not-initialized error path behaves the way reedengine's and shuttleengine's config tests establish the pattern.
+// config_test.go verifies perch.yaml's template parses, judge_model
+// model-spec strings resolve through LoadConfig/LoadConfigWithRegistry, the
+// old split-key (judge_effort) format fails loud, and the not-initialized
+// error path behaves the way reedengine's and shuttleengine's config tests
+// establish the pattern.
 
 package perchengine_test
 
@@ -46,7 +50,9 @@ func seedModelsYAML(t *testing.T, tmpDir, content string) {
 	}
 }
 
-// (a) The template's default judge_model ("haiku") resolves to model "haiku" with an empty effort when no models.yaml is present — the built-in fallback registry carries no parameter defaults.
+// (a) The template's default judge_model ("haiku") resolves to model
+// "haiku" with an empty effort when no models.yaml is present — the
+// built-in fallback registry carries no parameter defaults.
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Seed the config file with the template itself: this is exactly the
@@ -76,7 +82,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 	}
 }
 
-// (b) A seeded models.yaml giving sonnet a "defaults: {effort: medium}" entry makes "judge_model: sonnet" resolve to effort "medium".
+// (b) A seeded models.yaml giving sonnet a "defaults: {effort: medium}"
+// entry makes "judge_model: sonnet" resolve to effort "medium".
 func TestLoadConfig_JudgeModelResolvesRegistryDefaultEffort(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedModelsYAML(t, tmpDir, "sonnet:\n  engine: claude\n  model: sonnet\n  defaults:\n    effort: medium\n")
@@ -109,7 +116,9 @@ func TestLoadConfig_JudgeModelBracketBeatsRegistryDefault(t *testing.T) {
 	}
 }
 
-// (d) A "version" bracket param fails loud, naming "version" — perch has no field to carry it into, so this is a perch-layer rejection, not a modelspec grammar error (version IS a known modelspec param).
+// (d) A "version" bracket param fails loud, naming "version" — perch has
+// no field to carry it into, so this is a perch-layer rejection, not a
+// modelspec grammar error (version IS a known modelspec param).
 func TestLoadConfig_JudgeModelVersionParamFailsLoud(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedLyxConfig(t, tmpDir, "perch", "judge_model: \"sonnet[version=x]\"\nround_caps: [5, 8, 10]\n")
@@ -123,7 +132,9 @@ func TestLoadConfig_JudgeModelVersionParamFailsLoud(t *testing.T) {
 	}
 }
 
-// (e) An old-format perch.yaml still carrying a judge_effort key fails strict validation loud — this is the migration's fail-loud enforcement point (configengine.Load's MissingKeys check alone would NOT catch this).
+// (e) An old-format perch.yaml still carrying a judge_effort key fails
+// strict validation loud — this is the migration's fail-loud enforcement
+// point (configengine.Load's MissingKeys check alone would NOT catch this).
 func TestLoadConfig_OldSplitKeyFileFailsLoud(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedLyxConfig(t, tmpDir, "perch", "judge_model: haiku\njudge_effort: \"\"\nround_caps: [5, 8, 10]\n")

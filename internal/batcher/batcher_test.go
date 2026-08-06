@@ -1,5 +1,7 @@
-// batcher_test.go covers Select against the package's real, package-init-populated registry (identity.go's init() has already run by the time these tests execute, unlike registry_test.go's isolated-registry probes).
-// Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
+// batcher_test.go covers Select against the package's real, package-init-populated
+// registry (identity.go's init() has already run by the time these tests execute,
+// unlike registry_test.go's isolated-registry probes). Tier-1 (pure logic, no git,
+// no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
 
 package batcher
 

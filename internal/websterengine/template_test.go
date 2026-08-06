@@ -1,5 +1,23 @@
-// template_test.go pins webster's embedded prompt templates (master-template.md, the composed fork/recovery templates, and integration-template.md) against the Go contracts they key off of — the template-parser-co-versioning decision applied here: the master template's digest-field bullet list is pinned against webster's own Digest field set and order, the outcome-file bullet list against the outcome schema, and the fork/recovery templates' report-schema section against the minimal fork-return contract's field set (status, head_sha, deviations) — all as literal-statement and exact-field-list assertions in the same style as builderengine/template_test.go, plus stencil.Fill/ FillOptional round-trips proving every required marker and RenderForkPrompt/RenderRecoveryPrompt round-trips proving the fork-context-hygiene Shared Decision: a thin in-session fork prompt that injects nothing already inherited from Master, a full cold-start recovery prompt, and card content delivered by a SourcePath pointer rather than inlined fields.
-// Every test here is untagged and spawn-free: no subprocess exec, no git, no fixture trees (beyond a plain t.TempDir() PATTERN.md fixture) — only embedded bytes, stencil.Fill/FillOptional, and RenderForkPrompt/RenderRecoveryPrompt/RenderProgress, per the batch's own test-tiers-and-hermetic-git decision.
+// template_test.go pins webster's embedded prompt templates
+// (master-template.md, the composed fork/recovery templates, and
+// integration-template.md) against the Go contracts they key off of — the
+// template-parser-co-versioning decision applied here: the master
+// template's digest-field bullet list is pinned against webster's own
+// Digest field set and order, the outcome-file bullet list against the
+// outcome schema, and the fork/recovery templates' report-schema section
+// against the minimal fork-return contract's field set (status, head_sha,
+// deviations) — all as literal-statement and exact-field-list assertions in
+// the same style as builderengine/template_test.go, plus stencil.Fill/
+// FillOptional round-trips proving every required marker and
+// RenderForkPrompt/RenderRecoveryPrompt round-trips proving the
+// fork-context-hygiene Shared Decision: a thin in-session fork prompt that
+// injects nothing already inherited from Master, a full cold-start
+// recovery prompt, and card content delivered by a SourcePath pointer
+// rather than inlined fields. Every test here is untagged and spawn-free:
+// no subprocess exec, no git, no fixture trees (beyond a plain t.TempDir()
+// PATTERN.md fixture) — only embedded bytes, stencil.Fill/FillOptional, and
+// RenderForkPrompt/RenderRecoveryPrompt/RenderProgress, per the batch's own
+// test-tiers-and-hermetic-git decision.
 
 package websterengine_test
 
@@ -174,7 +192,11 @@ func cardWithSourcePath(number int, slug, intent string) planparser.Card {
 	}
 }
 
-// TestMasterTemplate_QuotesDigestFieldsAndNoOthers asserts the master template's digest-field bullet list names exactly webster's own six Digest field names (json tags), in the struct's own declared order — no fewer, no extras — the mechanical half of "Master reads only the minimal fork-return digest".
+// TestMasterTemplate_QuotesDigestFieldsAndNoOthers asserts the master
+// template's digest-field bullet list names exactly webster's own six
+// Digest field names (json tags), in the struct's own declared order — no
+// fewer, no extras — the mechanical half of "Master reads only the minimal
+// fork-return digest".
 func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -191,7 +213,10 @@ func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	}
 }
 
-// TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's outcome-file bullet list names exactly the three outcome.yaml schema keys, immediately followed by the literal yaml block spelling out their values, and separately names summary_path's own "# <title>" first-line rule.
+// TestMasterTemplate_QuotesOutcomeSchemaKeys asserts the master template's
+// outcome-file bullet list names exactly the three outcome.yaml schema keys,
+// immediately followed by the literal yaml block spelling out their values,
+// and separately names summary_path's own "# <title>" first-line rule.
 func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -216,7 +241,12 @@ func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	requireContains(t, text, "first line `# <title>`")
 }
 
-// TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents asserts the embedded master template's bytes carry the load-bearing never-touch-the- weft, never-self-edit, never-/model, and never-named-subagent statements in prose, so an edit that silently waters down any one of these fails this test rather than only a human review — the Weft Git Invariant's prompt-template half plus webster's own fork-discipline bans.
+// TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents asserts the
+// embedded master template's bytes carry the load-bearing never-touch-the-
+// weft, never-self-edit, never-/model, and never-named-subagent statements
+// in prose, so an edit that silently waters down any one of these fails
+// this test rather than only a human review — the Weft Git Invariant's
+// prompt-template half plus webster's own fork-discipline bans.
 func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -239,8 +269,17 @@ func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
 	requireContains(t, text, "The audit is")
 }
 
-// TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal asserts the master template's bytes carry the harness-grounding statements that preempt the observed live spawn-killer (round fable-r1, crucible): on current Claude Code, a freshly spawned Master classified the injected orchestration prompt as suspicious content, reasoned "no `lyx` tool is in my toolset", and ended its turn asking — which the shuttle file contract classifies asking, killing the run (~40% of real spawns).
-// The template must state that the prompt is real and delivered by `lyx webster run`, that `lyx` is a CLI driven via the Bash tool (never a listed tool), and that the session gets its bearings via `lyx webster status` rather than ending its turn to ask.
+// TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal asserts
+// the master template's bytes carry the harness-grounding statements that
+// preempt the observed live spawn-killer (round fable-r1, crucible): on
+// current Claude Code, a freshly spawned Master classified the injected
+// orchestration prompt as suspicious content, reasoned "no `lyx` tool is
+// in my toolset", and ended its turn asking — which the shuttle file
+// contract classifies asking, killing the run (~40% of real spawns). The
+// template must state that the prompt is real and delivered by `lyx
+// webster run`, that `lyx` is a CLI driven via the Bash tool (never a
+// listed tool), and that the session gets its bearings via `lyx webster
+// status` rather than ending its turn to ask.
 func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -253,7 +292,11 @@ func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.
 	requireContains(t, text, "there is no chat partner on the other end")
 }
 
-// TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the embedded template's bytes carry every rung of the begin-batch -> fork -> await-batch -> record-batch sequence, verbatim prompt forwarding, the backgrounded-fork wait discipline, and the flat-model recovery ladder in prose.
+// TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder asserts the
+// embedded template's bytes carry every rung of the begin-batch -> fork ->
+// await-batch -> record-batch sequence, verbatim prompt forwarding, the
+// backgrounded-fork wait discipline, and the flat-model recovery ladder in
+// prose.
 func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
@@ -297,9 +340,13 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "never end your turn")
 }
 
-// TestMasterTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of MasterTemplate's seven required markers plus the optional pattern_directive marker is supplied,
-// and fails — naming the marker — when any single REQUIRED one is absent.
-// pattern_directive is deliberately excluded from this deletion sweep: it is the one optional marker (see the template's own banner comment), so deleting it must not error.
+// TestMasterTemplate_FillsWithAllMarkers asserts stencil.FillOptional
+// succeeds when every one of MasterTemplate's seven required markers plus
+// the optional pattern_directive marker is supplied, and fails — naming the
+// marker — when any single REQUIRED one is absent. pattern_directive is
+// deliberately excluded from this deletion sweep: it is the one optional
+// marker (see the template's own banner comment), so deleting it must not
+// error.
 func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.FillOptional(websterengine.MasterTemplate(), masterTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
@@ -322,7 +369,12 @@ func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestMasterTemplate_PatternDirectiveOptional asserts pattern_directive behaves as an optional marker: an empty value renders cleanly with no leftover `{{`, no orphan `## Constraints` heading, and no stray blank-line block where the directive would have sat, and a non-empty value places the directive block ahead of the first work instruction ("## Orientation").
+// TestMasterTemplate_PatternDirectiveOptional asserts pattern_directive
+// behaves as an optional marker: an empty value renders cleanly with no
+// leftover `{{`, no orphan `## Constraints` heading, and no stray
+// blank-line block where the directive would have sat, and a non-empty
+// value places the directive block ahead of the first work instruction
+// ("## Orientation").
 func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
 		values := masterTemplateMarkerValues()
@@ -358,7 +410,12 @@ func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 	})
 }
 
-// TestForkTemplate_PinsReportSchemaKeys asserts the embedded, composed fork template's bytes carry the minimal fork-return contract's field names verbatim (status, head_sha, deviations — never the v2 report's tests/stuck_reason/out_of_scope grammar) plus the fresh-read rule statement and the host-commit-per-card statement, so a silent edit to any of these fails here rather than only a human review.
+// TestForkTemplate_PinsReportSchemaKeys asserts the embedded, composed fork
+// template's bytes carry the minimal fork-return contract's field names
+// verbatim (status, head_sha, deviations — never the v2 report's
+// tests/stuck_reason/out_of_scope grammar) plus the fresh-read rule
+// statement and the host-commit-per-card statement, so a silent edit to any
+// of these fails here rather than only a human review.
 func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	text := string(websterengine.ForkTemplate())
 
@@ -381,7 +438,12 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	requireNotContains(t, text, "tests: green")
 }
 
-// TestForkTemplate_CardLoopReadsCardFileWithWhatFallback asserts the shared implementer-body text — reused by both the fork and recovery templates — carries the per-card loop's read-the-card-file instruction, the empty-What Card-Index-intent fallback (the empty-What-falls-back-to-the- Card-Index-intent Shared Decision), and the Commit-pin-lives-in-the-card- file wording, rather than any inlined-block phrasing.
+// TestForkTemplate_CardLoopReadsCardFileWithWhatFallback asserts the shared
+// implementer-body text — reused by both the fork and recovery templates —
+// carries the per-card loop's read-the-card-file instruction, the
+// empty-What Card-Index-intent fallback (the empty-What-falls-back-to-the-
+// Card-Index-intent Shared Decision), and the Commit-pin-lives-in-the-card-
+// file wording, rather than any inlined-block phrasing.
 func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
 	text := string(websterengine.ForkTemplate())
 
@@ -390,9 +452,13 @@ func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
 	requireContains(t, text, "unless the card FILE carries a `**Commit:**` line")
 }
 
-// TestForkTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when every one of the composed fork template's five required markers is supplied,
-// and fails — naming the marker — when any single one is absent.
-// The composed thin fork carries no optional or branch-internal marker at all (shared_decisions, rename_mechanic, and pattern_directive are gone, per the fork-context-hygiene Shared Decision), so this uses plain stencil.Fill rather than stencil.FillOptional.
+// TestForkTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when
+// every one of the composed fork template's five required markers is
+// supplied, and fails — naming the marker — when any single one is absent.
+// The composed thin fork carries no optional or branch-internal marker at
+// all (shared_decisions, rename_mechanic, and pattern_directive are gone,
+// per the fork-context-hygiene Shared Decision), so this uses plain
+// stencil.Fill rather than stencil.FillOptional.
 func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.Fill(websterengine.ForkTemplate(), forkTemplateMarkerValues()); err != nil {
@@ -415,9 +481,12 @@ func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestRecoveryTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of the composed recovery template's five required markers plus the optional pattern_directive marker is supplied,
-// and fails — naming the marker — when any single REQUIRED one is absent.
-// pattern_directive is excluded from the deletion sweep: it is the recovery template's one optional marker, so deleting it must not error.
+// TestRecoveryTemplate_FillsWithAllMarkers asserts stencil.FillOptional
+// succeeds when every one of the composed recovery template's five required
+// markers plus the optional pattern_directive marker is supplied, and fails
+// — naming the marker — when any single REQUIRED one is absent.
+// pattern_directive is excluded from the deletion sweep: it is the
+// recovery template's one optional marker, so deleting it must not error.
 func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.FillOptional(websterengine.RecoveryTemplate(), recoveryTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
@@ -440,7 +509,13 @@ func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTemplates_ForkAndRecoveryShareImplementerBody asserts the reuse guarantee behind the fork-context-hygiene Shared Decision: both ForkTemplate() and RecoveryTemplate() carry ImplementerBodyTemplate()'s exact pre-Fill byte sequence — the shared body's raw template text, not a byte-equality of the two renderers' own rendered output, which legitimately diverges on per-caller values (card_pointers, prev_digest, and so on).
+// TestTemplates_ForkAndRecoveryShareImplementerBody asserts the
+// reuse guarantee behind the fork-context-hygiene Shared Decision: both
+// ForkTemplate() and RecoveryTemplate() carry ImplementerBodyTemplate()'s
+// exact pre-Fill byte sequence — the shared body's raw template text, not a
+// byte-equality of the two renderers' own rendered output, which
+// legitimately diverges on per-caller values (card_pointers, prev_digest,
+// and so on).
 func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
 	body := websterengine.ImplementerBodyTemplate()
 	if len(body) == 0 {
@@ -454,7 +529,9 @@ func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
 	}
 }
 
-// TestTemplates_NoV2TokensRemain asserts neither embedded template carries any of the three dropped v2 concepts — oversized batches, deferred-verify chains, and the per-batch "## Scope" section — anywhere in its bytes.
+// TestTemplates_NoV2TokensRemain asserts neither embedded template carries
+// any of the three dropped v2 concepts — oversized batches, deferred-verify
+// chains, and the per-batch "## Scope" section — anywhere in its bytes.
 func TestTemplates_NoV2TokensRemain(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -472,8 +549,13 @@ func TestTemplates_NoV2TokensRemain(t *testing.T) {
 	}
 }
 
-// TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty asserts RenderForkPrompt renders the literal "none (first batch)" sentinel into {{.prev_digest}} when prevDigest is empty (the first executed batch's own call site never has a preceding digest to pass),
-// and passes a non-empty prevDigest through verbatim otherwise — the fork prompt's cross-batch digest context is always Go-rendered from the caller's own persisted value, never re-derived here.
+// TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty asserts
+// RenderForkPrompt renders the literal "none (first batch)" sentinel into
+// {{.prev_digest}} when prevDigest is empty (the first executed batch's own
+// call site never has a preceding digest to pass), and passes a non-empty
+// prevDigest through verbatim otherwise — the fork prompt's cross-batch
+// digest context is always Go-rendered from the caller's own persisted
+// value, never re-derived here.
 func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{
 		cardWithSourcePath(1, "seam-extensions", "add the seam"),
@@ -513,7 +595,11 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 	}
 }
 
-// TestRenderForkPrompt_OmitsSharedDecisions asserts the composed thin fork prompt never carries a "## Shared Decisions" section — that plan-level context is already in the fork's inherited Master context, per the fork-context-hygiene Shared Decision — and that it DOES carry the card's own relative SourcePath pointer.
+// TestRenderForkPrompt_OmitsSharedDecisions asserts the composed thin fork
+// prompt never carries a "## Shared Decisions" section — that plan-level
+// context is already in the fork's inherited Master context, per the
+// fork-context-hygiene Shared Decision — and that it DOES carry the card's
+// own relative SourcePath pointer.
 func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
 	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
@@ -528,7 +614,11 @@ func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
 	assertCardPointerIsRelative(t, text, card.SourcePath)
 }
 
-// TestRenderForkPrompt_OmitsRenameMechanic asserts the composed thin fork prompt never carries a "## Rename mechanic" section, regardless of whether the batch has a Moves-bearing card — that mechanism, like Shared Decisions, is already in the fork's inherited Master context — and that it DOES carry the card's own relative SourcePath pointer.
+// TestRenderForkPrompt_OmitsRenameMechanic asserts the composed thin fork
+// prompt never carries a "## Rename mechanic" section, regardless of
+// whether the batch has a Moves-bearing card — that mechanism, like Shared
+// Decisions, is already in the fork's inherited Master context — and that
+// it DOES carry the card's own relative SourcePath pointer.
 func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 	card := cardWithSourcePath(4, "helptree-rename", "rename the row mapper")
 	card.Moves = []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}
@@ -544,8 +634,13 @@ func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 	assertCardPointerIsRelative(t, text, card.SourcePath)
 }
 
-// TestRenderRecoveryPrompt_InstructsColdOrientation asserts RenderRecoveryPrompt's rendered prompt points the cold recovery strand at `00-overview.md` and `CONSTRAINTS.md`, carries the card's own SourcePath pointer and the shared implementer-body text, and — for the PATTERN-active case — also names `_pattern/PATTERN.md` via the injected pattern_directive.
-// The PATTERN-inactive case renders cleanly: no leftover `{{`, no orphan `## Constraints` heading.
+// TestRenderRecoveryPrompt_InstructsColdOrientation asserts
+// RenderRecoveryPrompt's rendered prompt points the cold recovery strand at
+// `00-overview.md` and `CONSTRAINTS.md`, carries the card's own SourcePath
+// pointer and the shared implementer-body text, and — for the PATTERN-active
+// case — also names `_pattern/PATTERN.md` via the injected pattern_directive.
+// The PATTERN-inactive case renders cleanly: no leftover `{{`, no orphan
+// `## Constraints` heading.
 func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	card := cardWithSourcePath(1, "alpha", "add the flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
@@ -583,8 +678,11 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	})
 }
 
-// TestRenderIntegrationPrompt_InjectsVerifyText asserts RenderIntegrationPrompt injects the plan's own plan-level "## verify:" text (plan.Verify) into the rendered integration-suite fork prompt verbatim,
-// and that an empty plan.Verify is refused loud rather than papered over with a sentinel — a caller must gate this call on ShouldRunIntegration first.
+// TestRenderIntegrationPrompt_InjectsVerifyText asserts RenderIntegrationPrompt
+// injects the plan's own plan-level "## verify:" text (plan.Verify) into the
+// rendered integration-suite fork prompt verbatim, and that an empty
+// plan.Verify is refused loud rather than papered over with a sentinel — a
+// caller must gate this call on ShouldRunIntegration first.
 func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 	plan := &planparser.Plan{Verify: "go test ./internal/boardcli/... ./cmd/lyx/..."}
 
@@ -597,7 +695,9 @@ func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 	requireNotContains(t, text, "## Shared Decisions")
 }
 
-// TestRenderIntegrationPrompt_EmptyVerifyErrors asserts RenderIntegrationPrompt refuses loud on a plan with no plan-level verify, rather than silently rendering a prompt with an empty verify command.
+// TestRenderIntegrationPrompt_EmptyVerifyErrors asserts RenderIntegrationPrompt
+// refuses loud on a plan with no plan-level verify, rather than silently
+// rendering a prompt with an empty verify command.
 func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 	plan := &planparser.Plan{Verify: ""}
 
@@ -606,7 +706,12 @@ func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 	}
 }
 
-// TestIntegrationTemplate_ForbidsPollingForOwnReport asserts both the integration fork's own template AND the master template's spawn directive carry the anti-poll clause: an integration fork that inherits Master's own "poll for the integration report" loop and continues it — instead of running the verify and writing that report itself — deadlocks the run via plain shell polls the lyx-webster fork hook cannot see.
+// TestIntegrationTemplate_ForbidsPollingForOwnReport asserts both the
+// integration fork's own template AND the master template's spawn directive
+// carry the anti-poll clause: an integration fork that inherits Master's
+// own "poll for the integration report" loop and continues it — instead of
+// running the verify and writing that report itself — deadlocks the run via
+// plain shell polls the lyx-webster fork hook cannot see.
 func TestIntegrationTemplate_ForbidsPollingForOwnReport(t *testing.T) {
 	integration := string(websterengine.IntegrationTemplate())
 	requireContains(t, integration, "NEVER poll or wait for the integration")
@@ -617,7 +722,10 @@ func TestIntegrationTemplate_ForbidsPollingForOwnReport(t *testing.T) {
 	requireContains(t, master, "Your FIRST action is to Read this file")
 }
 
-// TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions asserts the embedded integration template's bytes carry no per-card or commit instructions of any kind: the integration fork runs the plan-level verify ONCE and makes NO commit, unlike a batch's own fork template.
+// TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions asserts the
+// embedded integration template's bytes carry no per-card or commit
+// instructions of any kind: the integration fork runs the plan-level verify
+// ONCE and makes NO commit, unlike a batch's own fork template.
 func TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions(t *testing.T) {
 	text := string(websterengine.IntegrationTemplate())
 
@@ -628,7 +736,11 @@ func TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions(t *testing.T) 
 	requireContains(t, text, "make NO commit")
 }
 
-// TestRenderProgress_ListsOnlyTerminalBatches asserts RenderProgress lists exactly the batches whose persisted BatchState is Terminal, one "NN-slug: status" line per batch in plan order, omitting any batch with no BatchState entry yet or one recorded but not yet terminal — never re-parsing a report file, only ever reading the persisted record.
+// TestRenderProgress_ListsOnlyTerminalBatches asserts RenderProgress lists
+// exactly the batches whose persisted BatchState is Terminal, one
+// "NN-slug: status" line per batch in plan order, omitting any batch with
+// no BatchState entry yet or one recorded but not yet terminal — never
+// re-parsing a report file, only ever reading the persisted record.
 func TestRenderProgress_ListsOnlyTerminalBatches(t *testing.T) {
 	plan := &planparser.Plan{
 		Cards: []planparser.Card{

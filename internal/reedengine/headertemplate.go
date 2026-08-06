@@ -1,5 +1,7 @@
-// headertemplate.go embeds the default header-pane text template asset.
-// The asset is named header-template.md (not template.yaml, the config-template convention) per the builderengine *-template.md precedent for prompt/text assets rendered via internal/stencil rather than parsed as YAML.
+// headertemplate.go embeds the default header-pane text template asset. The
+// asset is named header-template.md (not template.yaml, the config-template
+// convention) per the builderengine *-template.md precedent for prompt/text
+// assets rendered via internal/stencil rather than parsed as YAML.
 
 package reedengine
 

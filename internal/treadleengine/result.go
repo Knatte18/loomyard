@@ -1,4 +1,8 @@
-// result.go defines the block-level contract Engine.Run reports to its caller: the three-way Outcome, the StuckReason recorded only alongside OutcomeStuck, and the per-round RoundSummary history that lets a caller (or an operator reading state.json) reconstruct exactly what happened each round without re-parsing every artifact file.
+// result.go defines the block-level contract Engine.Run reports to its
+// caller: the three-way Outcome, the StuckReason recorded only alongside
+// OutcomeStuck, and the per-round RoundSummary history that lets a caller
+// (or an operator reading state.json) reconstruct exactly what happened
+// each round without re-parsing every artifact file.
 
 package treadleengine
 
@@ -12,9 +16,9 @@ const (
 	OutcomePaused   Outcome = "PAUSED"
 )
 
-// StuckReason names why a block stopped with OutcomeStuck.
-// It is set only when Outcome is OutcomeStuck;
-// every other Outcome carries an empty StuckReason.
+// StuckReason names why a block stopped with OutcomeStuck. It is set only
+// when Outcome is OutcomeStuck; every other Outcome carries an empty
+// StuckReason.
 type StuckReason string
 
 // The three legal StuckReason values.
@@ -40,8 +44,11 @@ type RoundSummary struct {
 	GatePassed      *bool
 }
 
-// Result is the block-level outcome Engine.Run returns: the terminal Outcome, the StuckReason (set only alongside OutcomeStuck), how many rounds actually ran, and the full per-round history.
-// PAUSED is an operational exit — resumable, not judged — so a caller must branch on Outcome before reading StuckReason.
+// Result is the block-level outcome Engine.Run returns: the terminal
+// Outcome, the StuckReason (set only alongside OutcomeStuck), how many
+// rounds actually ran, and the full per-round history. PAUSED is an
+// operational exit — resumable, not judged — so a caller must branch on
+// Outcome before reading StuckReason.
 type Result struct {
 	Outcome     Outcome
 	StuckReason StuckReason

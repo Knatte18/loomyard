@@ -1,4 +1,5 @@
-// pwsh.go implements the Shell interface for PowerShell (pwsh), the pane shell tmux launches on Windows.
+// pwsh.go implements the Shell interface for PowerShell (pwsh), the pane shell tmux
+// launches on Windows.
 
 package shell
 
@@ -17,7 +18,8 @@ func (p pwshShell) Invoke(bin string) string {
 	return "& " + p.Quote(bin)
 }
 
-// ReadFile returns the pwsh `(Get-Content -Raw <quoted path>)` idiom, expanding path's contents into a single argument.
+// ReadFile returns the pwsh `(Get-Content -Raw <quoted path>)` idiom,
+// expanding path's contents into a single argument.
 func (p pwshShell) ReadFile(path string) string {
 	return "(Get-Content -Raw " + p.Quote(path) + ")"
 }

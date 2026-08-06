@@ -28,9 +28,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestSmokeGuardrailDeniesAgentTool proves the "deny-and-steer" path this round closes from the hooks research's open item: the run's prompt explicitly instructs the agent to dispatch a subagent via its in-process Agent tool to write the output file, falling back to writing it directly only if the Agent tool turns out to be unavailable.
-// The PreToolUse(Agent) hook denies the call and steers the model back into this pane (claudeengine's steerAgentDeny reason);
-// the run still reaching "done" with the file written is the direct, live proof that the deny fired AND the steer redirected the work in-session, rather than the turn stalling or the agent giving up once its preferred tool was refused.
+// TestSmokeGuardrailDeniesAgentTool proves the "deny-and-steer" path this
+// round closes from the hooks research's open item: the run's prompt
+// explicitly instructs the agent to dispatch a subagent via its in-process
+// Agent tool to write the output file, falling back to writing it directly
+// only if the Agent tool turns out to be unavailable. The PreToolUse(Agent)
+// hook denies the call and steers the model back into this pane
+// (claudeengine's steerAgentDeny reason); the run still reaching "done"
+// with the file written is the direct, live proof that the deny fired AND
+// the steer redirected the work in-session, rather than the turn stalling
+// or the agent giving up once its preferred tool was refused.
 func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 	claudeBinaryPath(t)
 
@@ -86,7 +93,14 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 	}
 }
 
-// TestSmokeGuardrailAskingSurfacesQuestion proves the AskUserQuestion PreToolUse deny's steer (claudeengine's steerAskUserQuestionDeny reason) surfaces as the run loop's "asking" outcome: an autonomous run instructed to ask the operator a question before writing anything must end its turn with that question as its last message, without writing the output file, and the strand/run directory must survive for the operator to answer into — the same live state the sandbox suite's S2 operator-assisted scenario depends on.
+// TestSmokeGuardrailAskingSurfacesQuestion proves the AskUserQuestion
+// PreToolUse deny's steer (claudeengine's steerAskUserQuestionDeny reason)
+// surfaces as the run loop's "asking" outcome: an autonomous run instructed
+// to ask the operator a question before writing anything must end its turn
+// with that question as its last message, without writing the output file,
+// and the strand/run directory must survive for the operator to answer
+// into — the same live state the sandbox suite's S2 operator-assisted
+// scenario depends on.
 func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
 	claudeBinaryPath(t)
 

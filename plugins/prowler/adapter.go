@@ -1,6 +1,9 @@
-// adapter.go defines the pluggable site-adapter mechanism that fetchPage consults before falling back to the generic static-fetch/Readability/ browser cascade.
-// Each adapter owns a higher-fidelity strategy for one site (e.g.
-// Reddit's old.reddit.com HTML, Hacker News' Algolia API) so site-specific quirks live in their own file rather than as special-cased branches inside fetch.go.
+// adapter.go defines the pluggable site-adapter mechanism that fetchPage
+// consults before falling back to the generic static-fetch/Readability/
+// browser cascade. Each adapter owns a higher-fidelity strategy for one
+// site (e.g. Reddit's old.reddit.com HTML, Hacker News' Algolia API) so
+// site-specific quirks live in their own file rather than as special-cased
+// branches inside fetch.go.
 
 package main
 

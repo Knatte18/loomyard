@@ -1,4 +1,7 @@
-// main.go wires the production fetcher and is the binary's entrypoint: it parses the URL arguments, runs the fetch cascade for each, joins the results, writes them to a scratch output file, and prints that file's path — the single line of stdout the invoking skill wrapper captures.
+// main.go wires the production fetcher and is the binary's entrypoint: it
+// parses the URL arguments, runs the fetch cascade for each, joins the
+// results, writes them to a scratch output file, and prints that file's
+// path — the single line of stdout the invoking skill wrapper captures.
 
 package main
 

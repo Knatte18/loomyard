@@ -21,7 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestRunCLI_Pause_InvalidRunID verifies that a --run-id carrying a path separator (the class of value that would escape the perch runs directory via filepath.Join, e.g. "../elsewhere") is rejected loud before pause ever stats or writes anything, rather than resolving outside the perch runs area.
+// TestRunCLI_Pause_InvalidRunID verifies that a --run-id carrying a path
+// separator (the class of value that would escape the perch runs directory
+// via filepath.Join, e.g. "../elsewhere") is rejected loud before pause
+// ever stats or writes anything, rather than resolving outside the perch
+// runs area.
 func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
 	seedPerchFixture(t)
 
@@ -53,7 +57,11 @@ func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
 	return fixture
 }
 
-// TestRunCLI_Pause_FinishedBlockRefused verifies that pausing a block whose state.json already records a terminal outcome fails loud naming that outcome, instead of reporting ok for a pause flag no run loop will ever observe (proven misleading live: a finished-STUCK block accepted a pause and the operator had no signal it could never be honored).
+// TestRunCLI_Pause_FinishedBlockRefused verifies that pausing a block whose
+// state.json already records a terminal outcome fails loud naming that
+// outcome, instead of reporting ok for a pause flag no run loop will ever
+// observe (proven misleading live: a finished-STUCK block accepted a pause
+// and the operator had no signal it could never be honored).
 func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	fixture := seedPerchFixture(t)
 
@@ -80,9 +88,15 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd verifies the run-dir base is anchored at the INITIALIZED directory (layout.Cwd — where _lyx and the config dir live), not the git worktree root.
-// lyx init is user-driven from any directory, so a repo may be initialized in a subdirectory of its git worktree (RelPath != "."); anchoring at WorktreeRoot there would resolve run dirs into an un-junctioned <gitroot>/_lyx that the weft commit's RelPath-scoped pathspec never includes, silently stranding every block artifact outside the weft.
-// The pause verb's run-dir lookup exposes the resolved base: a run dir created under <cwd>/_lyx/perch must be found.
+// TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd verifies the run-dir base
+// is anchored at the INITIALIZED directory (layout.Cwd — where _lyx and the
+// config dir live), not the git worktree root. lyx init is user-driven from
+// any directory, so a repo may be initialized in a subdirectory of its git
+// worktree (RelPath != "."); anchoring at WorktreeRoot there would resolve
+// run dirs into an un-junctioned <gitroot>/_lyx that the weft commit's
+// RelPath-scoped pathspec never includes, silently stranding every block
+// artifact outside the weft. The pause verb's run-dir lookup exposes the
+// resolved base: a run dir created under <cwd>/_lyx/perch must be found.
 func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 
@@ -129,7 +143,10 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Pause_NoSuchRun verifies that pausing a run-id whose run dir does not exist fails loud with a "no such run" error, rather than silently fabricating an empty run dir for a pause flag with nothing to pause.
+// TestRunCLI_Pause_NoSuchRun verifies that pausing a run-id whose run dir
+// does not exist fails loud with a "no such run" error, rather than
+// silently fabricating an empty run dir for a pause flag with nothing to
+// pause.
 func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
 	seedPerchFixture(t)
 
@@ -144,7 +161,10 @@ func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Pause_WritesFlagAndIsIdempotent verifies that pausing an existing run dir writes the pause flag file at perchengine.PauseFlagPath(runDir), succeeds, and that a second pause call against the same run-id is a no-op success (idempotent re-pause).
+// TestRunCLI_Pause_WritesFlagAndIsIdempotent verifies that pausing an
+// existing run dir writes the pause flag file at
+// perchengine.PauseFlagPath(runDir), succeeds, and that a second pause call
+// against the same run-id is a no-op success (idempotent re-pause).
 func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 	fixture := seedPerchFixture(t)
 

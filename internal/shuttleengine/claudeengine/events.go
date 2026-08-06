@@ -1,6 +1,11 @@
-// events.go implements ParseEvents, the lenient reader over a run's events.jsonl: the Stop hook (settings.go) appends one JSON line per turn end, and the live-ask marker hook (settings.go) appends one JSON line the instant an AskUserQuestion tool call opens;
-// this file turns that raw byte stream into the shuttleengine.Events the run loop classifies outcomes from.
-// All Claude payload-shape knowledge (hook_event_name, tool_name, tool_input, the literal AskUserQuestion tool name) lives only in this file, per the provider-seam containment decision.
+// events.go implements ParseEvents, the lenient reader over a run's
+// events.jsonl: the Stop hook (settings.go) appends one JSON line per turn
+// end, and the live-ask marker hook (settings.go) appends one JSON line the
+// instant an AskUserQuestion tool call opens; this file turns that raw byte
+// stream into the shuttleengine.Events the run loop classifies outcomes
+// from. All Claude payload-shape knowledge (hook_event_name, tool_name,
+// tool_input, the literal AskUserQuestion tool name) lives only in this
+// file, per the provider-seam containment decision.
 package claudeengine
 
 import (

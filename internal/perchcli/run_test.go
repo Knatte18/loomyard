@@ -1,8 +1,16 @@
-// run_test.go covers the run verb's flag-shape validation and decodeProfile's strict YAML decode: a full valid profile (every field, including the gate mapping, both duration-string parses, and model-spec resolution of judge-model/model), a minimal valid profile, an unknown key, malformed YAML, a malformed gate duration, and the model-spec migration's fail-loud cases (an old split-key profile, an unknown alias, a version bracket param).
-// It also checks that decodeProfile's output feeds perchengine's exported run-identity helpers (ProfileHash, DeriveRunID) without error, in the shape run.go's RunE itself relies on.
-// Engine.Run itself is NOT exercised here — it needs a live reed/claude session;
-// that coverage lives in the smoke test and the sandbox suite.
-// The weft-sync run tests (lyxtest's CopyPairedLocal, real git assertions) live in run_integration_test.go per the Test Tier Purity Invariant.
+// run_test.go covers the run verb's flag-shape validation and decodeProfile's
+// strict YAML decode: a full valid profile (every field, including the gate
+// mapping, both duration-string parses, and model-spec resolution of
+// judge-model/model), a minimal valid profile, an unknown key, malformed
+// YAML, a malformed gate duration, and the model-spec migration's fail-loud
+// cases (an old split-key profile, an unknown alias, a version bracket
+// param). It also checks that decodeProfile's output feeds perchengine's
+// exported run-identity helpers (ProfileHash, DeriveRunID) without error, in
+// the shape run.go's RunE itself relies on. Engine.Run itself is NOT
+// exercised here — it needs a live reed/claude session; that coverage lives
+// in the smoke test and the sandbox suite. The weft-sync run tests
+// (lyxtest's CopyPairedLocal, real git assertions) live in
+// run_integration_test.go per the Test Tier Purity Invariant.
 
 package perchcli
 
@@ -24,8 +32,13 @@ var testModelRegistry = modelspec.Registry{
 	"sonnet": {Engine: "claude", Model: "sonnet", Defaults: map[string]string{"effort": "medium"}},
 }
 
-// TestRunCLI_Run_MissingProfile verifies that "lyx perch run" without --profile fails with run's own manual flag-shape error (not cobra's MarkFlagRequired) before ever touching PersistentPreRunE's engine wiring.
-// This case runs against an uninitialized (non-git) directory, so PersistentPreRunE's own abort error is also present in the captured output alongside the flag-specific error line — the same documented double-failure shape as burlercli's TestRunCLI_Run_MissingProfile.
+// TestRunCLI_Run_MissingProfile verifies that "lyx perch run" without
+// --profile fails with run's own manual flag-shape error (not cobra's
+// MarkFlagRequired) before ever touching PersistentPreRunE's engine wiring.
+// This case runs against an uninitialized (non-git) directory, so
+// PersistentPreRunE's own abort error is also present in the captured
+// output alongside the flag-specific error line — the same documented
+// double-failure shape as burlercli's TestRunCLI_Run_MissingProfile.
 func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -40,7 +53,13 @@ func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_InvalidRunID verifies that an explicit --run-id carrying a path separator (the class of value that would escape the perch runs directory via filepath.Join, e.g. "../elsewhere") is rejected loud before run ever reads --profile's decoded content or touches PersistentPreRunE's engine wiring — this case, like MissingProfile above, runs against an uninitialized directory and needs only a --profile flag value that reads as a file path (its content is never reached).
+// TestRunCLI_Run_InvalidRunID verifies that an explicit --run-id carrying a
+// path separator (the class of value that would escape the perch runs
+// directory via filepath.Join, e.g. "../elsewhere") is rejected loud before
+// run ever reads --profile's decoded content or touches PersistentPreRunE's
+// engine wiring — this case, like MissingProfile above, runs against an
+// uninitialized directory and needs only a --profile flag value that reads
+// as a file path (its content is never reached).
 func TestRunCLI_Run_InvalidRunID(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -60,7 +79,11 @@ func TestRunCLI_Run_InvalidRunID(t *testing.T) {
 	}
 }
 
-// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field, including the gate mapping and both Go-duration- string parses), a minimal valid profile, an unknown key (rejected per the yaml-strictness-split decision's KnownFields(true)), malformed YAML, and a malformed gate.timeout duration string.
+// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid
+// profile (every field, including the gate mapping and both Go-duration-
+// string parses), a minimal valid profile, an unknown key (rejected per the
+// yaml-strictness-split decision's KnownFields(true)), malformed YAML, and a
+// malformed gate.timeout duration string.
 func TestDecodeProfile(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -254,7 +277,12 @@ model: "sonnet[version=x]"
 	}
 }
 
-// TestDecodeProfile_FullValidFieldMapping asserts every field of a full valid profile YAML lands on the corresponding Profile field, including the gate.command argv, both Go-duration-string parses (gate.timeout and the top-level timeout), and round-caps — the zero-value edge case (tool-use: true, cluster-fan: "standard") a zero-value-blind mapping bug could silently drop.
+// TestDecodeProfile_FullValidFieldMapping asserts every field of a full
+// valid profile YAML lands on the corresponding Profile field, including
+// the gate.command argv, both Go-duration-string parses (gate.timeout and
+// the top-level timeout), and round-caps — the zero-value edge case
+// (tool-use: true, cluster-fan: "standard") a zero-value-blind mapping bug
+// could silently drop.
 func TestDecodeProfile_FullValidFieldMapping(t *testing.T) {
 	data := []byte(`
 target:
@@ -332,7 +360,11 @@ timeout: 30m
 	}
 }
 
-// TestDecodeProfile_BareAliasResolvesRegistryDefaultEffort proves a bare alias with no bracket (judge-model: sonnet) picks up its registry's default effort — testModelRegistry's "sonnet" entry defaults to "medium" — landing in Profile.JudgeEffort exactly as a seeded models.yaml's defaults would.
+// TestDecodeProfile_BareAliasResolvesRegistryDefaultEffort proves a bare
+// alias with no bracket (judge-model: sonnet) picks up its registry's
+// default effort — testModelRegistry's "sonnet" entry defaults to
+// "medium" — landing in Profile.JudgeEffort exactly as a seeded
+// models.yaml's defaults would.
 func TestDecodeProfile_BareAliasResolvesRegistryDefaultEffort(t *testing.T) {
 	profile, err := decodeProfile([]byte(`
 target:
@@ -356,7 +388,10 @@ judge-model: sonnet
 	}
 }
 
-// TestRunIdentity_DeriveRunIDShape asserts that decodeProfile's output feeds perchengine's exported run-identity helpers (ProfileHash, DeriveRunID) without error and produces the documented "<slug>-<hash8>" shape — the same call sequence run.go's RunE performs before constructing runDir.
+// TestRunIdentity_DeriveRunIDShape asserts that decodeProfile's output feeds
+// perchengine's exported run-identity helpers (ProfileHash, DeriveRunID)
+// without error and produces the documented "<slug>-<hash8>" shape — the
+// same call sequence run.go's RunE performs before constructing runDir.
 func TestRunIdentity_DeriveRunIDShape(t *testing.T) {
 	profile, err := decodeProfile([]byte(`
 target:
@@ -390,7 +425,11 @@ gate:
 	}
 }
 
-// TestDeriveBlockRunID_StableAcrossTuningOverlay proves the run identity is derived from the profile as decoded from the FILE: overlaying the tuning flags afterwards (as runCmd does) cannot change the id, so a re-run with different --model/--effort/--timeout resolves to the same run dir and hits the engine's loud identity check instead of silently forking a new block.
+// TestDeriveBlockRunID_StableAcrossTuningOverlay proves the run identity is
+// derived from the profile as decoded from the FILE: overlaying the tuning
+// flags afterwards (as runCmd does) cannot change the id, so a re-run with
+// different --model/--effort/--timeout resolves to the same run dir and hits
+// the engine's loud identity check instead of silently forking a new block.
 func TestDeriveBlockRunID_StableAcrossTuningOverlay(t *testing.T) {
 	profile, err := decodeProfile([]byte(`
 target:
@@ -479,8 +518,11 @@ func equalInts(got, want []int) bool {
 	return true
 }
 
-// TestDecodeProfile_EmptyRoundCapsStaysNonNil proves an explicit `round-caps: []` decodes to a non-nil empty slice — the value perchengine.Profile.validate rejects loud — while an absent key stays nil (the "unset, use the default chain" spelling).
-// The decode layer must preserve that distinction or the engine cannot tell the two apart.
+// TestDecodeProfile_EmptyRoundCapsStaysNonNil proves an explicit
+// `round-caps: []` decodes to a non-nil empty slice — the value
+// perchengine.Profile.validate rejects loud — while an absent key stays nil
+// (the "unset, use the default chain" spelling). The decode layer must
+// preserve that distinction or the engine cannot tell the two apart.
 func TestDecodeProfile_EmptyRoundCapsStaysNonNil(t *testing.T) {
 	explicit, err := decodeProfile([]byte("target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: []\n"), testModelRegistry)
 	if err != nil {
@@ -499,9 +541,18 @@ func TestDecodeProfile_EmptyRoundCapsStaysNonNil(t *testing.T) {
 	}
 }
 
-// TestResolveRunTarget_DerivesIDBeforeOverlay pins runCmd's load-bearing ordering at the call site RunE actually uses (resolveRunTarget), not just the isolated deriveBlockRunID helper: the run id — and thus the run dir — derives from the FILE-decoded profile BEFORE the tuning flags overlay, so two invocations of the same profile file with DIFFERENT --model/--effort/--timeout resolve to the SAME id and run dir.
-// That stability is what makes the engine's identity check refuse a re-run with changed flags instead of silently forking a fresh block.
-// A reorder that overlaid the flags before deriving the id would make the id depend on --model and diverge here — the exact regression an isolated helper test (TestDeriveBlockRunID_StableAcrossTuningOverlay) cannot catch, because it never exercises resolveRunTarget's ordering.
+// TestResolveRunTarget_DerivesIDBeforeOverlay pins runCmd's load-bearing
+// ordering at the call site RunE actually uses (resolveRunTarget), not just
+// the isolated deriveBlockRunID helper: the run id — and thus the run dir —
+// derives from the FILE-decoded profile BEFORE the tuning flags overlay, so
+// two invocations of the same profile file with DIFFERENT
+// --model/--effort/--timeout resolve to the SAME id and run dir. That
+// stability is what makes the engine's identity check refuse a re-run with
+// changed flags instead of silently forking a fresh block. A reorder that
+// overlaid the flags before deriving the id would make the id depend on
+// --model and diverge here — the exact regression an isolated helper test
+// (TestDeriveBlockRunID_StableAcrossTuningOverlay) cannot catch, because it
+// never exercises resolveRunTarget's ordering.
 func TestResolveRunTarget_DerivesIDBeforeOverlay(t *testing.T) {
 	fileProfile, err := decodeProfile([]byte(`
 target:

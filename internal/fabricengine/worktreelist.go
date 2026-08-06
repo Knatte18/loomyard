@@ -1,5 +1,5 @@
-// worktreelist.go parses `git worktree list --porcelain` into structured entries;
-// it is the single porcelain parser shared across the codebase.
+// worktreelist.go parses `git worktree list --porcelain` into structured
+// entries; it is the single porcelain parser shared across the codebase.
 
 package fabricengine
 
@@ -22,8 +22,7 @@ type WorktreeEntry struct {
 }
 
 // List returns a list of all git worktrees in the repository.
-// The FIRST block in the porcelain output is marked as Main=true;
-// all others have Main=false.
+// The FIRST block in the porcelain output is marked as Main=true; all others have Main=false.
 func List(sourceDir string) ([]WorktreeEntry, error) {
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, sourceDir)
 	if err != nil {
@@ -81,8 +80,11 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 	return entries, nil
 }
 
-// PrimeName resolves the base name of l's main worktree by scanning `git worktree list --porcelain` for the FIRST (Main) entry.
-// It replaces lyxcwd's former per-Resolve prime scan: lyxcwd no longer performs this subprocess-backed lookup at all (see the Cwd Resolution Invariant), so every caller needing the prime's name now resolves it here, on demand.
+// PrimeName resolves the base name of l's main worktree by scanning
+// `git worktree list --porcelain` for the FIRST (Main) entry. It replaces
+// lyxcwd's former per-Resolve prime scan: lyxcwd no longer performs
+// this subprocess-backed lookup at all (see the Cwd Resolution Invariant), so
+// every caller needing the prime's name now resolves it here, on demand.
 func PrimeName(l *lyxcwd.Location) (string, error) {
 	entries, err := List(l.AnchorPath())
 	if err != nil {
@@ -99,7 +101,8 @@ func PrimeName(l *lyxcwd.Location) (string, error) {
 	return "", fmt.Errorf("no main worktree found in %q", l.AnchorPath())
 }
 
-// WeftRepoRoot returns the path to the weft prime worktree (the git -C target for weft worktree add/remove), resolved via PrimeName.
+// WeftRepoRoot returns the path to the weft prime worktree (the git -C target
+// for weft worktree add/remove), resolved via PrimeName.
 func WeftRepoRoot(l *lyxcwd.Location) (string, error) {
 	primeName, err := PrimeName(l)
 	if err != nil {

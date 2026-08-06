@@ -1,7 +1,10 @@
-// resolve.go implements the dev/prod lyx binary resolution used across the sandbox launcher: resolveLyx picks the derived .dev-bin binary when it is present on disk and falls back to the existing PATH lookup otherwise,
-// and prependPath builds the PATH a child process should see when a dev binary is in play.
-// This is the only file in package main permitted to perform a bare-PATH "lyx" lookup;
-// every other call site resolves through resolveLyx instead so the dev/prod distinction stays in one place.
+// resolve.go implements the dev/prod lyx binary resolution used across the
+// sandbox launcher: resolveLyx picks the derived .dev-bin binary when it is
+// present on disk and falls back to the existing PATH lookup otherwise, and
+// prependPath builds the PATH a child process should see when a dev binary
+// is in play. This is the only file in package main permitted to perform a
+// bare-PATH "lyx" lookup; every other call site resolves through resolveLyx
+// instead so the dev/prod distinction stays in one place.
 
 package main
 

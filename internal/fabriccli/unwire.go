@@ -1,4 +1,6 @@
-// unwire.go implements the fabriccli handler for the fabric unwire subcommand: a per-host-worktree full deactivation of fabric wiring, the teardown successor to the deleted `lyx init --undo`.
+// unwire.go implements the fabriccli handler for the fabric unwire
+// subcommand: a per-host-worktree full deactivation of fabric wiring, the
+// teardown successor to the deleted `lyx init --undo`.
 
 package fabriccli
 

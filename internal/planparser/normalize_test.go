@@ -1,7 +1,8 @@
-// normalize_test.go covers normalizeCardPath's three-case root:/// resolution rule directly: the "//" worktree-root escape, a set root's join, the degenerate "root: ."
-// case,
-// and the malformed forms (a single-"/" prefix, a ".."
-// escape) that normalizeCardPath resolves but deliberately does not reject — that is Validate's card-path-malformed check, not this package's job.
+// normalize_test.go covers normalizeCardPath's three-case root:/// resolution
+// rule directly: the "//" worktree-root escape, a set root's join, the degenerate
+// "root: ." case, and the malformed forms (a single-"/" prefix, a ".." escape)
+// that normalizeCardPath resolves but deliberately does not reject — that is
+// Validate's card-path-malformed check, not this package's job.
 
 package planparser
 

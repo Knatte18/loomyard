@@ -1,5 +1,13 @@
-// poll_test.go covers Classify's decision table (all five classification outcomes: report-present terminal, dead/asking, dead/timeout, dead/died, and non-terminal running), TurnEnded against a fake shuttleengine.Engine double, StrandLive against a fake shuttleengine.ReedOps double, and PollUntilTerminal's long-poll loop against a fake clock — a terminal mid-wait result short-circuits, a deadline returns the last running digest, and a gather error propagates.
-// This file lives in package builderengine (not builderengine_test) because the clock/realClock seam is unexported (TurnEnded and StrandLive are themselves exported, so buildercli's own `poll` verb calls them directly).
+// poll_test.go covers Classify's decision table (all five classification
+// outcomes: report-present terminal, dead/asking, dead/timeout, dead/died,
+// and non-terminal running), TurnEnded against a fake shuttleengine.Engine
+// double, StrandLive against a fake shuttleengine.ReedOps double, and
+// PollUntilTerminal's long-poll loop against a fake clock — a terminal
+// mid-wait result short-circuits, a deadline returns the last running
+// digest, and a gather error propagates. This file lives in package
+// builderengine (not builderengine_test) because the clock/realClock seam
+// is unexported (TurnEnded and StrandLive are themselves exported, so
+// buildercli's own `poll` verb calls them directly).
 
 package builderengine
 

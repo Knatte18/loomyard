@@ -303,11 +303,13 @@ func runReconcile(out io.Writer, apply bool) int {
 
 // Command returns the cobra command for lyx config.
 //
-// The returned command uses a configCmd variable (closure pattern) so that the --print flag value is readable in the RunE handler.
-// The --print flag makes config read-only: it prints on-disk YAML without launching the editor.
-// Args is cobra.MaximumNArgs(1) so extra positionals are rejected.
-// ValidArgs is set to the known config module names for shell completion only.
-// A reconcile subcommand is registered so that "lyx config reconcile" is routed there while "lyx config <module>" continues to invoke the edit/menu RunE.
+// The returned command uses a configCmd variable (closure pattern) so that the
+// --print flag value is readable in the RunE handler. The --print flag makes
+// config read-only: it prints on-disk YAML without launching the editor.
+// Args is cobra.MaximumNArgs(1) so extra positionals are rejected. ValidArgs is
+// set to the known config module names for shell completion only. A reconcile
+// subcommand is registered so that "lyx config reconcile" is routed there while
+// "lyx config <module>" continues to invoke the edit/menu RunE.
 func Command() *cobra.Command {
 	configCmd := &cobra.Command{
 		Use:       "config [module]",
@@ -348,8 +350,9 @@ Pass --apply to write the reconciled files to disk atomically.`,
 
 // RunCLI is the public seam for the lyx config command.
 //
-// It delegates to clihelp.Execute(Command(), out, args) so that all existing in-process callers and tests compile and pass unchanged.
-// The cobra command carries both stdout and stderr into out for single-buffer test capture.
+// It delegates to clihelp.Execute(Command(), out, args) so that all existing
+// in-process callers and tests compile and pass unchanged. The cobra command
+// carries both stdout and stderr into out for single-buffer test capture.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

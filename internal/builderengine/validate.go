@@ -1,5 +1,20 @@
-// validate.go implements Validate, plan-format v2's complete machine check set (docs/reference/plan-format.md's "Validation checks" section), run in this fixed order: format/approval (format-unrecognized, plan-unapproved), Batch Index <-> file consistency (index-file-mismatch), verify: presence (verify-missing), chain-end soundness (chain-end-dangling), the oversized-batch context/card-count cap (batch-oversized), scope well-formedness for both "## Scope" entries and every card's typed file-op paths (scope-malformed), the five move-* checks that police a card's Moves: field and its "## Rename mechanic" companion section (move-format, move-redundant, move-source-missing, move-target-collision, move-mechanic-missing), the per-card structural checks (card-missing-field, card-field-overlap), the numbering checks (card-numbering, card-count-mismatch), and the cross-referencing checks (path-missing, card-outside-scope, commit-subject-mismatch).
-// Validate runs both as the standalone `lyx builder validate` verb and as builder's hard automatic gate inside `run` and `spawn-batch` — the fail-loud-refusal half of plan-format.md's contract.
+// validate.go implements Validate, plan-format v2's complete machine check
+// set (docs/reference/plan-format.md's "Validation checks" section), run in
+// this fixed order: format/approval (format-unrecognized, plan-unapproved),
+// Batch Index <-> file consistency (index-file-mismatch), verify: presence
+// (verify-missing), chain-end soundness (chain-end-dangling), the
+// oversized-batch context/card-count cap (batch-oversized), scope
+// well-formedness for both "## Scope" entries and every card's typed
+// file-op paths (scope-malformed), the five move-* checks that police a
+// card's Moves: field and its "## Rename mechanic" companion section
+// (move-format, move-redundant, move-source-missing, move-target-collision,
+// move-mechanic-missing), the per-card structural checks (card-missing-field,
+// card-field-overlap), the numbering checks (card-numbering,
+// card-count-mismatch), and the cross-referencing checks (path-missing,
+// card-outside-scope, commit-subject-mismatch). Validate runs both as the
+// standalone `lyx builder validate` verb and as builder's hard automatic
+// gate inside `run` and `spawn-batch` — the fail-loud-refusal half of
+// plan-format.md's contract.
 
 package builderengine
 
@@ -18,7 +33,8 @@ import (
 // dual-version support, and no production v1 plans exist to migrate.
 const recognizedFormat = 2
 
-// ValidateCaps carries the two operator-configured cap values Validate's batch-oversized check compares each batch's estimate against.
+// ValidateCaps carries the two operator-configured cap values Validate's
+// batch-oversized check compares each batch's estimate against.
 type ValidateCaps struct {
 	// ContextCapTokens is the maximum estimated context size a non-oversized batch may claim.
 	ContextCapTokens int
@@ -26,15 +42,19 @@ type ValidateCaps struct {
 	CardCap int
 }
 
-// ValidationError is one finding from Validate: which check tripped (Check, a stable kebab-case name matching plan-format.md's check names), which batch it concerns (Batch, empty for a plan-level finding), and a human-readable Detail naming the specific problem.
+// ValidationError is one finding from Validate: which check tripped
+// (Check, a stable kebab-case name matching plan-format.md's check names),
+// which batch it concerns (Batch, empty for a plan-level finding), and a
+// human-readable Detail naming the specific problem.
 type ValidationError struct {
 	Check  string
 	Batch  string
 	Detail string
 }
 
-// Error implements the error interface so a ValidationError can be used anywhere a single error is expected (e.g.
-// in a test's error-substring assertion), formatted as "check[/batch]: detail".
+// Error implements the error interface so a ValidationError can be used
+// anywhere a single error is expected (e.g. in a test's error-substring
+// assertion), formatted as "check[/batch]: detail".
 func (v ValidationError) Error() string {
 	if v.Batch == "" {
 		return fmt.Sprintf("%s: %s", v.Check, v.Detail)
@@ -49,8 +69,9 @@ func batchID(b PlanBatch) string {
 	return fmt.Sprintf("%02d-%s", b.Number, b.Slug)
 }
 
-// Validate runs every plan-format v2 machine check against plan and returns all findings, ordered by check and batch number.
-// A nil/empty return means the plan passes every check.
+// Validate runs every plan-format v2 machine check against plan and returns
+// all findings, ordered by check and batch number. A nil/empty return means
+// the plan passes every check.
 func Validate(plan *Plan, worktreeRoot string, caps ValidateCaps) []ValidationError {
 	var findings []ValidationError
 

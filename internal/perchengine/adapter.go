@@ -1,4 +1,11 @@
-// adapter.go implements burlerAdapter, the treadleengine.RoundRunner that adapts burler round-attempts onto treadleengine's attempt-level seam: RunAttempt maps a treadleengine.AttemptInput onto burlerengine.Profile/ RunOpts (buildRoundProfile), runs the round through the Burler seam (engine.go), and maps burlerengine.Result back onto treadleengine.AttemptResult, including BlockingCount via countBlockingFindings over Result.Findings — the round-runner-seam shared decision's concrete perch-side realization.
+// adapter.go implements burlerAdapter, the treadleengine.RoundRunner that
+// adapts burler round-attempts onto treadleengine's attempt-level seam:
+// RunAttempt maps a treadleengine.AttemptInput onto burlerengine.Profile/
+// RunOpts (buildRoundProfile), runs the round through the Burler seam
+// (engine.go), and maps burlerengine.Result back onto
+// treadleengine.AttemptResult, including BlockingCount via
+// countBlockingFindings over Result.Findings — the round-runner-seam shared
+// decision's concrete perch-side realization.
 
 package perchengine
 

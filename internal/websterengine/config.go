@@ -1,6 +1,10 @@
 // config.go — configuration for the webster module.
 //
-// Defines the Config type mirroring webster.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve webster's config file, then validates each role model-spec's grammar via modelspec.Parse so a typo'd spec fails loud at load time rather than hours into a run when that role first spawns.
+// Defines the Config type mirroring webster.yaml's keys and LoadConfig,
+// which uses internal/configengine.Load with ConfigTemplate() to strictly
+// validate and resolve webster's config file, then validates each role
+// model-spec's grammar via modelspec.Parse so a typo'd spec fails loud at
+// load time rather than hours into a run when that role first spawns.
 
 package websterengine
 
@@ -13,7 +17,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the resolved webster.yaml configuration: the two role model-specs (see docs/reference/model-spec.md's "Roles that use this notation" section), the batchifier selection, and the numeric knobs the Master session's bracket verbs consult.
+// Config represents the resolved webster.yaml configuration: the two role
+// model-specs (see docs/reference/model-spec.md's "Roles that use this
+// notation" section), the batchifier selection, and the numeric knobs the
+// Master session's bracket verbs consult.
 type Config struct {
 	// Master is the model-spec for the long-lived Master session that reads
 	// the plan once and forks one implementer per batch in-session.
@@ -46,9 +53,10 @@ type Config struct {
 	PollWaitS int `yaml:"poll_wait_s"`
 }
 
-// LoadConfig loads configuration from the webster module's config file, validates role model-spec grammar, and returns a Config struct.
-// If <baseDir>/_lyx/ does not exist, returns an error containing "not initialized here;
-// run \"lyx fabric reconcile\"".
+// LoadConfig loads configuration from the webster module's config file,
+// validates role model-spec grammar, and returns a Config struct. If
+// <baseDir>/_lyx/ does not exist, returns an error containing
+// "not initialized here; run \"lyx fabric reconcile\"".
 func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {

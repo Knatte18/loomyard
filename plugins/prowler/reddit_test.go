@@ -1,5 +1,6 @@
-// reddit_test.go exercises Reddit URL matching, the old.reddit.com host rewrite, and redditAdapter.Fetch's success/failure branches via a stubbed fetcher.do.
-// No network.
+// reddit_test.go exercises Reddit URL matching, the old.reddit.com host
+// rewrite, and redditAdapter.Fetch's success/failure branches via a stubbed
+// fetcher.do. No network.
 
 package main
 

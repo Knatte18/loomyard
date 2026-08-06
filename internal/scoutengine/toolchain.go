@@ -1,6 +1,16 @@
-// toolchain.go implements the Go-only toolchain manager: resolving (and, on a cold cache, installing) a pinned gopls binary into a scout-owned, machine-global cache directory.
-// It ignores $PATH entirely for Go — unlike the other four languages' legacy cold-spawn-per-call path, which resolves entry.Command[0] on $PATH via newLSPClient, the native Go strategy (batch 5's ensureNative) always launches the exact pinned version this file resolved, never whatever gopls happens to be on the operator's PATH.
-// The cache root is os.UserCacheDir(), not a Cwd Resolution Invariant path: os.UserCacheDir() is the idiomatic stdlib answer to "OS-appropriate cache root" with no platform-specific logic to get wrong, and it is explicitly machine-global rather than worktree/hub geometry, which is why this file hand-joins it directly instead of routing through internal/lyxcwd (see _mill/discussion.md's toolchain-manager-authority decision).
+// toolchain.go implements the Go-only toolchain manager: resolving (and, on
+// a cold cache, installing) a pinned gopls binary into a scout-owned,
+// machine-global cache directory. It ignores $PATH entirely for Go — unlike
+// the other four languages' legacy cold-spawn-per-call path, which resolves
+// entry.Command[0] on $PATH via newLSPClient, the native Go strategy
+// (batch 5's ensureNative) always launches the exact pinned version this
+// file resolved, never whatever gopls happens to be on the operator's PATH.
+// The cache root is os.UserCacheDir(), not a Cwd Resolution Invariant path:
+// os.UserCacheDir() is the idiomatic stdlib answer to "OS-appropriate cache
+// root" with no platform-specific logic to get wrong, and it is explicitly
+// machine-global rather than worktree/hub geometry, which is why this file
+// hand-joins it directly instead of routing through internal/lyxcwd
+// (see _mill/discussion.md's toolchain-manager-authority decision).
 
 package scoutengine
 

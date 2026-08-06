@@ -1,5 +1,10 @@
-// normalize.go implements plan-format-v3's root:/// card-path resolution rule (docs/reference/plan-format-v3.md, "Card path resolution: root: and //"): normalizeCardPath resolves one raw card path against the plan's root:, and normalizeCard applies it to every path field on a single Card.
-// ParsePlan calls normalizeCard exactly once per card, right after that card's body is parsed, so every downstream consumer — Validate included — only ever sees plain, forward-slash, worktree-relative paths.
+// normalize.go implements plan-format-v3's root:/// card-path resolution rule
+// (docs/reference/plan-format-v3.md, "Card path resolution: root: and //"):
+// normalizeCardPath resolves one raw card path against the plan's root:, and
+// normalizeCard applies it to every path field on a single Card. ParsePlan calls
+// normalizeCard exactly once per card, right after that card's body is parsed, so
+// every downstream consumer — Validate included — only ever sees plain,
+// forward-slash, worktree-relative paths.
 
 package planparser
 
