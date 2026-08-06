@@ -197,27 +197,6 @@ func PerchRunsDir(baseDir string) string {
 	return filepath.Join(baseDir, lyxDirName, "perch")
 }
 
-// WebsterDir returns the path to the webster's durable run state directory (state.json,
-// pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
-// Invariant, no other package may construct this path.
-func WebsterDir(baseDir string) string {
-	return filepath.Join(baseDir, lyxDirName, "webster")
-}
-
-// WebsterReportsDir returns the path to the directory holding webster's per-batch report files.
-// It lives under _lyx so reports are weft-synced. Per the Hub Geometry Invariant, no other
-// package may construct this path.
-func WebsterReportsDir(baseDir string) string {
-	return filepath.Join(WebsterDir(baseDir), "reports")
-}
-
-// WebsterPromptsDir returns the path to the directory holding webster's rendered fork prompts.
-// Prompts are machine-local, re-renderable artifacts excluded from weft commits.
-// Per the Hub Geometry Invariant, no other package may construct this path.
-func WebsterPromptsDir(baseDir string) string {
-	return filepath.Join(WebsterDir(baseDir), "prompts")
-}
-
 // PatternDir returns the path to the _pattern directory within a baseDir.
 // Per the Hub Geometry Invariant, no other package may construct this path.
 func PatternDir(baseDir string) string {

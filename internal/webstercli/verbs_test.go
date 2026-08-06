@@ -240,9 +240,9 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		roles:      roles,
 		batcher:    activeBatcher,
 		planDir:    loomengine.PlanDir(layout),
-		websterDir: lyxcwd.WebsterDir(worktree),
-		reportsDir: lyxcwd.WebsterReportsDir(worktree),
-		promptsDir: lyxcwd.WebsterPromptsDir(worktree),
+		websterDir: websterengine.Dir(layout),
+		reportsDir: websterengine.ReportsDir(layout),
+		promptsDir: websterengine.PromptsDir(layout),
 	}
 
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}

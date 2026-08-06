@@ -1,6 +1,6 @@
 // report.go implements webster's own fork-return report contract: the
 // minimal YAML shape a fork writes as its final action to the per-batch
-// report file under hubgeometry.WebsterReportsDir(...), and the strict
+// report file under websterengine.ReportsDir(...), and the strict
 // parser that reads it back. This replaces builderengine.ParseReport/Report
 // and its done/stuck/green/red/skipped/out_of_scope grammar entirely —
 // webster's flat card format carries no per-batch Scope, so there is
@@ -79,7 +79,7 @@ func ParseReport(path string) (*Report, error) {
 }
 
 // WriteReport serializes r's three fields to path, the per-batch report
-// file the fork writes under hubgeometry.WebsterReportsDir(...). The
+// file the fork writes under websterengine.ReportsDir(...). The
 // caller supplies path; WriteReport never constructs `_lyx` tokens itself,
 // per the Hub Geometry Invariant.
 func WriteReport(path string, r *Report) error {

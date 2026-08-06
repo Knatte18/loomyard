@@ -196,9 +196,9 @@ Verbs:
 			c.roles = roles
 			c.batcher = activeBatcher
 			c.planDir = loomengine.PlanDir(layout)
-			c.websterDir = lyxcwd.WebsterDir(layout.AnchorPath())
-			c.reportsDir = lyxcwd.WebsterReportsDir(layout.AnchorPath())
-			c.promptsDir = lyxcwd.WebsterPromptsDir(layout.AnchorPath())
+			c.websterDir = websterengine.Dir(layout)
+			c.reportsDir = websterengine.ReportsDir(layout)
+			c.promptsDir = websterengine.PromptsDir(layout)
 			return nil
 		},
 	}

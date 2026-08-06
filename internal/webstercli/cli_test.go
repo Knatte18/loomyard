@@ -170,9 +170,9 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 		layout:     layout,
 		cfg:        websterengine.Config{},
 		planDir:    loomengine.PlanDir(layout),
-		websterDir: lyxcwd.WebsterDir(hub),
-		reportsDir: lyxcwd.WebsterReportsDir(hub),
-		promptsDir: lyxcwd.WebsterPromptsDir(hub),
+		websterDir: websterengine.Dir(layout),
+		reportsDir: websterengine.ReportsDir(layout),
+		promptsDir: websterengine.PromptsDir(layout),
 	}
 	return c, hub
 }

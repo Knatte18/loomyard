@@ -83,7 +83,7 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // directory geometry, not the filenames a module chooses to write inside its
 // own directory. They mirror builderengine.PauseFlagName,
 // websterengine.PauseFlagName, and treadleengine.PauseFlagName (all
-// literally "pause" by convention) and lyxcwd.WebsterPromptsDir's
+// literally "pause" by convention) and websterengine.PromptsDir's
 // "prompts" leaf. fabricengine cannot import those packages to reference the
 // constants directly: websterengine and perchengine already import
 // fabricengine, so an import back would cycle. Wildcarding the module
