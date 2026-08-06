@@ -161,6 +161,7 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
 - **Edits:**
   - `internal/lyxcwd/enforcement_test.go`
   - `internal/lyxcwd/lyxcwd.go`
+  - `internal/lyxcwd/lyxcwd_test.go`
   - `internal/pattern/doc.go`
   - `internal/pattern/pattern.go`
 - **Creates:** none
