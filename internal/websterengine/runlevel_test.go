@@ -34,8 +34,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -256,7 +256,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 
 	reed := &runFakeReed{}
 	starter := &runFakeStarter{}
-	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 	shuttleRunRoot := t.TempDir()
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 

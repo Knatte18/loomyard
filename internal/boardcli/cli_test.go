@@ -7,12 +7,12 @@
 // 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
 //
 // Board data dir strategy: seedCwd initialises a git repo (git init) in the cwd
-// so that PersistentPreRunE can call hubgeometry.Resolve without error. The board data
+// so that PersistentPreRunE can call lyxcwd.Resolve without error. The board data
 // dir is then Hub/_board where Hub = filepath.Dir(cwd). This is the production
 // code path; no --board-path injection is used for operational tests.
 //
 // seedCwd spawns "git init" and every RunCLI call spawns "git rev-parse" via
-// hubgeometry.Resolve, so this file is integration-tagged per the Test Tier
+// lyxcwd.Resolve, so this file is integration-tagged per the Test Tier
 // Purity Invariant; spawn-free CLI tests live in cli_unit_test.go.
 
 package boardcli_test
@@ -25,34 +25,35 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
 // template keys (readme, design_prefix; path: is not a template key),
-// initialises a git repo there (so hubgeometry.Resolve succeeds), changes to that
+// initialises a git repo there (so lyxcwd.Resolve succeeds), changes to that
 // directory, and returns the cwd path. The board data dir is Hub/_board where
-// Hub = filepath.Dir(cwd); callers can compute it as hubgeometry.BoardDir(filepath.Dir(cwd)).
+// Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
 	cwd := t.TempDir()
 
-	// Initialise a git repo so PersistentPreRunE can call hubgeometry.Resolve without error.
+	// Initialise a git repo so PersistentPreRunE can call lyxcwd.Resolve without error.
 	if out, err := exec.Command("git", "-C", cwd, "init").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	if err := os.MkdirAll(filepath.Join(cwd, hubgeometry.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cwd, configengine.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	if err := os.MkdirAll(hubgeometry.ConfigDir(cwd), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(cwd), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
 	// Write board config with all template keys; path: is no longer a template key.
 	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
-	if err := os.WriteFile(hubgeometry.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(cwd, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("failed to write board.yaml: %v", err)
 	}
 
@@ -161,8 +162,8 @@ func TestCLIContract(t *testing.T) {
 			wantFieldExist: "ok",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
 				// seedCwd initialised a git repo at cwd; Hub = filepath.Dir(cwd);
-				// hubgeometry.Resolve derives Hub from the git root, so board renders at Hub/_board.
-				homePath := filepath.Join(hubgeometry.BoardDir(filepath.Dir(cwd)), "Home.md")
+				// lyxcwd.Resolve derives Hub from the git root, so board renders at Hub/_board.
+				homePath := filepath.Join(fabricengine.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
 					t.Fatalf("Home.md not created at %q: %v", homePath, err)
 				}
@@ -780,15 +781,15 @@ func TestCLILookupContract(t *testing.T) {
 }
 
 // TestCLIBoardPathResolution verifies the two board data dir resolution paths in
-// PersistentPreRunE: without --board-path the CLI uses hubgeometry.BoardDir(hub) derived
-// from hubgeometry.Resolve; with --board-path the supplied path takes precedence.
-// This test initialises a real git repo so that hubgeometry.Resolve succeeds.
+// PersistentPreRunE: without --board-path the CLI uses fabricengine.BoardDir(hub) derived
+// from lyxcwd.Resolve; with --board-path the supplied path takes precedence.
+// This test initialises a real git repo so that lyxcwd.Resolve succeeds.
 func TestCLIBoardPathResolution(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	// Build a two-level fixture: topDir is the Hub; worktree is a git repo inside it.
-	// hubgeometry.Resolve(worktree) derives Hub = topDir, so
-	// hubgeometry.BoardDir(Hub) = filepath.Join(topDir, "_board").
+	// lyxcwd.Resolve(worktree) derives Hub = topDir, so
+	// fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
 	topDir := t.TempDir()
 	worktree := filepath.Join(topDir, "worktree")
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
@@ -799,21 +800,21 @@ func TestCLIBoardPathResolution(t *testing.T) {
 	}
 
 	// Seed _lyx/config/board.yaml without path: (not a template key).
-	if err := os.MkdirAll(hubgeometry.ConfigDir(worktree), 0o755); err != nil {
+	if err := os.MkdirAll(configengine.ConfigDir(worktree), 0o755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
 	configContent := "readme: Home.md\ndesign_prefix: proposal-\n"
-	if err := os.WriteFile(hubgeometry.ConfigFile(worktree, "board"), []byte(configContent), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(worktree, "board"), []byte(configContent), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
 
-	// Change to the worktree so hubgeometry.Getwd() in the CLI returns it.
+	// Change to the worktree so lyxcwd.Getwd() in the CLI returns it.
 	t.Chdir(worktree)
 
-	expectedBoardDir := hubgeometry.BoardDir(topDir)
+	expectedBoardDir := fabricengine.BoardDir(topDir)
 
 	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
-		// PersistentPreRunE calls hubgeometry.Resolve and derives cfg.Path = BoardDir(topDir).
+		// PersistentPreRunE calls lyxcwd.Resolve and derives cfg.Path = fabricengine.BoardDir(topDir).
 		// Upsert writes tasks.json inside that derived board dir.
 		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test"}`)
 		if exitCode != 0 {
@@ -821,12 +822,12 @@ func TestCLIBoardPathResolution(t *testing.T) {
 		}
 		tasksFile := filepath.Join(expectedBoardDir, "tasks.json")
 		if _, err := os.Stat(tasksFile); err != nil {
-			t.Errorf("board not at hubgeometry.BoardDir(hub) %q: %v", expectedBoardDir, err)
+			t.Errorf("board not at fabricengine.BoardDir(hub) %q: %v", expectedBoardDir, err)
 		}
 	})
 
 	t.Run("board_path_flag_overrides_resolution", func(t *testing.T) {
-		// --board-path bypasses hubgeometry.Resolve and uses the supplied path directly.
+		// --board-path bypasses lyxcwd.Resolve and uses the supplied path directly.
 		// list is a read-only operation that works under --board-path (no render step),
 		// so we verify redirection by comparing task counts: absOverride is a fresh
 		// empty dir (0 tasks) while expectedBoardDir already has the "path-test" task

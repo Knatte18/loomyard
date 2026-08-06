@@ -6,7 +6,8 @@ package ideengine
 import (
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -16,15 +17,19 @@ import (
 var CodeLauncher = vscode.Launch
 
 // Spawn generates a worktree's .vscode/ config (if absent) and launches VS Code.
-func Spawn(l *hubgeometry.Layout, slug string) error {
-	worktreeDir := l.WorktreePath(slug)
-	color := vscode.PickColor(l)
+func Spawn(l *lyxcwd.Location, slug string) error {
+	worktreeDir := fabricengine.WorktreePath(l, slug)
+	// A prime-resolution failure degrades to an empty prime name (PickColor
+	// then skips the prime-skip step) rather than failing the spawn — a wrong
+	// title-bar color is cosmetic, not worth aborting over.
+	primeName, _ := fabricengine.PrimeName(l)
+	color := vscode.PickColor(l, primeName)
 
-	if err := vscode.WriteConfig(worktreeDir, l.RelPath, slug, color); err != nil {
+	if err := vscode.WriteConfig(worktreeDir, l.AnchorRel, slug, color); err != nil {
 		return err
 	}
 
-	openDir := filepath.Join(worktreeDir, l.RelPath)
+	openDir := filepath.Join(worktreeDir, l.AnchorRel)
 	if err := CodeLauncher(openDir); err != nil {
 		return err
 	}

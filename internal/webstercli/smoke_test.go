@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -317,7 +317,7 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	layout := &hubgeometry.Layout{Cwd: dir, WorktreeRoot: dir, Hub: filepath.Dir(dir)}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(dir), WorktreeName: filepath.Base(dir)}
 	state := &websterengine.State{
 		MasterSessionID: mintSessionID(t),
 		CurrentBatch:    1,

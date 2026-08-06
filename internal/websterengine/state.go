@@ -7,8 +7,9 @@
 // batch. LoadState/SaveState are state.json's only readers/writers; every
 // other websterengine file mutates the in-memory *State the caller loaded
 // and calls SaveState to persist it back. Callers resolve websterDir via
-// hubgeometry.WebsterDir — this file never constructs a _lyx path itself
-// (Hub Geometry Invariant).
+// websterengine.Dir — this file also declares Dir/ReportsDir/PromptsDir
+// themselves, the module's own _lyx/webster constructors (Cwd Resolution
+// Invariant).
 //
 // webster's State is its own schema, independent of builderengine.State: the
 // two modules' state files never share a Go type or a sentinel error, so
@@ -24,9 +25,39 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// websterDirName is the relative-path segment websterengine joins onto
+// configengine.LyxDirName to form the webster's durable run-state
+// directory. websterengine is this segment's sole declarer.
+const websterDirName = "webster"
+
+// Dir returns the path to the webster's durable run state directory
+// (state.json, pause flag, outcome.yaml). It lives under _lyx so it is
+// weft-synced. Per the Cwd Resolution Invariant, no other package may
+// construct this path.
+func Dir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)
+}
+
+// ReportsDir returns the path to the directory holding webster's per-batch
+// report files. It lives under _lyx so reports are weft-synced. Per the Hub
+// Geometry Invariant, no other package may construct this path.
+func ReportsDir(l *lyxcwd.Location) string {
+	return filepath.Join(Dir(l), "reports")
+}
+
+// PromptsDir returns the path to the directory holding webster's rendered
+// fork prompts. Prompts are machine-local, re-renderable artifacts excluded
+// from weft commits. Per the Cwd Resolution Invariant, no other package may
+// construct this path.
+func PromptsDir(l *lyxcwd.Location) string {
+	return filepath.Join(Dir(l), "prompts")
+}
 
 // stateFileName is state.json's fixed filename inside a webster dir.
 const stateFileName = "state.json"

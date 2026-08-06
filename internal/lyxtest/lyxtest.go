@@ -13,7 +13,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // MustRun runs a command in the specified directory, calling tb.Fatalf on failure.
@@ -35,14 +37,14 @@ func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string)
 	tb.Helper()
 
 	// Create config directory if it doesn't exist.
-	configDir := hubgeometry.ConfigDir(repoDir)
+	configDir := configengine.ConfigDir(repoDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		tb.Fatalf("mkdir config dir: %v", err)
 	}
 
 	// Write each module's config file.
 	for module, content := range configByModule {
-		configPath := hubgeometry.ConfigFile(repoDir, module)
+		configPath := configengine.ConfigFile(repoDir, module)
 		if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 			tb.Fatalf("write config file %s: %v", module, err)
 		}
@@ -169,7 +171,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 			panic(err)
 		}
 
-		weftPrime := hubgeometry.WeftSiblingPath(tmpDir, base)
+		weftPrime := weftname.SiblingPath(tmpDir, base)
 		if err := os.Mkdir(weftPrime, 0o755); err != nil {
 			panic(err)
 		}
@@ -178,7 +180,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 
 		// Create _lyx/config with neutral placeholder (no real config files).
 		// Tests needing real config seed it via SeedConfig.
-		lyxConfigDir := hubgeometry.ConfigDir(weftPrime)
+		lyxConfigDir := configengine.ConfigDir(weftPrime)
 		if err := os.MkdirAll(lyxConfigDir, 0o755); err != nil {
 			panic(err)
 		}
@@ -191,7 +193,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 		commitAll(weftPrime, "init")
 
 		// Create bare remote and add it as origin (left empty; no push).
-		weftBare := filepath.Join(tmpDir, base+"-weft-bare")
+		weftBare := weftname.BareSiblingPath(tmpDir, base)
 		initBareRemote(weftBare, weftPrime)
 
 		weftPrimePath = weftPrime
@@ -225,7 +227,7 @@ func buildWeftOnly() (weftPath, bare string) {
 		// TestPushIntegration can commit the "_lyx" pathspec. This fixture only
 		// needs some tracked file under _lyx, not a real config layout; tests that
 		// need real config call SeedConfig after CopyWeft.
-		lyxDir := filepath.Join(weftPath, hubgeometry.LyxDirName)
+		lyxDir := filepath.Join(weftPath, configengine.LyxDirName)
 		if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 			panic(err)
 		}
@@ -264,7 +266,7 @@ type PairedFixture struct {
 	Bare      string
 	WeftPrime string
 	WeftBare  string
-	Layout    *hubgeometry.Layout
+	Layout    *lyxcwd.Location
 }
 
 // WeftFixture represents an isolated copy of the weft-only template (with upstream tracking).
@@ -449,13 +451,13 @@ func CopyPaired(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix)
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := hubgeometry.WeftSiblingPath(tempContainer, base)
+	copiedWeftPrime := weftname.SiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}
 
 	// Copy weft-bare
-	copiedWeftBare := filepath.Join(tempContainer, base+"-weft-bare")
+	copiedWeftBare := weftname.BareSiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftBare, copiedWeftBare); err != nil {
 		tb.Fatalf("copyDirRecursive weftBare: %v", err)
 	}
@@ -470,9 +472,9 @@ func CopyPaired(tb testing.TB) PairedFixture {
 	}
 
 	// Get layout from copied hub
-	layout, err := hubgeometry.Resolve(copiedHub)
+	layout, err := lyxcwd.Resolve(copiedHub)
 	if err != nil {
-		tb.Fatalf("hubgeometry.Resolve: %v", err)
+		tb.Fatalf("lyxcwd.Resolve: %v", err)
 	}
 
 	return PairedFixture{
@@ -515,7 +517,7 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 
 	// Copy weft-prime (must preserve the -weft suffix); omit weft-bare
 	base := filepath.Base(templateHub)
-	copiedWeftPrime := hubgeometry.WeftSiblingPath(tempContainer, base)
+	copiedWeftPrime := weftname.SiblingPath(tempContainer, base)
 	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}
@@ -527,9 +529,9 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 	}
 
 	// Get layout from copied hub
-	layout, err := hubgeometry.Resolve(copiedHub)
+	layout, err := lyxcwd.Resolve(copiedHub)
 	if err != nil {
-		tb.Fatalf("hubgeometry.Resolve: %v", err)
+		tb.Fatalf("lyxcwd.Resolve: %v", err)
 	}
 
 	return PairedFixture{

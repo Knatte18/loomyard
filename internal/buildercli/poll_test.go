@@ -24,7 +24,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -48,16 +49,16 @@ func newPollFixture(t *testing.T, engine shuttleengine.Engine, reed shuttleengin
 	commitFile(t, hub, "base.txt", "base", "base commit")
 	seedPlanFixture(t, hub, builderengineTestdataDir("plan-valid"))
 
-	layout := &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 
 	c := &builderCLI{
 		engine:     engine,
 		reed:       reed,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    hubgeometry.PlanDir(hub),
-		builderDir: hubgeometry.BuilderDir(hub),
-		reportsDir: hubgeometry.BuilderReportsDir(hub),
+		planDir:    loomengine.PlanDir(layout),
+		builderDir: builderengine.Dir(layout),
+		reportsDir: builderengine.ReportsDir(layout),
 	}
 
 	return &pollFixture{CLI: c, Hub: hub}

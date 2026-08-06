@@ -1,7 +1,7 @@
 //go:build integration
 
 // main_integration_test.go holds the module-dispatcher tests that spawn
-// gitexec.RunGit(["init"], …) to seed a real git repo so hubgeometry.Resolve
+// gitexec.RunGit(["init"], …) to seed a real git repo so lyxcwd.Resolve
 // succeeds, so this file is integration-tagged per the Test Tier Purity
 // Invariant.
 
@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 func TestRunDispatchesToBoard(t *testing.T) {
@@ -28,20 +28,20 @@ func TestRunDispatchesToBoard(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so hubgeometry.Resolve succeeds.
+	// Initialize a git repo so lyxcwd.Resolve succeeds.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(cwd)
+	configDir := configengine.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(cwd, "board")
+	configPath := configengine.ConfigFile(cwd, "board")
 	// Write a template-complete board config. path: is no longer a template key
 	// (the board data dir is paths-owned), so only readme/design_prefix remain.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
@@ -70,20 +70,20 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 	// Create temp cwd with _lyx/config/board.yaml
 	cwd := t.TempDir()
 
-	// Initialize a git repo so hubgeometry.Resolve succeeds.
+	// Initialize a git repo so lyxcwd.Resolve succeeds.
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(cwd)
+	configDir := configengine.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(cwd, "board")
+	configPath := configengine.ConfigFile(cwd, "board")
 	// Write a template-complete board config.
 	boardConfig := "readme: Home.md\ndesign_prefix: proposal-\n"
 	if err := os.WriteFile(configPath, []byte(boardConfig), 0o644); err != nil {
@@ -127,7 +127,7 @@ func buildLyxBinary(t *testing.T) string {
 func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 	lyxExe := buildLyxBinary(t)
 
-	// Initialize a git repo so the spawned process's hubgeometry.Resolve succeeds.
+	// Initialize a git repo so the spawned process's lyxcwd.Resolve succeeds.
 	cwd := t.TempDir()
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
@@ -187,17 +187,17 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 	// configcli.RunCLI should recognize the subcommand and produce JSON output.
 	cwd := t.TempDir()
 
-	// Initialize git repo so hubgeometry.Resolve succeeds.
+	// Initialize git repo so lyxcwd.Resolve succeeds.
 	_, _, exitCode, err := gitexec.RunGit([]string{"init"}, cwd)
 	if err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(cwd)
+	configDir := configengine.ConfigDir(cwd)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}

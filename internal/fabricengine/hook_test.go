@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -49,9 +49,9 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	t.Parallel()
 
 	f := lyxtest.CopyHostHub(t)
-	l, err := hubgeometry.Resolve(f.Hub)
+	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(%q): %v", f.Hub, err)
+		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
 	}
 
 	if err := InstallPostCheckoutHook(l); err != nil {
@@ -96,9 +96,9 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	const userHookContent = "#!/bin/sh\necho user\n"
 
 	f := lyxtest.CopyHostHub(t)
-	l, err := hubgeometry.Resolve(f.Hub)
+	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(%q): %v", f.Hub, err)
+		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
 	}
 
 	// Plant a user hook.
@@ -161,9 +161,9 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	t.Parallel()
 
 	f := lyxtest.CopyPairedLocal(t)
-	l, err := hubgeometry.Resolve(f.Hub)
+	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(%q): %v", f.Hub, err)
+		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
 	}
 
 	// Install the hook in the shared repo.
@@ -218,19 +218,19 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	const slug = "hook-child-test"
 
 	f := lyxtest.CopyPairedLocal(t)
-	l, err := hubgeometry.Resolve(f.Hub)
+	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(%q): %v", f.Hub, err)
+		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
 	}
 
 	// Create a child worktree pair directly via git worktree add — fabricengine's
 	// own Add verb lands in a later batch; this test only needs a host/weft
 	// worktree pair on disk to exercise the hook script itself.
-	childHost := l.WorktreePath(slug)
+	childHost := WorktreePath(l, slug)
 	lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", childHost, "-b", slug)
 
 	weftBranch := WeftBranchName(slug)
-	childWeft := l.WeftWorktreePath(slug)
+	childWeft := WeftWorktreePath(l, slug)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
 	// Install the hook (affects the shared common .git/hooks for the host repo,

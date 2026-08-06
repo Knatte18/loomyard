@@ -25,7 +25,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -33,18 +35,18 @@ import (
 )
 
 // bootRealReed builds a scratch hub and boots a REAL tmux server with teardown.
-func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string) {
+func bootRealReed(t *testing.T) (*reedengine.Engine, *lyxcwd.Location, string) {
 	t.Helper()
 
 	hub := newScratchRepo(t)
 	commitFile(t, hub, "base.txt", "base", "base commit")
 	seedPlanFixture(t, hub, builderengineTestdataDir("plan-valid"))
 
-	configDir := hubgeometry.ConfigDir(hub)
+	configDir := configengine.ConfigDir(hub)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(hub, "reed"), []byte(reedengine.ConfigTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(hub, "reed"), []byte(reedengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write reed config: %v", err)
 	}
 
@@ -56,7 +58,7 @@ func bootRealReed(t *testing.T) (*reedengine.Engine, *hubgeometry.Layout, string
 		t.Skipf("configured tmux binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	layout := &hubgeometry.Layout{Hub: hub, WorktreeRoot: hub, Cwd: hub, RelPath: "."}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	eng := reedengine.New(cfg, layout)
 	if _, err := eng.Up(); err != nil {
 		t.Fatalf("reed Up: %v", err)
@@ -130,14 +132,20 @@ func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "01-json-flag")
 
+	// Every AnchorPath()-anchored constructor below is computed over a
+	// distinct, correctly-anchored Location (HubPath the hub's parent, not
+	// hub itself): bootRealReed's own layout deliberately sets HubPath: hub
+	// so reed's hub-anchored logs land inside the scratch hub for cleanup,
+	// which would double the worktree-name segment if reused here.
+	anchorLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
 		engine:     &pollFakeEngine{},
 		reed:       eng,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    hubgeometry.PlanDir(hub),
-		builderDir: hubgeometry.BuilderDir(hub),
-		reportsDir: hubgeometry.BuilderReportsDir(hub),
+		planDir:    loomengine.PlanDir(anchorLocation),
+		builderDir: builderengine.Dir(anchorLocation),
+		reportsDir: builderengine.ReportsDir(anchorLocation),
 	}
 
 	startSHA := strings.TrimSpace(mustGit(t, hub, "rev-parse", "HEAD"))
@@ -211,7 +219,12 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "02-list-tests")
 
-	planDir := hubgeometry.PlanDir(hub)
+	// See TestSmoke_PollDoneReleasesStrand's anchorLocation comment:
+	// bootRealReed's layout is reed-hub-anchored, not AnchorPath()-anchored,
+	// so these AnchorPath()-anchored constructors need their own
+	// correctly-anchored Location.
+	anchorLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
+	planDir := loomengine.PlanDir(anchorLocation)
 	plan, err := builderengine.ParsePlan(planDir)
 	if err != nil {
 		t.Fatalf("ParsePlan: %v", err)
@@ -236,8 +249,8 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 		},
 		Config:       builderengine.Config{SelfFixCap: 2, BatchTimeoutMin: 45},
 		WorktreeRoot: hub,
-		BuilderDir:   hubgeometry.BuilderDir(hub),
-		ReportsDir:   hubgeometry.BuilderReportsDir(hub),
+		BuilderDir:   builderengine.Dir(anchorLocation),
+		ReportsDir:   builderengine.ReportsDir(anchorLocation),
 		Layout:       layout,
 		Reed:         eng,
 	}
@@ -257,12 +270,13 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 	eng, _, hub := bootRealReed(t)
 	orphanGUID := addLivePane(t, eng, "orchestrator", "")
 
-	planDir := hubgeometry.PlanDir(hub)
+	anchorLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
+	planDir := loomengine.PlanDir(anchorLocation)
 	fingerprint, err := builderengine.Fingerprint(planDir)
 	if err != nil {
 		t.Fatalf("Fingerprint: %v", err)
 	}
-	builderDir := hubgeometry.BuilderDir(hub)
+	builderDir := builderengine.Dir(anchorLocation)
 	seeded := &builderengine.State{
 		RunGUID:            "smoke-orphan-run",
 		PlanFingerprint:    fingerprint,
@@ -290,7 +304,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 		},
 		PlanDir:      planDir,
 		BuilderDir:   builderDir,
-		ReportsDir:   hubgeometry.BuilderReportsDir(hub),
+		ReportsDir:   builderengine.ReportsDir(anchorLocation),
 		WorktreeRoot: hub,
 	}
 

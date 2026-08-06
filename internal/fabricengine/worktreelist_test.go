@@ -3,7 +3,7 @@
 // worktreelist_test.go covers the porcelain worktree-list parser, including
 // the bare-repo rejection and Main-on-first-entry behavior.
 
-package hubgeometry_test
+package fabricengine_test
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -25,12 +25,12 @@ func TestList(t *testing.T) {
 		// extraWorktrees is the number of additional worktrees created
 		// alongside the main checkout before listing.
 		extraWorktrees int
-		verify         func(t *testing.T, hub string, entries []hubgeometry.WorktreeEntry)
+		verify         func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry)
 	}{
 		{
 			name:           "SingleWorktree",
 			extraWorktrees: 0,
-			verify: func(t *testing.T, hub string, entries []hubgeometry.WorktreeEntry) {
+			verify: func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry) {
 				if len(entries) != 1 {
 					t.Fatalf("List() len = %d; want 1", len(entries))
 				}
@@ -49,7 +49,7 @@ func TestList(t *testing.T) {
 		{
 			name:           "TwoWorktrees",
 			extraWorktrees: 1,
-			verify: func(t *testing.T, hub string, entries []hubgeometry.WorktreeEntry) {
+			verify: func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry) {
 				if len(entries) != 2 {
 					t.Fatalf("List() len = %d; want 2", len(entries))
 				}
@@ -70,7 +70,7 @@ func TestList(t *testing.T) {
 		{
 			name:           "BareRepoRejection",
 			extraWorktrees: 0,
-			verify: func(t *testing.T, hub string, entries []hubgeometry.WorktreeEntry) {
+			verify: func(t *testing.T, hub string, entries []fabricengine.WorktreeEntry) {
 				// This test is not meant to be called; it's handled in the
 				// outer loop with a special case.
 			},
@@ -86,7 +86,7 @@ func TestList(t *testing.T) {
 				bareRepo := filepath.Join(t.TempDir(), "bare.git")
 				lyxtest.MustRun(t, t.TempDir(), "git", "init", "--bare", bareRepo)
 
-				entries, err := hubgeometry.List(bareRepo)
+				entries, err := fabricengine.List(bareRepo)
 				if err == nil {
 					t.Fatalf("List() error = nil; want error containing 'bare'")
 				}
@@ -107,7 +107,7 @@ func TestList(t *testing.T) {
 				lyxtest.MustRun(t, hub, "git", "worktree", "add", wtPath)
 			}
 
-			entries, err := hubgeometry.List(hub)
+			entries, err := fabricengine.List(hub)
 			if err != nil {
 				t.Fatalf("List() error = %v; want nil", err)
 			}
@@ -125,7 +125,7 @@ func TestList_NotAGitRepo(t *testing.T) {
 
 	notARepo := t.TempDir()
 
-	entries, err := hubgeometry.List(notARepo)
+	entries, err := fabricengine.List(notARepo)
 	if err == nil {
 		t.Fatalf("List(%q) error = nil; want error (not a git repository)", notARepo)
 	}

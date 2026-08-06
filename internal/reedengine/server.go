@@ -1,8 +1,8 @@
 // server.go computes the per-hub tmux server identity: the server name
 // (also reused as the -L socket name) and the per-worktree session name.
 // Server-name construction lives here, in the tmux domain, rather than in
-// hubgeometry, because it is a tmux-specific derivation (not a filesystem
-// path) computed from a Layout.Hub value hubgeometry already resolves. The
+// lyxcwd, because it is a tmux-specific derivation (not a filesystem
+// path) computed from a Location.HubPath value lyxcwd already resolves. The
 // file is named server.go, not naming.go, so it is not confusable with the
 // strand-name helpers in name.go.
 package reedengine

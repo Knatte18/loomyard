@@ -16,9 +16,23 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
+
+// perchDirName is the relative-path segment perchengine joins onto
+// configengine.LyxDirName to form the base directory for perch run
+// artifacts. perchengine is this segment's sole declarer.
+const perchDirName = "perch"
+
+// RunsDir returns the path to the base directory for perch run artifacts.
+// It lives under _lyx so artifacts are weft-synced. Per the Cwd Resolution
+// Invariant, no other package may construct this path.
+func RunsDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, perchDirName)
+}
 
 // ProfileHash returns the sha256 hex digest of p's canonical JSON encoding.
 func ProfileHash(p Profile) (string, error) {

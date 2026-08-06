@@ -18,7 +18,7 @@ import (
 
 // TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
 func TestRunCLISpawnDispatch(t *testing.T) {
-	// Create a real git repo so hubgeometry.Resolve succeeds inside the PersistentPreRunE.
+	// Create a real git repo so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
 	gitRepo := lyxtest.CopyHostHub(t).Hub
 
 	t.Chdir(gitRepo)
@@ -82,7 +82,7 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 }
 
 // TestRunCLI_NotAGitRepo verifies that "lyx ide menu" run from a non-git temp
-// directory surfaces hubgeometry's bare ErrNotAGitRepo sentinel with no
+// directory surfaces lyxcwd's bare ErrNotAGitRepo sentinel with no
 // "failed to resolve layout:" prefix and no raw "fatal:" git stderr — the
 // PersistentPreRunE aborts before menu's body runs, so the interactive picker
 // is never reached.

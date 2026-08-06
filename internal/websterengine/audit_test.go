@@ -1,7 +1,7 @@
 // audit_test.go table-drives webster's own fork-audit policy over the full
 // violation taxonomy CheckFork/CheckParent enforce, the warning-only
 // ForkWarnings case, the weftReferencePattern matcher (built from a fake
-// hubgeometry.Layout, never a hardcoded geometry token), and the attribution
+// lyxcwd.Location, never a hardcoded geometry token), and the attribution
 // pipeline (NewTranscripts, SettleRetry with a recording fake Sleeper, and
 // ClassifyAttribution's pinned check order). Every case here is a pure
 // fact-in/verdict-out table, per the discussion's TDD-centre framing: no git
@@ -11,20 +11,19 @@ package websterengine
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// fakeLayout returns a hubgeometry.Layout that resolves WeftWorktree() without spawning git.
-func fakeLayout() *hubgeometry.Layout {
-	return &hubgeometry.Layout{
-		Hub:          "/hub",
-		WorktreeRoot: "/hub/master-builder",
-	}
+// fakeLayout returns a lyxcwd.Location that resolves fabricengine.WeftWorktree() without spawning git.
+func fakeLayout() *lyxcwd.Location {
+	return &lyxcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
 
 // TestWeftReferencePattern matrixes weftReferencePattern against every Bash
@@ -43,7 +42,7 @@ func fakeLayout() *hubgeometry.Layout {
 func TestWeftReferencePattern(t *testing.T) {
 	layout := fakeLayout()
 	weftRef := weftReferencePattern(layout)
-	weftWorktree := layout.WeftWorktree()
+	weftWorktree := fabricengine.WeftWorktree(layout)
 
 	tests := []struct {
 		name string
@@ -93,7 +92,7 @@ func cleanForkReport(path string) shuttleengine.ForkReport {
 func TestCheckFork(t *testing.T) {
 	layout := fakeLayout()
 	weftRef := weftReferencePattern(layout)
-	weftWorktree := layout.WeftWorktree()
+	weftWorktree := fabricengine.WeftWorktree(layout)
 
 	tests := []struct {
 		name        string
@@ -202,7 +201,7 @@ func TestCheckFork(t *testing.T) {
 func TestCheckParent(t *testing.T) {
 	layout := fakeLayout()
 	weftRef := weftReferencePattern(layout)
-	weftWorktree := layout.WeftWorktree()
+	weftWorktree := fabricengine.WeftWorktree(layout)
 
 	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
 	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"

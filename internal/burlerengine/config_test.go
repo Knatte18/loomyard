@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // writeBurlerYAML writes contents to the burler.yaml path under baseDir,
@@ -19,9 +19,9 @@ import (
 // load_test.go writeModelsYAML helper.
 func writeBurlerYAML(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	path := hubgeometry.ConfigFile(baseDir, "burler")
-	if err := os.MkdirAll(hubgeometry.ConfigDir(baseDir), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", hubgeometry.ConfigDir(baseDir), err)
+	path := configengine.ConfigFile(baseDir, "burler")
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", configengine.ConfigDir(baseDir), err)
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", path, err)

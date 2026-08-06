@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestPickColor tests the palette picker for color selection.
@@ -112,13 +112,9 @@ func TestPickColor(t *testing.T) {
 
 			tt.setupFunc(tmpDir, mainPath)
 
-			layout := &hubgeometry.Layout{
-				Hub:     tmpDir,
-				Prime:   mainPath,
-				RelPath: tt.RelPath,
-			}
+			layout := &lyxcwd.Location{HubPath: tmpDir, AnchorRel: tt.RelPath}
 
-			color := PickColor(layout)
+			color := PickColor(layout, filepath.Base(mainPath))
 
 			// Check wantNot constraint
 			if tt.wantNot != "" && color == tt.wantNot {

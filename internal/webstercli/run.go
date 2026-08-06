@@ -69,7 +69,7 @@ Example:
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,
 				PromptsDir:   c.promptsDir,
-				WorktreeRoot: c.layout.Cwd,
+				WorktreeRoot: c.layout.AnchorPath(),
 			}
 
 			result, runErr := websterengine.Run(deps, websterengine.RunOptions{Fresh: fresh})

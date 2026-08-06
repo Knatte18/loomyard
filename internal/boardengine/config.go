@@ -18,7 +18,7 @@ import (
 // Config represents the configuration for a board module.
 type Config struct {
 	// Path is the absolute path to the board data directory. It is set by the
-	// caller (boardcli.Command's PersistentPreRunE via hubgeometry.BoardDir or the
+	// caller (boardcli.Command's PersistentPreRunE via fabricengine.BoardDir or the
 	// --board-path flag), never by the config file. yaml:"-" prevents the
 	// yaml.v3 unmarshaller from mapping any leftover path: key onto this field.
 	Path         string `yaml:"-"`

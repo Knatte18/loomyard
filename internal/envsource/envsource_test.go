@@ -1,3 +1,7 @@
+// envsource_test.go covers .env parsing, OS-environment overlay precedence, and
+// the DotEnv path constructor that pins envsource as the single declarer of the
+// ".env" filename token.
+
 package envsource
 
 import (
@@ -6,6 +10,21 @@ import (
 	"path/filepath"
 	"testing"
 )
+
+// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename —
+// moved here from hubgeometry's own unit test now that envsource is the
+// single declarer of the ".env" token.
+func TestDotEnv(t *testing.T) {
+	t.Parallel()
+
+	baseDir := "/home/user/project"
+	got := DotEnv(baseDir)
+	want := filepath.Join(baseDir, ".env")
+
+	if got != want {
+		t.Errorf("DotEnv(%q) = %q; want %q", baseDir, got, want)
+	}
+}
 
 func TestBuild_DotEnvParsing(t *testing.T) {
 	tests := []struct {

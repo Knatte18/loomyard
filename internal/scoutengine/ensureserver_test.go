@@ -24,7 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -360,7 +359,7 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 	})
 
 	worktreeRoot := t.TempDir()
-	lockPath := (&hubgeometry.Layout{WorktreeRoot: worktreeRoot}).ScoutDaemonLock("go")
+	lockPath := DaemonLock(worktreeRoot, "go")
 	// The lock's parent directory does not otherwise exist under a fresh
 	// t.TempDir() worktree root — no daemon state write happens first to
 	// create it as a side effect here, unlike supervised_test.go's own

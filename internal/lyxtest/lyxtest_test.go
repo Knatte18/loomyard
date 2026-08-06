@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // TestMain wires up the hermetic git environment before any test spawns git.
@@ -176,8 +176,8 @@ func TestCopyPaired(t *testing.T) {
 	if fixture.Layout == nil {
 		t.Errorf("Layout is nil")
 	}
-	if fixture.Layout.Hub == "" {
-		t.Errorf("Layout.Hub is empty")
+	if fixture.Layout.HubPath == "" {
+		t.Errorf("Layout.HubPath is empty")
 	}
 }
 
@@ -316,7 +316,7 @@ func TestSeedConfig(t *testing.T) {
 	})
 
 	// Verify files exist with correct content
-	module1Path := hubgeometry.ConfigFile(tmpDir, "module1")
+	module1Path := configengine.ConfigFile(tmpDir, "module1")
 	content1, err := os.ReadFile(module1Path)
 	if err != nil {
 		t.Fatalf("read module1.yaml: %v", err)
@@ -325,7 +325,7 @@ func TestSeedConfig(t *testing.T) {
 		t.Errorf("module1 content = %q; want %q", string(content1), configContent)
 	}
 
-	module2Path := hubgeometry.ConfigFile(tmpDir, "module2")
+	module2Path := configengine.ConfigFile(tmpDir, "module2")
 	content2, err := os.ReadFile(module2Path)
 	if err != nil {
 		t.Fatalf("read module2.yaml: %v", err)
@@ -368,7 +368,7 @@ func TestCopyPaired_NeutralFixture(t *testing.T) {
 	fixture := CopyPaired(t)
 
 	// Verify the weft-prime contains _lyx/config/placeholder
-	placeholderPath := filepath.Join(hubgeometry.ConfigDir(fixture.WeftPrime), "placeholder")
+	placeholderPath := filepath.Join(configengine.ConfigDir(fixture.WeftPrime), "placeholder")
 	placeholderContent, err := os.ReadFile(placeholderPath)
 	if err != nil {
 		t.Fatalf("read placeholder: %v", err)
@@ -378,7 +378,7 @@ func TestCopyPaired_NeutralFixture(t *testing.T) {
 	}
 
 	// Verify the weft-prime does NOT contain real config files (e.g., weft.yaml)
-	weftConfigPath := hubgeometry.ConfigFile(fixture.WeftPrime, "weft")
+	weftConfigPath := configengine.ConfigFile(fixture.WeftPrime, "weft")
 	if _, err := os.Stat(weftConfigPath); !os.IsNotExist(err) {
 		if err == nil {
 			t.Errorf("weft.yaml should not exist in neutral fixture, but it does")

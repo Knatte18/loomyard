@@ -26,7 +26,7 @@
 // call inside this package carries. gitexec itself stays a zero-dependency
 // leaf regardless of which side of the boundary a gitrepo method is on — it
 // has roughly eighty call-sites across packages, some lower in the layering
-// than gitrepo (e.g. hubgeometry), and gitrepo remains one of its many
+// than gitrepo (e.g. lyxcwd), and gitrepo remains one of its many
 // consumers, not merged into it.
 //
 // Some outcome classification still matches git's own untranslated

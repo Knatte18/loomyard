@@ -1,5 +1,5 @@
 // load_test.go table-drives LoadRegistry against t.TempDir fixtures, using
-// hubgeometry.ConfigFile to build every models.yaml path per the Hub Geometry
+// configengine.ConfigFile to build every models.yaml path per the Cwd Resolution
 // Invariant (which applies to test code too).
 
 package modelspec
@@ -9,15 +9,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // writeModelsYAML writes contents to the models.yaml path under baseDir.
 func writeModelsYAML(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	path := hubgeometry.ConfigFile(baseDir, "models")
-	if err := os.MkdirAll(hubgeometry.ConfigDir(baseDir), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", hubgeometry.ConfigDir(baseDir), err)
+	path := configengine.ConfigFile(baseDir, "models")
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", configengine.ConfigDir(baseDir), err)
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", path, err)

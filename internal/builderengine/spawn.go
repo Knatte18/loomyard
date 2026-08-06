@@ -32,7 +32,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -72,7 +72,7 @@ type SpawnDeps struct {
 	BuilderDir   string
 	ReportsDir   string
 	ShuttleCfg   shuttleengine.Config
-	Layout       *hubgeometry.Layout
+	Layout       *lyxcwd.Location
 	// Reed is the live reed query surface for in-flight guard and dead-respawn cleanup.
 	Reed shuttleengine.ReedOps
 	// Resetter is the chain-restart reset seam; nil uses the production default.
@@ -367,13 +367,13 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		}
 		// deps.Resetter is nil in production: construct the real paired-repo
 		// Fabric handle inline, the same way buildercli's weftCommit does from
-		// a *hubgeometry.Layout. A test instead injects a warp-only
+		// a *lyxcwd.Location. A test instead injects a warp-only
 		// *gitrepo.Repo over its own scratch worktree (the WarpResetter
 		// seam), so the restart-chain path never requires a paired weft
 		// fixture.
 		resetter := deps.Resetter
 		if resetter == nil {
-			f, err := fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree())
+			f, err := fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout))
 			if err != nil {
 				return nil, err
 			}

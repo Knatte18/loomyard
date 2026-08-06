@@ -6,7 +6,7 @@
 
 `_lyx/status.json` is loom's single source of truth for orchestration state: current phase, current review sub-state, the phase-level outcome trail, and the human-readable narration `lyx loom status --watch` prints. `lyx loom run` rewrites it on every step; its t=0 "seed" — the handoff instant a task is spawned and given to loom, before any `lyx loom run` has executed — is written once at spawn time (see [The seed / handover](#the-seed--handover) below).
 
-It is durable **weft-overlay state**: it lives under `_lyx/` (git-synced via weft, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines. Its path resolves via `internal/hubgeometry` once code lands — this doc describes the file, it does not construct the path.
+It is durable **weft-overlay state**: it lives under `_lyx/` (git-synced via weft, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines. Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `internal/lyxcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
 
 ## Format decision (defended)
 

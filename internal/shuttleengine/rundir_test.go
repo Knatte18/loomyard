@@ -12,29 +12,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 func TestRunDirRoot_DefaultUsesDotLyxShuttle(t *testing.T) {
-	layout := &hubgeometry.Layout{Cwd: `C:\worktree`}
+	layout := &lyxcwd.Location{}
 	got := runDirRoot(Config{}, layout)
-	want := filepath.Join(layout.DotLyxDir(), "shuttle")
+	want := filepath.Join(layout.WorktreePath(), dotLyxDirName, "shuttle")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}
 }
 
 func TestRunDirRoot_RelativeResolvesAgainstWorktreeRoot(t *testing.T) {
-	layout := &hubgeometry.Layout{Cwd: `C:\worktree`, WorktreeRoot: `C:\worktree`}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(`C:\worktree`), WorktreeName: filepath.Base(`C:\worktree`)}
 	got := runDirRoot(Config{RunDir: "custom-runs"}, layout)
-	want := filepath.Join(layout.WorktreeRoot, "custom-runs")
+	want := filepath.Join(layout.WorktreePath(), "custom-runs")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}
 }
 
 func TestRunDirRoot_AbsoluteUsedVerbatim(t *testing.T) {
-	layout := &hubgeometry.Layout{Cwd: `C:\worktree`, WorktreeRoot: `C:\worktree`}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(`C:\worktree`), WorktreeName: filepath.Base(`C:\worktree`)}
 	// An OS-absolute RunDir must be returned verbatim, never re-joined against
 	// WorktreeRoot. t.TempDir() yields an absolute path on any host (a
 	// drive-rooted path on Windows, a /… path on POSIX), so the test is not

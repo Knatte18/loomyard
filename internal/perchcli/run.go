@@ -18,8 +18,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -319,7 +319,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			if runErr == nil {
 				outcomeLabel = string(result.Outcome)
 			}
-			weftWorktree := c.layout.WeftWorktree()
+			weftWorktree := fabricengine.WeftWorktree(c.layout)
 			opts := fabricengine.EnvSyncOptions()
 			// Lock files (run.lock, state.json.lock) are machine-local
 			// advisory-lock artifacts, not block state: committing them
@@ -331,7 +331,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// geometry-blind), so they are excluded solely by the weft
 			// repo's .git/info/exclude (deepened to reach perch's
 			// two-deep locks) rather than a per-call pathspec.
-			files := fabricengine.ScopedPathspec(c.layout.RelPath, []string{hubgeometry.LyxDirName})
+			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{configengine.LyxDirName})
 			// SkipGit is checked here, before fabricengine.New's stat-based
 			// path validation, mirroring Commit's own top-level
 			// short-circuit: the CI/test bypass must never require a real
@@ -341,7 +341,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			var weftErr error
 			if !opts.SkipGit {
 				var fab *fabricengine.Fabric
-				fab, weftErr = fabricengine.New(c.layout.WorktreeRoot, weftWorktree)
+				fab, weftErr = fabricengine.New(c.layout.WorktreePath(), weftWorktree)
 				if weftErr == nil {
 					var res fabricengine.CommitResult
 					res, weftErr = fab.Commit(

@@ -2,7 +2,7 @@
 // orphaned or stale host↔weft pairs. A pair is stale when the host worktree
 // directory no longer exists; a pair is orphaned when a weft worktree has no
 // corresponding host worktree sibling. Prune operates purely on directory
-// names (<slug>-weft, a hubgeometry-level invariant); fabric's branch-naming
+// names (<slug>-weft, a weftname-level invariant); fabric's branch-naming
 // scheme does not affect this file.
 
 package fabricengine
@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // PruneEntry describes one stale or orphaned pair that Prune has identified.
@@ -41,8 +41,8 @@ type PruneResult struct {
 // Prune identifies stale or orphaned host↔weft pairs and removes their stale
 // weft worktrees and associated portal/launcher directories when apply is true.
 // Per-entry removal errors are recorded in PruneEntry.Error.
-func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error) {
-	entries, err := hubgeometry.List(l.WorktreeRoot)
+func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
+	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -58,7 +58,7 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 		hostPath = filepath.Clean(hostPath)
 		slug := filepath.Base(hostPath)
 
-		weftPath := l.WeftWorktreePath(slug)
+		weftPath := WeftWorktreePath(l, slug)
 
 		_, hostStatErr := os.Stat(hostPath)
 		hostMissing := hostStatErr != nil
@@ -80,7 +80,7 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 			liveHostSlugs[slug] = true
 		}
 	}
-	hubEntries, err := os.ReadDir(l.Hub)
+	hubEntries, err := os.ReadDir(l.HubPath)
 	if err != nil {
 		// A missing or unreadable hub is a fatal error; we cannot scan for orphans.
 		return PruneResult{}, fmt.Errorf("read hub directory: %w", err)
@@ -93,7 +93,7 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 
 		name := dirEntry.Name()
 
-		hostSlug, ok := hubgeometry.WeftHostSlug(name)
+		hostSlug, ok := WeftHostSlug(name)
 		if !ok {
 			continue
 		}
@@ -102,8 +102,8 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 			continue
 		}
 
-		weftPath := filepath.Join(l.Hub, name)
-		hostPath := filepath.Join(l.Hub, hostSlug)
+		weftPath := filepath.Join(l.HubPath, name)
+		hostPath := filepath.Join(l.HubPath, hostSlug)
 
 		pe := PruneEntry{
 			HostWorktree: filepath.ToSlash(hostPath),
@@ -125,16 +125,22 @@ func (t *Topology) Prune(l *hubgeometry.Layout, apply bool) (PruneResult, error)
 // tears down the dead slug's portal junction and launcher directory, and prunes
 // administrative state on both repos. Errors are recorded in pe.Error; it returns
 // true only when a weft worktree existed and was removed without error.
-func removeStalePair(l *hubgeometry.Layout, slug, weftPath string, pe *PruneEntry) bool {
+func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
 	_ = removePortal(l, slug)
 	_ = removeLaunchers(l, slug)
+
+	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+	if weftRepoRootErr != nil {
+		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
+		return false
+	}
 
 	removed := false
 
 	if _, statErr := os.Stat(weftPath); statErr == nil {
 		_, _, exitCode, err := gitexec.RunGit(
 			[]string{"worktree", "remove", "--force", weftPath},
-			l.WeftRepoRoot(),
+			weftRepoRoot,
 		)
 		if err != nil {
 			pe.Error = fmt.Sprintf("git worktree remove: %v", err)
@@ -149,8 +155,8 @@ func removeStalePair(l *hubgeometry.Layout, slug, weftPath string, pe *PruneEntr
 		removed = true
 	}
 
-	gitexec.RunGit([]string{"worktree", "prune"}, l.WeftRepoRoot()) //nolint:errcheck
-	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)   //nolint:errcheck
+	gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)     //nolint:errcheck
+	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath()) //nolint:errcheck
 
 	return removed
 }

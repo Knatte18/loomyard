@@ -6,7 +6,7 @@
 // fails its correspondence record must still be reported as committed=true
 // alongside the error, never swallowed into a false "no commit was made"),
 // and the weft repo's .git/info/exclude actually keeping the right files out
-// of every commit at every layout.RelPath depth, which only real git can
+// of every commit at every layout.AnchorRel depth, which only real git can
 // decide.
 
 package webstercli
@@ -18,12 +18,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // newHostWeftPair builds a hub with "host" and "host-weft" git repos and returns the layout.
-func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
+func newHostWeftPair(t *testing.T) (*lyxcwd.Location, string) {
 	t.Helper()
 	return newHostWeftPairAt(t, ".")
 }
@@ -32,40 +34,40 @@ func newHostWeftPair(t *testing.T) (*hubgeometry.Layout, string) {
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
 
-// seedFabricAnchor records relPath as the .fabric-anchor marker under hub's
-// board directory, so Fabric.Commit's own hubgeometry.ResolveWorktree(warpPath)
-// call resolves l.RelPath to relPath instead of falling back to a
+// seedFabricAnchor records relPath as the .lyx-anchor marker under hub's
+// board directory, so Fabric.Commit's own lyxcwd.ResolveWorktree(warpPath)
+// call resolves l.AnchorRel to relPath instead of falling back to a
 // cwd-derived "." -- Commit re-resolves geometry from f.warpPath itself
-// rather than trusting the *hubgeometry.Layout weftCommit already holds, so
-// a nested-RelPath fixture must record the anchor for real git to classify
+// rather than trusting the *lyxcwd.Location weftCommit already holds, so
+// a nested-AnchorRel fixture must record the anchor for real git to classify
 // correctly.
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
 }
 
-// newHostWeftPairAt is newHostWeftPair with an explicit layout.RelPath: the
+// newHostWeftPairAt is newHostWeftPair with an explicit layout.AnchorRel: the
 // weft-side _lyx is seeded at <weft>/<relPath>/_lyx, mirroring the host's own
-// repo-subpath geometry, and the returned layout's Cwd points at the matching
-// host subdirectory. Alongside state.json it seeds the three machine-local
+// repo-subpath geometry, and the returned layout's AnchorPath() points at the
+// matching host subdirectory. Alongside state.json it seeds the three machine-local
 // artifacts the weft repo's .git/info/exclude must keep out (an advisory
 // *.lock file, the pause flag, and a rendered fork prompt) so a caller can
 // assert on what the commit did and did not pick up. It also seeds a builder
@@ -73,7 +75,7 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // durable state.json plus its pause flag, so a caller can assert that a
 // WEBSTER commit keeps builder's runtime state out while still carrying
 // builder's durable state.
-func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, string) {
+func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 	t.Helper()
 
 	hub := t.TempDir()
@@ -93,7 +95,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 	// Uncommitted changes under the webster pathspec, so CommitWeft has
 	// something real to commit -- plus the three artifacts the exclusion set
 	// must keep out of that commit.
-	websterDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "webster")
+	websterDir := filepath.Join(weft, relPath, configengine.LyxDirName, "webster")
 	if err := os.MkdirAll(filepath.Join(websterDir, "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir weft _lyx: %v", err)
 	}
@@ -110,7 +112,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 
 	// Builder's own tree, in the same shared _lyx: its durable state must
 	// still ride a webster commit, its pause flag must not.
-	builderDir := filepath.Join(weft, relPath, hubgeometry.LyxDirName, "builder")
+	builderDir := filepath.Join(weft, relPath, configengine.LyxDirName, "builder")
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		t.Fatalf("mkdir weft builder dir: %v", err)
 	}
@@ -126,11 +128,10 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*hubgeometry.Layout, strin
 	seedRepoWideFabricConfig(t, hub)
 	seedFabricAnchor(t, hub, filepath.ToSlash(relPath))
 
-	return &hubgeometry.Layout{
-		Hub:          hub,
-		WorktreeRoot: host,
-		Cwd:          filepath.Join(host, relPath),
-		RelPath:      relPath,
+	return &lyxcwd.Location{
+		HubPath:      hub,
+		WorktreeName: filepath.Base(host),
+		AnchorRel:    relPath,
 	}, weft
 }
 
@@ -170,7 +171,7 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 
 // TestWeftCommit_CommitsAtEveryRelPathDepth proves every machine-local
 // transient (locks, both round-loop modules' pause flags, webster's rendered
-// fork prompts) stays uncommitted by REAL git at every layout.RelPath depth,
+// fork prompts) stays uncommitted by REAL git at every layout.AnchorRel depth,
 // not merely absent from some in-memory pathspec shape. Exclusion is now
 // enforced solely by the weft repo's .git/info/exclude (seeded by
 // fabricengine.seedWeftArtifactExcludes, reached through Fabric.Commit's
@@ -218,9 +219,9 @@ func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 
 			// git always reports commit contents with forward slashes,
 			// regardless of the OS-native separators the layout carries.
-			base := hubgeometry.LyxDirName
+			base := configengine.LyxDirName
 			if tt.relPath != "." {
-				base = filepath.ToSlash(tt.relPath) + "/" + hubgeometry.LyxDirName
+				base = filepath.ToSlash(tt.relPath) + "/" + configengine.LyxDirName
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 

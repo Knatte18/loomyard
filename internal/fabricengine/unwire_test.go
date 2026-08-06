@@ -22,10 +22,12 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan
@@ -43,9 +45,9 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
 	// Wire the desired pair (_lyx, _pattern) plus a stale name (_extra) that
@@ -55,21 +57,21 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
-	res, err := fabricengine.Unwire(hostLayout.WorktreeRoot)
+	res, err := fabricengine.Unwire(hostLayout.WorktreePath())
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
 
 	got := slices.Clone(res.JunctionsRemoved)
 	sort.Strings(got)
-	want := []string{"_extra", hubgeometry.LyxDirName, hubgeometry.PatternDirName}
+	want := []string{"_extra", configengine.LyxDirName, pattern.DirName}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("res.JunctionsRemoved (sorted) = %v; want %v", got, want)
 	}
 
-	for _, name := range []string{"_extra", hubgeometry.LyxDirName, hubgeometry.PatternDirName} {
-		link := filepath.Join(hostLayout.WorktreeRoot, name)
+	for _, name := range []string{"_extra", configengine.LyxDirName, pattern.DirName} {
+		link := filepath.Join(hostLayout.WorktreePath(), name)
 		if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
 			t.Errorf("junction %s still exists after Unwire (stat err: %v)", link, statErr)
 		}
@@ -91,9 +93,9 @@ func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
@@ -101,17 +103,17 @@ func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 
 	// Seed real content on the weft side of both junctions: WireJunctions
 	// only materializes the target directories, it writes no files.
-	weftLyxDir := hostLayout.WeftLyxDirFor(slug)
+	weftLyxDir := fabricengine.WeftLyxDirFor(hostLayout, slug)
 	if err := os.WriteFile(filepath.Join(weftLyxDir, "marker.txt"), []byte("lyx state"), 0o644); err != nil {
 		t.Fatalf("seed weft _lyx content: %v", err)
 	}
-	weftPatternDir := hostLayout.WeftPatternDirFor(slug)
+	weftPatternDir := filepath.Join(fabricengine.WeftWorktreePath(hostLayout, slug), hostLayout.AnchorRel, pattern.DirName)
 	patternFile := filepath.Join(weftPatternDir, "PATTERN.md")
 	if err := os.WriteFile(patternFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("seed weft _pattern content: %v", err)
 	}
 
-	res, err := fabricengine.Unwire(hostLayout.WorktreeRoot)
+	res, err := fabricengine.Unwire(hostLayout.WorktreePath())
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
@@ -146,18 +148,18 @@ func TestUnwire_RevertsGitignore(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
-	if _, err := gitignore.Ensure(hostLayout.WorktreeRoot, ".lyx/"); err != nil {
+	if _, err := gitignore.Ensure(hostLayout.WorktreePath(), ".lyx/"); err != nil {
 		t.Fatalf("seed .gitignore block: %v", err)
 	}
 
-	res, err := fabricengine.Unwire(hostLayout.WorktreeRoot)
+	res, err := fabricengine.Unwire(hostLayout.WorktreePath())
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
@@ -198,7 +200,7 @@ func TestUnwire_NeverWiredHostIsIdempotentNoOp(t *testing.T) {
 }
 
 // TestUnwire_PreservesRepoWideRecords proves Unwire's per-worktree scope: the
-// repo-wide weft:main records (.fabric-anchor, <BoardDir>/_lyx/config/fabric.yaml)
+// repo-wide weft:main records (.lyx-anchor, <BoardDir>/_lyx/config/fabric.yaml)
 // survive a worktree's Unwire untouched, so a later `lyx fabric reconcile`
 // can still re-wire it.
 func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
@@ -211,36 +213,36 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	// Record the anchor marker alongside the repo-wide fabric.yaml
 	// newFabricFixture already seeded, mirroring what fabric clone commits
 	// onto weft:main.
-	boardDir := hubgeometry.BoardDir(l.Hub)
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	boardDir := fabricengine.BoardDir(l.HubPath)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(".\n"), 0o644); err != nil {
-		t.Fatalf("seed .fabric-anchor: %v", err)
+		t.Fatalf("seed .lyx-anchor: %v", err)
 	}
-	fabricConfigPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
 	}
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
-	if _, err := fabricengine.Unwire(hostLayout.WorktreeRoot); err != nil {
+	if _, err := fabricengine.Unwire(hostLayout.WorktreePath()); err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
 
 	if _, statErr := os.Stat(anchorPath); statErr != nil {
-		t.Errorf(".fabric-anchor missing after Unwire: %v", statErr)
+		t.Errorf(".lyx-anchor missing after Unwire: %v", statErr)
 	}
 	if _, statErr := os.Stat(fabricConfigPath); statErr != nil {
 		t.Errorf("repo-wide fabric.yaml missing after Unwire: %v", statErr)
 	}
-	hostLyxLink := filepath.Join(hostLayout.WorktreeRoot, hubgeometry.LyxDirName)
+	hostLyxLink := filepath.Join(hostLayout.WorktreePath(), configengine.LyxDirName)
 	if _, statErr := os.Lstat(hostLyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("host _lyx junction %s still exists after Unwire (stat err: %v)", hostLyxLink, statErr)
 	}

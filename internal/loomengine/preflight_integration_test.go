@@ -13,10 +13,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -26,12 +28,12 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	t.Helper()
 
 	f := lyxtest.CopyPaired(t)
-	slug := filepath.Base(f.Layout.WorktreeRoot)
+	slug := filepath.Base(f.Layout.WorktreePath())
 
 	lyxtest.SeedConfig(t, f.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, f.Layout.Hub)
+	seedRepoWideFabricConfig(t, f.Layout.HubPath)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
@@ -56,18 +58,18 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
 
 // seedValidStatus writes a fresh, coherent status.json seed with handoff fields only.
-func seedValidStatus(t *testing.T, l *hubgeometry.Layout) {
+func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 	t.Helper()
 
 	s := Status{
@@ -77,7 +79,7 @@ func seedValidStatus(t *testing.T, l *hubgeometry.Layout) {
 		Stage:     "produce",
 		Narration: "now: awaiting preflight / last: — / wait: —",
 	}
-	if err := state.WriteJSON(l.LoomStatusFile(), l.LoomStatusLock(), s); err != nil {
+	if err := state.WriteJSON(LoomStatusFile(l), LoomStatusLock(l), s); err != nil {
 		t.Fatalf("seed status.json: %v", err)
 	}
 }
@@ -165,7 +167,7 @@ func TestPreflight_HealthyPairAndSeed(t *testing.T) {
 // TestPreflight_NotAGitRepo asserts that Preflight() invoked outside any git
 // repository reports a single geometry failure with no error. This exercises
 // the public Preflight() (not checkResolved) because it needs
-// hubgeometry.Getwd() to observe a non-repo cwd.
+// lyxcwd.Getwd() to observe a non-repo cwd.
 func TestPreflight_NotAGitRepo(t *testing.T) {
 	// t.TempDir() must be created before restoreCwd registers its cleanup —
 	// see restoreCwd's doc comment: on Windows, cleanup must chdir back out of
@@ -200,6 +202,16 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", sub, err)
 	}
+
+	// Record "sub" as the recognized anchor so Resolve(sub) succeeds under the
+	// strict cwd gate with AnchorRel == "sub" -- an unrecorded subdirectory
+	// invocation is now ErrCwdOutsideAnchor, a hard error, not the soft
+	// CheckWorktreeRoot report this test exists to prove.
+	anchorPath := filepath.Join(fabricengine.BoardDir(f.Layout.HubPath), lyxcwd.AnchorFileName)
+	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
+	}
+
 	if err := os.Chdir(sub); err != nil {
 		t.Fatalf("Chdir(%s): %v", sub, err)
 	}
@@ -209,24 +221,6 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 		t.Fatalf("Preflight: %v", err)
 	}
 	assertCheckSet(t, report, CheckWorktreeRoot)
-}
-
-// TestPreflight_EmptyPrime asserts that an injected Layout with no resolved
-// Prime (main worktree) reports a geometry failure, short-circuiting before
-// any of checks 2-4 run.
-func TestPreflight_EmptyPrime(t *testing.T) {
-	t.Parallel()
-
-	f, _ := setupPreflightFixture(t)
-
-	l := *f.Layout
-	l.Prime = ""
-
-	report, err := checkResolved(&l)
-	if err != nil {
-		t.Fatalf("checkResolved: %v", err)
-	}
-	assertCheckSet(t, report, CheckGeometry)
 }
 
 // TestPreflight_HostDirty covers all three ways Clean can observe a dirty
@@ -315,7 +309,7 @@ func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 
 	f, _ := setupPreflightFixture(t)
 
-	if err := os.RemoveAll(f.Layout.WeftWorktree()); err != nil {
+	if err := os.RemoveAll(fabricengine.WeftWorktree(f.Layout)); err != nil {
 		t.Fatalf("remove weft worktree: %v", err)
 	}
 
@@ -353,13 +347,13 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 // Healthy's underlying loop was originally written and tested against.
 //
 // The seed-check expectation differs by junction, and deliberately so:
-// status.json lives under _lyx (l.LoomStatusFile() is _lyx-anchored), so a
+// status.json lives under _lyx (LoomStatusFile(l) is _lyx-anchored), so a
 // broken _lyx junction also makes the seed stat fail — classified
 // seed-unreadable (never seed-missing) because check 3 already failed. A
 // broken _pattern junction, by contrast, leaves the seed fully readable
 // through the still-healthy _lyx junction: check 3 still fails and still
 // classifies as CheckJunction (never CheckWeftSync), but no seed failure is
-// added at all, since check 4's stat of l.LoomStatusFile() succeeds either
+// added at all, since check 4's stat of LoomStatusFile(l) succeeds either
 // way. This asymmetry is exactly what "check3BlocksSeed" is named for: it
 // only changes check 4's classification of a stat failure that already
 // happened, it does not itself cause one.
@@ -411,12 +405,14 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 	}{
 		{
 			name:       "Lyx",
-			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return f.Layout.HostLyxLink(slug) },
+			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return fabricengine.HostLyxLink(f.Layout, slug) },
 			wantChecks: []CheckID{CheckSeedUnreadable},
 		},
 		{
-			name:       "Pattern",
-			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return f.Layout.HostPatternLink(slug) },
+			name: "Pattern",
+			linkFor: func(f lyxtest.PairedFixture, slug string) string {
+				return filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, pattern.DirName)
+			},
 			wantChecks: nil,
 		},
 	}
@@ -461,7 +457,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	// Simulate the pre-upgrade state: this worktree's _pattern junction was
 	// never wired, even though _lyx is fully healthy — the "existing worktree,
 	// new lyx binary" shape, not a corruption.
-	patternLink := f.Layout.HostPatternLink(slug)
+	patternLink := filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, pattern.DirName)
 	if err := fslink.Remove(patternLink); err != nil {
 		t.Fatalf("remove _pattern junction to simulate a legacy (pre-upgrade) worktree: %v", err)
 	}
@@ -481,7 +477,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	}
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.HostWorktree != filepath.ToSlash(f.Layout.WorktreeRoot) {
+		if pair.HostWorktree != filepath.ToSlash(f.Layout.WorktreePath()) {
 			continue
 		}
 		found = true
@@ -493,7 +489,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("Reconcile result has no pair for host worktree %s: %+v", f.Layout.WorktreeRoot, result.Pairs)
+		t.Fatalf("Reconcile result has no pair for host worktree %s: %+v", f.Layout.WorktreePath(), result.Pairs)
 	}
 
 	// The junction now resolves.
@@ -516,7 +512,7 @@ func TestPreflight_SeedMissing(t *testing.T) {
 
 	f, _ := setupPreflightFixture(t)
 
-	if err := os.Remove(f.Layout.LoomStatusFile()); err != nil {
+	if err := os.Remove(LoomStatusFile(f.Layout)); err != nil {
 		t.Fatalf("remove seed: %v", err)
 	}
 	commitWeftStatus(t, f)
@@ -547,7 +543,7 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
   "next_action": null,
   "unknown_field": true
 }`
-	if err := os.WriteFile(f.Layout.LoomStatusFile(), []byte(raw), 0o644); err != nil {
+	if err := os.WriteFile(LoomStatusFile(f.Layout), []byte(raw), 0o644); err != nil {
 		t.Fatalf("write malformed seed: %v", err)
 	}
 	commitWeftStatus(t, f)
@@ -596,7 +592,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 			t.Parallel()
 
 			f, _ := setupPreflightFixture(t)
-			if err := state.WriteJSON(f.Layout.LoomStatusFile(), f.Layout.LoomStatusLock(), tt.seed()); err != nil {
+			if err := state.WriteJSON(LoomStatusFile(f.Layout), LoomStatusLock(f.Layout), tt.seed()); err != nil {
 				t.Fatalf("overwrite seed: %v", err)
 			}
 			commitWeftStatus(t, f)

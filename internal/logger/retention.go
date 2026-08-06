@@ -1,7 +1,7 @@
 // retention.go implements the durable trace-file retention sweep: a
 // standalone function over a directory path that enforces the age and count
 // bounds discussion.md's `retention` decision describes. It is deliberately
-// independent of the durable sink (batch 4), hubgeometry (batch 1), and
+// independent of the durable sink (batch 4), lyxcwd (batch 1), and
 // trace identity (batch 2) — Sweep takes a directory path from its caller
 // and needs only internal/proc's liveness probe plus the standard library.
 

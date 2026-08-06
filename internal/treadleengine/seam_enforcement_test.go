@@ -2,11 +2,11 @@
 // production code in internal/treadleengine imports ONLY the standard
 // library, internal/lock, internal/logger, internal/state, internal/stencil,
 // internal/shuttleengine, and gopkg.in/yaml.v3 — never internal/burlerengine,
-// never internal/hubgeometry as a direct import, and never any
+// never internal/lyxcwd as a direct import, and never any
 // internal/*cli package. Like internal/modelspec's leaf_enforcement_test.go,
 // this check is an ALLOWLIST: any import outside the allowed set fails the
 // test, so a future stray dependency (a round-runner's own type leaking
-// upward, a convenience hubgeometry import) is caught with no list
+// upward, a convenience lyxcwd import) is caught with no list
 // maintenance required.
 
 package treadleengine

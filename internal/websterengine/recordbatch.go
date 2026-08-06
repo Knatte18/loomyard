@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -48,7 +48,7 @@ type RecordDeps struct {
 	State        *State
 	Config       Config
 	Engine       shuttleengine.Engine
-	Layout       *hubgeometry.Layout
+	Layout       *lyxcwd.Location
 	WorktreeRoot string
 	ReportsDir   string
 	OutcomePath  string
@@ -102,7 +102,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// not the current Master session, so a resumed Master can consume a
 	// report whose transcript lives under the crashed session's directory.
 	fetch := func() (shuttleengine.ForkAudit, error) {
-		return deps.Engine.AuditForksIncremental(bs.SessionID, deps.Layout.Cwd, seenSet)
+		return deps.Engine.AuditForksIncremental(bs.SessionID, deps.Layout.AnchorPath(), seenSet)
 	}
 
 	audit, newReports, err := SettleRetry(fetch, deps.State.SeenForkTranscripts, DefaultSettleWindow, DefaultSettleTick, deps.Sleeper)
@@ -129,11 +129,11 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	weftRef := weftReferencePattern(deps.Layout)
 
 	var violations []error
-	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Layout.Cwd, weftRef) {
+	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), weftRef) {
 		violations = append(violations, v)
 	}
 	for _, f := range newReports {
-		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Layout.Cwd, weftRef) {
+		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), weftRef) {
 			violations = append(violations, v)
 		}
 		warnings = append(warnings, ForkWarnings(f)...)

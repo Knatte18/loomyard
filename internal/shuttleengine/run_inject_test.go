@@ -6,9 +6,10 @@
 package shuttleengine
 
 import (
+	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newInjectTestRunner returns a Runner over reed/engine, with a run seeded
@@ -18,7 +19,7 @@ import (
 func newInjectTestRunner(t *testing.T, reed ReedOps, engine Engine, guid string) *Runner {
 	t.Helper()
 	root := t.TempDir()
-	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 	runner := NewRunner(reed, engine, layout, cfg)
 	if guid != "" {

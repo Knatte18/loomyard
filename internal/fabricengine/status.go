@@ -1,7 +1,7 @@
 // status.go implements the paired host↔weft status view and host-pollution detection
 // for fabric.
 //
-// Status enumerates all host worktrees via hubgeometry.List, pairs each with its weft
+// Status enumerates all host worktrees via List, pairs each with its weft
 // sibling, reports branch, in-sync verdict, junction health, and scans the host index
 // for any _lyx, _pattern, or _raddle paths that have been accidentally git-tracked
 // (host pollution). A pair is InSync when weftBranch == WeftBranchName(hostBranch),
@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // PollutionEntry describes a single tracked path in the host index that should never
@@ -71,8 +71,8 @@ type StatusResult struct {
 // worktree, it reports branch status, in-sync verdict, junction health, and
 // host-tracked _lyx/_pattern/_raddle paths. Per-worktree errors are recorded
 // inline in PairStatus.DriftReason / PairStatus.JunctionReason.
-func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
-	entries, err := hubgeometry.List(l.WorktreeRoot)
+func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
+	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -83,7 +83,7 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 		hostPath := filepath.FromSlash(entry.Path)
 		hostPath = filepath.Clean(hostPath)
 
-		weftPath := l.WeftWorktreePath(filepath.Base(hostPath))
+		weftPath := WeftWorktreePath(l, filepath.Base(hostPath))
 
 		pair := PairStatus{
 			HostWorktree: filepath.ToSlash(hostPath),
@@ -171,7 +171,7 @@ func (t *Topology) Status(l *hubgeometry.Layout) (StatusResult, error) {
 // automated restore step is offered.
 //
 // The two new "_pattern" uses below (the ls-files pathspec entry and the
-// strings.HasPrefix comparison) are legal under the Hub Geometry Invariant despite
+// strings.HasPrefix comparison) are legal under the Cwd Resolution Invariant despite
 // "_pattern" being an enforced token: the invariant's own carve-out excludes
 // comparisons and git-pathspec slice literals from "path construction," which is
 // what a filepath.Join argument, a "+" operand, or a string const value are.

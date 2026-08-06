@@ -40,20 +40,20 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	// so Checkout's steps 3 (host switch) and 4 (weft switch) can succeed and the
 	// failure is isolated to step 5 (junction wiring).
 	// Checkout derives the slug the same way (filepath.Base of the worktree root).
-	slug := filepath.Base(l.WorktreeRoot)
+	slug := filepath.Base(l.WorktreePath())
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
-	lyxtest.MustRun(t, l.WorktreeRoot, "git", "branch", targetBranch)
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "branch", fabricengine.WeftBranchName(targetBranch))
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	originalHostBranch := currentBranchOf(t, l.WorktreeRoot)
-	originalWeftBranch := currentBranchOf(t, l.WeftWorktree())
+	originalHostBranch := currentBranchOf(t, l.WorktreePath())
+	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
 
 	// Corrupt the host _lyx into a real directory: WireJunctions -> seedLyxJunction
 	// refuses a real (non-link) _lyx, so Checkout's step 5 fails after step 4 has
 	// already moved the weft.
-	hostLyx := l.HostLyxLinkHere()
+	hostLyx := fabricengine.HostLyxLinkHere(l)
 	if err := os.Remove(hostLyx); err != nil {
 		t.Fatalf("remove host junction to corrupt it: %v", err)
 	}
@@ -68,16 +68,16 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 
 	// The all-or-nothing contract: both sides restored to their originals, never
 	// a half-switched pair (host rolled back but weft stranded on the new branch).
-	if got := currentBranchOf(t, l.WorktreeRoot); got != originalHostBranch {
+	if got := currentBranchOf(t, l.WorktreePath()); got != originalHostBranch {
 		t.Errorf("host branch after failed Checkout = %q; want %q (original)", got, originalHostBranch)
 	}
-	if got := currentBranchOf(t, l.WeftWorktree()); got != originalWeftBranch {
+	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
 	// The target weft branch pre-existed this Checkout (adopted, not forked), so
 	// the rollback must NOT have deleted it.
-	if !branchExistsAt(t, l.WeftRepoRoot(), fabricengine.WeftBranchName(targetBranch)) {
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), fabricengine.WeftBranchName(targetBranch)) {
 		t.Errorf("pre-existing weft branch %q deleted by rollback; want it untouched", fabricengine.WeftBranchName(targetBranch))
 	}
 }
@@ -97,18 +97,18 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 
 	const targetBranch = "checkout-rollback-forked"
 
-	slug := filepath.Base(l.WorktreeRoot)
+	slug := filepath.Base(l.WorktreePath())
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	// Only the host branch exists: the weft side must be forked by Checkout.
-	lyxtest.MustRun(t, l.WorktreeRoot, "git", "branch", targetBranch)
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 
-	originalHostBranch := currentBranchOf(t, l.WorktreeRoot)
-	originalWeftBranch := currentBranchOf(t, l.WeftWorktree())
+	originalHostBranch := currentBranchOf(t, l.WorktreePath())
+	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
 
 	// Corrupt the host _lyx into a real directory so step 5 fails after the fork.
-	hostLyx := l.HostLyxLinkHere()
+	hostLyx := fabricengine.HostLyxLinkHere(l)
 	if err := os.Remove(hostLyx); err != nil {
 		t.Fatalf("remove host junction to corrupt it: %v", err)
 	}
@@ -121,17 +121,17 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 		t.Fatalf("Checkout(%q) error = nil; want a junction-wiring failure (res=%+v)", targetBranch, res)
 	}
 
-	if got := currentBranchOf(t, l.WorktreeRoot); got != originalHostBranch {
+	if got := currentBranchOf(t, l.WorktreePath()); got != originalHostBranch {
 		t.Errorf("host branch after failed Checkout = %q; want %q (original)", got, originalHostBranch)
 	}
-	if got := currentBranchOf(t, l.WeftWorktree()); got != originalWeftBranch {
+	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
 	// The branch step 4 forked must be gone: the rolled-back Checkout tears down
 	// exactly what it created.
 	forked := fabricengine.WeftBranchName(targetBranch)
-	if branchExistsAt(t, l.WeftRepoRoot(), forked) {
+	if branchExistsAt(t, mustWeftRepoRoot(t, l), forked) {
 		t.Errorf("forked weft branch %q survived the rollback; want it deleted (orphan branch stranded by fabric's own failed operation)", forked)
 	}
 }

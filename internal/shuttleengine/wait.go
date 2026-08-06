@@ -255,7 +255,7 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	}
 
 	if outcome == OutcomeDone && run.spec.ForkSubagents {
-		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.layout.Cwd)
+		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.layout.AnchorPath())
 		if err != nil {
 			return Result{}, fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
 		}

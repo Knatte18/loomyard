@@ -127,7 +127,7 @@ Example:
 				Reed:         c.reed,
 				ShuttleCfg:   c.shuttleCfg,
 				Layout:       c.layout,
-				WorktreeRoot: c.layout.Cwd,
+				WorktreeRoot: c.layout.AnchorPath(),
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,
 			}

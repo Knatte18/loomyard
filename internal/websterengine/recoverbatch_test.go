@@ -26,7 +26,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -182,7 +182,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 
 	reed := &recoverFakeReed{}
 	engine := &recoverFakeEngine{}
-	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 

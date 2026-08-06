@@ -1,5 +1,5 @@
 // load.go implements LoadRegistry, the models.yaml loader. It reads the
-// optional per-hub registry file via hubgeometry.ConfigFile, validates every
+// optional per-hub registry file via configengine.ConfigFile, validates every
 // entry against the same closed vocabularies Parse and Resolve use, and
 // merges the file onto the built-in fallback set by whole-entry replacement.
 
@@ -12,7 +12,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,7 +20,7 @@ import (
 // returns builtins() unchanged; a present file is decoded with strict validation
 // and merged onto builtins() by whole-entry replacement (no field-level merge).
 func LoadRegistry(baseDir string) (Registry, error) {
-	path := hubgeometry.ConfigFile(baseDir, "models")
+	path := configengine.ConfigFile(baseDir, "models")
 
 	data, err := os.ReadFile(path)
 	if err != nil {

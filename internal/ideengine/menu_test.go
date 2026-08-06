@@ -14,7 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 func mustRunMenu(t *testing.T, dir string, args ...string) {
@@ -50,7 +51,7 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "add", ".")
 	mustRunMenu(t, mainWorktreePath, "git", "commit", "-m", "initial")
 
-	if err := os.MkdirAll(filepath.Join(mainWorktreePath, hubgeometry.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(mainWorktreePath, configengine.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create main _lyx: %v", err)
 	}
 
@@ -62,12 +63,7 @@ func TestMenuHardErrorOnMissingBoard(t *testing.T) {
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	var out bytes.Buffer
 	in := strings.NewReader("")
@@ -94,15 +90,15 @@ func TestMenuExcludesMain(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	if err := os.MkdirAll(filepath.Join(childPath, hubgeometry.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(childPath, configengine.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create child _lyx: %v", err)
 	}
 
-	configDir := hubgeometry.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-
@@ -121,12 +117,7 @@ design_prefix: proposal-
 		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	originalLauncher := CodeLauncher
 	defer func() { CodeLauncher = originalLauncher }()
@@ -158,11 +149,11 @@ func TestMenuRequiresLyxDir(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	configDir := hubgeometry.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-
@@ -181,12 +172,7 @@ design_prefix: proposal-
 		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	var out bytes.Buffer
 	in := strings.NewReader("")
@@ -210,7 +196,7 @@ func TestMenuNumericSelection(t *testing.T) {
 	for _, child := range []string{"child1", "child2"} {
 		childPath := filepath.Join(container, child)
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", child+"-branch", childPath)
-		if err := os.MkdirAll(filepath.Join(childPath, hubgeometry.LyxDirName), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(childPath, configengine.LyxDirName), 0o755); err != nil {
 			t.Fatalf("failed to create %s _lyx: %v", child, err)
 		}
 	}
@@ -223,11 +209,11 @@ func TestMenuNumericSelection(t *testing.T) {
 		}
 	}()
 
-	configDir := hubgeometry.ConfigDir(mainWorktreePath)
+	configDir := configengine.ConfigDir(mainWorktreePath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
-	boardConfigPath := hubgeometry.ConfigFile(mainWorktreePath, "board")
+	boardConfigPath := configengine.ConfigFile(mainWorktreePath, "board")
 	boardConfig := `path: ../_board
 readme: Home.md
 design_prefix: proposal-
@@ -247,12 +233,7 @@ design_prefix: proposal-
 		t.Fatalf("failed to write tasks.json: %v", err)
 	}
 
-	layout := &hubgeometry.Layout{
-		Hub:     container,
-		Prime:   mainWorktreePath,
-		RelPath: ".",
-		Cwd:     mainWorktreePath,
-	}
+	layout := &lyxcwd.Location{HubPath: container, WorktreeName: filepath.Base(mainWorktreePath), AnchorRel: "."}
 
 	var launchCount int
 	originalLauncher := CodeLauncher

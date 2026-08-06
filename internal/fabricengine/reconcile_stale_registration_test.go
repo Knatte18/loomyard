@@ -32,9 +32,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -56,7 +57,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 
 	// The drift injection: delete the weft worktree directory out from under
 	// git, exactly as a stray rm would — the registration and branch survive.
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	if err := os.RemoveAll(weftPath); err != nil {
 		t.Fatalf("hand-delete weft worktree: %v", err)
 	}
@@ -105,13 +106,13 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 	return fixture
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// hubgeometry.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
+// fabricengine.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
 // Healthy, Reconcile, Topology.Checkout, Topology.Remove,
 // junctionRepointedDetail) now read from. lyxtest.CopyPaired/CopyPairedLocal
@@ -122,11 +123,11 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
@@ -212,9 +213,9 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	hostPath := l.WorktreePath(slug)
-	portalLink := l.PortalLink(slug)
-	launcherDir := l.LauncherDir(slug)
+	hostPath := fabricengine.WorktreePath(l, slug)
+	portalLink := fabricengine.PortalLink(l, slug)
+	launcherDir := fabricengine.LauncherDir(l, slug)
 
 	// Sanity: Add wired both; Lstat for the portal since it dangles once the
 	// host directory is gone.
@@ -236,7 +237,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 		t.Fatalf("Prune(apply=true): %v", err)
 	}
 
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	entry := findPruneEntryByWeftPath(t, res.Entries, weftPath)
 	if !entry.Removed {
 		t.Errorf("Removed = false after apply; want true (error=%q)", entry.Error)
@@ -267,8 +268,8 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
 		}
-		hostPath := l.WorktreePath(slug)
-		weftPath := l.WeftWorktreePath(slug)
+		hostPath := fabricengine.WorktreePath(l, slug)
+		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
 		// Bare removal of the host directory leaves the git worktree
 		// registration stale (unlike `git worktree remove`), so both prune
@@ -310,8 +311,8 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 			t.Fatalf("setup Add: %v", err)
 		}
-		hostPath := l.WorktreePath(slug)
-		weftPath := l.WeftWorktreePath(slug)
+		hostPath := fabricengine.WorktreePath(l, slug)
+		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
 		// Bare-remove BOTH sides, leaving both registrations stale. With the
 		// weft directory gone, Pass 1's removeStalePair has nothing to
@@ -352,7 +353,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	mainWeft := fabricengine.WeftBranchName("main")
-	weftPrime := l.WeftWorktree()
+	weftPrime := fabricengine.WeftWorktree(l)
 
 	// Move the weft primary off main-weft so main-weft is not the
 	// checked-out branch.
@@ -368,7 +369,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 			t.Errorf("Cleanup reported/handled primary weft branch %q; want not reported (live pair)", mainWeft)
 		}
 	}
-	if !branchExistsAt(t, l.WeftRepoRoot(), mainWeft) {
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), mainWeft) {
 		t.Errorf("main-weft branch deleted after force Cleanup with primary parked elsewhere; want intact (F1 regression)")
 	}
 }
@@ -384,7 +385,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	const warpManagedBranch = "cleanup-warp-owned"
-	lyxtest.MustRun(t, l.WeftRepoRoot(), "git", "branch", warpManagedBranch, fabricengine.WeftBranchName("main"))
+	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.WeftBranchName("main"))
 
 	res, err := topology.Cleanup(l, true, true)
 	if err != nil {
@@ -398,7 +399,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	if entry.Deleted {
 		t.Errorf("Deleted = true for non-suffixed branch %q; want false even under force", warpManagedBranch)
 	}
-	if !branchExistsAt(t, l.WeftRepoRoot(), warpManagedBranch) {
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), warpManagedBranch) {
 		t.Errorf("non-suffixed branch %q deleted; want intact", warpManagedBranch)
 	}
 }
@@ -424,7 +425,7 @@ func TestCleanup_DetachedHostHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	// Detach the host worktree's HEAD so branch-space liveness cannot see the
 	// pair is live; only the checked-out protection stands between Cleanup
 	// and the pair's weft branch.
-	hostPath := l.WorktreePath(slug)
+	hostPath := fabricengine.WorktreePath(l, slug)
 	lyxtest.MustRun(t, hostPath, "git", "checkout", "--detach")
 
 	weftBranch := fabricengine.WeftBranchName(slug)
@@ -451,7 +452,7 @@ func TestCleanup_DetachedHostHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	if forcedEntry.Error != "" {
 		t.Errorf("apply+force entry Error = %q; want empty (no doomed delete attempt)", forcedEntry.Error)
 	}
-	if !branchExistsAt(t, l.WeftRepoRoot(), weftBranch) {
+	if !branchExistsAt(t, mustWeftRepoRoot(t, l), weftBranch) {
 		t.Errorf("checked-out weft branch %q deleted; want intact", weftBranch)
 	}
 }
@@ -475,14 +476,14 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostLayout, err := hubgeometry.Resolve(l.WorktreePath(slug))
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
 	// Replace the junction with a real directory — the drift shape a
 	// pre-weft repo migration or a hand-created _lyx leaves behind.
-	hostLink := hostLayout.HostLyxLinkHere()
+	hostLink := fabricengine.HostLyxLinkHere(hostLayout)
 	if err := os.Remove(hostLink); err != nil {
 		t.Fatalf("remove host junction: %v", err)
 	}

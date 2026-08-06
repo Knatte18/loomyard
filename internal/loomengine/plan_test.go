@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
 // TestPlanSpec verifies PlanSpec's field mapping.
 func TestPlanSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())
@@ -67,7 +67,7 @@ func TestPlanSpec(t *testing.T) {
 // TestPlanSpec_PromptFilled verifies all markers are filled in the prompt.
 func TestPlanSpec_PromptFilled(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())
@@ -80,9 +80,9 @@ func TestPlanSpec_PromptFilled(t *testing.T) {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
 
-	decisionRecordPath := layout.DiscussionDecisionRecord()
-	planDir := layout.PlanDir()
-	overviewPath := layout.PlanOverview()
+	decisionRecordPath := DiscussionDecisionRecord(layout)
+	planDir := PlanDir(layout)
+	overviewPath := PlanOverview(layout)
 
 	for _, want := range []string{decisionRecordPath, planDir, overviewPath} {
 		if !strings.Contains(spec.Prompt, want) {
@@ -99,7 +99,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
 
 	t.Run("empty pattern_directive (PATTERN inactive) renders cleanly", func(t *testing.T) {
-		layout := &hubgeometry.Layout{WorktreeRoot: filepath.Join("home", "user", "repo")}
+		layout := &lyxcwd.Location{HubPath: filepath.Dir(filepath.Join("home", "user", "repo")), WorktreeName: filepath.Base(filepath.Join("home", "user", "repo"))}
 
 		reg, err := modelspec.LoadRegistry(t.TempDir())
 		if err != nil {
@@ -131,7 +131,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
-		layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 
 		reg, err := modelspec.LoadRegistry(t.TempDir())
 		if err != nil {
@@ -259,7 +259,7 @@ func TestPlanSpec_PromptStatesDependsOnCriterion(t *testing.T) {
 func renderedPlanPrompt(t *testing.T) string {
 	t.Helper()
 
-	layout := &hubgeometry.Layout{WorktreeRoot: filepath.Join("home", "user", "repo")}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(filepath.Join("home", "user", "repo")), WorktreeName: filepath.Base(filepath.Join("home", "user", "repo"))}
 	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())
@@ -277,7 +277,7 @@ func renderedPlanPrompt(t *testing.T) string {
 // TestPlanSpec_MalformedModelSpec verifies malformed specs are rejected.
 func TestPlanSpec_MalformedModelSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Plan: "opus[effort", PlanTimeoutMin: 120}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())

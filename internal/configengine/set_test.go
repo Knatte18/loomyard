@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -25,7 +24,7 @@ import (
 func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -36,7 +35,7 @@ func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 		t.Fatalf("Set() = %v; want nil", err)
 	}
 
-	path := hubgeometry.ConfigFile(tmpDir, "testmod")
+	path := configengine.ConfigFile(tmpDir, "testmod")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("config file not found at %s: %v", path, err)
@@ -55,7 +54,7 @@ func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -69,7 +68,7 @@ func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 		t.Errorf("Set() error = %v; want it to mention the unknown key", err)
 	}
 
-	path := hubgeometry.ConfigFile(tmpDir, "testmod")
+	path := configengine.ConfigFile(tmpDir, "testmod")
 	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
 		t.Errorf("config file still exists after unknown-key rejection; should have been removed")
 	}
@@ -81,16 +80,16 @@ func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	path := hubgeometry.ConfigFile(tmpDir, "testmod")
+	path := configengine.ConfigFile(tmpDir, "testmod")
 	originalContent := "key1: original_value\n"
 	if err := os.WriteFile(path, []byte(originalContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
@@ -116,16 +115,16 @@ func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
 func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	path := hubgeometry.ConfigFile(tmpDir, "testmod")
+	path := configengine.ConfigFile(tmpDir, "testmod")
 	originalContent := "key1: original_value1\nkey2: original_value2\n"
 	if err := os.WriteFile(path, []byte(originalContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
@@ -156,16 +155,16 @@ func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 func TestSet_PreservesUnrecognizedExistingKeyEndToEnd(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx/config: %v", err)
 	}
 
-	path := hubgeometry.ConfigFile(tmpDir, "testmod")
+	path := configengine.ConfigFile(tmpDir, "testmod")
 	originalContent := "key1: original_value1\nlegacy: keepme\n"
 	if err := os.WriteFile(path, []byte(originalContent), 0644); err != nil {
 		t.Fatalf("failed to write config file: %v", err)

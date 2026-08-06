@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
@@ -251,7 +252,7 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	// exists, alongside the session's not-yet-adopted initial pane (2
 	// panes, 0 strands). Read the header's pane id directly from reed.json
 	// so the assertions below can tell it apart from the foreign pane.
-	st, err := reedengine.LoadState(fixture.Layout.DotLyxDir())
+	st, err := reedengine.LoadState(filepath.Join(fixture.Layout.WorktreePath(), ".lyx"))
 	if err != nil || st == nil || st.HeaderPaneID == "" {
 		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
 	}
@@ -335,7 +336,7 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 		t.Fatalf("built-binary up: %v\n%s", err, out)
 	}
 
-	st, err := reedengine.LoadState(fixture.Layout.DotLyxDir())
+	st, err := reedengine.LoadState(filepath.Join(fixture.Layout.WorktreePath(), ".lyx"))
 	if err != nil || st == nil || st.HeaderPaneID == "" {
 		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
 	}
@@ -344,7 +345,7 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	// The embedded default template renders "hub: {{.hub}}"; the fixture's
 	// hub is its temp container. A JSON error body in the pane (the pre-fix
 	// symptom) can never contain this line.
-	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.Hub, 20*time.Second)
+	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.HubPath, 20*time.Second)
 
 	// The 1-row regression (fable-header-r1 F10): once a strand exists the
 	// header clamps to its configured single row (height_rows: 1), and
@@ -358,7 +359,7 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	if out, err := addCmd.CombinedOutput(); err != nil {
 		t.Fatalf("built-binary add: %v\n%s", err, out)
 	}
-	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.Hub, 20*time.Second)
+	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.HubPath, 20*time.Second)
 }
 
 // TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane
@@ -391,7 +392,7 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	// up boots the header pane before any strand exists (card 17). Read the
 	// persisted pane id directly from reed.json (RunCLI/status carries no
 	// header field) rather than assuming which of the session's panes it is.
-	st, err := reedengine.LoadState(fixture.Layout.DotLyxDir())
+	st, err := reedengine.LoadState(filepath.Join(fixture.Layout.WorktreePath(), ".lyx"))
 	if err != nil || st == nil || st.HeaderPaneID == "" {
 		t.Fatalf("LoadState after up = (%+v, %v), want a persisted HeaderPaneID", st, err)
 	}

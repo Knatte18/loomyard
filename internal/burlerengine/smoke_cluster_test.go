@@ -126,11 +126,11 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, lyxtest.PairedFi
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	reedCfg, err := reedengine.LoadConfig(fixture.Layout.Cwd, "reed")
+	reedCfg, err := reedengine.LoadConfig(fixture.Layout.AnchorPath(), "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.Cwd, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.AnchorPath(), "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

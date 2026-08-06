@@ -14,20 +14,22 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
-// It discovers active worktrees from hubgeometry.List, excluding the main worktree and those
+// It discovers active worktrees from fabricengine.List, excluding the main worktree and those
 // without _lyx. Titles are resolved through the board facade. Returns an error on board config
 // load or health check failure, or nil on success.
-func Menu(l *hubgeometry.Layout, in io.Reader, out io.Writer) error {
-	cfg, err := boardengine.LoadConfig(l.Cwd, "board")
+func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
+	cfg, err := boardengine.LoadConfig(l.AnchorPath(), "board")
 	if err != nil {
 		return fmt.Errorf("load board config: %w", err)
 	}
 
-	cfg.Path = hubgeometry.BoardDir(l.Hub)
+	cfg.Path = fabricengine.BoardDir(l.HubPath)
 
 	b := boardengine.New(cfg)
 
@@ -35,7 +37,7 @@ func Menu(l *hubgeometry.Layout, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("board health check failed: %w", err)
 	}
 
-	entries, err := hubgeometry.List(l.Cwd)
+	entries, err := fabricengine.List(l.AnchorPath())
 	if err != nil {
 		return fmt.Errorf("list worktrees: %w", err)
 	}
@@ -50,7 +52,7 @@ func Menu(l *hubgeometry.Layout, in io.Reader, out io.Writer) error {
 
 		slug := filepath.Base(entry.Path)
 
-		lyxPath := filepath.Join(entry.Path, l.RelPath, hubgeometry.LyxDirName)
+		lyxPath := filepath.Join(entry.Path, l.AnchorRel, configengine.LyxDirName)
 		stat, err := os.Stat(lyxPath)
 		if err != nil || !stat.IsDir() {
 			continue

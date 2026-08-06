@@ -6,19 +6,19 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
 func TestReconcileAll_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	// Seed board.yaml with a missing key and a stale key
-	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
+	boardPath := configengine.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
@@ -66,13 +66,13 @@ func TestReconcileAll_DryRun(t *testing.T) {
 
 func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	// Seed board.yaml
-	boardPath := hubgeometry.ConfigFile(tmpDir, "board")
+	boardPath := configengine.ConfigFile(tmpDir, "board")
 	if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
 		t.Fatalf("write board.yaml: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 
 	// Verify fabric.yaml was NOT created under the per-worktree base.
-	fabricPath := hubgeometry.ConfigFile(tmpDir, "fabric")
+	fabricPath := configengine.ConfigFile(tmpDir, "fabric")
 	if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
 		t.Errorf("fabric.yaml was created under the per-worktree base; want absent (stat err = %v)", err)
 	}
@@ -133,14 +133,14 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 // away, exactly like any other stale key a template no longer declares.
 func TestReconcileAll_DropsStaleReedClaudeKey(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
 	// Seed reed.yaml as it would exist on disk for a user who set up their
 	// worktree before the claude: key was removed from the template.
-	reedPath := hubgeometry.ConfigFile(tmpDir, "reed")
+	reedPath := configengine.ConfigFile(tmpDir, "reed")
 	seedContent := "tmux: C:\\tools\\tmux.exe\nclaude: C:\\tools\\claude.exe\n"
 	if err := os.WriteFile(reedPath, []byte(seedContent), 0o644); err != nil {
 		t.Fatalf("write reed.yaml: %v", err)
@@ -186,7 +186,7 @@ func TestReconcileAll_DropsStaleReedClaudeKey(t *testing.T) {
 
 func TestReconcileAll_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 func TestReconcileAll_SeedOnly(t *testing.T) {
 	t.Run("absent file materializes template verbatim", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		configDir := configengine.ConfigDir(tmpDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
@@ -254,7 +254,7 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 			t.Errorf("models.Removed = %v; want empty (seed-only never reports removed)", result.Removed)
 		}
 
-		modelsPath := hubgeometry.ConfigFile(tmpDir, "models")
+		modelsPath := configengine.ConfigFile(tmpDir, "models")
 		got, err := os.ReadFile(modelsPath)
 		if err != nil {
 			t.Fatalf("read models.yaml: %v", err)
@@ -267,12 +267,12 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 
 	t.Run("present file with operator-added alias is untouched", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		configDir := configengine.ConfigDir(tmpDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		modelsPath := hubgeometry.ConfigFile(tmpDir, "models")
+		modelsPath := configengine.ConfigFile(tmpDir, "models")
 		seedContent := "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n"
 		if err := os.WriteFile(modelsPath, []byte(seedContent), 0o644); err != nil {
 			t.Fatalf("write models.yaml: %v", err)
@@ -305,12 +305,12 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 
 	t.Run("present file with template key removed is not resurrected", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		configDir := configengine.ConfigDir(tmpDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		modelsPath := hubgeometry.ConfigFile(tmpDir, "models")
+		modelsPath := configengine.ConfigFile(tmpDir, "models")
 		// The sonnet block's defaults/effort keys are deliberately absent
 		// relative to modelspec.ConfigTemplate().
 		seedContent := "sonnet:\n  engine: claude\n  model: sonnet\n"
@@ -342,7 +342,7 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 
 	t.Run("non-seed-only module still gets pruned in the same run", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(tmpDir)
+		configDir := configengine.ConfigDir(tmpDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
@@ -350,7 +350,7 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 		// Seed board.yaml (non-seed-only) with a stale key alongside an
 		// untouched models.yaml, to guard against the seed-only branch
 		// over-broadly skipping every module's reconcile.
-		boardPath := hubgeometry.ConfigFile(tmpDir, "board")
+		boardPath := configengine.ConfigFile(tmpDir, "board")
 		if err := os.WriteFile(boardPath, []byte("path: board\nstale_key: old_value\n"), 0o644); err != nil {
 			t.Fatalf("write board.yaml: %v", err)
 		}
@@ -397,16 +397,16 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 	t.Run("both legacy files present, both values migrate, both files pruned", func(t *testing.T) {
 		boardDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(boardDir)
+		configDir := configengine.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
+		warpPath := configengine.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
-		weftPath := hubgeometry.ConfigFile(boardDir, "weft")
+		weftPath := configengine.ConfigFile(boardDir, "weft")
 		if err := os.WriteFile(weftPath, []byte("pathspec: _lyx custom-dir\n"), 0o644); err != nil {
 			t.Fatalf("write weft.yaml: %v", err)
 		}
@@ -429,7 +429,7 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			}
 		}
 
-		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
+		fabricPath := configengine.ConfigFile(boardDir, "fabric")
 		got, err := os.ReadFile(fabricPath)
 		if err != nil {
 			t.Fatalf("read fabric.yaml: %v", err)
@@ -451,12 +451,12 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 
 	t.Run("only warp.yaml present, pathspec falls back to template default", func(t *testing.T) {
 		boardDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(boardDir)
+		configDir := configengine.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
+		warpPath := configengine.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
@@ -470,7 +470,7 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Errorf("fabric.MigratedFrom = %v; want exactly [warp]", fabricResult.MigratedFrom)
 		}
 
-		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
+		fabricPath := configengine.ConfigFile(boardDir, "fabric")
 		got, err := os.ReadFile(fabricPath)
 		if err != nil {
 			t.Fatalf("read fabric.yaml: %v", err)
@@ -489,12 +489,12 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 
 	t.Run("dry run reports the pending migration but writes and deletes nothing", func(t *testing.T) {
 		boardDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(boardDir)
+		configDir := configengine.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
+		warpPath := configengine.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: hanf/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
@@ -511,7 +511,7 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 			t.Errorf("fabric.MigratedFrom = %v; want exactly [warp] even on a dry run", fabricResult.MigratedFrom)
 		}
 
-		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
+		fabricPath := configengine.ConfigFile(boardDir, "fabric")
 		if _, err := os.Stat(fabricPath); !os.IsNotExist(err) {
 			t.Errorf("fabric.yaml was written on a dry run; want absent (stat err = %v)", err)
 		}
@@ -522,16 +522,16 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 
 	t.Run("fabric.yaml already present, legacy files untouched and not migrated", func(t *testing.T) {
 		boardDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(boardDir)
+		configDir := configengine.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		fabricPath := hubgeometry.ConfigFile(boardDir, "fabric")
+		fabricPath := configengine.ConfigFile(boardDir, "fabric")
 		if err := os.WriteFile(fabricPath, []byte("branch_prefix: existing/\npathspec: _lyx\n"), 0o644); err != nil {
 			t.Fatalf("write fabric.yaml: %v", err)
 		}
-		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
+		warpPath := configengine.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: stale/\n"), 0o644); err != nil {
 			t.Fatalf("write warp.yaml: %v", err)
 		}
@@ -559,12 +559,12 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 
 	t.Run("unparseable legacy file is skipped, left on disk, and not migrated", func(t *testing.T) {
 		boardDir := t.TempDir()
-		configDir := hubgeometry.ConfigDir(boardDir)
+		configDir := configengine.ConfigDir(boardDir)
 		if err := os.MkdirAll(configDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
 
-		warpPath := hubgeometry.ConfigFile(boardDir, "warp")
+		warpPath := configengine.ConfigFile(boardDir, "warp")
 		if err := os.WriteFile(warpPath, []byte("branch_prefix: [unterminated\n"), 0o644); err != nil {
 			t.Fatalf("write corrupt warp.yaml: %v", err)
 		}

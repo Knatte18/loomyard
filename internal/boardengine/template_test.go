@@ -22,7 +22,7 @@ func TestConfigTemplate_ValidYAML(t *testing.T) {
 }
 
 // TestConfigTemplate_HasRequiredKeys asserts the template contains required keys (readme, design_prefix).
-// The geometry key path is intentionally absent — hubgeometry.BoardDir now owns the data dir.
+// The geometry key path is intentionally absent — fabricengine.BoardDir now owns the data dir.
 func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 	got := ConfigTemplate()
 	var result map[string]any

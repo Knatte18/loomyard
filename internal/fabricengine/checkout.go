@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // CheckoutResult contains the fields produced by a successful Checkout.
@@ -34,8 +34,8 @@ type CheckoutResult struct {
 // forking new weft branches when their suffixed siblings don't exist, re-pointing junctions,
 // and refreshing the correspondence index — rolling back both sides on failure to preserve
 // all-or-nothing semantics.
-func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResult, error) {
-	weftWorktree := l.WeftWorktree()
+func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, error) {
+	weftWorktree := WeftWorktree(l)
 
 	// Refuse if the weft worktree is dirty to prevent half-switched pairs.
 	weftStatus, _, exitCode, err := gitexec.RunGit(
@@ -55,7 +55,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	// Capture both original branches for rollback on later failure.
 	origBranchOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		l.WorktreeRoot,
+		l.WorktreePath(),
 	)
 	if err != nil {
 		return CheckoutResult{}, fmt.Errorf("capture host branch: %w", err)
@@ -82,7 +82,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	// Switch the host worktree to the target branch.
 	_, _, exitCode, err = gitexec.RunGit(
 		[]string{"switch", branch},
-		l.WorktreeRoot,
+		l.WorktreePath(),
 	)
 	if err != nil {
 		return CheckoutResult{}, fmt.Errorf("host switch: %w", err)
@@ -92,7 +92,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	}
 
 	// Resolve the weft sibling branch; roll back host on failure.
-	slug := filepath.Base(l.WorktreeRoot)
+	slug := filepath.Base(l.WorktreePath())
 	weftForked, err := t.switchOrForkWeft(l, branch)
 	if err != nil {
 		t.rollbackSwitch(l, originalBranch, originalWeftBranch, "")
@@ -117,7 +117,7 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 	}
 
 	// Refresh correspondence index for the new branch; switch is complete regardless of failure.
-	if err := refreshCorrIndexAfterSwitch(l.WorktreeRoot, weftWorktree); err != nil {
+	if err := refreshCorrIndexAfterSwitch(l.WorktreePath(), weftWorktree); err != nil {
 		return CheckoutResult{}, fmt.Errorf("checkout to %q completed, but refreshing the correspondence index failed (re-run `lyx fabric checkout` to retry): %w", branch, err)
 	}
 
@@ -129,8 +129,8 @@ func (t *Topology) Checkout(l *hubgeometry.Layout, branch string) (CheckoutResul
 
 // switchOrForkWeft switches or forks the weft branch to match the host target,
 // reporting whether a new branch was created (forked) so rollback can clean it up.
-func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) (forked bool, err error) {
-	weftWorktree := l.WeftWorktree()
+func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked bool, err error) {
+	weftWorktree := WeftWorktree(l)
 	weftBranch := WeftBranchName(branch)
 
 	if weftBranchExists(l, weftBranch) {
@@ -179,12 +179,12 @@ func (t *Topology) switchOrForkWeft(l *hubgeometry.Layout, branch string) (forke
 // rollbackSwitch switches both host and weft back to their original branches on failure,
 // cleaning up any forked weft branch, with errors silently discarded.
 // The junction stays consistent without rewiring because the worktree directory path doesn't change.
-func (t *Topology) rollbackSwitch(l *hubgeometry.Layout, originalBranch, originalWeftBranch, forkedWeftBranch string) {
-	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreeRoot)
+func (t *Topology) rollbackSwitch(l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
+	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreePath())
 	if originalWeftBranch != "" {
-		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, l.WeftWorktree())
+		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, WeftWorktree(l))
 	}
 	if forkedWeftBranch != "" {
-		_, _, _, _ = gitexec.RunGit([]string{"branch", "-D", forkedWeftBranch}, l.WeftWorktree())
+		_, _, _, _ = gitexec.RunGit([]string{"branch", "-D", forkedWeftBranch}, WeftWorktree(l))
 	}
 }
