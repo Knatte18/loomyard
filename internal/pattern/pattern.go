@@ -6,9 +6,34 @@ package pattern
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
+
+// DirName is the directory name for the PATTERN constraint-injection surface
+// within a worktree (i.e. <worktree>/_pattern). It is this package's own
+// declaration of the "_pattern" geometry token; use Dir/File/FileHere to
+// obtain the paths built from it.
+const DirName = "_pattern"
+
+// Dir returns the path to the _pattern directory within a baseDir.
+func Dir(baseDir string) string {
+	return filepath.Join(baseDir, DirName)
+}
+
+// File returns the path to the PATTERN.md file within a baseDir.
+func File(baseDir string) string {
+	return filepath.Join(Dir(baseDir), "PATTERN.md")
+}
+
+// FileHere returns the path to the PATTERN.md file for the current worktree.
+// It is anchored at WorktreePath()+AnchorRel to correctly handle nested-hub
+// geometry and to stay consistent with the junction endpoints lyxcwd still
+// owns, which are all WorktreePath()+AnchorRel-anchored.
+func FileHere(l *lyxcwd.Location) string {
+	return File(filepath.Join(l.WorktreePath(), l.AnchorRel))
+}
 
 // Role identifies which agent-facing directive variant Directive should render.
 type Role int
@@ -82,9 +107,9 @@ func Directive(l *lyxcwd.Location, role Role) string {
 	}
 }
 
-// isActive reports whether PATTERN is active: an absent PatternFileHere() means inactive; a directory in its place is also inactive; otherwise active.
+// isActive reports whether PATTERN is active: an absent FileHere(l) means inactive; a directory in its place is also inactive; otherwise active.
 func isActive(l *lyxcwd.Location) bool {
-	info, err := statFile(l.PatternFileHere())
+	info, err := statFile(FileHere(l))
 	if err != nil {
 		// os.IsNotExist is the normal, common inactive case: PATTERN.md was
 		// never created. Any other error — permission denied, I/O failure —

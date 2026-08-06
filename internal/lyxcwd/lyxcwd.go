@@ -190,17 +190,6 @@ func buildLocation(cwd, workTreeRoot, hubPath, anchorRel string, applyGate bool)
 	}, nil
 }
 
-// PatternDir returns the path to the _pattern directory within a baseDir.
-// Per the Hub Geometry Invariant, no other package may construct this path.
-func PatternDir(baseDir string) string {
-	return filepath.Join(baseDir, PatternDirName)
-}
-
-// PatternFile returns the path to the PATTERN.md file within a baseDir.
-func PatternFile(baseDir string) string {
-	return filepath.Join(PatternDir(baseDir), "PATTERN.md")
-}
-
 // BoardDir returns the absolute path to the board data directory inside hub.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
@@ -399,13 +388,6 @@ func (l *Location) HostPatternLink(slug string) string {
 // as the host-side junction endpoint paired with WeftPatternDir().
 func (l *Location) HostPatternLinkHere() string {
 	return filepath.Join(l.WorktreePath(), l.AnchorRel, PatternDirName)
-}
-
-// PatternFileHere returns the path to the PATTERN.md file for the current worktree.
-// It is anchored at WorktreePath()+AnchorRel to correctly handle nested-hub geometry and to stay
-// consistent with junction endpoints above, which are all WorktreePath()+AnchorRel-anchored.
-func (l *Location) PatternFileHere() string {
-	return PatternFile(filepath.Join(l.WorktreePath(), l.AnchorRel))
 }
 
 // HostJunction represents a directory junction in the host worktree that links to a weft directory.

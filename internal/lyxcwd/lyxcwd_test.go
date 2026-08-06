@@ -17,6 +17,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
+// newTestLocation builds a Location by hand for join-arithmetic assertions,
+// mirroring the field derivation Resolve performs, without spawning git. It
+// used to live in this package's pattern_test.go, which card 25 relocated to
+// internal/pattern along with the _pattern accessors it covered; this file's
+// own TestJunctionPaths still needs it, so it is restored here.
+func newTestLocation(hub, worktreeRoot, relPath string) *lyxcwd.Location {
+	return &lyxcwd.Location{
+		HubPath:      hub,
+		WorktreeName: filepath.Base(worktreeRoot),
+		AnchorRel:    relPath,
+	}
+}
+
 // wantMenuLauncherName returns the expected menu launcher filename for the
 // current runtime.GOOS, mirroring the GOOS-aware selection in lyxcwd.go
 // so these tests are green on the Windows host now and on Linux later.

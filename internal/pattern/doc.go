@@ -9,10 +9,10 @@
 //
 // # The active check is pure existence
 //
-// PATTERN is active iff `_pattern/PATTERN.md` exists, resolved via
-// hubgeometry.Layout.PatternFileHere() and nothing else: this package never
-// constructs the path itself (the Hub Geometry Invariant's enforcement test
-// makes that impossible from batch 2 onward). Existence alone is the check —
+// PATTERN is active iff `_pattern/PATTERN.md` exists, resolved via this
+// package's own FileHere(l) and nothing else: FileHere is what constructs
+// the path (the Cwd Resolution Invariant's enforcement test polices which
+// package may declare the "_pattern" token). Existence alone is the check —
 // never a content inspection — because the `_pattern/` directory itself may
 // exist without PATTERN.md (the normal inactive state; `lyx init` always
 // creates the directory), and a content-inspecting check would turn a
@@ -46,7 +46,7 @@
 // Each directive injects a pointer to `_pattern/PATTERN.md`, never the
 // constraints inline, so prompt size stays constant however large PATTERN
 // grows. The pointer is a literal relative string baked into the directive
-// constant, never an interpolated absolute path built from a Layout field:
+// constant, never an interpolated absolute path built from a Location field:
 // an absolute path would vary per worktree, which would make the fixed
 // directive strings unable to be compared for equality (or matched by
 // substring) across worktrees the way this package's own tests, and any

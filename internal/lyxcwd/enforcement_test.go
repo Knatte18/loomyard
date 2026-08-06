@@ -249,8 +249,13 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		// the single exported declarer, but internal/lyxcwd still declares
 		// the private, unexported lyxDirName const for its own remaining
 		// _lyx-anchored methods, removed once those methods relocate.
-		"_lyx":     {"internal/configengine", "internal/lyxcwd"},
-		"_pattern": {"internal/lyxcwd"},
+		"_lyx": {"internal/configengine", "internal/lyxcwd"},
+		// "_pattern" is transitionally co-owned: internal/pattern is the new
+		// declarer of DirName, but internal/lyxcwd still declares the
+		// exported PatternDirName const, read as a git pathspec by
+		// internal/fabricengine and its tests until batch 6's card 35 cuts
+		// them over and removes this transitional entry.
+		"_pattern": {"internal/pattern", "internal/lyxcwd"},
 	}
 
 	// tokenOwnedByDir reports whether dir is one of tok's registered owners.
