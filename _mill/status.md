@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-06T17:21:00Z'
+discussion-fix-r5  '2026-08-06T18:50:04Z'
+discussed  '2026-08-06T18:50:04Z'
 ```

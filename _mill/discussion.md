@@ -55,6 +55,7 @@ The Out list below contains only items excluded by a structural invariant, a phy
   Every line is pinned in `templates-describe-one-repo`.
 - **Test files** — hand-cleaned of vocabulary that is not a reference to owner-package API, including `cmd/lyx/boardguard_test.go` (which calls the invariant "Weft Git Invariant" where `CONSTRAINTS.md` says "Fabric Git Invariant (warp + weft)") and `cmd/lyx/rawgitmutation_test.go:10,45` (which names `WarpBisector`/`WarpResetter` in comments this task renames).
   **Carve-out:** the retained env-var names `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` stay verbatim wherever they appear, including in `webstercli`, `buildercli`, `perchcli`, and `configcli` tests — they are the literal names of variables this task deliberately does not rename (see Out), so a test that sets one must spell it correctly.
+  The PowerShell cmdlet `Write-Host`, embedded in `--cmd` strings across five `internal/reedcli` test files, is likewise retained verbatim — the phrase-based `host` predicate does not match it, but the hand-clean must not "fix" it either.
 - **Enforcement** — new `TestEnforcement_FabricVocabulary`, covering production `.go` files and the embedded templates.
 - **Docs** — `internal/fabricengine`'s package doc, `CONSTRAINTS.md`, `docs/overview.md`, slice 8's section in `manifest/designs/fabric-unified-view.md`, plus the repo-prose docs named in `doc-vocabulary-split`.
 
@@ -188,17 +189,18 @@ The Out list below contains only items excluded by a structural invariant, a phy
   the junction name, which is the actionable part, is preserved in all four.
 - Rejected: a bare enum with no `Detail` — loses the junction name from four of the five.
 
-### clean-typed-reason
+### clean-reworded-reason
 
-- Decision: `fabricengine.Clean` gets the same treatment as `Healthy`.
-  `hostclean.go:38-43` builds `"host: %s"` / `"weft: %s"` and joins them with `"; "`;
-  `loomengine/preflight.go:92-98` prints that reason verbatim under `CheckWorktreeClean`.
-  The two sides are reworded as **code-side** and **state-side**: `"uncommitted code changes: %s"` and "uncommitted state changes under `_lyx`: %s", joined the same way.
-- Rationale: this is the identical leak class as `drift.go:58` and typing one while leaving the other is indefensible.
-  The code/state split also preserves the distinction an operator acts on — their own edits versus lyx's own state — which "host:"/"weft:" only conveyed to a reader who already knew the geometry.
+- Decision: `fabricengine.Clean` keeps its plain `(ok bool, reason string, err error)` signature.
+  **Only the wording changes.** `hostclean.go:38-43` builds `"host: %s"` / `"weft: %s"` and joins them with `"; "`;
+  the two sides become **code-side** and **state-side**: `"uncommitted code changes: %s"` and "uncommitted state changes under `_lyx`: %s", joined the same way.
+- Rationale for *not* typing it, unlike `Healthy`: `healthy-typed-reason` exists because `loomengine/preflight.go:117-141` **substring-matches** `Healthy`'s reason to pick a `CheckID`, so rewording it without typing would silently change classification.
+  `Clean`'s reason is only **printed** (`preflight.go:92-98` passes it straight to `report.addFailure` under a fixed `CheckWorktreeClean`) — nothing branches on its content, so a reword is safe on its own.
+  Typing it would also be actively awkward: `hostclean.go:44-47` produces a **both-sides-dirty** result by joining two reasons, which a single `Cause` field cannot express.
+- The code/state split preserves the distinction an operator acts on — their own edits versus lyx's own state — which "host:"/"weft:" only conveyed to a reader who already knew the geometry.
   The remedy differs per side (`git commit` versus `lyx fabric status`), so collapsing to one side-blind reason would cost real information.
 - Rejected: a single `"uncommitted changes: %s"` — simplest, but loses which remedy applies.
-- Rejected: leaving `Clean` alone as a two-sided dirty report — inconsistent with `healthy-typed-reason` for no defensible reason.
+- Rejected: giving `Clean` a `CleanReason` type mirroring `HealthReason` — no caller branches on it, and the both-sides case has no single cause.
 - Rationale: this is a vocabulary leak *and* a fragility, and one change fixes both.
   `drift.go:58` returns `"host on %s, weft on %s (want %s)"` — loomengine substring-matches it to pick a `CheckID` *and* prints it in loom's report, so the word crosses the boundary into operator output.
   `preflight.go:117-130`'s own comment already documents that any future reword of those reasons silently reverts the classification to `CheckWeftSync`;
@@ -323,14 +325,19 @@ The Out list below contains only items excluded by a structural invariant, a phy
 ### fabric-vocabulary-rule
 
 - Decision: in production code, the tokens `weft`, `warp`, and `host` may appear only in the **owner set**.
-  `host` is policed as a whole word, on the same footing as the other two: "the HOST repo" teaches the two-repo model exactly as effectively as "the weft repo" does — `implementer-template.md:37` reads "Commit the card to the HOST repo — **never the weft repo**", and a reader who is told which repo to commit to has been told there is another one.
-  A non-owner occurrence where `host` means something other than the warp checkout (the running OS, a hostname, an HTTP header) is **reworded, not excepted**.
-  No package row is granted for `host` at all.
-- Rationale for that granularity: the exception unit has to be finer than a package, because the same package carries both senses.
-  `websterengine/audit.go:156,159` uses the legitimate OS sense ("the host OS's native sense", "regardless of host workdir") while `beginbatch.go:62` and `recordbatch.go:40` carry the real leak ("the host repo checkout") — a `websterengine` owner-map row would silently permit the second while sanctioning the first.
-  Rewording avoids needing an exception mechanism at all: "the host OS's native sense" → "the running OS's native sense", "regardless of host workdir" → "regardless of the workdir's platform".
-  `internal/shell`'s three occurrences get the same classify-then-reword treatment before any exception is considered.
-- Rejected: a per-line marker comment (`// vocabulary-exempt: OS sense`) — precise, but introduces a mechanism the repo does not have, for a handful of lines that reword cleanly.
+  `weft` and `warp` are policed as bare tokens — they have no meaning in this repo other than fabric's.
+  **`host` is different and must NOT be policed as a bare word.** `host` is ordinary English that appears throughout the repo with no fabric relation: `reedengine/lifecycle.go:211,427` ("a downed reed session cannot host a strand", "a zero-pane husk cannot host a split"), `reedengine/proctree.go:6,89` ("a non-Windows test host"), `builderengine/spawn.go:9,232` ("the plain host filesystem"), `shell/posix.go:3` ("host-testable"), and the PowerShell cmdlet `Write-Host` embedded in `--cmd` strings across five `internal/reedcli` test files.
+  A whole-word ban would force rewriting ordinary English in modules with no connection to fabric, and would break `Write-Host`.
+- **The predicate is phrase-based:** `host` is policed only where it qualifies a repo-or-geometry noun — `host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD` (any case, hyphenated or spaced) — plus as a component of a policed identifier in fabric-geometry naming (`hostBranch`, `hostLayoutFor`, `hostReason`, `HostJunction`, `hostClean`).
+  The verb sense, the machine/OS sense, and `Write-Host` all pass untouched.
+- Rationale: "the HOST repo" teaches the two-repo model exactly as effectively as "the weft repo" does — `implementer-template.md:37` reads "Commit the card to the HOST repo — **never the weft repo**", and a reader told which repo to commit to has been told there is another one.
+  That leak lives entirely in the qualifying phrase, not in the bare word, so the phrase is what the predicate should match.
+- Consequently **no package exceptions are granted for `host`**, and none are needed: the phrase predicate distinguishes the two senses that a package-granular exception could not.
+  This matters concretely — `websterengine` carries both, with `audit.go:156,159` in the legitimate OS sense ("the host OS's native sense", "regardless of host workdir") and `beginbatch.go:62` / `recordbatch.go:40` carrying the real leak ("the host repo checkout").
+  A `websterengine` owner-map row would have silently permitted the second while sanctioning the first.
+  The two OS-sense lines are still reworded ("the running OS's native sense", "regardless of the workdir's platform") as ordinary hygiene, but the predicate no longer depends on it.
+- Rejected: whole-word `host` with per-package exceptions — the same package carries both senses.
+- Rejected: whole-word `host` with per-line marker comments (`// vocabulary-exempt: OS sense`) — introduces a mechanism the repo does not have, and would need one on every `Write-Host` line.
 - Rejected: a per-symbol allowlist — the same staleness problem already rejected for the main rule.
   Everywhere else — identifiers, string literals, comments, and embedded prompt templates — uses fabric vocabulary.
   Owner set:
@@ -394,10 +401,12 @@ The Out list below contains only items excluded by a structural invariant, a phy
 ### enforcement-test
 
 - Decision: new `TestEnforcement_FabricVocabulary` in `internal/lyxcwd/enforcement_test.go`.
-  It fails any file outside the owner set containing the token `weft`, `warp`, or whole-word `host` — in identifiers, string literals, **or** comments — and any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname`.
-  All three tokens are machine-checked;
+  It fails any file outside the owner set containing the token `weft` or `warp`, or a **fabric-sense `host` phrase** per `fabric-vocabulary-rule`'s phrase list — in identifiers, string literals, **or** comments — and any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname`.
+  All three are machine-checked;
   none is left to review discipline.
-  `host` in particular must be in the predicate: it is the token that survived three review rounds undetected, which is precisely the argument against trusting review for it.
+  `host` must be in the predicate — it is the token that survived three review rounds undetected, which is precisely the argument against trusting review for it — but as the phrase form, not the bare word, or the test would fail on `Write-Host` and on ordinary English like "cannot host a strand".
+  The predicate sub-test therefore needs `host` cases in both directions: `"the host repo"` and `hostBranch` fail;
+  `"cannot host a strand"`, `"a non-Windows test host"`, and `Write-Host` pass.
   Coverage: production `.go` files under `internal/` and `cmd/`, plus a plain `internal/**/*.md` walk — **not** a parse of `//go:embed` directives.
   All seven leak-bearing `.md` files are embedded, so the two are equivalent today, and a plain walk is simpler and fails safe (a new non-embedded `.md` under `internal/` gets policed rather than silently skipped).
   `*_test.go` files are outside the machine check.
@@ -524,6 +533,8 @@ Discovered during discussion:
   Paired with a `loomengine` test asserting that each of the five maps to the same `CheckID` it maps to today: branch mismatch → `CheckFabricSync`;
   the other four → `CheckJunction` with `check3BlocksSeed` set.
   This equivalence is the safety net for the task's only behavioural-surface change, and it must enumerate the causes individually — a single "junction-ish" case would re-encode the substring coincidence the change exists to remove.
+- `fabricengine.Clean`'s reworded reason: three shapes — code-side only, state-side only, and **both** (the `"; "`-joined case `hostclean.go:44-47` produces).
+  No existing test covers this string, and `loomengine` prints it verbatim to an operator under `CheckWorktreeClean`, so it needs its own entry rather than riding on a `Healthy` test.
 
 **Regression coverage that must keep passing:**
 
@@ -544,6 +555,15 @@ Discovered during discussion:
   It must be updated to assert against `"fabric sync failed"`, not deleted.
 - `internal/fabricengine/fabric_test.go:25,44` — the missing-path contract, restated through `Open(l)` per `export-test-shim`;
   the other three external-package test files move onto the `export_test.go` shim.
+- **Five more `package fabricengine_test` files break on `Healthy`'s third return changing from `string` to `HealthReason`**, and all five must be migrated in the same commit:
+  - `junction_pattern_integration_test.go:417-426` — pins all three junction reason strings via `reason != wantReason`.
+    Its wordings move to the typed `Cause`, which is the stronger assertion;
+    the `Detail` string is asserted separately where the junction name matters.
+  - `reconcile_stale_removal_test.go:343-351` and `config_driven_junctions_integration_test.go:120-125` — `strings.Contains(reason, "unavailable")` and reason-in-message formatting.
+    The `Contains` check becomes `Cause != CauseConfigLoadFailed`, which is what it was approximating.
+  - `reconcile_stale_registration_test.go:487` and `boardjunction_integration_test.go:162-167` — read `reason` as a string in failure messages;
+    they format `reason.Detail` instead.
+    `boardjunction_integration_test.go:167` asserts `(true, "")`, which becomes `(true, HealthReason{})`.
 - `configcli/configcli_integration_test.go:111` uses `fabricengine.WeftWorktreePath`, which stays exported (zero production callers, no API change) — no edit needed.
 
 **The enforcement test itself** needs a predicate sub-test on synthetic snippets, mirroring `TestEnforcement_GeometryLiterals`'s existing `t.Run("predicate", …)`: a non-owner file with `weft` in an identifier fails;
@@ -583,4 +603,5 @@ The renames touch exported symbols in six packages, so compile breakage in test 
 - **Q:** Does the vocabulary rule get its own `CONSTRAINTS.md` section? **A:** Yes — it is not a cwd rule, and hanging it off the Cwd Resolution Invariant would misfile it.
 - **Q:** Does `Clean` need the same typed reason as `Healthy`? **A:** Yes — same leak class, same fix, reworded as code-side vs state-side.
 - **Q:** Is `host` machine-checked or a review obligation? **A:** Machine-checked. It is the token that survived three review rounds undetected.
-- **Q:** How are legitimate non-fabric uses of `host` (the OS sense) handled? **A:** Reworded, not excepted. No package row is granted for `host`, because one package carries both senses.
+- **Q:** How are legitimate non-fabric uses of `host` handled? **A:** The predicate is phrase-based (`host repo`, `host worktree`, `hostBranch`, …), not whole-word. A bare-word ban would force rewriting ordinary English ("cannot host a strand", "a non-Windows test host") in modules unrelated to fabric, and would break the PowerShell cmdlet `Write-Host` embedded in five `reedcli` test files. No package exceptions are needed once the predicate matches the phrase.
+- **Q:** Does `Clean` get a typed reason like `Healthy`? **A:** No — reword only. `Healthy` needed typing because preflight *substring-matches* its reason to pick a `CheckID`; `Clean`'s reason is only printed. A single `Cause` also cannot express the both-sides-dirty result `hostclean.go:44-47` produces.
