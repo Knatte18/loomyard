@@ -239,12 +239,22 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// (and transitional co-owners) to this map, one token at a time, in
 	// lockstep with the card that moves that token's declaration.
 	geometryTokenOwners := map[string][]string{
-		"_board":     {"internal/lyxcwd"},
-		"-weft":      {"internal/weftname"},
-		"-HUB":       {"internal/lyxcwd"},
-		"_portals":   {"internal/lyxcwd"},
-		"_launchers": {"internal/lyxcwd"},
-		"_raddle":    {"internal/lyxcwd"},
+		// "_board" and "-HUB" are dual-owned: internal/lyxcwd keeps a private
+		// boardDir/boardDirName pair (readRecordedAnchor's sole remaining
+		// reason to know the name) and a private hubSuffix const
+		// (Location.RepoName derives from it), while internal/fabricengine
+		// owns the exported BoardDir/HubPath constructors every other
+		// caller uses. The duplication is sanctioned by this map, not a leak.
+		"_board": {"internal/lyxcwd", "internal/fabricengine"},
+		"-weft":  {"internal/weftname"},
+		"-HUB":   {"internal/lyxcwd", "internal/fabricengine"},
+		// "_portals", "_launchers" and "_raddle" are fabric's own
+		// illusion-maintenance plumbing: the portal/launcher path surface
+		// relocated to internal/fabricengine in this batch, and "_raddle"
+		// has always been named only in HubReservedNames, which moved with it.
+		"_portals":   {"internal/fabricengine"},
+		"_launchers": {"internal/fabricengine"},
+		"_raddle":    {"internal/fabricengine"},
 		// "_lyx" is transitionally co-owned: internal/configengine.LyxDirName is
 		// the single exported declarer, but internal/lyxcwd still declares
 		// the private, unexported lyxDirName const for its own remaining
