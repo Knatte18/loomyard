@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: markdown-semantic-linebreaks
 branch: markdown-semantic-linebreaks
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-06T14:37:29Z'
+done  '2026-08-06T15:25:53Z'
 ```
