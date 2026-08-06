@@ -19,10 +19,24 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
+
+// dotLyxDirName is the directory name for ephemeral, machine-bound lyx
+// state, this package's own declaration of the token for HubLogsDir's join.
+const dotLyxDirName = ".lyx"
+
+// HubLogsDir returns the path to the hub-level directory where the shared
+// per-hub reed server writes its runtime log. It is hub-anchored so one
+// server per hub resolves to one deterministic place. It lives under the
+// ephemeral .lyx directory; server logs are runtime artifacts, never
+// weft-synced.
+func HubLogsDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.HubPath, dotLyxDirName, "logs")
+}
 
 // UpResult reports the outcome of Up.
 type UpResult struct {
@@ -234,7 +248,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// is the only lever. This happens on every boot, regardless of
 	// debug_log, and runs before the boot loop so a fresh server's log always
 	// lands in a directory that already exists and is already pruned.
-	logsDir := e.layout.HubLogsDir()
+	logsDir := HubLogsDir(e.layout)
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		logger.Warn("reed: failed to create hub logs dir", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("create %s: %w", logsDir, err)

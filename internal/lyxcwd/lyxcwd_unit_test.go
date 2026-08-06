@@ -1,7 +1,6 @@
-// lyxcwd_unit_test.go — pure path-math unit tests for a couple of Location
-// methods with distinct anchoring rules (DotLyxDir, HubLogsDir). These
-// tests do not require a git repository and run under standard unit test
-// verification.
+// lyxcwd_unit_test.go — pure path-math unit tests for a Location method with
+// a distinct anchoring rule (DotLyxDir). These tests do not require a git
+// repository and run under standard unit test verification.
 
 package lyxcwd
 
@@ -28,21 +27,5 @@ func TestDotLyxDir(t *testing.T) {
 
 	if got == loc.LyxDir() {
 		t.Errorf("DotLyxDir() = %q; must be distinct from LyxDir() = %q", got, loc.LyxDir())
-	}
-}
-
-// TestHubLogsDir verifies that HubLogsDir resolves to "<HubPath>/.lyx/logs" — pure
-// path math, hub-anchored (not worktree-anchored), with no filesystem I/O.
-func TestHubLogsDir(t *testing.T) {
-	t.Parallel()
-
-	hubPath := filepath.Join("home", "user", "project-HUB")
-	loc := &Location{HubPath: hubPath}
-
-	got := loc.HubLogsDir()
-	want := filepath.Join(hubPath, ".lyx", "logs")
-
-	if got != want {
-		t.Errorf("HubLogsDir() = %q; want %q", got, want)
 	}
 }

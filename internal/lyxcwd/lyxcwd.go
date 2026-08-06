@@ -250,21 +250,6 @@ func (l *Location) DotLyxDir() string {
 	return filepath.Join(l.AnchorPath(), dotLyxDirName)
 }
 
-// HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
-// writes its runtime log. It is hub-anchored so one server per hub resolves to one deterministic place.
-// It lives under the ephemeral .lyx directory; server logs are runtime artifacts, never weft-synced.
-func (l *Location) HubLogsDir() string {
-	return filepath.Join(l.HubPath, dotLyxDirName, "logs")
-}
-
-// WorktreeLogsDir returns the path to the worktree-level directory where internal/logger's
-// durable trace sink writes one file per process. It is WorktreePath-anchored so a caller
-// invoked from anywhere in the worktree resolves the same logs directory. It lives under
-// the ephemeral .lyx directory.
-func (l *Location) WorktreeLogsDir() string {
-	return filepath.Join(l.WorktreePath(), dotLyxDirName, "logs")
-}
-
 // PortalsDir returns the path to the _portals directory in the hub.
 func (l *Location) PortalsDir() string {
 	return filepath.Join(l.HubPath, "_portals")

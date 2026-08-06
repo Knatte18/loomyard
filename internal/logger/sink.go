@@ -22,7 +22,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// dotLyxDirName is the directory name for ephemeral, machine-bound lyx state,
+// this package's own declaration of the token for WorktreeLogsDir's join.
+const dotLyxDirName = ".lyx"
+
 const sinkMaxBytes = 8 * 1024 * 1024
+
+// WorktreeLogsDir returns the path to the worktree-level directory where this
+// package's durable trace sink writes one file per process. It is
+// WorktreePath-anchored so a caller invoked from anywhere in the worktree
+// resolves the same logs directory. It lives under the ephemeral .lyx
+// directory, never the durable, weft-synced _lyx.
+func WorktreeLogsDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.WorktreePath(), dotLyxDirName, "logs")
+}
 
 type sinkHeader struct {
 	Command      string
@@ -81,7 +94,7 @@ func ensureDurableSink() (io.Writer, bool) {
 				sinkOK = false
 				return
 			}
-			dir = layout.WorktreeLogsDir()
+			dir = WorktreeLogsDir(layout)
 			header.WorktreeRoot = layout.WorktreePath()
 		}
 
