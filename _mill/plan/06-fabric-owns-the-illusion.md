@@ -189,6 +189,7 @@ External interface batch 7 consumes: `fabricengine.BoardDir(hubPath)`, and the r
   - `internal/lyxcwd/geometry_test.go`
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/lyxcwd/lyxcwd_test.go`
+  - `internal/perchcli/cli_integration_test.go`
   - `internal/perchcli/run_integration_test.go`
   - `internal/webstercli/weft_integration_test.go`
 - **Creates:** none
