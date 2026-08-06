@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-production-sweep
+phase: approved-test-sweep
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: _mill/plan
@@ -35,6 +35,7 @@ implementing  '2026-08-05T18:02:03Z'
 approved-pre-moves  '2026-08-05T19:00:58Z'
 approved-rename-and-reshape  '2026-08-05T19:34:59Z'
 approved-production-sweep  '2026-08-05T19:51:19Z'
+approved-test-sweep  '2026-08-06T05:13:21Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     start_sha: 56407a61bd264e335d54a24380d17210141fb2d0
     commit_sha: e70f312ccaf8087057fb9c374bb22dd9df113852
   - name: test-sweep
-    state: running
+    state: approved
     implementer_session: 9c051bd2-9350-4396-8eda-c46dea8c9dd7
     start_sha: 796fa85d1ebaf00289be4ef5b11a12dc180eb124
+    commit_sha: c450acf41295bf37f54d4f1d72754b216489dc40
   - name: module-owned-constructors
     state: pending
   - name: fabric-owns-the-illusion
