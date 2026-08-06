@@ -25,74 +25,105 @@ This task removes the *need* for that interim guard by putting the files where t
 **In:**
 
 - A new zero-dependency leaf package `internal/lyxdirs` owning both directory-name tokens: `LyxDirName` (`_lyx`, moved out of `internal/configengine`) and `DotLyxDirName` (`.lyx`, replacing five private `dotLyxDirName` consts).
+- Making both `_lyx` and `.lyx` **structural** directories injected by `internal/fabricengine` in code, removing them from `fabric.yaml`'s configurable `pathspec` (which keeps only genuinely optional directories such as `_pattern`).
+- Re-anchoring `.lyx` onto `AnchorPath()` so it is a directory sibling of `_lyx`, and updating the five existing `WorktreePath()`-anchored consumers.
 - Relocating **every** never-tracked transient currently written under `_lyx` into the mirrored subpath under `.lyx` (full inventory in Technical context).
 - A new scratch-dir seam on `internal/treadleengine` so perch's run/state locks and pause flag can leave the run dir while the engine stays geometry-blind.
-- Registering `.lyx` as a weft-backed junction through `fabric.yaml`'s existing `pathspec`, replacing the committed `.gitignore` block in `clone.go`/`unwire.go` with the warp `.git/info/exclude` seeding every other junction already uses.
-- A `neverCommittedNames` set in `internal/fabricengine` keeping `.lyx` out of every pathspec and out of weft commit routing, plus `--exclude-standard` on `weftPathspecFilter`'s `git ls-files` probe.
-- Replacing the three `crossModuleMachineLocalExcludes` patterns with a single `.lyx/` entry in the weft repo's `.git/info/exclude`, and deleting the `crossModuleMachineLocalExcludes` var.
+- Wiring `.lyx` as a weft-backed junction, replacing the committed `.gitignore` block in `clone.go`/`unwire.go` with the warp `.git/info/exclude` seeding every other junction already uses, plus a `.lyx`-only content-adoption path for worktrees that already hold a real `.lyx` directory.
+- Splitting `fabricengine`'s never-committed directory set from its committed one, so `.lyx` never reaches a pathspec or weft commit routing, plus `--exclude-standard` on `weftPathspecFilter`'s `git ls-files` probe.
+- Replacing the three `crossModuleMachineLocalExcludes` patterns with a single `.lyx/` entry in the weft repo's `.git/info/exclude`, seeded at wiring time, and deleting the `crossModuleMachineLocalExcludes` var.
 - Recognising `<hub>/.lyx` as a hub-level geometry element owned by fabric, the way `<hub>/_board` already is.
-- Two enforcement tests (single-declarer for the two directory tokens; no-transients-under-`_lyx`).
-- Docs in the same commit: `CONSTRAINTS.md`, `docs/overview.md`, the affected package docs, and `manifest/designs/fabric-unified-view.md` slice 9.
+- Two enforcement tests (single-declarer AST rule for the two directory tokens; a runtime no-transients-under-`_lyx` test).
+- Docs in the same commit: `CONSTRAINTS.md`, `docs/overview.md`, the affected package docs, `manifest/designs/fabric-unified-view.md` slice 9, `tools/sandbox/SANDBOX-BUILDER-SUITE.md`, `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` and `docs/reference/builder-contract.md`.
 
 **Out:**
 
-- **Migration of any kind.**
-  A worktree that already holds a real `.lyx` directory where the junction belongs gets a hard error with a remedy message, not an automatic conversion.
-  Transients a pre-fix `sync` already committed into weft history stay committed; `git rm --cached <path>` is documented as the manual remedy, not automated.
+- Content adoption for any junction name other than `.lyx`.
+  `_lyx` and `_pattern` keep today's hard refusal on a pre-existing real directory.
+- Untracking transients a pre-fix `sync` already committed into weft history.
+  They stay committed; `git rm --cached <path>` is documented as the manual remedy, not automated.
 - Moving `.weft/` or `gitrepo.PushLockFileName` out of `seedWeftArtifactExcludes` — those are fabric's own runtime artifacts, not module transients, and stay exactly where slice 7/8 put them.
-- Splitting `fabric.yaml`'s `pathspec` into separate junction/commit fields — a schema change well outside this slice.
+- Removing `fabric.yaml`'s `pathspec` field entirely — `_pattern` is genuinely optional per repo, so the field survives with a narrower job.
 - `_raddle`, `_pattern` and `_board` content sweeps — they hold no known transients today.
   `internal/fabricengine`'s own `board.push.lock` (`bolt.go:34`, under `<hub>/_board`) and the correspondence index (`index.go:75`, inside the git dir) are fabric-internal and stay put.
 - This repository's own hand-written `.gitignore` `.lyx/` block — loomyard is not fabric-wired, so its `.lyx` is a plain directory and the entry is correct as it stands.
-- Non-Claude engines, reed/shuttle/scout/burler/logger `.lyx` paths that are **already** correct — they change only by switching to the new shared const.
+- Non-Claude engines.
 
 ## Decisions
 
-### dotlyx-is-a-weft-backed-junction
+### structural-dirs-are-not-config
 
-- Decision: `.lyx` lives physically inside the weft worktree at `<weft>/<AnchorRel>/.lyx` and is exposed in the warp/host worktree as a directory junction created by fabric, registered through `fabric.yaml`'s existing `pathspec` exactly like `_lyx` and `_pattern`.
-  The committed `.gitignore` `.lyx/` block is removed from both `clone.go` and `unwire.go`; the junction name is excluded through the warp's `.git/info/exclude` via the existing `seedGitExclude` path.
-- Rationale: it is the design doc's stated target (slice 9, `manifest/designs/fabric-unified-view.md`) and needs no bespoke code — `.lyx` becomes one more pathspec entry, inheriting wire/unwire/reconcile/health/drift handling for free.
-  A committed `.gitignore` in the user's own repo is the specific thing being eliminated: it makes LYX visible in a repo LYX does not own.
-- Rejected: keeping `.lyx` a plain host directory with only a standalone exclude-seeding call (introduces a third junction-ish shape alongside `_lyx` and `_board`);
-  anchoring `.lyx` at the hub instead of per worktree (a far larger relocation of every module's current worktree-anchored path, and it destroys per-worktree isolation of machine-local state).
+- Decision: `_lyx` and `.lyx` are **structural** directories injected by `internal/fabricengine` in code, not entries in `fabric.yaml`'s `pathspec`.
+  `fabricengine` declares two sets: `structuralCommittedDirs` (today exactly `lyxdirs.LyxDirName`) and `structuralNeverCommittedDirs` (today exactly `lyxdirs.DotLyxDirName`).
+  The `pathspec` field survives for genuinely optional directories only; `template.yaml`'s default shrinks from `_lyx _pattern` to `_pattern`.
+- Rationale: CONSTRAINTS states *geometry is structural, never config/env-overridable*, and both directories must always exist — a `fabric.yaml` that drops `_lyx` from `pathspec` would today tear away the entire durable tree, and one that omits `.lyx` would leave machine-local scratch unwired.
+  Making one configurable and the other not would be incoherent.
+  This also dissolves the rollout problem entirely: an already-deployed `fabric.yaml` in `weft:main` keeps its old free-form string and needs no migration, because neither name is read from it any more.
+- Rejected: adding `.lyx` to the yaml `pathspec` and changing `template.yaml`'s default (leaves obligatory geometry switchable per repo, and every existing repo needs a hand edit);
+  code-injecting `.lyx` into the loaded pathspec only when missing (same effect while pretending yaml owns it);
+  removing `pathspec` altogether (`_pattern` really is per-repo optional).
+- **Set composition, exactly:**
+  - Wired junction name-set (`WiredNames`/`RepoWiredNames`) = `structuralCommittedDirs` + `structuralNeverCommittedDirs` + `filterHubReserved(cfg.Dirs())`.
+    This is what gets junctions and warp `.git/info/exclude` entries.
+  - Pathspec / commit-routing set = `structuralCommittedDirs` + `filterHubReserved(cfg.Dirs())` — **never** `structuralNeverCommittedDirs`.
+    This is what `internal/fabriccli/weft_verbs.go:100` builds `ScopedPathspec` from and what `classifyPaths` routes on.
+  - Slug-reservation union (`Topology.Add`, `IsReservedHubName`) = both structural sets + raw `cfg.Dirs()` + the hub-reserved names.
+    No filtering is applied here: a worktree slug must be refused for every one of these names.
 
 ### never-committed-is-structural-not-configurable
 
-- Decision: `internal/fabricengine` declares a named `neverCommittedNames` set (today exactly `lyxdirs.DotLyxDirName`).
-  Names in that set are kept out of every constructed pathspec and out of `classifyPaths`' weft-commit routing, so `.lyx` is never even *named* in a git invocation.
+- Decision: membership in `structuralNeverCommittedDirs` is what makes `.lyx` uncommittable.
+  The filtering lives where the pathspec and the commit routing are **constructed** — `ScopedPathspec`'s callers and `classifyPaths` — and never inside `Config.Dirs()`, `WiredNames`, or the slug-reservation union, all three of which must keep seeing every name.
   Separately, `weftPathspecFilter`'s `git ls-files --cached --others` probe gains `--exclude-standard`.
-- Rationale: this is not belt-and-braces — the two halves fix different failures.
-  `fabric.yaml`'s `pathspec` is read for **two** purposes: the junction name-set (`WiredNames`) *and*, via the raw `cfg.Dirs()`, the pathspec `lyx fabric sync` passes to `Fabric.Commit` (`internal/fabriccli/weft_verbs.go:100`).
-  Adding `.lyx` to the pathspec therefore puts `<AnchorRel>/.lyx` straight into the sync pathspec.
-  Verified empirically: `git add` on an ignored path **fails the entire invocation with exit 1** and stages nothing — not even the legitimate `_lyx` files named in the same call — and `git ls-files --cached --others -- .lyx` *does* match ignored files when `--exclude-standard` is absent, so `weftPathspecFilter` currently forwards a doomed entry.
-  Without the name set, every `lyx fabric sync` would hard-fail from the first commit; without `--exclude-standard`, any stray ignored file matching any pathspec entry still topples a whole commit.
+- Rationale: the two halves fix different failures.
+  Keeping `.lyx` out of the pathspec means it is never even *named* in a git invocation — necessary because `git add` on an ignored path **fails the entire invocation with exit 1** and stages nothing, not even the legitimate `_lyx` files named in the same call (verified empirically, see Technical context).
+  `--exclude-standard` fixes a separate latent bug: `git ls-files --cached --others -- <entry>` currently *matches* ignored files, so any stray ignored file matching any pathspec entry makes `weftPathspecFilter` forward a doomed entry and topple a whole commit.
+  With the flag, such an entry is filtered out and the commit is a clean no-op.
+  Encoding "never committed" as a fabric.yaml field is forbidden by the same CONSTRAINTS clause as above — a repo must not be able to switch it off.
 - Rejected: relying on git's own refusal alone (the guarantee is absolute but the failure is a cryptic hard error that blocks unrelated content);
-  silently dropping `.lyx` paths instead of keeping them out of the pathspec (hides caller bugs);
-  encoding "never committed" as a fabric.yaml field (CONSTRAINTS: *geometry is structural, never config/env-overridable* — a repo must not be able to switch it off).
+  silently dropping `.lyx` paths at commit time (hides caller bugs);
+  filtering inside `Dirs()` or `WiredNames` (would silently undo the junction wiring and the slug reservation).
+
+### dotlyx-and-lyx-are-directory-siblings
+
+- Decision: `.lyx` is anchored at `AnchorPath()`, exactly like `_lyx` — the two are directory siblings.
+  The five consumers currently anchored at `l.WorktreePath()` re-anchor as part of this slice: `logger/sink.go:37`, `shuttleengine/rundir.go:51` and `run.go:185`, `scoutengine/daemonstate.go:43,50`, `burlerengine/engine.go:106`, and every `reedengine` state site (`spawn.go:143,183`, `strand.go:309,348,471`, `lifecycle.go:545,676,778,961`, `lock.go:66`).
+- Rationale: the junction lands at `<worktree>/<AnchorRel>/.lyx` (`HostJunctions`, `junction.go:61-62`) and `_lyx` is `AnchorPath()`-anchored (`builderengine/state.go:33`, `perchengine/identity.go:33`).
+  Leaving the five on `WorktreePath()` gives a subpath-anchored repo (`AnchorRel != "."`) two distinct `.lyx` roots — one junctioned and excluded, one not — which is exactly the class of bug this task exists to remove.
+- Rejected: moving the junction to `WorktreePath()` (makes `.lyx` the only junction not `AnchorRel`-anchored);
+  leaving the five sites alone (two legal `.lyx` roots).
+- Note: `reedengine.HubLogsDir` (`lifecycle.go:38`) is hub-anchored and is deliberately unaffected — see the hub-level decision below.
+
+### dotlyx-content-adoption-no-other-migration
+
+- Decision: when wiring finds a **real directory** (`fslink.IsLink(link) == false`) at the `.lyx` junction path, fabric moves its contents into the weft-side target and replaces it with the junction.
+  This adoption is **`.lyx`-only**: `_lyx`, `_pattern` and every other junction name keep today's hard refusal in `seedLyxJunction:163`.
+  No other migration exists — transients already committed into weft history stay committed, with `git rm --cached` documented as the manual remedy.
+- Rationale: every worktree in existence today has a real `.lyx` (logger, reed, shuttle, scout and burler write it unconditionally), so without adoption the first `reconcile` after this change hard-errors everywhere, and the only remedy would be deleting live reed/scout daemon state.
+  Content under `.lyx` is always lyx's own machine-local scratch, so the guard's rationale — never touch what might be the user's hand-authored content — simply does not apply there.
+  It does apply to `_lyx` and `_pattern`, where the refusal stays.
+- Rejected: hard-erroring on `.lyx` and documenting a manual stop-daemons-then-delete step (an upgrade cliff on every existing worktree, destroying live state);
+  deleting the real directory silently (same destruction, without warning);
+  extending adoption to every junction name (fabric would start moving user content unasked).
+- Implementation note: adoption must be idempotent and safe on re-entry, and must not clobber content already present in the weft-side target.
+  The plan should define the collision rule (the weft-side copy wins, or the operation refuses on a name collision) — the safer default is to refuse on collision, since a collision means an earlier adoption already ran.
 
 ### weft-side-exclusion-via-git-info-exclude
 
-- Decision: the weft repo keeps `.lyx` untracked through a single `.lyx/` line in its `.git/info/exclude`, seeded by the existing `seedWeftArtifactExcludes`.
+- Decision: the weft repo keeps `.lyx` untracked through a single `.lyx/` line in its `.git/info/exclude`.
+  `seedWeftArtifactExcludes` remains the **sole owner** of that file's content;
+  `WireJunctions` calls it for the weft side at wiring time, and `ensureWeftLockDir` keeps calling it as the self-healing path.
   The three `crossModuleMachineLocalExcludes` patterns are deleted and the var removed.
   No `.gitignore` is committed in weft either.
-- Rationale: the warp rule ("never a committed `.gitignore`") is about not exposing LYX in the user's repo, and weft is LYX's own repo — so the choice there is purely practical, and `.git/info/exclude` wins on practicality.
-  It is seeded from `ensureWeftLockDir`, the choke point every weft-git verb passes through, so it self-heals on every new machine with no commit, no pathspec change and no new file in the weft root.
-  One `.lyx/` pattern replaces three wildcard patterns and covers every future transient without a `fabricengine` change.
-  The only difference from a committed `.gitignore` is that the entry is per-clone rather than travelling with the repo — precisely the contract `.weft/` already has.
-- Rejected: a committed `.gitignore` at the weft root (needs a new staging path, since the weft root sits outside every caller's pathspec, and adds a file to the weft root for no gain);
+- Rationale: the warp rule ("never a committed `.gitignore`") is about not exposing LYX in the user's repo;
+  weft is LYX's own repo, so the choice there is purely practical, and `.git/info/exclude` wins — no commit, no pathspec change, no new file in the weft root, and one `.lyx/` pattern replaces three deep wildcard patterns.
+  Seeding at wiring time is what closes the ordering hole: wiring already materialises the weft-side target (`junction.go:118`), so the exclude entry is guaranteed to exist before anything writes into `.lyx`.
+  Seeding only from `ensureWeftLockDir` would leave the window between wiring and the first weft-git verb open, during which scratch shows as untracked dirt and trips `Remove`'s no-force dirty gate.
+  Keeping `ensureWeftLockDir` as a second *call site* of the same single owner preserves self-healing on machines that never re-wire.
+- Rejected: a committed `.gitignore` at the weft root (needs a new staging path, since the weft root sits outside every caller's pathspec);
+  seeding only from `ensureWeftLockDir` (ordering hole);
+  seeding only from wiring (loses self-healing);
   keeping the three deep wildcard patterns (the machinery this task exists to delete).
-
-### no-migration
-
-- Decision: no migration support anywhere.
-  Wiring `.lyx` onto a worktree that already holds a real `.lyx` directory produces a hard error via `seedLyxJunction`'s existing host-pristine guard, with the remedy text extended to name `.lyx` and say the directory is safe to delete.
-  Transients already committed into weft history stay there; `git rm --cached` is documented, not automated.
-- Rationale: `.lyx` is by definition disposable machine-local scratch, so the operator can always resolve the error by deleting the directory — an automatic conversion buys little and risks destroying live reed/scout daemon state mid-flight.
-  Adopting the real directory instead (no junction, no error) would leave two legal geometries coexisting and take fabric out of control of its own topology.
-- Rejected: moving existing contents into the weft target automatically;
-  deleting the real directory silently;
-  adopting it as-is.
 
 ### lyxdirs-owns-both-directory-tokens
 
@@ -112,7 +143,7 @@ This task removes the *need* for that interim guard by putting the files where t
 
 - Decision: `internal/treadleengine`'s engine gains an explicit scratch-directory input, defaulting to the existing `runDir` when unset.
   `run.lock`, `state.json.lock` and the `pause` flag are written there instead of in `runDir`; `state.json` and round artifacts stay in `runDir`.
-  `internal/perchcli` supplies `<worktree>/.lyx/perch/<block>` as the scratch dir while `runDir` stays `_lyx/perch/<block>`.
+  `internal/perchcli` supplies `<AnchorPath>/.lyx/perch/<block>` as the scratch dir while `runDir` stays `_lyx/perch/<block>`.
 - Rationale: it keeps the engine geometry-blind — it is *told* where to write, never deriving it — which is the exact constraint `internal/perchcli/run.go:324-333` documents as the blocker.
   Every treadle-based module inherits the seam.
   `internal/state`'s `WriteJSON(path, lockPath, …)` / `ReadJSON(path, lockPath, …)` already take the lock path separately, so a lock can move without moving the file it guards.
@@ -157,12 +188,15 @@ This task removes the *need* for that interim guard by putting the files where t
 Junction geometry is now in `internal/fabricengine`:
 
 - `junction.go` — `HostJunctions`/`HostJunctionsHere` (the `{Name, Link, Target}` records), `WireJunctions` → `seedLyxJunction` + `seedGitExclude`, `UnwireJunctions` → `unseedLyxJunction` + `unseedGitExclude`, and `wireBoardLink` (the standalone `_board` case).
-  `seedLyxJunction:163` is the host-pristine guard whose message must be extended for `.lyx`.
+  `seedLyxJunction:163` is the host-pristine guard that gains the `.lyx`-only adoption branch;
+  `junction.go:118` is where the weft-side target is materialised, which is the natural home for the weft-side exclude seeding.
 - `junctionnames.go` — `BoardDirName`, `HubReservedNames`, `IsReservedHubName`, `filterHubReserved`, `junctionNames`/`WiredNames`/`RepoWiredNames`.
-  `WiredNames(baseDir)` loads `fabric.yaml` and returns `filterHubReserved(cfg.Dirs())`.
-- `config.go` — `Config.Pathspec` (a space-separated string) and `Config.Dirs()` (`strings.Fields`).
-  The repo-wide file is `<Hub>/_board/_lyx/config/fabric.yaml`.
+  `WiredNames(baseDir)` today returns `filterHubReserved(cfg.Dirs())` and must gain the structural sets.
+- `config.go` — `Config.Pathspec` (a single free-form space-separated string, `config.go:23`) and `Config.Dirs()` (`strings.Fields`, `config.go:28`).
+  The repo-wide file is `<Hub>/_board/_lyx/config/fabric.yaml`;
+  the default lives in `internal/fabricengine/template.yaml:2` (`pathspec: _lyx _pattern`, shrinking to `_pattern`).
 - `commit.go:91` — `Fabric.Commit` calls `RepoWiredNames(l)` then `classifyPaths(l.AnchorRel, wiredNames, files)` to split caller paths into warp-side and weft-side.
+  This call site must switch from the wired set to the pathspec/commit-routing set.
 - `weftgit.go` — `crossModuleMachineLocalExcludes` (lines 56-96, to delete), `seedWeftArtifactExcludes` (98-162, gains `.lyx/`, loses the cross-module patterns), `weftPathspecFilter` (177-199, gains `--exclude-standard` at `entryMatchesWeft:205`).
 
 ### The committed-`.gitignore` sites to remove
@@ -193,15 +227,20 @@ Under `_lyx`, to relocate to the mirrored `.lyx` subpath:
 | perch/treadle | `pause` | `internal/treadleengine/state.go:32,209-216` |
 | loom | `status.json.lock` | `internal/loomengine/config.go:79` |
 
-Already correct (change only to adopt `lyxdirs.DotLyxDirName`): `scoutengine/daemonstate.go:43,50`, `shuttleengine/rundir.go:51` and `run.go:185`, `burlerengine/engine.go:106`, `logger/sink.go:37`, `reedengine` state at `spawn.go:143,183`, `strand.go:309,348,471`, `lifecycle.go:545,676,778,961`, `lock.go:66`, and `reedengine.HubLogsDir` at `lifecycle.go:38`.
+Already in `.lyx` but **`WorktreePath()`-anchored**, so they change twice — adopt `lyxdirs.DotLyxDirName` *and* re-anchor onto `AnchorPath()`: `scoutengine/daemonstate.go:43,50`, `shuttleengine/rundir.go:51` and `run.go:185`, `burlerengine/engine.go:106`, `logger/sink.go:37`, and `reedengine`'s state sites (`spawn.go:143,183`, `strand.go:309,348,471`, `lifecycle.go:545,676,778,961`, `lock.go:66`).
+
+Hub-anchored and deliberately unchanged in anchor: `reedengine.HubLogsDir` (`lifecycle.go:38`), which only adopts the shared const.
 
 Out of scope, confirmed not under `_lyx`: `fabricengine`'s correspondence index (`index.go:75`, inside the git dir) and `board.push.lock` (`bolt.go:34`, under `<hub>/_board`).
 
-### Call sites that consume the raw pathspec
+### Call sites that consume the pathspec
 
-`internal/fabriccli/weft_verbs.go:100` builds `fabricengine.ScopedPathspec(l.AnchorRel, cfg.Dirs())` from the **unfiltered** `Dirs()` and passes it to `fab.Commit` at :155, :184 and :240.
-This is the site that breaks if `.lyx` is not filtered out by `neverCommittedNames`.
-`Topology.Add`'s reserved-name union also reads raw `Dirs()` — that use is correct and should keep seeing `.lyx` (a slug must not claim the name).
+`internal/fabriccli/weft_verbs.go:100` builds `fabricengine.ScopedPathspec(l.AnchorRel, cfg.Dirs())` and passes it to `fab.Commit` at :155, :184 and :240.
+With `_lyx` no longer in `cfg.Dirs()`, this site must build from the pathspec/commit-routing set (`structuralCommittedDirs` + `filterHubReserved(cfg.Dirs())`) or it silently stops syncing `_lyx` at all.
+This is the single most breakage-prone edit in the task.
+
+`Topology.Add`'s reserved-name union also reads raw `Dirs()`;
+it must gain both structural sets so no worktree slug can be named `_lyx` or `.lyx`.
 
 Module weft-commit callers build their own pathspec from `configengine.LyxDirName` only (`internal/perchcli/run.go:334`, `internal/fabricengine/unwire.go:104`, webster's and builder's `weft.go`), so they are unaffected beyond the const rename.
 
@@ -219,7 +258,15 @@ Run in a scratch repo with `.lyx/` in `.git/info/exclude`:
   Directory-only contract; junctions on Windows, symlinks elsewhere.
 - `internal/fabricengine/junction_pattern_integration_test.go` — the template for a `.lyx` junction integration test; it already resolves the exclude file the way `seedGitExclude`/`unseedGitExclude` do.
 - `internal/lyxtest` — synthetic hub construction for integration tests (note `lyxtest.go:231` joins `configengine.LyxDirName`; it participates in the rename).
-- `cmd/lyx/boardguard_test.go` and `cmd/lyx/rawgitmutation_test.go` — the shape to copy for the two new enforcement tests.
+- `cmd/lyx/boardguard_test.go` and `cmd/lyx/rawgitmutation_test.go` — the shape to copy for the new AST enforcement test.
+
+### Docs that assert the old behaviour
+
+- `tools/sandbox/SANDBOX-BUILDER-SUITE.md:276,279` — an entire scenario built on machine-local artifacts living under `_lyx` and being held back by the exclude layer.
+  It must be rewritten to assert the artifacts are under `.lyx` instead;
+  the underlying property it checks (never committed, never materialised on another machine) survives.
+- `tools/sandbox/SANDBOX-WEBSTER-SUITE.md:128` — names `_lyx/webster/prompts/02-*.md`.
+- `docs/reference/builder-contract.md:166` — describes `*.lock` and `*/builder/pause` being kept out "solely at the git-exclude layer (`fabricengine.seedWeftArtifactExcludes`)", the mechanism this task deletes.
 
 ## Constraints
 
@@ -229,7 +276,7 @@ From `CONSTRAINTS.md`:
   It never resolves a weft path, a junction path, or any per-module subdirectory; weft-sibling and junction construction belong to `internal/fabricengine`.
   A module's own subdirectory is that module's private relative-path constant joined onto `AnchorPath()` — per-segment joins, never a fused `"_lyx/..."` literal.
   `lyxcwd`'s imports stay capped at stdlib plus `internal/gitexec`, which is what keeps `fabricengine → logger → lyxcwd` acyclic.
-  **Geometry is structural, never config/env-overridable** — the direct basis for the `neverCommittedNames` decision.
+  **Geometry is structural, never config/env-overridable** — the direct basis for the structural-dirs and never-committed decisions.
 - **Weft Git Invariant / "Cross-module exclusions"** (`CONSTRAINTS.md:144-152`) — the mechanism this task retires.
   Its "known limitation" note (a pre-fix sync's already-committed artifacts need manual `git rm --cached`) survives as the documented manual remedy.
 - **Documentation Lifecycle** — a task touching a module doc, the module table, or a cross-cutting invariant updates them in the same commit.
@@ -239,6 +286,7 @@ From `CONSTRAINTS.md`:
 New invariant this task records in `CONSTRAINTS.md`:
 
 - Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to; `_lyx` holds tracked content only.
+- `_lyx` and `.lyx` are directory siblings under `AnchorPath()`, both structural — injected by `fabricengine`, never read from `fabric.yaml`.
 - Every host→weft junction is excluded through the warp's `.git/info/exclude`, never through a committed `.gitignore` in the user's repo.
 - `internal/lyxdirs` is the single declarer of both `_lyx` and `.lyx`.
 
@@ -246,19 +294,29 @@ New invariant this task records in `CONSTRAINTS.md`:
 
 **`internal/lyxdirs`** — no behaviour to test beyond the enforcement tests below; it is two consts.
 
-**Enforcement tests (both TDD candidates — write them red first, they define the rules):**
+**Enforcement test 1 — single declarer (TDD candidate).**
+An AST-based test (parse each non-test Go file under `internal/` and `cmd/`, walk for `*ast.BasicLit` string values) asserting that no file outside `internal/lyxdirs` contains a string literal whose value is **exactly** `"_lyx"` or `".lyx"`.
+Exact-value matching is what makes it implementable: `".lyx-anchor"` (`lyxcwd/anchor.go:41`) and `".lyx/"` are distinct literals and do not match, and the surviving `.lyx/` exclude entry is built as `lyxdirs.DotLyxDirName + "/"` rather than as a literal.
+14 non-test files match today and must all be converted;
+test files are out of the rule's scope (71 files match overall, mostly fixtures).
+Model it on `cmd/lyx/boardguard_test.go`.
 
-1. Single-declarer test: no Go file outside `internal/lyxdirs` contains the literal `".lyx"` or `"_lyx"`.
-   Model it on `cmd/lyx/boardguard_test.go`.
-   Note the existing doc comments and error strings that mention `_lyx` in prose — the test must match declarations, not free text.
-2. No-transients test: no path built on `lyxdirs.LyxDirName` ends in `.lock`, `pause`, or resolves into a `prompts` directory.
-   This is what replaces the deleted `crossModuleMachineLocalExcludes` as a machine-checked rule.
+**Enforcement test 2 — no transients under `_lyx` (TDD candidate).**
+A runtime test on a `lyxtest` synthetic hub rather than a static rule: drive each module's exported path constructors (`websterengine.Dir`/`PromptsDir`, `builderengine.Dir`, `perchengine.RunsDir`, `loomengine`'s status path, and treadle's run/scratch dirs) against a synthetic `Location`, then assert no returned `_lyx`-rooted path ends in `.lock`, equals `pause`, or resolves inside a `prompts` directory — and that each corresponding transient path *does* resolve under `.lyx`.
+This checks actual behaviour instead of attempting the dataflow analysis a static rule would need, and it fails when a future module puts a new transient in the wrong tree.
 
 **`internal/fabricengine`:**
 
-- Integration test on a `lyxtest` synthetic hub (mirroring `junction_pattern_integration_test.go`): wiring creates the `.lyx` junction pointing at `<weft>/<AnchorRel>/.lyx`, seeds `.lyx` into the warp's `.git/info/exclude`, and seeds `.lyx/` into the weft's; unwiring removes the junction and the warp entry.
-- Host-pristine guard: a pre-existing real `.lyx` directory produces the hard error, and the message names `.lyx` and the remedy (the no-migration decision).
-- `neverCommittedNames`: a pathspec built from a config whose `pathspec` includes `.lyx` never contains a `.lyx` entry, and `classifyPaths` never routes a `.lyx` path to the weft side.
+- Integration test on a `lyxtest` synthetic hub (mirroring `junction_pattern_integration_test.go`): wiring creates the `.lyx` junction pointing at `<weft>/<AnchorRel>/.lyx`, seeds `.lyx` into the warp's `.git/info/exclude` **and** `.lyx/` into the weft's, and unwiring removes the junction and the warp entry.
+  TDD candidate.
+- Ordering: after wiring and before any weft-git verb runs, writing a file into `.lyx` leaves `git status --porcelain` in the weft worktree clean.
+  This is the regression test for the seeding-ordering hole.
+- `.lyx` content adoption: a pre-existing real `.lyx` directory holding files is moved into the weft target and replaced by a junction, idempotently;
+  a pre-existing real `_lyx` or `_pattern` directory still produces the hard refusal.
+  TDD candidate — the two halves must be asserted together or the adoption branch will over-reach.
+- Structural sets: `WiredNames` returns `_lyx` and `.lyx` even for a `fabric.yaml` whose `pathspec` names neither;
+  the pathspec/commit-routing set contains `_lyx` but never `.lyx`;
+  `classifyPaths` never routes a `.lyx` path to the weft side.
   TDD candidate.
 - `weftPathspecFilter` with `--exclude-standard`: an entry matching only ignored files is filtered out and reported non-positive, so the commit is a clean no-op instead of a hard `git add` failure.
   TDD candidate — this one has a verified pre-fix failure to reproduce.
@@ -266,6 +324,11 @@ New invariant this task records in `CONSTRAINTS.md`:
 - Reconcile/drift/health still converge with `.lyx` in the wired name-set.
 - The split of `HubReservedNames` into slug-reservation versus junction-wiring sets: `.lyx` is refused as a worktree slug **and** survives into the wired junction set.
   TDD candidate — the naive one-list implementation fails exactly this pair.
+
+**`internal/fabriccli`** — `lyx fabric sync` still commits `_lyx` content after `_lyx` leaves the yaml pathspec (the regression guard for the `weft_verbs.go:100` edit), and never names `.lyx`.
+Clone no longer writes a `.gitignore` entry;
+the resulting host worktree has `.lyx` in `.git/info/exclude` and a clean `git status`.
+`unwire` no longer reverts a `.gitignore` block (delete `TestUnwire_RevertsGitignore`).
 
 **`internal/treadleengine`** — the scratch-dir seam: with no scratch dir set, locks and `pause` land in `runDir` (back-compat default); with one set, `run.lock`, `state.json.lock` and `pause` land there while `state.json` and round artifacts stay in `runDir`.
 Mutual exclusion (`ErrBlockBusy`) and pause-clearing still work when the two directories differ.
@@ -276,22 +339,23 @@ TDD candidate.
 **`internal/websterengine` / `internal/builderengine` / `internal/loomengine`** — per-module path tests asserting each relocated artifact resolves under `.lyx` at the mirrored subpath, and that the durable files (`state.json`, `status.json`, reports) stay under `_lyx`.
 Locking still serialises correctly when the lock file sits in a sibling tree from the file it guards.
 
-**`internal/fabriccli`** — clone no longer writes a `.gitignore` entry; the resulting host worktree has `.lyx` in `.git/info/exclude` and a clean `git status`.
-`unwire` no longer reverts a `.gitignore` block (delete `TestUnwire_RevertsGitignore`).
+**Anchor re-parenting** — for a synthetic hub with `AnchorRel != "."`, every relocated and every pre-existing `.lyx` consumer resolves under `AnchorPath()`, and there is exactly one `.lyx` root in the worktree.
+This is the regression test for the two-roots bug.
 
 **Cross-platform** — junction creation goes through `internal/fslink`, already covered by `fslink_test.go`; no new platform-specific assertions needed beyond keeping the new tests off hard-coded separators.
 
 ## Q&A log
 
-- **Q:** Skal `.lyx` bli en weft-backed junction registrert via fabric.yaml, eller forbli en vanlig host-katalog? **A:** Junction — `.lyx` skal fysisk ligge i weft og eksponeres fra warp via en junction som fabric lager ut fra sin yaml.
-- **Q:** Skal eksisterende ekte `.lyx`-kataloger migreres automatisk? **A:** Nei. Ingen migration-støtte i det hele tatt — hard feil via den eksisterende host-pristine-guarden, operatøren sletter selv.
+- **Q:** Skal `.lyx` bli en weft-backed junction, eller forbli en vanlig host-katalog? **A:** Junction — `.lyx` skal fysisk ligge i weft og eksponeres fra warp via en junction som fabric lager.
+- **Q:** Skal eksisterende ekte `.lyx`-kataloger migreres? **A:** Opprinnelig nei (hard feil). Revidert etter review-runde 1: ja, men **kun** for `.lyx` — innholdet flyttes inn i weft-målet og junctionen lages. `_lyx`/`_pattern` beholder den harde nekten. Begrunnelse: hver eneste eksisterende worktree har en ekte `.lyx`, så uten adopsjon hard-feiler første `reconcile` overalt, og eneste botemiddel ville vært å slette levende reed/scout-daemonstate.
 - **Q:** Gir det mening at `configengine` eier `.lyx`-navnet? **A:** Nei — eierskapet er arvet, ikke prinsipielt. Ny bladpakke `internal/lyxdirs` eier begge navn.
 - **Q:** Hvordan flytter perch sine låser når treadle-motoren er geometri-blind? **A:** Treadle får en eksplisitt scratch-dir-inngang; perch-CLI-en oppgir `.lyx`-stien. Motoren blir fortalt, ikke utleder.
 - **Q:** Skal treadles egen `pause`-flagg (ikke nevnt i briefen) også flytte? **A:** Ja — samme aldri-tracked klasse som webster og builder.
-- **Q:** `.gitignore` eller `.git/info/exclude` på weft-siden? **A:** `.git/info/exclude`. Warp får aldri en committed `.gitignore` fordi den ville avslørt at LYX brukes i brukerens eget repo; weft er vår egen, så der er valget rent praktisk, og exclude-fila seedes allerede fra `ensureWeftLockDir`.
-- **Q:** Hvor langt går sveipen etter feilplasserte transienter? **A:** Alle aldri-tracked artefakter under enhver modul-eid katalog, inkludert hver `*.lock` under `_lyx`, speilet til samme subpath under `.lyx`. Merk at enkelte moduler har egne toppnivå-mapper (som `_raddle`) — de er sjekket og holder ingen transienter i dag.
-- **Q:** Hva med hub-nivå `.lyx` (`<hub>/.lyx/logs`)? **A:** Fabric skal anerkjenne den som et geometri-element, på samme måte som den anerkjenner `<hub>/_board` som weft:main. Fortsatt en ekte katalog, ingen junction.
-- **Q:** Blir ikke en `.lyx`-fil i lista til `Fabric.Commit` bare ekskludert av `git add` selv, siden hele mappen er git-excluded? **A:** Filen blir aldri committet — men `git add` hopper ikke over den, den feiler hele invokasjonen (exit 1, ingenting staged, heller ikke lovlige filer i samme kall), og `lyx fabric sync` bygger pathspec-en sin fra den rå `cfg.Dirs()`. Derfor kreves begge deler: `neverCommittedNames` som holder `.lyx` ute av pathspec-bygging og commit-ruting, **og** `--exclude-standard` på `weftPathspecFilter`.
-- **Q:** Rekkefølge internt i tasken? **A:** Transienter først, så slett eksluderings-maskineriet, så geometrien.
-- **Q:** Testtilnærming? **A:** `lyxtest`-syntetisk hub-integrasjonstest for junction-livssyklusen, pluss unit-tester på hver flyttet sti, pluss to enforcement-tester (single-declarer og ingen-transienter-under-`_lyx`).
-- **Q:** Dokumentasjon? **A:** `CONSTRAINTS.md` (pensjoner «Cross-module exclusions», ny invariant), `docs/overview.md` (ny `lyxdirs`-rad i modultabellen), berørte pakkedocs, og `manifest/designs/fabric-unified-view.md` slice 9.
+- **Q:** `.gitignore` eller `.git/info/exclude` på weft-siden? **A:** `.git/info/exclude`. Warp får aldri en committed `.gitignore` fordi den ville avslørt at LYX brukes i brukerens eget repo; weft er vår egen, så der er valget rent praktisk.
+- **Q:** Hvor langt går sveipen etter feilplasserte transienter? **A:** Alle aldri-tracked artefakter under enhver modul-eid katalog, inkludert hver `*.lock` under `_lyx`, speilet til samme subpath under `.lyx`. Modul-egne toppnivåmapper (som `_raddle`) er sjekket og holder ingen transienter i dag.
+- **Q:** Hva med hub-nivå `.lyx` (`<hub>/.lyx/logs`)? **A:** Fabric anerkjenner den som geometri-element, slik den anerkjenner `<hub>/_board` som weft:main. Fortsatt ekte katalog, ingen junction.
+- **Q:** Blir ikke en `.lyx`-fil i lista til `Fabric.Commit` bare ekskludert av `git add` selv? **A:** Filen blir aldri committet, men `git add` feiler hele invokasjonen (exit 1, ingenting staged). Derfor kreves både at `.lyx` holdes ute av pathspec-bygging og commit-ruting, **og** `--exclude-standard` på `weftPathspecFilter`.
+- **Q (gap r1):** Hvilket anker bruker `.lyx` — `WorktreePath()` eller `AnchorPath()`? **A:** `AnchorPath()`. `_lyx` og `.lyx` skal være mappesøsken; begge havner i anchor. De fem `WorktreePath()`-ankrede konsumentene re-ankres i denne slicen.
+- **Q (gap r1):** Hvordan får en allerede utrullet `fabric.yaml` `.lyx` i seg? **A:** Den skal ikke. `_lyx` og `.lyx` blir begge strukturelle og injiseres i kode; `pathspec` beholdes kun for valgfrie kataloger som `_pattern`. Obligatorisk geometri kan ikke være konfigurerbar, og da finnes det ingenting å migrere.
+- **Q (gap r1):** Én eier av weft-sidens exclude, og garantert rekkefølge? **A:** `seedWeftArtifactExcludes` er eneste eier av innholdet; `WireJunctions` kaller den ved wiring (der weft-målet allerede materialiseres), og `ensureWeftLockDir` beholdes som selv-heling.
+- **Q (gap r1):** Mekanismen for de to enforcement-testene? **A:** Test 1 blir en AST-regel med eksakt literal-match på ikke-test-filer. Test 2 blir en kjøretidstest på syntetisk hub over modulenes eksporterte sti-konstruktører, siden en statisk regel ville krevd dataflyt-analyse.
