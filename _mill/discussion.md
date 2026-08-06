@@ -106,8 +106,14 @@ This task removes the *need* for that interim guard by putting the files where t
 ### never-committed-is-structural-not-configurable
 
 - Decision: membership in `structuralNeverCommittedDirs` is what makes `.lyx` uncommittable.
-  The filtering lives where the pathspec and the commit routing are **constructed** — `ScopedPathspec`'s callers and `classifyPaths` — and never inside `Config.Dirs()`, `WiredNames`, or the slug-reservation union, all three of which must keep seeing every name.
+  The filtering lives where the pathspec is **constructed** — `ScopedPathspec`'s callers — and never inside `Config.Dirs()`, `WiredNames`, or the slug-reservation union, all three of which must keep seeing every name.
   Separately, `weftPathspecFilter`'s `git ls-files --cached --others` probe gains `--exclude-standard`.
+- **`classifyPaths` needs a third bucket — omission is not enough, it is actively worse.**
+  `classifyPaths` (`classify.go:14-26`) is a strict two-way split: a path under a wired prefix goes to weft, **everything else falls through to warp**, and `Commit` (`commit.go:96`) hands `warpFiles` straight to a warp `StageAndCommit`, where `commitBothSides` treats a warp failure as hard.
+  So merely dropping `.lyx` from the routing set would send a stray `.lyx` path into the **user's own repo** — the one place it must never go — and fail there on the same exit-1 ignored-path error, taking the whole commit with it.
+  `classifyPaths` therefore gains a third return value for paths under a `structuralNeverCommittedDirs` prefix, and `Commit` turns a non-empty third bucket into a hard error naming the offending path.
+  Classification stays pure and I/O-free; the policy lives in `Commit`.
+  Silent dropping stays rejected — a caller passing a `.lyx` path is a bug and must be told.
 - Rationale: the two halves fix different failures.
   Keeping `.lyx` out of the pathspec means it is never even *named* in a git invocation — necessary because `git add` on an ignored path **fails the entire invocation with exit 1** and stages nothing, not even the legitimate `_lyx` files named in the same call (verified empirically, see Technical context).
   `--exclude-standard` fixes a separate latent bug: `git ls-files --cached --others -- <entry>` currently *matches* ignored files, so any stray ignored file matching any pathspec entry makes `weftPathspecFilter` forward a doomed entry and topple a whole commit.
@@ -121,7 +127,13 @@ This task removes the *need* for that interim guard by putting the files where t
 
 - Decision: `Unwire` stops deleting the weft-side `_lyx` content.
   It reverses wiring only — removes host junctions and their warp `.git/info/exclude` entries — and leaves every weft-side directory intact, `_lyx` and `.lyx` alike.
-  The `os.RemoveAll(weftLyxDir)` call and the follow-on `"lyx fabric unwire: clear _lyx"` commit and push (`unwire.go:92-105`) are removed, and `UnwireVerbResult.WeftContent` loses its `"cleared"` state.
+  The `os.RemoveAll(weftLyxDir)` call and the follow-on `"lyx fabric unwire: clear _lyx"` commit and push (`unwire.go:93-110`) are removed.
+  **Result vocabulary after the removals**, both CLI-observable JSON keys (`fabriccli/unwire.go:26-31`):
+  `WeftContent` loses `"cleared"` and its value set becomes `"preserved"` | `"not_present"`;
+  the `Gitignore` field and its `gitignore` output key are **dropped entirely**, since `gitignore.Remove` (`unwire.go:113`) goes with them and no `.gitignore` interaction remains to report.
+  Retaining the key as a constant `"unchanged"` would report on a mechanism that no longer exists.
+  This is an intentional output-envelope change and is recorded in the module doc;
+  the envelope invariant governs *using* `output.Ok`/`output.Err`, which is unaffected.
   The weft-side `.lyx` is never touched by unwire either; it disappears with the weft worktree when `Remove` tears the pair down.
 - Rationale: "unwire" means the inverse of "wire" — remove the junction coupling — not "delete the source directory".
   The current behaviour is already self-inconsistent: `unwire.go:30` records that weft `_pattern` content is *preserved by design* while `_lyx` is deleted and the deletion committed, with no stated reason for the asymmetry, and the doc comment simultaneously promises that "a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring" — true of the wiring, false of the content it destroyed.
@@ -207,15 +219,21 @@ This task removes the *need* for that interim guard by putting the files where t
   - `internal/treadleengine`'s engine gains an explicit scratch-directory input, defaulting to the existing `runDir` when unset.
     `run.lock`, `state.json.lock` and the `pause` flag are written there; `state.json` and round artifacts stay in `runDir`.
     `internal/perchcli` supplies `<AnchorPath>/.lyx/perch/<block>` while `runDir` stays `_lyx/perch/<block>`.
-  - `websterengine`, `builderengine`, `perchengine` and `loomengine` each gain a `ScratchDir(l)` accessor as the sibling of their existing `Dir(l)`, resolving to the mirrored `.lyx` subpath.
-    Their transient accessors re-key onto it — `PauseFlagPath`, `ClearPause`, `AcquireStateMutation`, `websterengine.PromptsDir`, `perchengine.PauseFlagPath`, loom's `status.json.lock`.
-    Signatures keep their `(dir string)` shape; it is the **caller** that switches from the durable dir to the scratch dir.
+  - `websterengine`, `builderengine` and `perchengine` each gain a `ScratchDir(l)` accessor as the sibling of their existing `Dir(l)`/`RunsDir(l)`, resolving to the mirrored `.lyx` subpath.
+    `loomengine` has no `Dir(l)` to mirror — its `status.json`/`status.json.lock` sit at the `_lyx` root (`config.go:71-80`) — so it gets an explicit `StatusLockPath(l)` resolving to `<AnchorPath>/.lyx/status.json.lock`, stated rather than derived by analogy.
+  - Accessors that name **only** a transient keep their `(dir string)` shape and simply receive the scratch dir instead: `PauseFlagPath`, `ClearPause`, `AcquireStateMutation`, `websterengine.PromptsDir`, `perchengine.PauseFlagPath`.
+  - Accessors that must straddle **both** trees take a second parameter, because one directory argument cannot express the split.
+    `websterengine.LoadState`/`SaveState` (`state.go:193-217`) and `builderengine.LoadState`/`SaveState` (`state.go:133-156`) each derive `state.json` *and* `state.json.lock` from a single `dir`, while this task keeps `state.json` in `_lyx` and moves the lock to `.lyx`.
+    All four gain a scratch-dir parameter, with the lock path resolved as `filepath.Join(scratchDir, stateFileName+".lock")`.
+  - Webster's and builder's engine-internal calls pass the durable dir today and must be re-keyed too — `websterengine/runlevel.go:347,423,616,791` and `builderengine/runlevel.go:340,445,525` call `AcquireStateMutation`/`ClearPause` with `deps.WebsterDir`/`deps.BuilderDir`, and `RunDeps` (`runlevel.go:99-111`) carries no scratch field.
+    The deps structs gain one, and every deps-constructing site supplies it: `webstercli/run.go:69`, `websterengine/beginbatch.go:104`, the buildercli equivalents, and their tests.
   - Every out-of-engine call site is updated in the same change: `internal/perchcli/pause.go:88`, `internal/perchcli/run.go:291`, and the webster/builder CLI pause and state-mutation sites.
 - Rationale: it keeps each engine geometry-blind — told, never deriving — which is the exact constraint `internal/perchcli/run.go:324-333` documents as the blocker.
   The seam cannot stop at treadle: these transients are reached through **exported, single-directory-keyed** accessors used from outside the engine, so a CLI pause verb still passing the durable dir would write `_lyx/<module>/pause` while the engine reads `.lyx/<module>/pause`, and pause would silently stop working with no test failing on either side alone.
   `internal/state`'s `WriteJSON(path, lockPath, …)` / `ReadJSON(path, lockPath, …)` already take the lock path separately, so a lock can move without moving the file it guards.
 - Rejected: giving only treadle the seam (leaves every other module's exported accessor ambiguous about which tree it means);
-  changing the accessors to take `*lyxcwd.Location` and resolve internally (wider signature churn, and it re-hides the choice the seam exists to make explicit);
+  asserting that no signature changes at all (false for the four `LoadState`/`SaveState` functions, which is the largest artifact class in the sweep);
+  changing every accessor to take `*lyxcwd.Location` and resolve internally (wider signature churn, and it re-hides the choice the seam exists to make explicit);
   having `perchengine` compute both directories and hand treadle two paths (lands the decision in perch, so the next treadle-based module repeats the work);
   leaving perch's locks in `_lyx` behind a narrowed exclude (blocks deleting `crossModuleMachineLocalExcludes`, which is half this task).
 
@@ -227,8 +245,12 @@ This task removes the *need* for that interim guard by putting the files where t
   Splitting an over-cap trace into several files instead of truncating it is a wanted improvement, but it is a separate task — see Scope/Out.
 - Rationale: the adopting process is otherwise a holder of a file inside the directory adoption moves, and no operator remedy can fix that — the holder *is* `lyx fabric reconcile`.
   Removing the persistent handle deletes the failure mode structurally instead of coordinating around it: adoption needs no logger API, no ordering guarantee and no knowledge of the sink, and `logger` stays completely weft-blind — it only ever resolves `AnchorPath()/.lyx/logs`, which after wiring resolves through the junction without logger noticing.
-  The change is contained: `writeDurable` (`sink.go:154`) already takes `sinkMu` around every write, so the extra open/close pair sits inside a lock that is held anyway, and every piece of state that matters (`sinkBytesWritten`, the filename, whether the header was written) is already a package global independent of the handle — only `sinkWriter` is the handle.
-  `SetDurableSinkDir` (`sink.go:174`) already resets `sinkOnce`, so re-entrant sink state is an established pattern here.
+  The change is bounded but not free, and two things must change with the handle:
+  `writeDurable` (`sink.go:154`) already takes `sinkMu` around every write, so the extra open/close pair sits inside a lock that is held anyway, and the byte accounting (`sinkBytesWritten`, `sinkTruncated`) is already a package global independent of the handle.
+  But the **trace filename is not** — it is a local inside `ensureDurableSink`'s `sync.Once` closure (`sink.go:108-114`), reachable only through `sinkWriter`, so a new package-level path global is required.
+  And `ensureDurableSink() (io.Writer, bool)` returns the handle itself, so its return contract changes to hand back the resolved path (or just readiness) instead;
+  `sink_test.go:59-64`, which asserts the returned writer is non-nil, changes with it.
+  `SetDurableSinkDir` (`sink.go:174`) already resets `sinkOnce` and every sink global, so re-entrant sink state is an established pattern here and the new path global joins that reset.
 - Rejected: a `logger.ReopenDurableSink()` that adoption closes around the move (keeps the handle, but couples adoption and logger and adds an ordering rule someone will forget);
   having the wiring verbs point their own sink at the weft-side path (makes `logger` a weft witness and breaks the illusion fabric exists to maintain);
   moving per-worktree traces up to `<hub>/.lyx/logs` (dodges the lock structurally, but mixes every worktree's traces and changes logger's location semantics for an unrelated reason);
@@ -416,7 +438,8 @@ This checks actual behaviour instead of attempting the dataflow analysis a stati
   TDD candidate.
 - Seeding order: after wiring and before any weft-git verb runs, writing a file into `.lyx` leaves `git status --porcelain` in the weft worktree clean.
   Regression test for the ordering hole.
-- Unwire preserves weft content: after `Unwire`, both `<weft>/<AnchorRel>/_lyx` and `<weft>/<AnchorRel>/.lyx` still exist with their content, no `"lyx fabric unwire: clear _lyx"` commit was made, and `WeftContent` never reports `"cleared"`.
+- Unwire preserves weft content: after `Unwire`, both `<weft>/<AnchorRel>/_lyx` and `<weft>/<AnchorRel>/.lyx` still exist with their content, no `"lyx fabric unwire: clear _lyx"` commit was made, and `weft_content` reports `"preserved"`.
+  The CLI envelope no longer carries a `gitignore` key.
   Existing tests asserting the old clear-and-commit behaviour are rewritten.
   TDD candidate.
 - `.lyx` content adoption: a pre-existing real `.lyx` directory holding files is moved into the weft target and replaced by a junction, idempotently;
@@ -425,8 +448,10 @@ This checks actual behaviour instead of attempting the dataflow analysis a stati
   TDD candidate — the halves must be asserted together or the adoption branch will over-reach.
 - Structural sets: `WiredNames` returns `_lyx` and `.lyx` even for a `fabric.yaml` whose `pathspec` names neither;
   a deployed `pathspec: _lyx _pattern` yields **no duplicate** `_lyx` in any of the three sets;
-  the pathspec/commit-routing set contains `_lyx` but never `.lyx`;
-  `classifyPaths` never routes a `.lyx` path to the weft side.
+  the pathspec/commit-routing set contains `_lyx` but never `.lyx`.
+  TDD candidate.
+- `classifyPaths`' third bucket: a `.lyx` path is routed to **neither** weft nor warp, and `Commit` returns a hard error naming it.
+  Asserting only "never routed to weft" is insufficient and would pass on the dangerous implementation, where the path silently falls through to the user's own repo.
   TDD candidate.
 - `weftPathspecFilter` with `--exclude-standard`: an entry matching only ignored files is filtered out and reported non-positive, so the commit is a clean no-op instead of a hard `git add` failure.
   TDD candidate — this one has a verified pre-fix failure to reproduce.
@@ -486,3 +511,6 @@ The adoption path's busy-directory behaviour is the one genuinely platform-diver
 - **Q (gap r3):** Ny AST-test for single-declarer? **A:** Nei. `TestEnforcement_GeometryLiterals` i `lyxcwd/enforcement_test.go` har allerede eier-tabellen, og kommentaren der sier eksplisitt at `.lyx`' eier-rad er utsatt til slice 9. `_lyx`-raden flyttes til `internal/lyxdirs` og `.lyx` får sin egen.
 - **Q (gap r3):** Adopsjonen låser seg selv — prosessen holder sin egen trace-fil åpen inne i mappen den flytter. Må logger ha en fil åpen hele tiden? **A:** Nei. Den vedvarende fildeskriptoren fjernes: åpne, appende, lukke per record. Da forsvinner selvlåsingen strukturelt, adopsjonen trenger ingen logger-API, og logger forblir weft-blind. Å peke sinken mot weft-siden ble avvist — ingen modul skal kunne «se» at fabric har et eget weft-repo.
 - **Q (gap r3):** Skal filen rulleres i stedet for å trunkeres når den blir for stor? **A:** Ønskelig, men ikke i denne tasken — egen oppgave senere. Merk at den også må utvide `retention.go:26`s `traceFilePattern`, ellers blir rullerte deler aldri ryddet.
+- **Q (gap r4):** Holder det å utelate `.lyx` fra commit-rutingen? **A:** Nei, det er verre enn å la den være. `classifyPaths` er et to-veis skille der alt som ikke treffer et weft-prefiks faller gjennom til **warp** — altså brukerens eget repo. Den trenger en tredje bøtte, og `Commit` må gi hard feil som navngir stien.
+- **Q (gap r4):** Kan seamen holdes til rene `(dir string)`-signaturer? **A:** Nei. `LoadState`/`SaveState` i webster og builder utleder både `state.json` og `state.json.lock` fra ett katalogargument, og denne tasken skiller nettopp de to. Alle fire får et scratch-dir-parameter, og `RunDeps` får et scratch-felt for de motor-interne kallene.
+- **Q (gap r4):** Hva blir `unwire`s resultatvokabular? **A:** `weft_content` blir `"preserved"` | `"not_present"`; `gitignore`-nøkkelen fjernes helt, siden mekanismen den rapporterer om er borte.
