@@ -32,7 +32,7 @@
 //
 // Leaf import discipline: this package's production code imports ONLY the
 // standard library (including embed), internal/configengine, and gopkg.in/yaml.v3
-// — never configreg, envsource, yamlengine, hubgeometry, or any feature package.
+// — never configreg, envsource, yamlengine, lyxcwd, or any feature package.
 // This lets every future consumer (builder, perch/burler/loom configs) import
 // modelspec without creating an import cycle; configreg importing modelspec (for
 // ConfigTemplate) is the one allowed direction. Enforced by
