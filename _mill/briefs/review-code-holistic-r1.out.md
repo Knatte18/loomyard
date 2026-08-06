@@ -1,0 +1,32 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: shrink hubgeometry to the minimal illusion primitive (slice 7) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-06
+```
+
+## Findings
+
+### [BLOCKING] Stale "Hub Geometry Invariant" name left across docs and source comments
+**Location:** `docs/overview.md:31,41,102,104`; `docs/shared-libs/lyxcwd.md:63`
+**Issue:** Card 18/batch 4 renamed the invariant in `CONSTRAINTS.md` to "Cwd Resolution Invariant", but `docs/overview.md`'s section is still headed `## Hub Geometry Invariants` and says "see CONSTRAINTS.md's Hub Geometry Invariant" — a heading that no longer exists in `CONSTRAINTS.md`. The same doc also still uses the literal stale qualifiers `hubgeometry.HubReservedNames()` and `hubgeometry.HostJunctions` (lines 102, 104) for functions batch 6 moved to `fabricengine`. `docs/shared-libs/lyxcwd.md`, freshly authored this task by card 42, repeats the identical broken cross-reference. Card 43's own instruction that CONSTRAINTS.md and `fabric-unified-view.md` "must not be allowed to disagree" implies the same discipline was owed to `overview.md` and `lyxcwd.md`, both edited in this same batch.
+**Fix:** Rename the section/cross-references to "Cwd Resolution Invariant" and repoint `hubgeometry.HubReservedNames()`/`hubgeometry.HostJunctions` to their `fabricengine` qualifiers.
+
+### [BLOCKING] Same stale invariant name left in ~13 production .go comments
+**Location:** `internal/lyxcwd/anchor.go:37`, `internal/configengine/config.go:23`, `internal/loomengine/config.go:31,39,46,55,62`, `internal/loomengine/preflight.go:36`, `internal/websterengine/state.go:41,56`, `internal/websterengine/report.go:84`, `internal/builderengine/state.go:31`, `internal/scoutengine/doc.go:113,206,219`, `internal/fabricengine/status.go:174`, `internal/fabricengine/pull.go:276`, `internal/fabricengine/worktreelist.go:86`, `internal/fabricengine/branchname.go:9`
+**Issue:** All of these say "per the Hub Geometry Invariant" — the pre-rename name. Card 18/41's own sweep grep (`grep -rln 'internal/hubgeometry\|hubgeometry\.' --include='*.go'`) is structurally incapable of catching a plain-English invariant-name reference (no `hubgeometry.` qualifier, no `internal/hubgeometry` path), so these were never caught by any card's stated verification step even though the rename is this task's headline deliverable.
+**Fix:** Sweep-rename "Hub Geometry Invariant" → "Cwd Resolution Invariant" across these comments; consider adding this exact string to card 41's residue grep so a future rename can't repeat the miss.
+
+### [NIT] Stale `Layout` type name in godoc
+**Location:** `internal/fabricengine/junctionnames.go:133`
+**Issue:** `RepoWiredNames`'s doc comment says "It is a Layout-taking convenience" — `Layout` was renamed to `Location` in batch 2 and every other comment in this file uses the new name.
+**Fix:** Reword to "a Location-taking convenience".
+
+## Verdict
+
+REQUEST_CHANGES
+Core rename/reshape/relocation/board-junction implementation is faithful to the plan; the invariant's own renamed identity was left stale in docs and comments.
+MILL_REVIEW_END
