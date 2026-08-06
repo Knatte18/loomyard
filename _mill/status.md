@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-06T17:28:43Z'
+discussed  '2026-08-06T19:03:29Z'
 ```
