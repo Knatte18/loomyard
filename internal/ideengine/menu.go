@@ -29,7 +29,7 @@ func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
 		return fmt.Errorf("load board config: %w", err)
 	}
 
-	cfg.Path = lyxcwd.BoardDir(l.HubPath)
+	cfg.Path = fabricengine.BoardDir(l.HubPath)
 
 	b := boardengine.New(cfg)
 

@@ -26,14 +26,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
 // template keys (readme, design_prefix; path: is not a template key),
 // initialises a git repo there (so lyxcwd.Resolve succeeds), changes to that
 // directory, and returns the cwd path. The board data dir is Hub/_board where
-// Hub = filepath.Dir(cwd); callers can compute it as lyxcwd.BoardDir(filepath.Dir(cwd)).
+// Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
@@ -163,7 +163,7 @@ func TestCLIContract(t *testing.T) {
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
 				// seedCwd initialised a git repo at cwd; Hub = filepath.Dir(cwd);
 				// lyxcwd.Resolve derives Hub from the git root, so board renders at Hub/_board.
-				homePath := filepath.Join(lyxcwd.BoardDir(filepath.Dir(cwd)), "Home.md")
+				homePath := filepath.Join(fabricengine.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
 					t.Fatalf("Home.md not created at %q: %v", homePath, err)
 				}
@@ -781,7 +781,7 @@ func TestCLILookupContract(t *testing.T) {
 }
 
 // TestCLIBoardPathResolution verifies the two board data dir resolution paths in
-// PersistentPreRunE: without --board-path the CLI uses lyxcwd.BoardDir(hub) derived
+// PersistentPreRunE: without --board-path the CLI uses fabricengine.BoardDir(hub) derived
 // from lyxcwd.Resolve; with --board-path the supplied path takes precedence.
 // This test initialises a real git repo so that lyxcwd.Resolve succeeds.
 func TestCLIBoardPathResolution(t *testing.T) {
@@ -789,7 +789,7 @@ func TestCLIBoardPathResolution(t *testing.T) {
 
 	// Build a two-level fixture: topDir is the Hub; worktree is a git repo inside it.
 	// lyxcwd.Resolve(worktree) derives Hub = topDir, so
-	// lyxcwd.BoardDir(Hub) = filepath.Join(topDir, "_board").
+	// fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
 	topDir := t.TempDir()
 	worktree := filepath.Join(topDir, "worktree")
 	if err := os.MkdirAll(worktree, 0o755); err != nil {
@@ -811,10 +811,10 @@ func TestCLIBoardPathResolution(t *testing.T) {
 	// Change to the worktree so lyxcwd.Getwd() in the CLI returns it.
 	t.Chdir(worktree)
 
-	expectedBoardDir := lyxcwd.BoardDir(topDir)
+	expectedBoardDir := fabricengine.BoardDir(topDir)
 
 	t.Run("no_board_path_resolves_via_paths", func(t *testing.T) {
-		// PersistentPreRunE calls lyxcwd.Resolve and derives cfg.Path = BoardDir(topDir).
+		// PersistentPreRunE calls lyxcwd.Resolve and derives cfg.Path = fabricengine.BoardDir(topDir).
 		// Upsert writes tasks.json inside that derived board dir.
 		exitCode, stdout := runCLI(t, "upsert", `{"slug":"path-test","title":"Path Test"}`)
 		if exitCode != 0 {
@@ -822,7 +822,7 @@ func TestCLIBoardPathResolution(t *testing.T) {
 		}
 		tasksFile := filepath.Join(expectedBoardDir, "tasks.json")
 		if _, err := os.Stat(tasksFile); err != nil {
-			t.Errorf("board not at lyxcwd.BoardDir(hub) %q: %v", expectedBoardDir, err)
+			t.Errorf("board not at fabricengine.BoardDir(hub) %q: %v", expectedBoardDir, err)
 		}
 	})
 

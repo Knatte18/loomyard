@@ -17,8 +17,21 @@ import (
 	"strings"
 )
 
+// boardDirName is the name of the board data directory inside the hub (i.e.
+// <hub>/_board). It stays private to lyxcwd: the exported BoardDir(hub)
+// constructor moved to internal/fabricengine, which declares its own copy
+// of this literal; readRecordedAnchor below is the sole reason lyxcwd still
+// needs the name itself, to find the recorded-anchor marker.
+const boardDirName = "_board"
+
+// boardDir returns the absolute path to the board data directory inside hub.
+// Private: see boardDirName's comment for why lyxcwd retains this one reader.
+func boardDir(hub string) string {
+	return filepath.Join(hub, boardDirName)
+}
+
 // AnchorFileName is the filename of the recorded lyx-anchor subpath marker
-// at the weft:main root (<BoardDir(hub)>/.lyx-anchor). It holds only the
+// at the weft:main root (<boardDir(hub)>/.lyx-anchor). It holds only the
 // subpath string (e.g. "backend" or "."). This is a structural geometry
 // artifact — a fixed per-repo anchor recorded once at clone/create — never a
 // config/env override; per the Hub Geometry Invariant, only lyxcwd
@@ -86,7 +99,7 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 // an anchor must never resolve to an empty subpath. This helper spawns no
 // git and stays stdlib-only.
 func readRecordedAnchor(hub string) (anchor string, found bool) {
-	data, err := os.ReadFile(filepath.Join(BoardDir(hub), AnchorFileName))
+	data, err := os.ReadFile(filepath.Join(boardDir(hub), AnchorFileName))
 	if err != nil {
 		return "", false
 	}

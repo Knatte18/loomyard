@@ -112,7 +112,7 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// lyxcwd.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
+// fabricengine.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
 // Healthy, Reconcile, Topology.Checkout, Topology.Remove,
 // junctionRepointedDetail) now read from. lyxtest.CopyPaired/CopyPairedLocal
@@ -123,7 +123,7 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := lyxcwd.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}

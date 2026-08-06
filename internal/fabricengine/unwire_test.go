@@ -212,7 +212,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	// Record the anchor marker alongside the repo-wide fabric.yaml
 	// newFabricFixture already seeded, mirroring what fabric clone commits
 	// onto weft:main.
-	boardDir := lyxcwd.BoardDir(l.HubPath)
+	boardDir := fabricengine.BoardDir(l.HubPath)
 	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(".\n"), 0o644); err != nil {
 		t.Fatalf("seed .lyx-anchor: %v", err)

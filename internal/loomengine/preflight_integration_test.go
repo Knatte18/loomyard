@@ -57,7 +57,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := lyxcwd.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	// strict cwd gate with AnchorRel == "sub" -- an unrecorded subdirectory
 	// invocation is now ErrCwdOutsideAnchor, a hard error, not the soft
 	// CheckWorktreeRoot report this test exists to prove.
-	anchorPath := filepath.Join(lyxcwd.BoardDir(f.Layout.HubPath), lyxcwd.AnchorFileName)
+	anchorPath := filepath.Join(fabricengine.BoardDir(f.Layout.HubPath), lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}

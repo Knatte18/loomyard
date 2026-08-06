@@ -91,7 +91,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		loadedCfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+		loadedCfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)

@@ -298,7 +298,7 @@ func runAdd(out io.Writer, args []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -335,7 +335,7 @@ func runList(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -386,7 +386,7 @@ func runCheckout(out io.Writer, args []string) int {
 		}
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -416,7 +416,7 @@ func runPairs(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -445,7 +445,7 @@ func runReconcile(out io.Writer, _ []string) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -473,7 +473,7 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -502,7 +502,7 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -530,7 +530,7 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(lyxcwd.BoardDir(l.HubPath))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

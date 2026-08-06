@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -115,7 +116,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	// init` run from <hub>/nested records -- so RunCLI's own lyxcwd.Resolve
 	// succeeds under the strict cwd gate with AnchorRel == "nested" rather
 	// than failing ErrCwdOutsideAnchor.
-	boardDir := lyxcwd.BoardDir(fixture.Layout.HubPath)
+	boardDir := fabricengine.BoardDir(fixture.Layout.HubPath)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}

@@ -28,13 +28,11 @@ const (
 	// remaining _lyx-anchored method (PortalTarget), removed once that method relocates.
 	lyxDirName = "_lyx"
 
-	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
-	// It is the single source of this literal; use BoardDir(hub) to obtain the full path.
-	BoardDirName = "_board"
-
-	// HubSuffix is the suffix appended to a repo name to form the hub container directory
-	// (e.g. "loomyard" → "loomyard-HUB"). Use HubPath(parent, name) to obtain the full path.
-	HubSuffix = "-HUB"
+	// hubSuffix is the suffix appended to a repo name to form the hub container directory
+	// (e.g. "loomyard" → "loomyard-HUB"). It stays private to lyxcwd: RepoName derives
+	// from it below, but the exported HubPath(parent, name) constructor moved to
+	// internal/fabricengine, which declares its own copy of this literal.
+	hubSuffix = "-HUB"
 
 	// PatternDirName is the directory name for the PATTERN constraint-injection surface
 	// within a worktree (i.e. <worktree>/_pattern). It is a transitional second
@@ -181,47 +179,11 @@ func buildLocation(cwd, workTreeRoot, hubPath, anchorRel string, applyGate bool)
 	}
 
 	return &Location{
-		RepoName:     strings.TrimSuffix(filepath.Base(hubPath), HubSuffix),
+		RepoName:     strings.TrimSuffix(filepath.Base(hubPath), hubSuffix),
 		HubPath:      hubPath,
 		WorktreeName: filepath.Base(workTreeRoot),
 		AnchorRel:    anchorRel,
 	}, nil
-}
-
-// BoardDir returns the absolute path to the board data directory inside hub.
-func BoardDir(hub string) string {
-	return filepath.Join(hub, BoardDirName)
-}
-
-// HubPath returns the absolute path to the hub container directory for the given repo name inside parent.
-func HubPath(parent, name string) string {
-	return filepath.Join(parent, name+HubSuffix)
-}
-
-// HubReservedNames returns the hub-structural reserved name-set that lyxcwd owns:
-// _raddle, _board, _portals, _launchers. It deliberately excludes configengine.LyxDirName and PatternDirName,
-// which are config-migrated junction names folded into the reserved set by IsReservedHubName's
-// junctionNames parameter instead.
-func HubReservedNames() []string {
-	return []string{BoardDirName, "_portals", "_launchers", "_raddle"}
-}
-
-// IsReservedHubName reports whether name is one of the hub-level entry names a worktree slug
-// must never claim: HubReservedNames UNION the caller-supplied junctionNames (the weft-backed
-// junction name-set injected from fabric config). lyxcwd stays config-blind; the junction
-// portion is passed in by the caller.
-func IsReservedHubName(name string, junctionNames []string) bool {
-	for _, reserved := range HubReservedNames() {
-		if name == reserved {
-			return true
-		}
-	}
-	for _, junctionName := range junctionNames {
-		if name == junctionName {
-			return true
-		}
-	}
-	return false
 }
 
 // WeftPatternDir returns the path to the _pattern directory in the current worktree's weft sibling.

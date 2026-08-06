@@ -67,7 +67,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	// Card 20 folds RepoWiredNames(l) — WiredNames(lyxcwd.BoardDir(l.HubPath))
+	// Card 20 folds RepoWiredNames(l) — WiredNames(fabricengine.BoardDir(l.HubPath))
 	// — into Add's eager-wiring step, hard-failing via rollbackAdd on a
 	// name-set load error, so the fixture must also materialize the
 	// repo-wide fabric.yaml at BoardDir(Hub), not just the per-pair weft

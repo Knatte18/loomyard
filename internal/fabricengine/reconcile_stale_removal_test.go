@@ -2,7 +2,7 @@
 
 // reconcile_stale_removal_test.go covers batch 2's declarative convergence:
 // Reconcile now converges every host worktree to the repo-wide `pathspec`
-// (lyxcwd.BoardDir(Hub)'s fabric.yaml) in both directions — wiring a
+// (fabricengine.BoardDir(Hub)'s fabric.yaml) in both directions — wiring a
 // junction missing on disk (already-existing add-missing behavior) AND
 // removing an on-disk junction absent from the repo-wide set
 // (applyStaleRemoval, new this batch) — with a fail-closed guard when the
@@ -12,7 +12,7 @@
 // It also proves the repo-wide-base regression: the sites card 7 migrated to
 // RepoWiredNames (Healthy, Topology.Checkout, Topology.Remove, and
 // transitively checkJunctionHealth via the add/no-op/stale-removal cases
-// above) resolve the junction name-set from lyxcwd.BoardDir(Hub) alone
+// above) resolve the junction name-set from fabricengine.BoardDir(Hub) alone
 // — no per-pair weft-base fabric.yaml is ever seeded in this file.
 //
 // Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig
@@ -62,7 +62,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	const slug = "stale-removal-add-remove-noop"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
-	boardDir := lyxcwd.BoardDir(l.HubPath)
+	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 
 	// Narrow the repo-wide pathspec to "_lyx" alone before Add: batch 5 card
@@ -201,9 +201,9 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	}
 
 	// Widen the repo-wide pathspec with a third, non-reserved name. _raddle
-	// is reserved (lyxcwd.HubReservedNames), so a custom name is used
+	// is reserved (fabricengine.HubReservedNames), so a custom name is used
 	// instead, per the batch's own test-plan wording.
-	boardDir := lyxcwd.BoardDir(l.HubPath)
+	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _pattern _extra\n"), 0o644); err != nil {
 		t.Fatalf("widen repo-wide pathspec: %v", err)
@@ -248,7 +248,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	}
 
 	// Corrupt the repo-wide fabric.yaml into unparseable YAML.
-	boardDir := lyxcwd.BoardDir(l.HubPath)
+	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(cfgPath, []byte("not-valid-yaml: [unterminated"), 0o644); err != nil {
 		t.Fatalf("corrupt repo-wide config: %v", err)
@@ -278,7 +278,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 }
 
 // TestReconcile_NeverRemovesReservedHubName proves scanOnDiskJunctionNames'
-// exclusion of lyxcwd.HubReservedNames() holds end-to-end through
+// exclusion of fabricengine.HubReservedNames() holds end-to-end through
 // Reconcile: a hub-structural name present on disk (here _raddle) is never
 // swept even though it is absent from the repo-wide pathspec.
 func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {

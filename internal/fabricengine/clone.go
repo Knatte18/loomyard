@@ -45,7 +45,7 @@ const staleFabricAnchorName = ".fabric-anchor"
 type CloneResult struct {
 	HubPath  string // HubPath is the created <name>-HUB container directory.
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
-	BoardDir string // BoardDir is lyxcwd.BoardDir(HubPath), the weft:main checkout.
+	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.
 	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
 	PrimeCwd string // PrimeCwd is the resolved prime host worktree path at Anchor.
 }
@@ -95,7 +95,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	}
 
 	// Step 2: Compute Hub path
-	hubPath := lyxcwd.HubPath(cwd, name)
+	hubPath := HubPath(cwd, name)
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
@@ -151,7 +151,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// on hostBranch — adopted if that branch already exists locally from
 	// step 6's clone, freshly orphan-created otherwise (a genuinely empty
 	// weft remote).
-	boardDir := lyxcwd.BoardDir(hubPath)
+	boardDir := BoardDir(hubPath)
 	if err := ensureBoardWorktree(weftPath, hostBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}

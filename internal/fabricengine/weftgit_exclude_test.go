@@ -81,7 +81,7 @@ func newFabricAtRelPath(t *testing.T, weftPath, rel string) *fabricengine.Fabric
 	warpPath := newWarpFixture(t)
 	hub := filepath.Dir(warpPath)
 	seedRepoWideFabricConfig(t, hub)
-	if err := os.WriteFile(filepath.Join(lyxcwd.BoardDir(hub), lyxcwd.AnchorFileName), []byte(rel), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(hub), lyxcwd.AnchorFileName), []byte(rel), 0o644); err != nil {
 		t.Fatalf("write .lyx-anchor: %v", err)
 	}
 

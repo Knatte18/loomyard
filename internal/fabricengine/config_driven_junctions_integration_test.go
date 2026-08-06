@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -85,7 +84,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 
 // TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy
 // proof: Healthy loads its junction name-set from the repo-wide
-// lyxcwd.BoardDir(l.HubPath) fabric.yaml (card 7), so a worktree whose
+// fabricengine.BoardDir(l.HubPath) fabric.yaml (card 7), so a worktree whose
 // pathspec names only "_lyx" — narrower than the "_lyx _pattern" default —
 // is reported in sync once "_lyx" alone is wired. A narrow pathspec is a
 // legitimate, unenforced reality (doc.go's narrow-pathspec asymmetry note),
@@ -105,7 +104,7 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	// a _board dir, so create it and its _lyx/config/ first, mirroring
 	// seedRepoWideFabricConfig but with this test's narrow "_lyx"-only
 	// pathspec instead of the default template.
-	boardDir := lyxcwd.BoardDir(fixture.Layout.HubPath)
+	boardDir := fabricengine.BoardDir(fixture.Layout.HubPath)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}

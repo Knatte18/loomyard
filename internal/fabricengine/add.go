@@ -56,7 +56,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 	}
 
 	// Reject reserved hub-level geometry names that would collide with hub structure.
-	if lyxcwd.IsReservedHubName(slug, t.cfg.Dirs()) {
+	if IsReservedHubName(slug, t.cfg.Dirs()) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
 	}
 

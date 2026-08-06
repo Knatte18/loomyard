@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
@@ -52,7 +53,7 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 	// RepoName is derived by trimming HubSuffix off the container directory's base
 	// name — this fixture's container has no "-HUB" suffix, so RepoName is simply
 	// its base name unchanged.
-	wantRepoName := strings.TrimSuffix(filepath.Base(layout.HubPath), lyxcwd.HubSuffix)
+	wantRepoName := strings.TrimSuffix(filepath.Base(layout.HubPath), fabricengine.HubSuffix)
 	if layout.RepoName != wantRepoName {
 		t.Errorf("layout.RepoName = %q; want %q", layout.RepoName, wantRepoName)
 	}
@@ -131,13 +132,14 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 }
 
 // TestIsReservedHubName_Pattern pins _pattern into the reserved-name set alongside
-// _lyx, _raddle, _board, _portals, and _launchers (see geometry_test.go's
-// TestIsReservedHubName for the full table): a worktree slug must never claim the
-// PATTERN constraint-injection surface's directory name.
+// _lyx, _raddle, _board, _portals, and _launchers (see
+// fabricengine/junctionnames_test.go's TestIsReservedHubName for the full
+// table): a worktree slug must never claim the PATTERN constraint-injection
+// surface's directory name.
 func TestIsReservedHubName_Pattern(t *testing.T) {
 	t.Parallel()
 
-	if got := lyxcwd.IsReservedHubName("_pattern", []string{"_lyx", "_pattern"}); !got {
+	if got := fabricengine.IsReservedHubName("_pattern", []string{"_lyx", "_pattern"}); !got {
 		t.Errorf("IsReservedHubName(%q, %v) = %v; want true", "_pattern", []string{"_lyx", "_pattern"}, got)
 	}
 }

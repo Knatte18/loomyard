@@ -208,12 +208,12 @@ func resolveGitCommonDir(t *testing.T, repoDir string) string {
 }
 
 // assertBoardIsWeftWorktree asserts that _board (resolved via
-// lyxcwd.BoardDir(hubPath)) shares its git-common-dir with weftPrime —
+// fabricengine.BoardDir(hubPath)) shares its git-common-dir with weftPrime —
 // proving _board is a linked worktree of the same weft repo, not a separate
 // clone — and that _board is checked out on wantBranch.
 func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch string) {
 	t.Helper()
-	boardPath := lyxcwd.BoardDir(hubPath)
+	boardPath := fabricengine.BoardDir(hubPath)
 
 	boardCommonDir := resolveGitCommonDir(t, boardPath)
 	weftCommonDir := resolveGitCommonDir(t, weftPrime)
@@ -374,7 +374,7 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	nonExistentWeft := filepath.Join(fixtures, "nonexistent-weft.git")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := lyxcwd.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
 
 	_, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(hostBare), filepath.ToSlash(nonExistentWeft), ".")
 	if err == nil {
@@ -424,7 +424,7 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	// out on "main", and itself carry no commits — proving the orphan branch
 	// shares no history with main-weft.
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
-	boardPath := lyxcwd.BoardDir(hubPath)
+	boardPath := fabricengine.BoardDir(hubPath)
 	if !hasNoCommits(t, boardPath) {
 		t.Errorf("_board at %s has commits; want an unborn HEAD (fresh orphan branch)", boardPath)
 	}
@@ -485,7 +485,7 @@ func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "anchor-typo-weft")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := lyxcwd.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
 
 	_, err := fabricengine.CloneHub(
 		cloneParent,
@@ -615,7 +615,7 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	commitFileOnBranch(t, fixtures, weftBare, "main", ".fabric-anchor", "backend\n")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := lyxcwd.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
+	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveHostName(filepath.ToSlash(hostBare)))
 
 	_, err := fabricengine.CloneHub(
 		cloneParent,

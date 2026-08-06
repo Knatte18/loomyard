@@ -4,7 +4,7 @@
 // the notes group and promote-note). Configuration resolution happens once
 // in a PersistentPreRunE: the config file (readme, design_prefix) is loaded
 // from _lyx/config/board.yaml, and the board data dir is resolved as
-// lyxcwd.BoardDir(layout.HubPath) via lyxcwd.Resolve. The hidden
+// fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve. The hidden
 // --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
 
@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -87,7 +88,7 @@ moves an entry from one to the other.`,
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			cfg.Path = lyxcwd.BoardDir(layout.HubPath)
+			cfg.Path = fabricengine.BoardDir(layout.HubPath)
 		}
 
 		cfg = applySkipEnv(cfg)

@@ -47,7 +47,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 	// step has no "main-weft" ref to fork the new pair's weft branch from.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
-	// Seed the repo-wide fabric config at lyxcwd.BoardDir(f.Layout.HubPath):
+	// Seed the repo-wide fabric config at fabricengine.BoardDir(f.Layout.HubPath):
 	// batch 5's eager wiring makes Topology.Add read the wired junction
 	// name-set via fabricengine.RepoWiredNames, which loads fabric.yaml from
 	// the repo-wide board dir, not this fixture's per-worktree weft config
@@ -177,7 +177,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 // stops silently destroying the key first.
 //
 // Uses "board" rather than "fabric": since configsync.ReconcileAll now skips
-// "fabric" entirely (its config is repo-wide at lyxcwd.BoardDir, never
+// "fabric" entirely (its config is repo-wide at fabricengine.BoardDir, never
 // per-worktree — see ReconcileAll's doc comment), a module RunCLI(reconcile)
 // still processes generically is needed to exercise this drift-detection
 // path; "board" is that generic module, and the scenario under test (a
@@ -261,7 +261,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// lyxcwd.BoardDir(hub) -- <hub>/_board/_lyx/config/fabric.yaml -- the
+// fabricengine.BoardDir(hub) -- <hub>/_board/_lyx/config/fabric.yaml -- the
 // base fabricengine.RepoWiredNames (and every migrated call site downstream
 // of it, including Topology.Add's eager wiring) reads from. lyxtest.CopyPaired
 // does not create a _board dir, so this creates it (and its _lyx/config/)
@@ -272,7 +272,7 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
-	boardDir := lyxcwd.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}

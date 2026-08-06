@@ -9,17 +9,71 @@
 
 package fabricengine
 
-import "github.com/Knatte18/loomyard/internal/lyxcwd"
+import (
+	"path/filepath"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+)
+
+// BoardDirName is the name of the board data directory inside the hub (i.e.
+// <hub>/_board). It is the single exported source of this literal; use
+// BoardDir(hub) to obtain the full path. internal/lyxcwd retains a private
+// second declarer (boardDirName in anchor.go) purely to find the recorded-
+// anchor marker; see that const's comment for why the duplication is
+// sanctioned rather than a leak.
+const BoardDirName = "_board"
+
+// HubSuffix is the suffix appended to a repo name to form the hub container
+// directory (e.g. "loomyard" → "loomyard-HUB"). Use HubPath(parent, name)
+// to obtain the full path. internal/lyxcwd keeps its own private copy
+// because Location.RepoName derives from it.
+const HubSuffix = "-HUB"
+
+// BoardDir returns the absolute path to the board data directory inside hub.
+func BoardDir(hub string) string {
+	return filepath.Join(hub, BoardDirName)
+}
+
+// HubPath returns the absolute path to the hub container directory for the given repo name inside parent.
+func HubPath(parent, name string) string {
+	return filepath.Join(parent, name+HubSuffix)
+}
+
+// HubReservedNames returns the hub-structural reserved name-set that fabricengine
+// owns: _raddle, _board, _portals, _launchers. It deliberately excludes
+// configengine.LyxDirName and pattern.DirName, which are config-migrated
+// junction names folded into the reserved set by IsReservedHubName's
+// junctionNames parameter instead.
+func HubReservedNames() []string {
+	return []string{BoardDirName, portalsDirName, launchersDirName, "_raddle"}
+}
+
+// IsReservedHubName reports whether name is one of the hub-level entry names a worktree slug
+// must never claim: HubReservedNames UNION the caller-supplied junctionNames (the weft-backed
+// junction name-set injected from fabric config).
+func IsReservedHubName(name string, junctionNames []string) bool {
+	for _, reserved := range HubReservedNames() {
+		if name == reserved {
+			return true
+		}
+	}
+	for _, junctionName := range junctionNames {
+		if name == junctionName {
+			return true
+		}
+	}
+	return false
+}
 
 // filterHubReserved drops every name in names that is also present in
-// lyxcwd.HubReservedNames(), preserving the input order of the
+// HubReservedNames(), preserving the input order of the
 // remaining names. This is the wiring guard: a hub-structural name
 // (_board, _portals, _launchers, _raddle) mis-added to fabric.yaml's
 // pathspec must never wire a per-worktree junction that would collide with
 // the hub-level path of the same name.
 func filterHubReserved(names []string) []string {
 	reserved := make(map[string]bool)
-	for _, r := range lyxcwd.HubReservedNames() {
+	for _, r := range HubReservedNames() {
 		reserved[r] = true
 	}
 
@@ -68,11 +122,11 @@ func WiredNames(baseDir string) ([]string, error) {
 }
 
 // repoWideFabricBase returns the single named source of the repo-wide fabric
-// config base: the `weft:main` checkout at lyxcwd.BoardDir(l.HubPath) that
+// config base: the `weft:main` checkout at BoardDir(l.HubPath) that
 // holds `_lyx/config/fabric.yaml`. It exists so every reconcile/status call
 // site names the same base instead of re-deriving BoardDir(l.HubPath) inline.
 func repoWideFabricBase(l *lyxcwd.Location) string {
-	return lyxcwd.BoardDir(l.HubPath)
+	return BoardDir(l.HubPath)
 }
 
 // RepoWiredNames loads the repo-wide fabric config and returns its wired

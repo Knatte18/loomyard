@@ -52,7 +52,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", subDir, err)
 	}
-	anchorPath := filepath.Join(lyxcwd.BoardDir(l.HubPath), lyxcwd.AnchorFileName)
+	anchorPath := filepath.Join(fabricengine.BoardDir(l.HubPath), lyxcwd.AnchorFileName)
 	if err := os.MkdirAll(filepath.Dir(anchorPath), 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 
 	// Remove loads the repo-wide config (best-effort) to know which nested
 	// junctions to tear down — newFabricFixture already materialized it at
-	// lyxcwd.BoardDir(l.HubPath) via seedRepoWideFabricConfig, so Remove's
+	// fabricengine.BoardDir(l.HubPath) via seedRepoWideFabricConfig, so Remove's
 	// name-load finds "_lyx _pattern" (the default pathspec) regardless of
 	// this pair's RelPath, and the happy-path nested teardown below is
 	// actually exercised, not just the degraded nothing-removed path.

@@ -138,7 +138,7 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Config{Pathspec: "_lyx _pattern"} injects the junction-name half
 			// of the reserved union: after card 1 removed _lyx/_pattern from
-			// lyxcwd.HubReservedNames(), those two are rejected only via
+			// fabricengine.HubReservedNames(), those two are rejected only via
 			// this injected pathspec, while _board/_portals/_launchers/_raddle
 			// stay rejected via HubReservedNames() regardless of pathspec.
 			topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern"})
@@ -160,7 +160,7 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 
 // TestAdd_RejectsPathspecJunctionNameSlug asserts that Add refuses a slug
 // equal to a current pathspec junction name that is NOT one of
-// lyxcwd.HubReservedNames()'s hub-structural tokens — proving the
+// fabricengine.HubReservedNames()'s hub-structural tokens — proving the
 // config-driven arm of IsReservedHubName's union, not only the hub-structural
 // arm TestAdd_RejectsReservedHubNameSlug already covers. "_extra" here is
 // reserved only because it is in this Topology's configured pathspec.

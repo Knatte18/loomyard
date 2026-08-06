@@ -45,7 +45,7 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		if name == "" {
 			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", hostURL))
 		}
-		hubPath := lyxcwd.HubPath(cwd, name)
+		hubPath := fabricengine.HubPath(cwd, name)
 		if err := fabricengine.RemoveAll(hubPath); err != nil {
 			return output.Err(out, fmt.Sprintf("reset: remove hub at %s: %v", hubPath, err))
 		}

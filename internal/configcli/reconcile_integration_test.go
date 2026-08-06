@@ -161,7 +161,7 @@ func TestReconcile_Apply(t *testing.T) {
 
 	// Verify board.yaml was created on disk. "fabric" is deliberately excluded
 	// from this assertion: since configsync.ReconcileAll skips "fabric"
-	// entirely (its config is repo-wide at lyxcwd.BoardDir, materialized
+	// entirely (its config is repo-wide at fabricengine.BoardDir, materialized
 	// via ReconcileFabricAt at clone time, never per-worktree), "board" is the
 	// generic module this reconcile-writes-to-disk assertion exercises instead.
 	boardPath := configengine.ConfigFile(tmpDir, "board")

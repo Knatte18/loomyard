@@ -11,7 +11,7 @@
 // Reconcile needs them first and both verbs share the same package.
 //
 // The junction name-set checkJunctionHealth/Reconcile/junctionRepointedDetail consult
-// is sourced from the repo-wide fabric.yaml at lyxcwd.BoardDir(l.HubPath) — via
+// is sourced from the repo-wide fabric.yaml at BoardDir(l.HubPath) — via
 // RepoWiredNames — not from any individual pair's own weft base, so reconcile
 // converges every worktree to the same repo-wide pathspec.
 
@@ -340,7 +340,7 @@ func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
 	}
 
 	reserved := make(map[string]bool)
-	for _, r := range lyxcwd.HubReservedNames() {
+	for _, r := range HubReservedNames() {
 		reserved[r] = true
 	}
 

@@ -41,7 +41,7 @@ import (
 
 // seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's
 // classify step now reads via RepoWiredNames — the `weft:main` base at
-// lyxcwd.BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's
+// BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's
 // classifier needs. warpPath is a bare t.TempDir() plain-git checkout (this
 // file's newPlainWarpRepo/newUnbornWarpRepo fixtures, not a real hub tree),
 // so lyxcwd.ResolveWorktree(warpPath)'s HubPath — warpPath's parent
@@ -53,7 +53,7 @@ import (
 func seedFabricConfig(t *testing.T, warpPath string) {
 	t.Helper()
 
-	boardDir := lyxcwd.BoardDir(filepath.Dir(warpPath))
+	boardDir := BoardDir(filepath.Dir(warpPath))
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	t.Helper()
 
-	boardDir := lyxcwd.BoardDir(filepath.Dir(warpPath))
+	boardDir := BoardDir(filepath.Dir(warpPath))
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}

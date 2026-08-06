@@ -29,7 +29,7 @@ import (
 
 // setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and writes a
 // _lyx/config/fabric.yaml config at the repo-wide board dir so RunCLI's
-// migrated topology-verb sites (LoadConfig(lyxcwd.BoardDir(l.HubPath))) can
+// migrated topology-verb sites (LoadConfig(fabricengine.BoardDir(l.HubPath))) can
 // resolve it. f.Hub is the fixture's host worktree root, i.e.
 // lyxcwd.Location.WorktreePath() once resolved — the real lyxcwd HubPath
 // (WorktreePath()'s parent) is filepath.Dir(f.Hub), matching the established
@@ -41,7 +41,7 @@ func setupCLIRepo(t *testing.T) string {
 	f := lyxtest.CopyHostHub(t)
 	t.Chdir(f.Hub)
 
-	boardDir := lyxcwd.BoardDir(filepath.Dir(f.Hub))
+	boardDir := fabricengine.BoardDir(filepath.Dir(f.Hub))
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create config dir: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	// CopyPaired never materializes a _board dir, so seed it directly here.
 	// fixture.Container is the real lyxcwd HubPath (fixture.Hub's parent; see
 	// CopyPaired's own doc comment), matching lyxcwd.Resolve(fixture.Hub).HubPath.
-	boardDir := lyxcwd.BoardDir(fixture.Container)
+	boardDir := fabricengine.BoardDir(fixture.Container)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create board config dir: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	// board worktree; that is a pre-existing gap in boardengine.Sync's own
 	// identical CommitWeftAt/PushWeftAt pairing, not something this batch's
 	// clone orchestration introduces or is responsible for fixing.
-	boardDir := lyxcwd.BoardDir(hubPath)
+	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
 		lyxcwd.AnchorFileName,
 		filepath.Join(configengine.LyxDirName, "config", "fabric.yaml"),

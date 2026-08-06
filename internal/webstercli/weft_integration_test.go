@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -33,7 +34,7 @@ func newHostWeftPair(t *testing.T) (*lyxcwd.Location, string) {
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
-	boardDir := lyxcwd.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
@@ -53,7 +54,7 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 
-	boardDir := lyxcwd.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
