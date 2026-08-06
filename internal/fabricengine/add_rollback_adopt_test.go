@@ -96,7 +96,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 
 	// Inject a deterministic failure AFTER the adopt: a blocker file at the
 	// portal location makes step 9 (createPortal) fail, triggering rollback.
-	portalLink := filepath.Join(l.PortalsDir(), slug)
+	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
 	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
 		t.Fatalf("mkdir portal parent: %v", err)
 	}

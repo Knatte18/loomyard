@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -223,64 +222,6 @@ func IsReservedHubName(name string, junctionNames []string) bool {
 		}
 	}
 	return false
-}
-
-// PortalsDir returns the path to the _portals directory in the hub.
-func (l *Location) PortalsDir() string {
-	return filepath.Join(l.HubPath, "_portals")
-}
-
-// PortalLink returns the path to the mirrored portal junction link for the given slug.
-// It is mirrored into the repo subpath structure, including RelPath segments.
-func (l *Location) PortalLink(slug string) string {
-	return filepath.Join(l.HubPath, "_portals", l.AnchorRel, slug)
-}
-
-// PortalTarget returns the path to the _lyx directory within a portal for the given slug.
-func (l *Location) PortalTarget(slug string) string {
-	return filepath.Join(l.HubPath, slug, l.AnchorRel, lyxDirName)
-}
-
-// LaunchersDir returns the path to the _launchers directory in the hub.
-func (l *Location) LaunchersDir() string {
-	return filepath.Join(l.HubPath, "_launchers")
-}
-
-// LauncherDir returns the path to the mirrored launcher directory for the given slug.
-// It is mirrored into the repo subpath structure, including RelPath segments.
-func (l *Location) LauncherDir(slug string) string {
-	return filepath.Join(l.HubPath, "_launchers", l.AnchorRel, slug)
-}
-
-// MenuLauncherPath returns the path to the per-subpath menu launcher script.
-// It is mirrored into the repo subpath structure. The extension is GOOS-selected: ".cmd" on Windows, ".sh" elsewhere.
-func (l *Location) MenuLauncherPath() string {
-	return filepath.Join(l.HubPath, "_launchers", l.AnchorRel, menuLauncherName())
-}
-
-// menuLauncherName returns the OS-appropriate filename for the menu launcher script.
-func menuLauncherName() string {
-	if runtime.GOOS == "windows" {
-		return "ide-menu.cmd"
-	}
-	return "ide-menu.sh"
-}
-
-// LauncherSpawnRel returns the relative path from a launcher directory to the target worktree's
-// subpath for spawning.
-func (l *Location) LauncherSpawnRel(slug string) string {
-	rel, _ := filepath.Rel(l.LauncherDir(slug), filepath.Join(filepath.Join(l.HubPath, slug), l.AnchorRel))
-	return rel
-}
-
-// MenuLauncherRel returns the relative path from the menu launcher directory to the
-// primeName worktree's subpath for menu spawning. primeName is the main worktree's
-// base name, sourced by the caller via fabricengine.PrimeName(l) — lyxcwd no
-// longer resolves the main worktree itself (that subprocess-backed lookup is
-// fabricengine's, per the Hub Geometry Invariant).
-func (l *Location) MenuLauncherRel(primeName string) string {
-	rel, _ := filepath.Rel(filepath.Dir(l.MenuLauncherPath()), filepath.Join(l.HubPath, primeName, l.AnchorRel))
-	return rel
 }
 
 // WeftPatternDir returns the path to the _pattern directory in the current worktree's weft sibling.

@@ -15,6 +15,57 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// launchersDirName is the directory name for the hub-level launchers
+// container (i.e. <hub>/_launchers). Declared here rather than in
+// internal/lyxcwd: the launcher surface is fabric's own illusion-maintenance
+// plumbing, not a resolution primitive lyxcwd needs to expose.
+const launchersDirName = "_launchers"
+
+// launchersDir returns the path to the _launchers directory in the hub.
+func launchersDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.HubPath, launchersDirName)
+}
+
+// LauncherDir returns the path to the mirrored launcher directory for the
+// given slug. It is mirrored into the repo subpath structure, including
+// AnchorRel segments. Exported because its live test caller
+// (reconcile_stale_registration_test.go) sits in the external package
+// fabricengine_test, where an unexported identifier does not compile.
+func LauncherDir(l *lyxcwd.Location, slug string) string {
+	return filepath.Join(l.HubPath, launchersDirName, l.AnchorRel, slug)
+}
+
+// menuLauncherPath returns the path to the per-subpath menu launcher script.
+// It is mirrored into the repo subpath structure. The extension is
+// GOOS-selected: ".cmd" on Windows, ".sh" elsewhere.
+func menuLauncherPath(l *lyxcwd.Location) string {
+	return filepath.Join(l.HubPath, launchersDirName, l.AnchorRel, menuLauncherName())
+}
+
+// menuLauncherName returns the OS-appropriate filename for the menu launcher script.
+func menuLauncherName() string {
+	if runtime.GOOS == "windows" {
+		return "ide-menu.cmd"
+	}
+	return "ide-menu.sh"
+}
+
+// launcherSpawnRel returns the relative path from a launcher directory to
+// the target worktree's subpath for spawning.
+func launcherSpawnRel(l *lyxcwd.Location, slug string) string {
+	rel, _ := filepath.Rel(LauncherDir(l, slug), filepath.Join(filepath.Join(l.HubPath, slug), l.AnchorRel))
+	return rel
+}
+
+// menuLauncherRel returns the relative path from the menu launcher directory
+// to the primeName worktree's subpath for menu spawning. primeName is the
+// main worktree's base name, sourced by the caller via the package-local
+// PrimeName(l).
+func menuLauncherRel(l *lyxcwd.Location, primeName string) string {
+	rel, _ := filepath.Rel(filepath.Dir(menuLauncherPath(l)), filepath.Join(l.HubPath, primeName, l.AnchorRel))
+	return rel
+}
+
 // writeLaunchers writes per-worktree launcher scripts (ide and fabric-checkout)
 // and ensures the menu launcher exists. The .cmd/.sh extension depends on GOOS;
 // .sh files are written executable.
@@ -22,13 +73,13 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	ext := launcherExt(runtime.GOOS)
 
 	// Create the mirrored launcher directory
-	launcherDir := l.LauncherDir(slug)
+	launcherDir := LauncherDir(l, slug)
 	if err := os.MkdirAll(launcherDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir launcher dir %s: %w", launcherDir, err)
 	}
 
-	// Build and write the ide launcher from LauncherSpawnRel
-	spawnRel := l.LauncherSpawnRel(slug)
+	// Build and write the ide launcher from launcherSpawnRel
+	spawnRel := launcherSpawnRel(l, slug)
 	ideContent, ideMode := launcherScript(runtime.GOOS, spawnRel, "ide spawn "+slug)
 	idePath := filepath.Join(launcherDir, "ide"+ext)
 	if err := os.WriteFile(idePath, ideContent, ideMode); err != nil {
@@ -46,7 +97,7 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	}
 
 	// Ensure per-subpath menu launcher exists (never clobber)
-	menuPath := l.MenuLauncherPath()
+	menuPath := menuLauncherPath(l)
 	if _, err := os.Stat(menuPath); err == nil {
 		// File exists, don't clobber it
 		return nil
@@ -59,7 +110,7 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 		return fmt.Errorf("mkdir menu launcher dir: %w", err)
 	}
 
-	// Build menu content from MenuLauncherRel, sourcing the prime worktree's
+	// Build menu content from menuLauncherRel, sourcing the prime worktree's
 	// name via the package-local PrimeName rather than a Layout field — a
 	// launcher pointing at an unresolved prime is worse than a failed wire, so
 	// propagate the error rather than degrading to an empty prime name.
@@ -67,7 +118,7 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	if err != nil {
 		return fmt.Errorf("resolve prime worktree name: %w", err)
 	}
-	menuContent, menuMode := launcherScript(runtime.GOOS, l.MenuLauncherRel(primeName), "ide menu")
+	menuContent, menuMode := launcherScript(runtime.GOOS, menuLauncherRel(l, primeName), "ide menu")
 	if err := os.WriteFile(menuPath, menuContent, menuMode); err != nil {
 		return fmt.Errorf("write menu launcher: %w", err)
 	}
@@ -79,11 +130,11 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 // empty ancestors. The menu launcher is left in place. Returns nil if the
 // directory does not exist.
 func removeLaunchers(l *lyxcwd.Location, slug string) error {
-	launcherDir := l.LauncherDir(slug)
+	launcherDir := LauncherDir(l, slug)
 	if err := os.RemoveAll(launcherDir); err != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
-	// Prune empty ancestors up to but not including LaunchersDir
-	pruneEmptyAncestors(filepath.Dir(launcherDir), l.LaunchersDir())
+	// Prune empty ancestors up to but not including launchersDir
+	pruneEmptyAncestors(filepath.Dir(launcherDir), launchersDir(l))
 	return nil
 }

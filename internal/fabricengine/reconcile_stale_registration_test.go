@@ -214,8 +214,8 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 	}
 
 	hostPath := fabricengine.WorktreePath(l, slug)
-	portalLink := l.PortalLink(slug)
-	launcherDir := l.LauncherDir(slug)
+	portalLink := fabricengine.PortalLink(l, slug)
+	launcherDir := fabricengine.LauncherDir(l, slug)
 
 	// Sanity: Add wired both; Lstat for the portal since it dangles once the
 	// host directory is gone.
