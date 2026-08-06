@@ -33,19 +33,99 @@ implementing  '2026-08-06T19:40:29Z'
 ```yaml
 batches:
   - name: fabric API expand
-    state: pending
+    state: running
+    implementer_session: 871e7dd3-7358-43a8-92ac-058ce435f28f
+    start_sha: 1935d82b456a1c81d62c840ba987bc0025d99aa4
+    verify_baseline_failures: []
   - name: typed Healthy reason and Clean reword
     state: pending
+    verify_baseline_failures: []
   - name: consumer call-site migration
     state: pending
+    verify_baseline_failures: ['--- FAIL: TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd (0.02s)', '--- FAIL:
+    TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit (0.01s)', '--- FAIL: TestPollCmd_ReportPresentClassifiesDoneAndCommits
+    (0.02s)', '--- FAIL: TestPollCmd_TerminalCleanupMatrix (0.05s)', '--- FAIL: TestPollCmd_ReportLandingDuringGatherBeatsStopEvent
+    (0.02s)', '--- FAIL: TestPollCmd_DeadRecheckStatErrorPropagates (0.01s)', '---
+    FAIL: TestPollCmd_NoReportTurnEndedClassifiesDeadAsking (0.01s)', '--- FAIL: TestPollCmd_TerminalPersistMergesConcurrentSpawn
+    (0.02s)', '--- FAIL: TestPollCmd_ReportBatchFieldMismatchFailsLoud (0.02s)', '---
+    FAIL: TestPollCmd_HalfWrittenReportGetsOneTickGrace (0.02s)', '--- FAIL: TestPollCmd_PersistentlyMalformedReportFailsAfterGrace
+    (0.02s)', '--- FAIL: TestRunCmd_SuccessEnvelopeAndWeftCommit (0.00s)', '--- FAIL:
+    TestRunCmd_OrchestratorErrorStillRunsBackstopWeftCommit (0.00s)', '--- FAIL: TestRunCmd_FreshFlagThreadsThrough
+    (0.00s)', '--- FAIL: TestSpawnBatchCmd_ValidationRefusalCarriesFindings (0.01s)',
+  '--- FAIL: TestSpawnBatchCmd_NoRunInProgress (0.02s)', '--- FAIL: TestSpawnBatchCmd_PausedEnvelope
+    (0.01s)', '--- FAIL: TestSpawnBatchCmd_SuccessEnvelopeAndWeftCommit (0.02s)',
+  '--- FAIL: TestSpawnBatchCmd_RecoveryRoleOverride (0.01s)', '--- FAIL: TestRunCLI_Validate_CleanPlan
+    (0.01s)', '--- FAIL: TestRunCLI_Validate_FindingsEnvelope (0.01s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/buildercli\t\
+    0.689s", '--- FAIL: TestRun_ValidationRefusal (0.00s)', '--- FAIL: TestRun_FreshInitPersistsState
+    (0.00s)', '--- FAIL: TestRun_FingerprintMismatchThenFreshArchivesAndReinits (0.00s)',
+  '--- FAIL: TestRun_OutcomeMapping (0.00s)', '--- FAIL: TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused
+    (0.00s)', '--- FAIL: TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt
+    (0.00s)', '--- FAIL: TestRun_ProgressRenderingPartiallyReported (0.00s)', '---
+    FAIL: TestRun_ProgressRenderingStuckBatchIsNotDone (0.00s)', '--- FAIL: TestRun_SpecFieldsMapped
+    (0.00s)', '--- FAIL: TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry (0.00s)',
+  '--- FAIL: TestRun_PersistsOrchestratorStrandBeforeWait (0.00s)', '--- FAIL: TestRun_FreshStopsSupersededRunsLiveStrands
+    (0.00s)', '--- FAIL: TestSpawnBatch_RoleSelectionMatrix (0.00s)', '--- FAIL: TestSpawnBatch_PauseSentinel
+    (0.00s)', '--- FAIL: TestSpawnBatch_StaleReportRefusal (0.00s)', '--- FAIL: TestSpawnBatch_RecoveryArchivesStaleReport
+    (0.00s)', '--- FAIL: TestSpawnBatch_FingerprintMismatchRefused (0.00s)', '---
+    FAIL: TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate (0.00s)', '--- FAIL: TestSpawnBatch_RestartChainPersistsStateBeforeSpawn
+    (0.00s)', '--- FAIL: TestSpawnBatch_RestartChainStopsLiveMemberStrands (0.00s)',
+  '--- FAIL: TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest (0.00s)',
+  '--- FAIL: TestSpawnBatch_InFlightGuardMatrix (0.00s)', '--- FAIL: TestSpawnBatch_ChainAnchorRecordedOnce
+    (0.00s)', '--- FAIL: TestSpawnBatch_StatePersisted (0.00s)', '--- FAIL: TestSpawnBatch_SpecFieldsMapped
+    (0.00s)', '--- FAIL: TestSpawnBatch_RestartChainOnChainlessBatchErrors (0.00s)',
+  '--- FAIL: TestSpawnBatch_RestartChainClearsStaleReportBeforeRefusal (0.00s)', '---
+    FAIL: TestRestartChain (0.00s)', '--- FAIL: TestChainEndFor (0.00s)', '--- FAIL:
+    TestValidate_PlanValidFixture_ZeroFindings (0.00s)', '--- FAIL: TestValidate_PlanBrokenChain_TripsCheck4Twice
+    (0.00s)', '--- FAIL: TestValidate_PlanUnapproved_TripsCheck1 (0.00s)', '--- FAIL:
+    TestChainMembers (0.00s)', '--- FAIL: TestParsePlan_PlanValidFixture (0.00s)',
+  '--- FAIL: TestRestartChain_ChainlessErrors (0.00s)', '--- FAIL: TestRestartChain_UnrecordedAnchorErrors
+    (0.00s)', '--- FAIL: TestParsePlan_HasRenameMechanic (0.00s)', '--- FAIL: TestParsePlan_OtherFixturesParseCleanly
+    (0.00s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/builderengine\t0.142s",
+  '--- FAIL: TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd (0.01s)', '--- FAIL:
+    TestPollCmd_TerminalCleanupMatrix (0.04s)', '--- FAIL: TestPollCmd_ReportLandingDuringGatherBeatsStopEvent
+    (0.01s)', '--- FAIL: TestPollCmd_ReportBatchFieldMismatchFailsLoud (0.01s)', '---
+    FAIL: TestPollCmd_PersistentlyMalformedReportFailsAfterGrace (0.01s)', '--- FAIL:
+    TestSpawnBatchCmd_NoRunInProgress (0.01s)', '--- FAIL: TestSpawnBatchCmd_SuccessEnvelopeAndWeftCommit
+    (0.01s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/buildercli\t0.590s", "FAIL\t\
+    github.com/Knatte18/loomyard/internal/builderengine\t0.118s"]
   - name: constructor contract (unexport)
     state: pending
+    verify_baseline_failures: []
   - name: templates describe one repo
     state: pending
+    verify_baseline_failures: ['--- FAIL: TestRun_ValidationRefusal (0.00s)', '--- FAIL: TestRun_FreshInitPersistsState
+    (0.00s)', '--- FAIL: TestRun_FingerprintMismatchThenFreshArchivesAndReinits (0.00s)',
+  '--- FAIL: TestRun_OutcomeMapping (0.00s)', '--- FAIL: TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused
+    (0.00s)', '--- FAIL: TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt
+    (0.00s)', '--- FAIL: TestRun_ProgressRenderingPartiallyReported (0.00s)', '---
+    FAIL: TestRun_ProgressRenderingStuckBatchIsNotDone (0.00s)', '--- FAIL: TestRun_SpecFieldsMapped
+    (0.00s)', '--- FAIL: TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry (0.00s)',
+  '--- FAIL: TestRun_PersistsOrchestratorStrandBeforeWait (0.00s)', '--- FAIL: TestRun_FreshStopsSupersededRunsLiveStrands
+    (0.00s)', '--- FAIL: TestSpawnBatch_RoleSelectionMatrix (0.00s)', '--- FAIL: TestSpawnBatch_PauseSentinel
+    (0.00s)', '--- FAIL: TestSpawnBatch_StaleReportRefusal (0.00s)', '--- FAIL: TestSpawnBatch_RecoveryArchivesStaleReport
+    (0.00s)', '--- FAIL: TestSpawnBatch_FingerprintMismatchRefused (0.00s)', '---
+    FAIL: TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate (0.00s)', '--- FAIL: TestSpawnBatch_RestartChainPersistsStateBeforeSpawn
+    (0.00s)', '--- FAIL: TestSpawnBatch_RestartChainStopsLiveMemberStrands (0.00s)',
+  '--- FAIL: TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest (0.00s)',
+  '--- FAIL: TestSpawnBatch_InFlightGuardMatrix (0.00s)', '--- FAIL: TestSpawnBatch_ChainAnchorRecordedOnce
+    (0.00s)', '--- FAIL: TestSpawnBatch_StatePersisted (0.00s)', '--- FAIL: TestSpawnBatch_SpecFieldsMapped
+    (0.00s)', '--- FAIL: TestSpawnBatch_RestartChainOnChainlessBatchErrors (0.00s)',
+  '--- FAIL: TestSpawnBatch_RestartChainClearsStaleReportBeforeRefusal (0.00s)', '---
+    FAIL: TestParsePlan_PlanValidFixture (0.00s)', '--- FAIL: TestRestartChain_ChainlessErrors
+    (0.00s)', '--- FAIL: TestRestartChain_UnrecordedAnchorErrors (0.00s)', '--- FAIL:
+    TestChainMembers (0.00s)', '--- FAIL: TestChainEndFor (0.00s)', '--- FAIL: TestValidate_PlanUnapproved_TripsCheck1
+    (0.00s)', '--- FAIL: TestRestartChain (0.00s)', '--- FAIL: TestValidate_PlanBrokenChain_TripsCheck4Twice
+    (0.00s)', '--- FAIL: TestValidate_PlanValidFixture_ZeroFindings (0.00s)', '---
+    FAIL: TestParsePlan_OtherFixturesParseCleanly (0.00s)', '--- FAIL: TestParsePlan_HasRenameMechanic
+    (0.00s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/builderengine\t0.146s",
+  "FAIL\tgithub.com/Knatte18/loomyard/internal/builderengine\t0.142s"]
   - name: comment and test vocabulary sweep
     state: pending
+    verify_baseline_failures: []
   - name: vocabulary enforcement test
     state: pending
+    verify_baseline_failures: []
   - name: documentation
     state: pending
+    verify_baseline_failures: []
 ```
