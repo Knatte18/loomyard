@@ -1,13 +1,12 @@
-// proctree_linux.go implements the two process-tree probes
-// (descendantClosurePIDs, serverProcessesOnSocket) directly against /proc —
-// Linux has no Win32_Process analog, so both probes read the kernel's own
-// process table instead of shelling out to a helper. Each enumerates the
-// numeric entries under /proc, reads the per-pid file it needs
-// (/proc/<pid>/stat or /proc/<pid>/cmdline), and delegates the actual
-// decision to the pure helpers in proctree.go (parseStatPPID,
-// descendantClosure, matchSocketCmdlines). Real-Linux execution of this file
-// is a deferred follow-up (see serverProcessesOnSocket's doc comment); here
-// it is compile-checked only, by the batch's `GOOS=linux go build` gate.
+// proctree_linux.go implements the two process-tree probes (descendantClosurePIDs,
+// serverProcessesOnSocket) directly against /proc — Linux has no Win32_Process analog, so both
+// probes read the kernel's own process table instead of shelling out to a helper.
+// Each enumerates the numeric entries under /proc, reads the per-pid file it needs
+// (/proc/<pid>/stat or /proc/<pid>/cmdline), and delegates the actual decision to the pure helpers
+// in proctree.go (parseStatPPID, descendantClosure, matchSocketCmdlines).
+// Real-Linux execution of this file is a deferred follow-up (see serverProcessesOnSocket's doc
+// comment);
+// here it is compile-checked only, by the batch's `GOOS=linux go build` gate.
 
 package reedengine
 

@@ -1,9 +1,8 @@
-// roundfiles_test.go table-drives roundToken/artifactPaths' naming shape:
-// the bare round token for a first attempt, the letter-suffixed token for a
-// retry, and the round-<token>-<kind>.md file names each produces inside a
-// run dir. buildRoundProfile's own field-mapping test lives in
-// internal/perchengine/adapter_test.go — its subject moved perch-side along
-// with the burler adapter.
+// roundfiles_test.go table-drives roundToken/artifactPaths' naming shape: the bare round token for
+// a first attempt, the letter-suffixed token for a retry, and the round-<token>-<kind>.md file
+// names each produces inside a run dir.
+// buildRoundProfile's own field-mapping test lives in internal/perchengine/adapter_test.go — its
+// subject moved perch-side along with the burler adapter.
 
 package treadleengine
 

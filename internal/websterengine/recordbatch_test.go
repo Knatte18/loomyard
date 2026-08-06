@@ -176,9 +176,9 @@ func validReport(headSHA string) string {
 	return "status: OK\nhead_sha: " + headSHA + "\n"
 }
 
-// TestRecordBatch_NoBeginRecord proves the bracket-discipline check: a
-// record call with no matching BatchState entry, or one already Terminal, is
-// refused with ErrNoBeginRecord before the audit is ever consulted.
+// TestRecordBatch_NoBeginRecord proves the bracket-discipline check: a record call with no matching
+// BatchState entry,
+// or one already Terminal, is refused with ErrNoBeginRecord before the audit is ever consulted.
 func TestRecordBatch_NoBeginRecord(t *testing.T) {
 	t.Run("absent BatchState", func(t *testing.T) {
 		fx := newRecordFixture(t, nil)
@@ -204,10 +204,9 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 	})
 }
 
-// TestRecordBatch_RecoveryBatchRefusedLoud proves the kind guard: a recovery
-// batch's report is recover-batch's to classify, never record-batch's — the
-// refusal names the correct verb instead of dying later in the fork audit
-// with a misleading "never forked" error (round fable-r3 live).
+// TestRecordBatch_RecoveryBatchRefusedLoud proves the kind guard: a recovery batch's report is
+// recover-batch's to classify, never record-batch's — the refusal names the correct verb instead of
+// dying later in the fork audit with a misleading "never forked" error (round fable-r3 live).
 func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
 	fx := newRecordFixture(t, nil)
 	fx.Deps.State.Batches[1].Kind = "recovery"
@@ -221,13 +220,11 @@ func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_AuditsBracketOpeningSession proves the crash/resume seam:
-// the fork audit keys on the session recorded in the batch's begin record
-// (bs.SessionID), never blindly on the CURRENT Master session — a resumed
-// run's fresh Master must be able to consume a report whose fork transcript
-// lives under the crashed session's own subagents directory (round fable-r3
-// live: auditing the current session instead wedged that resume across all
-// three verbs).
+// TestRecordBatch_AuditsBracketOpeningSession proves the crash/resume seam: the fork audit keys on
+// the session recorded in the batch's begin record (bs.SessionID), never blindly on the CURRENT
+// Master session — a resumed run's fresh Master must be able to consume a report whose fork
+// transcript lives under the crashed session's own subagents directory (round fable-r3 live:
+// auditing the current session instead wedged that resume across all three verbs).
 func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
 	audit := shuttleengine.ForkAudit{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "/transcripts/crashed-session/subagents/f1.jsonl", ReportReturned: true}},
@@ -251,10 +248,9 @@ func TestRecordBatch_AuditsBracketOpeningSession(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport proves the
-// unfakeable-report rule: zero new transcripts through the whole settle
-// window is a hard error REGARDLESS of a batch-report file already sitting
-// on disk — a report with no fork behind it means Master wrote it itself.
+// TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport proves the unfakeable-report rule:
+// zero new transcripts through the whole settle window is a hard error REGARDLESS of a batch-report
+// file already sitting on disk — a report with no fork behind it means Master wrote it itself.
 func TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{}})
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
@@ -268,10 +264,9 @@ func TestRecordBatch_ZeroNewTranscriptsHardErrorsEvenWithReport(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_TranscriptAppearsOnLaterTick proves a fork transcript that
-// only appears on the fetch AFTER the first miss still resolves clean —
-// SettleRetry's own "first miss is inconclusive" de-risk applied through the
-// whole RecordBatch call.
+// TestRecordBatch_TranscriptAppearsOnLaterTick proves a fork transcript that only appears on the
+// fetch AFTER the first miss still resolves clean — SettleRetry's own "first miss is inconclusive"
+// de-risk applied through the whole RecordBatch call.
 func TestRecordBatch_TranscriptAppearsOnLaterTick(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{},
@@ -294,10 +289,9 @@ func TestRecordBatch_TranscriptAppearsOnLaterTick(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted proves
-// the normal happy path: one new transcript plus a valid, matching report
-// distills and persists the digest, marks the batch Terminal, clears
-// CurrentBatch, and attributes the transcript to both SeenForkTranscripts
+// TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted proves the normal happy path:
+// one new transcript plus a valid, matching report distills and persists the digest, marks the
+// batch Terminal, clears CurrentBatch, and attributes the transcript to both SeenForkTranscripts
 // and the batch's own ForkTranscripts.
 func TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -348,11 +342,10 @@ func TestRecordBatch_OneNewTranscriptWithReport_TerminalDigestPersisted(t *testi
 	}
 }
 
-// TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew proves the
-// no_report ladder: a fork transcript with no report yet returns NoReport
-// true, leaves the batch non-terminal, and STILL advances attribution — so a
-// second record-batch call (after Master's re-fork) sees exactly its own new
-// transcript and resolves clean, never re-counting the first one.
+// TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew proves the no_report ladder: a
+// fork transcript with no report yet returns NoReport true, leaves the batch non-terminal, and
+// STILL advances attribution — so a second record-batch call (after Master's re-fork) sees exactly
+// its own new transcript and resolves clean, never re-counting the first one.
 func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
@@ -400,10 +393,9 @@ func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.
 	}
 }
 
-// TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors proves more than one
-// new transcript in a single call is a warning only, never a hard error —
-// legitimate retry behavior (a fork's Agent call errored mid-flight followed
-// by a direct re-fork, with no intervening record-batch call).
+// TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors proves more than one new transcript in a
+// single call is a warning only, never a hard error — legitimate retry behavior (a fork's Agent
+// call errored mid-flight followed by a direct re-fork, with no intervening record-batch call).
 func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{
@@ -431,10 +423,9 @@ func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_ParentWriteOutsideContractFilesErrors proves CheckParent's
-// write-policy violation is surfaced as a hard error naming the offending
-// write, even when the fork-transcript count and the report itself are both
-// otherwise clean.
+// TestRecordBatch_ParentWriteOutsideContractFilesErrors proves CheckParent's write-policy violation
+// is surfaced as a hard error naming the offending write, even when the fork-transcript count and
+// the report itself are both otherwise clean.
 func TestRecordBatch_ParentWriteOutsideContractFilesErrors(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{
@@ -453,10 +444,9 @@ func TestRecordBatch_ParentWriteOutsideContractFilesErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_HeadSHAMismatchErrors proves a batch-report whose own
-// self-reported head_sha disagrees with the worktree's actual current HEAD
-// is a hard error, naming both — the fork's report and the host repo it
-// left behind must never be trusted to agree silently.
+// TestRecordBatch_HeadSHAMismatchErrors proves a batch-report whose own self-reported head_sha
+// disagrees with the worktree's actual current HEAD is a hard error, naming both — the fork's
+// report and the host repo it left behind must never be trusted to agree silently.
 func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
@@ -472,9 +462,8 @@ func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MalformedReportYAMLErrors proves an unparseable
-// batch-report (here, an unrecognized status value) is a hard error, never a
-// guessed digest.
+// TestRecordBatch_MalformedReportYAMLErrors proves an unparseable batch-report (here, an
+// unrecognized status value) is a hard error, never a guessed digest.
 func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
@@ -487,13 +476,12 @@ func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 	}
 }
 
-// TestRecordBatch_MissingSessionTranscriptNamesRecourse proves the TRUE
-// cross-machine resume failure — the bracket-opening session's transcript
-// file does not exist on this machine at all, so the audit read itself fails
-// with fs.ErrNotExist — is wrapped with the machine-local-transcripts
-// explanation and the move-the-report-aside operator recourse, instead of
-// surfacing a bare "no such file or directory" (found live in crucible
-// round fable-r3). errors.Is must still see the underlying fs.ErrNotExist.
+// TestRecordBatch_MissingSessionTranscriptNamesRecourse proves the TRUE cross-machine resume
+// failure — the bracket-opening session's transcript file does not exist on this machine at all, so
+// the audit read itself fails with fs.ErrNotExist — is wrapped with the machine-local-transcripts
+// explanation and the move-the-report-aside operator recourse, instead of surfacing a bare "no such
+// file or directory" (found live in crucible round fable-r3).
+// errors.Is must still see the underlying fs.ErrNotExist.
 func TestRecordBatch_MissingSessionTranscriptNamesRecourse(t *testing.T) {
 	fx := newRecordFixture(t, nil)
 	fx.Engine.auditErr = fmt.Errorf("claudeengine: read parent transcript %q: %w", "/nope/session.jsonl", fs.ErrNotExist)

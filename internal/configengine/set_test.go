@@ -1,9 +1,8 @@
 // set_test.go — unit tests for the non-interactive Set entry point (set.go).
 //
-// Tests cover: scaffold-then-set when the config file is missing, rollback
-// of a freshly-scaffolded file on an unknown key, byte-for-byte preservation
-// of a pre-existing file on an unknown key, preservation of untouched
-// keys when setting one key on an existing multi-key file, and end-to-end
+// Tests cover: scaffold-then-set when the config file is missing, rollback of a freshly-scaffolded
+// file on an unknown key, byte-for-byte preservation of a pre-existing file on an unknown key,
+// preservation of untouched keys when setting one key on an existing multi-key file, and end-to-end
 // reporting of Set's returned preserved-keys list for an orphaned key.
 
 package configengine_test
@@ -18,9 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// TestSet_ScaffoldWhenMissingThenSet mirrors TestEdit_ScaffoldWhenMissing's
-// fixture setup: calling Set against a baseDir with no existing config file
-// creates it from template and applies the requested pairs in one call.
+// TestSet_ScaffoldWhenMissingThenSet mirrors TestEdit_ScaffoldWhenMissing's fixture setup: calling
+// Set against a baseDir with no existing config file creates it from template and applies the
+// requested pairs in one call.
 func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -48,9 +47,8 @@ func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 	}
 }
 
-// TestSet_UnknownKeyRemovesScaffoldedFile verifies that an unknown key against
-// a freshly-missing file removes the just-scaffolded file and returns a
-// non-nil error mentioning the unknown key.
+// TestSet_UnknownKeyRemovesScaffoldedFile verifies that an unknown key against a freshly-missing
+// file removes the just-scaffolded file and returns a non-nil error mentioning the unknown key.
 func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -74,9 +72,8 @@ func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 	}
 }
 
-// TestSet_UnknownKeyLeavesExistingFileUnchanged verifies that an unknown key
-// against a pre-existing file leaves that file byte-for-byte unchanged and
-// returns a non-nil error.
+// TestSet_UnknownKeyLeavesExistingFileUnchanged verifies that an unknown key against a pre-existing
+// file leaves that file byte-for-byte unchanged and returns a non-nil error.
 func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -110,8 +107,8 @@ func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
 	}
 }
 
-// TestSet_PreservesOtherKeysOnExistingFile verifies that setting one key on
-// an existing multi-key file preserves the other keys' values.
+// TestSet_PreservesOtherKeysOnExistingFile verifies that setting one key on an existing multi-key
+// file preserves the other keys' values.
 func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -148,10 +145,9 @@ func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 	}
 }
 
-// TestSet_PreservesUnrecognizedExistingKeyEndToEnd verifies that a real
-// on-disk config file carrying a top-level key absent from the template
-// survives a Set call untouched, and that Set reports the preserved key
-// name in its returned []string.
+// TestSet_PreservesUnrecognizedExistingKeyEndToEnd verifies that a real on-disk config file
+// carrying a top-level key absent from the template survives a Set call untouched,
+// and that Set reports the preserved key name in its returned []string.
 func TestSet_PreservesUnrecognizedExistingKeyEndToEnd(t *testing.T) {
 	tmpDir := t.TempDir()
 

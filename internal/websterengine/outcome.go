@@ -1,13 +1,12 @@
-// outcome.go implements webster's own Master-outcome contract: outcome, the
-// in-memory schema parseOutcome strictly decodes, and archiveStaleOutcome,
-// the archive-never-refuse act performed before Master's own outcome.yaml
-// is next written. Unlike gitwrap.go/fingerprint.go/pause.go/archive.go —
-// webster-local copies of a builder mechanism with an in-tree builder
-// caller — outcome.go is a rewrite-anyway contract: webster defines its own
-// shape rather than importing builder's Outcome/ParseOutcome, per the
-// Shared Decision builder-is-frozen-copy-not-move. Consumed only
-// in-package (runlevel.go/summary.go, wired in batch 7), so every symbol
-// here stays unexported/engine-scoped.
+// outcome.go implements webster's own Master-outcome contract: outcome, the in-memory schema
+// parseOutcome strictly decodes, and archiveStaleOutcome, the archive-never-refuse act performed
+// before Master's own outcome.yaml is next written.
+// Unlike gitwrap.go/fingerprint.go/pause.go/archive.go — webster-local copies of a builder
+// mechanism with an in-tree builder caller — outcome.go is a rewrite-anyway contract: webster
+// defines its own shape rather than importing builder's Outcome/ParseOutcome, per the Shared
+// Decision builder-is-frozen-copy-not-move.
+// Consumed only in-package (runlevel.go/summary.go, wired in batch 7), so every symbol here stays
+// unexported/engine-scoped.
 
 package websterengine
 

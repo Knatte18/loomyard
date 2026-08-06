@@ -1,5 +1,5 @@
-// logger_test.go verifies the default-Warn silence, the SetVerbosity
-// thresholds driven by the -v/-vv flag, and the SetOutput test seam.
+// logger_test.go verifies the default-Warn silence, the SetVerbosity thresholds driven by the
+// -v/-vv flag, and the SetOutput test seam.
 
 package logger
 
@@ -146,7 +146,8 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 	}
 }
 
-// TestDualHandler_DebugReachesStderrOnlyNotDurableSink verifies Debug does not reach the durable sink.
+// TestDualHandler_DebugReachesStderrOnlyNotDurableSink verifies Debug does not reach the durable
+// sink.
 func TestDualHandler_DebugReachesStderrOnlyNotDurableSink(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -164,7 +165,8 @@ func TestDualHandler_DebugReachesStderrOnlyNotDurableSink(t *testing.T) {
 	}
 }
 
-// TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV verifies Info reaches durable sink at all verbosity levels.
+// TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV verifies Info reaches
+// durable sink at all verbosity levels.
 func TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
@@ -197,7 +199,8 @@ func TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV(t *
 	}
 }
 
-// TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity verifies Warn reaches both sinks at all levels.
+// TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity verifies Warn reaches both sinks at all
+// levels.
 func TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity(t *testing.T) {
 	for _, verbosity := range []int{0, 1, 2} {
 		t.Run(fmt.Sprintf("verbosity=%d", verbosity), func(t *testing.T) {
@@ -227,7 +230,8 @@ func TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity(t *testing.T) {
 	}
 }
 
-// TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic verifies Warn works without a durable sink.
+// TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic verifies Warn works without a
+// durable sink.
 func TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic(t *testing.T) {
 	SetDurableSinkDir("")
 	buf := withCapturedOutput(t)
@@ -276,7 +280,8 @@ func TestDualHandler_EveryLevelStampsCurrentTraceID(t *testing.T) {
 	}
 }
 
-// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent writes produce one file and one marker.
+// TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker verifies concurrent
+// writes produce one file and one marker.
 func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)

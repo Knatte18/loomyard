@@ -22,11 +22,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair,
-// then corrupts the host _lyx into a real (non-junction) directory so the
-// junction-wiring step of Checkout fails after the weft has already switched. It
-// asserts Checkout errors AND leaves both the host and the weft on their original
-// branches — never a half-switched pair.
+// TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair, then corrupts the
+// host _lyx into a real (non-junction) directory so the junction-wiring step of Checkout fails
+// after the weft has already switched.
+// It asserts Checkout errors AND leaves both the host and the weft on their original branches —
+// never a half-switched pair.
 func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	t.Parallel()
 
@@ -82,12 +82,11 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	}
 }
 
-// TestCheckout_JunctionFailureDeletesForkedWeftBranch is the fork-path sibling
-// of the rollback test above: the target has no weft branch yet, so Checkout's
-// step 4 forks one; the junction-wiring failure at step 5 must then roll both
-// sides back AND delete the branch this very Checkout forked — otherwise every
-// rolled-back fork-checkout strands an orphan weft branch that cleanup later
-// flags, created by fabric's own failed operation.
+// TestCheckout_JunctionFailureDeletesForkedWeftBranch is the fork-path sibling of the rollback test
+// above: the target has no weft branch yet, so Checkout's step 4 forks one;
+// the junction-wiring failure at step 5 must then roll both sides back AND delete the branch this
+// very Checkout forked — otherwise every rolled-back fork-checkout strands an orphan weft branch
+// that cleanup later flags, created by fabric's own failed operation.
 func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	t.Parallel()
 

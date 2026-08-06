@@ -1,11 +1,10 @@
-// startup.go implements Startup (classifying a pane's capture during the
-// launch window) and the fixed key-choreography sequences —
-// InterruptSequence, ComposeSend, and ModelSwitchSequence — that the run
-// loop and long-lived callers send into a pane to interrupt a turn, resume
-// one, or switch the session's active model. All are pure over a capture
-// string / literal text — the classification heuristics were proven live
-// against a real claude TUI (docs/research/reed-hooks-exploration.md and
-// reedcli's dismissTrust).
+// startup.go implements Startup (classifying a pane's capture during the launch window) and the
+// fixed key-choreography sequences — InterruptSequence, ComposeSend, and ModelSwitchSequence — that
+// the run loop and long-lived callers send into a pane to interrupt a turn, resume one, or switch
+// the session's active model.
+// All are pure over a capture string / literal text — the classification heuristics were proven
+// live against a real claude TUI (docs/research/reed-hooks-exploration.md and reedcli's
+// dismissTrust).
 
 package claudeengine
 
@@ -20,8 +19,10 @@ import (
 var trustDialogNeedles = []string{"trustthisfolder", "filesinthisfolder"}
 
 // Startup classifies the pane's rendered content during launch.
-// Trust gate is checked FIRST (the real dialog contains the "❯" ready marker as its selection caret).
-// Then ready markers (the input marker "❯" or the footer hint "shortcuts") are checked; anything else is still booting.
+// Trust gate is checked FIRST (the real dialog contains the "❯" ready marker as its selection
+// caret).
+// Then ready markers (the input marker "❯" or the footer hint "shortcuts") are checked; anything
+// else is still booting.
 func (c *Claude) Startup(capture string) shuttleengine.StartupState {
 	normalized := normalizeCapture(capture)
 	for _, needle := range trustDialogNeedles {
@@ -45,12 +46,14 @@ func normalizeCapture(capture string) string {
 	}, capture)
 }
 
-// InterruptSequence returns the key choreography that interrupts a claude turn: a single Escape key press.
+// InterruptSequence returns the key choreography that interrupts a claude turn: a single Escape key
+// press.
 func (c *Claude) InterruptSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "Escape"}}
 }
 
-// TrustDismissSequence returns the key choreography that dismisses the trust gate: a single Enter key press.
+// TrustDismissSequence returns the key choreography that dismisses the trust gate: a single Enter
+// key press.
 func (c *Claude) TrustDismissSequence() []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Key: "Enter"}}
 }
@@ -60,7 +63,8 @@ func (c *Claude) TrustDismissSequence() []shuttleengine.PaneInput {
 const composeSendSettleMS = 300
 
 // ComposeSend returns the key choreography that submits text as claude's next turn.
-// Escape is sent first to clear leaked auto-suggest, with a settle pause before text is typed and submitted.
+// Escape is sent first to clear leaked auto-suggest, with a settle pause before text is typed and
+// submitted.
 func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
 		{Key: "Escape", SettleMS: composeSendSettleMS},
@@ -68,8 +72,10 @@ func (c *Claude) ComposeSend(text string) []shuttleengine.PaneInput {
 	}
 }
 
-// ModelSwitchSequence returns the key choreography that switches a live claude session's model: the `/model <name>` slash command.
-// Unlike ComposeSend, it sends NO leading Escape (injected mid-tool-call, Escape there interrupts the tool and aborts the turn).
+// ModelSwitchSequence returns the key choreography that switches a live claude session's model: the
+// `/model <name>` slash command.
+// Unlike ComposeSend, it sends NO leading Escape (injected mid-tool-call, Escape there interrupts
+// the tool and aborts the turn).
 func (c *Claude) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{
 		{Text: "/model " + model, Submit: true},

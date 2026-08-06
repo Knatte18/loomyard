@@ -125,8 +125,8 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-// TestIsLink exercises link detection across created links, regular files,
-// directories, and missing paths.
+// TestIsLink exercises link detection across created links, regular files, directories, and missing
+// paths.
 func TestIsLink(t *testing.T) {
 	t.Parallel()
 
@@ -208,8 +208,7 @@ func TestIsLink(t *testing.T) {
 	}
 }
 
-// TestPointsTo exercises target resolution for valid links, non-links, and
-// dangling links.
+// TestPointsTo exercises target resolution for valid links, non-links, and dangling links.
 func TestPointsTo(t *testing.T) {
 	t.Parallel()
 
@@ -359,8 +358,8 @@ func TestRemove(t *testing.T) {
 	}
 }
 
-// TestRemoveLinksIn exercises the link scanner across regular files,
-// directories, link removal, and error handling.
+// TestRemoveLinksIn exercises the link scanner across regular files, directories, link removal, and
+// error handling.
 func TestRemoveLinksIn(t *testing.T) {
 	t.Parallel()
 

@@ -1,10 +1,8 @@
-// template_test.go is the machine half of the Review Round Invariant
-// (CONSTRAINTS.md): it pins each of the four embedded round-prompt
-// assets' load-bearing statements as substring assertions — the
-// orchestrator's sequencing statements, instruction 3's fix-everything/
-// never-push statements, instruction 2's cluster/origin statements — it
-// proves each asset actually fills through stencil with its own required
-// marker subset, and it guards that the orchestrator never carries a
+// template_test.go is the machine half of the Review Round Invariant (CONSTRAINTS.md): it pins each
+// of the four embedded round-prompt assets' load-bearing statements as substring assertions — the
+// orchestrator's sequencing statements, instruction 3's fix-everything/ never-push statements,
+// instruction 2's cluster/origin statements — it proves each asset actually fills through stencil
+// with its own required marker subset, and it guards that the orchestrator never carries a
 // downstream instruction body back into itself.
 
 package burlerengine
@@ -16,10 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// TestTemplate_StatesRoundDiscipline asserts each asset's bytes carry the
-// load-bearing round-discipline phrases in prose, so an edit that silently
-// waters down the sequencing rule or the fix-everything rule fails this
-// test rather than only a human review.
+// TestTemplate_StatesRoundDiscipline asserts each asset's bytes carry the load-bearing
+// round-discipline phrases in prose, so an edit that silently waters down the sequencing rule or
+// the fix-everything rule fails this test rather than only a human review.
 func TestTemplate_StatesRoundDiscipline(t *testing.T) {
 	orchestrator := string(roundOrchestratorTemplate)
 	requireContains(t, orchestrator, "Sequencing rule")
@@ -35,10 +32,9 @@ func TestTemplate_StatesRoundDiscipline(t *testing.T) {
 	requireContains(t, instruction2, "origin")
 }
 
-// TestTemplate_HasClusterRulesSection asserts instruction 2's static bytes
-// carry the "## Cluster rules" section and its {{.cluster_rules}} marker,
-// so an edit that drops the section heading or renames the marker fails
-// this test rather than only a human review.
+// TestTemplate_HasClusterRulesSection asserts instruction 2's static bytes carry the "## Cluster
+// rules" section and its {{.cluster_rules}} marker, so an edit that drops the section heading or
+// renames the marker fails this test rather than only a human review.
 func TestTemplate_HasClusterRulesSection(t *testing.T) {
 	text := string(instruction2Template)
 
@@ -46,17 +42,15 @@ func TestTemplate_HasClusterRulesSection(t *testing.T) {
 	requireContains(t, text, "{{.cluster_rules}}")
 }
 
-// TestTemplate_StatesClusterForkDiscipline pins the cluster round's
-// load-bearing fork-discipline statements — the single-message fork spawn,
-// the unnamed-fork rule, the fork's read-only/no-git discipline, that
-// consolidation happens before job B, the origin labels, and the Rejected
-// section — following this file's existing pin style but sourced from a
-// full composePrompt render for a cluster profile rather than the static
-// template bytes: this content is composed dynamically by
-// clusterRulesBlock (prompt.go) into instruction 2, not baked into
-// instruction-2-review-template.md itself. An edit that silently waters
-// any of these statements down fails this test rather than only a human
-// review.
+// TestTemplate_StatesClusterForkDiscipline pins the cluster round's load-bearing fork-discipline
+// statements — the single-message fork spawn, the unnamed-fork rule, the fork's read-only/no-git
+// discipline, that consolidation happens before job B, the origin labels, and the Rejected section
+// — following this file's existing pin style but sourced from a full composePrompt render for a
+// cluster profile rather than the static template bytes: this content is composed dynamically by
+// clusterRulesBlock (prompt.go) into instruction 2, not baked into instruction-2-review-template.md
+// itself.
+// An edit that silently waters any of these statements down fails this test rather than only a
+// human review.
 func TestTemplate_StatesClusterForkDiscipline(t *testing.T) {
 	p := newComposableProfile(t)
 	p.ClusterFan = "standard"
@@ -83,17 +77,14 @@ func TestTemplate_StatesClusterForkDiscipline(t *testing.T) {
 	requireContains(t, got, "Rejected")
 }
 
-// TestTemplate_OrchestratorExcludesDownstreamBodies guards that the
-// orchestrator handed to the shuttle never carries a downstream
-// instruction body back into itself. The five tokens below are disjoint
-// from the orchestrator's retained two-jobs framing (including the
-// retained job-B one-liner, "even if the verdict was APPROVED —
-// non-blocking polish still gets fixed"): each appears only inside a
-// downstream instruction file's body (instruction 3's fix-everything
-// prose, instruction 2's review-file YAML keys and cluster fork-spawn
-// prose), so a regression that inlines a downstream body back into the
-// orchestrator trips this guard on the first offending token, without
-// colliding with the orchestrator's legitimate bare-word "verdict"/
+// TestTemplate_OrchestratorExcludesDownstreamBodies guards that the orchestrator handed to the
+// shuttle never carries a downstream instruction body back into itself.
+// The five tokens below are disjoint from the orchestrator's retained two-jobs framing (including
+// the retained job-B one-liner, "even if the verdict was APPROVED — non-blocking polish still gets
+// fixed"): each appears only inside a downstream instruction file's body (instruction 3's
+// fix-everything prose, instruction 2's review-file YAML keys and cluster fork-spawn prose), so a
+// regression that inlines a downstream body back into the orchestrator trips this guard on the
+// first offending token, without colliding with the orchestrator's legitimate bare-word "verdict"/
 // "findings" usage.
 func TestTemplate_OrchestratorExcludesDownstreamBodies(t *testing.T) {
 	p := newComposableProfile(t)
@@ -169,12 +160,11 @@ func instruction3MarkerValues() map[string]string {
 	}
 }
 
-// TestTemplate_FillsWithAllMarkers asserts each of the four embedded
-// assets fills through stencil when supplied its own full marker set
-// (required markers plus, for instruction 1, the optional
-// pattern_directive), and fails — naming the marker — when any single
-// REQUIRED marker for that asset is absent. pattern_directive is
-// deliberately excluded from instruction 1's deletion sweep: it is the one
+// TestTemplate_FillsWithAllMarkers asserts each of the four embedded assets fills through stencil
+// when supplied its own full marker set (required markers plus, for instruction 1, the optional
+// pattern_directive), and fails — naming the marker — when any single REQUIRED marker for that
+// asset is absent.
+// pattern_directive is deliberately excluded from instruction 1's deletion sweep: it is the one
 // optional marker across all four assets, so deleting it must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	tests := []struct {
@@ -243,12 +233,11 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTemplate_PatternDirectiveOptional asserts pattern_directive behaves
-// as an optional marker on instruction 1: an empty value renders cleanly
-// with no leftover `{{`, no orphan `## Constraints` heading, and no stray
-// blank-line block where the directive would have sat, and a non-empty
-// value places the directive block ahead of the first work instruction
-// ("## What to review (the target)").
+// TestTemplate_PatternDirectiveOptional asserts pattern_directive behaves as an optional marker on
+// instruction 1: an empty value renders cleanly with no leftover `{{`, no orphan `## Constraints`
+// heading, and no stray blank-line block where the directive would have sat, and a non-empty value
+// places the directive block ahead of the first work instruction ("## What to review (the
+// target)").
 func TestTemplate_PatternDirectiveOptional(t *testing.T) {
 	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
 		values := instruction1MarkerValues()

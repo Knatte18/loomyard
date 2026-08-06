@@ -1,8 +1,7 @@
-// digest_test.go covers distill's Report->Digest mapping: OK maps to
-// DigestStatusDone and FAILED maps to DigestStatusStuck, HeadSHA and
-// Deviations carry straight through, and a large deviation list never
-// changes the mapped status (the deviation-list-is-informational Shared
-// Decision). Tier 1: no git, pure in-memory construction.
+// digest_test.go covers distill's Report->Digest mapping: OK maps to DigestStatusDone and FAILED
+// maps to DigestStatusStuck, HeadSHA and Deviations carry straight through, and a large deviation
+// list never changes the mapped status (the deviation-list-is-informational Shared Decision).
+// Tier 1: no git, pure in-memory construction.
 
 package websterengine
 

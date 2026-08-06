@@ -1,6 +1,6 @@
-// config_test.go verifies shuttle.yaml's template parses, defaults resolve
-// through LoadConfig, and environment overrides + the not-initialized error
-// path behave the way reedengine's config tests establish the pattern.
+// config_test.go verifies shuttle.yaml's template parses, defaults resolve through LoadConfig, and
+// environment overrides + the not-initialized error path behave the way reedengine's config tests
+// establish the pattern.
 
 package shuttleengine_test
 

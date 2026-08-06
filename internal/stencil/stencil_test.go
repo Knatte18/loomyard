@@ -1,8 +1,8 @@
 // stencil_test.go is the black-box, table-driven contract test for stencil.Fill and
 // stencil.FillOptional: the happy path, the unfilled-top-level-marker guard (including
-// sorting/dedup), the incremental branch-internal guard, conditional sections, the
-// leading-comment strip, the no-HTML-escaping / idempotence guarantees, and
-// FillOptional's optional-marker exemption from both guards.
+// sorting/dedup), the incremental branch-internal guard, conditional sections, the leading-comment
+// strip, the no-HTML-escaping / idempotence guarantees, and FillOptional's optional-marker
+// exemption from both guards.
 
 package stencil_test
 
@@ -53,8 +53,8 @@ func runFillCases(t *testing.T, tests []fillCase) {
 	}
 }
 
-// TestFill_HappyPath covers several top-level {{.X}} markers, all present and
-// non-empty, rendering the correct substituted output with a nil error.
+// TestFill_HappyPath covers several top-level {{.X}} markers, all present and non-empty, rendering
+// the correct substituted output with a nil error.
 func TestFill_HappyPath(t *testing.T) {
 	tests := []fillCase{
 		{
@@ -75,8 +75,8 @@ func TestFill_HappyPath(t *testing.T) {
 	runFillCases(t, tests)
 }
 
-// TestFill_MissingTopLevelMarker covers a referenced top-level marker absent from
-// values, which must error naming that marker.
+// TestFill_MissingTopLevelMarker covers a referenced top-level marker absent from values, which
+// must error naming that marker.
 func TestFill_MissingTopLevelMarker(t *testing.T) {
 	tests := []fillCase{
 		{
@@ -97,8 +97,8 @@ func TestFill_MissingTopLevelMarker(t *testing.T) {
 	runFillCases(t, tests)
 }
 
-// TestFill_EmptyValue covers a top-level marker present as "" and as
-// whitespace-only ("   "): both must error, the empty-fasit guard.
+// TestFill_EmptyValue covers a top-level marker present as "" and as whitespace-only (" "): both
+// must error, the empty-fasit guard.
 func TestFill_EmptyValue(t *testing.T) {
 	tests := []fillCase{
 		{
@@ -119,9 +119,9 @@ func TestFill_EmptyValue(t *testing.T) {
 	runFillCases(t, tests)
 }
 
-// TestFill_MultipleOffendersSortedAndDeduped covers two or more unfilled top-level
-// markers collapsing into a single error listing all of them in sorted order, with a
-// repeated reference to the same marker deduplicated to one entry.
+// TestFill_MultipleOffendersSortedAndDeduped covers two or more unfilled top-level markers
+// collapsing into a single error listing all of them in sorted order, with a repeated reference to
+// the same marker deduplicated to one entry.
 func TestFill_MultipleOffendersSortedAndDeduped(t *testing.T) {
 	got, err := stencil.Fill(
 		[]byte("{{.Target}} {{.Fasit}} {{.Other}}"),
@@ -146,10 +146,11 @@ func TestFill_MultipleOffendersSortedAndDeduped(t *testing.T) {
 	}
 }
 
-// TestFill_BranchInternalMissCaughtIncrementally covers a taken branch referencing an
-// absent marker (error naming it), and a mix of an absent top-level marker plus an
-// absent in-branch marker, where the top-level check reports first and the
-// in-branch name never appears (Fill returns before execution reaches the branch).
+// TestFill_BranchInternalMissCaughtIncrementally covers a taken branch referencing an absent marker
+// (error naming it),
+// and a mix of an absent top-level marker plus an absent in-branch marker, where the top-level
+// check reports first and the in-branch name never appears (Fill returns before execution reaches
+// the branch).
 func TestFill_BranchInternalMissCaughtIncrementally(t *testing.T) {
 	t.Run("branch_internal_absent", func(t *testing.T) {
 		_, err := stencil.Fill(
@@ -181,8 +182,8 @@ func TestFill_BranchInternalMissCaughtIncrementally(t *testing.T) {
 	})
 }
 
-// TestFill_MalformedTemplate covers an unparseable template (an unclosed {{if}}),
-// which must return a non-nil error wrapping the parse failure, never panic.
+// TestFill_MalformedTemplate covers an unparseable template (an unclosed {{if}}), which must return
+// a non-nil error wrapping the parse failure, never panic.
 func TestFill_MalformedTemplate(t *testing.T) {
 	tests := []fillCase{
 		{
@@ -203,8 +204,8 @@ func TestFill_MalformedTemplate(t *testing.T) {
 	runFillCases(t, tests)
 }
 
-// TestFill_ConditionalTaken covers {{if eq .Type "Cluster"}}...{{end}} with a matching
-// Type, where the section is present and its inner markers are substituted.
+// TestFill_ConditionalTaken covers {{if eq .Type "Cluster"}}...{{end}} with a matching Type, where
+// the section is present and its inner markers are substituted.
 func TestFill_ConditionalTaken(t *testing.T) {
 	tests := []fillCase{
 		{
@@ -218,9 +219,10 @@ func TestFill_ConditionalTaken(t *testing.T) {
 	runFillCases(t, tests)
 }
 
-// TestFill_ConditionalNotTaken covers the same template with a non-matching Type: the
-// section is absent, and markers living only inside that branch are not required (no
-// error even though the branch-only marker is absent from values).
+// TestFill_ConditionalNotTaken covers the same template with a non-matching Type: the section is
+// absent,
+// and markers living only inside that branch are not required (no error even though the branch-only
+// marker is absent from values).
 func TestFill_ConditionalNotTaken(t *testing.T) {
 	got, err := stencil.Fill(
 		[]byte(`Head{{if eq .Type "Cluster"}} Body: {{.Body}}{{end}} Tail`),
@@ -238,9 +240,9 @@ func TestFill_ConditionalNotTaken(t *testing.T) {
 	}
 }
 
-// TestFill_ForgottenDiscriminator covers a template that references
-// {{if eq .Type ...}} while values has no Type key at all: the condition is always
-// evaluated, so this must error rather than silently treat Type as false/empty.
+// TestFill_ForgottenDiscriminator covers a template that references {{if eq .Type ...}} while
+// values has no Type key at all: the condition is always evaluated, so this must error rather than
+// silently treat Type as false/empty.
 func TestFill_ForgottenDiscriminator(t *testing.T) {
 	_, err := stencil.Fill(
 		[]byte(`{{if eq .Type "Cluster"}}Body{{end}}`),
@@ -251,8 +253,8 @@ func TestFill_ForgottenDiscriminator(t *testing.T) {
 	}
 }
 
-// TestFill_UnusedValuesIgnored covers values carrying keys the template never
-// references: no error, output unaffected.
+// TestFill_UnusedValuesIgnored covers values carrying keys the template never references: no error,
+// output unaffected.
 func TestFill_UnusedValuesIgnored(t *testing.T) {
 	tests := []fillCase{
 		{
@@ -266,10 +268,9 @@ func TestFill_UnusedValuesIgnored(t *testing.T) {
 	runFillCases(t, tests)
 }
 
-// TestFill_LeadingCommentStrip covers a leading <!-- ... --> being dropped (a marker
-// inside it is neither substituted nor checked, so no error even though it references
-// an undefined value), a mid-template comment preserved verbatim, and a comment-only
-// template rendering empty output.
+// TestFill_LeadingCommentStrip covers a leading <!-- ... --> being dropped (a marker inside it is
+// neither substituted nor checked, so no error even though it references an undefined value), a
+// mid-template comment preserved verbatim, and a comment-only template rendering empty output.
 func TestFill_LeadingCommentStrip(t *testing.T) {
 	t.Run("leading_comment_dropped_marker_inside_not_checked", func(t *testing.T) {
 		got, err := stencil.Fill(
@@ -310,9 +311,8 @@ func TestFill_LeadingCommentStrip(t *testing.T) {
 	})
 }
 
-// TestFill_EmptyOrWhitespaceOnlyTemplate covers an empty template and a
-// whitespace-only template, both of which must render with a nil error and no
-// substantive content.
+// TestFill_EmptyOrWhitespaceOnlyTemplate covers an empty template and a whitespace-only template,
+// both of which must render with a nil error and no substantive content.
 func TestFill_EmptyOrWhitespaceOnlyTemplate(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -335,9 +335,9 @@ func TestFill_EmptyOrWhitespaceOnlyTemplate(t *testing.T) {
 	}
 }
 
-// TestFill_IdempotenceAndDeterminism covers repeated calls with the same template and
-// values producing byte-identical output, and the multi-offender error message being
-// stable (sorted) across repeated calls.
+// TestFill_IdempotenceAndDeterminism covers repeated calls with the same template and values
+// producing byte-identical output,
+// and the multi-offender error message being stable (sorted) across repeated calls.
 func TestFill_IdempotenceAndDeterminism(t *testing.T) {
 	t.Run("output_stable_across_calls", func(t *testing.T) {
 		template := []byte("Fasit: {{.Fasit}}\nTarget: {{.Target}}\n")
@@ -371,8 +371,8 @@ func TestFill_IdempotenceAndDeterminism(t *testing.T) {
 	})
 }
 
-// TestFill_NoHTMLEscaping covers a value containing <, >, &, and quotes passing
-// through verbatim, confirming Fill uses text/template rather than html/template.
+// TestFill_NoHTMLEscaping covers a value containing <, >, &, and quotes passing through verbatim,
+// confirming Fill uses text/template rather than html/template.
 func TestFill_NoHTMLEscaping(t *testing.T) {
 	got, err := stencil.Fill(
 		[]byte("Value: {{.Val}}"),
@@ -387,9 +387,8 @@ func TestFill_NoHTMLEscaping(t *testing.T) {
 	}
 }
 
-// TestFillOptional_AbsentRendersNothing covers a marker listed as optional and absent
-// from values rendering as nothing with no error, instead of tripping the
-// unfilled-top-level-marker guard.
+// TestFillOptional_AbsentRendersNothing covers a marker listed as optional and absent from values
+// rendering as nothing with no error, instead of tripping the unfilled-top-level-marker guard.
 func TestFillOptional_AbsentRendersNothing(t *testing.T) {
 	got, err := stencil.FillOptional(
 		[]byte("Head: {{.Head}}\nExtra: {{.Extra}}"),
@@ -405,8 +404,8 @@ func TestFillOptional_AbsentRendersNothing(t *testing.T) {
 	}
 }
 
-// TestFillOptional_PresentButEmptyRendersNothing covers a marker listed as optional and
-// present in values as "" rendering as nothing with no error.
+// TestFillOptional_PresentButEmptyRendersNothing covers a marker listed as optional and present in
+// values as "" rendering as nothing with no error.
 func TestFillOptional_PresentButEmptyRendersNothing(t *testing.T) {
 	got, err := stencil.FillOptional(
 		[]byte("Extra: {{.Extra}}"),
@@ -422,10 +421,10 @@ func TestFillOptional_PresentButEmptyRendersNothing(t *testing.T) {
 	}
 }
 
-// TestFillOptional_WhitespaceOnlyNormalisesToEmpty covers a marker listed as optional
-// and present in values as whitespace-only rendering as nothing, not as its whitespace
-// verbatim — the same TrimSpace-based "empty" definition unfilledTopLevelMarkers uses
-// must also govern what FillOptional seeds before execution.
+// TestFillOptional_WhitespaceOnlyNormalisesToEmpty covers a marker listed as optional and present
+// in values as whitespace-only rendering as nothing, not as its whitespace verbatim — the same
+// TrimSpace-based "empty" definition unfilledTopLevelMarkers uses must also govern what
+// FillOptional seeds before execution.
 func TestFillOptional_WhitespaceOnlyNormalisesToEmpty(t *testing.T) {
 	got, err := stencil.FillOptional(
 		[]byte("Extra: [{{.Extra}}]"),
@@ -441,9 +440,9 @@ func TestFillOptional_WhitespaceOnlyNormalisesToEmpty(t *testing.T) {
 	}
 }
 
-// TestFillOptional_PresentAndNonEmptyRendersValue covers a marker listed as optional but
-// present and non-empty rendering its actual value, confirming the optional exemption
-// only changes behaviour for absent/empty values, not for a value that is genuinely set.
+// TestFillOptional_PresentAndNonEmptyRendersValue covers a marker listed as optional but present
+// and non-empty rendering its actual value, confirming the optional exemption only changes
+// behaviour for absent/empty values, not for a value that is genuinely set.
 func TestFillOptional_PresentAndNonEmptyRendersValue(t *testing.T) {
 	got, err := stencil.FillOptional(
 		[]byte("Extra: {{.Extra}}"),
@@ -459,10 +458,10 @@ func TestFillOptional_PresentAndNonEmptyRendersValue(t *testing.T) {
 	}
 }
 
-// TestFillOptional_NonOptionalEmptyMarkerStillErrors covers a template with only a
-// non-optional empty marker: the existing unfilled-top-level-marker error must still
-// fire, confirming FillOptional(t, v, nil-equivalent-for-that-name) behaves exactly like
-// Fill for names not listed as optional.
+// TestFillOptional_NonOptionalEmptyMarkerStillErrors covers a template with only a non-optional
+// empty marker: the existing unfilled-top-level-marker error must still fire, confirming
+// FillOptional(t, v, nil-equivalent-for-that-name) behaves exactly like Fill for names not listed
+// as optional.
 func TestFillOptional_NonOptionalEmptyMarkerStillErrors(t *testing.T) {
 	_, err := stencil.FillOptional(
 		[]byte("Fasit: {{.Fasit}}"),
@@ -477,10 +476,10 @@ func TestFillOptional_NonOptionalEmptyMarkerStillErrors(t *testing.T) {
 	}
 }
 
-// TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired covers a template
-// with one optional-and-empty marker plus one required-and-empty marker: the error must
-// name only the required one, confirming the optional exemption removes a name from the
-// offenders list rather than merely suppressing the whole error.
+// TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired covers a template with one
+// optional-and-empty marker plus one required-and-empty marker: the error must name only the
+// required one, confirming the optional exemption removes a name from the offenders list rather
+// than merely suppressing the whole error.
 func TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired(t *testing.T) {
 	_, err := stencil.FillOptional(
 		[]byte("Fasit: {{.Fasit}}\nExtra: {{.Extra}}"),
@@ -496,10 +495,10 @@ func TestFillOptional_MixOfOptionalAndRequiredEmptyReportsOnlyRequired(t *testin
 	}
 }
 
-// TestFillOptional_ByteIdenticalToFillOnSameInput covers Fill(t, v) and
-// FillOptional(t, v, nil) producing byte-identical output on the happy path and
-// byte-identical error text on the error path, confirming Fill is genuinely defined as
-// FillOptional(t, v, nil) rather than a parallel implementation that could drift.
+// TestFillOptional_ByteIdenticalToFillOnSameInput covers Fill(t, v) and FillOptional(t, v, nil)
+// producing byte-identical output on the happy path and byte-identical error text on the error
+// path, confirming Fill is genuinely defined as FillOptional(t, v, nil) rather than a parallel
+// implementation that could drift.
 func TestFillOptional_ByteIdenticalToFillOnSameInput(t *testing.T) {
 	t.Run("happy_path", func(t *testing.T) {
 		template := []byte("Fasit: {{.Fasit}}\nTarget: {{.Target}}\n")
@@ -530,9 +529,9 @@ func TestFillOptional_ByteIdenticalToFillOnSameInput(t *testing.T) {
 	})
 }
 
-// TestFillOptional_OptionalNameAbsentFromTemplateIsNoOp covers an optional name listed
-// but never referenced anywhere in the template: rendering succeeds unaffected, since
-// there is no marker for the exemption to apply to.
+// TestFillOptional_OptionalNameAbsentFromTemplateIsNoOp covers an optional name listed but never
+// referenced anywhere in the template: rendering succeeds unaffected, since there is no marker for
+// the exemption to apply to.
 func TestFillOptional_OptionalNameAbsentFromTemplateIsNoOp(t *testing.T) {
 	got, err := stencil.FillOptional(
 		[]byte("Fasit: {{.Fasit}}"),
@@ -548,9 +547,9 @@ func TestFillOptional_OptionalNameAbsentFromTemplateIsNoOp(t *testing.T) {
 	}
 }
 
-// TestFillOptional_CallerValuesMapNotMutated covers the caller's values map being left
-// untouched after a call whose optional-seeding step would otherwise need to add or
-// overwrite an entry, confirming FillOptional operates on a private copy.
+// TestFillOptional_CallerValuesMapNotMutated covers the caller's values map being left untouched
+// after a call whose optional-seeding step would otherwise need to add or overwrite an entry,
+// confirming FillOptional operates on a private copy.
 func TestFillOptional_CallerValuesMapNotMutated(t *testing.T) {
 	values := map[string]string{"Fasit": "value"}
 
@@ -570,9 +569,9 @@ func TestFillOptional_CallerValuesMapNotMutated(t *testing.T) {
 	}
 }
 
-// TestFillOptional_RepeatedCallsProduceIdenticalOutput covers repeated FillOptional
-// calls with the same inputs producing byte-identical output and identical error text,
-// mirroring Fill's own idempotence guarantee.
+// TestFillOptional_RepeatedCallsProduceIdenticalOutput covers repeated FillOptional calls with the
+// same inputs producing byte-identical output and identical error text, mirroring Fill's own
+// idempotence guarantee.
 func TestFillOptional_RepeatedCallsProduceIdenticalOutput(t *testing.T) {
 	t.Run("output_stable_across_calls", func(t *testing.T) {
 		template := []byte("Head: {{.Head}}\nExtra: {{.Extra}}")

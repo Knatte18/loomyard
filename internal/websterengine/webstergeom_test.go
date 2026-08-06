@@ -1,6 +1,6 @@
-// webstergeom_test.go — pure path-math unit tests for the webster geometry
-// accessors (Dir/ReportsDir/PromptsDir). These tests do not require a git
-// repository and run under standard unit test verification.
+// webstergeom_test.go — pure path-math unit tests for the webster geometry accessors
+// (Dir/ReportsDir/PromptsDir).
+// These tests do not require a git repository and run under standard unit test verification.
 
 package websterengine
 

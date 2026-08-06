@@ -1,6 +1,6 @@
-// gitrepo.go defines the Repo type and its read/commit primitives: New, the
-// shared run helper over gitexec.RunGit, CurrentSHA, StageAndCommit,
-// CommitEmpty, StageAllAndCommit, ChangedFilesSince, and SHAExists.
+// gitrepo.go defines the Repo type and its read/commit primitives: New, the shared run helper over
+// gitexec.RunGit, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit, ChangedFilesSince,
+// and SHAExists.
 
 package gitrepo
 
@@ -23,8 +23,8 @@ import (
 // ErrNoCommits is returned by CurrentSHA when the repository has no commits.
 var ErrNoCommits = errors.New("gitrepo: repository has no commits")
 
-// ErrInvalidSHA is returned when a caller-supplied SHA is not a valid hex
-// object name, surfaced before reaching git.
+// ErrInvalidSHA is returned when a caller-supplied SHA is not a valid hex object name, surfaced
+// before reaching git.
 var ErrInvalidSHA = errors.New("gitrepo: invalid SHA")
 
 // ErrIndexNotEmpty is returned by CommitEmpty when the index has staged changes.
@@ -38,8 +38,9 @@ func validSHA(sha string) bool {
 	return shaPattern.MatchString(sha)
 }
 
-// Repo is a typed handle on one local git checkout. Methods on a single Repo
-// are not goroutine-safe for concurrent writes; callers must serialize.
+// Repo is a typed handle on one local git checkout.
+// Methods on a single Repo are not goroutine-safe for concurrent writes;
+// callers must serialize.
 type Repo struct {
 	path string
 
@@ -79,10 +80,11 @@ func (r *Repo) CurrentSHA() (string, error) {
 	return head.Hash().String(), nil
 }
 
-// StageAndCommit stages the given files and commits them with msg. It returns
-// ("", false, nil) when no staged changes exist (not an error). Returns the new
-// HEAD SHA with committed=true on a successful commit. Files must be plain
-// relative paths; files is never wildcard-staged.
+// StageAndCommit stages the given files and commits them with msg.
+// It returns ("", false, nil) when no staged changes exist (not an error).
+// Returns the new HEAD SHA with committed=true on a successful commit.
+// Files must be plain relative paths;
+// files is never wildcard-staged.
 func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed bool, err error) {
 	if len(files) == 0 {
 		return "", false, nil
@@ -127,9 +129,10 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	return sha, true, nil
 }
 
-// CommitEmpty records an empty commit (tree identical to its parent's) via
-// `git commit --allow-empty`. It refuses if the index is dirty, returning
-// ErrIndexNotEmpty. Unlike StageAndCommit, it always commits when it succeeds.
+// CommitEmpty records an empty commit (tree identical to its parent's) via `git commit
+// --allow-empty`.
+// It refuses if the index is dirty, returning ErrIndexNotEmpty.
+// Unlike StageAndCommit, it always commits when it succeeds.
 func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 	_, err = r.CurrentSHA()
 	switch {
@@ -176,8 +179,8 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 }
 
 // StageAllAndCommit stages every change via `git add -A` and commits with msg.
-// Return semantics mirror StageAndCommit: ("", false, nil) when nothing to
-// commit, otherwise the new HEAD SHA with committed=true.
+// Return semantics mirror StageAndCommit: ("", false, nil) when nothing to commit, otherwise the
+// new HEAD SHA with committed=true.
 func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err error) {
 	_, stderr, code, err := r.run("add", "-A")
 	if err != nil {
@@ -214,8 +217,8 @@ func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err er
 	return sha, true, nil
 }
 
-// SHAExists reports whether sha names a reachable commit. Errors and invalid
-// SHAs fold into false, treating it as a staleness signal.
+// SHAExists reports whether sha names a reachable commit.
+// Errors and invalid SHAs fold into false, treating it as a staleness signal.
 func (r *Repo) SHAExists(sha string) bool {
 	if !validSHA(sha) {
 		return false
@@ -249,8 +252,8 @@ func commitByHash(repo *git.Repository, sha string) (*object.Commit, error) {
 	return repo.CommitObject(*hash)
 }
 
-// CurrentBranch returns the short name of the branch HEAD points to, or an
-// error if HEAD is detached.
+// CurrentBranch returns the short name of the branch HEAD points to,
+// or an error if HEAD is detached.
 func (r *Repo) CurrentBranch() (string, error) {
 	repo, err := r.goGit()
 	if err != nil {
@@ -270,8 +273,8 @@ func (r *Repo) CurrentBranch() (string, error) {
 	return head.Target().Short(), nil
 }
 
-// CheckoutDetached moves HEAD to sha without updating any branch ref, or
-// returns ErrInvalidSHA if sha is invalid.
+// CheckoutDetached moves HEAD to sha without updating any branch ref,
+// or returns ErrInvalidSHA if sha is invalid.
 func (r *Repo) CheckoutDetached(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA
@@ -298,9 +301,10 @@ func (r *Repo) RestoreBranch(ref string) error {
 	return nil
 }
 
-// ChangedFilesSince returns repo-relative paths that differ between sha and
-// HEAD, considering committed history only. Returns ErrInvalidSHA if sha is
-// invalid. The returned order is not contractual.
+// ChangedFilesSince returns repo-relative paths that differ between sha and HEAD, considering
+// committed history only.
+// Returns ErrInvalidSHA if sha is invalid.
+// The returned order is not contractual.
 func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {
 	if !validSHA(sha) {
 		return nil, ErrInvalidSHA

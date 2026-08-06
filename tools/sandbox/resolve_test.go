@@ -1,7 +1,7 @@
-// resolve_test.go contains unit tests for resolveLyx (dev/prod binary
-// resolution) and prependPath (child-process PATH construction). All tests
-// are Tier-1 pure: the devBinPath and lookPath seams are stubbed, and only
-// os.Stat/os.WriteFile on t.TempDir() paths touch the filesystem.
+// resolve_test.go contains unit tests for resolveLyx (dev/prod binary resolution) and prependPath
+// (child-process PATH construction).
+// All tests are Tier-1 pure: the devBinPath and lookPath seams are stubbed,
+// and only os.Stat/os.WriteFile on t.TempDir() paths touch the filesystem.
 
 package main
 
@@ -13,8 +13,8 @@ import (
 	"testing"
 )
 
-// TestResolveLyx_DevBinaryExists verifies that resolveLyx returns the
-// dev-binary path and sourceDev when devBinPath resolves to an existing file.
+// TestResolveLyx_DevBinaryExists verifies that resolveLyx returns the dev-binary path and sourceDev
+// when devBinPath resolves to an existing file.
 func TestResolveLyx_DevBinaryExists(t *testing.T) {
 	devPath := filepath.Join(t.TempDir(), "lyx")
 	if err := os.WriteFile(devPath, []byte("fake dev lyx"), 0o755); err != nil {
@@ -37,8 +37,8 @@ func TestResolveLyx_DevBinaryExists(t *testing.T) {
 	}
 }
 
-// TestResolveLyx_DevBinaryMissingFallsBackToProd verifies that resolveLyx
-// falls back to lookPath and returns sourceProd when the dev binary is absent.
+// TestResolveLyx_DevBinaryMissingFallsBackToProd verifies that resolveLyx falls back to lookPath
+// and returns sourceProd when the dev binary is absent.
 func TestResolveLyx_DevBinaryMissingFallsBackToProd(t *testing.T) {
 	missingDevPath := filepath.Join(t.TempDir(), "lyx")
 	const fakeProdPath = "/fake/prod/lyx"
@@ -63,8 +63,8 @@ func TestResolveLyx_DevBinaryMissingFallsBackToProd(t *testing.T) {
 	}
 }
 
-// TestResolveLyx_DevBinaryMissingAndLookPathFails verifies that resolveLyx
-// propagates a lookPath error when both the dev binary is absent and PATH lookup fails.
+// TestResolveLyx_DevBinaryMissingAndLookPathFails verifies that resolveLyx propagates a lookPath
+// error when both the dev binary is absent and PATH lookup fails.
 func TestResolveLyx_DevBinaryMissingAndLookPathFails(t *testing.T) {
 	missingDevPath := filepath.Join(t.TempDir(), "lyx")
 	wantErr := errors.New("exec: \"lyx\": executable file not found in $PATH")
@@ -86,8 +86,8 @@ func TestResolveLyx_DevBinaryMissingAndLookPathFails(t *testing.T) {
 	}
 }
 
-// TestPrependPath_PrependsToExistingPath verifies that prependPath makes dir
-// the first PATH segment.
+// TestPrependPath_PrependsToExistingPath verifies that prependPath makes dir the first PATH
+// segment.
 func TestPrependPath_PrependsToExistingPath(t *testing.T) {
 	environ := []string{"PATH=/usr/bin:/bin", "HOME=/x"}
 	got := prependPath("/dev/bin", environ)
@@ -98,8 +98,7 @@ func TestPrependPath_PrependsToExistingPath(t *testing.T) {
 	}
 }
 
-// TestPrependPath_PreservesNonPathEntries verifies that non-PATH env vars
-// are left untouched.
+// TestPrependPath_PreservesNonPathEntries verifies that non-PATH env vars are left untouched.
 func TestPrependPath_PreservesNonPathEntries(t *testing.T) {
 	environ := []string{"PATH=/usr/bin", "HOME=/x"}
 	got := prependPath("/dev/bin", environ)
@@ -109,8 +108,8 @@ func TestPrependPath_PreservesNonPathEntries(t *testing.T) {
 	}
 }
 
-// TestPrependPath_EmptyDirReturnsEnvironUnchanged verifies that prependPath
-// returns environ unchanged when dir is empty.
+// TestPrependPath_EmptyDirReturnsEnvironUnchanged verifies that prependPath returns environ
+// unchanged when dir is empty.
 func TestPrependPath_EmptyDirReturnsEnvironUnchanged(t *testing.T) {
 	environ := []string{"PATH=/usr/bin", "HOME=/x"}
 	got := prependPath("", environ)
@@ -125,8 +124,8 @@ func TestPrependPath_EmptyDirReturnsEnvironUnchanged(t *testing.T) {
 	}
 }
 
-// TestPrependPath_WindowsPathKeyEditedInPlace verifies that a Windows-form
-// "Path=..." entry is edited in place without duplicating a "PATH=" entry.
+// TestPrependPath_WindowsPathKeyEditedInPlace verifies that a Windows-form "Path=..."
+// entry is edited in place without duplicating a "PATH=" entry.
 func TestPrependPath_WindowsPathKeyEditedInPlace(t *testing.T) {
 	environ := []string{"Path=C:\\Windows;C:\\Windows\\System32", "HOME=/x"}
 	got := prependPath("C:\\dev-bin", environ)

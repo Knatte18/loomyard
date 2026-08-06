@@ -1,6 +1,6 @@
-// jsonhelp_test.go asserts the --json help schema at multiple levels of the lyx
-// command tree. Each test drives the run() seam with --json and validates that the
-// captured output is valid JSON matching the {name, short, commands, flags} schema.
+// jsonhelp_test.go asserts the --json help schema at multiple levels of the lyx command tree.
+// Each test drives the run() seam with --json and validates that the captured output is valid JSON
+// matching the {name, short, commands, flags} schema.
 // It also confirms that hidden and meta flags are absent from the flags array.
 
 package main
@@ -63,8 +63,8 @@ func commandNames(cmds []helpJSONCmd) map[string]bool {
 	return names
 }
 
-// TestJSONHelp_RootSchema asserts that "lyx --json" produces valid JSON with the
-// expected schema fields and lists every module under commands.
+// TestJSONHelp_RootSchema asserts that "lyx --json" produces valid JSON with the expected schema
+// fields and lists every module under commands.
 func TestJSONHelp_RootSchema(t *testing.T) {
 	var out bytes.Buffer
 	code := run([]string{"--json"}, &out)
@@ -129,7 +129,8 @@ func TestJSONHelp_VerbModuleSchema(t *testing.T) {
 	}
 }
 
-// TestJSONHelp_SelfreportSchema asserts "lyx selfreport --json" produces valid JSON with subcommands.
+// TestJSONHelp_SelfreportSchema asserts "lyx selfreport --json" produces valid JSON with
+// subcommands.
 func TestJSONHelp_SelfreportSchema(t *testing.T) {
 	var out bytes.Buffer
 	code := run([]string{"selfreport", "--json"}, &out)
@@ -149,7 +150,8 @@ func TestJSONHelp_SelfreportSchema(t *testing.T) {
 	}
 }
 
-// TestJSONHelp_SelfreportCreateLeaf asserts leaf "lyx selfreport create --help --json" produces valid JSON.
+// TestJSONHelp_SelfreportCreateLeaf asserts leaf "lyx selfreport create --help --json" produces
+// valid JSON.
 func TestJSONHelp_SelfreportCreateLeaf(t *testing.T) {
 	var out bytes.Buffer
 	code := run([]string{"selfreport", "create", "--help", "--json"}, &out)

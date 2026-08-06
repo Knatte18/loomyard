@@ -1,11 +1,10 @@
-// events.go implements ParseEvents, the lenient reader over a run's
-// events.jsonl: the Stop hook (settings.go) appends one JSON line per turn
-// end, and the live-ask marker hook (settings.go) appends one JSON line the
-// instant an AskUserQuestion tool call opens; this file turns that raw byte
-// stream into the shuttleengine.Events the run loop classifies outcomes
-// from. All Claude payload-shape knowledge (hook_event_name, tool_name,
-// tool_input, the literal AskUserQuestion tool name) lives only in this
-// file, per the provider-seam containment decision.
+// events.go implements ParseEvents, the lenient reader over a run's events.jsonl: the Stop hook
+// (settings.go) appends one JSON line per turn end, and the live-ask marker hook (settings.go)
+// appends one JSON line the instant an AskUserQuestion tool call opens;
+// this file turns that raw byte stream into the shuttleengine.Events the run loop classifies
+// outcomes from.
+// All Claude payload-shape knowledge (hook_event_name, tool_name, tool_input, the literal
+// AskUserQuestion tool name) lives only in this file, per the provider-seam containment decision.
 package claudeengine
 
 import (
@@ -15,8 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ParseEvents parses events.jsonl into Events: Stop lines become EventStop, PreToolUse+AskUserQuestion lines become EventAsk.
-// It is lenient: malformed or unrecognized lines are skipped, since the file may still be growing during the run.
+// ParseEvents parses events.jsonl into Events: Stop lines become EventStop,
+// PreToolUse+AskUserQuestion lines become EventAsk.
+// It is lenient: malformed or unrecognized lines are skipped, since the file may still be growing
+// during the run.
 func (c *Claude) ParseEvents(data []byte) ([]shuttleengine.Event, error) {
 	var events []shuttleengine.Event
 

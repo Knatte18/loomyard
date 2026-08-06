@@ -1,10 +1,8 @@
-// judge_test.go tables runCircling, runMilestone, and runTriage against a
-// same-package fakeJudgeShuttle: the happy path (spec construction —
-// Role, Model/Effort passthrough, OutputFiles — plus a valid scripted
-// verdict file) and every fail-safe branch (Run error, non-done outcome,
-// missing verdict file, unparseable verdict file) for each of the three
-// calls, asserting the safe default and an empty rationale — never an
-// error, since none of the three functions returns one.
+// judge_test.go tables runCircling, runMilestone, and runTriage against a same-package
+// fakeJudgeShuttle: the happy path (spec construction — Role, Model/Effort passthrough, OutputFiles
+// — plus a valid scripted verdict file) and every fail-safe branch (Run error, non-done outcome,
+// missing verdict file, unparseable verdict file) for each of the three calls, asserting the safe
+// default and an empty rationale — never an error, since none of the three functions returns one.
 
 package treadleengine
 

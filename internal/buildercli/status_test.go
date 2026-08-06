@@ -108,10 +108,10 @@ func TestRunCLI_Status_ReportOverridesStaleState(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Status_MalformedReportSurfacesReportError proves status never
-// silently masks a present-but-unparseable report as "no report yet": the
-// batch stays non-terminal (status is a pure read, never a gate) but the
-// entry carries a report_error naming the corruption poll would fail loud on.
+// TestRunCLI_Status_MalformedReportSurfacesReportError proves status never silently masks a
+// present-but-unparseable report as "no report yet": the batch stays non-terminal (status is a pure
+// read, never a gate) but the entry carries a report_error naming the corruption poll would fail
+// loud on.
 func TestRunCLI_Status_MalformedReportSurfacesReportError(t *testing.T) {
 	fixture := seedBuilderFixture(t)
 

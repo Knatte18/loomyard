@@ -1,7 +1,7 @@
 // configsync.go implements reconciliation of all module configs against their templates.
 //
-// It provides atomic writes and per-module reconciliation via yamlengine.Reconcile,
-// tracking added/removed keys and applying changes when requested.
+// It provides atomic writes and per-module reconciliation via yamlengine.Reconcile, tracking
+// added/removed keys and applying changes when requested.
 
 package configsync
 
@@ -68,12 +68,12 @@ func legacyFabricConfig(baseDir string) (existing []byte, migratedFrom []string)
 	return existing, migratedFrom
 }
 
-// ReconcileAll reconciles all module config files against their templates,
-// returning the slice of results and any I/O or YAML parsing error. Seed-only
-// modules (e.g. "models") with present files are reported untouched; absent
-// files materialize the template verbatim. "fabric" is skipped (see
-// ReconcileFabricAt for the repo-wide counterpart). When apply is false, files
-// are never written.
+// ReconcileAll reconciles all module config files against their templates, returning the slice of
+// results and any I/O or YAML parsing error.
+// Seed-only modules (e.g. "models") with present files are reported untouched;
+// absent files materialize the template verbatim. "fabric" is skipped (see ReconcileFabricAt for
+// the repo-wide counterpart).
+// When apply is false, files are never written.
 func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 	var results []Result
 
@@ -153,12 +153,13 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 	return results, nil
 }
 
-// ReconcileFabricAt reconciles the repo-wide fabric.yaml at
-// configengine.ConfigFile(boardDir, "fabric"), the counterpart to ReconcileAll's
-// per-worktree loop. fabric's config is repo-wide (never per-worktree). When
-// absent, it carries the one-shot fabric-cutover migration folding in pre-cutover
-// warp.yaml/weft.yaml values and pruning them only when apply succeeds. Returns a
-// Result matching ReconcileAll's shape, and any I/O or YAML parsing error.
+// ReconcileFabricAt reconciles the repo-wide fabric.yaml at configengine.ConfigFile(boardDir,
+// "fabric"), the counterpart to ReconcileAll's per-worktree loop.
+// fabric's config is repo-wide (never per-worktree).
+// When absent, it carries the one-shot fabric-cutover migration folding in pre-cutover
+// warp.yaml/weft.yaml values and pruning them only when apply succeeds.
+// Returns a Result matching ReconcileAll's shape,
+// and any I/O or YAML parsing error.
 func ReconcileFabricAt(boardDir string, apply bool) (Result, error) {
 	template, ok := configreg.Template("fabric")
 	if !ok {

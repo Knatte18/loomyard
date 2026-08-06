@@ -1,9 +1,9 @@
 // config.go — configuration for the shuttle module.
 //
-// Defines the Config type mirroring shuttle.yaml's keys and LoadConfig, which
-// uses internal/configengine.Load with ConfigTemplate() to strictly
-// validate and resolve the shuttle config file; shuttle never reads config
-// files or knows their on-disk layout itself.
+// Defines the Config type mirroring shuttle.yaml's keys and LoadConfig, which uses
+// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the shuttle
+// config file;
+// shuttle never reads config files or knows their on-disk layout itself.
 
 package shuttleengine
 
@@ -15,7 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the resolved shuttle.yaml configuration: run directories, timeouts, poll knobs, and claude engine denies.
+// Config represents the resolved shuttle.yaml configuration: run directories, timeouts, poll knobs,
+// and claude engine denies.
 type Config struct {
 	RunDir         string `yaml:"run_dir"`
 	PollIntervalMS int    `yaml:"poll_interval_ms"` // Wait loop's tick interval; non-positive is floored to template default.

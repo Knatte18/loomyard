@@ -1,11 +1,10 @@
-// proctree.go holds the pure, build-tag-free process-tree logic the Linux
-// and Windows probe seams (proctree_linux.go, proctree_windows.go) delegate
-// to: /proc/<pid>/stat PPID parsing, descendant-closure computation over a
-// pid->ppid map, and socket-cmdline matching. None of these functions touch
-// the OS — they transform strings/maps/structs the platform files read off
-// disk or a process-table query — which is what makes them unit-testable on
-// the Windows host even though the Linux seam that calls them is only
-// compile-checked here (see proctree_test.go).
+// proctree.go holds the pure, build-tag-free process-tree logic the Linux and Windows probe seams
+// (proctree_linux.go, proctree_windows.go) delegate to: /proc/<pid>/stat PPID parsing,
+// descendant-closure computation over a pid->ppid map, and socket-cmdline matching.
+// None of these functions touch the OS — they transform strings/maps/structs the platform files
+// read off disk or a process-table query — which is what makes them unit-testable on the Windows
+// host even though the Linux seam that calls them is only compile-checked here (see
+// proctree_test.go).
 
 package reedengine
 

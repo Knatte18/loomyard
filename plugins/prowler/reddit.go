@@ -1,7 +1,6 @@
-// reddit.go implements the Reddit site adapter: Reddit hard-blocks scraping
-// of its ordinary www HTML pages but does not gate old.reddit.com's legacy,
-// server-rendered markup nearly as aggressively, so redditAdapter fetches
-// that page directly rather than the modern SPA shell.
+// reddit.go implements the Reddit site adapter: Reddit hard-blocks scraping of its ordinary www
+// HTML pages but does not gate old.reddit.com's legacy, server-rendered markup nearly as
+// aggressively, so redditAdapter fetches that page directly rather than the modern SPA shell.
 
 package main
 
@@ -31,8 +30,8 @@ func toOldRedditURL(rawURL string) string {
 // fetchOldRedditHTML's old.reddit.com HTML strategy.
 type redditAdapter struct{}
 
-// Matches reports whether url points at Reddit, across its bare, www, and
-// old.reddit.com host forms.
+// Matches reports whether url points at Reddit, across its bare, www, and old.reddit.com host
+// forms.
 func (redditAdapter) Matches(url string) bool {
 	return redditHostPattern.MatchString(url)
 }

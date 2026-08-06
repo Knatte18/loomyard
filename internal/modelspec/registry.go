@@ -1,6 +1,6 @@
-// registry.go implements the pinned built-in fallback registry and
-// Registry.Resolve, the alias-lookup/default-merge half of the model-spec
-// contract (Parse handles grammar only; this file handles resolution).
+// registry.go implements the pinned built-in fallback registry and Registry.Resolve, the
+// alias-lookup/default-merge half of the model-spec contract (Parse handles grammar only; this file
+// handles resolution).
 
 package modelspec
 
@@ -21,9 +21,10 @@ func builtins() Registry {
 }
 
 // Resolve resolves s against r and returns the fully realized Resolved.
-// For alias form, s.Alias is looked up in r (unknown alias is an error);
-// Resolved.Params starts as the entry's Defaults overlaid by s.Params.
-// For escape form, r is unused. Resolved.Params is never nil.
+// For alias form, s.Alias is looked up in r (unknown alias is an error); Resolved.Params starts as
+// the entry's Defaults overlaid by s.Params.
+// For escape form, r is unused.
+// Resolved.Params is never nil.
 func (r Registry) Resolve(s Spec) (Resolved, error) {
 	// Escape form carries its own engine/model and bypasses the registry
 	// entirely — there is nothing to look up.

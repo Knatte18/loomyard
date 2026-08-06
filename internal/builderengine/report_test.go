@@ -1,6 +1,6 @@
-// report_test.go covers ParseReport against plan-format.md's two worked
-// examples (a minimal done report, and one with a justified out_of_scope
-// entry) and every distinct rejection case the schema enforces.
+// report_test.go covers ParseReport against plan-format.md's two worked examples (a minimal done
+// report, and one with a justified out_of_scope entry) and every distinct rejection case the schema
+// enforces.
 
 package builderengine_test
 

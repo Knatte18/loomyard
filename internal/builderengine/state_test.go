@@ -1,7 +1,6 @@
-// state_test.go covers LoadState/SaveState's three documented cases:
-// round-tripping a populated State through disk, an absent state.json
-// returning (nil, nil), and a corrupt state.json returning a wrapped
-// error rather than a guessed value.
+// state_test.go covers LoadState/SaveState's three documented cases: round-tripping a populated
+// State through disk, an absent state.json returning (nil, nil), and a corrupt state.json returning
+// a wrapped error rather than a guessed value.
 
 package builderengine_test
 
@@ -115,10 +114,10 @@ func TestState_CorruptFileErrors(t *testing.T) {
 	}
 }
 
-// TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation
-// lease is a real cross-holder exclusive lock: while held, a second
-// non-blocking acquire of the same lease file fails, and after Release it
-// succeeds — the property every verb's load-mutate-save section relies on.
+// TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation lease is a real
+// cross-holder exclusive lock: while held, a second non-blocking acquire of the same lease file
+// fails, and after Release it succeeds — the property every verb's load-mutate-save section relies
+// on.
 func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	builderDir := t.TempDir()
 

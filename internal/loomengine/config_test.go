@@ -1,10 +1,9 @@
 // config_test.go — untagged Tier-1 unit tests for loomengine.LoadConfig.
 //
-// Seeds a bare t.TempDir() with just a _lyx/config/loom.yaml file (no
-// CopyWeft, no SeedConfig, no git spawn) since configengine.Load's
-// env-source build tolerates a missing .env — a live weft fixture would be
-// integration-tagged (like builderengine/config_test.go), which is out of
-// scope for this package's plain "go test ./internal/loomengine/" run.
+// Seeds a bare t.TempDir() with just a _lyx/config/loom.yaml file (no CopyWeft, no SeedConfig, no
+// git spawn) since configengine.Load's env-source build tolerates a missing .env — a live weft
+// fixture would be integration-tagged (like builderengine/config_test.go), which is out of scope
+// for this package's plain "go test ./internal/loomengine/" run.
 
 package loomengine
 
@@ -51,10 +50,9 @@ func TestLoadConfig_WellFormed(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_MalformedDiscussionSpec verifies a hand-edited loom.yaml
-// with an ungrammatical discussion model-spec fails loud at load time,
-// naming the "discussion" key, rather than being silently carried into the
-// discussion producer's spawn site.
+// TestLoadConfig_MalformedDiscussionSpec verifies a hand-edited loom.yaml with an ungrammatical
+// discussion model-spec fails loud at load time, naming the "discussion" key, rather than being
+// silently carried into the discussion producer's spawn site.
 func TestLoadConfig_MalformedDiscussionSpec(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, `discussion: "opus[effort"
@@ -72,10 +70,9 @@ plan_timeout_min: 120
 	}
 }
 
-// TestLoadConfig_MalformedPlanSpec verifies a hand-edited loom.yaml with a
-// well-formed discussion spec but an ungrammatical plan model-spec fails
-// loud at load time, naming the "plan" key, rather than being silently
-// carried into the plan producer's spawn site.
+// TestLoadConfig_MalformedPlanSpec verifies a hand-edited loom.yaml with a well-formed discussion
+// spec but an ungrammatical plan model-spec fails loud at load time, naming the "plan" key, rather
+// than being silently carried into the plan producer's spawn site.
 func TestLoadConfig_MalformedPlanSpec(t *testing.T) {
 	baseDir := t.TempDir()
 	seedLoomConfig(t, baseDir, `discussion: opus[effort=high]

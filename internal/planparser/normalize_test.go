@@ -1,8 +1,9 @@
-// normalize_test.go covers normalizeCardPath's three-case root:/// resolution
-// rule directly: the "//" worktree-root escape, a set root's join, the degenerate
-// "root: ." case, and the malformed forms (a single-"/" prefix, a ".." escape)
-// that normalizeCardPath resolves but deliberately does not reject — that is
-// Validate's card-path-malformed check, not this package's job.
+// normalize_test.go covers normalizeCardPath's three-case root:/// resolution rule directly: the
+// "//" worktree-root escape, a set root's join, the degenerate "root: ."
+// case,
+// and the malformed forms (a single-"/" prefix, a ".."
+// escape) that normalizeCardPath resolves but deliberately does not reject — that is Validate's
+// card-path-malformed check, not this package's job.
 
 package planparser
 
@@ -79,7 +80,8 @@ func TestNormalizeCardPath(t *testing.T) {
 	}
 }
 
-// TestNormalizeCard_MovesBothEndpoints covers normalizeCard applying normalizeCardPath to both sides of every Moves: pair.
+// TestNormalizeCard_MovesBothEndpoints covers normalizeCard applying normalizeCardPath to both
+// sides of every Moves: pair.
 func TestNormalizeCard_MovesBothEndpoints(t *testing.T) {
 	t.Parallel()
 
@@ -104,7 +106,8 @@ func TestNormalizeCard_MovesBothEndpoints(t *testing.T) {
 	}
 }
 
-// TestNormalizeCard_NilSliceStaysNil proves normalizeCard preserves the nil-vs-empty-non-nil distinction.
+// TestNormalizeCard_NilSliceStaysNil proves normalizeCard preserves the nil-vs-empty-non-nil
+// distinction.
 func TestNormalizeCard_NilSliceStaysNil(t *testing.T) {
 	t.Parallel()
 

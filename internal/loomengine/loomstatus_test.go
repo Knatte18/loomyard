@@ -1,6 +1,5 @@
-// loomstatus_test.go tests the AnchorPath-anchored LoomStatusFile/LoomStatusLock
-// accessors on a hand-built lyxcwd.Location — pure path arithmetic, no
-// spawning, untagged (Tier 1).
+// loomstatus_test.go tests the AnchorPath-anchored LoomStatusFile/LoomStatusLock accessors on a
+// hand-built lyxcwd.Location — pure path arithmetic, no spawning, untagged (Tier 1).
 
 package loomengine
 

@@ -23,8 +23,8 @@ func utf16Ptr(s string) *uint16 {
 	return p
 }
 
-// CreateDirLink establishes a junction from link to target, creating parent
-// directories and refusing to clobber existing paths.
+// CreateDirLink establishes a junction from link to target, creating parent directories and
+// refusing to clobber existing paths.
 func CreateDirLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err
@@ -160,8 +160,7 @@ func reparseSubstituteName(data []byte) (string, error) {
 	return strings.TrimPrefix(name, `\??\`), nil
 }
 
-// IsLink reports whether path is a link (junction or symlink), returning
-// (false, nil) if absent.
+// IsLink reports whether path is a link (junction or symlink), returning (false, nil) if absent.
 func IsLink(path string) (bool, error) {
 	info, err := os.Lstat(path)
 	if err != nil {

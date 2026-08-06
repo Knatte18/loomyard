@@ -1,25 +1,22 @@
-// spawn.go implements SpawnBatch, the `spawn-batch` verb's engine core: the
-// pause gate, the batch's own oversized-driven role selection (the
-// orchestrator overriding only for recovery), the optional --restart-chain
-// reset, the start-SHA and chain-anchor capture, the stencil-filled
-// implementer prompt, the shuttleengine.Spec construction (the modelspec ->
-// shuttle mapping the discussion pins), the non-blocking spawn itself, and
-// the cross-process run-identity resolution (FindRun) that lets a caller
-// record durable state without ever holding an in-process shuttle Run
-// handle.
+// spawn.go implements SpawnBatch, the `spawn-batch` verb's engine core: the pause gate, the batch's
+// own oversized-driven role selection (the orchestrator overriding only for recovery), the optional
+// --restart-chain reset, the start-SHA and chain-anchor capture, the stencil-filled implementer
+// prompt, the shuttleengine.Spec construction (the modelspec -> shuttle mapping the discussion
+// pins), the non-blocking spawn itself, and the cross-process run-identity resolution (FindRun)
+// that lets a caller record durable state without ever holding an in-process shuttle Run handle.
 //
-// SpawnBatch itself never touches weft (see doc.go's package-level weft
-// section): it only mutates and SaveState's the CALLER-owned deps.State on
-// the plain host filesystem. The discussion pins three distinct weft-commit
-// points across the whole builder loop, and this is the first of them:
-// internal/buildercli's spawn-batch verb weft-commits state.json
-// immediately after a successful SpawnBatch call (the just-recorded
-// start-SHA and BatchState entry); the poll verb weft-commits the batch
-// report + state.json once a batch reaches a terminal classification; and
-// the run verb performs one backstop weft-commit at its own exit. Every one
-// of those three commits belongs to buildercli, never to this function or
-// this package — the perchcli precedent (block-exit weft Commit+Push,
-// engine stays weft-blind) applied to builder's own batch boundary.
+// SpawnBatch itself never touches weft (see doc.go's package-level weft section): it only mutates
+// and SaveState's the CALLER-owned deps.State on the plain host filesystem.
+// The discussion pins three distinct weft-commit points across the whole builder loop,
+// and this is the first of them: internal/buildercli's spawn-batch verb weft-commits state.json
+// immediately after a successful SpawnBatch call (the just-recorded start-SHA and BatchState
+// entry);
+// the poll verb weft-commits the batch report + state.json once a batch reaches a terminal
+// classification;
+// and the run verb performs one backstop weft-commit at its own exit.
+// Every one of those three commits belongs to buildercli, never to this function or this package —
+// the perchcli precedent (block-exit weft Commit+Push, engine stays weft-blind) applied to
+// builder's own batch boundary.
 
 package builderengine
 
@@ -39,24 +36,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// ErrPaused is the sentinel SpawnBatch returns when the pause flag is present
-// at the batch boundary. A caller matches it via errors.Is.
+// ErrPaused is the sentinel SpawnBatch returns when the pause flag is present at the batch
+// boundary.
+// A caller matches it via errors.Is.
 var ErrPaused = errors.New("builder: paused")
 
-// ErrBatchInFlight is the sentinel SpawnBatch returns when state records a
-// non-terminal in-flight batch whose implementer is still live. Spawning
-// while one is mid-flight would race two agents on the same repo.
+// ErrBatchInFlight is the sentinel SpawnBatch returns when state records a non-terminal in-flight
+// batch whose implementer is still live.
+// Spawning while one is mid-flight would race two agents on the same repo.
 var ErrBatchInFlight = errors.New("builder: a batch is already in flight")
 
 // Starter is the seam SpawnBatch spawns an implementer through: exactly
-// (*shuttleengine.Runner).Start's signature, so production code passes a
-// real *shuttleengine.Runner directly and tests pass one built over local
-// fake shuttleengine.ReedOps/shuttleengine.Engine doubles (the shuttleengine
-// fakes_test.go pattern; builderengine's own fakes are test-file-local, per
-// the discussion's test-conventions decision). Start is deliberately
-// non-blocking — spawn-batch returns as soon as the implementer's strand is
-// registered, never waiting for it to finish; the tool-call cap is `poll`'s
-// problem, not spawn-batch's.
+// (*shuttleengine.Runner).Start's signature, so production code passes a real *shuttleengine.Runner
+// directly and tests pass one built over local fake shuttleengine.ReedOps/shuttleengine.Engine
+// doubles (the shuttleengine fakes_test.go pattern; builderengine's own fakes are test-file-local,
+// per the discussion's test-conventions decision).
+// Start is deliberately non-blocking — spawn-batch returns as soon as the implementer's strand is
+// registered, never waiting for it to finish;
+// the tool-call cap is `poll`'s problem, not spawn-batch's.
 type Starter interface {
 	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
 }
@@ -79,27 +76,25 @@ type SpawnDeps struct {
 	Resetter WarpResetter
 }
 
-// SpawnBatchOptions carries one `spawn-batch` invocation's caller-supplied
-// choices: BatchNumber names the plan batch to spawn; RoleOverride, when
-// non-empty, MUST be RoleRecovery (any other value is an error) — Go picks
-// the role from the batch's own oversized: flag, the orchestrator overrides
-// only for the recovery escalation path, per the discussion's role-selection
-// decision; RestartChain requests the --restart-chain reset (see RestartChain)
-// before this spawn proceeds.
+// SpawnBatchOptions carries one `spawn-batch` invocation's caller-supplied choices: BatchNumber
+// names the plan batch to spawn;
+// RoleOverride, when non-empty, MUST be RoleRecovery (any other value is an error) — Go picks the
+// role from the batch's own oversized: flag, the orchestrator overrides only for the recovery
+// escalation path, per the discussion's role-selection decision;
+// RestartChain requests the --restart-chain reset (see RestartChain) before this spawn proceeds.
 type SpawnBatchOptions struct {
 	BatchNumber  int
 	RoleOverride Role
 	RestartChain bool
 }
 
-// SpawnResult is what one successful SpawnBatch call hands back to its
-// caller (internal/buildercli's spawn-batch verb): exactly what that caller
-// needs to weft-commit state.json at the batch boundary without re-deriving
-// any of it from deps.State itself. Per the discussion's weft-commit
-// decision, SpawnBatch's own caller performs that commit — builderengine
-// stays weft-blind — immediately after SpawnBatch returns successfully,
-// mirroring the commit boundary poll's own terminal classification and
-// run's own exit-time backstop use elsewhere in the loop.
+// SpawnResult is what one successful SpawnBatch call hands back to its caller
+// (internal/buildercli's spawn-batch verb): exactly what that caller needs to weft-commit
+// state.json at the batch boundary without re-deriving any of it from deps.State itself.
+// Per the discussion's weft-commit decision, SpawnBatch's own caller performs that commit —
+// builderengine stays weft-blind — immediately after SpawnBatch returns successfully, mirroring the
+// commit boundary poll's own terminal classification and run's own exit-time backstop use elsewhere
+// in the loop.
 type SpawnResult struct {
 	// BatchName is the batch's "NN-<batch-slug>" identifier.
 	BatchName string
@@ -117,13 +112,12 @@ type SpawnResult struct {
 	ReportPath string
 }
 
-// BatchReportFileName returns the batch-report filename plan-format.md pins
-// for a batch numbered number with slug slug: "NN-<slug>.yaml", matching
-// validate.go's batchID naming (batchID omits the extension; this adds it).
-// Exported and reused by every builderengine call site that names a batch
-// report file (this file, chain.go's RestartChain, runlevel.go's
-// renderProgress) plus buildercli's status/poll verbs, so the filename
-// convention lives in exactly one place.
+// BatchReportFileName returns the batch-report filename plan-format.md pins for a batch numbered
+// number with slug slug: "NN-<slug>.yaml", matching validate.go's batchID naming (batchID omits the
+// extension; this adds it).
+// Exported and reused by every builderengine call site that names a batch report file (this file,
+// chain.go's RestartChain, runlevel.go's renderProgress) plus buildercli's status/poll verbs, so
+// the filename convention lives in exactly one place.
 func BatchReportFileName(number int, slug string) string {
 	return fmt.Sprintf("%02d-%s.yaml", number, slug)
 }
@@ -171,18 +165,17 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 	return target, nil
 }
 
-// RemoveStrandIfLive removes guid's reed strand when the reed still reports
-// it live, and is a no-op otherwise. It exists for the respawn paths that
-// re-claim a dead-classified batch's deliberately-kept pane: a timed-out
-// implementer may still be WORKING, not hung, and left alive it races the
-// fresh session (late commits to the host repo, a late report landing on
-// the very path the new spawn names as its output file). A StrandLive error
-// is treated as not-live — a downed reed session hosts no live strand. A
-// failed removal of a genuinely live strand propagates: spawning while the
-// orphan cannot be stopped is exactly the double-drive this helper exists
-// to prevent. Exported as shared infrastructure with a second consumer
-// (webster), which applies the same kept-substrate reclaim discipline to
-// its own respawn ladders.
+// RemoveStrandIfLive removes guid's reed strand when the reed still reports it live,
+// and is a no-op otherwise.
+// It exists for the respawn paths that re-claim a dead-classified batch's deliberately-kept pane: a
+// timed-out implementer may still be WORKING, not hung, and left alive it races the fresh session
+// (late commits to the host repo, a late report landing on the very path the new spawn names as its
+// output file).
+// A StrandLive error is treated as not-live — a downed reed session hosts no live strand.
+// A failed removal of a genuinely live strand propagates: spawning while the orphan cannot be
+// stopped is exactly the double-drive this helper exists to prevent.
+// Exported as shared infrastructure with a second consumer (webster), which applies the same
+// kept-substrate reclaim discipline to its own respawn ladders.
 func RemoveStrandIfLive(reed shuttleengine.ReedOps, guid string) error {
 	live, err := StrandLive(reed, guid)
 	if err != nil || !live {
@@ -230,26 +223,24 @@ func selectRole(oversized bool, override Role) (Role, error) {
 	return role, nil
 }
 
-// SpawnBatch drives one `spawn-batch <NN>` invocation to completion: the
-// pause gate, role selection, the optional --restart-chain reset, start-SHA
-// and chain-anchor capture, the stencil-filled implementer prompt, the
-// shuttleengine.Spec the modelspec mapping pins, the non-blocking spawn
-// itself, and the cross-process FindRun resolution that lets it record
-// durable BatchState without ever holding an in-process shuttle Run handle
-// (spawn-batch exits right after Start; poll re-derives everything else
-// later). On success it persists deps.State via SaveState — to the plain
-// host filesystem only, never through weft — and returns a SpawnResult; on
-// any failure deps.State is left exactly as SpawnBatch found it except
-// where a step's own doc says otherwise (RestartChain mutates deps.State in
-// place before SpawnBatch's own SaveState call, per its own contract).
+// SpawnBatch drives one `spawn-batch <NN>` invocation to completion: the pause gate, role
+// selection, the optional --restart-chain reset, start-SHA and chain-anchor capture, the
+// stencil-filled implementer prompt, the shuttleengine.Spec the modelspec mapping pins, the
+// non-blocking spawn itself, and the cross-process FindRun resolution that lets it record durable
+// BatchState without ever holding an in-process shuttle Run handle (spawn-batch exits right after
+// Start; poll re-derives everything else later).
+// On success it persists deps.State via SaveState — to the plain host filesystem only, never
+// through weft — and returns a SpawnResult;
+// on any failure deps.State is left exactly as SpawnBatch found it except where a step's own doc
+// says otherwise (RestartChain mutates deps.State in place before SpawnBatch's own SaveState call,
+// per its own contract).
 //
-// Weft commit boundary: SpawnBatch performs NO weft commit itself. Its
-// caller (internal/buildercli's spawn-batch verb) is responsible for
-// weft-committing the state.json SpawnBatch just wrote — using SpawnResult's
-// fields plus deps.BuilderDir, with no need to re-derive anything — as soon
-// as SpawnBatch returns successfully. That is the first of the loop's three
-// weft-commit points (see this file's package doc above for the other two:
-// poll at terminal classification, run as an exit-time backstop).
+// Weft commit boundary: SpawnBatch performs NO weft commit itself.
+// Its caller (internal/buildercli's spawn-batch verb) is responsible for weft-committing the
+// state.json SpawnBatch just wrote — using SpawnResult's fields plus deps.BuilderDir, with no need
+// to re-derive anything — as soon as SpawnBatch returns successfully.
+// That is the first of the loop's three weft-commit points (see this file's package doc above for
+// the other two: poll at terminal classification, run as an exit-time backstop).
 func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	if PauseRequested(deps.BuilderDir) {
 		return nil, ErrPaused

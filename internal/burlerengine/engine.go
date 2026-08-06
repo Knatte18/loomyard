@@ -1,8 +1,7 @@
-// engine.go implements the round driver: Engine.Run validates a Profile,
-// composes its prompt, drives one shuttle run over the Shuttle seam, and
-// maps the shuttle's outcome (plus, on done, the parsed review file) into a
-// Result. This is the library's one external entry point — perch (unbuilt)
-// will call it once per round.
+// engine.go implements the round driver: Engine.Run validates a Profile, composes its prompt,
+// drives one shuttle run over the Shuttle seam, and maps the shuttle's outcome (plus, on done, the
+// parsed review file) into a Result.
+// This is the library's one external entry point — perch (unbuilt) will call it once per round.
 
 package burlerengine
 
@@ -29,27 +28,25 @@ var _ Shuttle = (*shuttleengine.Runner)(nil)
 // It stays unpoliced this slice; slice 9 registers a single owner.
 const dotLyxDirName = ".lyx"
 
-// Engine drives burler rounds through a Shuttle, resolving Profile paths
-// against layout's worktree root and Profile.ClusterFan against cfg's
-// lens/fan library.
+// Engine drives burler rounds through a Shuttle, resolving Profile paths against layout's worktree
+// root and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
 	shuttle Shuttle
 	layout  *lyxcwd.Location
 	cfg     Config
 }
 
-// New returns an Engine ready to run rounds against shuttle, resolving
-// relative Profile paths against layout.WorktreePath() and any Profile.ClusterFan
-// against cfg (the burler.yaml lens/fan library, loaded via LoadConfig).
+// New returns an Engine ready to run rounds against shuttle, resolving relative Profile paths
+// against layout.WorktreePath() and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
+// library, loaded via LoadConfig).
 func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config) *Engine {
 	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg}
 }
 
-// Result is one round's outcome: how the shuttle run classified (Outcome),
-// the parsed verdict and findings (set only when Outcome is
-// shuttleengine.OutcomeDone and the review file parses cleanly), the
-// resolved output paths, and the identities/last-message/run-dir a caller
-// needs to act on a non-done outcome further.
+// Result is one round's outcome: how the shuttle run classified (Outcome), the parsed verdict and
+// findings (set only when Outcome is shuttleengine.OutcomeDone and the review file parses cleanly),
+// the resolved output paths, and the identities/last-message/run-dir a caller needs to act on a
+// non-done outcome further.
 type Result struct {
 	Outcome              shuttleengine.Outcome
 	Verdict              Verdict
@@ -76,27 +73,27 @@ type Result struct {
 	ClusterWarnings []string
 }
 
-// Run drives one burler round for p, tuned by opts. Sequence: validate p
-// against the engine's worktree root; compose its prompt; materialize the
-// three rendered instruction files to a fresh per-round directory under
-// .lyx (this package's own dotLyxDirName join) so the orchestrator prompt can name their
-// absolute paths; build the shuttle Spec (Interactive/Parent/Display/
-// KeepPane stay zero-valued — rounds are autonomous by default, per the
-// run-tuning-off-profile decision) with Prompt set to the thin
-// orchestrator only; run it through the Shuttle seam; populate Result from
-// the shuttle Result; for a cluster round (p.ClusterFan != "") that
-// reached done, copy the shuttle's ForkAudit onto Result and enforce the
-// cluster audit policy (auditClusterRound) before reading the review file
-// at all; and, only when the run reached shuttleengine.OutcomeDone, read
-// and strictly parse the review file into Verdict/Findings.
+// Run drives one burler round for p, tuned by opts.
+// Sequence: validate p against the engine's worktree root;
+// compose its prompt;
+// materialize the three rendered instruction files to a fresh per-round directory under .lyx (this
+// package's own dotLyxDirName join) so the orchestrator prompt can name their absolute paths;
+// build the shuttle Spec (Interactive/Parent/Display/ KeepPane stay zero-valued — rounds are
+// autonomous by default, per the run-tuning-off-profile decision) with Prompt set to the thin
+// orchestrator only;
+// run it through the Shuttle seam;
+// populate Result from the shuttle Result;
+// for a cluster round (p.ClusterFan != "") that reached done, copy the shuttle's ForkAudit onto
+// Result and enforce the cluster audit policy (auditClusterRound) before reading the review file at
+// all;
+// and, only when the run reached shuttleengine.OutcomeDone, read and strictly parse the review file
+// into Verdict/Findings.
 //
-// Run returns a nil error for every non-done outcome (asking/died/timeout
-// are normal loop events a caller branches on via Result.Outcome, with an
-// empty Verdict) and reserves errors for hard failures: an invalid profile,
-// a shuttle start/run failure, a cluster audit policy violation, and —
-// deliberately fail-loud — a verdict parse failure on a done run, since a
-// defaulted verdict could silently terminate a caller's round loop on a
-// malformed round.
+// Run returns a nil error for every non-done outcome (asking/died/timeout are normal loop events a
+// caller branches on via Result.Outcome, with an empty Verdict) and reserves errors for hard
+// failures: an invalid profile, a shuttle start/run failure, a cluster audit policy violation, and
+// — deliberately fail-loud — a verdict parse failure on a done run, since a defaulted verdict could
+// silently terminate a caller's round loop on a malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	if err := p.validate(e.layout.WorktreePath(), e.cfg); err != nil {
 		return Result{}, err

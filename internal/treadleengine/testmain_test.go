@@ -1,8 +1,7 @@
-// testmain_test.go wires the package's test binary into the hermetic git
-// test environment: lyxtest.HermeticGitEnv() runs once before any test, so
-// treadleengine's git-spawning fixtures (the moved smoke test spawns git via
-// a lyxtest fixture helper) never inherit the operator's global gitconfig
-// (see CONSTRAINTS.md's Hermetic Git Test Environment Invariant).
+// testmain_test.go wires the package's test binary into the hermetic git test environment:
+// lyxtest.HermeticGitEnv() runs once before any test, so treadleengine's git-spawning fixtures (the
+// moved smoke test spawns git via a lyxtest fixture helper) never inherit the operator's global
+// gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment Invariant).
 
 package treadleengine
 

@@ -1,8 +1,8 @@
-// config_test.go table-drives LoadConfig and ResolveFan, and pins the
-// embedded template.yaml's self-consistency: every fan entry names a defined
-// lens, the two seeded fan lengths, and the emphasis-never-exclusion posture
-// (no lens text carries "ignore " phrasing). Untagged Tier-1: no process
-// spawns, fixtures written directly via os.WriteFile under t.TempDir.
+// config_test.go table-drives LoadConfig and ResolveFan,
+// and pins the embedded template.yaml's self-consistency: every fan entry names a defined lens, the
+// two seeded fan lengths, and the emphasis-never-exclusion posture (no lens text carries "ignore "
+// phrasing).
+// Untagged Tier-1: no process spawns, fixtures written directly via os.WriteFile under t.TempDir.
 
 package burlerengine
 
@@ -81,10 +81,9 @@ func TestLoadConfig_RejectsUnknownTopLevelField(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_DecodesThroughLoadConfig proves the embedded seed
-// template is itself valid burler.yaml content — it must decode cleanly
-// through LoadConfig's own strict decode path, the same one every real hub's
-// seeded file goes through.
+// TestConfigTemplate_DecodesThroughLoadConfig proves the embedded seed template is itself valid
+// burler.yaml content — it must decode cleanly through LoadConfig's own strict decode path, the
+// same one every real hub's seeded file goes through.
 func TestConfigTemplate_DecodesThroughLoadConfig(t *testing.T) {
 	cfg := loadSeededConfig(t)
 
@@ -103,11 +102,11 @@ func TestConfigTemplate_DecodesThroughLoadConfig(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_SelfConsistency asserts the seeded template's internal
-// cross-references and lengths hold, and that no lens carries hard-exclusion
-// phrasing — the spike (docs/research/session-fork-spike.md, Q2) found "ignore
-// everything else" lenses measurably suppressed cross-category coverage, so
-// every lens is emphasis-only by design.
+// TestConfigTemplate_SelfConsistency asserts the seeded template's internal cross-references and
+// lengths hold,
+// and that no lens carries hard-exclusion phrasing — the spike
+// (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably
+// suppressed cross-category coverage, so every lens is emphasis-only by design.
 func TestConfigTemplate_SelfConsistency(t *testing.T) {
 	cfg := loadSeededConfig(t)
 

@@ -1,6 +1,6 @@
-// sections_test.go covers the three plan-level body sections extracted from
-// 00-overview.md: they are exposed verbatim from the golden fixture, and each is
-// empty when its heading is absent from the overview.
+// sections_test.go covers the three plan-level body sections extracted from 00-overview.md: they
+// are exposed verbatim from the golden fixture,
+// and each is empty when its heading is absent from the overview.
 
 package planparser_test
 
@@ -46,7 +46,8 @@ func TestParsePlan_GoldenFixture_PlanLevelSections(t *testing.T) {
 	}
 }
 
-// TestParsePlan_PlanLevelSections_AbsentAreEmpty proves all three plan-level sections default to "" when their headings are absent.
+// TestParsePlan_PlanLevelSections_AbsentAreEmpty proves all three plan-level sections default to ""
+// when their headings are absent.
 func TestParsePlan_PlanLevelSections_AbsentAreEmpty(t *testing.T) {
 	t.Parallel()
 

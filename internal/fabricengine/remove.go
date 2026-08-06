@@ -1,6 +1,6 @@
-// remove.go implements Remove: it tears down the portal and launchers before
-// the target-exists check, so cleanup still runs when the worktree dir is
-// already gone. The weft branch it removes is WeftBranchName(hostBranch).
+// remove.go implements Remove: it tears down the portal and launchers before the target-exists
+// check, so cleanup still runs when the worktree dir is already gone.
+// The weft branch it removes is WeftBranchName(hostBranch).
 
 package fabricengine
 
@@ -22,9 +22,10 @@ type RemoveResult struct {
 }
 
 // Remove removes a paired host and weft git worktree with all associated artifacts.
-// If force is false, both worktrees must be clean; if force is true, uncommitted
-// changes are forcefully removed. Portal and launcher cleanup run before the
-// exists check, ensuring cleanup even if the worktree directory is already gone.
+// If force is false, both worktrees must be clean;
+// if force is true, uncommitted changes are forcefully removed.
+// Portal and launcher cleanup run before the exists check, ensuring cleanup even if the worktree
+// directory is already gone.
 func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveResult, error) {
 	hostBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(hostBranch)

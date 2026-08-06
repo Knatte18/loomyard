@@ -1,8 +1,7 @@
 // discussionpath_test.go tests the AnchorPath-anchored DiscussionDir/
-// DiscussionDecisionRecord/DiscussionSupportLog accessors on a hand-built
-// lyxcwd.Location — pure path arithmetic, no spawning, untagged (Tier 1). It
-// mirrors loomstatus_test.go's construction and AnchorPath-vs-WorktreePath
-// assertion shape.
+// DiscussionDecisionRecord/DiscussionSupportLog accessors on a hand-built lyxcwd.Location — pure
+// path arithmetic, no spawning, untagged (Tier 1).
+// It mirrors loomstatus_test.go's construction and AnchorPath-vs-WorktreePath assertion shape.
 
 package loomengine
 

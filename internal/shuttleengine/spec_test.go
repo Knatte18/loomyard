@@ -1,7 +1,6 @@
-// spec_test.go verifies Spec.validate's normalization and error paths:
-// mandatory Prompt/OutputFiles, relative-to-absolute resolution for output
-// files, the Timeout defaulting/negative-rejection rules, and the
-// Display.Anchor default.
+// spec_test.go verifies Spec.validate's normalization and error paths: mandatory
+// Prompt/OutputFiles, relative-to-absolute resolution for output files, the Timeout
+// defaulting/negative-rejection rules, and the Display.Anchor default.
 
 package shuttleengine
 
@@ -125,10 +124,9 @@ func TestSpec_Validate_AnchorDefaultsToBelowParent(t *testing.T) {
 	}
 }
 
-// TestSpec_Validate_EffortUntouched proves validate neither defaults nor
-// rejects Effort in any way — it is provider vocabulary the engine alone
-// validates (see claudeengine's validateEffort), so Spec.validate must leave
-// an empty Effort empty and a non-empty Effort (even a nonsense value)
+// TestSpec_Validate_EffortUntouched proves validate neither defaults nor rejects Effort in any way
+// — it is provider vocabulary the engine alone validates (see claudeengine's validateEffort), so
+// Spec.validate must leave an empty Effort empty and a non-empty Effort (even a nonsense value)
 // unchanged and error-free.
 func TestSpec_Validate_EffortUntouched(t *testing.T) {
 	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
@@ -148,11 +146,10 @@ func TestSpec_Validate_EffortUntouched(t *testing.T) {
 	}
 }
 
-// TestSpec_Validate_VersionUntouched proves validate neither defaults nor
-// rejects Version in any way — it is provider vocabulary the engine alone
-// validates (see claudeengine's resolveModelID), so Spec.validate must leave
-// an empty Version empty and a non-empty Version (even a nonsense value)
-// unchanged and error-free.
+// TestSpec_Validate_VersionUntouched proves validate neither defaults nor rejects Version in any
+// way — it is provider vocabulary the engine alone validates (see claudeengine's resolveModelID),
+// so Spec.validate must leave an empty Version empty and a non-empty Version (even a nonsense
+// value) unchanged and error-free.
 func TestSpec_Validate_VersionUntouched(t *testing.T) {
 	s := &Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}}
 	if err := s.validate(`C:\worktree`, Config{RunTimeoutMin: 30}); err != nil {

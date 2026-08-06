@@ -1,7 +1,6 @@
-// load_test.go table-drives LoadRegistry against t.TempDir fixtures, using
-// configengine.ConfigFile to build every servers.yaml path per the Hub
-// Geometry Invariant (which applies to test code too), mirroring
-// modelspec/load_test.go's pattern.
+// load_test.go table-drives LoadRegistry against t.TempDir fixtures, using configengine.ConfigFile
+// to build every servers.yaml path per the Hub Geometry Invariant (which applies to test code too),
+// mirroring modelspec/load_test.go's pattern.
 
 package scoutengine
 

@@ -1,9 +1,10 @@
 // render_test.go — unit tests for rendering (render.go).
 //
-// README / design-doc output across task shapes: dependencies, status,
-// isolated, deferred, orphans, and title formatting. Also covers the
-// manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
-// across consecutive renders, and a missing or corrupt manifest degrades gracefully.
+// README / design-doc output across task shapes: dependencies, status, isolated, deferred, orphans,
+// and title formatting.
+// Also covers the manifest-based cleanup introduced in RenderToDisk: renamed outputs are removed
+// across consecutive renders,
+// and a missing or corrupt manifest degrades gracefully.
 
 package boardengine_test
 
@@ -17,12 +18,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
-// TestRenderToDisk verifies that RenderToDisk writes expected files and removes
-// orphaned design-doc files via the manifest. Subtests cover the default prefix and a
-// custom prefix. The ghost file is pre-seeded into the manifest so the manifest-based
-// cleanup removes it on the single RenderToDisk call (the manifest only removes files
-// it previously recorded, so a first render with no prior manifest seeds and removes
-// nothing — see TestRenderToDiskManifestCleanup for that scenario).
+// TestRenderToDisk verifies that RenderToDisk writes expected files and removes orphaned design-doc
+// files via the manifest.
+// Subtests cover the default prefix and a custom prefix.
+// The ghost file is pre-seeded into the manifest so the manifest-based cleanup removes it on the
+// single RenderToDisk call (the manifest only removes files it previously recorded, so a first
+// render with no prior manifest seeds and removes nothing — see TestRenderToDiskManifestCleanup for
+// that scenario).
 //
 // Folds: TestRenderToDiskWritesAndCleansOrphans, TestRenderToDiskWithCustomProposalPrefix
 func TestRenderToDisk(t *testing.T) {
@@ -99,10 +101,9 @@ func seedManifest(t *testing.T, dir string, names []string) {
 	}
 }
 
-// TestRenderToDiskManifestCleanup covers the manifest-based cleanup scenarios:
-// renamed outputs removed across consecutive renders, body loss removing a design
-// doc, unrelated files left untouched, and graceful degradation for missing/corrupt
-// manifests.
+// TestRenderToDiskManifestCleanup covers the manifest-based cleanup scenarios: renamed outputs
+// removed across consecutive renders, body loss removing a design doc, unrelated files left
+// untouched, and graceful degradation for missing/corrupt manifests.
 func TestRenderToDiskManifestCleanup(t *testing.T) {
 	t.Run("ReadmeRename", func(t *testing.T) {
 		dir := t.TempDir()
@@ -269,9 +270,10 @@ func TestRenderEmptyTaskList(t *testing.T) {
 	}
 }
 
-// TestRenderProposalAndShapesHomepage tests the core boardengine.Render() function for
-// various task shapes: dependencies, status variants, isolated tasks, deferred tasks,
-// and brief/title formatting. Each case asserts matching expected Home.md substrings.
+// TestRenderProposalAndShapesHomepage tests the core boardengine.Render() function for various task
+// shapes: dependencies, status variants, isolated tasks, deferred tasks, and brief/title
+// formatting.
+// Each case asserts matching expected Home.md substrings.
 //
 // Folds: TestRenderDependencies, TestRenderSpecialBucketTask, TestRenderIsolatedTask,
 // TestRenderTaskIDFormatting, TestRenderBrief, TestRenderMissingDependency, TestRenderLayerBuckets
@@ -397,8 +399,8 @@ func TestRenderProposalAndShapesHomepage(t *testing.T) {
 	}
 }
 
-// TestRenderStatusVariants tests all valid status values; asserts the appropriate
-// status suffix appears in the slug line.
+// TestRenderStatusVariants tests all valid status values;
+// asserts the appropriate status suffix appears in the slug line.
 //
 // Folded: directly tested (no original separate func)
 func TestRenderStatusVariants(t *testing.T) {
@@ -437,8 +439,8 @@ func TestRenderStatusVariants(t *testing.T) {
 	}
 }
 
-// TestRenderSingleTask tests single-task rendering with and without body,
-// verifying design-doc file creation and Home.md content.
+// TestRenderSingleTask tests single-task rendering with and without body, verifying design-doc file
+// creation and Home.md content.
 //
 // Folds: TestRenderSingleTaskNoBody, TestRenderSingleTaskWithBody, TestRenderOrphanDetection
 func TestRenderSingleTask(t *testing.T) {
@@ -517,8 +519,8 @@ func TestRenderSingleTask(t *testing.T) {
 	}
 }
 
-// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields,
-// covering both a custom Readme filename and a custom design prefix.
+// TestRenderCustomOutputs verifies that Render respects configurable Outputs fields, covering both
+// a custom Readme filename and a custom design prefix.
 //
 // Folds: TestRenderConfigurableHomeFilename, TestRenderConfigurableProposalPrefix
 func TestRenderCustomOutputs(t *testing.T) {
@@ -579,12 +581,11 @@ func TestRenderCustomOutputs(t *testing.T) {
 	})
 }
 
-// TestRenderManifestSection covers the README's "# Manifest" section: a note with a
-// non-empty body gets a design-doc link, a note depending on another note gets a
-// resolved "Depends on:" line, and the Manifest heading is positioned after the
-// Tasks section's content. Also verifies renderDesigns's union-of-tasks-and-notes
-// behavior: a note with a body produces a design-<slug>.md entry in the result map,
-// same as a task would.
+// TestRenderManifestSection covers the README's "# Manifest" section: a note with a non-empty body
+// gets a design-doc link, a note depending on another note gets a resolved "Depends on:" line, and
+// the Manifest heading is positioned after the Tasks section's content.
+// Also verifies renderDesigns's union-of-tasks-and-notes behavior: a note with a body produces a
+// design-<slug>.md entry in the result map, same as a task would.
 func TestRenderManifestSection(t *testing.T) {
 	tasks := []boardengine.Task{
 		{ID: 1, Slug: "task-a", Title: "Task A"},

@@ -1,5 +1,5 @@
-// name_test.go table-tests FormatStrandName's token substitution and
-// verifies newGUID produces unique, well-formed hex identifiers.
+// name_test.go table-tests FormatStrandName's token substitution and verifies newGUID produces
+// unique, well-formed hex identifiers.
 
 package reedengine
 

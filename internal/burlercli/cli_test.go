@@ -1,11 +1,9 @@
-// cli_test.go covers the burlercli cobra seam through RunCLI: bare-group
-// listing, the unknown-subcommand JSON envelope, the PersistentPreRunE
-// group-command guard, run's required --profile flag, the help-tree Short
-// completeness check, decodeProfile's strict YAML decode, and
-// resultEnvelope's success-envelope shape (including its forkCount nil
-// guard). Engine.Run itself is NOT exercised here — it needs a live
-// reed/claude session; that coverage lives in the smoke test and the
-// sandbox suite.
+// cli_test.go covers the burlercli cobra seam through RunCLI: bare-group listing, the
+// unknown-subcommand JSON envelope, the PersistentPreRunE group-command guard, run's required
+// --profile flag, the help-tree Short completeness check, decodeProfile's strict YAML decode, and
+// resultEnvelope's success-envelope shape (including its forkCount nil guard).
+// Engine.Run itself is NOT exercised here — it needs a live reed/claude session;
+// that coverage lives in the smoke test and the sandbox suite.
 
 package burlercli
 
@@ -19,9 +17,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestRunCLI_NoArgs verifies that "lyx burler" with no subcommand lists the
-// run verb and exits 0 — no git repo is needed, since the PersistentPreRunE
-// guard skips layout/config/engine resolution for the group command itself.
+// TestRunCLI_NoArgs verifies that "lyx burler" with no subcommand lists the run verb and exits 0 —
+// no git repo is needed, since the PersistentPreRunE guard skips layout/config/engine resolution
+// for the group command itself.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -38,10 +36,9 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1
-// and emits a JSON error envelope with ok=false, without needing a git repo
-// (the PersistentPreRunE guard for cmd.Name() == "burler" fires before
-// layout resolution).
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
+// envelope with ok=false, without needing a git repo (the PersistentPreRunE guard for cmd.Name() ==
+// "burler" fires before layout resolution).
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -61,10 +58,9 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard:
-// bare "lyx burler" works outside a git repository, mirroring shuttlecli's
-// guard rationale (neither the bare listing nor the unknown-subcommand path
-// should require layout/config resolution).
+// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard: bare "lyx burler" works
+// outside a git repository, mirroring shuttlecli's guard rationale (neither the bare listing nor
+// the unknown-subcommand path should require layout/config resolution).
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -76,13 +72,12 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_MissingProfile verifies that "lyx burler run" without
-// --profile fails with run's own manual flag-shape error (not cobra's
-// MarkFlagRequired) before ever touching PersistentPreRunE's engine wiring.
-// This case runs against an uninitialized (non-git) directory, so
-// PersistentPreRunE's own abort error is also present in the captured
-// output alongside the flag-specific error line — the same documented
-// double-failure shape as shuttlecli's TestRunCLI_Run_FlagValidation.
+// TestRunCLI_Run_MissingProfile verifies that "lyx burler run" without --profile fails with run's
+// own manual flag-shape error (not cobra's MarkFlagRequired) before ever touching
+// PersistentPreRunE's engine wiring.
+// This case runs against an uninitialized (non-git) directory, so PersistentPreRunE's own abort
+// error is also present in the captured output alongside the flag-specific error line — the same
+// documented double-failure shape as shuttlecli's TestRunCLI_Run_FlagValidation.
 func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -97,9 +92,9 @@ func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	}
 }
 
-// TestCommand_EveryCommandHasShort walks the full burler command tree and
-// asserts that every command — the parent group and every subcommand —
-// carries a non-empty Short, per the CLI/Cobra Invariant.
+// TestCommand_EveryCommandHasShort walks the full burler command tree and asserts that every
+// command — the parent group and every subcommand — carries a non-empty Short, per the CLI/Cobra
+// Invariant.
 func TestCommand_EveryCommandHasShort(t *testing.T) {
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
@@ -113,11 +108,10 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 	walk(Command())
 }
 
-// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid
-// profile (every field lands, including the boolean/zero-value edge cases
-// tool-use: true and cluster-fan: ""), a minimal valid profile, an unknown
-// key (rejected per the yaml-strictness-split decision's KnownFields(true)),
-// the now-removed cluster-n key specifically (rejected the same way), and
+// TestDecodeProfile covers decodeProfile's strict YAML decode: a full valid profile (every field
+// lands, including the boolean/zero-value edge cases tool-use: true and cluster-fan: ""), a minimal
+// valid profile, an unknown key (rejected per the yaml-strictness-split decision's
+// KnownFields(true)), the now-removed cluster-n key specifically (rejected the same way), and
 // malformed YAML.
 func TestDecodeProfile(t *testing.T) {
 	tests := []struct {
@@ -222,10 +216,9 @@ fixer-report-path: fixer-report.md
 	}
 }
 
-// TestDecodeProfile_FullValidFieldMapping asserts every field of a full
-// valid profile YAML lands on the corresponding Profile field, including the
-// boolean/zero-value edge cases (tool-use: true, cluster-fan: "standard")
-// that a zero-value-blind mapping bug could silently drop.
+// TestDecodeProfile_FullValidFieldMapping asserts every field of a full valid profile YAML lands on
+// the corresponding Profile field, including the boolean/zero-value edge cases (tool-use: true,
+// cluster-fan: "standard") that a zero-value-blind mapping bug could silently drop.
 func TestDecodeProfile_FullValidFieldMapping(t *testing.T) {
 	data := []byte(`
 target:
@@ -284,9 +277,9 @@ prior-fixer-reports: ["prior-fixer.md"]
 	}
 }
 
-// TestResultEnvelope_ForkCountNilGuard asserts resultEnvelope's forkCount guards a nil
-// ForkAudit (the non-cluster or non-done case) to 0 rather than panicking, and reports
-// the real fork count plus the raw ClusterWarnings slice when ForkAudit is set.
+// TestResultEnvelope_ForkCountNilGuard asserts resultEnvelope's forkCount guards a nil ForkAudit
+// (the non-cluster or non-done case) to 0 rather than panicking,
+// and reports the real fork count plus the raw ClusterWarnings slice when ForkAudit is set.
 func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 	t.Run("nil ForkAudit", func(t *testing.T) {
 		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone})

@@ -1,12 +1,12 @@
 // config.go — configuration for the perch module.
 //
-// Defines the Config type mirroring perch.yaml's keys and LoadConfig, which
-// uses internal/configengine.Load with ConfigTemplate() to strictly
-// validate and resolve the perch config file; perch never reads config
-// files or knows their on-disk layout itself. judge_model is a model-spec
-// string (docs/reference/model-spec.md); ResolveModelSpec is the ONE shared
-// implementation LoadConfigWithRegistry and perchcli's decodeProfile both
-// call, so the two config surfaces (perch.yaml and profile files) can never
+// Defines the Config type mirroring perch.yaml's keys and LoadConfig, which uses
+// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the perch
+// config file;
+// perch never reads config files or knows their on-disk layout itself.
+// judge_model is a model-spec string (docs/reference/model-spec.md);
+// ResolveModelSpec is the ONE shared implementation LoadConfigWithRegistry and perchcli's
+// decodeProfile both call, so the two config surfaces (perch.yaml and profile files) can never
 // diverge on grammar, resolution, or the perch-layer params check.
 
 package perchengine
@@ -22,14 +22,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents resolved perch.yaml configuration: judge model/effort defaults and the milestone cap ladder.
+// Config represents resolved perch.yaml configuration: judge model/effort defaults and the
+// milestone cap ladder.
 type Config struct {
 	JudgeModel  string `yaml:"judge_model"`
 	JudgeEffort string `yaml:"-"`
 	RoundCaps   []int  `yaml:"round_caps"`
 }
 
-// ResolveModelSpec parses spec against modelspec's grammar and resolves it against reg, unpacking the result into (model, effort) pair.
+// ResolveModelSpec parses spec against modelspec's grammar and resolves it against reg, unpacking
+// the result into (model, effort) pair.
 func ResolveModelSpec(spec string, reg modelspec.Registry) (model, effort string, err error) {
 	parsed, err := modelspec.Parse(spec)
 	if err != nil {

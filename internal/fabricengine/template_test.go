@@ -1,7 +1,7 @@
 // template_test.go — tests for the fabric ConfigTemplate generator.
 //
-// Covers: ConfigTemplate returns valid YAML with both expected keys and resolves
-// to the correct defaults when the environment is empty.
+// Covers: ConfigTemplate returns valid YAML with both expected keys and resolves to the correct
+// defaults when the environment is empty.
 
 package fabricengine
 
@@ -13,8 +13,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestConfigTemplate_ValidYAML asserts that ConfigTemplate returns valid YAML
-// that can be parsed without error.
+// TestConfigTemplate_ValidYAML asserts that ConfigTemplate returns valid YAML that can be parsed
+// without error.
 func TestConfigTemplate_ValidYAML(t *testing.T) {
 	got := ConfigTemplate()
 	var result map[string]any
@@ -23,8 +23,8 @@ func TestConfigTemplate_ValidYAML(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_HasBothKeys asserts that the template contains both the
-// branch_prefix and pathspec keys.
+// TestConfigTemplate_HasBothKeys asserts that the template contains both the branch_prefix and
+// pathspec keys.
 func TestConfigTemplate_HasBothKeys(t *testing.T) {
 	got := ConfigTemplate()
 	var result map[string]any
@@ -40,9 +40,8 @@ func TestConfigTemplate_HasBothKeys(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ResolvesToEmptyBranchPrefix asserts that resolving the
-// template against an empty environment yields an empty string for
-// branch_prefix.
+// TestConfigTemplate_ResolvesToEmptyBranchPrefix asserts that resolving the template against an
+// empty environment yields an empty string for branch_prefix.
 func TestConfigTemplate_ResolvesToEmptyBranchPrefix(t *testing.T) {
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)
@@ -64,13 +63,11 @@ func TestConfigTemplate_ResolvesToEmptyBranchPrefix(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_PathspecResolvesToLyxAndPattern asserts that the
-// template's pathspec default resolves to "_lyx" and "_pattern", in that
-// order, regardless of environment. The resolved value is whitespace-split
-// (mirroring Config.Dirs, the consumer that actually splits it) rather than
-// compared as one whole string, since the value is whitespace-split at the
-// consumer -- a splitting bug there would otherwise be silent and would
-// simply drop "_pattern".
+// TestConfigTemplate_PathspecResolvesToLyxAndPattern asserts that the template's pathspec default
+// resolves to "_lyx" and "_pattern", in that order, regardless of environment.
+// The resolved value is whitespace-split (mirroring Config.Dirs, the consumer that actually splits
+// it) rather than compared as one whole string, since the value is whitespace-split at the consumer
+// -- a splitting bug there would otherwise be silent and would simply drop "_pattern".
 func TestConfigTemplate_PathspecResolvesToLyxAndPattern(t *testing.T) {
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)

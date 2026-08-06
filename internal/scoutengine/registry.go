@@ -1,34 +1,34 @@
-// registry.go defines the language-server registry shape (Entry, Registry),
-// the pinned built-in fallback set for the five supported languages, the
-// fixed detection precedence order, and entry validation. It mirrors
-// internal/modelspec's registry.go: builtins() is the offline default every
-// consumer gets with zero servers.yaml present, and BuiltinRegistry() is the
-// one-line exported accessor the CLI layer uses when no lyx-hub overlay base
-// is resolvable.
+// registry.go defines the language-server registry shape (Entry, Registry), the pinned built-in
+// fallback set for the five supported languages, the fixed detection precedence order, and entry
+// validation.
+// It mirrors internal/modelspec's registry.go: builtins() is the offline default every consumer
+// gets with zero servers.yaml present,
+// and BuiltinRegistry() is the one-line exported accessor the CLI layer uses when no lyx-hub
+// overlay base is resolvable.
 
 package scoutengine
 
 import "fmt"
 
-// Entry describes how to detect and launch the language server for one
-// language. Markers lists the marker files/dirs that identify a project as
-// this language (checked relative to the target directory); Match selects
-// whether all or any of them must be present. Command is the launch argv
-// (the first element is the binary looked up on $PATH); InstallHint is the
-// operator-facing command to install that binary when it's missing.
-// PinnedVersion is the exact toolchain version the toolchain manager
-// installs when HasNativeDaemon is true (empty means "no pinned version, no
-// managed install" — the legacy cold-spawn-per-call path). HasNativeDaemon
-// reports whether this language has a persistent, `EnsureServer`-managed
-// daemon strategy (native or supervised) at all; the zero value (false)
-// means the language never goes through `EnsureServer` and keeps today's
-// cold-spawn-per-call behavior unchanged. Both fields are optional and
-// Go-only in V1: every entry except "go" leaves them at their zero values.
+// Entry describes how to detect and launch the language server for one language.
+// Markers lists the marker files/dirs that identify a project as this language (checked relative to
+// the target directory);
+// Match selects whether all or any of them must be present.
+// Command is the launch argv (the first element is the binary looked up on $PATH);
+// InstallHint is the operator-facing command to install that binary when it's missing.
+// PinnedVersion is the exact toolchain version the toolchain manager installs when HasNativeDaemon
+// is true (empty means "no pinned version, no managed install" — the legacy cold-spawn-per-call
+// path).
+// HasNativeDaemon reports whether this language has a persistent, `EnsureServer`-managed daemon
+// strategy (native or supervised) at all;
+// the zero value (false) means the language never goes through `EnsureServer` and keeps today's
+// cold-spawn-per-call behavior unchanged.
+// Both fields are optional and Go-only in V1: every entry except "go" leaves them at their zero
+// values.
 //
-// The yaml struct tags let LoadRegistry (load.go) decode a servers.yaml
-// entry directly into this type: without them, yaml.v3's default field
-// matching would require a YAML key of "installhint" (the lowercased Go
-// field name with no separator) rather than the template's snake_case
+// The yaml struct tags let LoadRegistry (load.go) decode a servers.yaml entry directly into this
+// type: without them, yaml.v3's default field matching would require a YAML key of "installhint"
+// (the lowercased Go field name with no separator) rather than the template's snake_case
 // "install_hint".
 type Entry struct {
 	Markers         []string `yaml:"markers"`
@@ -39,9 +39,10 @@ type Entry struct {
 	HasNativeDaemon bool     `yaml:"has_native_daemon"`
 }
 
-// Registry maps a canonical language name ("go", "python", "csharp",
-// "typescript", "rust") to its Entry. The zero value (a nil map) behaves
-// like an empty registry: lookups fail cleanly rather than panicking.
+// Registry maps a canonical language name ("go", "python", "csharp", "typescript", "rust") to its
+// Entry.
+// The zero value (a nil map) behaves like an empty registry: lookups fail cleanly rather than
+// panicking.
 type Registry map[string]Entry
 
 // precedence is the fixed language-detection order used by DetectLanguage
@@ -94,10 +95,9 @@ func builtins() Registry {
 	}
 }
 
-// BuiltinRegistry returns the pinned built-in registry (builtins()). It is
-// the registry the CLI layer uses when no lyx-hub overlay base is
-// resolvable — e.g. a command run outside any worktree — so scout
-// lookup still works with zero configuration.
+// BuiltinRegistry returns the pinned built-in registry (builtins()).
+// It is the registry the CLI layer uses when no lyx-hub overlay base is resolvable — e.g.
+// a command run outside any worktree — so scout lookup still works with zero configuration.
 func BuiltinRegistry() Registry {
 	return builtins()
 }

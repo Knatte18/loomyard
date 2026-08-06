@@ -109,8 +109,8 @@ func TestDecideClone_HubAbsent(t *testing.T) {
 	}
 }
 
-// TestDecideClone_HubPresent_NoReset tests that cloneRun is not called when Hub
-// exists and reset is false.
+// TestDecideClone_HubPresent_NoReset tests that cloneRun is not called when Hub exists and reset is
+// false.
 func TestDecideClone_HubPresent_NoReset(t *testing.T) {
 	tmpDir := t.TempDir()
 	hubPath := filepath.Join(tmpDir, hubName)
@@ -138,7 +138,8 @@ func TestDecideClone_HubPresent_NoReset(t *testing.T) {
 	}
 }
 
-// TestDecideClone_HubPresent_Reset tests that removeAll is called and cloneRun is invoked when Hub exists and reset is true.
+// TestDecideClone_HubPresent_Reset tests that removeAll is called and cloneRun is invoked when Hub
+// exists and reset is true.
 func TestDecideClone_HubPresent_Reset(t *testing.T) {
 	tmpDir := t.TempDir()
 	hubPath := filepath.Join(tmpDir, hubName)
@@ -244,8 +245,8 @@ func TestRun_MissingParent(t *testing.T) {
 	}
 }
 
-// TestRun_DefaultBuildRoutesToClone tests that a bare run with no subcommand
-// routes to decideClone (the build path) and invokes cloneRun.
+// TestRun_DefaultBuildRoutesToClone tests that a bare run with no subcommand routes to decideClone
+// (the build path) and invokes cloneRun.
 func TestRun_DefaultBuildRoutesToClone(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -270,8 +271,8 @@ func TestRun_DefaultBuildRoutesToClone(t *testing.T) {
 	}
 }
 
-// TestRun_BuildSubcommandRoutesToClone tests that the explicit "build" token
-// also routes to the clone path.
+// TestRun_BuildSubcommandRoutesToClone tests that the explicit "build" token also routes to the
+// clone path.
 func TestRun_BuildSubcommandRoutesToClone(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -295,8 +296,8 @@ func TestRun_BuildSubcommandRoutesToClone(t *testing.T) {
 	}
 }
 
-// TestRun_BuildResetRoutesToBuildWithReset tests that -reset passed after the
-// build token removes the existing Hub and re-runs the clone.
+// TestRun_BuildResetRoutesToBuildWithReset tests that -reset passed after the build token removes
+// the existing Hub and re-runs the clone.
 func TestRun_BuildResetRoutesToBuildWithReset(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -342,10 +343,10 @@ func TestRun_BuildResetRoutesToBuildWithReset(t *testing.T) {
 	}
 }
 
-// TestRun_BuildNoResetDoesNotRemove tests that a bare build (no -reset) over an
-// existing Hub does not remove it -- reset must be explicit. Deliberately no
-// devBinPath/lookPath stub is set up here: the no-op path must never resolve
-// lyx at all.
+// TestRun_BuildNoResetDoesNotRemove tests that a bare build (no -reset) over an existing Hub does
+// not remove it -- reset must be explicit.
+// Deliberately no devBinPath/lookPath stub is set up here: the no-op path must never resolve lyx at
+// all.
 func TestRun_BuildNoResetDoesNotRemove(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -386,10 +387,10 @@ func TestRun_BuildNoResetDoesNotRemove(t *testing.T) {
 	}
 }
 
-// TestRun_SuiteRoutesSuiteToLaunch tests that the "suite" positional routes to
-// the suite path and ultimately invokes launchAgent with the correct directory.
-// The suite subcommand no longer fetches, so it needs neither -loomyard nor a
-// report written by the launch stub.
+// TestRun_SuiteRoutesSuiteToLaunch tests that the "suite" positional routes to the suite path and
+// ultimately invokes launchAgent with the correct directory.
+// The suite subcommand no longer fetches, so it needs neither -loomyard nor a report written by the
+// launch stub.
 func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -446,10 +447,9 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_ReedSuiteRoutesToLaunch tests that the "reed-suite" positional routes
-// to the reed-suite path and ultimately invokes launchAgent with the correct
-// host repo directory and the reed default instruction, mirroring
-// TestRun_SuiteRoutesSuiteToLaunch for the "suite" dispatch.
+// TestRun_ReedSuiteRoutesToLaunch tests that the "reed-suite" positional routes to the reed-suite
+// path and ultimately invokes launchAgent with the correct host repo directory and the reed default
+// instruction, mirroring TestRun_SuiteRoutesSuiteToLaunch for the "suite" dispatch.
 func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -511,9 +511,9 @@ func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_ReedSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
-// following the "reed-suite" positional are parsed and forwarded to
-// launchAgent, mirroring the "suite" subcommand's flag handling.
+// TestRun_ReedSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags following the
+// "reed-suite" positional are parsed and forwarded to launchAgent, mirroring the "suite"
+// subcommand's flag handling.
 func TestRun_ReedSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -567,10 +567,9 @@ func TestRun_ReedSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 }
 
-// TestRun_ReedSuiteErrorPropagation tests that a runSuite error under the
-// reed-suite dispatch (Hub absent) is propagated as a non-zero exit code,
-// mirroring the error-propagation coverage the "suite" dispatch relies on via
-// TestRunSuite_HubAbsent at the runSuite level.
+// TestRun_ReedSuiteErrorPropagation tests that a runSuite error under the reed-suite dispatch (Hub
+// absent) is propagated as a non-zero exit code, mirroring the error-propagation coverage the
+// "suite" dispatch relies on via TestRunSuite_HubAbsent at the runSuite level.
 func TestRun_ReedSuiteErrorPropagation(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -580,10 +579,10 @@ func TestRun_ReedSuiteErrorPropagation(t *testing.T) {
 	}
 }
 
-// TestRun_ShuttleSuiteRoutesToLaunch tests that the "shuttle-suite" positional
-// routes to the shuttle-suite path and ultimately invokes launchAgent with the
-// correct host repo directory and the shuttle default instruction, mirroring
-// TestRun_ReedSuiteRoutesToLaunch for the "shuttle-suite" dispatch.
+// TestRun_ShuttleSuiteRoutesToLaunch tests that the "shuttle-suite" positional routes to the
+// shuttle-suite path and ultimately invokes launchAgent with the correct host repo directory and
+// the shuttle default instruction, mirroring TestRun_ReedSuiteRoutesToLaunch for the
+// "shuttle-suite" dispatch.
 func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -645,9 +644,9 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_ShuttleSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags
-// following the "shuttle-suite" positional are parsed and forwarded to
-// launchAgent, mirroring the "reed-suite" subcommand's flag handling.
+// TestRun_ShuttleSuiteFlagsRoutedAfterToken tests that -claude/-prompt flags following the
+// "shuttle-suite" positional are parsed and forwarded to launchAgent, mirroring the "reed-suite"
+// subcommand's flag handling.
 func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -701,9 +700,9 @@ func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	}
 }
 
-// TestRun_ShuttleSuiteErrorPropagation tests that a runSuite error under the
-// shuttle-suite dispatch (Hub absent) is propagated as a non-zero exit code,
-// mirroring TestRun_ReedSuiteErrorPropagation for the "shuttle-suite" dispatch.
+// TestRun_ShuttleSuiteErrorPropagation tests that a runSuite error under the shuttle-suite dispatch
+// (Hub absent) is propagated as a non-zero exit code, mirroring TestRun_ReedSuiteErrorPropagation
+// for the "shuttle-suite" dispatch.
 func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -713,10 +712,10 @@ func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 	}
 }
 
-// TestRun_BurlerSuiteRoutesToLaunch tests that the "burler-suite" positional
-// routes to the burler-suite path and ultimately invokes launchAgent with the
-// correct host repo directory and the burler default instruction, mirroring
-// TestRun_ReedSuiteRoutesToLaunch for the "burler-suite" dispatch.
+// TestRun_BurlerSuiteRoutesToLaunch tests that the "burler-suite" positional routes to the
+// burler-suite path and ultimately invokes launchAgent with the correct host repo directory and the
+// burler default instruction, mirroring TestRun_ReedSuiteRoutesToLaunch for the "burler-suite"
+// dispatch.
 func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -778,10 +777,10 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_PerchSuiteRoutesToLaunch tests that the "perch-suite" positional
-// routes to the perch-suite path and ultimately invokes launchAgent with the
-// correct host repo directory and the perch default instruction, mirroring
-// TestRun_ReedSuiteRoutesToLaunch for the "perch-suite" dispatch.
+// TestRun_PerchSuiteRoutesToLaunch tests that the "perch-suite" positional routes to the
+// perch-suite path and ultimately invokes launchAgent with the correct host repo directory and the
+// perch default instruction, mirroring TestRun_ReedSuiteRoutesToLaunch for the "perch-suite"
+// dispatch.
 func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -843,12 +842,12 @@ func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_FabricSuiteRoutesToLaunch tests that the "fabric-suite" positional
-// routes to the fabric-suite path and ultimately invokes launchAgent with the
-// correct dedicated fabric host repo directory and the fabric default
-// instruction, mirroring TestRun_MuxSuiteRoutesToLaunch for the "fabric-suite"
-// dispatch. The dedicated fabric hub host repo dir is pre-created so
-// decideFabricClone finds the hub already present and skips fabricCloneRun.
+// TestRun_FabricSuiteRoutesToLaunch tests that the "fabric-suite" positional routes to the
+// fabric-suite path and ultimately invokes launchAgent with the correct dedicated fabric host repo
+// directory and the fabric default instruction, mirroring TestRun_MuxSuiteRoutesToLaunch for the
+// "fabric-suite" dispatch.
+// The dedicated fabric hub host repo dir is pre-created so decideFabricClone finds the hub already
+// present and skips fabricCloneRun.
 func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -923,9 +922,8 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	}
 }
 
-// TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional
-// routes to runFetch: with a built Hub, an on-PATH lyx, and a host report, the
-// dispatch reaches fetchReport and run returns 0.
+// TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional routes to runFetch: with a
+// built Hub, an on-PATH lyx, and a host report, the dispatch reaches fetchReport and run returns 0.
 func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	tmpDir := t.TempDir()
 	loomyardRoot := t.TempDir()
@@ -967,8 +965,8 @@ func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	}
 }
 
-// TestRun_FetchReportRequiresLoomyard verifies that the fetch subcommand
-// fails fast when -loomyard is not supplied, covering the required-flag guard.
+// TestRun_FetchReportRequiresLoomyard verifies that the fetch subcommand fails fast when -loomyard
+// is not supplied, covering the required-flag guard.
 func TestRun_FetchReportRequiresLoomyard(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -978,8 +976,8 @@ func TestRun_FetchReportRequiresLoomyard(t *testing.T) {
 	}
 }
 
-// TestRun_UnknownSubcommandReturnsNonZero tests that an unrecognised positional
-// argument causes run to return a non-zero code.
+// TestRun_UnknownSubcommandReturnsNonZero tests that an unrecognised positional argument causes run
+// to return a non-zero code.
 func TestRun_UnknownSubcommandReturnsNonZero(t *testing.T) {
 	tmpDir := t.TempDir()
 	code := run([]string{"-parent", tmpDir, "unknowncmd"})

@@ -1,10 +1,9 @@
-// trace.go implements the process-wide trace-identity primitive: a single
-// 16-hex-character ID that is minted or adopted once per process and stamped
-// onto every emitted log line (batch 5's Debug/Info/Warn rewrite wires the
-// call site). It provides two entry points: the lazy TraceID() accessor,
-// used by any code path that logs before cmd/lyx's root hook has run, and
-// MintOrAdoptAndExport, the root hook's explicit call that also exports the
-// ID into the environment so spawned children inherit it.
+// trace.go implements the process-wide trace-identity primitive: a single 16-hex-character ID that
+// is minted or adopted once per process and stamped onto every emitted log line (batch 5's
+// Debug/Info/Warn rewrite wires the call site).
+// It provides two entry points: the lazy TraceID() accessor, used by any code path that logs before
+// cmd/lyx's root hook has run, and MintOrAdoptAndExport, the root hook's explicit call that also
+// exports the ID into the environment so spawned children inherit it.
 
 package logger
 

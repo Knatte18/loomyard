@@ -1,10 +1,8 @@
-// state.go defines the persisted strand record and ReedState container, plus
-// the .lyx/reed.json load/save wrappers and the mapper that projects the
-// persisted record down to render.Strand. This is the module's dumb-carrier
-// contract in concrete form: Strand stores every field a caller writes
-// (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads
-// none of them semantically — only Display feeds the layout decision, via
-// toRenderStrands.
+// state.go defines the persisted strand record and ReedState container, plus the .lyx/reed.json
+// load/save wrappers and the mapper that projects the persisted record down to render.Strand.
+// This is the module's dumb-carrier contract in concrete form: Strand stores every field a caller
+// writes (cmd, resumeCmd, sessionId, worktree, name) and reedengine itself reads none of them
+// semantically — only Display feeds the layout decision, via toRenderStrands.
 
 package reedengine
 
@@ -15,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Strand is the persisted record for one tmux pane reedengine owns,
-// reusing render.Display for the display vocabulary.
+// Strand is the persisted record for one tmux pane reedengine owns, reusing render.Display for the
+// display vocabulary.
 type Strand struct {
 	GUID      string         `json:"guid"`
 	Name      string         `json:"name"`
@@ -29,8 +27,8 @@ type Strand struct {
 	Display   render.Display `json:"display"`
 }
 
-// ReedState is the persisted record for one hub's tmux server: the socket
-// name, the session, stripped env keys, and every strand as a flat list.
+// ReedState is the persisted record for one hub's tmux server: the socket name, the session,
+// stripped env keys, and every strand as a flat list.
 type ReedState struct {
 	Socket      string   `json:"socket"`
 	Session     string   `json:"session"`

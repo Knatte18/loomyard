@@ -1,6 +1,6 @@
-// roles_test.go exercises ResolveRoles's pre-flight: an unknown alias fails
-// naming the offending role, an escape-form spec resolves with no registry
-// entry at all, and a bracket param survives into the resolved Params map.
+// roles_test.go exercises ResolveRoles's pre-flight: an unknown alias fails naming the offending
+// role, an escape-form spec resolves with no registry entry at all, and a bracket param survives
+// into the resolved Params map.
 
 package builderengine_test
 

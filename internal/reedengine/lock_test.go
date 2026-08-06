@@ -1,8 +1,7 @@
-// lock_test.go verifies withOpLock's per-worktree lock path, that two calls
-// serialize (the second blocks until the first releases), that a released
-// lock can be re-acquired with no stale-lock residue, and Engine's
-// Socket()/SessionName() accessor strings. newTestEngine is the shared
-// fixture every reedengine test in this package builds on.
+// lock_test.go verifies withOpLock's per-worktree lock path, that two calls serialize (the second
+// blocks until the first releases), that a released lock can be re-acquired with no stale-lock
+// residue, and Engine's Socket()/SessionName() accessor strings.
+// newTestEngine is the shared fixture every reedengine test in this package builds on.
 
 package reedengine
 

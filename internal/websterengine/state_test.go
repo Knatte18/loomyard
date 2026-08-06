@@ -1,10 +1,8 @@
-// state_test.go covers LoadState/SaveState's documented cases:
-// round-tripping a populated State through disk (including a persisted
-// digest and per-card SHA trail, fields builderengine never needed to
-// persist), an absent state.json returning (nil, nil), a corrupt state.json
-// returning a wrapped error rather than a guessed value, and the
-// state-mutation lease's cross-holder exclusion. All plain t.TempDir() files
-// — no git, no subprocess spawns — Test Tier Purity Invariant.
+// state_test.go covers LoadState/SaveState's documented cases: round-tripping a populated State
+// through disk (including a persisted digest and per-card SHA trail, fields builderengine never
+// needed to persist), an absent state.json returning (nil, nil), a corrupt state.json returning a
+// wrapped error rather than a guessed value, and the state-mutation lease's cross-holder exclusion.
+// All plain t.TempDir() files — no git, no subprocess spawns — Test Tier Purity Invariant.
 
 package websterengine_test
 
@@ -118,10 +116,9 @@ func TestState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestState_DigestPersistsAcrossSaveLoad proves BatchState.Digest — the
-// field builderengine never persisted — survives a save/load round-trip
-// intact, since begin-batch(N+1) depends on reading it back rather than
-// re-distilling a report.
+// TestState_DigestPersistsAcrossSaveLoad proves BatchState.Digest — the field builderengine never
+// persisted — survives a save/load round-trip intact, since begin-batch(N+1) depends on reading it
+// back rather than re-distilling a report.
 func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 	t.Parallel()
 
@@ -210,10 +207,10 @@ func TestState_CorruptFileErrors(t *testing.T) {
 	}
 }
 
-// TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation
-// lease is a real cross-holder exclusive lock: while held, a second
-// non-blocking acquire of the same lease file fails, and after Release it
-// succeeds — the property every verb's load-mutate-save section relies on.
+// TestAcquireStateMutation_ExcludesSecondHolder proves the state-mutation lease is a real
+// cross-holder exclusive lock: while held, a second non-blocking acquire of the same lease file
+// fails, and after Release it succeeds — the property every verb's load-mutate-save section relies
+// on.
 func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	websterDir := t.TempDir()
 
@@ -240,11 +237,10 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	_ = second.Release()
 }
 
-// TestRunActive_ReflectsRunLockHeld proves the ownerless-run probe: an
-// unheld run.lock reads as no live run (and the probe releases what it
-// briefly acquired, so a real run right after is never blocked), while a
-// held run.lock reads as a live run owning the state — the signal the
-// bracket verbs' zombie-Master warning keys off (round fable-r1's F17).
+// TestRunActive_ReflectsRunLockHeld proves the ownerless-run probe: an unheld run.lock reads as no
+// live run (and the probe releases what it briefly acquired, so a real run right after is never
+// blocked), while a held run.lock reads as a live run owning the state — the signal the bracket
+// verbs' zombie-Master warning keys off (round fable-r1's F17).
 func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
 	websterDir := t.TempDir()
 

@@ -1,9 +1,8 @@
-// weftgit.go — the weft-git content-sync verbs on Fabric: commitWeft,
-// PushWeft, PullWeft, plus the package-level pushWeftAt and
-// commitWeftAt for the detached-push child and board's warp-untethered
-// weft:main commit (via Bolt). commitWeft's commit carries a Warp-SHA trailer and
-// records the correspondence immediately — except on an unborn warp HEAD
-// (see warpHeadSHA), where both are skipped for that one commit.
+// weftgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
+// package-level pushWeftAt and commitWeftAt for the detached-push child and board's warp-untethered
+// weft:main commit (via Bolt).
+// commitWeft's commit carries a Warp-SHA trailer and records the correspondence immediately —
+// except on an unborn warp HEAD (see warpHeadSHA), where both are skipped for that one commit.
 
 package fabricengine
 
@@ -308,8 +307,7 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
-// PushWeft pushes unpushed weft commits via PushCoalesced, honoring
-// SkipGit/SkipPush gating.
+// PushWeft pushes unpushed weft commits via PushCoalesced, honoring SkipGit/SkipPush gating.
 func (f *Fabric) PushWeft(opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
@@ -317,8 +315,7 @@ func (f *Fabric) PushWeft(opts SyncOptions) error {
 	return f.Weft.PushCoalesced()
 }
 
-// PullWeft fast-forwards the weft worktree from its upstream, honoring
-// SkipGit gating.
+// PullWeft fast-forwards the weft worktree from its upstream, honoring SkipGit gating.
 func (f *Fabric) PullWeft(opts SyncOptions) error {
 	if opts.SkipGit {
 		return nil

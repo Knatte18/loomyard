@@ -1,7 +1,6 @@
-// verdict_test.go table-drives ParseReview over the happy paths and every
-// fail-loud rule documented on it: frontmatter presence/closure, YAML
-// validity, verdict spelling, per-finding key completeness, severity
-// vocabulary, duplicate ids, the two verdict/findings consistency rules, and
+// verdict_test.go table-drives ParseReview over the happy paths and every fail-loud rule documented
+// on it: frontmatter presence/closure, YAML validity, verdict spelling, per-finding key
+// completeness, severity vocabulary, duplicate ids, the two verdict/findings consistency rules, and
 // the optional Origin field's pass-through (with and without it present).
 
 package burlerengine

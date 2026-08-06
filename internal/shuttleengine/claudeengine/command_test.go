@@ -1,12 +1,10 @@
-// command_test.go table-tests the pane-shell command composition helpers:
-// quoting of paths with spaces and embedded single quotes, model/flag
-// presence per the interactive toggle, the exact resume-command shape, the
-// resolveModelID bare-word-plus-version composition rule, the
-// forkSubagents env-prefix wrapping on both launch and resume lines, and a
-// no-newline invariant every produced command must hold (they are typed
-// into a pane via a single send-keys call). The pwsh-quote cases formerly
-// asserted here now live in internal/shell's shell_test.go, since quoting
-// itself moved there.
+// command_test.go table-tests the pane-shell command composition helpers: quoting of paths with
+// spaces and embedded single quotes, model/flag presence per the interactive toggle, the exact
+// resume-command shape, the resolveModelID bare-word-plus-version composition rule, the
+// forkSubagents env-prefix wrapping on both launch and resume lines, and a no-newline invariant
+// every produced command must hold (they are typed into a pane via a single send-keys call).
+// The pwsh-quote cases formerly asserted here now live in internal/shell's shell_test.go, since
+// quoting itself moved there.
 
 package claudeengine
 
@@ -271,12 +269,11 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 }
 
-// TestValidateEffort covers validateEffort's full input space: the empty
-// string (defers to claude's default), every exact-lowercase valid value,
-// and both an unrecognized value and a wrong-case valid value (case
-// sensitivity is load-bearing — claude only warns-and-ignores an
-// unrecognized value rather than failing, so a silently-accepted "High"
-// would defeat the whole hard-error guarantee).
+// TestValidateEffort covers validateEffort's full input space: the empty string (defers to claude's
+// default), every exact-lowercase valid value, and both an unrecognized value and a wrong-case
+// valid value (case sensitivity is load-bearing — claude only warns-and-ignores an unrecognized
+// value rather than failing, so a silently-accepted "High" would defeat the whole hard-error
+// guarantee).
 func TestValidateEffort(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -305,12 +302,11 @@ func TestValidateEffort(t *testing.T) {
 	}
 }
 
-// TestResolveModelID covers resolveModelID's full input space: an empty
-// version passes the model through unchanged (including an empty model), a
-// dotted and a dotless version both compose against a bare model, an empty
-// model with a non-empty version errors (nothing to compose against), and a
-// dashed (full id) model with a non-empty version errors (the id already
-// pins its own version — combining it with version is a contradiction).
+// TestResolveModelID covers resolveModelID's full input space: an empty version passes the model
+// through unchanged (including an empty model), a dotted and a dotless version both compose against
+// a bare model, an empty model with a non-empty version errors (nothing to compose against), and a
+// dashed (full id) model with a non-empty version errors (the id already pins its own version —
+// combining it with version is a contradiction).
 func TestResolveModelID(t *testing.T) {
 	tests := []struct {
 		name    string

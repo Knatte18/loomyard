@@ -1,11 +1,11 @@
 // config.go — configuration for the fabric module.
 //
-// Defines the Config type carrying the host branch prefix (BranchPrefix) and
-// the weft-sync pathspec (Pathspec) in one fabric.yaml file, unified from
-// fabric's two predecessor config schemas into one file, plus LoadConfig.
-// LoadConfig uses internal/configengine.Load with ConfigTemplate() to strictly
-// validate and resolve the fabric config file; the fabric module never reads
-// config files or knows their layout itself.
+// Defines the Config type carrying the host branch prefix (BranchPrefix) and the weft-sync pathspec
+// (Pathspec) in one fabric.yaml file, unified from fabric's two predecessor config schemas into one
+// file, plus LoadConfig.
+// LoadConfig uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve
+// the fabric config file;
+// the fabric module never reads config files or knows their layout itself.
 
 package fabricengine
 
@@ -28,8 +28,8 @@ func (c Config) Dirs() []string {
 	return strings.Fields(c.Pathspec)
 }
 
-// LoadConfig loads and unmarshals fabric configuration from baseDir,
-// returning an error if not initialized (no _lyx/ directory).
+// LoadConfig loads and unmarshals fabric configuration from baseDir, returning an error if not
+// initialized (no _lyx/ directory).
 func LoadConfig(baseDir string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, "fabric", []byte(ConfigTemplate()))
 	if err != nil {

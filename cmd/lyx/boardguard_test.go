@@ -1,11 +1,11 @@
-// boardguard_test.go enforces the Weft Git Invariant's board carve-out:
-// internal/boardengine's non-test production code never imports internal/gitrepo
-// or internal/gitexec directly, and never shells out to `git` itself. boardengine
-// routes every weft-repo git operation through internal/fabricengine's
-// CommitWeftAt/PushWeftAt instead (see the plan's "no import cycle from
-// boardengine into fabricengine" Shared Decision) — this guard is the mechanical
-// enforcement that keeps a future change from regressing that routing back into a
-// raw git call. See CONSTRAINTS.md's Weft Git Invariant.
+// boardguard_test.go enforces the Weft Git Invariant's board carve-out: internal/boardengine's
+// non-test production code never imports internal/gitrepo or internal/gitexec directly,
+// and never shells out to `git` itself.
+// boardengine routes every weft-repo git operation through internal/fabricengine's
+// CommitWeftAt/PushWeftAt instead (see the plan's "no import cycle from boardengine into
+// fabricengine" Shared Decision) — this guard is the mechanical enforcement that keeps a future
+// change from regressing that routing back into a raw git call.
+// See CONSTRAINTS.md's Weft Git Invariant.
 
 package main
 
@@ -45,11 +45,10 @@ var boardGuardExecSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 // resolution is misconfigured rather than the package having genuinely shrunk.
 const boardGuardMinScannedFiles = 5
 
-// TestBoardGuard_NoRawGitImportOrShellOut walks internal/boardengine's non-test
-// *.go files (skipping the boardtest subdirectory, a sibling package of
-// integration tests that legitimately spawn git via lyxtest.CopyWeft, not
-// production code this guard's ban applies to) and fails if any file imports
-// internal/gitrepo or internal/gitexec directly, or shells out to `git` via
+// TestBoardGuard_NoRawGitImportOrShellOut walks internal/boardengine's non-test *.go files
+// (skipping the boardtest subdirectory, a sibling package of integration tests that legitimately
+// spawn git via lyxtest.CopyWeft, not production code this guard's ban applies to) and fails if any
+// file imports internal/gitrepo or internal/gitexec directly, or shells out to `git` via
 // exec.Command/exec.CommandContext.
 func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH,
@@ -175,7 +174,8 @@ func lineHasBannedGitSpawn(line string) (token string, bad bool) {
 	return "", false
 }
 
-// TestBoardGuard_ShellOutDetection verifies firstBannedGitSpawn's detection against crafted snippets.
+// TestBoardGuard_ShellOutDetection verifies firstBannedGitSpawn's detection against crafted
+// snippets.
 func TestBoardGuard_ShellOutDetection(t *testing.T) {
 	tests := []struct {
 		name    string

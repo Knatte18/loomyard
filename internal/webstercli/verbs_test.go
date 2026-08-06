@@ -324,9 +324,8 @@ func writeBatchReport(t *testing.T, reportsDir, headSHA string) {
 	}
 }
 
-// TestBeginBatchCmd_HappyPath proves the success envelope carries
-// prompt_path/start_sha/model, and that state.json was persisted with the
-// new BatchState.
+// TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha/model,
+// and that state.json was persisted with the new BatchState.
 func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -363,9 +362,8 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 	}
 }
 
-// TestBeginBatchCmd_PausedEnvelope proves the pause refusal is an
-// operational signal (exit 0, {"paused": true}), never a hard error, and
-// that state.json is left untouched.
+// TestBeginBatchCmd_PausedEnvelope proves the pause refusal is an operational signal (exit 0,
+// {"paused": true}), never a hard error, and that state.json is left untouched.
 func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -393,14 +391,12 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	}
 }
 
-// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two
-// envelopes: {"report": true} the moment the batch's report file exists,
-// and {"report": false} once the bounded wait elapses with no report --
-// NoReport_WindowElapses passes --wait 1ns explicitly to keep the window
-// near-instant, versus the production default
-// (websterengine.DefaultAwaitWaitS, ~30s) used whenever --wait is omitted --
-// with no state.json ever read or written, since the verb is deliberately
-// stateless.
+// TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the
+// moment the batch's report file exists,
+// and {"report": false} once the bounded wait elapses with no report -- NoReport_WindowElapses
+// passes --wait 1ns explicitly to keep the window near-instant, versus the production default
+// (websterengine.DefaultAwaitWaitS, ~30s) used whenever --wait is omitted -- with no state.json
+// ever read or written, since the verb is deliberately stateless.
 func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	fx := newVerbsFixture(t)
 
@@ -440,11 +436,10 @@ func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	}
 }
 
-// TestRecordBatchCmd_Envelope proves record-batch's two envelopes over an
-// identical fixture (one new fork transcript already present): the terminal
-// success envelope -- the digest verbatim plus warnings -- once a matching
-// batch report has also landed, and the {"no_report": true} ladder signal
-// (not an error) when the report has not landed yet.
+// TestRecordBatchCmd_Envelope proves record-batch's two envelopes over an identical fixture (one
+// new fork transcript already present): the terminal success envelope -- the digest verbatim plus
+// warnings -- once a matching batch report has also landed,
+// and the {"no_report": true} ladder signal (not an error) when the report has not landed yet.
 func TestRecordBatchCmd_Envelope(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -525,13 +520,12 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 	}
 }
 
-// TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two
-// calls against the same batch: the first call performs the spawn and
-// returns a running snapshot (the strand has no report yet), proving the
-// running envelope touches neither status nor digest fields; the second
-// call ATTACHES to the already-spawned strand and, once the report has
-// landed in between, classifies terminal, proving the digest envelope and
-// that state.json/the report were both weft-committed by then.
+// TestRecoverBatchCmd_RunningThenTerminal drives recover-batch across two calls against the same
+// batch: the first call performs the spawn and returns a running snapshot (the strand has no report
+// yet), proving the running envelope touches neither status nor digest fields;
+// the second call ATTACHES to the already-spawned strand and, once the report has landed in
+// between, classifies terminal, proving the digest envelope and that state.json/the report were
+// both weft-committed by then.
 func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
@@ -598,14 +592,12 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	}
 }
 
-// TestRunCmd_ErrRunBusySkipsWeftBackstop proves the ErrRunBusy refusal never
-// reaches Master's own spawn and never runs the exit-time weft backstop --
-// WEFT_SKIP_GIT is deliberately left UNSET here so that an accidental
-// weftCommit call would fail loudly: with no weft sibling on disk,
-// fabricengine.New's stat validation errors and run's envelope would carry
-// "weft sync failed" plus fabricengine's missing-path text, both asserted
-// absent below. (The pre-cutover evidence -- weftengine creating the weft
-// lock dir on disk -- no longer exists: fabric creates nothing before
+// TestRunCmd_ErrRunBusySkipsWeftBackstop proves the ErrRunBusy refusal never reaches Master's own
+// spawn and never runs the exit-time weft backstop -- WEFT_SKIP_GIT is deliberately left UNSET here
+// so that an accidental weftCommit call would fail loudly: with no weft sibling on disk,
+// fabricengine.New's stat validation errors and run's envelope would carry "weft sync failed" plus
+// fabricengine's missing-path text, both asserted absent below. (The pre-cutover evidence --
+// weftengine creating the weft lock dir on disk -- no longer exists: fabric creates nothing before
 // validation, so output text is the reachable-weftCommit signal now.)
 func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	fx := newVerbsFixture(t)
@@ -665,12 +657,11 @@ func seedPersistentPreRunFixture(t *testing.T, websterConfig string) lyxtest.Hos
 	return fixture
 }
 
-// TestPersistentPreRunE_UnknownBatcherFailsFast proves the load-time
-// batcher selection (batcher.Select(cfg.Batcher), wired into
-// PersistentPreRunE) is a true fail-fast gate: an unknown webster.yaml
-// batcher: name aborts before any verb's RunE ever runs, with an
-// output.Err envelope naming the bad batcher key -- proven here via the
-// `status` verb, which never itself touches the batcher.
+// TestPersistentPreRunE_UnknownBatcherFailsFast proves the load-time batcher selection
+// (batcher.Select(cfg.Batcher), wired into PersistentPreRunE) is a true fail-fast gate: an unknown
+// webster.yaml batcher: name aborts before any verb's RunE ever runs, with an output.Err envelope
+// naming the bad batcher key -- proven here via the `status` verb, which never itself touches the
+// batcher.
 func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
 	websterConfig := strings.Replace(websterengine.ConfigTemplate(), `batcher: ""`, `batcher: "bogus"`, 1)
 	seedPersistentPreRunFixture(t, websterConfig)
@@ -692,10 +683,9 @@ func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
 	}
 }
 
-// TestPersistentPreRunE_DefaultBatcherResolves proves the default (empty)
-// webster.yaml batcher: key resolves to the identity batchifier and the
-// command proceeds normally through the rest of PersistentPreRunE and into
-// the verb's own RunE.
+// TestPersistentPreRunE_DefaultBatcherResolves proves the default (empty) webster.yaml batcher: key
+// resolves to the identity batchifier and the command proceeds normally through the rest of
+// PersistentPreRunE and into the verb's own RunE.
 func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
 	seedPersistentPreRunFixture(t, websterengine.ConfigTemplate())
 

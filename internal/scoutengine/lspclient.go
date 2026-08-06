@@ -1,18 +1,16 @@
-// lspclient.go implements lspClient, a generalized stdio LSP client
-// speaking exactly the request/notification surface this engine needs
-// (initialize, initialized, textDocument/references, workspace/symbol,
-// shutdown, exit) — not the full LSP protocol, per the plan's
-// references-only Shared Decision. It is ported from the recovered
-// tools/codeintel-poc/gopls.go harness (git show 3b4dcf86), generalized to
-// launch any command []string rather than a hardcoded "gopls" lookup, and
-// with every request-level call threading a context.Context so a caller can
-// bound it with a deadline that hard-kills the subprocess on expiry.
+// lspclient.go implements lspClient, a generalized stdio LSP client speaking exactly the
+// request/notification surface this engine needs (initialize, initialized, textDocument/references,
+// workspace/symbol, shutdown, exit) — not the full LSP protocol, per the plan's references-only
+// Shared Decision.
+// It is ported from the recovered tools/codeintel-poc/gopls.go harness (git show 3b4dcf86),
+// generalized to launch any command []string rather than a hardcoded "gopls" lookup, and with every
+// request-level call threading a context.Context so a caller can bound it with a deadline that
+// hard-kills the subprocess on expiry.
 //
-// The I/O is factored over an injectable transport for testability: the
-// production constructor newLSPClient spawns a subprocess and wires its
-// stdio, while the unexported newLSPClientFromRW seam builds a client over
-// a caller-supplied io.ReadWriteCloser with no subprocess at all — the fake
-// in-memory server in lspclient_test.go drives this seam.
+// The I/O is factored over an injectable transport for testability: the production constructor
+// newLSPClient spawns a subprocess and wires its stdio, while the unexported newLSPClientFromRW
+// seam builds a client over a caller-supplied io.ReadWriteCloser with no subprocess at all — the
+// fake in-memory server in lspclient_test.go drives this seam.
 
 package scoutengine
 

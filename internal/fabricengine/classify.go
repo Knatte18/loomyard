@@ -1,9 +1,8 @@
-// classify.go — the pure warp-vs-weft path classifier Fabric.Commit (a later
-// batch) uses to split a caller-supplied path list into the warp-side and
-// weft-side pathspecs it commits separately. classifyPaths does no I/O and no
-// path validation: it trusts its caller, the same posture ScopedPathspec
-// takes, and leaves config loading and hub-reserved-name filtering to the
-// caller (WiredNames in junctionnames.go).
+// classify.go — the pure warp-vs-weft path classifier Fabric.Commit (a later batch) uses to split a
+// caller-supplied path list into the warp-side and weft-side pathspecs it commits separately.
+// classifyPaths does no I/O and no path validation: it trusts its caller, the same posture
+// ScopedPathspec takes, and leaves config loading and hub-reserved-name filtering to the caller
+// (WiredNames in junctionnames.go).
 
 package fabricengine
 

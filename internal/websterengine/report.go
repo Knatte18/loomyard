@@ -1,14 +1,13 @@
-// report.go implements webster's own fork-return report contract: the
-// minimal YAML shape a fork writes as its final action to the per-batch
-// report file under websterengine.ReportsDir(...), and the strict
-// parser that reads it back. This replaces builderengine.ParseReport/Report
-// and its done/stuck/green/red/skipped/out_of_scope grammar entirely —
-// webster's flat card format carries no per-batch Scope, so there is
-// nothing to justify an out-of-scope entry against; a fork simply reports
-// whether it succeeded, the head SHA it left, and an informational list of
-// files it touched beyond the plan's prediction (see the deviation-list-is-
-// informational Shared Decision — ParseReport never fails on Deviations
-// content, only on Status/HeadSHA shape violations).
+// report.go implements webster's own fork-return report contract: the minimal YAML shape a fork
+// writes as its final action to the per-batch report file under websterengine.ReportsDir(...),
+// and the strict parser that reads it back.
+// This replaces builderengine.ParseReport/Report and its done/stuck/green/red/skipped/out_of_scope
+// grammar entirely — webster's flat card format carries no per-batch Scope, so there is nothing to
+// justify an out-of-scope entry against;
+// a fork simply reports whether it succeeded, the head SHA it left, and an informational list of
+// files it touched beyond the plan's prediction (see the deviation-list-is- informational Shared
+// Decision — ParseReport never fails on Deviations content, only on Status/HeadSHA shape
+// violations).
 
 package websterengine
 
@@ -27,8 +26,8 @@ const (
 	ReportStatusFailed = "FAILED"
 )
 
-// Report is a fork's return contract: the in-memory form of the per-batch
-// report YAML file a fork writes as its final action.
+// Report is a fork's return contract: the in-memory form of the per-batch report YAML file a fork
+// writes as its final action.
 type Report struct {
 	// Status is either ReportStatusOK or ReportStatusFailed.
 	Status string `yaml:"status"`
@@ -41,17 +40,16 @@ type Report struct {
 	Deviations []string `yaml:"deviations"`
 }
 
-// ReportFileName returns the per-batch report file's name,
-// "NN-<slug>.yaml", webster's own naming (replacing
-// builderengine.BatchReportFileName).
+// ReportFileName returns the per-batch report file's name, "NN-<slug>.yaml", webster's own naming
+// (replacing builderengine.BatchReportFileName).
 func ReportFileName(number int, slug string) string {
 	return fmt.Sprintf("%02d-%s.yaml", number, slug)
 }
 
-// ParseReport reads and strictly decodes the fork-return report YAML file
-// at path, then enforces strict validation: status must be ReportStatusOK or
-// ReportStatusFailed, head_sha must be non-empty. Each violation is returned
-// as its own distinct wrapped error.
+// ParseReport reads and strictly decodes the fork-return report YAML file at path, then enforces
+// strict validation: status must be ReportStatusOK or ReportStatusFailed, head_sha must be
+// non-empty.
+// Each violation is returned as its own distinct wrapped error.
 func ParseReport(path string) (*Report, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -78,10 +76,10 @@ func ParseReport(path string) (*Report, error) {
 	return &r, nil
 }
 
-// WriteReport serializes r's three fields to path, the per-batch report
-// file the fork writes under websterengine.ReportsDir(...). The
-// caller supplies path; WriteReport never constructs `_lyx` tokens itself,
-// per the Cwd Resolution Invariant.
+// WriteReport serializes r's three fields to path, the per-batch report file the fork writes under
+// websterengine.ReportsDir(...).
+// The caller supplies path;
+// WriteReport never constructs `_lyx` tokens itself, per the Cwd Resolution Invariant.
 func WriteReport(path string, r *Report) error {
 	data, err := yaml.Marshal(r)
 	if err != nil {

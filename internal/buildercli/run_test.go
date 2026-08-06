@@ -1,10 +1,9 @@
-// run_test.go covers the run verb's envelope shapes and weft-boundary
-// behavior through a fake builderengine.OrchestratorStarter injected
-// directly on a *builderCLI literal (bypassing Command()'s
-// PersistentPreRunE, the same package-local injection pattern as
-// spawnbatch_test.go): ErrRunBusy skips the weft sync; every other outcome
-// runs the backstop commit before its envelope; --fresh is threaded through
-// to builderengine.Run.
+// run_test.go covers the run verb's envelope shapes and weft-boundary behavior through a fake
+// builderengine.OrchestratorStarter injected directly on a *builderCLI literal (bypassing
+// Command()'s PersistentPreRunE, the same package-local injection pattern as spawnbatch_test.go):
+// ErrRunBusy skips the weft sync;
+// every other outcome runs the backstop commit before its envelope;
+// --fresh is threaded through to builderengine.Run.
 
 package buildercli
 

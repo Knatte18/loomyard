@@ -1,23 +1,21 @@
 // validate.go implements Validate, plan-format v3's complete machine check set
-// (docs/reference/plan-format-v3.md, "Validation checks"), run in this fixed
-// order: format/approval (format-unrecognized, plan-unapproved), Card Index <->
-// card-file consistency (index-file-mismatch), card path well-formedness and the
-// Moves: grammar/redundancy/mechanic checks (card-path-malformed, move-format,
-// move-redundant, move-source-missing, move-target-collision,
-// move-mechanic-missing), the per-card structural checks (card-missing-field,
-// card-field-overlap), the card-numbering heading cross-check, the
-// existence-dependent cross-referencing checks (path-missing,
-// commit-subject-mismatch), and the depends-on-order gate. Unlike the frozen v2
-// validator (internal/builderengine/validate.go), findings are keyed by card
-// (flat `N-<slug>`), not batch — v3 has no batch concept — and there is no
-// ValidateCaps: the oversized-batch cap dies with batch itself.
+// (docs/reference/plan-format-v3.md, "Validation checks"), run in this fixed order: format/approval
+// (format-unrecognized, plan-unapproved), Card Index <-> card-file consistency
+// (index-file-mismatch), card path well-formedness and the Moves: grammar/redundancy/mechanic
+// checks (card-path-malformed, move-format, move-redundant, move-source-missing,
+// move-target-collision, move-mechanic-missing), the per-card structural checks
+// (card-missing-field, card-field-overlap), the card-numbering heading cross-check, the
+// existence-dependent cross-referencing checks (path-missing, commit-subject-mismatch), and the
+// depends-on-order gate.
+// Unlike the frozen v2 validator (internal/builderengine/validate.go), findings are keyed by card
+// (flat `N-<slug>`), not batch — v3 has no batch concept — and there is no ValidateCaps: the
+// oversized-batch cap dies with batch itself.
 //
-// This file is added across three cards (see docs/reference/plan-format-v3.md's
-// worked spec): format/structure checks land first, then the card-path/Moves
-// grammar checks, then the existence-dependent and depends-on checks — each
-// addition also extends Validate's call sequence in place, in the spec's fixed
-// numbering, so every intermediate commit still compiles and runs a strict
-// subset of the final 14 checks.
+// This file is added across three cards (see docs/reference/plan-format-v3.md's worked spec):
+// format/structure checks land first, then the card-path/Moves grammar checks, then the
+// existence-dependent and depends-on checks — each addition also extends Validate's call sequence
+// in place, in the spec's fixed numbering, so every intermediate commit still compiles and runs a
+// strict subset of the final 14 checks.
 
 package planparser
 
@@ -33,7 +31,8 @@ import (
 // recognizedFormat is the only plan-format version Validate currently understands.
 const recognizedFormat = 3
 
-// ValidationError is one finding from Validate: which check tripped, which card it concerns, and a human-readable detail.
+// ValidationError is one finding from Validate: which check tripped, which card it concerns, and a
+// human-readable detail.
 type ValidationError struct {
 	Check  string
 	Card   string
@@ -53,7 +52,8 @@ func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }
 
-// Validate runs every plan-format v3 machine check against plan and returns every finding in fixed order.
+// Validate runs every plan-format v3 machine check against plan and returns every finding in fixed
+// order.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
 

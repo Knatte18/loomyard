@@ -1,7 +1,6 @@
-// drift.go implements Healthy, the stateless pair-in-sync check for fabric
-// topology: branch correspondence between a host worktree and its weft
-// sibling, plus every wired junction's health. Healthy and Clean
-// (hostclean.go) are wired into the loom preflight via internal/loomengine.
+// drift.go implements Healthy, the stateless pair-in-sync check for fabric topology: branch
+// correspondence between a host worktree and its weft sibling, plus every wired junction's health.
+// Healthy and Clean (hostclean.go) are wired into the loom preflight via internal/loomengine.
 
 package fabricengine
 
@@ -16,12 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// Healthy reports whether the host worktree and its paired weft worktree are
-// in sync: the weft worktree is on the paired weft branch and every host
-// junction exists and points to its correct weft directory. The weft sibling
-// is determined deterministically and no external state is consulted, so
-// Healthy is stateless.
-// Returns (true, "", nil) if in sync; (false, reason, nil) if out of sync;
+// Healthy reports whether the host worktree and its paired weft worktree are in sync: the weft
+// worktree is on the paired weft branch and every host junction exists and points to its correct
+// weft directory.
+// The weft sibling is determined deterministically and no external state is consulted, so Healthy
+// is stateless.
+// Returns (true, "", nil) if in sync;
+// (false, reason, nil) if out of sync;
 // (false, "", err) if a system error occurs.
 func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	// Verify the host worktree's current branch via rev-parse --abbrev-ref HEAD.

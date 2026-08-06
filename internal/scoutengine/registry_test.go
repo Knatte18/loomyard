@@ -1,6 +1,6 @@
-// registry_test.go table-drives builtins() against the pinned defaults from
-// the language-server-registry Shared Decision, and validateEntry against
-// each closed-vocabulary violation it must reject.
+// registry_test.go table-drives builtins() against the pinned defaults from the
+// language-server-registry Shared Decision,
+// and validateEntry against each closed-vocabulary violation it must reject.
 
 package scoutengine
 

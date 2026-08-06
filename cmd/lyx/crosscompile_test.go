@@ -21,12 +21,12 @@ import (
 	"testing"
 )
 
-// TestCrossCompileLinux cross-compiles the entire module for GOOS=linux and fails on
-// any non-zero exit, surfacing the compiler's combined output. It is the whole-module
-// analogue of the per-batch `GOOS=linux go build ./<pkg>/...` gates run during
-// development: those check one package as it lands, this one is the durable guard that
-// every seamed package (proc, fslink, vscode, configengine, tools/deploy) plus every
-// Linux-tagged file added across the task still compiles together, indefinitely.
+// TestCrossCompileLinux cross-compiles the entire module for GOOS=linux and fails on any non-zero
+// exit, surfacing the compiler's combined output.
+// It is the whole-module analogue of the per-batch `GOOS=linux go build ./<pkg>/...` gates run
+// during development: those check one package as it lands, this one is the durable guard that every
+// seamed package (proc, fslink, vscode, configengine, tools/deploy) plus every Linux-tagged file
+// added across the task still compiles together, indefinitely.
 func TestCrossCompileLinux(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH, so this
 	// gate never blocks environments (e.g. a minimal CI image) that lack it.

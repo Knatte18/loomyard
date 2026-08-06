@@ -1,21 +1,19 @@
-// githubclient_test.go is the hermetic, table-driven test suite for the
-// whole package: the token resolution chain (token.go), the on-disk cache
-// (cache.go/cache_windows.go), and the authenticating RoundTripper
-// (transport.go). Every case redirects the cache to a t.TempDir() via
-// t.Setenv and reaches the `gh auth token` shell-out only through its
-// injected seam, so the suite runs correctly on a machine with no `gh`
-// installed and no GitHub credentials, and never touches the operator's
-// real credential file. This file carries no build tag -- it is untagged
-// Tier 1, spawning no process and needing no git fixture, so
-// `go test -race -count=1 ./internal/githubclient/...` runs every case here
-// on any platform. The one genuinely Windows-only piece --
-// TestWriteCachedToken_CreatesFileWithRestrictivePermissions and its
-// assertOwnerOnlyDACL helper, which import golang.org/x/sys/windows to
-// assert the cache file's security descriptor directly -- lives in
-// githubclient_windows_test.go behind `//go:build windows`, mirroring this
-// package's cache.go/cache_windows.go/cache_other.go split. Both files share
-// the helpers declared below (setCacheDir, seedCacheFile,
-// withFakeGHAuthToken, capturedRequest, newScriptedServer).
+// githubclient_test.go is the hermetic, table-driven test suite for the whole package: the token
+// resolution chain (token.go), the on-disk cache (cache.go/cache_windows.go), and the
+// authenticating RoundTripper (transport.go).
+// Every case redirects the cache to a t.TempDir() via t.Setenv and reaches the `gh auth token`
+// shell-out only through its injected seam, so the suite runs correctly on a machine with no `gh`
+// installed and no GitHub credentials, and never touches the operator's real credential file.
+// This file carries no build tag -- it is untagged Tier 1, spawning no process and needing no git
+// fixture, so `go test -race -count=1 ./internal/githubclient/...` runs every case here on any
+// platform.
+// The one genuinely Windows-only piece --
+// TestWriteCachedToken_CreatesFileWithRestrictivePermissions and its assertOwnerOnlyDACL helper,
+// which import golang.org/x/sys/windows to assert the cache file's security descriptor directly --
+// lives in githubclient_windows_test.go behind `//go:build windows`, mirroring this package's
+// cache.go/cache_windows.go/cache_other.go split.
+// Both files share the helpers declared below (setCacheDir, seedCacheFile, withFakeGHAuthToken,
+// capturedRequest, newScriptedServer).
 
 package githubclient
 
@@ -122,10 +120,9 @@ func newScriptedServer(t *testing.T, statuses []int, captured *[]capturedRequest
 	return server
 }
 
-// TestResolveToken_Chain covers the full resolution order end to end: env
-// vars always win over the cache, GH_TOKEN before GITHUB_TOKEN, a fresh
-// cache entry is used when both env vars are empty, a stale one is not, and
-// an unresolvable token surfaces as ErrTokenUnresolvable.
+// TestResolveToken_Chain covers the full resolution order end to end: env vars always win over the
+// cache, GH_TOKEN before GITHUB_TOKEN, a fresh cache entry is used when both env vars are empty, a
+// stale one is not, and an unresolvable token surfaces as ErrTokenUnresolvable.
 func TestResolveToken_Chain(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -219,10 +216,9 @@ func TestResolveToken_Chain(t *testing.T) {
 	}
 }
 
-// TestCacheDirRedirection_HonoursOverride asserts the redirection itself
-// works, rather than assuming it: pointing the environment at an empty
-// temp dir must resolve cacheDir under that temp dir and report a cache
-// miss there, never silently fall back to a real user path.
+// TestCacheDirRedirection_HonoursOverride asserts the redirection itself works, rather than
+// assuming it: pointing the environment at an empty temp dir must resolve cacheDir under that temp
+// dir and report a cache miss there, never silently fall back to a real user path.
 func TestCacheDirRedirection_HonoursOverride(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -249,9 +245,9 @@ func isUnder(base, candidate string) bool {
 	return rel == "." || !strings.HasPrefix(rel, "..")
 }
 
-// TestReadCachedToken_MalformedFileIsMiss covers every way the on-disk file
-// can fail to match the exact two-field schema: each is a cache miss, never
-// a fatal error, so a foreign or worn-out file never blocks resolution.
+// TestReadCachedToken_MalformedFileIsMiss covers every way the on-disk file can fail to match the
+// exact two-field schema: each is a cache miss, never a fatal error, so a foreign or worn-out file
+// never blocks resolution.
 func TestReadCachedToken_MalformedFileIsMiss(t *testing.T) {
 	freshTimestamp := time.Now().UTC().Format(time.RFC3339)
 
@@ -291,11 +287,10 @@ func TestReadCachedToken_MalformedFileIsMiss(t *testing.T) {
 	}
 }
 
-// TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution covers the
-// requirement that a cache directory which cannot be created degrades to
-// in-process resolution rather than failing the command: writeCachedToken
-// must not panic or error out loud, and a subsequent resolveToken must still
-// succeed via the (faked) gh CLI fallback.
+// TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution covers the requirement that a
+// cache directory which cannot be created degrades to in-process resolution rather than failing the
+// command: writeCachedToken must not panic or error out loud,
+// and a subsequent resolveToken must still succeed via the (faked) gh CLI fallback.
 func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.T) {
 	root := t.TempDir()
 	blockingFile := filepath.Join(root, "blocks-mkdir")
@@ -324,10 +319,10 @@ func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.
 	}
 }
 
-// TestCache_ConcurrentWriters drives many goroutines through writeCachedToken
-// and readCachedToken at once. The requirement is not that any particular
-// write wins -- it is that the file is always either absent or fully
-// parseable, never left half-written by a torn concurrent write.
+// TestCache_ConcurrentWriters drives many goroutines through writeCachedToken and readCachedToken
+// at once.
+// The requirement is not that any particular write wins -- it is that the file is always either
+// absent or fully parseable, never left half-written by a torn concurrent write.
 func TestCache_ConcurrentWriters(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -371,9 +366,9 @@ func TestCache_ConcurrentWriters(t *testing.T) {
 	}
 }
 
-// TestAuthRT_401InvalidatesAndReplaysExactlyOnce covers the transport's core
-// contract: a 401 invalidates the rejected (cache-sourced) token, resolves a
-// fresh one exactly once, and replays with it -- never in a loop.
+// TestAuthRT_401InvalidatesAndReplaysExactlyOnce covers the transport's core contract: a 401
+// invalidates the rejected (cache-sourced) token, resolves a fresh one exactly once, and replays
+// with it -- never in a loop.
 func TestAuthRT_401InvalidatesAndReplaysExactlyOnce(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -413,9 +408,8 @@ func TestAuthRT_401InvalidatesAndReplaysExactlyOnce(t *testing.T) {
 	}
 }
 
-// TestAuthRT_SecondConsecutive401Propagates asserts the replay never loops:
-// once the replay itself is rejected, the second 401 goes back to the
-// caller unchanged.
+// TestAuthRT_SecondConsecutive401Propagates asserts the replay never loops: once the replay itself
+// is rejected, the second 401 goes back to the caller unchanged.
 func TestAuthRT_SecondConsecutive401Propagates(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -445,10 +439,9 @@ func TestAuthRT_SecondConsecutive401Propagates(t *testing.T) {
 	}
 }
 
-// TestAuthRT_EnvSourcedTokenSkipsReplayOn401 asserts that an
-// environment-sourced token is never invalidated and replayed: replaying it
-// is guaranteed to reproduce the identical value, so the 401 is surfaced as
-// an error naming the rejected variable, with no second request at all.
+// TestAuthRT_EnvSourcedTokenSkipsReplayOn401 asserts that an environment-sourced token is never
+// invalidated and replayed: replaying it is guaranteed to reproduce the identical value, so the 401
+// is surfaced as an error naming the rejected variable, with no second request at all.
 func TestAuthRT_EnvSourcedTokenSkipsReplayOn401(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -473,11 +466,11 @@ func TestAuthRT_EnvSourcedTokenSkipsReplayOn401(t *testing.T) {
 	}
 }
 
-// TestAuthRT_ReplayRewindsRequestBodyByteIdentical is the case the design
-// flags as silently misbehaving without it: a 401 then success, asserting
-// the replayed request's body is byte-identical to the first. This is what
-// proves the req.GetBody rewind actually happened, rather than the replay
-// sending an already-drained (empty) body.
+// TestAuthRT_ReplayRewindsRequestBodyByteIdentical is the case the design flags as silently
+// misbehaving without it: a 401 then success, asserting the replayed request's body is
+// byte-identical to the first.
+// This is what proves the req.GetBody rewind actually happened, rather than the replay sending an
+// already-drained (empty) body.
 func TestAuthRT_ReplayRewindsRequestBodyByteIdentical(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -516,11 +509,10 @@ func TestAuthRT_ReplayRewindsRequestBodyByteIdentical(t *testing.T) {
 	}
 }
 
-// TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout encodes the operator
-// requirement directly rather than mere behaviour: a fake that hangs like a
-// stuck `gh` process must still cause resolveToken to return once
-// ghAuthTokenTimeout elapses. This is a test that would hang forever on a
-// regression that dropped the context deadline.
+// TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout encodes the operator requirement directly rather
+// than mere behaviour: a fake that hangs like a stuck `gh` process must still cause resolveToken to
+// return once ghAuthTokenTimeout elapses.
+// This is a test that would hang forever on a regression that dropped the context deadline.
 func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)
@@ -561,10 +553,9 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 	}
 }
 
-// TestResolveToken_UnresolvableReturnsTypedErrorWithoutBlocking encodes the
-// second operator requirement: when the gh CLI itself fails fast (no
-// session), resolution must return ErrTokenUnresolvable immediately, never
-// wait or prompt.
+// TestResolveToken_UnresolvableReturnsTypedErrorWithoutBlocking encodes the second operator
+// requirement: when the gh CLI itself fails fast (no session), resolution must return
+// ErrTokenUnresolvable immediately, never wait or prompt.
 func TestResolveToken_UnresolvableReturnsTypedErrorWithoutBlocking(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)

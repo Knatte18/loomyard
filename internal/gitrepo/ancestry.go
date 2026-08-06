@@ -1,10 +1,8 @@
-// ancestry.go implements the reachability primitive rebase detection and the
-// nearest-older anchor walk both need: IsAncestor answers "is sha an
-// ancestor of ref", CLI-bound via `git merge-base --is-ancestor` because
-// SHAExists' object-existence semantics cannot distinguish "this commit is
-// still reachable from ref" from "this commit's object merely survived a
-// rebase that walked it off history" — see the package's reachability,
-// never object-existence decision.
+// ancestry.go implements the reachability primitive rebase detection and the nearest-older anchor
+// walk both need: IsAncestor answers "is sha an ancestor of ref", CLI-bound via `git merge-base
+// --is-ancestor` because SHAExists' object-existence semantics cannot distinguish "this commit is
+// still reachable from ref" from "this commit's object merely survived a rebase that walked it off
+// history" — see the package's reachability, never object-existence decision.
 
 package gitrepo
 
@@ -13,9 +11,9 @@ import (
 	"strings"
 )
 
-// IsAncestor reports whether sha is an ancestor of ref via
-// `git merge-base --is-ancestor`, returning its tri-state exit code: true if
-// an ancestor, false if not (both with nil error), or an error on failure.
+// IsAncestor reports whether sha is an ancestor of ref via `git merge-base --is-ancestor`,
+// returning its tri-state exit code: true if an ancestor, false if not (both with nil error), or an
+// error on failure.
 // sha and ref are validated before reaching git, returning ErrInvalidSHA.
 func (r *Repo) IsAncestor(sha, ref string) (bool, error) {
 	if !validSHA(sha) {

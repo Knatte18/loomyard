@@ -117,10 +117,9 @@ func gitStatusPorcelain(t *testing.T, repoPath string) string {
 	return string(out)
 }
 
-// TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content
-// (which creates the .weft lock dir) and drops a push lock file, then asserts
-// neither artifact appears in `git status --porcelain` — the exact check
-// Remove's no-force weft dirty gate runs.
+// TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content (which creates the
+// .weft lock dir) and drops a push lock file, then asserts neither artifact appears in `git status
+// --porcelain` — the exact check Remove's no-force weft dirty gate runs.
 func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	f, weftFixture := newFabricPair(t)
 	writeWeftConfig(t, weftFixture.WeftPath, "modified for exclude test")
@@ -181,23 +180,19 @@ func gitLsFiles(t *testing.T, repoPath string) string {
 	return string(out)
 }
 
-// TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth proves
-// F-B's fix (CONSTRAINTS.md's Weft Git Invariant, "Cross-module exclusions"):
-// fabric's OWN sync pathspec — fabricengine.ScopedPathspec(relPath,
-// []string{"_lyx"}), positive entries only, no exclusions, the exact shape
-// internal/fabriccli/weft_verbs.go builds for `lyx fabric sync`/`lyx config
-// <module> --set ...` — never stages another module's lock file, pause
-// flag, or rendered-prompt directory. Before this fix, that exact pathspec
-// permanently tracked all of them, because the caller had no exclusion
-// lever at all.
+// TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth proves F-B's fix
+// (CONSTRAINTS.md's Weft Git Invariant, "Cross-module exclusions"): fabric's OWN sync pathspec —
+// fabricengine.ScopedPathspec(relPath, []string{"_lyx"}), positive entries only, no exclusions, the
+// exact shape internal/fabriccli/weft_verbs.go builds for `lyx fabric sync`/`lyx config <module>
+// --set ...` — never stages another module's lock file, pause flag, or rendered-prompt directory.
+// Before this fix, that exact pathspec permanently tracked all of them, because the caller had no
+// exclusion lever at all.
 //
-// Exercised at the weft worktree root AND at two nested RelPath depths in
-// the SAME weft checkout (multiple host hubs share one weft worktree at
-// different RelPath offsets) — proving crossModuleMachineLocalExcludes'
-// `**/` prefix actually reaches every depth, not just the root. A durable
-// per-module state file is written and committed alongside the excluded
-// artifacts at every depth, proving the exclusion is exact and does not
-// over-match real state.
+// Exercised at the weft worktree root AND at two nested RelPath depths in the SAME weft checkout
+// (multiple host hubs share one weft worktree at different RelPath offsets) — proving
+// crossModuleMachineLocalExcludes' `**/` prefix actually reaches every depth, not just the root.
+// A durable per-module state file is written and committed alongside the excluded artifacts at
+// every depth, proving the exclusion is exact and does not over-match real state.
 func TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth(t *testing.T) {
 	weftFixture := lyxtest.CopyWeft(t)
 

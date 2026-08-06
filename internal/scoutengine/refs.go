@@ -1,14 +1,12 @@
-// refs.go implements References, the public orchestration entry point that
-// ties detection (detect.go), the language-server registry (registry.go),
-// and the generalized LSP client (lspclient.go) together: given a target
-// directory and a query (a symbol name or an explicit file:line:col
-// position), it launches the right language server, resolves the query to
-// a position if needed, and returns the reference list. It also defines the
-// shared lookup pipeline (acquireConnection, teardownConnection, lookup)
-// that References wraps and that a later batch's Definition wraps too —
-// both differ only in which single LSP call they make once a position is
-// resolved. This is the external interface the CLI layer
-// (internal/scoutcli, batch 3) calls.
+// refs.go implements References, the public orchestration entry point that ties detection
+// (detect.go), the language-server registry (registry.go), and the generalized LSP client
+// (lspclient.go) together: given a target directory and a query (a symbol name or an explicit
+// file:line:col position), it launches the right language server, resolves the query to a position
+// if needed, and returns the reference list.
+// It also defines the shared lookup pipeline (acquireConnection, teardownConnection, lookup) that
+// References wraps and that a later batch's Definition wraps too — both differ only in which single
+// LSP call they make once a position is resolved.
+// This is the external interface the CLI layer (internal/scoutcli, batch 3) calls.
 
 package scoutengine
 
@@ -29,14 +27,15 @@ type Reference struct {
 	Character int
 }
 
-// InFileQuery resolves a bare symbol name exhaustively within one file via textDocument/documentSymbol.
+// InFileQuery resolves a bare symbol name exhaustively within one file via
+// textDocument/documentSymbol.
 type InFileQuery struct {
 	File string
 	Name string
 }
 
-// Query selects a symbol or position to look up: one of InFile (file-scoped name),
-// Pos (explicit position), or Symbol (project-wide name search).
+// Query selects a symbol or position to look up: one of InFile (file-scoped name), Pos (explicit
+// position), or Symbol (project-wide name search).
 type Query struct {
 	InFile *InFileQuery
 	Symbol string

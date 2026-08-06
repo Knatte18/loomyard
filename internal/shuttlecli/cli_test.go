@@ -1,9 +1,9 @@
-// cli_test.go covers the shuttlecli cobra seam through RunCLI: bare-group
-// listing, the unknown-subcommand JSON envelope, run's flag-shape
-// validation, and interrupt/send's exact-args validation. No live
-// tmux/claude session is required by any test in this file; the full
-// run/interrupt/send round-trip against a live agent lives in smoke tests
-// (batch 6) and the sandbox suite.
+// cli_test.go covers the shuttlecli cobra seam through RunCLI: bare-group listing, the
+// unknown-subcommand JSON envelope, run's flag-shape validation, and interrupt/send's exact-args
+// validation.
+// No live tmux/claude session is required by any test in this file;
+// the full run/interrupt/send round-trip against a live agent lives in smoke tests (batch 6) and
+// the sandbox suite.
 
 package shuttlecli
 
@@ -19,9 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestRunCLI_NoArgs verifies that "lyx shuttle" with no subcommand lists the
-// run verb and exits 0 — no git repo is needed, since the PersistentPreRunE
-// guard skips layout/config/engine resolution for the group command itself.
+// TestRunCLI_NoArgs verifies that "lyx shuttle" with no subcommand lists the run verb and exits 0 —
+// no git repo is needed, since the PersistentPreRunE guard skips layout/config/engine resolution
+// for the group command itself.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -41,10 +41,9 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1
-// and emits a JSON error envelope with ok=false, without needing a git repo
-// (the PersistentPreRunE guard for cmd.Name() == "shuttle" fires before
-// layout resolution).
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
+// envelope with ok=false, without needing a git repo (the PersistentPreRunE guard for cmd.Name() ==
+// "shuttle" fires before layout resolution).
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -64,12 +63,12 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_FlagValidation exercises run's flag-shape validation
-// (missing --output-file, both --prompt and --prompt-file, neither) against
-// an uninitialized (non-git) directory. Config resolution aborts first in
-// that directory, but run's RunE validates flag shape before ever touching
-// c.runner, so each case's flag-specific error still surfaces in the
-// captured output alongside the PersistentPreRunE abort's own error line.
+// TestRunCLI_Run_FlagValidation exercises run's flag-shape validation (missing --output-file, both
+// --prompt and --prompt-file, neither) against an uninitialized (non-git) directory.
+// Config resolution aborts first in that directory,
+// but run's RunE validates flag shape before ever touching c.runner, so each case's flag-specific
+// error still surfaces in the captured output alongside the PersistentPreRunE abort's own error
+// line.
 func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -110,10 +109,9 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Interrupt_ArgValidation verifies that "lyx shuttle interrupt"
-// enforces exactly one positional <guid> argument via cobra's Args
-// validation, which runs before PersistentPreRunE — so this fires even
-// against a non-git directory with no config to resolve.
+// TestRunCLI_Interrupt_ArgValidation verifies that "lyx shuttle interrupt" enforces exactly one
+// positional <guid> argument via cobra's Args validation, which runs before PersistentPreRunE — so
+// this fires even against a non-git directory with no config to resolve.
 func TestRunCLI_Interrupt_ArgValidation(t *testing.T) {
 	tests := []struct {
 		name string
@@ -167,8 +165,8 @@ func (e *specCapturingEngine) InterruptSequence() []shuttleengine.PaneInput     
 func (e *specCapturingEngine) TrustDismissSequence() []shuttleengine.PaneInput   { return nil }
 func (e *specCapturingEngine) ComposeSend(text string) []shuttleengine.PaneInput { return nil }
 
-// AuditForks is never reached: Prepare always fails before Runner.Start could
-// ever run this spec to a fork-mode done classification.
+// AuditForks is never reached: Prepare always fails before Runner.Start could ever run this spec to
+// a fork-mode done classification.
 func (e *specCapturingEngine) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	return shuttleengine.ForkAudit{}, nil
 }
@@ -178,8 +176,8 @@ func (e *specCapturingEngine) AuditForksIncremental(sessionID, workdir string, s
 	return shuttleengine.ForkAudit{}, nil
 }
 
-// ModelSwitchSequence is never reached: Prepare always fails before any
-// model-switch choreography could ever be driven.
+// ModelSwitchSequence is never reached: Prepare always fails before any model-switch choreography
+// could ever be driven.
 func (e *specCapturingEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
 	return nil
 }
@@ -210,12 +208,10 @@ func (noopReed) CapturePane(guid string) (string, error)       { return "", nil 
 
 var _ shuttleengine.ReedOps = noopReed{}
 
-// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run
-// builds, mirroring how --model is wired: a fake Runner (a real
-// *shuttleengine.Runner over a spec-capturing Engine fake and a no-op reed
-// fake) lets the test drive runCmd()'s RunE directly and inspect the Spec
-// the engine's Prepare was actually called with, without a live tmux/claude
-// session.
+// TestRunCmd_EffortFlag proves --effort lands in the shuttleengine.Spec run builds, mirroring how
+// --model is wired: a fake Runner (a real *shuttleengine.Runner over a spec-capturing Engine fake
+// and a no-op reed fake) lets the test drive runCmd()'s RunE directly and inspect the Spec the
+// engine's Prepare was actually called with, without a live tmux/claude session.
 func TestRunCmd_EffortFlag(t *testing.T) {
 	tests := []struct {
 		name       string

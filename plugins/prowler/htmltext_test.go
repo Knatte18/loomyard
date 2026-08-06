@@ -1,5 +1,6 @@
-// htmltext_test.go exercises the HTML-to-text normalization helpers with
-// fixed in-memory HTML fixtures. No network, no subprocess.
+// htmltext_test.go exercises the HTML-to-text normalization helpers with fixed in-memory HTML
+// fixtures.
+// No network, no subprocess.
 
 package main
 

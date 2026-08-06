@@ -1,9 +1,9 @@
-// lifecycle.go implements the four lifecycle engine ops — Up, Resume, Down,
-// Status — plus the pure planning helpers that make their decisions
-// unit-testable without a live tmux server. The sharp boundary the batch
-// discussion settles on: Up ensures the substrate (server + session) exists
-// and never launches a strand command; Resume is the only replayer, and it
-// skips anchor:hidden strands (pending first surface, not dead).
+// lifecycle.go implements the four lifecycle engine ops — Up, Resume, Down, Status — plus the pure
+// planning helpers that make their decisions unit-testable without a live tmux server.
+// The sharp boundary the batch discussion settles on: Up ensures the substrate (server + session)
+// exists and never launches a strand command;
+// Resume is the only replayer,
+// and it skips anchor:hidden strands (pending first surface, not dead).
 
 package reedengine
 
@@ -29,11 +29,11 @@ import (
 // state, this package's own declaration of the token for HubLogsDir's join.
 const dotLyxDirName = ".lyx"
 
-// HubLogsDir returns the path to the hub-level directory where the shared
-// per-hub reed server writes its runtime log. It is hub-anchored so one
-// server per hub resolves to one deterministic place. It lives under the
-// ephemeral .lyx directory; server logs are runtime artifacts, never
-// weft-synced.
+// HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
+// writes its runtime log.
+// It is hub-anchored so one server per hub resolves to one deterministic place.
+// It lives under the ephemeral .lyx directory;
+// server logs are runtime artifacts, never weft-synced.
 func HubLogsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.HubPath, dotLyxDirName, "logs")
 }
@@ -51,8 +51,7 @@ type ResumeResult struct {
 	Resumed int
 }
 
-// DownResult reports the outcome of Down: the session name that was torn
-// down.
+// DownResult reports the outcome of Down: the session name that was torn down.
 type DownResult struct {
 	Session string
 }
@@ -549,7 +548,8 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	return nil
 }
 
-// Up ensures the server and session exist. Up never launches strands;
+// Up ensures the server and session exist.
+// Up never launches strands;
 // Resume rebuilds content after a server restart.
 func (e *Engine) Up() (UpResult, error) {
 	var result UpResult
@@ -601,8 +601,8 @@ func (e *Engine) Up() (UpResult, error) {
 	return result, err
 }
 
-// Resume boots server+session if absent, reconciles stale bindings,
-// relaunches non-live strands, and re-applies the layout.
+// Resume boots server+session if absent, reconciles stale bindings, relaunches non-live strands,
+// and re-applies the layout.
 func (e *Engine) Resume() (ResumeResult, error) {
 	var result ResumeResult
 	err := e.withOpLock(func() error {
@@ -964,8 +964,9 @@ func (e *Engine) requireSessionLocked() error {
 	return errors.New(noSessionMessage(strandCount))
 }
 
-// Status reports this session's tracked strands and their live/dead state
-// by cross-referencing the persisted table against live panes. Read-only.
+// Status reports this session's tracked strands and their live/dead state by cross-referencing the
+// persisted table against live panes.
+// Read-only.
 func (e *Engine) Status() (StatusResult, error) {
 	var result StatusResult
 	err := e.withOpLock(func() error {
