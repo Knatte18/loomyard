@@ -130,7 +130,7 @@ func repoWideFabricBase(l *lyxcwd.Location) string {
 }
 
 // RepoWiredNames loads the repo-wide fabric config and returns its wired
-// name-set. It is a Layout-taking convenience for callers that want the
+// name-set. It is a Location-taking convenience for callers that want the
 // repo-wide junction name-set without re-deriving the base. Callers use this
 // so every worktree converges to the one repo-wide pathspec.
 func RepoWiredNames(l *lyxcwd.Location) ([]string, error) {
