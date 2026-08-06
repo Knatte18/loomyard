@@ -28,7 +28,7 @@ The `Load(baseDir, module, template []byte)` function reads the on-disk config f
 **Flow:**
 
 1. Call `FindBaseDir(baseDir)` — check that `_lyx/` exists at baseDir.
-2. Read the config file at `hubgeometry.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`). If absent, return an error instructing the user to run `lyx config reconcile`.
+2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`). If absent, return an error instructing the user to run `lyx config reconcile`.
 3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`. If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx config reconcile`.
 4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
 5. Resolve environment variables via `yamlengine.Resolve(fileBytes, env)` (expands `${env:...}` markers).
@@ -61,7 +61,7 @@ Multiple markers in one value are all expanded. A value with no marker is a lite
 
 ## `.env` loading
 
-Environment variables are sourced by `envsource.Build(baseDir)`, which reads `hubgeometry.DotEnv(baseDir)` (typically `<cwd>/.env`) and overlays the OS environment.
+Environment variables are sourced by `envsource.Build(baseDir)`, which reads `envsource.DotEnv(baseDir)` (typically `<cwd>/.env`) and overlays the OS environment.
 
 - **Format**: `KEY=VALUE` lines, blank lines skipped, lines starting with `#` are comments, split on first `=` only.
 - **Precedence: OS env wins.** Any variable set in the process environment overrides the corresponding `.env` value.
@@ -76,6 +76,18 @@ Resolved YAML bytes (as returned by `yamlengine.Resolve`). Typed wrappers (`boar
 Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`. Running `lyx config reconcile --apply` from the host worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present. Because the host `_lyx` is a directory junction into the weft worktree's `_lyx`, a single host `lyx config reconcile` reaches all config files (board, worktree, and weft). No separate command in the weft sibling is needed.
 
 ## Exported functions
+
+### `LyxDirName` (constant, `"_lyx"`)
+
+The directory name for the lyx system directory within a worktree. `internal/configengine` is the single declarer of this token; every other module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, configengine.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in `CONSTRAINTS.md`'s Hub Geometry Invariant.
+
+### `ConfigDir(baseDir string) string`
+
+Returns `filepath.Join(baseDir, LyxDirName, "config")` — the directory where module configuration YAML files are stored.
+
+### `ConfigFile(baseDir, module string) string`
+
+Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a specific module's configuration file (e.g. `_lyx/config/board.yaml`).
 
 ### `FindBaseDir(cwd string) (string, error)`
 
