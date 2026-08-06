@@ -23,7 +23,7 @@ import (
 // pathspec through the weft junction. It reports whether a commit was made
 // (false when nothing staged) and any error.
 func weftCommit(layout *lyxcwd.Location, label string) (bool, error) {
-	weftWorktree := layout.WeftWorktree()
+	weftWorktree := fabricengine.WeftWorktree(layout)
 	opts := fabricengine.EnvSyncOptions()
 	files := fabricengine.ScopedPathspec(layout.AnchorRel, []string{configengine.LyxDirName})
 

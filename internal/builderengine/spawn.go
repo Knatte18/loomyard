@@ -373,7 +373,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		// fixture.
 		resetter := deps.Resetter
 		if resetter == nil {
-			f, err := fabricengine.New(deps.Layout.WorktreePath(), deps.Layout.WeftWorktree())
+			f, err := fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout))
 			if err != nil {
 				return nil, err
 			}

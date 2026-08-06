@@ -308,7 +308,7 @@ func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 
 	f, _ := setupPreflightFixture(t)
 
-	if err := os.RemoveAll(f.Layout.WeftWorktree()); err != nil {
+	if err := os.RemoveAll(fabricengine.WeftWorktree(f.Layout)); err != nil {
 		t.Fatalf("remove weft worktree: %v", err)
 	}
 

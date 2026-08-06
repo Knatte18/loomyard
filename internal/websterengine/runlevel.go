@@ -823,7 +823,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	// path never requires a paired weft fixture.
 	bisector := deps.Bisector
 	if bisector == nil {
-		f, err := fabricengine.New(deps.Layout.WorktreePath(), deps.Layout.WeftWorktree())
+		f, err := fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout))
 		if err != nil {
 			return err
 		}

@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -83,10 +84,10 @@ func (v AuditViolation) Error() string {
 // weftReferencePattern builds the regexp CheckFork and CheckParent use to detect
 // a Bash command that touches weft (lyx fabric, old `lyx weft`/`lyx warp` spellings,
 // or commands referencing the weft worktree path). Built at runtime from
-// layout.WeftWorktree() and weftname.Suffix, never from string literals in
+// fabricengine.WeftWorktree(layout) and weftname.Suffix, never from string literals in
 // this package, to pass TestEnforcement_GeometryLiterals.
 func weftReferencePattern(layout *lyxcwd.Location) *regexp.Regexp {
-	weftPath := regexp.QuoteMeta(layout.WeftWorktree())
+	weftPath := regexp.QuoteMeta(fabricengine.WeftWorktree(layout))
 	weftSuffix := regexp.QuoteMeta(weftname.Suffix)
 	pattern := fmt.Sprintf(
 		`lyx(?:\.exe)?\s+(fabric|weft|warp)\b|%s|\S*%s\b`,

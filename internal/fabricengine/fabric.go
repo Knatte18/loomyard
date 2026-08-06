@@ -20,7 +20,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // DefaultCommitMessage is the message used by every weft-commit caller that
@@ -99,6 +102,22 @@ func EnvSyncOptions() SyncOptions {
 		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
 		SkipPush: os.Getenv("WEFT_SKIP_PUSH") == "1",
 	}
+}
+
+// WeftWorktree returns the path to the weft worktree paired with l's host
+// worktree. It is the read-only accessor every non-fabric caller that needs
+// to know the weft sibling's location goes through, closing the
+// weft-visibility leak where those callers used to reach lyxcwd.Location
+// directly for a fabric-owned path.
+func WeftWorktree(l *lyxcwd.Location) string {
+	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
+}
+
+// WeftLyxDir returns the path to the _lyx directory in l's weft sibling
+// worktree. It is the junction target for lyx weft and the pathspec base for
+// weft operations.
+func WeftLyxDir(l *lyxcwd.Location) string {
+	return filepath.Join(WeftWorktree(l), l.AnchorRel, configengine.LyxDirName)
 }
 
 // ScopedPathspec returns a slice of pathspec entries, each being the join of

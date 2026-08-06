@@ -103,7 +103,7 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 	// fault of its own (missing weft worktree, or a broken junction) — check 4
 	// gates its classification on this, per strict-read-mechanism.
 	check3BlocksSeed := false
-	if _, err := os.Stat(l.WeftWorktree()); err != nil {
+	if _, err := os.Stat(fabricengine.WeftWorktree(l)); err != nil {
 		if !os.IsNotExist(err) {
 			return Report{}, err
 		}

@@ -319,7 +319,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			if runErr == nil {
 				outcomeLabel = string(result.Outcome)
 			}
-			weftWorktree := c.layout.WeftWorktree()
+			weftWorktree := fabricengine.WeftWorktree(c.layout)
 			opts := fabricengine.EnvSyncOptions()
 			// Lock files (run.lock, state.json.lock) are machine-local
 			// advisory-lock artifacts, not block state: committing them

@@ -20,7 +20,7 @@ import (
 
 // weftCommit stages and commits changes under layout's _lyx pathspec through the weft junction.
 func weftCommit(layout *lyxcwd.Location, label string) (bool, error) {
-	weftWorktree := layout.WeftWorktree()
+	weftWorktree := fabricengine.WeftWorktree(layout)
 	opts := fabricengine.EnvSyncOptions()
 	files := fabricengine.ScopedPathspec(layout.AnchorRel, []string{configengine.LyxDirName})
 
