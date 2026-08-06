@@ -1,1 +1,0 @@
-- Stale `Layout` type name in godoc: **Location:** `internal/fabricengine/junctionnames.go:133`
