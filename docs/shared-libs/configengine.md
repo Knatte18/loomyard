@@ -79,7 +79,7 @@ Existing config files in the old commented format (all lines commented out) are 
 
 ### `LyxDirName` (constant, `"_lyx"`)
 
-The directory name for the lyx system directory within a worktree. `internal/configengine` is the single declarer of this token; every other module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, configengine.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in `CONSTRAINTS.md`'s Hub Geometry Invariant.
+The directory name for the lyx system directory within a worktree. `internal/configengine` is the single declarer of this token; every other module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, configengine.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in `CONSTRAINTS.md`'s Cwd Resolution Invariant.
 
 ### `ConfigDir(baseDir string) string`
 

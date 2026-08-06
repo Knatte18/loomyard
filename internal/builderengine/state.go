@@ -28,7 +28,7 @@ const builderDirName = "builder"
 
 // Dir returns the path to the builder's durable run state directory
 // (state.json, pause flag, outcome.yaml). It lives under _lyx so it is
-// weft-synced. Per the Hub Geometry Invariant, no other package may
+// weft-synced. Per the Cwd Resolution Invariant, no other package may
 // construct this path.
 func Dir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, builderDirName)

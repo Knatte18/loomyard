@@ -81,7 +81,7 @@ func ParseReport(path string) (*Report, error) {
 // WriteReport serializes r's three fields to path, the per-batch report
 // file the fork writes under websterengine.ReportsDir(...). The
 // caller supplies path; WriteReport never constructs `_lyx` tokens itself,
-// per the Hub Geometry Invariant.
+// per the Cwd Resolution Invariant.
 func WriteReport(path string, r *Report) error {
 	data, err := yaml.Marshal(r)
 	if err != nil {

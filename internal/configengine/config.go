@@ -19,7 +19,7 @@ import (
 // LyxDirName is the directory name for the lyx system directory within a
 // worktree. internal/configengine is the single declarer of this token; every
 // other module joins its own private relative-path constant onto a baseDir
-// directly, never onto a fused "_lyx/..." literal (per the Hub Geometry
+// directly, never onto a fused "_lyx/..." literal (per the Cwd Resolution
 // Invariant's per-segment join rule).
 const LyxDirName = "_lyx"
 

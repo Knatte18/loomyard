@@ -28,14 +28,14 @@ const discussionDirName = "discussion"
 
 // PlanDir returns the path to the Plan phase's output directory for this
 // worktree. It is AnchorPath-anchored, matching DiscussionDir's rationale.
-// Per the Hub Geometry Invariant, no other package may construct this path.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
 func PlanDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, planparser.PlanDirName)
 }
 
 // PlanOverview returns the path to the plan's overview file: the Plan
 // phase's done-sentinel and the Planner producer's sole Spec.OutputFiles
-// entry. It shares PlanDir's AnchorPath anchoring. Per the Hub Geometry
+// entry. It shares PlanDir's AnchorPath anchoring. Per the Cwd Resolution
 // Invariant, no other package may construct this path.
 func PlanOverview(l *lyxcwd.Location) string {
 	return filepath.Join(PlanDir(l), "00-overview.md")
@@ -43,7 +43,7 @@ func PlanOverview(l *lyxcwd.Location) string {
 
 // DiscussionDir returns the path to the Discussion phase's output directory
 // for this worktree (the decision-record.md/support-log.md pair). It is
-// AnchorPath-anchored. Per the Hub Geometry Invariant, no other package may
+// AnchorPath-anchored. Per the Cwd Resolution Invariant, no other package may
 // construct this path.
 func DiscussionDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, discussionDirName)
@@ -51,7 +51,7 @@ func DiscussionDir(l *lyxcwd.Location) string {
 
 // DiscussionDecisionRecord returns the path to the distilled decision
 // record that is the Plan producer's sole input from `_lyx/discussion/`. It
-// shares DiscussionDir's AnchorPath anchoring. Per the Hub Geometry
+// shares DiscussionDir's AnchorPath anchoring. Per the Cwd Resolution
 // Invariant, no other package may construct this path.
 func DiscussionDecisionRecord(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "decision-record.md")
@@ -59,7 +59,7 @@ func DiscussionDecisionRecord(l *lyxcwd.Location) string {
 
 // DiscussionSupportLog returns the path to the raw support log read by the
 // Discussion-review gate only. It shares DiscussionDir's AnchorPath
-// anchoring. Per the Hub Geometry Invariant, no other package may construct
+// anchoring. Per the Cwd Resolution Invariant, no other package may construct
 // this path.
 func DiscussionSupportLog(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "support-log.md")

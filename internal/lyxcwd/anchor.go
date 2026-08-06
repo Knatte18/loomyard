@@ -34,7 +34,7 @@ func boardDir(hub string) string {
 // at the weft:main root (<boardDir(hub)>/.lyx-anchor). It holds only the
 // subpath string (e.g. "backend" or "."). This is a structural geometry
 // artifact — a fixed per-repo anchor recorded once at clone/create — never a
-// config/env override; per the Hub Geometry Invariant, only lyxcwd
+// config/env override; per the Cwd Resolution Invariant, only lyxcwd
 // constructs and reads this path. There is no compatibility fallback read for
 // the pre-rename ".fabric-anchor" name: the marker anchors the whole weft
 // repo, not the fabric module, so the old name is simply wrong now, not

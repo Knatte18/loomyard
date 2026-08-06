@@ -65,7 +65,7 @@ type builderCLI struct {
 
 	// planDir, builderDir, and reportsDir are the lyxcwd-resolved
 	// _lyx/plan, _lyx/builder, and _lyx/builder/reports directories, all
-	// anchored at layout.AnchorPath() -- never WorktreeRoot -- per the Hub Geometry
+	// anchored at layout.AnchorPath() -- never WorktreeRoot -- per the Cwd Resolution
 	// Invariant and this package's own Cwd-anchoring rationale (see the
 	// package doc above).
 	planDir    string

@@ -83,7 +83,7 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 // PrimeName resolves the base name of l's main worktree by scanning
 // `git worktree list --porcelain` for the FIRST (Main) entry. It replaces
 // lyxcwd's former per-Resolve prime scan: lyxcwd no longer performs
-// this subprocess-backed lookup at all (see the Hub Geometry Invariant), so
+// this subprocess-backed lookup at all (see the Cwd Resolution Invariant), so
 // every caller needing the prime's name now resolves it here, on demand.
 func PrimeName(l *lyxcwd.Location) (string, error) {
 	entries, err := List(l.AnchorPath())

@@ -33,7 +33,7 @@ import (
 // — the caller must escalate, not treat this as "not ready".
 func Preflight() (Report, error) {
 	// Resolve cwd via lyxcwd.Getwd(), the only permitted raw-cwd read
-	// outside cmd/lyx/main.go (per the Hub Geometry Invariant).
+	// outside cmd/lyx/main.go (per the Cwd Resolution Invariant).
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return Report{}, err

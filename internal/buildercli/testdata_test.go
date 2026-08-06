@@ -91,7 +91,7 @@ func builderengineTestdataDir(name string) string {
 
 // seedPlanFixture copies every top-level file from srcDir (one of
 // builderengine's own testdata plan fixtures) into hub's plan dir
-// (loomengine.PlanDir over a hub-rooted Location) -- the Hub Geometry
+// (loomengine.PlanDir over a hub-rooted Location) -- the Cwd Resolution
 // Invariant's own helper, never a hand-joined path -- AND into hub itself.
 // The second copy matters
 // because validateCmd resolves every card's typed file-op paths against

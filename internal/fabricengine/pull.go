@@ -273,7 +273,7 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 // potentially stale.
 //
 // The pathspec is patternDirName, NEVER an inline "_pattern" string
-// literal — the Hub Geometry Invariant reserves that token to its declarer.
+// literal — the Cwd Resolution Invariant reserves that token to its declarer.
 //
 // Separator placement: unlike scanWarpSHATrailers (which uses no
 // --name-only), --name-only appends each commit's changed-file list as

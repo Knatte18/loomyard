@@ -1,5 +1,5 @@
 // load_test.go table-drives LoadRegistry against t.TempDir fixtures, using
-// configengine.ConfigFile to build every models.yaml path per the Hub Geometry
+// configengine.ConfigFile to build every models.yaml path per the Cwd Resolution
 // Invariant (which applies to test code too).
 
 package modelspec

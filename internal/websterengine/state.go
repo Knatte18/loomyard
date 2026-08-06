@@ -38,7 +38,7 @@ const websterDirName = "webster"
 
 // Dir returns the path to the webster's durable run state directory
 // (state.json, pause flag, outcome.yaml). It lives under _lyx so it is
-// weft-synced. Per the Hub Geometry Invariant, no other package may
+// weft-synced. Per the Cwd Resolution Invariant, no other package may
 // construct this path.
 func Dir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)
@@ -53,7 +53,7 @@ func ReportsDir(l *lyxcwd.Location) string {
 
 // PromptsDir returns the path to the directory holding webster's rendered
 // fork prompts. Prompts are machine-local, re-renderable artifacts excluded
-// from weft commits. Per the Hub Geometry Invariant, no other package may
+// from weft commits. Per the Cwd Resolution Invariant, no other package may
 // construct this path.
 func PromptsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "prompts")

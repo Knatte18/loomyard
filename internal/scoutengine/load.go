@@ -1,6 +1,6 @@
 // load.go implements LoadRegistry, the optional servers.yaml overlay loader.
 // It mirrors internal/modelspec's LoadRegistry: the file is read via
-// configengine.ConfigFile so its location is never hand-joined (Hub Geometry
+// configengine.ConfigFile so its location is never hand-joined (Cwd Resolution
 // Invariant), an absent file falls back to builtins() with no error, and
 // present entries whole-replace the corresponding built-in.
 

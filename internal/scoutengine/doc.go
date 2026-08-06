@@ -110,7 +110,7 @@
 //     lyx-hub overlay base is resolvable).
 //   - Optional servers.yaml overlay (LoadRegistry(baseDir)): loaded via
 //     configengine.ConfigFile(baseDir, "servers") — never hand-joined, per the
-//     Hub Geometry Invariant. An absent file is not an error (built-ins
+//     Cwd Resolution Invariant. An absent file is not an error (built-ins
 //     suffice); a present file decodes with yaml.Decoder.KnownFields(true)
 //     (an unknown field anywhere is a loud error naming the offending entry
 //     and file path) and every present entry whole-replaces its built-in
@@ -203,7 +203,7 @@
 // install-in-progress and a daemon-spawn-in-progress are unrelated races
 // that must not serialize on each other.
 //
-// This cache root is deliberately outside the Hub Geometry Invariant's
+// This cache root is deliberately outside the Cwd Resolution Invariant's
 // scope: it is machine-global, not worktree/hub geometry, so this file
 // hand-joins os.UserCacheDir() directly rather than routing through
 // internal/lyxcwd. That is deliberate, not an oversight — a pinned
@@ -216,7 +216,7 @@
 // state file plus a paired advisory lock per (worktreeRoot, lang), resolved
 // via this package's own DaemonStateFile/DaemonLock at
 // .lyx/scout/<lang>/ — never _lyx/. That distinction matters: .lyx/ is
-// ephemeral, machine-bound runtime state (per the Hub Geometry Invariant's
+// ephemeral, machine-bound runtime state (per the Cwd Resolution Invariant's
 // durable-vs-ephemeral split), and a live daemon's PID, socket path, and
 // spawn time mean nothing on another machine or after this one is
 // rebooted, so this state must never be git-committed the way _lyx/'s

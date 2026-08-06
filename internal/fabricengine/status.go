@@ -171,7 +171,7 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 // automated restore step is offered.
 //
 // The two new "_pattern" uses below (the ls-files pathspec entry and the
-// strings.HasPrefix comparison) are legal under the Hub Geometry Invariant despite
+// strings.HasPrefix comparison) are legal under the Cwd Resolution Invariant despite
 // "_pattern" being an enforced token: the invariant's own carve-out excludes
 // comparisons and git-pathspec slice literals from "path construction," which is
 // what a filepath.Join argument, a "+" operand, or a string const value are.
