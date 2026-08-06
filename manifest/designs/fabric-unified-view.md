@@ -19,7 +19,7 @@ The original campaign restructured `fabricengine` in place (never a parallel `Fa
 
 Full shipped-behavior detail for all six lives in `internal/fabricengine/doc.go`'s package comment, not repeated here.
 
-## Slices 7-10 (2026-08-05 discussion, not built) — hubgeometry stops being a path authority
+## Slices 7-10 (2026-08-05 discussion; slice 7 mostly shipped, 8-10 not built) — hubgeometry stops being a path authority
 
 GitHub issue #127 asked whether `internal/hubgeometry` as a standalone path-authority module still earns its keep, now that fabric already sets the anchor (slice 5) and already owns the junction name-set (slice 1). Investigation during discussion confirmed: no — most of `internal/hubgeometry` (591 lines) is either (a) genuinely Fabric's illusion-plumbing that leaked into a shared package, or (b) ~20 per-module path constructors (`PlanDir`, `BuilderDir`, `WebsterDir`, `DiscussionDir`, `PatternDir`, etc.) that make hubgeometry a bottleneck every module extension must go through, exactly issue #127's original complaint.
 
