@@ -29,7 +29,7 @@ implementer: claude:claude-sonnet-4-5[effort=high]
 
 ## The registry — `models.yaml`
 
-A dedicated config file (resolved via `hubgeometry.ConfigFile`, like all module config under `_lyx/config/`), readable and editable on its own. Each entry maps an alias to:
+A dedicated config file (resolved via `configengine.ConfigFile`, like all module config under `_lyx/config/`), readable and editable on its own. Each entry maps an alias to:
 
 - **engine** — which shuttle provider engine the alias requires (e.g. `claude`),
 - **model** — the model string passed to that engine,

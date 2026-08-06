@@ -1,6 +1,6 @@
 # PATTERN — loomyard's own invariants doc, wired into every agent
 
-> **Status: wiring shipped and merged; content migration Planned.** Two pieces, different timing: (1) the **wiring** — how an active PATTERN doc reaches every code-touching agent — is **built and merged**: the `hubgeometry`/`fabricengine`/`initengine` junction plumbing, the `internal/pattern` active-check leaf, the `stencil` optional-marker extension, and the `{{.pattern_directive}}` marker in all five code-touching templates; (2) the **content migration** — moving loomyard's own invariants out of the mill-owned `CONSTRAINTS.md` into PATTERN — happens **only when loomyard is initialized via lyx itself** (dogfooding), never in this repo now, and remains outstanding. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), durable parts fold into the owning package doc when this lands in full (including the content migration) and this file is deleted.
+> **Status: wiring shipped and merged; content migration Planned.** Two pieces, different timing: (1) the **wiring** — how an active PATTERN doc reaches every code-touching agent — is **built and merged**: the `internal/pattern`/`fabricengine`/`initengine` junction plumbing, the `internal/pattern` active-check leaf, the `stencil` optional-marker extension, and the `{{.pattern_directive}}` marker in all five code-touching templates; (2) the **content migration** — moving loomyard's own invariants out of the mill-owned `CONSTRAINTS.md` into PATTERN — happens **only when loomyard is initialized via lyx itself** (dogfooding), never in this repo now, and remains outstanding. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), durable parts fold into the owning package doc when this lands in full (including the content migration) and this file is deleted.
 
 ## What PATTERN is (and is not)
 
@@ -15,7 +15,7 @@ Why loomyard needs its own: **lyx initialized in any repo must be able to carry 
 
 ## Shape: a weft-backed `_pattern/` folder, not a single file
 
-PATTERN is a **directory**, reached from the warp worktree through a `_pattern` junction into `weft` — anticipated in [fabric-unified-view.md](fabric-unified-view.md) and [finalize.md](finalize.md). It is `_lyx`'s first sibling junction, not a third peer alongside `_raddle`: `_raddle` carries no junction of its own today, so `_pattern` is the *second* junction `hubgeometry` declares. The directory holds:
+PATTERN is a **directory**, reached from the warp worktree through a `_pattern` junction into `weft` — anticipated in [fabric-unified-view.md](fabric-unified-view.md) and [finalize.md](finalize.md). It is `_lyx`'s first sibling junction, not a third peer alongside `_raddle`: `_raddle` carries no junction of its own today, so `_pattern` is the *second* junction the pathspec wires. The directory holds:
 
 - **`_pattern/PATTERN.md`** — the index: short two-line entries, one per invariant (the constraint stated in a line, plus a pointer to its detail doc). Never long-form prose inline.
 - **`_pattern/<topic>/…`** — a detail submap: one per-topic doc per invariant carrying the full rule / rationale / enforcement. This is the same short-index-plus-linked-detail structure already proven for raddle's `Overview.md` → module docs, named as the shared pattern in the `internal/boardengine` package documentation.
@@ -44,7 +44,7 @@ So the wiring requires a small `stencil` extension: an **optional marker** — o
 
 ## Junction wiring and activation
 
-The split is narrower than "`fabric`'s responsibility": `internal/hubgeometry` declares the `_pattern` junction record and owns every `_pattern` path literal (the Hub Geometry Invariant); `internal/fabricengine`'s `seedLyxJunction` (called from `WireJunctions`) materialises the weft-side target and creates the junction; `internal/initengine`'s `Init` is the caller that wires it for a fresh worktree. `fabric add` explicitly does **not** wire the host junction — its own code states the junction is wired by `lyx init` via `WireJunctions`, not by `add` (junction creation is core, shipped `fabricengine` — not the Someday `fabric-unified-view` work, which only *mentions* `_pattern`).
+The split is narrower than "`fabric`'s responsibility": `internal/pattern` declares `DirName` (the `_pattern` token) for resolution-path use, and `internal/fabricengine` declares its own private `patternDirName` copy for the one caller that needs the bare name as a git pathspec argument — every `_pattern` path literal is one of these two module-owned constructors now, not a single shared geometry declarer (the Hub Geometry Invariant); `internal/fabricengine`'s `seedLyxJunction` (called from `WireJunctions`) materialises the weft-side target and creates the junction; `internal/initengine`'s `Init` is the caller that wires it for a fresh worktree. `fabric add` explicitly does **not** wire the host junction — its own code states the junction is wired by `lyx init` via `WireJunctions`, not by `add` (junction creation is core, shipped `fabricengine` — not the Someday `fabric-unified-view` work, which only *mentions* `_pattern`).
 
 Activation is by **file existence, not junction presence**:
 
@@ -59,7 +59,7 @@ Activation is by **file existence, not junction presence**:
 - the `{{.pattern_directive}}` marker in the code-touching templates,
 - the `stencil` optional-marker extension,
 - the Go active-check + shared directive helper,
-- `hubgeometry` declaring the `_pattern` junction record, `fabricengine`'s `seedLyxJunction` materialising the weft dir + junction, and `initengine.Init` calling it.
+- `internal/pattern` declaring `DirName` and `fabricengine`'s own private `patternDirName` copy, `fabricengine`'s `seedLyxJunction` materialising the weft dir + junction, and `initengine.Init` calling it.
 
 **Explicitly NOT now — deferred to loomyard-init-via-lyx (the dogfooding transition):**
 
