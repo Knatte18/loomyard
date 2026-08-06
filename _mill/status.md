@@ -69,7 +69,9 @@ batches:
     start_sha: 5846f2b6d40b61a37ed76f7d9c82063f8fb3c6d3
     commit_sha: bc06bd115502e86b3e02015691c838500d59dd94
   - name: fabric-owns-the-illusion
-    state: pending
+    state: running
+    implementer_session: 0ac50a79-6c67-4a32-9707-7ecec36e8f09
+    start_sha: 9cf2e32e6bdbad8577c2404673f69a87ff61352c
   - name: board-junction
     state: pending
   - name: guard-and-docs
