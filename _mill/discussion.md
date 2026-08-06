@@ -187,6 +187,18 @@ The Out list below contains only items excluded by a structural invariant, a phy
   The four junction strings lose only the redundant "host" qualifier;
   the junction name, which is the actionable part, is preserved in all four.
 - Rejected: a bare enum with no `Detail` — loses the junction name from four of the five.
+
+### clean-typed-reason
+
+- Decision: `fabricengine.Clean` gets the same treatment as `Healthy`.
+  `hostclean.go:38-43` builds `"host: %s"` / `"weft: %s"` and joins them with `"; "`;
+  `loomengine/preflight.go:92-98` prints that reason verbatim under `CheckWorktreeClean`.
+  The two sides are reworded as **code-side** and **state-side**: `"uncommitted code changes: %s"` and "uncommitted state changes under `_lyx`: %s", joined the same way.
+- Rationale: this is the identical leak class as `drift.go:58` and typing one while leaving the other is indefensible.
+  The code/state split also preserves the distinction an operator acts on — their own edits versus lyx's own state — which "host:"/"weft:" only conveyed to a reader who already knew the geometry.
+  The remedy differs per side (`git commit` versus `lyx fabric status`), so collapsing to one side-blind reason would cost real information.
+- Rejected: a single `"uncommitted changes: %s"` — simplest, but loses which remedy applies.
+- Rejected: leaving `Clean` alone as a two-sided dirty report — inconsistent with `healthy-typed-reason` for no defensible reason.
 - Rationale: this is a vocabulary leak *and* a fragility, and one change fixes both.
   `drift.go:58` returns `"host on %s, weft on %s (want %s)"` — loomengine substring-matches it to pick a `CheckID` *and* prints it in loom's report, so the word crosses the boundary into operator output.
   `preflight.go:117-130`'s own comment already documents that any future reword of those reasons silently reverts the classification to `CheckWeftSync`;
@@ -215,7 +227,7 @@ The Out list below contains only items excluded by a structural invariant, a phy
 
 ### templates-describe-one-repo
 
-- Decision: the five `go:embed`-ed prompt templates are rewritten so that an agent is never told warp or weft exist.
+- Decision: all seven `go:embed`-ed prompt templates are rewritten so that an agent is never told warp, weft, or a "host repo" exist.
   `_lyx` is presented as an ordinary directory in the fabric repo, with no mention of links, siblings, `-weft` names, or separate worktrees.
   The governing replacement is a **positive** rule that names no geometry: *"`_lyx` holds plan and state files — read and write them as ordinary files through `_lyx/...` paths.
   You never run git against `_lyx`;
@@ -229,6 +241,7 @@ The Out list below contains only items excluded by a structural invariant, a phy
   |---|---|---|
   | `websterengine/master-template.md:20` | "you never run git against the weft" | "you never run git" (Master commits nothing at all) |
   | `master-template.md:29` | "`_lyx` is a link into a separate weft worktree (a sibling directory whose name ends in `-weft`): NEVER reference that physical weft path…" | the positive `_lyx` rule above |
+  | `master-template.md:30` | "The `_lyx` path is your one sanctioned window **into it**" — "it" refers to the weft worktree named on `:29` | folded into `:29`'s positive rule ("`_lyx/...` paths are how you reach plan and webster state") and the standalone sentence deleted; rewriting `:29` alone would leave the pronoun dangling |
   | `master-template.md:136` | "a weft-reference" | "a fabric-reference" (matches the renamed violation class) |
   | `master-template.md:140` (heading) | "## A weft-sync error ends your run as stuck" | "## A fabric-sync error ends your run as stuck" |
   | `master-template.md:142` | "names a **weft sync** failure (e.g. `weft sync failed`)" | "**fabric sync** failure (e.g. `fabric sync failed`)" |
@@ -251,7 +264,7 @@ The Out list below contains only items excluded by a structural invariant, a phy
   | `burlerengine/instruction-3-fix-template.md:31` | "nothing here ever authorizes a weft commit" | "nothing here ever authorizes an `_lyx` commit" |
 
   Three of these are section **headings** (`master-template.md:140`, `implementer-template.md:64`, `instruction-3-fix-template.md:26`) that pinned template tests assert on, so each heading change is also a test change.
-  `websterengine/template_test.go:246,257,318` and the `builderengine`/`burlerengine` template tests update with them.
+  `websterengine/template_test.go` pins five of these literals — `:246` ("NEVER run any git command against the weft"), `:257` ("NEVER reference that physical weft path in ANY command"), `:259` ("The `_lyx` path is your one sanctioned window"), `:318` ("weft sync"), and `:412` ("Commit the card to the HOST repo") — and all five update with the templates, as do the `builderengine`/`burlerengine` template tests.
 - Rationale: this is the largest leak in the system and the one that most directly contradicts the illusion — the templates do not merely mention weft, they *teach* every Builder and Webster agent that it exists, what it is called, and where it sits, and then forbid touching it.
   An agent that is never told cannot reference what it does not know;
   the `RefScanner` still catches a reference discovered some other way, so the enforcement does not weaken.
@@ -311,8 +324,14 @@ The Out list below contains only items excluded by a structural invariant, a phy
 
 - Decision: in production code, the tokens `weft`, `warp`, and `host` may appear only in the **owner set**.
   `host` is policed as a whole word, on the same footing as the other two: "the HOST repo" teaches the two-repo model exactly as effectively as "the weft repo" does — `implementer-template.md:37` reads "Commit the card to the HOST repo — **never the weft repo**", and a reader who is told which repo to commit to has been told there is another one.
-  A non-owner occurrence where `host` means something other than the warp checkout (a hostname, an HTTP host) is recorded as an explicit exception in the owner map rather than silently permitted;
-  `internal/shell` is the likely case and the plan classifies each occurrence before renaming.
+  A non-owner occurrence where `host` means something other than the warp checkout (the running OS, a hostname, an HTTP header) is **reworded, not excepted**.
+  No package row is granted for `host` at all.
+- Rationale for that granularity: the exception unit has to be finer than a package, because the same package carries both senses.
+  `websterengine/audit.go:156,159` uses the legitimate OS sense ("the host OS's native sense", "regardless of host workdir") while `beginbatch.go:62` and `recordbatch.go:40` carry the real leak ("the host repo checkout") — a `websterengine` owner-map row would silently permit the second while sanctioning the first.
+  Rewording avoids needing an exception mechanism at all: "the host OS's native sense" → "the running OS's native sense", "regardless of host workdir" → "regardless of the workdir's platform".
+  `internal/shell`'s three occurrences get the same classify-then-reword treatment before any exception is considered.
+- Rejected: a per-line marker comment (`// vocabulary-exempt: OS sense`) — precise, but introduces a mechanism the repo does not have, for a handful of lines that reword cleanly.
+- Rejected: a per-symbol allowlist — the same staleness problem already rejected for the main rule.
   Everywhere else — identifiers, string literals, comments, and embedded prompt templates — uses fabric vocabulary.
   Owner set:
   - `internal/fabricengine` — implements the illusion.
@@ -375,7 +394,10 @@ The Out list below contains only items excluded by a structural invariant, a phy
 ### enforcement-test
 
 - Decision: new `TestEnforcement_FabricVocabulary` in `internal/lyxcwd/enforcement_test.go`.
-  It fails any file outside the owner set containing the token `weft` or `warp` — in identifiers, string literals, **or** comments — and any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname`.
+  It fails any file outside the owner set containing the token `weft`, `warp`, or whole-word `host` — in identifiers, string literals, **or** comments — and any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname`.
+  All three tokens are machine-checked;
+  none is left to review discipline.
+  `host` in particular must be in the predicate: it is the token that survived three review rounds undetected, which is precisely the argument against trusting review for it.
   Coverage: production `.go` files under `internal/` and `cmd/`, plus a plain `internal/**/*.md` walk — **not** a parse of `//go:embed` directives.
   All seven leak-bearing `.md` files are embedded, so the two are equivalent today, and a plain walk is simpler and fails safe (a new non-embedded `.md` under `internal/` gets policed rather than silently skipped).
   `*_test.go` files are outside the machine check.
@@ -559,3 +581,6 @@ The renames touch exported symbols in six packages, so compile breakage in test 
 - **Q:** Should `host` join the policed tokens? **A:** Yes. "Commit to the HOST repo — never the weft repo" teaches the two-repo model as effectively as any symbol; the templates see one repo, called fabric, and nothing else.
 - **Q:** How many templates need rewriting? **A:** All of them. A mechanical sweep found 7 files and 30 occurrences; every line is pinned in `templates-describe-one-repo`'s table. My earlier claim that templates were In scope had enumerated only `master-template.md`.
 - **Q:** Does the vocabulary rule get its own `CONSTRAINTS.md` section? **A:** Yes — it is not a cwd rule, and hanging it off the Cwd Resolution Invariant would misfile it.
+- **Q:** Does `Clean` need the same typed reason as `Healthy`? **A:** Yes — same leak class, same fix, reworded as code-side vs state-side.
+- **Q:** Is `host` machine-checked or a review obligation? **A:** Machine-checked. It is the token that survived three review rounds undetected.
+- **Q:** How are legitimate non-fabric uses of `host` (the OS sense) handled? **A:** Reworded, not excepted. No package row is granted for `host`, because one package carries both senses.
