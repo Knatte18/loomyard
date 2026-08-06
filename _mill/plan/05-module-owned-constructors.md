@@ -200,7 +200,6 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/burlerengine/engine_test.go`
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/lyxcwd/lyxcwd_test.go`
-  - `internal/lyxcwd/lyxcwd_unit_test.go`
   - `internal/lyxcwd/weft_test.go`
   - `internal/reedcli/cli_integration_test.go`
   - `internal/reedcli/smoke_lifecycle_test.go`
@@ -217,9 +216,10 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/shuttleengine/rundir.go`
   - `internal/shuttleengine/rundir_test.go`
 - **Creates:** none
-- **Deletes:** none
+- **Deletes:**
+  - `internal/lyxcwd/lyxcwd_unit_test.go`
 - **Moves:** none
-- **Requirements:** Delete `(*Location).LyxDir` and `(*Location).DotLyxDir` from `internal/lyxcwd/lyxcwd.go` and the `dotLyxDirName` const with them, leaving the module with no directory-name constant at all beyond `HubSuffix` and `BoardDirName` (which batch 6 handles). Each caller joins the segment itself: `burlerengine`, `reedengine` and `shuttleengine` each declare their own private `dotLyxDirName = ".lyx"` and build `filepath.Join(l.WorktreePath(), dotLyxDirName, …)` at the sites that called `DotLyxDir()`. `reedcli`'s two tagged tests join the same way against the fixture's location. `.lyx` is deliberately duplicated across these packages: it stays unpoliced this slice, and slice 9 — which registers it as a pathspec junction and removes `crossModuleMachineLocalExcludes` — is where it gets a single owner. Adding it to the ownership map now would have to be undone one slice later. Do not change any resulting path: every one of these is byte-identical before and after for `AnchorRel == "."`, and the `.lyx` group is byte-identical for a subpath-anchored repo too, because it was already `WorktreeRoot`-anchored. The module's own tests reach both deleted methods and must be cut in the same card: delete `lyxcwd_unit_test.go`'s `LyxDir`/`DotLyxDir` distinctness test at `:123-131` (the durable-vs-ephemeral split it pinned is now each owning module's own constant, asserted per module by card 28's table), and delete `lyxcwd_test.go`'s two `LyxDir()` assertions — the inline block at `:121-125` and the `LyxDir` sub-test at `:521-530` — leaving the surrounding tests' other assertions intact.
+- **Requirements:** Delete `(*Location).LyxDir` and `(*Location).DotLyxDir` from `internal/lyxcwd/lyxcwd.go` and the `dotLyxDirName` const with them, leaving the module with no directory-name constant at all beyond `HubSuffix` and `BoardDirName` (which batch 6 handles). Each caller joins the segment itself: `burlerengine`, `reedengine` and `shuttleengine` each declare their own private `dotLyxDirName = ".lyx"` and build `filepath.Join(l.WorktreePath(), dotLyxDirName, …)` at the sites that called `DotLyxDir()`. `reedcli`'s two tagged tests join the same way against the fixture's location. `.lyx` is deliberately duplicated across these packages: it stays unpoliced this slice, and slice 9 — which registers it as a pathspec junction and removes `crossModuleMachineLocalExcludes` — is where it gets a single owner. Adding it to the ownership map now would have to be undone one slice later. Do not change any resulting path: every one of these is byte-identical before and after for `AnchorRel == "."`, and the `.lyx` group is byte-identical for a subpath-anchored repo too, because it was already `WorktreeRoot`-anchored. The module's own tests reach both deleted methods and must be cut in the same card: `lyxcwd_unit_test.go`'s `LyxDir`/`DotLyxDir` distinctness test at `:123-131` was its last remaining sub-test, so removing it leaves the file empty of subject; the implementer deleted the file outright rather than leave a subject-less test file (the durable-vs-ephemeral split it pinned is now each owning module's own constant, asserted per module by card 28's table). Delete `lyxcwd_test.go`'s two `LyxDir()` assertions — the inline block at `:121-125` and the `LyxDir` sub-test at `:521-530` — leaving the surrounding tests' other assertions intact.
 - **Commit:** `refactor: join .lyx in each owning module instead of via lyxcwd`
 
 ### Card 28: anchoring-table equivalence test
