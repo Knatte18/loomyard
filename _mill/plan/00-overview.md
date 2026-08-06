@@ -319,6 +319,7 @@ batches:
 - `internal/perchengine/config_test.go`
 - `internal/perchengine/doc.go`
 - `internal/perchengine/engine.go`
+- `internal/perchengine/identity.go`
 - `internal/perchengine/identity_test.go`
 - `internal/perchengine/run_test.go`
 - `internal/planparser/parse.go`

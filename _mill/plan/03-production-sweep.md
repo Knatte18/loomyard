@@ -149,6 +149,7 @@ Batch-local decision — `verify` is **`go build ./...`**, not the full suite. A
   - `internal/perchcli/run.go`
   - `internal/perchengine/doc.go`
   - `internal/perchengine/engine.go`
+  - `internal/perchengine/identity.go`
   - `internal/reedcli/cli.go`
   - `internal/reedengine/lifecycle.go`
   - `internal/reedengine/lock.go`
