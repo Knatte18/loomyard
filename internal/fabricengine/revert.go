@@ -1,8 +1,6 @@
-// revert.go resolves a warp SHA to its corresponding weft SHA via the
-// correspondence index: classifyCorrespondence is the pure gap-classification
-// core, extracted so it is testable without spawning git; resolveRevertTarget
-// wraps it with the git-backed staleness retry. Fabric.Diff (diff.go) is the
-// surviving caller of this resolution path.
+// revert.go resolves a warp SHA to its corresponding weft SHA via the correspondence index: classifyCorrespondence is the pure gap-classification core, extracted so it is testable without spawning git;
+// resolveRevertTarget wraps it with the git-backed staleness retry.
+// Fabric.Diff (diff.go) is the surviving caller of this resolution path.
 
 package fabricengine
 

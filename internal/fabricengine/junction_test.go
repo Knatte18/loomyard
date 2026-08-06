@@ -1,10 +1,6 @@
-// junction_test.go unit-tests unseedJunctionRecords directly against synthetic
-// HostJunction slices — no build tag, since it touches only plain
-// directories and fslink, never git. It exists because HostJunctions(l, slug)
-// still returns exactly one entry in this batch (a second entry is batch 5's
-// job), so the abort-and-accumulate contract this card gives unseedLyxJunction
-// cannot be driven through the exported (l, slug) surface with more than one
-// junction; this file drives the extracted loop directly instead.
+// junction_test.go unit-tests unseedJunctionRecords directly against synthetic HostJunction slices — no build tag, since it touches only plain directories and fslink, never git.
+// It exists because HostJunctions(l, slug) still returns exactly one entry in this batch (a second entry is batch 5's job), so the abort-and-accumulate contract this card gives unseedLyxJunction cannot be driven through the exported (l, slug) surface with more than one junction;
+// this file drives the extracted loop directly instead.
 
 package fabricengine
 
@@ -33,11 +29,7 @@ func wireTestJunction(t *testing.T, link, target string) {
 	}
 }
 
-// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug —
-// moved here from lyxcwd's own unit test now that fabricengine is the
-// sole owner of this path shape (the method it replaced,
-// (*lyxcwd.Location).WorktreePath(slug), collided with the no-arg
-// accessor the coming reshape introduces on the same type).
+// TestWorktreePath verifies that WorktreePath(l, slug) joins HubPath and slug — moved here from lyxcwd's own unit test now that fabricengine is the sole owner of this path shape (the method it replaced, (*lyxcwd.Location).WorktreePath(slug), collided with the no-arg accessor the coming reshape introduces on the same type).
 func TestWorktreePath(t *testing.T) {
 	t.Parallel()
 
@@ -51,11 +43,8 @@ func TestWorktreePath(t *testing.T) {
 	}
 }
 
-// TestUnseedJunctionRecords_AccumulatesBeforeAbort is card 8's regression
-// guard for the bug it fixes: when a later junction in the slice fails to
-// unwire after an earlier one succeeded, the returned removed slice names the
-// earlier one and is not the zero value. This is only exercisable against a
-// synthetic multi-record slice — see the file doc comment for why.
+// TestUnseedJunctionRecords_AccumulatesBeforeAbort is card 8's regression guard for the bug it fixes: when a later junction in the slice fails to unwire after an earlier one succeeded, the returned removed slice names the earlier one and is not the zero value.
+// This is only exercisable against a synthetic multi-record slice — see the file doc comment for why.
 func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 	t.Parallel()
 
@@ -95,9 +84,7 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 	}
 }
 
-// TestUnseedJunctionRecords_EmptyIsNoOp asserts that an empty junctions slice
-// (matching HostJunctions(l, slug) before any junction has ever been wired) is
-// a legitimate no-op: (nil, nil), not an error.
+// TestUnseedJunctionRecords_EmptyIsNoOp asserts that an empty junctions slice (matching HostJunctions(l, slug) before any junction has ever been wired) is a legitimate no-op: (nil, nil), not an error.
 func TestUnseedJunctionRecords_EmptyIsNoOp(t *testing.T) {
 	t.Parallel()
 
@@ -110,9 +97,8 @@ func TestUnseedJunctionRecords_EmptyIsNoOp(t *testing.T) {
 	}
 }
 
-// TestUnseedJunctionRecords_RemovesEveryHealthyJunction asserts the base case
-// this card's generalisation must not regress: every junction in the slice
-// that is present and healthy is removed, and every removed Name is reported.
+// TestUnseedJunctionRecords_RemovesEveryHealthyJunction asserts the base case this card's generalisation must not regress: every junction in the slice that is present and healthy is removed,
+// and every removed Name is reported.
 func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 	t.Parallel()
 

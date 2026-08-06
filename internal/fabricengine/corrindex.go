@@ -1,11 +1,7 @@
-// corrindex.go — the git-free correspondence-index component: a sorted,
-// locally-persisted cache over the warp<->weft SHA correspondence that fabric's
-// Warp-SHA trailers (trailer.go) record authoritatively. Per the correspondence
-// index layering decision, this component takes an explicit file path and never
-// touches git itself; the fabric layer (built on top, in a later batch) owns
-// gitdir resolution, WarpSeq computation, and the trailer scan that rebuilds
-// this cache from scratch. Keeping git out of this file is what lets its tests
-// stay untagged Tier-1 (no git spawn) under the Test Tier Purity Invariant.
+// corrindex.go — the git-free correspondence-index component: a sorted, locally-persisted cache over the warp<->weft SHA correspondence that fabric's Warp-SHA trailers (trailer.go) record authoritatively.
+// Per the correspondence index layering decision, this component takes an explicit file path and never touches git itself;
+// the fabric layer (built on top, in a later batch) owns gitdir resolution, WarpSeq computation, and the trailer scan that rebuilds this cache from scratch.
+// Keeping git out of this file is what lets its tests stay untagged Tier-1 (no git spawn) under the Test Tier Purity Invariant.
 
 package fabricengine
 

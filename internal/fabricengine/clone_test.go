@@ -56,10 +56,8 @@ func TestDeriveHostName(t *testing.T) {
 	}
 }
 
-// TestCloneRepo_InvalidURLFails asserts that cloneRepo's error on a bogus/nonexistent
-// source URL is composed from local context (the attempted URL and destination, plus
-// the git exit code) rather than git's own stderr text. No real git fixture is needed:
-// a nonexistent source path is enough to make `git clone` fail immediately.
+// TestCloneRepo_InvalidURLFails asserts that cloneRepo's error on a bogus/nonexistent source URL is composed from local context (the attempted URL and destination, plus the git exit code) rather than git's own stderr text.
+// No real git fixture is needed: a nonexistent source path is enough to make `git clone` fail immediately.
 func TestCloneRepo_InvalidURLFails(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "cloned-repo")
 	const url = "/does/not/exist/nonexistent-repo.git"

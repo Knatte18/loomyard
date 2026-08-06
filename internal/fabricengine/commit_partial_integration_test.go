@@ -20,13 +20,9 @@ import (
 	"testing"
 )
 
-// TestCommit_PartialFailure_WarpLandsWeftCommitFails covers outcome (1): the
-// warp commit lands, but the weft commit itself fails (forced here by
-// pre-creating the weft gitdir's index.lock, the same way a `git reset
-// --hard` can be forced to fail). The warp commit
-// must stay, the returned error must be a *PartialCommitError naming the
-// warp SHA with WeftCommitted=false, and the durable warp commit must still
-// be pushed.
+// TestCommit_PartialFailure_WarpLandsWeftCommitFails covers outcome (1): the warp commit lands,
+// but the weft commit itself fails (forced here by pre-creating the weft gitdir's index.lock, the same way a `git reset --hard` can be forced to fail).
+// The warp commit must stay, the returned error must be a *PartialCommitError naming the warp SHA with WeftCommitted=false, and the durable warp commit must still be pushed.
 func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	calls := swapPushRecorder(t)
@@ -72,11 +68,8 @@ func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 	}
 }
 
-// TestCommit_PartialFailure_WarpCommitFails covers outcome (2): the warp
-// commit itself fails (forced here by pre-creating the warp gitdir's
-// index.lock). Nothing must land on weft, an error must be returned, and
-// the push recorder must not be called — Fabric.Commit returns before the
-// push step on a warp-commit failure.
+// TestCommit_PartialFailure_WarpCommitFails covers outcome (2): the warp commit itself fails (forced here by pre-creating the warp gitdir's index.lock).
+// Nothing must land on weft, an error must be returned, and the push recorder must not be called — Fabric.Commit returns before the push step on a warp-commit failure.
 func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	calls := swapPushRecorder(t)
@@ -116,17 +109,10 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 	}
 }
 
-// TestCommit_PartialFailure_CommittedButUnrecorded covers outcome (3): the
-// weft commit lands, but RecordCorrespondence fails to persist an index
-// entry (forced here by pre-creating a directory at f.corrIndexPath() so its
-// JSON write fails). CommitResult.WeftCommitted must be true with WeftSHA
-// set, the error must be a *PartialCommitError with WeftCommitted=true, the
-// push recorder must still be called, and — after clearing the block — an
-// explicit RebuildIndex followed by WeftSHAForWarpSHA must resolve to the
-// landed weft SHA (no data lost). This does NOT rely on
-// WeftSHAForWarpSHA's own self-heal: a never-recorded entry is an index
-// MISS (ErrNoCorrespondence), whose one-shot rebuild only fires on a stale
-// HIT — see WeftSHAForWarpSHA's doc comment.
+// TestCommit_PartialFailure_CommittedButUnrecorded covers outcome (3): the weft commit lands,
+// but RecordCorrespondence fails to persist an index entry (forced here by pre-creating a directory at f.corrIndexPath() so its JSON write fails).
+// CommitResult.WeftCommitted must be true with WeftSHA set, the error must be a *PartialCommitError with WeftCommitted=true, the push recorder must still be called, and — after clearing the block — an explicit RebuildIndex followed by WeftSHAForWarpSHA must resolve to the landed weft SHA (no data lost).
+// This does NOT rely on WeftSHAForWarpSHA's own self-heal: a never-recorded entry is an index MISS (ErrNoCorrespondence), whose one-shot rebuild only fires on a stale HIT — see WeftSHAForWarpSHA's doc comment.
 func TestCommit_PartialFailure_CommittedButUnrecorded(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	calls := swapPushRecorder(t)

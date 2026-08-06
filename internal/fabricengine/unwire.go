@@ -1,13 +1,7 @@
-// unwire.go implements the Unwire verb: a per-host-worktree full deactivation
-// of fabric wiring, the teardown successor to the deleted `lyx init --undo`.
+// unwire.go implements the Unwire verb: a per-host-worktree full deactivation of fabric wiring, the teardown successor to the deleted `lyx init --undo`.
 //
-// Unwire is per-worktree and never touches the repo-wide `weft:main` records
-// (`.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`) — those are
-// per-repo facts a later `lyx fabric reconcile` re-wire still needs. It is
-// distinct from Reconcile: Reconcile converges wiring toward the repo-wide
-// pathspec (may add, re-point, or remove junctions), while Unwire always
-// removes every fabric junction present on disk, clears the weft-side _lyx
-// content, and reverts the managed .gitignore block.
+// Unwire is per-worktree and never touches the repo-wide `weft:main` records (`.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`) — those are per-repo facts a later `lyx fabric reconcile` re-wire still needs.
+// It is distinct from Reconcile: Reconcile converges wiring toward the repo-wide pathspec (may add, re-point, or remove junctions), while Unwire always removes every fabric junction present on disk, clears the weft-side _lyx content, and reverts the managed .gitignore block.
 
 package fabricengine
 
@@ -41,13 +35,10 @@ type UnwireVerbResult struct {
 	BoardJunctionRemoved bool
 }
 
-// Unwire reverses every host junction wired for the worktree at cwd, clears
-// the weft-side _lyx content, and reverts the managed .gitignore block's
-// ".lyx/" entry — a full per-host-worktree deactivation. The junction name-set
-// is enumerated from a full on-disk scan, removing every fabric junction present
-// on disk, including stale ones absent from the repo-wide pathspec. Unwire never
-// touches the repo-wide weft:main records; a later `lyx fabric reconcile` re-wire
-// can recreate this worktree's wiring.
+// Unwire reverses every host junction wired for the worktree at cwd, clears the weft-side _lyx content, and reverts the managed .gitignore block's ".lyx/" entry — a full per-host-worktree deactivation.
+// The junction name-set is enumerated from a full on-disk scan, removing every fabric junction present on disk, including stale ones absent from the repo-wide pathspec.
+// Unwire never touches the repo-wide weft:main records;
+// a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring.
 func Unwire(cwd string) (UnwireVerbResult, error) {
 	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {

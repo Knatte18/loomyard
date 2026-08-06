@@ -1,9 +1,7 @@
 // junction.go implements the atomic, cwd-keyed junction primitive for fabric topology.
 //
-// WireJunctions creates host↔weft directory junctions and manages their git-exclude
-// entries atomically, keyed by the current worktree's slug. It is idempotent,
-// guarding against re-entry and enforcing the host-pristine invariant by refusing
-// to wire when the host contains a pre-existing real directory predating weft.
+// WireJunctions creates host↔weft directory junctions and manages their git-exclude entries atomically, keyed by the current worktree's slug.
+// It is idempotent, guarding against re-entry and enforcing the host-pristine invariant by refusing to wire when the host contains a pre-existing real directory predating weft.
 
 package fabricengine
 
@@ -20,9 +18,7 @@ import (
 )
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
-// It replaces (*lyxcwd.Location).WorktreePath(slug), which collided with
-// the no-arg WorktreePath() accessor the coming reshape introduces on the
-// same type.
+// It replaces (*lyxcwd.Location).WorktreePath(slug), which collided with the no-arg WorktreePath() accessor the coming reshape introduces on the same type.
 func WorktreePath(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, slug)
 }
@@ -34,8 +30,8 @@ func HostLyxLink(l *lyxcwd.Location, slug string) string {
 }
 
 // HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
-// Derived from l.WorktreePath()+AnchorRel. It serves as the host-side junction endpoint
-// paired with WeftLyxDir(l).
+// Derived from l.WorktreePath()+AnchorRel.
+// It serves as the host-side junction endpoint paired with WeftLyxDir(l).
 func HostLyxLinkHere(l *lyxcwd.Location) string {
 	return filepath.Join(l.WorktreePath(), l.AnchorRel, configengine.LyxDirName)
 }
@@ -47,11 +43,10 @@ type HostJunction struct {
 	Target string // Target is the weft-side path the junction points to
 }
 
-// HostJunctions returns the list of host junctions for a given slug, one record per name in names,
-// in names's own order (no forced sort). For each name, the record is {Name, Link, Target} where
-// Link is HubPath/slug-anchored via WorktreePath(l, slug) and Target is computed via
-// WeftWorktreePath(l, slug) and AnchorRel.
-// HostJunctions is HubPath/slug-anchored; HostJunctionsHere below is the Here-anchored counterpart.
+// HostJunctions returns the list of host junctions for a given slug, one record per name in names, in names's own order (no forced sort).
+// For each name, the record is {Name, Link, Target} where Link is HubPath/slug-anchored via WorktreePath(l, slug) and Target is computed via WeftWorktreePath(l, slug) and AnchorRel.
+// HostJunctions is HubPath/slug-anchored;
+// HostJunctionsHere below is the Here-anchored counterpart.
 func HostJunctions(l *lyxcwd.Location, slug string, names []string) []HostJunction {
 	junctions := make([]HostJunction, 0, len(names))
 	for _, name := range names {
@@ -64,9 +59,8 @@ func HostJunctions(l *lyxcwd.Location, slug string, names []string) []HostJuncti
 	return junctions
 }
 
-// HostJunctionsHere returns the same HostJunction records as HostJunctions(l, slug, names),
-// but resolved against the current worktree rather than a named slug: Link is built from
-// l.WorktreePath() and each Target from WeftWorktree(l). This mirrors HostLyxLinkHere(l)/HostLyxLink(l, slug).
+// HostJunctionsHere returns the same HostJunction records as HostJunctions(l, slug, names), but resolved against the current worktree rather than a named slug: Link is built from l.WorktreePath() and each Target from WeftWorktree(l).
+// This mirrors HostLyxLinkHere(l)/HostLyxLink(l, slug).
 // It exists for health-check sites that are Here-anchored and have no slug available.
 func HostJunctionsHere(l *lyxcwd.Location, names []string) []HostJunction {
 	junctions := make([]HostJunction, 0, len(names))
@@ -80,11 +74,10 @@ func HostJunctionsHere(l *lyxcwd.Location, names []string) []HostJunction {
 	return junctions
 }
 
-// WireJunctions creates directory junctions and seeds git-exclude entries for
-// the given slug over the caller-supplied wired name-set. The caller must supply
-// the filtered name-set (not loaded by this function). Idempotent. Enforces
-// the host-pristine invariant: returns an error if the host contains a real
-// directory predating weft.
+// WireJunctions creates directory junctions and seeds git-exclude entries for the given slug over the caller-supplied wired name-set.
+// The caller must supply the filtered name-set (not loaded by this function).
+// Idempotent.
+// Enforces the host-pristine invariant: returns an error if the host contains a real directory predating weft.
 func WireJunctions(l *lyxcwd.Location, slug string, names []string) error {
 	// Create or verify host junctions
 	if err := seedLyxJunction(l, slug, names); err != nil {
@@ -241,9 +234,7 @@ func wireBoardLink(l *lyxcwd.Location, slug string) error {
 	return seedGitExclude(l, slug, []string{BoardDirName})
 }
 
-// UnwireResult reports which parts of UnwireJunctions actually changed state,
-// distinguishing a real reversal from a no-op on an already-clean (or
-// never-wired) worktree.
+// UnwireResult reports which parts of UnwireJunctions actually changed state, distinguishing a real reversal from a no-op on an already-clean (or never-wired) worktree.
 type UnwireResult struct {
 	// JunctionsRemoved lists the Name of each junction that was actually present
 	// and removed, in HostJunctions(l, slug) order. A name slice, not a count or
@@ -255,27 +246,15 @@ type UnwireResult struct {
 	ExcludeChanged bool
 }
 
-// UnwireJunctions reverses WireJunctions for the current worktree, keyed by slug,
-// over the same caller-supplied names: it removes every host junction in
-// HostJunctions(l, slug, names) and their shared .git/info/exclude entries, undoing
-// exactly what WireJunctions seeded — nothing more (the worktree pairing and weft
-// content are untouched; see Remove for the larger paired-teardown operation).
+// UnwireJunctions reverses WireJunctions for the current worktree, keyed by slug, over the same caller-supplied names: it removes every host junction in HostJunctions(l, slug, names) and their shared .git/info/exclude entries, undoing exactly what WireJunctions seeded — nothing more (the worktree pairing and weft content are untouched; see Remove for the larger paired-teardown operation).
 // Like WireJunctions, it loads no config itself.
 //
-// The junctions are unwired before the exclude entries, mirroring WireJunctions'
-// creation order in reverse. Per the "any junction inconsistency is a hard error"
-// invariant, if unseedLyxJunction reports an error the exclude file is never
-// touched: an unexpected junction state (a real directory, or a link pointing
-// somewhere unexpected) aborts the whole operation so a corrupted or
-// externally-modified junction is never silently worked around.
+// The junctions are unwired before the exclude entries, mirroring WireJunctions' creation order in reverse.
+// Per the "any junction inconsistency is a hard error" invariant, if unseedLyxJunction reports an error the exclude file is never touched: an unexpected junction state (a real directory, or a link pointing somewhere unexpected) aborts the whole operation so a corrupted or externally-modified junction is never silently worked around.
 //
-// Returns an empty UnwireResult and nil error when no junction was wired (the
-// legitimate no-op case). Returns an error, with JunctionsRemoved reflecting
-// whatever was already removed before the failure, if unseedLyxJunction aborts
-// partway through its loop, or if the exclude-file update fails after junction
-// removal completed. A zero UnwireResult on a mid-loop failure would misreport a
-// partial removal as untouched — with two or more junctions, the first may
-// already be gone before the second fails.
+// Returns an empty UnwireResult and nil error when no junction was wired (the legitimate no-op case).
+// Returns an error, with JunctionsRemoved reflecting whatever was already removed before the failure, if unseedLyxJunction aborts partway through its loop, or if the exclude-file update fails after junction removal completed.
+// A zero UnwireResult on a mid-loop failure would misreport a partial removal as untouched — with two or more junctions, the first may already be gone before the second fails.
 func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (UnwireResult, error) {
 	removed, err := unseedLyxJunction(l, slug, names)
 	if err != nil {

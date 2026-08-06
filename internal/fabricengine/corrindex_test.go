@@ -1,6 +1,5 @@
-// corrindex_test.go — unit tests for the git-free correspondence-index
-// component. Every test here uses an explicit t.TempDir() file path and never
-// spawns git, per the correspondence index layering decision.
+// corrindex_test.go — unit tests for the git-free correspondence-index component.
+// Every test here uses an explicit t.TempDir() file path and never spawns git, per the correspondence index layering decision.
 
 package fabricengine
 
@@ -11,9 +10,7 @@ import (
 	"testing"
 )
 
-// TestCorrIndex_RecordReloadRoundTrip asserts that entries recorded through
-// one corrIndex handle are visible after reloading the same path into a fresh
-// handle.
+// TestCorrIndex_RecordReloadRoundTrip asserts that entries recorded through one corrIndex handle are visible after reloading the same path into a fresh handle.
 func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 
@@ -43,8 +40,7 @@ func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_LoadMissingFileIsEmpty asserts that loading a path with no
-// existing file yields an empty index rather than an error.
+// TestCorrIndex_LoadMissingFileIsEmpty asserts that loading a path with no existing file yields an empty index rather than an error.
 func TestCorrIndex_LoadMissingFileIsEmpty(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.json")
 
@@ -57,9 +53,7 @@ func TestCorrIndex_LoadMissingFileIsEmpty(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_RecordUpsertOverwritesWeftSHA asserts that recording a second
-// entry for an already-present warp SHA overwrites its weft SHA rather than
-// appending a duplicate.
+// TestCorrIndex_RecordUpsertOverwritesWeftSHA asserts that recording a second entry for an already-present warp SHA overwrites its weft SHA rather than appending a duplicate.
 func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
@@ -86,8 +80,7 @@ func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_ExactHitAndMiss covers exact() for a recorded warp SHA and an
-// unrecorded one.
+// TestCorrIndex_ExactHitAndMiss covers exact() for a recorded warp SHA and an unrecorded one.
 func TestCorrIndex_ExactHitAndMiss(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
@@ -106,9 +99,7 @@ func TestCorrIndex_ExactHitAndMiss(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_NearestAtOrBefore covers the binary-search "nearest older"
-// lookup: an empty index, a target below every recorded seq, an exact-seq
-// hit, and a between-seqs hit.
+// TestCorrIndex_NearestAtOrBefore covers the binary-search "nearest older" lookup: an empty index, a target below every recorded seq, an exact-seq hit, and a between-seqs hit.
 func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
@@ -150,9 +141,7 @@ func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins asserts that when
-// multiple entries share the qualifying WarpSeq, nearestAtOrBefore returns the
-// last one recorded, per record's stable-sort ordering guarantee.
+// TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins asserts that when multiple entries share the qualifying WarpSeq, nearestAtOrBefore returns the last one recorded, per record's stable-sort ordering guarantee.
 func TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
@@ -176,9 +165,7 @@ func TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins(t *testing.T) {
 	}
 }
 
-// TestCorrIndex_PersistenceIsAtomic asserts that after every record() call,
-// the backing file is fully written and parses as valid JSON — never
-// half-written or transiently corrupt.
+// TestCorrIndex_PersistenceIsAtomic asserts that after every record() call, the backing file is fully written and parses as valid JSON — never half-written or transiently corrupt.
 func TestCorrIndex_PersistenceIsAtomic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
