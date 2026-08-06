@@ -24,6 +24,13 @@ type CommitResult struct {
 	WeftCommitted bool
 }
 
+// Committed reports whether Fabric.Commit landed a commit on either side.
+// This is the one result a consumer outside the owner set should read — the four raw fields stay
+// exported for fabriccli, which prints them by design.
+func (r CommitResult) Committed() bool {
+	return r.WarpCommitted || r.WeftCommitted
+}
+
 // PartialCommitError reports Fabric.Commit's weft-side failure, distinguishing whether the weft
 // commit itself landed (WeftCommitted=true, index recording failed) or failed entirely.
 // WarpSHA/WeftSHA report whatever did land;
