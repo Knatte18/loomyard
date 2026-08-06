@@ -1,23 +1,16 @@
-// status.go defines the canonical Go type for _lyx/status.json: loom's single
-// source of truth for orchestration state, from the t=0 seed a spawn-time lyx
-// command writes through to the fields loom rewrites on every phase-machine step.
+// status.go defines the canonical Go type for _lyx/status.json: loom's single source of truth for orchestration state, from the t=0 seed a spawn-time lyx command writes through to the fields loom rewrites on every phase-machine step.
 
-// Package loomengine implements loom's Preflight precondition validator: the
-// four checks (worktree geometry, host cleanliness, weft pairing/sync, and
-// _lyx/status.json coherence) that must all pass before a task is fit to run.
+// Package loomengine implements loom's Preflight precondition validator: the four checks (worktree geometry, host cleanliness, weft pairing/sync, and _lyx/status.json coherence) that must all pass before a task is fit to run.
 //
-// Callers MUST NOT invoke Preflight except when the task is at the
-// fresh/preflight stage. Invoking it on an already-advanced task (non-empty
-// history, set start_sha, …) is a caller error that will be reported as a
-// half-finished precondition failure, not diagnosed as misuse, because
-// Preflight is a stateless validator.
+// Callers MUST NOT invoke Preflight except when the task is at the fresh/preflight stage.
+// Invoking it on an already-advanced task (non-empty history, set start_sha, …) is a caller error that will be reported as a half-finished precondition failure, not diagnosed as misuse, because Preflight is a stateless validator.
 package loomengine
 
-// Status is the canonical Go type for _lyx/status.json: loom's single source
-// of truth for orchestration state pinned by docs/reference/status-schema.md.
-// The t=0 "seed" has only handoff fields populated; StartSha and NextAction
-// are *string (nil for JSON null/absent) because they are optional; others are
-// value types. The zero Status value is invalid.
+// Status is the canonical Go type for _lyx/status.json: loom's single source of truth for orchestration state pinned by docs/reference/status-schema.md.
+// The t=0 "seed" has only handoff fields populated;
+// StartSha and NextAction are *string (nil for JSON null/absent) because they are optional;
+// others are value types.
+// The zero Status value is invalid.
 type Status struct {
 	Slug           string         `json:"slug"`
 	Parent         string         `json:"parent"`
@@ -30,9 +23,8 @@ type Status struct {
 	NextAction     *string        `json:"next_action"`
 }
 
-// HistoryEntry is one entry in Status.History: one record per phase attempt,
-// including stuck-handler bounce-backs. BouncedTo is present only on "stuck"
-// entries that route back to an earlier phase.
+// HistoryEntry is one entry in Status.History: one record per phase attempt, including stuck-handler bounce-backs.
+// BouncedTo is present only on "stuck" entries that route back to an earlier phase.
 type HistoryEntry struct {
 	Phase     string  `json:"phase"`
 	Outcome   string  `json:"outcome"`

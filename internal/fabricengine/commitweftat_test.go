@@ -35,11 +35,7 @@ func gitStatusPorcelain(t *testing.T, dir string) string {
 	return string(out)
 }
 
-// TestCommitWeftAt_CommitsDirtyWorktree asserts that commitWeftAt commits an
-// untracked file via a real wildcard-stage commit, with the exact message
-// passed through verbatim — no Warp-SHA trailer, unlike Fabric.CommitWeft,
-// since commitWeftAt's caller (_board's weft:main checkout) has no
-// corresponding warp branch to trailer against.
+// TestCommitWeftAt_CommitsDirtyWorktree asserts that commitWeftAt commits an untracked file via a real wildcard-stage commit, with the exact message passed through verbatim — no Warp-SHA trailer, unlike Fabric.CommitWeft, since commitWeftAt's caller (_board's weft:main checkout) has no corresponding warp branch to trailer against.
 func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -68,9 +64,7 @@ func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 	}
 }
 
-// TestCommitWeftAt_NoopOnCleanWorktree asserts that commitWeftAt is a true
-// no-op — committed=false, err=nil — when the worktree has nothing new to
-// stage, called twice in a row with no changes in between.
+// TestCommitWeftAt_NoopOnCleanWorktree asserts that commitWeftAt is a true no-op — committed=false, err=nil — when the worktree has nothing new to stage, called twice in a row with no changes in between.
 func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 	t.Parallel()
 
@@ -92,9 +86,7 @@ func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 	}
 }
 
-// TestCommitWeftAt_SkipGitReturnsImmediately asserts that opts.SkipGit short
-// circuits before any git is spawned: the return is exactly ("", false,
-// nil), and a dirty untracked file is left completely untouched.
+// TestCommitWeftAt_SkipGitReturnsImmediately asserts that opts.SkipGit short circuits before any git is spawned: the return is exactly ("", false, nil), and a dirty untracked file is left completely untouched.
 func TestCommitWeftAt_SkipGitReturnsImmediately(t *testing.T) {
 	t.Parallel()
 

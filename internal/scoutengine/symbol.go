@@ -1,10 +1,5 @@
-// symbol.go implements Symbol, a dedicated engine entry point for
-// workspace/symbol search. Unlike References/Definition (refs.go,
-// definition.go), Symbol does not share the lookup pipeline and never calls
-// resolvePosition at all — per the plan's symbol-semantics decision, it
-// calls workspace/symbol directly and returns every candidate as a success,
-// never collapsing multiple matches down to an ErrAmbiguousSymbol failure,
-// since returning every match is the entire point of a symbol search.
+// symbol.go implements Symbol, a dedicated engine entry point for workspace/symbol search.
+// Unlike References/Definition (refs.go, definition.go), Symbol does not share the lookup pipeline and never calls resolvePosition at all — per the plan's symbol-semantics decision, it calls workspace/symbol directly and returns every candidate as a success, never collapsing multiple matches down to an ErrAmbiguousSymbol failure, since returning every match is the entire point of a symbol search.
 
 package scoutengine
 
@@ -14,12 +9,8 @@ import (
 	"time"
 )
 
-// SymbolMatch is one workspace/symbol search result: the symbol's display
-// name, its LSP SymbolKind (a 1-indexed integer enum this package does not
-// decode into named constants — decoding meaning belongs to whatever
-// eventually displays it, the CLI layer, not the engine), and its
-// declaration location. Line and Character are 1-based, matching
-// Reference's existing display convention.
+// SymbolMatch is one workspace/symbol search result: the symbol's display name, its LSP SymbolKind (a 1-indexed integer enum this package does not decode into named constants — decoding meaning belongs to whatever eventually displays it, the CLI layer, not the engine), and its declaration location.
+// Line and Character are 1-based, matching Reference's existing display convention.
 type SymbolMatch struct {
 	Name      string
 	Kind      int
@@ -64,8 +55,7 @@ func symbolFromClient(ctx context.Context, client *lspClient, lang string, entry
 	return matches, nil
 }
 
-// Symbol resolves opts.Query.Symbol via workspace/symbol against the
-// language server for opts.TargetDir and returns every candidate match.
+// Symbol resolves opts.Query.Symbol via workspace/symbol against the language server for opts.TargetDir and returns every candidate match.
 func Symbol(ctx context.Context, opts Options) ([]SymbolMatch, error) {
 	lang, entry, err := DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
 	if err != nil {

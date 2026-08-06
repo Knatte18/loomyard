@@ -1,6 +1,5 @@
 // outfile_test.go tests slug derivation and unique output-file creation.
-// All cases run against in-memory strings or a temp directory — no network,
-// no subprocess, no git.
+// All cases run against in-memory strings or a temp directory — no network, no subprocess, no git.
 
 package main
 

@@ -1,10 +1,7 @@
-// Package boardtest holds Loomyard's cross-cutting ("on-the-side") test suites for
-// the boardengine module: benchmarks and concurrency stress tests. These are deliberately
-// kept out of internal/boardengine, where each *_test.go sits 1:1 next to the source
-// file it unit-tests.
+// Package boardtest holds Loomyard's cross-cutting ("on-the-side") test suites for the boardengine module: benchmarks and concurrency stress tests.
+// These are deliberately kept out of internal/boardengine, where each *_test.go sits 1:1 next to the source file it unit-tests.
 //
-// Everything here is black-box: it imports github.com/Knatte18/loomyard/internal/boardengine
-// and exercises only the exported API. Run the standard suites with
-// `go test ./...`; the git/integration suites are gated behind the `integration`
-// build tag (see sync_test.go and bench_cli_test.go).
+// Everything here is black-box: it imports github.com/Knatte18/loomyard/internal/boardengine and exercises only the exported API.
+// Run the standard suites with `go test ./...`;
+// the git/integration suites are gated behind the `integration` build tag (see sync_test.go and bench_cli_test.go).
 package boardtest

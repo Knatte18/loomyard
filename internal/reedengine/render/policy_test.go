@@ -1,5 +1,4 @@
-// policy_test.go tests the anchor dispatch, deterministic stack ordering,
-// and cycle-safe traversal in policy.go.
+// policy_test.go tests the anchor dispatch, deterministic stack ordering, and cycle-safe traversal in policy.go.
 
 package render
 

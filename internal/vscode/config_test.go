@@ -1,5 +1,4 @@
-// config_test.go covers config generation and its non-clobbering behavior when
-// .vscode files already exist.
+// config_test.go covers config generation and its non-clobbering behavior when .vscode files already exist.
 
 package vscode
 

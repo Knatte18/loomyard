@@ -27,12 +27,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// TestWriteCachedToken_CreatesFileWithRestrictivePermissions asserts the
-// hardening this file requires directly against the Windows security
-// descriptor, rather than inferring it from os.Stat's reported mode bits --
-// which, on Windows, reflect only the read-only attribute and would report
-// the same value regardless of whether hardenCacheFile's os.Chmod call or
-// its DACL step ran at all.
+// TestWriteCachedToken_CreatesFileWithRestrictivePermissions asserts the hardening this file requires directly against the Windows security descriptor, rather than inferring it from os.Stat's reported mode bits -- which, on Windows, reflect only the read-only attribute and would report the same value regardless of whether hardenCacheFile's os.Chmod call or its DACL step ran at all.
 func TestWriteCachedToken_CreatesFileWithRestrictivePermissions(t *testing.T) {
 	dir := t.TempDir()
 	setCacheDir(t, dir)

@@ -1,8 +1,5 @@
-// reconcile_test.go table-tests planReconcile's pure decision logic against
-// saved strand tables and fake list-panes results (including pane_dead=1
-// rows and the header-pane exemption), and exercises reconcileLocked's
-// real-record mutation for the no-dead-panes path, which never touches
-// tmux and so stays hermetic.
+// reconcile_test.go table-tests planReconcile's pure decision logic against saved strand tables and fake list-panes results (including pane_dead=1 rows and the header-pane exemption),
+// and exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never touches tmux and so stays hermetic.
 
 package reedengine
 

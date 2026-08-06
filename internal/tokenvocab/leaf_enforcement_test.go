@@ -1,9 +1,5 @@
-// leaf_enforcement_test.go enforces the Tokenvocab Leaf Invariant: production
-// code in internal/tokenvocab imports ONLY the standard library,
-// internal/lyxcwd, and internal/stencil — never reed, loom, or any other
-// feature package. Like modelspec's leaf_enforcement_test.go, this check is an
-// ALLOWLIST: any import outside the allowed set fails the test, so a future
-// stray dependency is caught with no list maintenance required.
+// leaf_enforcement_test.go enforces the Tokenvocab Leaf Invariant: production code in internal/tokenvocab imports ONLY the standard library, internal/lyxcwd, and internal/stencil — never reed, loom, or any other feature package.
+// Like modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray dependency is caught with no list maintenance required.
 
 package tokenvocab
 
@@ -24,11 +20,9 @@ var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/stencil": true,
 }
 
-// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in
-// this package directory imports only stdlib (no '.' in the first path
-// segment) or an entry in allowedImports. It uses go/parser with
-// ImportsOnly so only real import declarations are inspected, never string
-// literals in doc comments.
+// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in this package directory imports only stdlib (no '.'
+// in the first path segment) or an entry in allowedImports.
+// It uses go/parser with ImportsOnly so only real import declarations are inspected, never string literals in doc comments.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

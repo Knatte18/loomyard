@@ -1,14 +1,11 @@
-// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the
-// call operator, and the prompt-file read idiom) that every provider engine composes
-// its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors
-// that select or directly expose an implementation.
+// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, and the prompt-file read idiom) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
 
 package shell
 
 import "runtime"
 
-// Shell is the provider-invariant seam for pane-shell mechanics: quoting, invoking,
-// and file reading. Implementations carry no provider-specific knowledge (Shell Mechanics Seam invariant).
+// Shell is the provider-invariant seam for pane-shell mechanics: quoting, invoking, and file reading.
+// Implementations carry no provider-specific knowledge (Shell Mechanics Seam invariant).
 type Shell interface {
 	// Quote wraps s so it round-trips as one shell argument.
 	Quote(s string) string
@@ -21,8 +18,7 @@ type Shell interface {
 	WithEnv(key, value, cmd string) string
 }
 
-// ForGOOS returns the Shell implementation for the current host
-// (pwsh on Windows, posix elsewhere).
+// ForGOOS returns the Shell implementation for the current host (pwsh on Windows, posix elsewhere).
 func ForGOOS() Shell {
 	if runtime.GOOS == "windows" {
 		return Pwsh()

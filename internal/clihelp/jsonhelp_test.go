@@ -1,6 +1,5 @@
 // jsonhelp_test.go tests InstallJSONHelp and the renderCmdJSON renderer.
-// It builds a synthetic cobra command tree with a child command, a local flag,
-// and a hidden flag, then asserts the JSON output matches the expected schema.
+// It builds a synthetic cobra command tree with a child command, a local flag, and a hidden flag, then asserts the JSON output matches the expected schema.
 
 package clihelp
 

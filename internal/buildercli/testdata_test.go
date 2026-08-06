@@ -1,13 +1,8 @@
-// testdata_test.go holds the pure file-I/O plan-fixture helpers and
-// git-free test doubles shared by every tier: builderengineTestdataDir and
-// seedPlanFixture spawn no git, and pollFakeEngine/pollFakeReed are plain
-// shuttleengine doubles, so all four stay untagged and available to
-// Tier 1 (e.g. run_test.go) as well as the integration-tagged fixtures
-// (validate_test.go, poll_test.go, spawnbatch_test.go) and the smoke tier
-// (smoke_test.go). Kept in one place so there is exactly one definition
-// regardless of which tier compiles it in. The scratch-git helpers the
-// integration and smoke tiers share live in gitfixture_test.go instead,
-// behind an `integration || smoke` tag, since they spawn real git.
+// testdata_test.go holds the pure file-I/O plan-fixture helpers and git-free test doubles shared by every tier: builderengineTestdataDir and seedPlanFixture spawn no git,
+// and pollFakeEngine/pollFakeReed are plain shuttleengine doubles, so all four stay untagged and available to Tier 1 (e.g.
+// run_test.go) as well as the integration-tagged fixtures (validate_test.go, poll_test.go, spawnbatch_test.go) and the smoke tier (smoke_test.go).
+// Kept in one place so there is exactly one definition regardless of which tier compiles it in.
+// The scratch-git helpers the integration and smoke tiers share live in gitfixture_test.go instead, behind an `integration || smoke` tag, since they spawn real git.
 
 package buildercli
 

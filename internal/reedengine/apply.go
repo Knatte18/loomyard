@@ -1,10 +1,7 @@
-// apply.go implements the render -> select-layout/select-pane engine op:
-// planLayout is the pure half that maps the persisted strand table down to
-// render.Rules and computes the layout string + focus target, and
-// applyLayoutLocked composes that plan with the tmux apply I/O. Reconcile
-// (reconcile.go) must run before this — kill dead -> re-enumerate live ->
-// compute layout -> apply — so live reflects tmux's actual pane set at
-// render time; this file makes no reconcile decisions itself.
+// apply.go implements the render -> select-layout/select-pane engine op: planLayout is the pure half that maps the persisted strand table down to render.Rules and computes the layout string + focus target,
+// and applyLayoutLocked composes that plan with the tmux apply I/O.
+// Reconcile (reconcile.go) must run before this — kill dead -> re-enumerate live -> compute layout -> apply — so live reflects tmux's actual pane set at render time;
+// this file makes no reconcile decisions itself.
 
 package reedengine
 

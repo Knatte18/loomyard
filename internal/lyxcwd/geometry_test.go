@@ -1,7 +1,6 @@
-// geometry_test.go covers the pure geometry constructor this module still owns --
-// weftname.SiblingPath's join shape. BoardDir, HubPath and IsReservedHubName
-// relocated to internal/fabricengine in this batch (alongside BoardDirName and
-// HubSuffix); their coverage lives in fabricengine/junctionnames_test.go now.
+// geometry_test.go covers the pure geometry constructor this module still owns -- weftname.SiblingPath's join shape.
+// BoardDir, HubPath and IsReservedHubName relocated to internal/fabricengine in this batch (alongside BoardDirName and HubSuffix);
+// their coverage lives in fabricengine/junctionnames_test.go now.
 
 package lyxcwd_test
 

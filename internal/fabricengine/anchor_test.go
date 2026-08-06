@@ -1,8 +1,6 @@
-// anchor_test.go — unit tests for the pure reachableAnchor walk. Every test
-// here drives reachableAnchor against a hand-built []corrEntry slice and a
-// fake in-memory reachable predicate (a map[string]bool closure); no git is
-// spawned, per the Test Tier Purity Invariant for an untagged Tier-1 file —
-// modeled on corrindex_test.go's git-free style.
+// anchor_test.go — unit tests for the pure reachableAnchor walk.
+// Every test here drives reachableAnchor against a hand-built []corrEntry slice and a fake in-memory reachable predicate (a map[string]bool closure);
+// no git is spawned, per the Test Tier Purity Invariant for an untagged Tier-1 file — modeled on corrindex_test.go's git-free style.
 
 package fabricengine
 
@@ -18,8 +16,7 @@ func mapReachable(reachableSHAs map[string]bool) func(string) (bool, error) {
 	}
 }
 
-// TestReachableAnchor_NewestReachable covers the common case: the newest entry
-// is itself reachable.
+// TestReachableAnchor_NewestReachable covers the common case: the newest entry is itself reachable.
 func TestReachableAnchor_NewestReachable(t *testing.T) {
 	entries := []corrEntry{
 		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},
@@ -117,8 +114,7 @@ func TestReachableAnchor_EmptySlice(t *testing.T) {
 	}
 }
 
-// TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk asserts that a
-// reachable error aborts the walk immediately.
+// TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk asserts that a reachable error aborts the walk immediately.
 func TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk(t *testing.T) {
 	wantErr := errors.New("boom")
 	entries := []corrEntry{

@@ -1,8 +1,6 @@
 // configreg.go — module registry for configuration management.
 //
-// Provides a neutral registry of available config modules (board, fabric)
-// and their templates, used by the config CLI command and callers such as
-// fabric clone.
+// Provides a neutral registry of available config modules (board, fabric) and their templates, used by the config CLI command and callers such as fabric clone.
 
 package configreg
 
@@ -34,10 +32,9 @@ type Module struct {
 	SeedOnly bool
 }
 
-// Modules returns the ordered list of all available config modules, each
-// with its name and template function. The order is ALPHABETICAL and every
-// caller-visible surface (help text, errors, menu numbering) renders it this
-// way — a misordered entry is user-visible. Keep new entries in sort order.
+// Modules returns the ordered list of all available config modules, each with its name and template function.
+// The order is ALPHABETICAL and every caller-visible surface (help text, errors, menu numbering) renders it this way — a misordered entry is user-visible.
+// Keep new entries in sort order.
 func Modules() []Module {
 	return []Module{
 		{Name: "board", Template: boardengine.ConfigTemplate},

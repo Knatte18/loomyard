@@ -1,11 +1,7 @@
-// index.go — the fabric layer's git-owning wrapper around the git-free
-// corrindex.go component. Per the correspondence index layering decision,
-// corrindex.go's corrIndex type never touches git; this file is the only
-// place in fabricengine that resolves the weft worktree's gitdir, computes a
-// warp SHA's ordering sequence, or scans weft history for Warp-SHA trailers.
-// It is also where the exported Fabric methods (RecordCorrespondence,
-// WeftSHAForWarpSHA, RebuildIndex) that Fabric.Commit and Fabric.Diff build
-// on live.
+// index.go — the fabric layer's git-owning wrapper around the git-free corrindex.go component.
+// Per the correspondence index layering decision, corrindex.go's corrIndex type never touches git;
+// this file is the only place in fabricengine that resolves the weft worktree's gitdir, computes a warp SHA's ordering sequence, or scans weft history for Warp-SHA trailers.
+// It is also where the exported Fabric methods (RecordCorrespondence, WeftSHAForWarpSHA, RebuildIndex) that Fabric.Commit and Fabric.Diff build on live.
 
 package fabricengine
 
@@ -37,19 +33,12 @@ const (
 	warpSHATrailerFormatRecordSep = "\x1e"
 )
 
-// ErrNoCorrespondence is returned by WeftSHAForWarpSHA (and, via
-// classifyCorrespondence, by resolveRevertTarget's Fabric.Diff caller) when
-// the correspondence index has no entry — exact or nearest-older — for a
-// requested warp SHA at all, as opposed to ErrStaleSHA's "an entry exists but
-// no longer resolves" case.
+// ErrNoCorrespondence is returned by WeftSHAForWarpSHA (and, via classifyCorrespondence, by resolveRevertTarget's Fabric.Diff caller) when the correspondence index has no entry — exact or nearest-older — for a requested warp SHA at all, as opposed to ErrStaleSHA's "an entry exists but no longer resolves" case.
 var ErrNoCorrespondence = errors.New("fabricengine: no recorded warp<->weft correspondence")
 
-// ErrStaleSHA is returned when a correspondence index entry names a weft SHA
-// that no longer exists in the weft repo — even after one RebuildIndex
-// self-correction attempt — meaning weft's own history was rewritten out
-// from under the recorded correspondence (rebase/amend/force-push). Per the
-// stale-SHA handling decision, fabric never auto-recovers from this; it
-// surfaces the typed error and leaves recovery to the caller.
+// ErrStaleSHA is returned when a correspondence index entry names a weft SHA that no longer exists in the weft repo — even after one RebuildIndex self-correction attempt — meaning weft's own history was rewritten out from under the recorded correspondence (rebase/amend/force-push).
+// Per the stale-SHA handling decision, fabric never auto-recovers from this;
+// it surfaces the typed error and leaves recovery to the caller.
 var ErrStaleSHA = errors.New("fabricengine: stale SHA in correspondence index")
 
 // weftGitDir resolves the git directory backing f.Weft's worktree via
@@ -104,11 +93,9 @@ func (f *Fabric) warpSeq(warpSHA string) (int, error) {
 	return seq, nil
 }
 
-// RecordCorrespondence upserts an entry mapping warpSHA to weftSHA into the
-// correspondence index, computing warpSHA's WarpSeq via warpSeq. Callers
-// call this alongside every weft commit that carries a Warp-SHA trailer, so
-// the index stays current without a rebuild; RebuildIndex remains the
-// self-correcting fallback when a lookup's cached answer turns out stale.
+// RecordCorrespondence upserts an entry mapping warpSHA to weftSHA into the correspondence index, computing warpSHA's WarpSeq via warpSeq.
+// Callers call this alongside every weft commit that carries a Warp-SHA trailer, so the index stays current without a rebuild;
+// RebuildIndex remains the self-correcting fallback when a lookup's cached answer turns out stale.
 func (f *Fabric) RecordCorrespondence(warpSHA, weftSHA string) error {
 	seq, err := f.warpSeq(warpSHA)
 	if err != nil {
@@ -127,14 +114,10 @@ func (f *Fabric) RecordCorrespondence(warpSHA, weftSHA string) error {
 	return ix.record(corrEntry{WarpSHA: warpSHA, WeftSHA: weftSHA, WarpSeq: seq})
 }
 
-// WeftSHAForWarpSHA returns the weft SHA recorded as corresponding to
-// warpSHA. On an index miss it returns wrapped ErrNoCorrespondence. On a
-// cache hit whose weft SHA no longer exists in the weft repo, it runs
-// RebuildIndex once — the index's self-correction path, since the trailer
-// history the rebuild scans remains the sole source of truth — and retries;
-// if the rebuilt answer still fails to resolve, it returns wrapped
-// ErrStaleSHA naming both the requested warp SHA and the weft SHA that no
-// longer exists.
+// WeftSHAForWarpSHA returns the weft SHA recorded as corresponding to warpSHA.
+// On an index miss it returns wrapped ErrNoCorrespondence.
+// On a cache hit whose weft SHA no longer exists in the weft repo, it runs RebuildIndex once — the index's self-correction path, since the trailer history the rebuild scans remains the sole source of truth — and retries;
+// if the rebuilt answer still fails to resolve, it returns wrapped ErrStaleSHA naming both the requested warp SHA and the weft SHA that no longer exists.
 func (f *Fabric) WeftSHAForWarpSHA(warpSHA string) (string, error) {
 	path, err := f.corrIndexPath()
 	if err != nil {
@@ -323,13 +306,8 @@ func refreshCorrIndexAfterSwitch(worktreeRoot, weftWorktree string) error {
 	return f.RebuildIndex()
 }
 
-// RebuildIndex reconstructs the correspondence index from scratch by
-// scanning the current weft branch's Warp-SHA trailer history — the sole
-// source of truth the index is a derived cache over — and atomically
-// replacing the on-disk index file with the result. A trailer value that
-// fails f.Warp.SHAExists (the warp commit it names no longer exists) is
-// still recorded, per the stale-SHA handling decision: staleness surfaces at
-// use (WeftSHAForWarpSHA, resolveRevertTarget), never here at rebuild time.
+// RebuildIndex reconstructs the correspondence index from scratch by scanning the current weft branch's Warp-SHA trailer history — the sole source of truth the index is a derived cache over — and atomically replacing the on-disk index file with the result.
+// A trailer value that fails f.Warp.SHAExists (the warp commit it names no longer exists) is still recorded, per the stale-SHA handling decision: staleness surfaces at use (WeftSHAForWarpSHA, resolveRevertTarget), never here at rebuild time.
 func (f *Fabric) RebuildIndex() error {
 	path, err := f.corrIndexPath()
 	if err != nil {

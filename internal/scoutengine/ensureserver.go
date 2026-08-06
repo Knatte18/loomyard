@@ -1,11 +1,6 @@
-// ensureserver.go implements the EnsureServer(lang, worktreeRoot) -> LSPConn
-// seam from manifest/designs/scout-redesign.md: given a registry entry
-// whose HasNativeDaemon field is true, it resolves, spawns or dials, and
-// hands back an already-initialized, already-probed *lspClient ready for
-// immediate use. ensureServer is called only for a registry entry with
-// HasNativeDaemon == true — in V1 this means Go only. Every other
-// language's caller keeps using newLSPClient/client.initialize directly,
-// unchanged, and never calls into this file at all.
+// ensureserver.go implements the EnsureServer(lang, worktreeRoot) -> LSPConn seam from manifest/designs/scout-redesign.md: given a registry entry whose HasNativeDaemon field is true, it resolves, spawns or dials, and hands back an already-initialized, already-probed *lspClient ready for immediate use.
+// ensureServer is called only for a registry entry with HasNativeDaemon == true — in V1 this means Go only.
+// Every other language's caller keeps using newLSPClient/client.initialize directly, unchanged, and never calls into this file at all.
 
 package scoutengine
 

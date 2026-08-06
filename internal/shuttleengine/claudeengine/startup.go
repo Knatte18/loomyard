@@ -1,11 +1,5 @@
-// startup.go implements Startup (classifying a pane's capture during the
-// launch window) and the fixed key-choreography sequences —
-// InterruptSequence, ComposeSend, and ModelSwitchSequence — that the run
-// loop and long-lived callers send into a pane to interrupt a turn, resume
-// one, or switch the session's active model. All are pure over a capture
-// string / literal text — the classification heuristics were proven live
-// against a real claude TUI (docs/research/reed-hooks-exploration.md and
-// reedcli's dismissTrust).
+// startup.go implements Startup (classifying a pane's capture during the launch window) and the fixed key-choreography sequences — InterruptSequence, ComposeSend, and ModelSwitchSequence — that the run loop and long-lived callers send into a pane to interrupt a turn, resume one, or switch the session's active model.
+// All are pure over a capture string / literal text — the classification heuristics were proven live against a real claude TUI (docs/research/reed-hooks-exploration.md and reedcli's dismissTrust).
 
 package claudeengine
 

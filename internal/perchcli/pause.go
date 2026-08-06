@@ -1,6 +1,4 @@
-// pause.go implements the `pause` perch verb: it writes the pause flag file
-// a running block's PauseRequested seam polls between rounds, requesting the
-// block honor a pause at the next round boundary rather than mid-round.
+// pause.go implements the `pause` perch verb: it writes the pause flag file a running block's PauseRequested seam polls between rounds, requesting the block honor a pause at the next round boundary rather than mid-round.
 
 package perchcli
 

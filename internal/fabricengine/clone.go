@@ -1,13 +1,8 @@
 // clone.go implements the clone orchestration logic with strict-abort teardown.
 //
-// After the weft clone succeeds, the weft primary is checked out onto its
-// WeftBranchName-suffixed pairing (e.g. "main-weft" for a default branch
-// "main") so weft:main is never claimed directly — every fabric-managed weft
-// branch, including the primary's, carries the uniform "-weft" suffix. The
-// suffixed branch is adopted from an existing origin/<branch>-weft when the
-// remote already carries one (a re-clone of a hub with weft history) and
-// created fresh only otherwise; the freshly-cloned default branch itself
-// remains, unclaimed.
+// After the weft clone succeeds, the weft primary is checked out onto its WeftBranchName-suffixed pairing (e.g. "main-weft" for a default branch "main") so weft:main is never claimed directly — every fabric-managed weft branch, including the primary's, carries the uniform "-weft" suffix.
+// The suffixed branch is adopted from an existing origin/<branch>-weft when the remote already carries one (a re-clone of a hub with weft history) and created fresh only otherwise;
+// the freshly-cloned default branch itself remains, unclaimed.
 
 package fabricengine
 
@@ -23,8 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to
-// inject errors into fabric's own clone-orchestration teardown path.
+// RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to inject errors into fabric's own clone-orchestration teardown path.
 var RemoveAll = os.RemoveAll
 
 // staleFabricAnchorName is the pre-rename lyx-anchor marker filename. It has
@@ -34,14 +28,8 @@ var RemoveAll = os.RemoveAll
 // re-anchoring at the wrong subpath.
 const staleFabricAnchorName = ".fabric-anchor"
 
-// CloneResult carries the resolved geometry CloneHub hands back to the caller
-// once the git-level clone, board-worktree materialization, and anchor
-// resolution are done. It is deliberately git/geometry-only — the CLI layer
-// (internal/fabriccli) drives config materialization, weft:main commit, and
-// junction wiring from these fields, because those calls route through
-// internal/configsync, which fabricengine must never import (see the
-// fabricengine → configsync → configreg → fabricengine cycle documented in
-// this file's clone-does-everything batch scope).
+// CloneResult carries the resolved geometry CloneHub hands back to the caller once the git-level clone, board-worktree materialization, and anchor resolution are done.
+// It is deliberately git/geometry-only — the CLI layer (internal/fabriccli) drives config materialization, weft:main commit, and junction wiring from these fields, because those calls route through internal/configsync, which fabricengine must never import (see the fabricengine → configsync → configreg → fabricengine cycle documented in this file's clone-does-everything batch scope).
 type CloneResult struct {
 	HubPath  string // HubPath is the created <name>-HUB container directory.
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").

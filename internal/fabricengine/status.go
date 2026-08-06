@@ -1,17 +1,10 @@
-// status.go implements the paired host↔weft status view and host-pollution detection
-// for fabric.
+// status.go implements the paired host↔weft status view and host-pollution detection for fabric.
 //
-// Status enumerates all host worktrees via List, pairs each with its weft
-// sibling, reports branch, in-sync verdict, junction health, and scans the host index
-// for any _lyx, _pattern, or _raddle paths that have been accidentally git-tracked
-// (host pollution). A pair is InSync when weftBranch == WeftBranchName(hostBranch),
+// Status enumerates all host worktrees via List, pairs each with its weft sibling, reports branch, in-sync verdict, junction health, and scans the host index for any _lyx, _pattern, or _raddle paths that have been accidentally git-tracked (host pollution).
+// A pair is InSync when weftBranch == WeftBranchName(hostBranch),
 // and DriftReason states the expected suffixed branch rather than a bare mismatch.
 //
-// Status computes its in-sync verdict inline (branch correspondence via WeftBranchName,
-// then junction health via checkJunctionHealth, both already defined in reconcile.go)
-// rather than calling the shared Healthy helper (drift.go) — Status already has
-// hostBranch/weftBranch in hand from readBranch, so there is nothing to gain from a
-// second rev-parse round trip through a shared helper.
+// Status computes its in-sync verdict inline (branch correspondence via WeftBranchName, then junction health via checkJunctionHealth, both already defined in reconcile.go) rather than calling the shared Healthy helper (drift.go) — Status already has hostBranch/weftBranch in hand from readBranch, so there is nothing to gain from a second rev-parse round trip through a shared helper.
 
 package fabricengine
 
@@ -25,8 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// PollutionEntry describes a single tracked path in the host index that should never
-// be committed there (e.g. _lyx or _raddle, which belong exclusively in the weft).
+// PollutionEntry describes a single tracked path in the host index that should never be committed there (e.g. _lyx or _raddle, which belong exclusively in the weft).
 type PollutionEntry struct {
 	// Path is the relative path reported by git ls-files.
 	Path string `json:"path"`
@@ -66,11 +58,9 @@ type StatusResult struct {
 	Pairs []PairStatus `json:"pairs"`
 }
 
-// Status returns the paired host↔weft status view for all worktrees reachable from
-// the given layout, plus host-pollution detection on the host index. For each host
-// worktree, it reports branch status, in-sync verdict, junction health, and
-// host-tracked _lyx/_pattern/_raddle paths. Per-worktree errors are recorded
-// inline in PairStatus.DriftReason / PairStatus.JunctionReason.
+// Status returns the paired host↔weft status view for all worktrees reachable from the given layout, plus host-pollution detection on the host index.
+// For each host worktree, it reports branch status, in-sync verdict, junction health, and host-tracked _lyx/_pattern/_raddle paths.
+// Per-worktree errors are recorded inline in PairStatus.DriftReason / PairStatus.JunctionReason.
 func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 	entries, err := List(l.WorktreePath())
 	if err != nil {

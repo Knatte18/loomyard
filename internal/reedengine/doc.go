@@ -1,6 +1,5 @@
-// doc.go carries the package-level godoc comment for reedengine. It holds no
-// code — its only job is documenting the package's role and contract in one
-// place a reader finds first.
+// doc.go carries the package-level godoc comment for reedengine.
+// It holds no code — its only job is documenting the package's role and contract in one place a reader finds first.
 
 // Package reedengine is the domain kernel for lyx's tmux window manager: the
 // tmux subprocess overlay, strand bookkeeping, persisted state, config, and

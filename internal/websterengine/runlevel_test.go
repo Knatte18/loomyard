@@ -303,10 +303,7 @@ func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 	}
 }
 
-// TestRun_ErrRunBusy proves Run's fail-fast refusal when another invocation
-// already holds websterDir's run.lock: the loser touches nothing (the
-// Starter is never reached) and the error satisfies
-// errors.Is(err, ErrRunBusy).
+// TestRun_ErrRunBusy proves Run's fail-fast refusal when another invocation already holds websterDir's run.lock: the loser touches nothing (the Starter is never reached) and the error satisfies errors.Is(err, ErrRunBusy).
 func TestRun_ErrRunBusy(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -328,10 +325,7 @@ func TestRun_ErrRunBusy(t *testing.T) {
 	}
 }
 
-// TestRun_ZeroBatchPlanRefusedLoud proves a plan that parses to zero cards
-// (and so batchifies to zero execution batches) is refused loud before any
-// spawn — nothing-to-build is a malformed plan, never a vacuous outcome:
-// done.
+// TestRun_ZeroBatchPlanRefusedLoud proves a plan that parses to zero cards (and so batchifies to zero execution batches) is refused loud before any spawn — nothing-to-build is a malformed plan, never a vacuous outcome: done.
 func TestRun_ZeroBatchPlanRefusedLoud(t *testing.T) {
 	fx := newRunFixture(t, 0)
 
@@ -344,11 +338,7 @@ func TestRun_ZeroBatchPlanRefusedLoud(t *testing.T) {
 	}
 }
 
-// TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact proves a stale
-// on-disk state.json (a fingerprint that no longer matches the plan
-// directory) refuses loud without --fresh, never reaching the spawn, and
-// that a pending pause request is left untouched by the refusal (only a run
-// that passes every gate clears it).
+// TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact proves a stale on-disk state.json (a fingerprint that no longer matches the plan directory) refuses loud without --fresh, never reaching the spawn, and that a pending pause request is left untouched by the refusal (only a run that passes every gate clears it).
 func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -372,10 +362,7 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	}
 }
 
-// TestRun_FreshArchivesStateReportsAndClearsPrompts proves --fresh archives
-// the stale state.json and reports dir under timestamped names (never
-// deleting them), recreates an empty reports dir, and clears the
-// re-renderable prompts dir outright (never archived).
+// TestRun_FreshArchivesStateReportsAndClearsPrompts proves --fresh archives the stale state.json and reports dir under timestamped names (never deleting them), recreates an empty reports dir, and clears the re-renderable prompts dir outright (never archived).
 func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -450,11 +437,7 @@ func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 	}
 }
 
-// TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent
-// proves the entry-time reclaim stops a recorded, still-live Master strand
-// and a recorded, non-terminal, still-live recovery-batch strand, but never
-// touches a recorded strand the reed no longer reports at all
-// (cleanly-absent — already gone, nothing to stop).
+// TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent proves the entry-time reclaim stops a recorded, still-live Master strand and a recorded, non-terminal, still-live recovery-batch strand, but never touches a recorded strand the reed no longer reports at all (cleanly-absent — already gone, nothing to stop).
 func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -492,9 +475,7 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 	}
 }
 
-// TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn proves both stale
-// outcome.yaml and stale summary.md are archived (renamed with a timestamp
-// suffix, never deleted) before Master ever spawns.
+// TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn proves both stale outcome.yaml and stale summary.md are archived (renamed with a timestamp suffix, never deleted) before Master ever spawns.
 func TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -531,11 +512,7 @@ func TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn(t *testing.T) {
 	}
 }
 
-// TestRun_AssertedModelInitializedToMasterRoleModel proves the Master spawn
-// persists State.AssertedModel to the launch model (RoleMaster's resolved
-// model) BEFORE ever blocking on Wait — the idempotent-assertion baseline
-// begin-batch's own per-batch check consults from batch 1 onward — along
-// with the strand and session identities.
+// TestRun_AssertedModelInitializedToMasterRoleModel proves the Master spawn persists State.AssertedModel to the launch model (RoleMaster's resolved model) BEFORE ever blocking on Wait — the idempotent-assertion baseline begin-batch's own per-batch check consults from batch 1 onward — along with the strand and session identities.
 func TestRun_AssertedModelInitializedToMasterRoleModel(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -563,12 +540,8 @@ func TestRun_AssertedModelInitializedToMasterRoleModel(t *testing.T) {
 	}
 }
 
-// TestRun_MasterStrandPersistedBeforeFindRun proves F14's orphan-window
-// narrowing: when FindRun fails AFTER Master's pane is live (no shuttle run
-// state seeded, so the session-ID resolve errors), Run still errors — but
-// state.json has already recorded MasterStrand, so the next run's entry-time
-// reclaim can find and stop the orphaned live pane. Without the pre-resolve
-// save, the live pane would be invisible to every future reclaim.
+// TestRun_MasterStrandPersistedBeforeFindRun proves F14's orphan-window narrowing: when FindRun fails AFTER Master's pane is live (no shuttle run state seeded, so the session-ID resolve errors), Run still errors — but state.json has already recorded MasterStrand, so the next run's entry-time reclaim can find and stop the orphaned live pane.
+// Without the pre-resolve save, the live pane would be invisible to every future reclaim.
 func TestRun_MasterStrandPersistedBeforeFindRun(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -589,11 +562,7 @@ func TestRun_MasterStrandPersistedBeforeFindRun(t *testing.T) {
 	}
 }
 
-// TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult proves the
-// full success path: a done outcome.yaml with valid batches_done, a valid
-// summary.md, and a clean whole-session audit whose fork-transcript count
-// meets the begun fork-batch count together populate RunResult, and the
-// terminal (non-paused) outcome clears any pause flag.
+// TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult proves the full success path: a done outcome.yaml with valid batches_done, a valid summary.md, and a clean whole-session audit whose fork-transcript count meets the begun fork-batch count together populate RunResult, and the terminal (non-paused) outcome clears any pause flag.
 func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -645,13 +614,9 @@ func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.
 	}
 }
 
-// TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches proves the
-// run-exit audit cross-check is session-scoped: a crash-resumed run whose
-// prior session already completed fork batches must NOT count them against
-// the fresh session's whole-session audit (which by construction covers
-// only the fresh session's own subagents dir). Before this scoping, a
-// legitimately completed resume hard-errored with "audited < begun"
-// (round fable-r1's F5). The current session's own shortfall still fails.
+// TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches proves the run-exit audit cross-check is session-scoped: a crash-resumed run whose prior session already completed fork batches must NOT count them against the fresh session's whole-session audit (which by construction covers only the fresh session's own subagents dir).
+// Before this scoping, a legitimately completed resume hard-errored with "audited < begun" (round fable-r1's F5).
+// The current session's own shortfall still fails.
 func TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches(t *testing.T) {
 	newHandle := func(fx *runFixture, forks []shuttleengine.ForkReport) *runFakeHandle {
 		return &runFakeHandle{
@@ -716,9 +681,7 @@ func TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches(t *testing.T) {
 	})
 }
 
-// TestRun_DoneWithMissingSummaryIsHardError proves a done outcome.yaml with
-// no summary.md at all is a hard error — required content-validity on
-// outcome: done, never guessed.
+// TestRun_DoneWithMissingSummaryIsHardError proves a done outcome.yaml with no summary.md at all is a hard error — required content-validity on outcome: done, never guessed.
 func TestRun_DoneWithMissingSummaryIsHardError(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -749,12 +712,7 @@ func TestRun_DoneWithMissingSummaryIsHardError(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithUnrecordedBatchIsHardError proves the every-batch-done
-// gate: a Master that writes outcome: done while a plan batch has no
-// terminal done record (begun-but-never-recorded — a fork that slipped past
-// record-batch) is a hard error naming the offending batch, even when the
-// outcome/summary files are well-formed and the whole-session audit is
-// clean (round fable-r1's F11).
+// TestRun_DoneWithUnrecordedBatchIsHardError proves the every-batch-done gate: a Master that writes outcome: done while a plan batch has no terminal done record (begun-but-never-recorded — a fork that slipped past record-batch) is a hard error naming the offending batch, even when the outcome/summary files are well-formed and the whole-session audit is clean (round fable-r1's F11).
 func TestRun_DoneWithUnrecordedBatchIsHardError(t *testing.T) {
 	fx := newRunFixture(t, 2)
 
@@ -800,10 +758,7 @@ func TestRun_DoneWithUnrecordedBatchIsHardError(t *testing.T) {
 	}
 }
 
-// TestRun_DoneWithParentWriteViolationIsHardError proves the run-exit audit
-// cross-check's CheckParent pass fires on a done outcome: a parent write
-// outside the two contract files is a hard error carried on the run's own
-// error, even though the outcome/summary files themselves are well-formed.
+// TestRun_DoneWithParentWriteViolationIsHardError proves the run-exit audit cross-check's CheckParent pass fires on a done outcome: a parent write outside the two contract files is a hard error carried on the run's own error, even though the outcome/summary files themselves are well-formed.
 func TestRun_DoneWithParentWriteViolationIsHardError(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
@@ -850,11 +805,7 @@ func TestRun_DoneWithParentWriteViolationIsHardError(t *testing.T) {
 	}
 }
 
-// TestRun_MasterNonDoneOutcomesMapToTypedErrors proves each of the
-// asking/died/timeout shuttle outcomes for Master's own spawn maps to its
-// own distinct *Master*Error type, carrying SessionID and the kept RunDir,
-// and matches its own sentinel via errors.Is — never attempting to parse a
-// (non-existent) outcome.yaml.
+// TestRun_MasterNonDoneOutcomesMapToTypedErrors proves each of the asking/died/timeout shuttle outcomes for Master's own spawn maps to its own distinct *Master*Error type, carrying SessionID and the kept RunDir, and matches its own sentinel via errors.Is — never attempting to parse a (non-existent) outcome.yaml.
 func TestRun_MasterNonDoneOutcomesMapToTypedErrors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -935,12 +886,8 @@ func TestRun_MasterNonDoneOutcomesMapToTypedErrors(t *testing.T) {
 	}
 }
 
-// TestRun_PausedOutcomeLeavesPauseFlagIntact proves a genuinely mid-run
-// pause request (one requested WHILE Master is working, i.e. present again
-// by the time Master's own "outcome: paused" final action lands — Run's own
-// pre-spawn commitment-point clear already ran before Master ever started)
-// is left intact by the post-run mapping: the operator's own record that a
-// pause is still pending, never silently cleared out from under them.
+// TestRun_PausedOutcomeLeavesPauseFlagIntact proves a genuinely mid-run pause request (one requested WHILE Master is working, i.e.
+// present again by the time Master's own "outcome: paused" final action lands — Run's own pre-spawn commitment-point clear already ran before Master ever started) is left intact by the post-run mapping: the operator's own record that a pause is still pending, never silently cleared out from under them.
 func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 	fx := newRunFixture(t, 1)
 

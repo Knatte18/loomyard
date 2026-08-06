@@ -56,10 +56,7 @@ func mustWeftRepoRoot(t *testing.T, l *lyxcwd.Location) string {
 	return root
 }
 
-// TestAddRollback_AdoptedWeftBranchSurvives pre-creates a weft branch carrying
-// a unique commit, forces Add to fail after adopting it, and asserts the
-// rollback removed the weft worktree but left the branch — still pointing at
-// the unique commit — untouched, alongside the usual zero host-side residue.
+// TestAddRollback_AdoptedWeftBranchSurvives pre-creates a weft branch carrying a unique commit, forces Add to fail after adopting it, and asserts the rollback removed the weft worktree but left the branch — still pointing at the unique commit — untouched, alongside the usual zero host-side residue.
 func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	t.Parallel()
 
@@ -132,12 +129,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 }
 
-// TestAdd_WiresJunctionsEagerly proves a successful Add leaves the new
-// worktree's host junctions wired immediately: card 20 folds WireJunctions
-// into Add's step 10b (after writeLaunchers, before the host push), so no
-// dormant state and no separate `lyx init` step is needed for the pair to be
-// usable. Asserts both the repo-wide default junctions (_lyx and _pattern)
-// resolve to their paired weft directories.
+// TestAdd_WiresJunctionsEagerly proves a successful Add leaves the new worktree's host junctions wired immediately: card 20 folds WireJunctions into Add's step 10b (after writeLaunchers, before the host push), so no dormant state and no separate `lyx init` step is needed for the pair to be usable.
+// Asserts both the repo-wide default junctions (_lyx and _pattern) resolve to their paired weft directories.
 func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	t.Parallel()
 
@@ -176,14 +169,9 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	}
 }
 
-// TestAddRollback_UnwiresJunctionsOnPostWiringFailure covers card 21:
-// rollbackAdd must remove the host junctions Add's step 10b wired when a
-// later step (the host push) fails, while still preserving an adopted
-// pre-existing weft branch exactly as TestAddRollback_AdoptedWeftBranchSurvives
-// does. Reuses that test's adopt fixture, but injects the failure via a
-// broken host origin remote instead of a portal blocker so the failure lands
-// AFTER wiring (step 10b) rather than before it (step 9) — otherwise the
-// junctions would never have been wired and this test would prove nothing.
+// TestAddRollback_UnwiresJunctionsOnPostWiringFailure covers card 21: rollbackAdd must remove the host junctions Add's step 10b wired when a later step (the host push) fails, while still preserving an adopted pre-existing weft branch exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
+// Reuses that test's adopt fixture,
+// but injects the failure via a broken host origin remote instead of a portal blocker so the failure lands AFTER wiring (step 10b) rather than before it (step 9) — otherwise the junctions would never have been wired and this test would prove nothing.
 func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	t.Parallel()
 

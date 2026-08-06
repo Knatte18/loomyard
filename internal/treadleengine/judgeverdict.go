@@ -1,17 +1,5 @@
-// judgeverdict.go defines the two verdict-file contracts treadle's ephemeral
-// LLM utilities read back — JudgeVerdict (both progress-judge framings) and
-// TriageVerdict (asking-triage) — plus the strict parsers that turn a
-// verdict file's raw bytes into those types. Both files are YAML
-// frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's
-// contract and error posture: every rule below is enforced fail-loud with a
-// "treadle: "-prefixed error (these parsers are package-level pure
-// functions with no calling-engine name in scope, unlike the rest of this
-// package's diagnostics — see the pinned parser-prefix resolution in the
-// treadle-extraction batch notes), because a self-contradictory or
-// malformed verdict file is an agent defect that must never be silently
-// accepted — the fail-safe posture lives one layer up, in judge.go's
-// spawners, which swallow these errors into a Warn + fail-safe fallback and
-// never let them surface through a caller's public API.
+// judgeverdict.go defines the two verdict-file contracts treadle's ephemeral LLM utilities read back — JudgeVerdict (both progress-judge framings) and TriageVerdict (asking-triage) — plus the strict parsers that turn a verdict file's raw bytes into those types.
+// Both files are YAML frontmatter over unconstrained prose, mirroring burlerengine.ParseReview's contract and error posture: every rule below is enforced fail-loud with a "treadle: "-prefixed error (these parsers are package-level pure functions with no calling-engine name in scope, unlike the rest of this package's diagnostics — see the pinned parser-prefix resolution in the treadle-extraction batch notes), because a self-contradictory or malformed verdict file is an agent defect that must never be silently accepted — the fail-safe posture lives one layer up, in judge.go's spawners, which swallow these errors into a Warn + fail-safe fallback and never let them surface through a caller's public API.
 package treadleengine
 
 import (
@@ -21,8 +9,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// JudgeVerdict is the progress judge's verdict. Its legal spellings depend on
-// which judgeFraming was used.
+// JudgeVerdict is the progress judge's verdict.
+// Its legal spellings depend on which judgeFraming was used.
 type JudgeVerdict string
 
 // The five legal JudgeVerdict spellings across both framings.
@@ -34,8 +22,7 @@ const (
 	JudgeUncertain   JudgeVerdict = "UNCERTAIN"
 )
 
-// TriageVerdict is the asking-triage call's verdict, recorded in a triage
-// verdict file's frontmatter.
+// TriageVerdict is the asking-triage call's verdict, recorded in a triage verdict file's frontmatter.
 type TriageVerdict string
 
 // The two legal TriageVerdict values.
@@ -63,11 +50,10 @@ type judgeHeader struct {
 	Rationale string `yaml:"rationale"`
 }
 
-// ParseJudgeVerdict parses a progress-judge verdict file into a JudgeVerdict
-// and its rationale. The file must open and close with "---" delimiting
-// YAML frontmatter; prose after is unconstrained. Fails loud: frontmatter
-// must be valid YAML, verdict must match framing's vocabulary, and rationale
-// must be non-empty.
+// ParseJudgeVerdict parses a progress-judge verdict file into a JudgeVerdict and its rationale.
+// The file must open and close with "---" delimiting YAML frontmatter;
+// prose after is unconstrained.
+// Fails loud: frontmatter must be valid YAML, verdict must match framing's vocabulary, and rationale must be non-empty.
 func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {
@@ -91,8 +77,7 @@ func ParseJudgeVerdict(content []byte, framing judgeFraming) (JudgeVerdict, stri
 	return verdict, parsed.Rationale, nil
 }
 
-// ParseTriageVerdict parses an asking-triage verdict file into a TriageVerdict
-// and its rationale, applying the same frontmatter and non-empty-rationale rules.
+// ParseTriageVerdict parses an asking-triage verdict file into a TriageVerdict and its rationale, applying the same frontmatter and non-empty-rationale rules.
 func ParseTriageVerdict(content []byte) (TriageVerdict, string, error) {
 	header, err := splitFrontmatter(content, "verdict")
 	if err != nil {

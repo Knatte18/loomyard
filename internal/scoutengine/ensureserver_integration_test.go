@@ -118,17 +118,7 @@ func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 	}
 }
 
-// TestEnsureServer_Integration_SupervisedDispatch proves ensureServer's live
-// dispatch decision end to end against a real gopls, not just the
-// mocked-transport unit coverage in ensureserver_test.go: since Go's
-// registry entry now dispatches to the supervised strategy first, a call
-// through ensureServer (not ensureSupervised directly, which
-// supervised_integration_test.go already covers) must come back with
-// connKindSupervised, must have recorded a live daemon state file, and a
-// second call against the same worktreeRoot must reuse that same daemon
-// (identical PID, stable Address) rather than spawning a second one —
-// mirroring TestEnsureSupervised_Integration's own reuse assertions, but
-// through the exact entry point production code calls.
+// TestEnsureServer_Integration_SupervisedDispatch proves ensureServer's live dispatch decision end to end against a real gopls, not just the mocked-transport unit coverage in ensureserver_test.go: since Go's registry entry now dispatches to the supervised strategy first, a call through ensureServer (not ensureSupervised directly, which supervised_integration_test.go already covers) must come back with connKindSupervised, must have recorded a live daemon state file, and a second call against the same worktreeRoot must reuse that same daemon (identical PID, stable Address) rather than spawning a second one — mirroring TestEnsureSupervised_Integration's own reuse assertions, but through the exact entry point production code calls.
 func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip(builtins()["go"].InstallHint)

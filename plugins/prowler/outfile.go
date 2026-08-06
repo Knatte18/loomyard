@@ -1,6 +1,5 @@
-// outfile.go writes each fetch's extracted markdown to a uniquely-named file
-// under the scratch output directory, and derives a human-readable slug for
-// that filename from the fetched URL so a directory listing stays legible.
+// outfile.go writes each fetch's extracted markdown to a uniquely-named file under the scratch output directory,
+// and derives a human-readable slug for that filename from the fetched URL so a directory listing stays legible.
 
 package main
 

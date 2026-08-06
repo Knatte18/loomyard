@@ -1,8 +1,5 @@
-// run.go implements the `run` burler verb: the profile-YAML-and-flags-to-Run
-// mapper that turns a "lyx burler run" invocation into a blocking
-// burlerengine.Engine.Run call and prints its Result as a single JSON
-// envelope. It also owns decodeProfile, the strict YAML decode that maps a
-// profile file 1:1 onto burlerengine.Profile.
+// run.go implements the `run` burler verb: the profile-YAML-and-flags-to-Run mapper that turns a "lyx burler run" invocation into a blocking burlerengine.Engine.Run call and prints its Result as a single JSON envelope.
+// It also owns decodeProfile, the strict YAML decode that maps a profile file 1:1 onto burlerengine.Profile.
 
 package burlercli
 

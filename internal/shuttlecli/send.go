@@ -1,6 +1,4 @@
-// send.go implements the `send` shuttle verb: a thin guid/text-to-call
-// mapper over c.runner.Send, letting an operator or another process type a
-// one-line update into a shuttle run's pane as its next turn.
+// send.go implements the `send` shuttle verb: a thin guid/text-to-call mapper over c.runner.Send, letting an operator or another process type a one-line update into a shuttle run's pane as its next turn.
 
 package shuttlecli
 

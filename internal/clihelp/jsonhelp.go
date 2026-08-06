@@ -1,8 +1,5 @@
-// jsonhelp.go implements the --json help renderer and the HelpFunc installer
-// for the clihelp package. When the --json flag is set, any cobra help invocation
-// (lyx --json, lyx <module> --json, lyx <module> <cmd> --help --json) emits
-// structured JSON describing the command's name, short/long description, immediate
-// non-hidden subcommands, and local non-meta flags.
+// jsonhelp.go implements the --json help renderer and the HelpFunc installer for the clihelp package.
+// When the --json flag is set, any cobra help invocation (lyx --json, lyx <module> --json, lyx <module> <cmd> --help --json) emits structured JSON describing the command's name, short/long description, immediate non-hidden subcommands, and local non-meta flags.
 
 package clihelp
 
@@ -98,10 +95,9 @@ func renderCmdJSON(cmd *cobra.Command) cmdJSON {
 	return result
 }
 
-// InstallJSONHelp installs a custom HelpFunc on root that renders JSON help when
-// *jsonFlag is true, and delegates to the previously-captured default HelpFunc
-// otherwise. Because cobra's HelpFunc is inherited by all descendants, this single
-// call covers lyx --json, lyx <module> --json, and lyx <module> <cmd> --help --json.
+// InstallJSONHelp installs a custom HelpFunc on root that renders JSON help when *jsonFlag is true,
+// and delegates to the previously-captured default HelpFunc otherwise.
+// Because cobra's HelpFunc is inherited by all descendants, this single call covers lyx --json, lyx <module> --json, and lyx <module> <cmd> --help --json.
 // Call InstallJSONHelp once during root command construction, before adding subcommands.
 func InstallJSONHelp(root *cobra.Command, jsonFlag *bool) {
 	// Capture the default help function before overriding it so we can delegate

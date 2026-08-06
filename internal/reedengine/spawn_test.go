@@ -1,13 +1,7 @@
-// spawn_test.go table-tests planPaneTarget's adopt-vs-split decision —
-// including the corpse-pane rules tmux forces (never adopt a dead pane;
-// split the tallest alive pane, or the kept corpse when nothing is alive)
-// and the header-pane exclusion (never adopted, never the preferred split
-// target, but the sole-pane fallback) — and verifies loadOrInitStateLocked's
-// fresh-worktree bootstrap. Both are pure/hermetic, no live tmux required.
-// launchStrandLocked itself always makes a real tmux round trip
-// (list-panes/split-window + send-keys), so it is exercised only through
-// this decision seam, not invoked directly here; the composed live behavior
-// is covered by the smoke tests.
+// spawn_test.go table-tests planPaneTarget's adopt-vs-split decision — including the corpse-pane rules tmux forces (never adopt a dead pane; split the tallest alive pane, or the kept corpse when nothing is alive) and the header-pane exclusion (never adopted, never the preferred split target, but the sole-pane fallback) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
+// Both are pure/hermetic, no live tmux required.
+// launchStrandLocked itself always makes a real tmux round trip (list-panes/split-window + send-keys), so it is exercised only through this decision seam, not invoked directly here;
+// the composed live behavior is covered by the smoke tests.
 
 package reedengine
 
@@ -174,11 +168,7 @@ func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
 	}
 }
 
-// TestSendKeysLiteralArg pins the dash-escape rule for tmux send-keys -l:
-// tmux parses a '-'-leading literal argument as flags and silently drops
-// it (exit 0, nothing typed; '--' does not stop the parsing), so a
-// dash-leading opaque cmd must be sent with one leading space — which the
-// pane shell ignores — while every other text passes through verbatim.
+// TestSendKeysLiteralArg pins the dash-escape rule for tmux send-keys -l: tmux parses a '-'-leading literal argument as flags and silently drops it (exit 0, nothing typed; '--' does not stop the parsing), so a dash-leading opaque cmd must be sent with one leading space — which the pane shell ignores — while every other text passes through verbatim.
 func TestSendKeysLiteralArg(t *testing.T) {
 	tests := []struct {
 		text string
@@ -198,12 +188,7 @@ func TestSendKeysLiteralArg(t *testing.T) {
 	}
 }
 
-// TestValidateSplitCreatedNewPane pins the genuinely-new-pane guard both
-// split sites (launchStrandLocked, ensureHeaderPaneLocked) share: psmux's
-// silent too-small-to-split failure exits 0 and prints an EXISTING pane's
-// id, and trusting it would bind two owners to one pane — a duplicate pane
-// number in the next select-layout string, which destroys the session's
-// panes wholesale.
+// TestValidateSplitCreatedNewPane pins the genuinely-new-pane guard both split sites (launchStrandLocked, ensureHeaderPaneLocked) share: psmux's silent too-small-to-split failure exits 0 and prints an EXISTING pane's id, and trusting it would bind two owners to one pane — a duplicate pane number in the next select-layout string, which destroys the session's panes wholesale.
 func TestValidateSplitCreatedNewPane(t *testing.T) {
 	preSplitLive := []LivePane{{ID: "%0"}, {ID: "%1", Dead: true}}
 

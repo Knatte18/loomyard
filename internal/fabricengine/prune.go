@@ -1,9 +1,8 @@
-// prune.go implements the Prune verb: it identifies and optionally removes
-// orphaned or stale host↔weft pairs. A pair is stale when the host worktree
-// directory no longer exists; a pair is orphaned when a weft worktree has no
-// corresponding host worktree sibling. Prune operates purely on directory
-// names (<slug>-weft, a weftname-level invariant); fabric's branch-naming
-// scheme does not affect this file.
+// prune.go implements the Prune verb: it identifies and optionally removes orphaned or stale host↔weft pairs.
+// A pair is stale when the host worktree directory no longer exists;
+// a pair is orphaned when a weft worktree has no corresponding host worktree sibling.
+// Prune operates purely on directory names (<slug>-weft, a weftname-level invariant);
+// fabric's branch-naming scheme does not affect this file.
 
 package fabricengine
 
@@ -38,8 +37,7 @@ type PruneResult struct {
 	Entries []PruneEntry `json:"entries"`
 }
 
-// Prune identifies stale or orphaned host↔weft pairs and removes their stale
-// weft worktrees and associated portal/launcher directories when apply is true.
+// Prune identifies stale or orphaned host↔weft pairs and removes their stale weft worktrees and associated portal/launcher directories when apply is true.
 // Per-entry removal errors are recorded in PruneEntry.Error.
 func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 	entries, err := List(l.WorktreePath())

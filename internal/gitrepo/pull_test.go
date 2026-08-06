@@ -14,8 +14,7 @@ import (
 	"testing"
 )
 
-// TestPull_RemoteAdvanced_FastForwards asserts Pull() fast-forwards the local
-// branch when the remote has commits this clone lacks.
+// TestPull_RemoteAdvanced_FastForwards asserts Pull() fast-forwards the local branch when the remote has commits this clone lacks.
 func TestPull_RemoteAdvanced_FastForwards(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -49,11 +48,7 @@ func TestPull_RemoteAdvanced_FastForwards(t *testing.T) {
 	}
 }
 
-// TestPull_LocalDiverged_ReturnsError asserts the fast-forward-only
-// contract: a local branch with its own unpushed commit, pulling from a
-// remote that has diverged from underneath it, must be refused with an
-// error rather than folded into a merge commit — and local history must be
-// left untouched.
+// TestPull_LocalDiverged_ReturnsError asserts the fast-forward-only contract: a local branch with its own unpushed commit, pulling from a remote that has diverged from underneath it, must be refused with an error rather than folded into a merge commit — and local history must be left untouched.
 func TestPull_LocalDiverged_ReturnsError(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -98,9 +93,8 @@ func TestPull_LocalDiverged_ReturnsError(t *testing.T) {
 	}
 }
 
-// TestPull_NoRemoteConfigured_ErrorNamesRepoPath asserts that a repo with no
-// remote at all still fails loudly, and that the error names the repo path
-// (per Pull's documented error style) without leaking git's raw stderr.
+// TestPull_NoRemoteConfigured_ErrorNamesRepoPath asserts that a repo with no remote at all still fails loudly,
+// and that the error names the repo path (per Pull's documented error style) without leaking git's raw stderr.
 func TestPull_NoRemoteConfigured_ErrorNamesRepoPath(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "content")

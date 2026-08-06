@@ -1,6 +1,5 @@
-// htmltext.go normalizes HTML fragments and full documents down to plain,
-// whitespace-tidy text. It backs the "readability failed but the body still
-// has usable text" fallback step of the fetch cascade.
+// htmltext.go normalizes HTML fragments and full documents down to plain, whitespace-tidy text.
+// It backs the "readability failed but the body still has usable text" fallback step of the fetch cascade.
 
 package main
 

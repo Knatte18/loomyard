@@ -1,9 +1,5 @@
-// version.go defines the two pinned per-binary minimum multiplexer versions
-// (native tmux and its Windows port — psmux — have independent,
-// differently-shaped `-V` output, so one constant cannot compare both) plus
-// the pure `-V` parsers and comparator the capability probe (probe.go)
-// builds on. Every function here is build-tag-free and host-testable: it
-// transforms strings, never touches an OS primitive.
+// version.go defines the two pinned per-binary minimum multiplexer versions (native tmux and its Windows port — psmux — have independent, differently-shaped `-V` output, so one constant cannot compare both) plus the pure `-V` parsers and comparator the capability probe (probe.go) builds on.
+// Every function here is build-tag-free and host-testable: it transforms strings, never touches an OS primitive.
 
 package reedengine
 

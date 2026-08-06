@@ -1,17 +1,7 @@
-// supervised_test.go now covers exactly ensureSupervised's state-file/lock/
-// retry-exhaustion decision logic across its three remaining subtests —
-// TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout,
-// TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout,
-// TestEnsureSupervised_WedgedEscalationReuseReleasesLock — entirely offline
-// (no gopls spawn); the two previously gopls-gated subtests
-// (TestEnsureSupervised_StaleSocketCleanupAllowsRebind,
-// TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr) have moved to
-// the new //go:build scout-tagged supervised_scout_test.go in this same
-// package.
+// supervised_test.go now covers exactly ensureSupervised's state-file/lock/ retry-exhaustion decision logic across its three remaining subtests — TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout, TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout, TestEnsureSupervised_WedgedEscalationReuseReleasesLock — entirely offline (no gopls spawn);
+// the two previously gopls-gated subtests (TestEnsureSupervised_StaleSocketCleanupAllowsRebind, TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr) have moved to the new //go:build scout-tagged supervised_scout_test.go in this same package.
 //
-// Each remaining subtest spawns one real short-lived child process via
-// spawnAndHoldSubprocess only as a PID-liveness fixture (allowlisted in
-// cmd/lyx/tierpurity_test.go's allowedSpawners map), never gopls itself.
+// Each remaining subtest spawns one real short-lived child process via spawnAndHoldSubprocess only as a PID-liveness fixture (allowlisted in cmd/lyx/tierpurity_test.go's allowedSpawners map), never gopls itself.
 
 package scoutengine
 
@@ -56,13 +46,7 @@ func spawnAndHoldSubprocess(t *testing.T) int {
 	return cmd.Process.Pid
 }
 
-// TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout asserts
-// that when ensureSupervised can neither reuse a recorded daemon (its
-// address is unreachable) nor win the spawn lock (this test holds it for
-// the sub-test's own duration), it returns within its timeout bound rather
-// than hanging, with an error satisfying errors.Is(err,
-// ErrServerSpawnTimeoutSentinel) — proving the bounded-retry contract
-// rather than indefinite blocking.
+// TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout asserts that when ensureSupervised can neither reuse a recorded daemon (its address is unreachable) nor win the spawn lock (this test holds it for the sub-test's own duration), it returns within its timeout bound rather than hanging, with an error satisfying errors.Is(err, ErrServerSpawnTimeoutSentinel) — proving the bounded-retry contract rather than indefinite blocking.
 func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
@@ -114,22 +98,9 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 	}
 }
 
-// TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout
-// asserts that ensureSupervised is still bounded by its deadline when the
-// spawn lock is never contended at all — the "wedged daemon" scenario the
-// function's own doc comment names: a recorded state that reads healthy
-// (alive PID, current protocol version) but whose address is never actually
-// dialable. This sub-test now drives the wedged-daemon re-dial-under-lock
-// escalation (card 11): step 1's dial fails against the non-stale state, the
-// uncontended lock is acquired immediately, and the escalation's own
-// re-dial-under-lock retry (~500ms worst case) is what actually consumes
-// this test's 300ms deadline — the deadline guard placed immediately after
-// that retry is what returns ErrServerSpawnTimeout here, before ever
-// attempting proc.KillPID against the held fixture PID. Unlike
-// TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout (which
-// pre-holds the lock so every retry falls into the "lock not acquired"
-// branch, step 2), this sub-test never touches the lock itself, so it
-// reaches the escalation branch on its very first iteration.
+// TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout asserts that ensureSupervised is still bounded by its deadline when the spawn lock is never contended at all — the "wedged daemon" scenario the function's own doc comment names: a recorded state that reads healthy (alive PID, current protocol version) but whose address is never actually dialable.
+// This sub-test now drives the wedged-daemon re-dial-under-lock escalation (card 11): step 1's dial fails against the non-stale state, the uncontended lock is acquired immediately, and the escalation's own re-dial-under-lock retry (~500ms worst case) is what actually consumes this test's 300ms deadline — the deadline guard placed immediately after that retry is what returns ErrServerSpawnTimeout here, before ever attempting proc.KillPID against the held fixture PID.
+// Unlike TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout (which pre-holds the lock so every retry falls into the "lock not acquired" branch, step 2), this sub-test never touches the lock itself, so it reaches the escalation branch on its very first iteration.
 func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
@@ -192,17 +163,8 @@ func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrSer
 	}
 }
 
-// TestEnsureSupervised_WedgedEscalationReuseReleasesLock asserts the
-// wedged-daemon escalation's reuse-success return path (card 11): step 1's
-// dial-then-finalizeConnection fails against a non-stale state (the fake
-// server answers the first accepted connection's initialize but fails its
-// workspace/symbol probe), triggering the escalation, which acquires the
-// uncontended spawn lock and re-dials the same recorded address under the
-// lock — this time succeeding (the fake server answers the second accepted
-// connection's initialize and probe both successfully), so ensureSupervised
-// must reuse that connection rather than concluding the daemon is wedged.
-// This proves both that the reuse-success path frees the spawn lock and
-// that it never calls proc.KillPID against the held fixture PID.
+// TestEnsureSupervised_WedgedEscalationReuseReleasesLock asserts the wedged-daemon escalation's reuse-success return path (card 11): step 1's dial-then-finalizeConnection fails against a non-stale state (the fake server answers the first accepted connection's initialize but fails its workspace/symbol probe), triggering the escalation, which acquires the uncontended spawn lock and re-dials the same recorded address under the lock — this time succeeding (the fake server answers the second accepted connection's initialize and probe both successfully), so ensureSupervised must reuse that connection rather than concluding the daemon is wedged.
+// This proves both that the reuse-success path frees the spawn lock and that it never calls proc.KillPID against the held fixture PID.
 func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// Mirrors lspclient_test.go's own unix-socket skip: this is a

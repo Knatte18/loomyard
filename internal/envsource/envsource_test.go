@@ -1,6 +1,4 @@
-// envsource_test.go covers .env parsing, OS-environment overlay precedence, and
-// the DotEnv path constructor that pins envsource as the single declarer of the
-// ".env" filename token.
+// envsource_test.go covers .env parsing, OS-environment overlay precedence, and the DotEnv path constructor that pins envsource as the single declarer of the ".env" filename token.
 
 package envsource
 
@@ -11,9 +9,7 @@ import (
 	"testing"
 )
 
-// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename —
-// moved here from hubgeometry's own unit test now that envsource is the
-// single declarer of the ".env" token.
+// TestDotEnv verifies that DotEnv joins baseDir with the ".env" filename — moved here from hubgeometry's own unit test now that envsource is the single declarer of the ".env" token.
 func TestDotEnv(t *testing.T) {
 	t.Parallel()
 
@@ -230,8 +226,7 @@ func mapsEqual(a, b map[string]string) bool {
 	return true
 }
 
-// TestBuild_PrecisionValuePreservation verifies that values are not trimmed and
-// special characters are preserved exactly as written.
+// TestBuild_PrecisionValuePreservation verifies that values are not trimmed and special characters are preserved exactly as written.
 func TestBuild_PrecisionValuePreservation(t *testing.T) {
 	tmpDir := t.TempDir()
 	dotEnvContent := fmt.Sprintf("VAR_WITH_SPACE= exact value \nVAR_EMPTY=%s", "")

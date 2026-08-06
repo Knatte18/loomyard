@@ -1,10 +1,6 @@
-// Package lyxcwd is the entry gate that converts "the process started
-// somewhere" into "these are the coordinates of a legal lyx worktree, or here
-// is why this is not one". It is no longer a geometry owner — constructing
-// paths from structural tokens is precisely what it stops doing — it resolves
-// the active Location from a working directory and exposes typed accessors
-// for the paths every caller derives from that Location, so no other package
-// recomputes geometry from raw os.Getwd or git --show-toplevel calls.
+// Package lyxcwd is the entry gate that converts "the process started somewhere" into "these are the coordinates of a legal lyx worktree,
+// or here is why this is not one".
+// It is no longer a geometry owner — constructing paths from structural tokens is precisely what it stops doing — it resolves the active Location from a working directory and exposes typed accessors for the paths every caller derives from that Location, so no other package recomputes geometry from raw os.Getwd or git --show-toplevel calls.
 package lyxcwd
 
 import (
@@ -31,13 +27,8 @@ const (
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
 var ErrNotAGitRepo = errors.New("not a git repository")
 
-// Location represents the resolved coordinates of a legal lyx worktree: the
-// repo it belongs to, the hub container it lives inside, its own name within
-// that hub, and the anchored subpath lyx operates at. It deliberately does not
-// store Cwd or the worktree path themselves — under the strict cwd gate, cwd
-// is provably equal to AnchorPath() after a successful resolve, and the
-// worktree path is a direct child of HubPath by construction, so both are
-// derivable rather than stored.
+// Location represents the resolved coordinates of a legal lyx worktree: the repo it belongs to, the hub container it lives inside, its own name within that hub, and the anchored subpath lyx operates at.
+// It deliberately does not store Cwd or the worktree path themselves — under the strict cwd gate, cwd is provably equal to AnchorPath() after a successful resolve, and the worktree path is a direct child of HubPath by construction, so both are derivable rather than stored.
 type Location struct {
 	RepoName     string
 	HubPath      string
@@ -45,14 +36,12 @@ type Location struct {
 	AnchorRel    string
 }
 
-// WorktreePath returns the path to this worktree: a direct child of the hub
-// named WorktreeName.
+// WorktreePath returns the path to this worktree: a direct child of the hub named WorktreeName.
 func (l *Location) WorktreePath() string {
 	return filepath.Join(l.HubPath, l.WorktreeName)
 }
 
-// AnchorPath returns the path to the anchored subpath lyx operates at within
-// this worktree.
+// AnchorPath returns the path to the anchored subpath lyx operates at within this worktree.
 func (l *Location) AnchorPath() string {
 	return filepath.Join(l.WorktreePath(), l.AnchorRel)
 }
@@ -65,38 +54,32 @@ func Getwd() (string, error) {
 	return os.Getwd()
 }
 
-// Resolve builds a Location from the given cwd by running
-// git rev-parse --show-toplevel and reading the recorded .lyx-anchor
-// marker for AnchorRel, then requires cwd to equal the anchored directory
-// exactly.
+// Resolve builds a Location from the given cwd by running git rev-parse --show-toplevel and reading the recorded .lyx-anchor marker for AnchorRel, then requires cwd to equal the anchored directory exactly.
 //
-// AnchorRel defaults to "." when no anchor is recorded.
+// AnchorRel defaults to "."
+// when no anchor is recorded.
 // Resolve does NOT check for _lyx/ (that stays in internal/configengine).
 //
-// Returns the Location on success, ErrNotAGitRepo when git fails or cwd is
-// outside a git repo, or ErrCwdOutsideAnchor when cwd is not exactly the
-// anchored directory.
+// Returns the Location on success, ErrNotAGitRepo when git fails or cwd is outside a git repo, or ErrCwdOutsideAnchor when cwd is not exactly the anchored directory.
 func Resolve(cwd string) (*Location, error) {
 	return resolveCore(cwd, true)
 }
 
 // ResolveWorktree builds a Location like Resolve but applies NO cwd gate.
 //
-// It exists for callers holding a worktree root (not an acting cwd) where the gate would
-// spuriously fire. The gate applies only to Resolve(cwd), not internal sibling-layout
-// construction above a subpath anchor.
+// It exists for callers holding a worktree root (not an acting cwd) where the gate would spuriously fire.
+// The gate applies only to Resolve(cwd), not internal sibling-layout construction above a subpath anchor.
 func ResolveWorktree(worktreeRoot string) (*Location, error) {
 	return resolveCore(worktreeRoot, false)
 }
 
-// ResolveWithAnchor builds a Location exactly as Resolve does, but takes the
-// anchor as a parameter instead of reading the recorded marker, and applies
-// NO cwd gate. It is a deliberate bypass, not a general-purpose resolver: a
-// caller reaching for it to escape a gate failure is misusing it — the
-// correct fix is to stand in the anchored directory. It must stay ungated
-// because both its callers stand somewhere the gate would reject: fabric's
-// clone passes the freshly-cloned worktree root while the anchor may be a
-// non-"." subpath, and lyxtest injects anchors into synthetic hubs.
+// ResolveWithAnchor builds a Location exactly as Resolve does,
+// but takes the anchor as a parameter instead of reading the recorded marker,
+// and applies NO cwd gate.
+// It is a deliberate bypass, not a general-purpose resolver: a caller reaching for it to escape a gate failure is misusing it — the correct fix is to stand in the anchored directory.
+// It must stay ungated because both its callers stand somewhere the gate would reject: fabric's clone passes the freshly-cloned worktree root while the anchor may be a non-"."
+// subpath,
+// and lyxtest injects anchors into synthetic hubs.
 func ResolveWithAnchor(cwd, anchor string) (*Location, error) {
 	return resolveWithAnchorCore(cwd, anchor, false)
 }

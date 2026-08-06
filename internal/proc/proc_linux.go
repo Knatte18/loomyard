@@ -1,8 +1,7 @@
 // proc_linux.go — Linux process control primitives.
 //
 // On Linux, HideWindow is a no-op (there are no console windows).
-// Detach places the process in a new session using Setsid so it survives parent exit
-// and is unaffected by the parent's signal handling.
+// Detach places the process in a new session using Setsid so it survives parent exit and is unaffected by the parent's signal handling.
 
 package proc
 

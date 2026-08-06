@@ -1,11 +1,7 @@
-// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files
-// (the ones that run in every plain `go test`, without `-tags integration`/`smoke`/`scout`)
-// perform no expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, and
-// no lyxtest.Copy* fixture-tree copy. This is the repo-wide grep-guard that keeps the
-// offline Tier 1 loop's premise from rotting silently again, machine-enforcing what was
-// previously review discipline only. See CONSTRAINTS.md's Test Tier Purity Invariant.
-// It also flags an untagged file containing a long literal time.Sleep(...) (see
-// cmd/lyx/tiersleep_test.go).
+// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in every plain `go test`, without `-tags integration`/`smoke`/`scout`) perform no expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, and no lyxtest.Copy* fixture-tree copy.
+// This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting silently again, machine-enforcing what was previously review discipline only.
+// See CONSTRAINTS.md's Test Tier Purity Invariant.
+// It also flags an untagged file containing a long literal time.Sleep(...) (see cmd/lyx/tiersleep_test.go).
 
 package main
 
@@ -67,12 +63,8 @@ var tierPuritySkipDirs = map[string]bool{
 	"_raddle":  true,
 }
 
-// TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module
-// root and fails if any untagged file — one whose first non-empty line is not a
-// `//go:build` constraint mentioning any of knownTierTags — contains a banned spawn
-// token as a raw substring, unless the file (or its containing directory) is on the
-// allowedSpawners allowlist. Platform-only constraints (e.g. `//go:build windows`)
-// count as untagged: they still run in Tier 1 on that platform.
+// TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module root and fails if any untagged file — one whose first non-empty line is not a `//go:build` constraint mentioning any of knownTierTags — contains a banned spawn token as a raw substring, unless the file (or its containing directory) is on the allowedSpawners allowlist.
+// Platform-only constraints (e.g. `//go:build windows`) count as untagged: they still run in Tier 1 on that platform.
 func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
 	// crosscompile_test.go so this gate never blocks a minimal environment.

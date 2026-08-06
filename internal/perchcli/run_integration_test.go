@@ -53,17 +53,9 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	}
 }
 
-// TestRunCLI_Run_WeftSyncRunsOnEngineError verifies that Engine.Run
-// returning a hard error still gets the SAME weft commit+push treatment a
-// successful terminal outcome does, per the Weft Git Invariant: perchcli is
-// the loop owner regardless of how the block ended. A profile whose
-// round-caps ladder fails Profile.validate (non-increasing entries) makes
-// Engine.Run return an error deterministically, with no live reed/claude
-// substrate needed — validate runs before the first round would ever spawn,
-// so this test pre-seeds the run dir with a placeholder artifact (standing
-// in for what a real partially-completed block, e.g. a completed round
-// before a later could-not-start gate error, would have left behind) to
-// prove the sync call actually runs and actually commits it on this path.
+// TestRunCLI_Run_WeftSyncRunsOnEngineError verifies that Engine.Run returning a hard error still gets the SAME weft commit+push treatment a successful terminal outcome does, per the Weft Git Invariant: perchcli is the loop owner regardless of how the block ended.
+// A profile whose round-caps ladder fails Profile.validate (non-increasing entries) makes Engine.Run return an error deterministically, with no live reed/claude substrate needed — validate runs before the first round would ever spawn, so this test pre-seeds the run dir with a placeholder artifact (standing in for what a real partially-completed block, e.g.
+// a completed round before a later could-not-start gate error, would have left behind) to prove the sync call actually runs and actually commits it on this path.
 func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
@@ -113,14 +105,8 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_WeftCommitExcludesLockFiles verifies the block-exit weft
-// commit stages a run dir's real block state (state.json, round artifacts)
-// but never its machine-local advisory-lock files (run.lock,
-// state.json.lock): committing those would leak runtime noise into durable
-// weft history and materialize stale lock files on every other machine's
-// weft pull. Uses the same deterministic engine-error skeleton as
-// TestRunCLI_Run_WeftSyncRunsOnEngineError — the sync path is identical for
-// every outcome, so the cheapest deterministic exit exercises the pathspec.
+// TestRunCLI_Run_WeftCommitExcludesLockFiles verifies the block-exit weft commit stages a run dir's real block state (state.json, round artifacts) but never its machine-local advisory-lock files (run.lock, state.json.lock): committing those would leak runtime noise into durable weft history and materialize stale lock files on every other machine's weft pull.
+// Uses the same deterministic engine-error skeleton as TestRunCLI_Run_WeftSyncRunsOnEngineError — the sync path is identical for every outcome, so the cheapest deterministic exit exercises the pathspec.
 func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
@@ -171,16 +157,9 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath is the regression
-// guard perch lacked: TestRunCLI_Run_WeftCommitExcludesLockFiles above only
-// exercises RelPath ".", where the retired ":(exclude)*.lock" pathspec entry
-// happened to still work (a single leading "*" catches the whole subtree at
-// the root). At a nested RelPath the retired pathspec's leading-wildcard bug
-// would silently drop the ENTIRE commit (see CONSTRAINTS.md's Cross-module
-// exclusions bullet); this test proves the deepened
-// "**/_lyx/*/**/*.lock" git-exclude pattern (card 7) keeps perch's two-deep
-// run.lock/state.json.lock out while still landing the rest of the block
-// state, with the worktree geometry itself anchored two segments deep.
+// TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath is the regression guard perch lacked: TestRunCLI_Run_WeftCommitExcludesLockFiles above only exercises RelPath ".", where the retired ":(exclude)*.lock" pathspec entry happened to still work (a single leading "*" catches the whole subtree at the root).
+// At a nested RelPath the retired pathspec's leading-wildcard bug would silently drop the ENTIRE commit (see CONSTRAINTS.md's Cross-module exclusions bullet);
+// this test proves the deepened "**/_lyx/*/**/*.lock" git-exclude pattern (card 7) keeps perch's two-deep run.lock/state.json.lock out while still landing the rest of the block state, with the worktree geometry itself anchored two segments deep.
 func TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
@@ -244,13 +223,9 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_BusyBlockSkipsWeftSync verifies that a run refused because
-// another invocation holds the block's run.lock does NOT run the block-exit
-// weft sync: the loser changed nothing on disk, and syncing would commit
-// (and push) the WINNER's in-flight partial state under a misleading
-// "perch: <id> ERROR" message. A dirty file is planted in the weft-side
-// _lyx (standing in for the winner's mid-round state) to prove the sync
-// would have had something to commit and still did not run.
+// TestRunCLI_Run_BusyBlockSkipsWeftSync verifies that a run refused because another invocation holds the block's run.lock does NOT run the block-exit weft sync: the loser changed nothing on disk,
+// and syncing would commit (and push) the WINNER's in-flight partial state under a misleading "perch: <id> ERROR" message.
+// A dirty file is planted in the weft-side _lyx (standing in for the winner's mid-round state) to prove the sync would have had something to commit and still did not run.
 func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)

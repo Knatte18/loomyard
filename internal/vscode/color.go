@@ -1,6 +1,5 @@
-// color.go defines the title-bar color palette and the picker that assigns each
-// worktree the first unused non-green color, scanning sibling worktrees' VS Code
-// settings so two open worktrees never share a color. Green is reserved for main.
+// color.go defines the title-bar color palette and the picker that assigns each worktree the first unused non-green color, scanning sibling worktrees' VS Code settings so two open worktrees never share a color.
+// Green is reserved for main.
 
 package vscode
 
@@ -32,13 +31,10 @@ var palette = []string{
 // mainColor is the reserved color for the main worktree.
 var mainColor = "#2d7d46"
 
-// PickColor selects an unused non-green color for a child worktree, scanning
-// sibling .vscode/settings.json files for existing assignments. Returns the
-// first unused non-green palette color. primeName is the main worktree's base
-// name (the caller sources it via fabricengine.PrimeName(l), never resolved
-// here — pulling the entire fabric engine into a colour picker would
-// reintroduce a `git worktree list` subprocess per call); the prime-skip step
-// is omitted when primeName is empty.
+// PickColor selects an unused non-green color for a child worktree, scanning sibling .vscode/settings.json files for existing assignments.
+// Returns the first unused non-green palette color.
+// primeName is the main worktree's base name (the caller sources it via fabricengine.PrimeName(l), never resolved here — pulling the entire fabric engine into a colour picker would reintroduce a `git worktree list` subprocess per call);
+// the prime-skip step is omitted when primeName is empty.
 func PickColor(l *lyxcwd.Location, primeName string) string {
 	used := make(map[string]bool)
 

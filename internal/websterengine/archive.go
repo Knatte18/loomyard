@@ -1,13 +1,6 @@
-// archive.go implements webster's own archive-never-refuse primitives: a
-// webster-local copy of builderengine/runlevel.go's FirstFreeArchivePath and
-// ArchiveStateFile, plus a webster-owned ArchiveReportsDir, since builder's
-// own exported versions have an in-tree builder caller (frozen, per the
-// Shared Decision builder-is-frozen-copy-not-move) and cannot be moved.
-// firstFreeArchivePath is the shared same-second collision rule every
-// archive helper in this package reuses (including outcome.go's
-// archiveStaleOutcome); archiveStateFile and archiveReportsDir are the
-// --fresh crash/resume escape's two halves, wired into state and runlevel
-// in batch 7.
+// archive.go implements webster's own archive-never-refuse primitives: a webster-local copy of builderengine/runlevel.go's FirstFreeArchivePath and ArchiveStateFile, plus a webster-owned ArchiveReportsDir, since builder's own exported versions have an in-tree builder caller (frozen, per the Shared Decision builder-is-frozen-copy-not-move) and cannot be moved.
+// firstFreeArchivePath is the shared same-second collision rule every archive helper in this package reuses (including outcome.go's archiveStaleOutcome);
+// archiveStateFile and archiveReportsDir are the --fresh crash/resume escape's two halves, wired into state and runlevel in batch 7.
 
 package websterengine
 

@@ -1,6 +1,4 @@
-// remove.go implements the `remove` reed verb: deletes a strand by guid,
-// requiring --recursive for a non-leaf so children are never silently
-// orphaned, and reports every strand actually removed.
+// remove.go implements the `remove` reed verb: deletes a strand by guid, requiring --recursive for a non-leaf so children are never silently orphaned, and reports every strand actually removed.
 
 package reedcli
 

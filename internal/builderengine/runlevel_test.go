@@ -1,14 +1,5 @@
-// runlevel_test.go exercises Run's whole sequence against a fake
-// OrchestratorStarter and the plan-valid/plan-unapproved testdata fixtures:
-// the run-lock busy refusal, the automatic validation gate, the plan-
-// fingerprint mismatch guard and its --fresh archive/re-init escape, a
-// from-scratch fresh init, the entry-time orphan-orchestrator reclaim and
-// the persist-strand-before-wait rule, the shuttle-outcome-to-RunResult
-// mapping for all four shuttle outcomes, the pause-clearing rule's
-// done/stuck/paused split, and progress rendering for a partially-reported
-// state. No real agent spawns and no real git subprocess — Run's own logic
-// never shells out to git itself (that is spawn-batch's and poll's job), so
-// this file carries no //go:build integration tag and runs in Tier 1.
+// runlevel_test.go exercises Run's whole sequence against a fake OrchestratorStarter and the plan-valid/plan-unapproved testdata fixtures: the run-lock busy refusal, the automatic validation gate, the plan- fingerprint mismatch guard and its --fresh archive/re-init escape, a from-scratch fresh init, the entry-time orphan-orchestrator reclaim and the persist-strand-before-wait rule, the shuttle-outcome-to-RunResult mapping for all four shuttle outcomes, the pause-clearing rule's done/stuck/paused split, and progress rendering for a partially-reported state.
+// No real agent spawns and no real git subprocess — Run's own logic never shells out to git itself (that is spawn-batch's and poll's job), so this file carries no //go:build integration tag and runs in Tier 1.
 
 package builderengine_test
 
@@ -214,9 +205,8 @@ func newRunFixture(t *testing.T) *runFixture {
 // writes to simulate the orchestrator's own final action on a clean finish.
 const doneOutcomeYAML = "outcome: done\nstuck_reason: null\nbatches_done: 5\n"
 
-// TestRun_LockBusy proves Run refuses fast with ErrRunBusy when another
-// caller already holds the builder dir's run.lock, and that the fake
-// runner is never reached — the losing call must touch nothing.
+// TestRun_LockBusy proves Run refuses fast with ErrRunBusy when another caller already holds the builder dir's run.lock,
+// and that the fake runner is never reached — the losing call must touch nothing.
 func TestRun_LockBusy(t *testing.T) {
 	fx := newRunFixture(t)
 
@@ -238,9 +228,7 @@ func TestRun_LockBusy(t *testing.T) {
 	}
 }
 
-// TestRun_ValidationRefusal proves Run refuses an unapproved plan before
-// ever reaching the fake runner — the automatic gate half of plan-format's
-// validate-both decision.
+// TestRun_ValidationRefusal proves Run refuses an unapproved plan before ever reaching the fake runner — the automatic gate half of plan-format's validate-both decision.
 func TestRun_ValidationRefusal(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Deps.PlanDir = copyPlanFixture(t, filepath.Join("testdata", "plan-unapproved"))
@@ -257,10 +245,7 @@ func TestRun_ValidationRefusal(t *testing.T) {
 	}
 }
 
-// TestRun_FreshInitPersistsState proves a from-scratch Run (no prior
-// state.json) initializes a fresh State — a minted RunGUID and the plan's
-// own Fingerprint recorded — and persists it to disk before ever spawning
-// the orchestrator, so a later cross-process spawn-batch call can read it.
+// TestRun_FreshInitPersistsState proves a from-scratch Run (no prior state.json) initializes a fresh State — a minted RunGUID and the plan's own Fingerprint recorded — and persists it to disk before ever spawning the orchestrator, so a later cross-process spawn-batch call can read it.
 func TestRun_FreshInitPersistsState(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "sess-fresh", RunDir: "/kept/fresh"}
@@ -294,12 +279,8 @@ func TestRun_FreshInitPersistsState(t *testing.T) {
 	}
 }
 
-// TestRun_FingerprintMismatchThenFreshArchivesAndReinits proves the
-// discussion's crash/resume guard end to end: a second Run against a
-// plan whose content changed since state.json was created refuses with
-// ErrFingerprintMismatch (and never reaches the fake runner); a third Run
-// with --fresh instead archives the stale state.json and reports dir and
-// re-inits with a fresh RunGUID and the new fingerprint.
+// TestRun_FingerprintMismatchThenFreshArchivesAndReinits proves the discussion's crash/resume guard end to end: a second Run against a plan whose content changed since state.json was created refuses with ErrFingerprintMismatch (and never reaches the fake runner);
+// a third Run with --fresh instead archives the stale state.json and reports dir and re-inits with a fresh RunGUID and the new fingerprint.
 func TestRun_FingerprintMismatchThenFreshArchivesAndReinits(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
@@ -394,11 +375,7 @@ func TestRun_FingerprintMismatchThenFreshArchivesAndReinits(t *testing.T) {
 	}
 }
 
-// TestRun_OutcomeMapping tables Run's mapping for all four shuttle outcomes:
-// OutcomeDone parses outcome.yaml into a successful RunResult; Asking, Died,
-// and Timeout each map to their own distinct *Orchestrator*Error, carrying
-// SessionID and the kept RunDir (and, for asking, the LastAssistantMessage)
-// — and never attempt to parse a (possibly absent) outcome.yaml.
+// TestRun_OutcomeMapping tables Run's mapping for all four shuttle outcomes: OutcomeDone parses outcome.yaml into a successful RunResult; Asking, Died, and Timeout each map to their own distinct *Orchestrator*Error, carrying SessionID and the kept RunDir (and, for asking, the LastAssistantMessage) — and never attempt to parse a (possibly absent) outcome.yaml.
 func TestRun_OutcomeMapping(t *testing.T) {
 	t.Run("done parses outcome.yaml into a RunResult", func(t *testing.T) {
 		fx := newRunFixture(t)
@@ -476,11 +453,8 @@ func TestRun_OutcomeMapping(t *testing.T) {
 	})
 }
 
-// TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused proves step 9's rule: a
-// terminal outcome clears the builder dir's pause flag when the parsed
-// outcome is done or stuck, but leaves it in place when the parsed outcome
-// is paused — the operator's own pause request must not be silently
-// erased.
+// TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused proves step 9's rule: a terminal outcome clears the builder dir's pause flag when the parsed outcome is done or stuck,
+// but leaves it in place when the parsed outcome is paused — the operator's own pause request must not be silently erased.
 func TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -515,13 +489,7 @@ func TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused(t *testing.T) {
 	}
 }
 
-// TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt proves the
-// entry-time pause clear runs only once Run has passed its refusal gates: a
-// run that REFUSES on a validation finding or a plan-fingerprint mismatch
-// leaves a pending pause flag intact (the operator's request must not be
-// silently discarded by a run that resumed nothing), while a run that
-// PROCEEDS past those gates clears a pre-existing pause before ever spawning
-// its orchestrator (the never-instantly-re-pause property).
+// TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt proves the entry-time pause clear runs only once Run has passed its refusal gates: a run that REFUSES on a validation finding or a plan-fingerprint mismatch leaves a pending pause flag intact (the operator's request must not be silently discarded by a run that resumed nothing), while a run that PROCEEDS past those gates clears a pre-existing pause before ever spawning its orchestrator (the never-instantly-re-pause property).
 func TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt(t *testing.T) {
 	t.Run("validation refusal leaves a pending pause intact", func(t *testing.T) {
 		fx := newRunFixture(t)
@@ -588,12 +556,8 @@ func TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt(t *testing.T) {
 	})
 }
 
-// TestRun_ProgressRenderingPartiallyReported proves {{.progress}} renders a
-// "done" line for exactly the batches that already have a report on disk
-// (a partially-reported resume state), and the literal word "none" would
-// have rendered instead had none existed — checked here by asserting the
-// filled prompt the fake runner received names the reported batch but not
-// an unreported one.
+// TestRun_ProgressRenderingPartiallyReported proves {{.progress}} renders a "done" line for exactly the batches that already have a report on disk (a partially-reported resume state),
+// and the literal word "none" would have rendered instead had none existed — checked here by asserting the filled prompt the fake runner received names the reported batch but not an unreported one.
 func TestRun_ProgressRenderingPartiallyReported(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
@@ -624,12 +588,8 @@ func TestRun_ProgressRenderingPartiallyReported(t *testing.T) {
 	}
 }
 
-// TestRun_ProgressRenderingStuckBatchIsNotDone proves {{.progress}} renders a
-// batch's OWN reported status, so a batch that reported stuck on a prior run
-// is summarized "stuck" (needing recovery) — never "done" — to the resumed
-// orchestrator. Labeling a stuck report "done" would make the resumed
-// orchestrator skip the recovery the batch still needs and finish the run
-// "done" for an incomplete plan, a silent false-success across crash/resume.
+// TestRun_ProgressRenderingStuckBatchIsNotDone proves {{.progress}} renders a batch's OWN reported status, so a batch that reported stuck on a prior run is summarized "stuck" (needing recovery) — never "done" — to the resumed orchestrator.
+// Labeling a stuck report "done" would make the resumed orchestrator skip the recovery the batch still needs and finish the run "done" for an incomplete plan, a silent false-success across crash/resume.
 func TestRun_ProgressRenderingStuckBatchIsNotDone(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
@@ -660,10 +620,7 @@ func TestRun_ProgressRenderingStuckBatchIsNotDone(t *testing.T) {
 	}
 }
 
-// TestRun_SpecFieldsMapped proves the shuttleengine.Spec built for the
-// orchestrator's own spawn matches modelspec's documented consumer mapping
-// and this batch's remaining Spec-field requirements (single output file,
-// Interactive false, Timeout from OrchestratorTimeoutMin).
+// TestRun_SpecFieldsMapped proves the shuttleengine.Spec built for the orchestrator's own spawn matches modelspec's documented consumer mapping and this batch's remaining Spec-field requirements (single output file, Interactive false, Timeout from OrchestratorTimeoutMin).
 func TestRun_SpecFieldsMapped(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
@@ -708,13 +665,8 @@ func TestRun_SpecFieldsMapped(t *testing.T) {
 	}
 }
 
-// TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry proves Run's entry-time
-// orphan reclaim: a state.json recording a prior run's orchestrator strand
-// that the reed still reports LIVE (a killed `run` process, or a timed-out
-// orchestrator whose kept pane is still working) is stopped BEFORE the fresh
-// orchestrator ever starts — otherwise two orchestrators double-drive the
-// same run (found live in round fable-r4). A recorded strand the reed reports
-// not-live (or does not track at all) is left alone.
+// TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry proves Run's entry-time orphan reclaim: a state.json recording a prior run's orchestrator strand that the reed still reports LIVE (a killed `run` process, or a timed-out orchestrator whose kept pane is still working) is stopped BEFORE the fresh orchestrator ever starts — otherwise two orchestrators double-drive the same run (found live in round fable-r4).
+// A recorded strand the reed reports not-live (or does not track at all) is left alone.
 func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -776,12 +728,7 @@ func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
 	}
 }
 
-// TestRun_PersistsOrchestratorStrandBeforeWait proves the two-phase spawn's
-// point: the fresh orchestrator's strand identity is already durable in
-// state.json at the moment Run starts blocking on the spawn, so a `run`
-// process that dies mid-wait leaves the record the next run's entry-time
-// reclaim needs — recording it only after Wait returned would miss exactly
-// the crash case the record exists for.
+// TestRun_PersistsOrchestratorStrandBeforeWait proves the two-phase spawn's point: the fresh orchestrator's strand identity is already durable in state.json at the moment Run starts blocking on the spawn, so a `run` process that dies mid-wait leaves the record the next run's entry-time reclaim needs — recording it only after Wait returned would miss exactly the crash case the record exists for.
 func TestRun_PersistsOrchestratorStrandBeforeWait(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
@@ -807,14 +754,9 @@ func TestRun_PersistsOrchestratorStrandBeforeWait(t *testing.T) {
 	}
 }
 
-// TestRun_FreshStopsSupersededRunsLiveStrands proves --fresh's reclaim half:
-// archiving a superseded run's state must first stop every recorded batch
-// strand the reed still reports live, or the orphaned implementer keeps
-// working against the same host repo and its late report lands on the FRESH
-// run's report path (the recreated reports dir), where it is distilled as
-// the fresh batch's success — found live in round fable-r4 as a --fresh run
-// returning done on the superseded plan's work. A recorded strand the reed
-// reports not-live is left alone (nothing to stop).
+// TestRun_FreshStopsSupersededRunsLiveStrands proves --fresh's reclaim half: archiving a superseded run's state must first stop every recorded batch strand the reed still reports live,
+// or the orphaned implementer keeps working against the same host repo and its late report lands on the FRESH run's report path (the recreated reports dir), where it is distilled as the fresh batch's success — found live in round fable-r4 as a --fresh run returning done on the superseded plan's work.
+// A recorded strand the reed reports not-live is left alone (nothing to stop).
 func TestRun_FreshStopsSupersededRunsLiveStrands(t *testing.T) {
 	fx := newRunFixture(t)
 	fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}

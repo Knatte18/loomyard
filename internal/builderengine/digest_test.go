@@ -1,7 +1,4 @@
-// digest_test.go covers Distill's scope/drift matrix: in-scope changes,
-// directory-prefix scope coverage, a justified out-of-scope entry,
-// unreported drift, the "internal/foo must not cover internal/foobar"
-// boundary case, and the dirty flag's straight pass-through.
+// digest_test.go covers Distill's scope/drift matrix: in-scope changes, directory-prefix scope coverage, a justified out-of-scope entry, unreported drift, the "internal/foo must not cover internal/foobar" boundary case, and the dirty flag's straight pass-through.
 
 package builderengine_test
 

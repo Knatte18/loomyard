@@ -1,12 +1,6 @@
-// awaitbatch.go implements the `await-batch` webster verb: the bounded
-// long-poll Master calls between forking a batch's implementer and recording
-// it. Forks are backgrounded agents on current Claude Code (they return
-// immediately, not synchronously inside Master's turn — round fable-r1's F1
-// finding), so Master must stay inside its turn by blocking on this verb
-// until the fork's report lands; ending the turn instead classifies the run
-// asking and kills it. The verb is deliberately stateless: no state.json
-// read, no lease, no weft — a pure bounded watch on the report path, so it
-// can never corrupt a run no matter who calls it or when.
+// awaitbatch.go implements the `await-batch` webster verb: the bounded long-poll Master calls between forking a batch's implementer and recording it.
+// Forks are backgrounded agents on current Claude Code (they return immediately, not synchronously inside Master's turn — round fable-r1's F1 finding), so Master must stay inside its turn by blocking on this verb until the fork's report lands; ending the turn instead classifies the run asking and kills it.
+// The verb is deliberately stateless: no state.json read, no lease, no weft — a pure bounded watch on the report path, so it can never corrupt a run no matter who calls it or when.
 package webstercli
 
 import (

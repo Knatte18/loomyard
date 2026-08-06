@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root
-// yields AnchorRel "." and correct other fields.
+// TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root yields AnchorRel "."
+// and correct other fields.
 func TestResolve_FromWorktreeRoot(t *testing.T) {
 	t.Parallel()
 
@@ -59,10 +59,7 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 	}
 }
 
-// TestResolve_FromSubdirectory verifies that, for an unanchored repo, Resolve
-// from a subdirectory errors under the strict cwd gate: with no anchor
-// recorded, AnchorRel is only ever ".", so cwd is only ever accepted at the
-// worktree root itself, never in a subdirectory.
+// TestResolve_FromSubdirectory verifies that, for an unanchored repo, Resolve from a subdirectory errors under the strict cwd gate: with no anchor recorded, AnchorRel is only ever ".", so cwd is only ever accepted at the worktree root itself, never in a subdirectory.
 func TestResolve_FromSubdirectory(t *testing.T) {
 	t.Parallel()
 
@@ -84,8 +81,7 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 	}
 }
 
-// TestResolve_ForwardSlashNormalization verifies that forward-slash output
-// from --show-toplevel is reconciled with backslash cwd on Windows.
+// TestResolve_ForwardSlashNormalization verifies that forward-slash output from --show-toplevel is reconciled with backslash cwd on Windows.
 func TestResolve_ForwardSlashNormalization(t *testing.T) {
 	t.Parallel()
 
@@ -104,8 +100,7 @@ func TestResolve_ForwardSlashNormalization(t *testing.T) {
 	}
 }
 
-// TestResolve_NotAGitRepo verifies that Resolve in a non-git temp directory
-// returns ErrNotAGitRepo.
+// TestResolve_NotAGitRepo verifies that Resolve in a non-git temp directory returns ErrNotAGitRepo.
 func TestResolve_NotAGitRepo(t *testing.T) {
 	t.Parallel()
 
@@ -131,11 +126,7 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestIsReservedHubName_Pattern pins _pattern into the reserved-name set alongside
-// _lyx, _raddle, _board, _portals, and _launchers (see
-// fabricengine/junctionnames_test.go's TestIsReservedHubName for the full
-// table): a worktree slug must never claim the PATTERN constraint-injection
-// surface's directory name.
+// TestIsReservedHubName_Pattern pins _pattern into the reserved-name set alongside _lyx, _raddle, _board, _portals, and _launchers (see fabricengine/junctionnames_test.go's TestIsReservedHubName for the full table): a worktree slug must never claim the PATTERN constraint-injection surface's directory name.
 func TestIsReservedHubName_Pattern(t *testing.T) {
 	t.Parallel()
 

@@ -1,6 +1,5 @@
-// sections_test.go covers the three plan-level body sections extracted from
-// 00-overview.md: they are exposed verbatim from the golden fixture, and each is
-// empty when its heading is absent from the overview.
+// sections_test.go covers the three plan-level body sections extracted from 00-overview.md: they are exposed verbatim from the golden fixture,
+// and each is empty when its heading is absent from the overview.
 
 package planparser_test
 

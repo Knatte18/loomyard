@@ -1,19 +1,7 @@
-// poll.go implements the `poll` verb's engine core: Classify, the pure
-// decision function that re-derives an in-flight implementer's cross-
-// process terminal state (nobody in poll's process holds the shuttle Run
-// handle — spawn-batch exits right after Start — so this is re-derived from
-// files and a live reed query every tick, never from an in-process handle);
-// the two impure gatherers Classify's caller feeds from (TurnEnded,
-// StrandLive), both riding shuttle's provider-invariant seams per the
-// Shuttle Provider-Seam Invariant — builderengine never parses event
-// grammar or pane state itself; exported so buildercli's own `poll` verb
-// calls them directly rather than carrying a byte-for-byte copy; and
-// PollUntilTerminal, the blocking
-// long-poll loop that re-runs a caller-supplied gather function on a fixed
-// tick until a batch reaches a terminal classification or the wait budget
-// elapses. The long-poll IS the notification (the discussion's `poll`
-// semantics decision): the loop blocks inside Go, costing the orchestrator
-// nothing per tick, and returns the instant the batch terminates.
+// poll.go implements the `poll` verb's engine core: Classify, the pure decision function that re-derives an in-flight implementer's cross- process terminal state (nobody in poll's process holds the shuttle Run handle — spawn-batch exits right after Start — so this is re-derived from files and a live reed query every tick, never from an in-process handle);
+// the two impure gatherers Classify's caller feeds from (TurnEnded, StrandLive), both riding shuttle's provider-invariant seams per the Shuttle Provider-Seam Invariant — builderengine never parses event grammar or pane state itself; exported so buildercli's own `poll` verb calls them directly rather than carrying a byte-for-byte copy;
+// and PollUntilTerminal, the blocking long-poll loop that re-runs a caller-supplied gather function on a fixed tick until a batch reaches a terminal classification or the wait budget elapses.
+// The long-poll IS the notification (the discussion's `poll` semantics decision): the loop blocks inside Go, costing the orchestrator nothing per tick, and returns the instant the batch terminates.
 
 package builderengine
 
@@ -25,14 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ClassifyInputs carries every signal Classify's decision needs. Changed,
-// Scope, and Dirty are the digest-computation inputs (git diff / scope
-// prefixes / worktree cleanliness) and MUST be filled only when Report is
-// non-nil — every caller-side gather implementation checks for the report
-// FIRST and runs the gitquery helpers exclusively inside that
-// report-present branch, since a running snapshot never touches git (the
-// discussion: drift judgment on a half-done batch is noise, and a literal
-// every-tick diff would be a defect at the 1s poll tick).
+// ClassifyInputs carries every signal Classify's decision needs.
+// Changed, Scope, and Dirty are the digest-computation inputs (git diff / scope prefixes / worktree cleanliness) and MUST be filled only when Report is non-nil — every caller-side gather implementation checks for the report FIRST and runs the gitquery helpers exclusively inside that report-present branch, since a running snapshot never touches git (the discussion: drift judgment on a half-done batch is noise, and a literal every-tick diff would be a defect at the 1s poll tick).
 type ClassifyInputs struct {
 	// BatchNumber and BatchSlug together name the batch being classified,
 	// used to compose the NN-<batch-slug> identifier a non-report Digest
@@ -72,9 +54,7 @@ type ClassifyInputs struct {
 	Dirty   bool
 }
 
-// Classify decides a batch's terminal classification: report-present
-// (Distill), no-report-TurnEnded (dead/asking), elapsed>timeout (dead/timeout),
-// strand gone (dead/died), or running snapshot.
+// Classify decides a batch's terminal classification: report-present (Distill), no-report-TurnEnded (dead/asking), elapsed>timeout (dead/timeout), strand gone (dead/died), or running snapshot.
 func Classify(in ClassifyInputs) (Digest, bool) {
 	batch := fmt.Sprintf("%02d-%s", in.BatchNumber, in.BatchSlug)
 
@@ -97,10 +77,9 @@ func Classify(in ClassifyInputs) (Digest, bool) {
 	return Digest{Batch: batch, Status: DigestStatusRunning, ElapsedS: int(in.Elapsed.Seconds())}, false
 }
 
-// TurnEnded reports whether the implementer's turn ended without
-// satisfying the file contract, by delegating event-grammar parsing to
-// engine.ParseEvents and checking for EventStop. Missing events file
-// reports (false, nil); ParseEvents errors propagate.
+// TurnEnded reports whether the implementer's turn ended without satisfying the file contract, by delegating event-grammar parsing to engine.ParseEvents and checking for EventStop.
+// Missing events file reports (false, nil);
+// ParseEvents errors propagate.
 func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	data, err := os.ReadFile(eventsPath)
 	if err != nil {
@@ -123,9 +102,8 @@ func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	return false, nil
 }
 
-// StrandLive reports whether guid names a strand reed currently tracks as
-// live, by calling reed.Status() and checking the Strands. guid absent
-// reports (false, nil).
+// StrandLive reports whether guid names a strand reed currently tracks as live, by calling reed.Status() and checking the Strands.
+// guid absent reports (false, nil).
 func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 	status, err := reed.Status()
 	if err != nil {
@@ -161,9 +139,10 @@ func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 // keeps the loop responsive without hammering gather's own I/O.
 const pollTick = 1 * time.Second
 
-// PollUntilTerminal repeatedly calls gather on pollTick cadence until
-// terminal or wait elapses. Terminal results return immediately. If wait
-// elapses, returns the last running digest. gather errors propagate.
+// PollUntilTerminal repeatedly calls gather on pollTick cadence until terminal or wait elapses.
+// Terminal results return immediately.
+// If wait elapses, returns the last running digest.
+// gather errors propagate.
 func PollUntilTerminal(gather func() (Digest, bool, error), wait time.Duration, clk clock) (Digest, error) {
 	deadline := clk.Now().Add(wait)
 

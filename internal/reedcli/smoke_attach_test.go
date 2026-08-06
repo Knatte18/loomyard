@@ -14,8 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestSmokeAttachRendersInsideHarnessPane drives the interactive terminal handover
-// of `lyx reed attach` against a real ConPTY terminal.
+// TestSmokeAttachRendersInsideHarnessPane drives the interactive terminal handover of `lyx reed attach` against a real ConPTY terminal.
 func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	shellPath := harnessShellBinaryPath(t)

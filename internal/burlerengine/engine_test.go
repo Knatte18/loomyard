@@ -1,15 +1,5 @@
-// engine_test.go tables Engine.Run against a same-package fakeShuttle: spec
-// construction (including the ClusterFan -> Spec.ForkSubagents wiring), the
-// cluster audit policy wiring (a violating audit fails the round, a clean
-// one passes with warnings copied through, and a non-cluster profile never
-// invokes it), every shuttleengine.Outcome, the review-file parse path
-// (valid BLOCKING/APPROVED, missing file, malformed frontmatter) plus a
-// hard shuttle error, and the per-round instruction-file materialization
-// step (happy path writes exactly three files under this package's own
-// dotLyxDirName join, and a materialization failure returns a hard error
-// before the shuttle ever runs). Every *lyxcwd.Location built here sets
-// HubPath and WorktreeName to a test temp dir, so WorktreePath() resolves
-// materialization there rather than into the real package source tree.
+// engine_test.go tables Engine.Run against a same-package fakeShuttle: spec construction (including the ClusterFan -> Spec.ForkSubagents wiring), the cluster audit policy wiring (a violating audit fails the round, a clean one passes with warnings copied through, and a non-cluster profile never invokes it), every shuttleengine.Outcome, the review-file parse path (valid BLOCKING/APPROVED, missing file, malformed frontmatter) plus a hard shuttle error, and the per-round instruction-file materialization step (happy path writes exactly three files under this package's own dotLyxDirName join, and a materialization failure returns a hard error before the shuttle ever runs).
+// Every *lyxcwd.Location built here sets HubPath and WorktreeName to a test temp dir, so WorktreePath() resolves materialization there rather than into the real package source tree.
 
 package burlerengine
 
@@ -96,10 +86,7 @@ const (
 	malformedReview = "not frontmatter at all\n"
 )
 
-// TestEngine_Run_SpecConstruction proves Run builds the shuttle Spec
-// exactly as the round driver decision pins it: non-empty prompt,
-// OutputFiles = [reviewPath, fixerPath] resolved absolute and in that
-// order, Role "burler", RunOpts mapped 1:1, and Interactive left false.
+// TestEngine_Run_SpecConstruction proves Run builds the shuttle Spec exactly as the round driver decision pins it: non-empty prompt, OutputFiles = [reviewPath, fixerPath] resolved absolute and in that order, Role "burler", RunOpts mapped 1:1, and Interactive left false.
 func TestEngine_Run_SpecConstruction(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
@@ -147,10 +134,7 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_ForkSubagentsSpecWiring proves Spec.ForkSubagents mirrors
-// Profile.ClusterFan exactly: true only when a fan actually resolved, false
-// for a plain (non-cluster) profile — the sole trigger for a cluster
-// round's fork authorization.
+// TestEngine_Run_ForkSubagentsSpecWiring proves Spec.ForkSubagents mirrors Profile.ClusterFan exactly: true only when a fan actually resolved, false for a plain (non-cluster) profile — the sole trigger for a cluster round's fork authorization.
 func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 	cfg := Config{
 		Lenses: map[string]string{"style": "style prose"},
@@ -200,12 +184,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 	})
 }
 
-// TestEngine_Run_ClusterAuditPolicy proves Run wires shuttleResult.ForkAudit through
-// auditClusterRound for a done cluster round: a violating audit fails Run with the
-// populated-so-far Result carrying the raw ForkAudit, a clean-but-warning audit passes
-// with Result.ClusterWarnings copied through, and a non-cluster profile never invokes
-// the policy at all — no ForkAudit/ClusterWarnings on the Result even when the fake
-// shuttle's scripted Result carries one.
+// TestEngine_Run_ClusterAuditPolicy proves Run wires shuttleResult.ForkAudit through auditClusterRound for a done cluster round: a violating audit fails Run with the populated-so-far Result carrying the raw ForkAudit, a clean-but-warning audit passes with Result.ClusterWarnings copied through, and a non-cluster profile never invokes the policy at all — no ForkAudit/ClusterWarnings on the Result even when the fake shuttle's scripted Result carries one.
 func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 	cfg := Config{
 		Lenses: map[string]string{"style": "style prose"},
@@ -288,11 +267,8 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 	})
 }
 
-// TestEngine_Run_NonDoneOutcomes proves every non-done shuttleengine
-// outcome carries through to Result.Outcome with an empty Verdict and a
-// nil error, and that LastAssistantMessage and the kept shuttle RunDir are
-// carried for a non-done outcome — the RunDir passthrough is what lets a
-// caller point at the kept shuttle run dir for a died/timeout round.
+// TestEngine_Run_NonDoneOutcomes proves every non-done shuttleengine outcome carries through to Result.Outcome with an empty Verdict and a nil error,
+// and that LastAssistantMessage and the kept shuttle RunDir are carried for a non-done outcome — the RunDir passthrough is what lets a caller point at the kept shuttle run dir for a died/timeout round.
 func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -341,10 +317,8 @@ func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_DoneBlockingVerdict proves a done run whose review file
-// carries a valid BLOCKING verdict parses into VerdictBlocking with its
-// findings, and that the shuttle RunDir passes through even on a done
-// outcome.
+// TestEngine_Run_DoneBlockingVerdict proves a done run whose review file carries a valid BLOCKING verdict parses into VerdictBlocking with its findings,
+// and that the shuttle RunDir passes through even on a done outcome.
 func TestEngine_Run_DoneBlockingVerdict(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
@@ -369,8 +343,7 @@ func TestEngine_Run_DoneBlockingVerdict(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_DoneApprovedVerdict proves a done run whose review file
-// carries a valid APPROVED verdict parses into VerdictApproved.
+// TestEngine_Run_DoneApprovedVerdict proves a done run whose review file carries a valid APPROVED verdict parses into VerdictApproved.
 func TestEngine_Run_DoneApprovedVerdict(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
@@ -392,10 +365,7 @@ func TestEngine_Run_DoneApprovedVerdict(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_DoneMissingReviewFile proves a done outcome whose review
-// file was never actually written (a fake-shuttle-only scenario; the real
-// shuttle Spec.validate + file-contract polling makes this impossible in
-// production) fails loud with an error rather than defaulting a verdict.
+// TestEngine_Run_DoneMissingReviewFile proves a done outcome whose review file was never actually written (a fake-shuttle-only scenario; the real shuttle Spec.validate + file-contract polling makes this impossible in production) fails loud with an error rather than defaulting a verdict.
 func TestEngine_Run_DoneMissingReviewFile(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
@@ -412,9 +382,7 @@ func TestEngine_Run_DoneMissingReviewFile(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_DoneMalformedReviewFile proves a done outcome whose
-// review file fails ParseReview returns an error that carries the parse
-// failure.
+// TestEngine_Run_DoneMalformedReviewFile proves a done outcome whose review file fails ParseReview returns an error that carries the parse failure.
 func TestEngine_Run_DoneMalformedReviewFile(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
@@ -433,8 +401,7 @@ func TestEngine_Run_DoneMalformedReviewFile(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_ShuttleError proves a hard shuttle failure is wrapped
-// rather than swallowed.
+// TestEngine_Run_ShuttleError proves a hard shuttle failure is wrapped rather than swallowed.
 func TestEngine_Run_ShuttleError(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{err: errors.New("reed: add strand failed")}
@@ -449,11 +416,7 @@ func TestEngine_Run_ShuttleError(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_MaterializesInstructionFiles proves Run writes exactly
-// three instruction files to a fresh per-round directory under this
-// package's own dotLyxDirName join, bakes their absolute paths into the orchestrator
-// prompt it hands the shuttle, and that a rendered file's content reflects
-// a filled marker from the profile.
+// TestEngine_Run_MaterializesInstructionFiles proves Run writes exactly three instruction files to a fresh per-round directory under this package's own dotLyxDirName join, bakes their absolute paths into the orchestrator prompt it hands the shuttle, and that a rendered file's content reflects a filled marker from the profile.
 func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{
@@ -497,9 +460,7 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 	}
 }
 
-// TestEngine_Run_MaterializeFailure proves a materialization failure (the
-// .lyx parent directory cannot be created) returns a hard error naming the
-// failure, before the shuttle is ever invoked.
+// TestEngine_Run_MaterializeFailure proves a materialization failure (the .lyx parent directory cannot be created) returns a hard error naming the failure, before the shuttle is ever invoked.
 func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 

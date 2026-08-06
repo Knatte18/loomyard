@@ -1,9 +1,4 @@
-// judgeverdict_test.go table-drives ParseJudgeVerdict (both framings) and
-// ParseTriageVerdict over the happy paths and every fail-loud rule
-// documented on them: every legal verdict per framing, the wrong framing's
-// vocabulary rejected, lowercase rejected, missing/empty rationale
-// rejected, missing/unclosed/empty frontmatter rejected, and CRLF content
-// accepted.
+// judgeverdict_test.go table-drives ParseJudgeVerdict (both framings) and ParseTriageVerdict over the happy paths and every fail-loud rule documented on them: every legal verdict per framing, the wrong framing's vocabulary rejected, lowercase rejected, missing/empty rationale rejected, missing/unclosed/empty frontmatter rejected, and CRLF content accepted.
 
 package treadleengine
 

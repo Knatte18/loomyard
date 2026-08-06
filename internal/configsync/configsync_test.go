@@ -127,10 +127,7 @@ func TestReconcileAll_ApplyCreatesFiles(t *testing.T) {
 	}
 }
 
-// TestReconcileAll_DropsStaleReedClaudeKey pins the specific removed-key case
-// this batch introduces: an existing user reed.yaml written before the
-// claude: key was dropped from the template must have that key reconciled
-// away, exactly like any other stale key a template no longer declares.
+// TestReconcileAll_DropsStaleReedClaudeKey pins the specific removed-key case this batch introduces: an existing user reed.yaml written before the claude: key was dropped from the template must have that key reconciled away, exactly like any other stale key a template no longer declares.
 func TestReconcileAll_DropsStaleReedClaudeKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := configengine.ConfigDir(tmpDir)
@@ -221,12 +218,9 @@ func TestReconcileAll_Idempotent(t *testing.T) {
 	}
 }
 
-// TestReconcileAll_SeedOnly pins the anti-prune contract for seed-only
-// modules ("models" today): the seed is materialized verbatim exactly once,
-// and once present is never rewritten — not even to resurrect a key the
-// operator deliberately removed. A non-seed-only module in the same run
-// still gets the ordinary prune behavior, guarding against an over-broad
-// skip that would silently disable reconcile for every module.
+// TestReconcileAll_SeedOnly pins the anti-prune contract for seed-only modules ("models" today): the seed is materialized verbatim exactly once,
+// and once present is never rewritten — not even to resurrect a key the operator deliberately removed.
+// A non-seed-only module in the same run still gets the ordinary prune behavior, guarding against an over-broad skip that would silently disable reconcile for every module.
 func TestReconcileAll_SeedOnly(t *testing.T) {
 	t.Run("absent file materializes template verbatim", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -387,13 +381,9 @@ func TestReconcileAll_SeedOnly(t *testing.T) {
 	})
 }
 
-// TestReconcileFabricAt_MigratesLegacyFabricConfig pins the fabric-cutover's
-// one-shot migration (F-D): a pre-cutover hub's warp.yaml/weft.yaml values
-// must be folded into fabric.yaml's first write instead of silently
-// discarded in favor of the bare template default, and the legacy files must
-// be pruned afterward so the migration does not re-fire. Routed through
-// ReconcileFabricAt(boardDir, apply), the repo-wide counterpart now that
-// ReconcileAll skips fabric entirely (see TestReconcileAll_ApplyCreatesFiles).
+// TestReconcileFabricAt_MigratesLegacyFabricConfig pins the fabric-cutover's one-shot migration (F-D): a pre-cutover hub's warp.yaml/weft.yaml values must be folded into fabric.yaml's first write instead of silently discarded in favor of the bare template default,
+// and the legacy files must be pruned afterward so the migration does not re-fire.
+// Routed through ReconcileFabricAt(boardDir, apply), the repo-wide counterpart now that ReconcileAll skips fabric entirely (see TestReconcileAll_ApplyCreatesFiles).
 func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 	t.Run("both legacy files present, both values migrate, both files pruned", func(t *testing.T) {
 		boardDir := t.TempDir()

@@ -1,5 +1,4 @@
-// strict_test.go tests ReadJSONStrict's decode-strictness and no-MkdirAll
-// contract using only temp files — no git, no spawning, untagged (Tier 1).
+// strict_test.go tests ReadJSONStrict's decode-strictness and no-MkdirAll contract using only temp files — no git, no spawning, untagged (Tier 1).
 
 package state
 

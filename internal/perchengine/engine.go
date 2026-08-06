@@ -1,17 +1,8 @@
-// engine.go defines perch's own seam over burlerengine (Burler) and the
-// gate-command execution seam (CommandRunner), plus the Engine type, its
-// constructor, and the thin Run method that adapts one perch block onto
-// internal/treadleengine's generalized round loop. perch -> burler ->
-// shuttle is a strict chain: Engine drives burlerengine.Engine (or a fake,
-// via Burler) for every round's review/fix pair, and separately drives its
-// own package-local Shuttle seam (a type alias of treadleengine.Shuttle)
-// for the two ephemeral judge/triage utility calls — burler reaches shuttle
-// itself for its own round; perch never routes a round through its own
-// Shuttle. Engine is weft-blind and geometry-blind: it never imports
-// fabricengine and never constructs a _lyx path itself; it operates
-// on a caller-supplied absolute runDir (the *lyxcwd.Location it holds is
-// used only to resolve the gate command's working directory,
-// layout.WorktreePath(), which becomes treadleengine.Profile.GateDir).
+// engine.go defines perch's own seam over burlerengine (Burler) and the gate-command execution seam (CommandRunner), plus the Engine type, its constructor, and the thin Run method that adapts one perch block onto internal/treadleengine's generalized round loop.
+// perch -> burler -> shuttle is a strict chain: Engine drives burlerengine.Engine (or a fake, via Burler) for every round's review/fix pair, and separately drives its own package-local Shuttle seam (a type alias of treadleengine.Shuttle) for the two ephemeral judge/triage utility calls — burler reaches shuttle itself for its own round;
+// perch never routes a round through its own Shuttle.
+// Engine is weft-blind and geometry-blind: it never imports fabricengine and never constructs a _lyx path itself;
+// it operates on a caller-supplied absolute runDir (the *lyxcwd.Location it holds is used only to resolve the gate command's working directory, layout.WorktreePath(), which becomes treadleengine.Profile.GateDir).
 
 package perchengine
 
@@ -66,17 +57,10 @@ func New(burler Burler, shuttle Shuttle, cfg Config, layout *lyxcwd.Location, op
 	}
 }
 
-// Run drives one perch block's round loop for Profile p, reading and
-// persisting state at runDir. It computes the block's identity hash
-// (ProfileHash, identity.go) over p exactly as supplied, validates p
-// against e.cfg (p.validate, profile.go — unchanged), builds the burler
-// adapter (adapter.go) closing over p's content fields, builds a
-// treadleengine.Profile from p's resolved gate/caps/tuning fields
-// (GateDir: e.layout.WorktreePath(); Gate converted field-for-field), and
-// delegates to treadleengine.New("perch", adapter, e.shuttle, ...).Run —
-// then maps the treadleengine.Result back onto perch's own
-// Result/RoundSummary. treadleengine.Engine.Run owns creating runDir itself
-// (MkdirAll); Run must not duplicate that here.
+// Run drives one perch block's round loop for Profile p, reading and persisting state at runDir.
+// It computes the block's identity hash (ProfileHash, identity.go) over p exactly as supplied, validates p against e.cfg (p.validate, profile.go — unchanged), builds the burler adapter (adapter.go) closing over p's content fields, builds a treadleengine.Profile from p's resolved gate/caps/tuning fields (GateDir: e.layout.WorktreePath(); Gate converted field-for-field), and delegates to treadleengine.New("perch", adapter, e.shuttle, ...).Run — then maps the treadleengine.Result back onto perch's own Result/RoundSummary.
+// treadleengine.Engine.Run owns creating runDir itself (MkdirAll);
+// Run must not duplicate that here.
 func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 	hash, err := ProfileHash(p)
 	if err != nil {

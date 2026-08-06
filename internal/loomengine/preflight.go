@@ -1,8 +1,5 @@
-// preflight.go implements Preflight, the orchestrator that runs loom's four
-// preconditions — worktree geometry, host cleanliness, weft pairing/sync, and
-// _lyx/status.json coherence — over git and filesystem state, and reports a
-// determined Report rather than erroring on anything short of an infra
-// failure. See the error-vs-Report contract Shared Decision.
+// preflight.go implements Preflight, the orchestrator that runs loom's four preconditions — worktree geometry, host cleanliness, weft pairing/sync, and _lyx/status.json coherence — over git and filesystem state, and reports a determined Report rather than erroring on anything short of an infra failure.
+// See the error-vs-Report contract Shared Decision.
 
 package loomengine
 
@@ -17,20 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Preflight validates that the current worktree is fit for loom to run: the
-// worktree is resolvable and at its root, the host is clean, the weft pairing
-// is present and in sync, and _lyx/status.json is coherent and fresh.
+// Preflight validates that the current worktree is fit for loom to run: the worktree is resolvable and at its root, the host is clean, the weft pairing is present and in sync, and _lyx/status.json is coherent and fresh.
 //
-// Callers MUST NOT invoke Preflight except when the task is at the
-// fresh/preflight stage. Invoking it on an already-advanced task (non-empty
-// history, set start_sha) is a caller error that will be reported as a
-// half-finished precondition failure.
+// Callers MUST NOT invoke Preflight except when the task is at the fresh/preflight stage.
+// Invoking it on an already-advanced task (non-empty history, set start_sha) is a caller error that will be reported as a half-finished precondition failure.
 //
 // Returns (Report{OK:true}, nil) when every precondition is met.
-// Returns (Report{OK:false, Failures}, nil) when one or more preconditions
-// are unmet — a normal, expected outcome, not an error.
-// Returns (Report{}, err) when Preflight could not determine an answer at all
-// — the caller must escalate, not treat this as "not ready".
+// Returns (Report{OK:false, Failures}, nil) when one or more preconditions are unmet — a normal, expected outcome, not an error.
+// Returns (Report{}, err) when Preflight could not determine an answer at all — the caller must escalate, not treat this as "not ready".
 func Preflight() (Report, error) {
 	// Resolve cwd via lyxcwd.Getwd(), the only permitted raw-cwd read
 	// outside cmd/lyx/main.go (per the Cwd Resolution Invariant).

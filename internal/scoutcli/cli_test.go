@@ -1,11 +1,6 @@
-// cli_test.go drives RunCLI through its seam: the bare/--help subcommand listing,
-// every command's Short, and the ErrNoLanguage error-envelope path. It is
-// deliberately untagged, offline, and spawn-free: it never shells out to a
-// subprocess, never touches git, and never copies a fixture tree, so it never
-// launches a language server or requires a git repo. A real "refs" query against a
-// live language server belongs to the //go:build integration tier
-// (internal/scoutengine's own integration test) and batch 4's measurement, not
-// here.
+// cli_test.go drives RunCLI through its seam: the bare/--help subcommand listing, every command's Short, and the ErrNoLanguage error-envelope path.
+// It is deliberately untagged, offline, and spawn-free: it never shells out to a subprocess, never touches git, and never copies a fixture tree, so it never launches a language server or requires a git repo.
+// A real "refs" query against a live language server belongs to the //go:build integration tier (internal/scoutengine's own integration test) and batch 4's measurement, not here.
 
 package scoutcli
 
@@ -195,8 +190,7 @@ func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves symbolCommand
-// never position-parses "file:line:col" arguments, treating them as literal search strings.
+// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves symbolCommand never position-parses "file:line:col" arguments, treating them as literal search strings.
 func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing.T) {
 	const arg = "foo.go:1:1"
 

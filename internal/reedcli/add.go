@@ -1,7 +1,6 @@
-// add.go implements the `add` reed verb: a thin flag-to-spec mapper over
-// reedengine.AddStrand. The CLI validates only the closed --anchor
-// vocabulary here; guid generation, worktree stamping, and name resolution
-// all belong to the engine (reedengine.AddStrand), not this file.
+// add.go implements the `add` reed verb: a thin flag-to-spec mapper over reedengine.AddStrand.
+// The CLI validates only the closed --anchor vocabulary here;
+// guid generation, worktree stamping, and name resolution all belong to the engine (reedengine.AddStrand), not this file.
 
 package reedcli
 

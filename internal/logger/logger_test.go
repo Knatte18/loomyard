@@ -1,5 +1,4 @@
-// logger_test.go verifies the default-Warn silence, the SetVerbosity
-// thresholds driven by the -v/-vv flag, and the SetOutput test seam.
+// logger_test.go verifies the default-Warn silence, the SetVerbosity thresholds driven by the -v/-vv flag, and the SetOutput test seam.
 
 package logger
 

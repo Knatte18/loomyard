@@ -69,15 +69,8 @@ func mustWriteFileWeft(t *testing.T, path, content string) {
 	}
 }
 
-// TestCommitWeft_UntrackedNewFileCountsAsMatch covers the "untracked must
-// count" predicate clause: a pathspec's first entry ("doesnotexist") matches
-// nothing at all and must be silently dropped rather than failing the whole
-// `git add`, while the second entry ("newmodule") names a brand-new,
-// never-staged directory — untracked in the worktree, absent from the index
-// — that must still count as a match and get committed. This is the exact
-// shape a first-ever "_pattern/PATTERN.md" commit needs: a
-// tracked-only-in-the-index predicate would filter it out and drop the very
-// first PATTERN commit.
+// TestCommitWeft_UntrackedNewFileCountsAsMatch covers the "untracked must count" predicate clause: a pathspec's first entry ("doesnotexist") matches nothing at all and must be silently dropped rather than failing the whole `git add`, while the second entry ("newmodule") names a brand-new, never-staged directory — untracked in the worktree, absent from the index — that must still count as a match and get committed.
+// This is the exact shape a first-ever "_pattern/PATTERN.md" commit needs: a tracked-only-in-the-index predicate would filter it out and drop the very first PATTERN commit.
 func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
@@ -104,13 +97,8 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	}
 }
 
-// TestCommitWeft_IndexOnlyDeletionCountsAsMatch covers the "index-only must
-// count" predicate clause: fabricengine.Unwire's (unwire.go) `_lyx`
-// clear-and-commit step commits a "_lyx" path that os.RemoveAll has just
-// deleted from the worktree, surviving only in the index at that point. A
-// worktree-existence-only predicate would silently break that deletion
-// commit — this test seeds a tracked file, deletes it from disk only (never
-// staged), then asserts CommitWeft still commits the deletion.
+// TestCommitWeft_IndexOnlyDeletionCountsAsMatch covers the "index-only must count" predicate clause: fabricengine.Unwire's (unwire.go) `_lyx` clear-and-commit step commits a "_lyx" path that os.RemoveAll has just deleted from the worktree, surviving only in the index at that point.
+// A worktree-existence-only predicate would silently break that deletion commit — this test seeds a tracked file, deletes it from disk only (never staged), then asserts CommitWeft still commits the deletion.
 func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
@@ -147,13 +135,8 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	}
 }
 
-// TestCommitWeft_ExcludeMagicPassesThroughUntouched is the mandatory guard
-// case: a pathspec carrying a ":(exclude)" entry must pass it through
-// untouched (never evaluated as a plain path to match) while a genuine
-// positive entry alongside it still commits — and the excluded artifact must
-// stay unstaged. Without this test, a filter that behaves correctly on plain
-// paths could still silently re-stage machine-local artifacts by
-// mis-evaluating exclusion magic as an ordinary non-matching entry.
+// TestCommitWeft_ExcludeMagicPassesThroughUntouched is the mandatory guard case: a pathspec carrying a ":(exclude)" entry must pass it through untouched (never evaluated as a plain path to match) while a genuine positive entry alongside it still commits — and the excluded artifact must stay unstaged.
+// Without this test, a filter that behaves correctly on plain paths could still silently re-stage machine-local artifacts by mis-evaluating exclusion magic as an ordinary non-matching entry.
 func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	t.Parallel()
 
@@ -184,16 +167,8 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	}
 }
 
-// TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing covers the
-// early-return case: when the only non-magic entry in the pathspec matches
-// nothing at all, CommitWeft must return ("", false, nil) WITHOUT ever
-// calling StageAndCommit — leaving a genuinely dirty tracked file
-// (modified, unstaged) and an untracked lock file completely untouched.
-// Asserting the pre-existing HEAD SHA is unchanged and nothing is staged is
-// what actually catches the regression this guards: handing git a pathspec
-// of only ":(exclude)" magic with no positive entry is read as "everything
-// except those," which would otherwise stage the entire weft worktree
-// (including the dirty config.yaml) rather than nothing.
+// TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing covers the early-return case: when the only non-magic entry in the pathspec matches nothing at all, CommitWeft must return ("", false, nil) WITHOUT ever calling StageAndCommit — leaving a genuinely dirty tracked file (modified, unstaged) and an untracked lock file completely untouched.
+// Asserting the pre-existing HEAD SHA is unchanged and nothing is staged is what actually catches the regression this guards: handing git a pathspec of only ":(exclude)" magic with no positive entry is read as "everything except those," which would otherwise stage the entire weft worktree (including the dirty config.yaml) rather than nothing.
 func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -247,22 +222,9 @@ func resolvedDefaultPathspecDirs(t *testing.T) []string {
 	return cfg.Dirs()
 }
 
-// TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern is
-// this batch's single most important regression assertion, proving card 13
-// (the pathspec-tolerance filter) and card 14 (the widened default
-// pathspec) belong together in one batch: with the real, resolved default
-// pathspec — "_lyx _pattern" — and NO files under "_pattern" at all, a
-// genuine "_lyx" change still commits. Without weftPathspecFilter, this is
-// exactly the silent regression the batch scope describes: `git add --
-// _lyx _pattern` fails in its entirety the moment `_pattern` matches
-// nothing, and CommitWeft's own pre-existing "did not match any files"
-// tolerance swallows that into ("", false, nil) with no error — so the
-// only way to catch it is asserting the commit actually happened, not
-// checking for an error. Covers both shapes an empty "_pattern" can take —
-// wholly absent and present-but-empty — since git tracks files, not
-// directories, and a materialised-but-empty "_pattern/" is the normal,
-// expected state for this whole task while content migration stays out of
-// scope.
+// TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern is this batch's single most important regression assertion, proving card 13 (the pathspec-tolerance filter) and card 14 (the widened default pathspec) belong together in one batch: with the real, resolved default pathspec — "_lyx _pattern" — and NO files under "_pattern" at all, a genuine "_lyx" change still commits.
+// Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git add -- _lyx _pattern` fails in its entirety the moment `_pattern` matches nothing, and CommitWeft's own pre-existing "did not match any files" tolerance swallows that into ("", false, nil) with no error — so the only way to catch it is asserting the commit actually happened, not checking for an error.
+// Covers both shapes an empty "_pattern" can take — wholly absent and present-but-empty — since git tracks files, not directories, and a materialised-but-empty "_pattern/" is the normal, expected state for this whole task while content migration stays out of scope.
 func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t *testing.T) {
 	dirs := resolvedDefaultPathspecDirs(t)
 	if len(dirs) != 2 || dirs[0] != "_lyx" || dirs[1] != "_pattern" {

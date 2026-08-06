@@ -1,10 +1,7 @@
-// audit_spawnboundary_test.go covers the fork-transcript spawn-boundary
-// exclusion: on Claude Code 2.1.205 a fork transcript's first assistant line
-// replays the PARENT's own spawning Agent tool_use (observed live in webster's
-// hardening round fable-r1), and counting it flagged every legitimate fork as
-// a nested-Agent violation. The audit excludes that entry by the tool_use id
-// recorded in the sibling <transcript>.meta.json; these tests pin both the
-// exclusion and the documented no-meta fallback (skip nothing).
+// audit_spawnboundary_test.go covers the fork-transcript spawn-boundary exclusion: on Claude Code 2.1.205 a fork transcript's first assistant line replays the PARENT's own spawning Agent tool_use (observed live in webster's hardening round fable-r1),
+// and counting it flagged every legitimate fork as a nested-Agent violation.
+// The audit excludes that entry by the tool_use id recorded in the sibling <transcript>.meta.json;
+// these tests pin both the exclusion and the documented no-meta fallback (skip nothing).
 
 package claudeengine
 

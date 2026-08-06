@@ -1,5 +1,4 @@
-// main_test.go exercises runAll's join-and-order behavior with a stubbed
-// fetcher, no network, no subprocess spawn.
+// main_test.go exercises runAll's join-and-order behavior with a stubbed fetcher, no network, no subprocess spawn.
 
 package main
 

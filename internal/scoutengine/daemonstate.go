@@ -1,12 +1,5 @@
-// daemonstate.go implements the supervised-strategy daemon's runtime state
-// file: the JSON record a spawning EnsureServer call writes so a later,
-// independent lyx invocation can discover an already-running daemon rather
-// than spawning its own, plus the two-part staleness check that decides
-// whether a recorded daemon is still safe to reuse. It also declares
-// DaemonStateFile/DaemonLock, the module's own .lyx-anchored path
-// constructors — ensureSupervised, the sole production caller, resolves its
-// state-file and lock paths through these rather than any other package's
-// helper.
+// daemonstate.go implements the supervised-strategy daemon's runtime state file: the JSON record a spawning EnsureServer call writes so a later, independent lyx invocation can discover an already-running daemon rather than spawning its own, plus the two-part staleness check that decides whether a recorded daemon is still safe to reuse.
+// It also declares DaemonStateFile/DaemonLock, the module's own .lyx-anchored path constructors — ensureSupervised, the sole production caller, resolves its state-file and lock paths through these rather than any other package's helper.
 
 package scoutengine
 
@@ -37,17 +30,15 @@ const dotLyxDirName = ".lyx"
 // scoutengine is this segment's sole declarer.
 const scoutDirName = "scout"
 
-// DaemonStateFile returns the path to the scout daemon's runtime state file
-// for the given language, rooted at worktreePath. It is worktree-anchored
-// so the daemon is a worktree-wide singleton per language. It lives under
-// .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
+// DaemonStateFile returns the path to the scout daemon's runtime state file for the given language, rooted at worktreePath.
+// It is worktree-anchored so the daemon is a worktree-wide singleton per language.
+// It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
 func DaemonStateFile(worktreePath, lang string) string {
 	return filepath.Join(worktreePath, dotLyxDirName, scoutDirName, lang, "daemon.json")
 }
 
-// DaemonLock returns the path to the advisory lock file guarding concurrent
-// access to DaemonStateFile(worktreePath, lang). It shares that function's
-// anchoring and per-lang scoping.
+// DaemonLock returns the path to the advisory lock file guarding concurrent access to DaemonStateFile(worktreePath, lang).
+// It shares that function's anchoring and per-lang scoping.
 func DaemonLock(worktreePath, lang string) string {
 	return filepath.Join(worktreePath, dotLyxDirName, scoutDirName, lang, "daemon.lock")
 }

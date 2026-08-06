@@ -1,10 +1,8 @@
 // configcli_test.go — unit and integration tests for configcli.
 //
-// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync
-// over temp baseDirs seeded via the paths helpers. Integration test (//go:build
-// integration): e2e test with real fabriccli.RunCLI over CopyPaired. The
-// git-init-backed TestDispatchSet_PreservedKeyDetectedByReconcile lives in
-// configcli_integration_test.go per the Test Tier Purity Invariant.
+// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync over temp baseDirs seeded via the paths helpers.
+// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over CopyPaired.
+// The git-init-backed TestDispatchSet_PreservedKeyDetectedByReconcile lives in configcli_integration_test.go per the Test Tier Purity Invariant.
 
 package configcli
 
@@ -407,8 +405,7 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 	}
 }
 
-// TestPrintModule_Seeded verifies that config <module> --print emits the on-disk
-// YAML verbatim at exit 0 and never invokes the editor.
+// TestPrintModule_Seeded verifies that config <module> --print emits the on-disk YAML verbatim at exit 0 and never invokes the editor.
 func TestPrintModule_Seeded(t *testing.T) {
 	baseDir := t.TempDir()
 	const fabricYAML = "branch_prefix: feature/\n"
@@ -426,8 +423,7 @@ func TestPrintModule_Seeded(t *testing.T) {
 	}
 }
 
-// TestPrintModule_KnownButUnseeded verifies that config <module> --print for a known
-// module with no on-disk file returns an ok:false JSON envelope at exit 1.
+// TestPrintModule_KnownButUnseeded verifies that config <module> --print for a known module with no on-disk file returns an ok:false JSON envelope at exit 1.
 func TestPrintModule_KnownButUnseeded(t *testing.T) {
 	baseDir := t.TempDir()
 	// Create the config directory but not the fabric.yaml file.
@@ -445,9 +441,8 @@ func TestPrintModule_KnownButUnseeded(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "not configured")
 }
 
-// TestPrintAggregate_PartialSeed verifies the aggregate --print form with a partial
-// module seed. It asserts deterministic headers for every registry module, inline YAML
-// for seeded ones, and # (not configured) for absent ones, all at exit 0.
+// TestPrintAggregate_PartialSeed verifies the aggregate --print form with a partial module seed.
+// It asserts deterministic headers for every registry module, inline YAML for seeded ones, and # (not configured) for absent ones, all at exit 0.
 func TestPrintAggregate_PartialSeed(t *testing.T) {
 	baseDir := t.TempDir()
 	const boardYAML = "path: board\nreadme: Home.md\n"
@@ -479,8 +474,7 @@ func TestPrintAggregate_PartialSeed(t *testing.T) {
 	}
 }
 
-// TestPrintUnknownModule verifies that config bogus --print returns an ok:false JSON
-// envelope at exit 1 whose error field names the unknown module.
+// TestPrintUnknownModule verifies that config bogus --print returns an ok:false JSON envelope at exit 1 whose error field names the unknown module.
 func TestPrintUnknownModule(t *testing.T) {
 	baseDir := t.TempDir()
 	l := makeLayoutAt(baseDir)
@@ -493,9 +487,7 @@ func TestPrintUnknownModule(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "unknown config module")
 }
 
-// TestConfigLong_ContainsModuleNames verifies that the config command's Long help text
-// includes every name from configreg.Names(), proving the help text stays in sync with
-// the registry rather than drifting from a hardcoded list.
+// TestConfigLong_ContainsModuleNames verifies that the config command's Long help text includes every name from configreg.Names(), proving the help text stays in sync with the registry rather than drifting from a hardcoded list.
 func TestConfigLong_ContainsModuleNames(t *testing.T) {
 	longText := Command().Long
 	for _, name := range configreg.Names() {
@@ -515,8 +507,7 @@ func countingEditor(calls *int) configengine.EditorFunc {
 	}
 }
 
-// TestDispatchSet_NeverInvokesEditor verifies that a successful --set
-// invocation never calls the injected EditorFunc.
+// TestDispatchSet_NeverInvokesEditor verifies that a successful --set invocation never calls the injected EditorFunc.
 func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
 	baseDir := t.TempDir()
 	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
@@ -536,8 +527,7 @@ func TestDispatchSet_NeverInvokesEditor(t *testing.T) {
 	assertJSONOkContains(t, out.String(), map[string]any{"module": "fabric"})
 }
 
-// TestDispatchSet_UnknownKeyNeverSyncs verifies that an unknown key passed to
-// --set returns an error and the injected sync function is never invoked.
+// TestDispatchSet_UnknownKeyNeverSyncs verifies that an unknown key passed to --set returns an error and the injected sync function is never invoked.
 func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 	baseDir := t.TempDir()
 	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
@@ -557,9 +547,7 @@ func TestDispatchSet_UnknownKeyNeverSyncs(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "unknown config key")
 }
 
-// TestDispatchSet_PrintMutuallyExclusive verifies that passing both --print
-// and --set returns the mutual-exclusivity error, with neither the editor
-// nor sync invoked.
+// TestDispatchSet_PrintMutuallyExclusive verifies that passing both --print and --set returns the mutual-exclusivity error, with neither the editor nor sync invoked.
 func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {
 	baseDir := t.TempDir()
 	l := makeLayoutAt(baseDir)
@@ -580,8 +568,7 @@ func TestDispatchSet_PrintMutuallyExclusive(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "mutually exclusive")
 }
 
-// TestDispatchSet_NoModuleRequiresOne verifies that --set with no module
-// positional returns the module-required error.
+// TestDispatchSet_NoModuleRequiresOne verifies that --set with no module positional returns the module-required error.
 func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
 	baseDir := t.TempDir()
 	l := makeLayoutAt(baseDir)
@@ -595,8 +582,7 @@ func TestDispatchSet_NoModuleRequiresOne(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "module required with --set")
 }
 
-// TestDispatchSet_MultipleValuesOneSync verifies that multiple --set values
-// in one dispatch() call all land in a single sync invocation.
+// TestDispatchSet_MultipleValuesOneSync verifies that multiple --set values in one dispatch() call all land in a single sync invocation.
 func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 	baseDir := t.TempDir()
 	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")
@@ -619,8 +605,7 @@ func TestDispatchSet_MultipleValuesOneSync(t *testing.T) {
 	assertJSONOkContains(t, out.String(), map[string]any{"module": "fabric"})
 }
 
-// TestDispatchSet_MalformedValue verifies that a malformed --set value with
-// no '=' returns the parseSetFlags error.
+// TestDispatchSet_MalformedValue verifies that a malformed --set value with no '=' returns the parseSetFlags error.
 func TestDispatchSet_MalformedValue(t *testing.T) {
 	baseDir := t.TempDir()
 	l := makeLayoutAt(baseDir)
@@ -637,8 +622,7 @@ func TestDispatchSet_MalformedValue(t *testing.T) {
 	assertJSONErrContains(t, out.String(), "expected key=value")
 }
 
-// TestConfigLong_MentionsEditorFallbackAndSet verifies that buildConfigLong's
-// output documents both the EDITOR/VISUAL editor fallback and the --set flag.
+// TestConfigLong_MentionsEditorFallbackAndSet verifies that buildConfigLong's output documents both the EDITOR/VISUAL editor fallback and the --set flag.
 func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
 	longText := buildConfigLong()
 	if !strings.Contains(longText, "EDITOR") || !strings.Contains(longText, "VISUAL") {
@@ -649,10 +633,8 @@ func TestConfigLong_MentionsEditorFallbackAndSet(t *testing.T) {
 	}
 }
 
-// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning verifies that --set
-// against a module file carrying an orphan key (one absent from the current
-// template) preserves that key rather than dropping it, and reports it via
-// the JSON envelope's "preserved" field.
+// TestDispatchSet_PreservesUnrecognizedKeyReportsWarning verifies that --set against a module file carrying an orphan key (one absent from the current template) preserves that key rather than dropping it,
+// and reports it via the JSON envelope's "preserved" field.
 func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
 	baseDir := t.TempDir()
 	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\nlegacy_key: keepme\n")
@@ -679,9 +661,7 @@ func TestDispatchSet_PreservesUnrecognizedKeyReportsWarning(t *testing.T) {
 	}
 }
 
-// TestDispatchSet_CleanFileNoPreservedField verifies that --set against a
-// module file with no orphan keys emits a JSON envelope with no "preserved"
-// field at all, rather than an empty one.
+// TestDispatchSet_CleanFileNoPreservedField verifies that --set against a module file with no orphan keys emits a JSON envelope with no "preserved" field at all, rather than an empty one.
 func TestDispatchSet_CleanFileNoPreservedField(t *testing.T) {
 	baseDir := t.TempDir()
 	seedModuleConfig(t, baseDir, "fabric", "branch_prefix: old-\n")

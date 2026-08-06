@@ -1,6 +1,4 @@
-// hermetic.go implements Layer B of the two-layer hermetic git mechanism: a
-// process-wide override that stops every git spawned by a test process from
-// reading the operator's global or system git config.
+// hermetic.go implements Layer B of the two-layer hermetic git mechanism: a process-wide override that stops every git spawned by a test process from reading the operator's global or system git config.
 
 package lyxtest
 
@@ -14,13 +12,12 @@ import (
 // per test binary run.
 var hermeticGitEnvOnce sync.Once
 
-// HermeticGitEnv makes every git process spawned by this test binary ignore the
-// operator's global and system git config, replacing it with a neutral config.
-// Call it as the first line of TestMain, before m.Run(). It also runs the
-// CLI-reexec refusal guard before anything else.
+// HermeticGitEnv makes every git process spawned by this test binary ignore the operator's global and system git config, replacing it with a neutral config.
+// Call it as the first line of TestMain, before m.Run().
+// It also runs the CLI-reexec refusal guard before anything else.
 //
-// The bare function name HermeticGitEnv is the presence token that cmd/lyx's
-// hermetic guard scans test files for; do not rename without updating the guard.
+// The bare function name HermeticGitEnv is the presence token that cmd/lyx's hermetic guard scans test files for;
+// do not rename without updating the guard.
 func HermeticGitEnv() {
 	refuseCLIReexec()
 	hermeticGitEnvOnce.Do(func() {

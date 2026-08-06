@@ -1,19 +1,12 @@
 // reconcile.go implements the fabric repair-and-adopt sweep for paired host↔weft worktrees.
 //
-// Reconcile walks all host worktrees (never the branch namespace directly) and applies
-// the minimal corrective action needed to restore a valid paired topology: it recreates
-// a missing weft worktree when the branch still exists, re-points a broken junction, adopts
-// a raw (non-lyx) host worktree by creating the weft side dormant, and reports (but does
-// not touch) a host worktree on an unmanaged branch. Wherever a host branch name needs
-// a weft counterpart, fabric derives it via WeftBranchName(hostBranch).
+// Reconcile walks all host worktrees (never the branch namespace directly) and applies the minimal corrective action needed to restore a valid paired topology: it recreates a missing weft worktree when the branch still exists, re-points a broken junction, adopts a raw (non-lyx) host worktree by creating the weft side dormant, and reports (but does not touch) a host worktree on an unmanaged branch.
+// Wherever a host branch name needs a weft counterpart, fabric derives it via WeftBranchName(hostBranch).
 //
-// readBranch and checkJunctionHealth are also used by Status; they live here because
-// Reconcile needs them first and both verbs share the same package.
+// readBranch and checkJunctionHealth are also used by Status;
+// they live here because Reconcile needs them first and both verbs share the same package.
 //
-// The junction name-set checkJunctionHealth/Reconcile/junctionRepointedDetail consult
-// is sourced from the repo-wide fabric.yaml at BoardDir(l.HubPath) — via
-// RepoWiredNames — not from any individual pair's own weft base, so reconcile
-// converges every worktree to the same repo-wide pathspec.
+// The junction name-set checkJunctionHealth/Reconcile/junctionRepointedDetail consult is sourced from the repo-wide fabric.yaml at BoardDir(l.HubPath) — via RepoWiredNames — not from any individual pair's own weft base, so reconcile converges every worktree to the same repo-wide pathspec.
 
 package fabricengine
 
@@ -33,34 +26,28 @@ import (
 type ReconcileAction string
 
 const (
-	// ReconcileActionWeftRecreated means a missing weft worktree was recreated from
-	// its existing branch.
+	// ReconcileActionWeftRecreated means a missing weft worktree was recreated from its existing branch.
 	ReconcileActionWeftRecreated ReconcileAction = "weft_recreated"
 
-	// ReconcileActionJunctionRepointed means at least one broken or dangling host
-	// junction was re-pointed to its correct weft directory. WireJunctions repairs
-	// every junction in one call, so the outcome's Detail (via
-	// junctionRepointedDetail) names all of them, not just the one that failed
-	// checkJunctionHealth.
+	// ReconcileActionJunctionRepointed means at least one broken or dangling host junction was re-pointed to its correct weft directory.
+	// WireJunctions repairs every junction in one call, so the outcome's Detail (via junctionRepointedDetail) names all of them, not just the one that failed checkJunctionHealth.
 	ReconcileActionJunctionRepointed ReconcileAction = "junction_repointed"
 
-	// ReconcileActionRawAdopted means a host worktree created outside lyx had its weft
-	// side created (branch + worktree) as a dormant counterpart. No junction is wired;
+	// ReconcileActionRawAdopted means a host worktree created outside lyx had its weft side created (branch + worktree) as a dormant counterpart.
+	// No junction is wired;
 	// re-running Reconcile is what wires it once the pair exists.
 	ReconcileActionRawAdopted ReconcileAction = "raw_adopted"
 
-	// ReconcileActionUnmanagedReported means a host worktree is on an unmanaged branch
-	// with no weft sibling; it was reported but left untouched.
+	// ReconcileActionUnmanagedReported means a host worktree is on an unmanaged branch with no weft sibling;
+	// it was reported but left untouched.
 	ReconcileActionUnmanagedReported ReconcileAction = "unmanaged_reported"
 
 	// ReconcileActionAlreadyHealthy means the pair required no corrective action.
 	ReconcileActionAlreadyHealthy ReconcileAction = "already_healthy"
 
-	// ReconcileActionStaleRemoved means the pair's junction/repoint check found
-	// nothing to add or re-point, but declarative stale-removal deleted at least
-	// one on-disk junction absent from the repo-wide pathspec. It is reported
-	// instead of ReconcileActionAlreadyHealthy so consumers keying off Action —
-	// not just Detail — see that convergence altered the pair.
+	// ReconcileActionStaleRemoved means the pair's junction/repoint check found nothing to add or re-point,
+	// but declarative stale-removal deleted at least one on-disk junction absent from the repo-wide pathspec.
+	// It is reported instead of ReconcileActionAlreadyHealthy so consumers keying off Action — not just Detail — see that convergence altered the pair.
 	ReconcileActionStaleRemoved ReconcileAction = "stale_removed"
 )
 
@@ -84,11 +71,9 @@ type ReconcileResult struct {
 	Pairs []ReconcilePairResult `json:"pairs"`
 }
 
-// Reconcile walks all host worktrees reachable from layout l and applies corrective
-// actions to restore a valid paired host↔weft topology. For each host worktree it
-// applies a sequence of rules: recreate missing weft worktrees, re-point broken
-// junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs. Per-worktree
-// errors are recorded in ReconcilePairResult.Error.
+// Reconcile walks all host worktrees reachable from layout l and applies corrective actions to restore a valid paired host↔weft topology.
+// For each host worktree it applies a sequence of rules: recreate missing weft worktrees, re-point broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
+// Per-worktree errors are recorded in ReconcilePairResult.Error.
 func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 	entries, err := List(l.WorktreePath())
 	if err != nil {

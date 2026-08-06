@@ -1,9 +1,4 @@
-// parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter
-// decoding, Card Index parsing, framing extraction), its per-card file-parsing
-// behavior (the title heading, the typed per-card model, Depends-on, Commit, and
-// verify:), the none-vs-nil field distinction, and a full round-trip over the
-// docs/reference/plan-format-v3.md worked-example golden fixture
-// (testdata/goodplan).
+// parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index parsing, framing extraction), its per-card file-parsing behavior (the title heading, the typed per-card model, Depends-on, Commit, and verify:), the none-vs-nil field distinction, and a full round-trip over the docs/reference/plan-format-v3.md worked-example golden fixture (testdata/goodplan).
 
 package planparser_test
 
@@ -298,11 +293,7 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_FiveFieldsNoneSentinel covers the three-way distinction
-// plan-format-v3 pins for each of the five typed file-op fields (and Depends-on):
-// absent entirely (nil slice, HasX == false), present with the literal "none"
-// (empty non-nil slice, HasX == true), and present with entries (populated
-// non-nil slice, HasX == true).
+// TestParsePlan_Card_FiveFieldsNoneSentinel covers the three-way distinction plan-format-v3 pins for each of the five typed file-op fields (and Depends-on): absent entirely (nil slice, HasX == false), present with the literal "none" (empty non-nil slice, HasX == true), and present with entries (populated non-nil slice, HasX == true).
 func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
 	t.Parallel()
 
@@ -434,9 +425,8 @@ func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_MovesGrammar covers Moves: bullets: well-formed pairs land in
-// Moves, and a bullet that fails the pair grammar is retained verbatim in
-// MovesRaw rather than becoming a parse error (lenient-card-parse decision).
+// TestParsePlan_Card_MovesGrammar covers Moves: bullets: well-formed pairs land in Moves,
+// and a bullet that fails the pair grammar is retained verbatim in MovesRaw rather than becoming a parse error (lenient-card-parse decision).
 func TestParsePlan_Card_MovesGrammar(t *testing.T) {
 	t.Parallel()
 
@@ -459,10 +449,7 @@ func TestParsePlan_Card_MovesGrammar(t *testing.T) {
 	}
 }
 
-// TestParsePlan_Card_DependsOnMalformed covers a Depends-on token that fails to
-// parse as a plain card number: document structure, so it fails loud rather than
-// silently degrading (Validate's depends-on-order check never even sees a
-// non-numeric token).
+// TestParsePlan_Card_DependsOnMalformed covers a Depends-on token that fails to parse as a plain card number: document structure, so it fails loud rather than silently degrading (Validate's depends-on-order check never even sees a non-numeric token).
 func TestParsePlan_Card_DependsOnMalformed(t *testing.T) {
 	t.Parallel()
 
@@ -478,9 +465,7 @@ func TestParsePlan_Card_DependsOnMalformed(t *testing.T) {
 	}
 }
 
-// TestParsePlan_InlineFieldValueFailsLoud proves a card file-op label line
-// carrying an inline value other than "none" (e.g. "**Edits:** `foo.go`") is a
-// fail-loud parse error, never silently read as an empty field.
+// TestParsePlan_InlineFieldValueFailsLoud proves a card file-op label line carrying an inline value other than "none" (e.g. "**Edits:** `foo.go`") is a fail-loud parse error, never silently read as an empty field.
 func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	t.Parallel()
 
@@ -514,10 +499,7 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	}
 }
 
-// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare
-// worktree-relative `_lyx/plan/NN-<slug>.md` token — never prefixed by the
-// (t.TempDir()) absolute Plan.Dir the fixture is parsed from — for both a
-// single-card and a multi-card plan.
+// TestParsePlan_Card_SourcePath proves each parsed card's SourcePath is the bare worktree-relative `_lyx/plan/NN-<slug>.md` token — never prefixed by the (t.TempDir()) absolute Plan.Dir the fixture is parsed from — for both a single-card and a multi-card plan.
 func TestParsePlan_Card_SourcePath(t *testing.T) {
 	t.Parallel()
 
@@ -619,10 +601,7 @@ func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")
 }
 
-// TestParsePlan_GoldenFixture round-trips testdata/goodplan (the pinned spec's own
-// worked example) exactly: the overview's frontmatter, framing, and every card's
-// typed fields must match the fixture's own byte-consistent content, including the
-// root: internal/boardcli resolution and the // worktree-root escape.
+// TestParsePlan_GoldenFixture round-trips testdata/goodplan (the pinned spec's own worked example) exactly: the overview's frontmatter, framing, and every card's typed fields must match the fixture's own byte-consistent content, including the root: internal/boardcli resolution and the // worktree-root escape.
 func TestParsePlan_GoldenFixture(t *testing.T) {
 	t.Parallel()
 

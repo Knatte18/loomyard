@@ -1,14 +1,5 @@
-// spawn.go implements the shared pane-launch helper every strand-realizing
-// path composes: AddStrand launching a freshly added strand, UpdateStrand
-// surfacing a hidden->visible strand, and Resume replaying a not-live
-// strand all call launchStrandLocked to actually create (or adopt) a tmux
-// pane and run the strand's command in it (GAP A) — without this shared
-// helper, add would register a record and re-render but never create a
-// pane or run anything. This file also carries the two other small
-// cross-file bootstrap helpers strand.go and lifecycle.go both need:
-// loadOrInitStateLocked (fresh-worktree state bootstrap) and
-// reconcileApplyPersistLocked (the reconcile-then-apply-then-persist tail
-// every public op ends with).
+// spawn.go implements the shared pane-launch helper every strand-realizing path composes: AddStrand launching a freshly added strand, UpdateStrand surfacing a hidden->visible strand, and Resume replaying a not-live strand all call launchStrandLocked to actually create (or adopt) a tmux pane and run the strand's command in it (GAP A) — without this shared helper, add would register a record and re-render but never create a pane or run anything.
+// This file also carries the two other small cross-file bootstrap helpers strand.go and lifecycle.go both need: loadOrInitStateLocked (fresh-worktree state bootstrap) and reconcileApplyPersistLocked (the reconcile-then-apply-then-persist tail every public op ends with).
 
 package reedengine
 

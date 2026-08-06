@@ -20,8 +20,7 @@ import (
 	"time"
 )
 
-// TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay proves the
-// gate call's lifetime is bounded when a child holds the output pipe.
+// TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay proves the gate call's lifetime is bounded when a child holds the output pipe.
 // Windows-only: the child-spawning idiom (cmd's start /b) has no portable equivalent.
 func TestExecGateCommand_LingeringChildDoesNotHangPastWaitDelay(t *testing.T) {
 	if runtime.GOOS != "windows" {

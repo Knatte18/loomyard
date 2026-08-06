@@ -18,9 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// TestReconcile_DryRun verifies that "lyx config reconcile" without --apply writes
-// no files and returns a JSON envelope with ok=true, applied=false, and a non-empty
-// modules array whose entries carry module/added/removed/applied fields.
+// TestReconcile_DryRun verifies that "lyx config reconcile" without --apply writes no files and returns a JSON envelope with ok=true, applied=false, and a non-empty modules array whose entries carry module/added/removed/applied fields.
 func TestReconcile_DryRun(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -109,8 +107,7 @@ func TestReconcile_DryRun(t *testing.T) {
 	}
 }
 
-// TestReconcile_Apply verifies that "lyx config reconcile --apply" writes config
-// files to disk and returns a JSON envelope with ok=true and applied=true.
+// TestReconcile_Apply verifies that "lyx config reconcile --apply" writes config files to disk and returns a JSON envelope with ok=true and applied=true.
 func TestReconcile_Apply(t *testing.T) {
 	tmpDir := t.TempDir()
 

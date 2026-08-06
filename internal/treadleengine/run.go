@@ -1,10 +1,4 @@
-// run.go implements Engine.Run, the deterministic round loop that drives
-// one treadle block from a fresh or resumed run dir to a terminal Result: it
-// validates the profile, resolves the block's resume point, then loops one
-// round at a time through a RoundRunner attempt (with its bounded retry),
-// the pluggable convergence gate, and the milestone-laddered stuck ladder,
-// persisting state after every round so a crash or an operator pause can
-// resume from exactly where the block left off.
+// run.go implements Engine.Run, the deterministic round loop that drives one treadle block from a fresh or resumed run dir to a terminal Result: it validates the profile, resolves the block's resume point, then loops one round at a time through a RoundRunner attempt (with its bounded retry), the pluggable convergence gate, and the milestone-laddered stuck ladder, persisting state after every round so a crash or an operator pause can resume from exactly where the block left off.
 
 package treadleengine
 
@@ -18,17 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrBlockBusy marks Run's fail-fast refusal when another invocation
-// already holds the run dir's run.lock. It is a sentinel (matched via
-// errors.Is) because the caller must treat this refusal differently from
-// every other hard error: the losing invocation touched NOTHING on disk —
-// the winner is mid-round and owns the block's state — so a loop owner
-// must not run its block-exit bookkeeping (e.g. perchcli's weft sync) for
-// it. The sentinel's own message is deliberately un-prefixed — the calling
-// engine's name is applied at wrap time below, by errf, so the composed
-// text still reads "<name>: block is already running: ..." exactly like
-// perch's own literal message did before the extraction (see the
-// name-parameterized-diagnostics shared decision).
+// ErrBlockBusy marks Run's fail-fast refusal when another invocation already holds the run dir's run.lock.
+// It is a sentinel (matched via errors.Is) because the caller must treat this refusal differently from every other hard error: the losing invocation touched NOTHING on disk — the winner is mid-round and owns the block's state — so a loop owner must not run its block-exit bookkeeping (e.g.
+// perchcli's weft sync) for it.
+// The sentinel's own message is deliberately un-prefixed — the calling engine's name is applied at wrap time below, by errf, so the composed text still reads "<name>: block is already running: ..."
+// exactly like perch's own literal message did before the extraction (see the name-parameterized-diagnostics shared decision).
 var ErrBlockBusy = errors.New("block is already running")
 
 // runLockName is the exclusive-lease file name inside a block's run dir,
@@ -54,16 +42,10 @@ type roundOutcome struct {
 	Paths           roundArtifactPaths
 }
 
-// Run drives one treadle block's round loop for Profile p, reading and
-// persisting state at runDir. It validates p (structural checks only) via
-// p.validate(e.name), ensures runDir exists, resolves the block's resume
-// point (loadOrInitState against p.ProfileHash, which the caller already
-// computed), then loops one round at a time: a pause check at the round
-// boundary only, a round-runner attempt with its bounded non-done retry,
-// the pluggable convergence gate, and — on a non-converged round — the
-// milestone-laddered stuck ladder. Every returned error is prefixed via
-// e.errf; the returned Result mirrors the persisted state's rounds as
-// RoundSummary values.
+// Run drives one treadle block's round loop for Profile p, reading and persisting state at runDir.
+// It validates p (structural checks only) via p.validate(e.name), ensures runDir exists, resolves the block's resume point (loadOrInitState against p.ProfileHash, which the caller already computed), then loops one round at a time: a pause check at the round boundary only, a round-runner attempt with its bounded non-done retry, the pluggable convergence gate, and — on a non-converged round — the milestone-laddered stuck ladder.
+// Every returned error is prefixed via e.errf;
+// the returned Result mirrors the persisted state's rounds as RoundSummary values.
 func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	// A pause requested while the final round was still in flight can
 	// observe a terminal, non-PAUSED outcome once that round settles on its

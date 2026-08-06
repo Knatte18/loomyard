@@ -1,10 +1,7 @@
-// tiersleep_test.go extends the Test Tier Purity Invariant guard (tierpurity_test.go)
-// with an AST-based check: an untagged test file containing a literal time.Sleep(...)
-// call whose duration is a compile-time constant of at least one second is flagged the
-// same way a banned spawn token is, unless the file is on the allowedLongSleepers
-// allowlist. A real-time-blocking sleep in a file that runs on every plain `go test`
-// slows the offline Tier 1 loop exactly like the spawns tierpurity_test.go already
-// guards against; this file adds the detection logic, tierpurity_test.go wires it in.
+// tiersleep_test.go extends the Test Tier Purity Invariant guard (tierpurity_test.go) with an AST-based check: an untagged test file containing a literal time.Sleep(...)
+// call whose duration is a compile-time constant of at least one second is flagged the same way a banned spawn token is, unless the file is on the allowedLongSleepers allowlist.
+// A real-time-blocking sleep in a file that runs on every plain `go test` slows the offline Tier 1 loop exactly like the spawns tierpurity_test.go already guards against;
+// this file adds the detection logic, tierpurity_test.go wires it in.
 
 package main
 

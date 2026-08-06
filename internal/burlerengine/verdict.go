@@ -1,8 +1,6 @@
-// verdict.go defines the review-file contract — Verdict, Severity, Finding —
-// and ParseReview, the strict parser that turns a round's raw review-file
-// bytes into those types. The review file is YAML frontmatter over
-// unconstrained prose; ParseReview enforces every pinned rule fail-loud so a
-// malformed round can never look approved.
+// verdict.go defines the review-file contract — Verdict, Severity, Finding — and ParseReview, the strict parser that turns a round's raw review-file bytes into those types.
+// The review file is YAML frontmatter over unconstrained prose;
+// ParseReview enforces every pinned rule fail-loud so a malformed round can never look approved.
 
 package burlerengine
 
@@ -14,19 +12,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Verdict is the round-level judgment recorded in a review file's
-// frontmatter.
+// Verdict is the round-level judgment recorded in a review file's frontmatter.
 type Verdict string
 
-// The two legal Verdict values. ParseReview rejects any other spelling,
-// including a different case, since the review file is machine-read.
+// The two legal Verdict values.
+// ParseReview rejects any other spelling, including a different case, since the review file is machine-read.
 const (
 	VerdictApproved Verdict = "APPROVED"
 	VerdictBlocking Verdict = "BLOCKING"
 )
 
-// Severity is the per-finding severity tag, mapped onto the fixed
-// four-value vocabulary a rubric's criteria must resolve into.
+// Severity is the per-finding severity tag, mapped onto the fixed four-value vocabulary a rubric's criteria must resolve into.
 type Severity string
 
 // The four legal Severity values.
@@ -37,12 +33,7 @@ const (
 	SeverityNit      Severity = "NIT"
 )
 
-// Finding is one recorded review-file finding: a stable ID (kept unique and
-// fail-loud across rounds so cross-round hydration and audit can cite it
-// unambiguously — perch judges progress across rounds holistically via a
-// verdict judge, not by tracking finding-key identity), a Severity from the
-// fixed vocabulary, a Location pointing at the offending content, a prose
-// Summary, and an optional Origin.
+// Finding is one recorded review-file finding: a stable ID (kept unique and fail-loud across rounds so cross-round hydration and audit can cite it unambiguously — perch judges progress across rounds holistically via a verdict judge, not by tracking finding-key identity), a Severity from the fixed vocabulary, a Location pointing at the offending content, a prose Summary, and an optional Origin.
 type Finding struct {
 	ID       string   `yaml:"id"`
 	Severity Severity `yaml:"severity"`

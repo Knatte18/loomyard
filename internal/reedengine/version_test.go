@@ -1,6 +1,4 @@
-// version_test.go drives the pure `-V` parsers and the versionAtLeast
-// comparator (version.go) with fixtures covering both multiplexers' output
-// shapes, plus malformed input and every relevant versionAtLeast boundary.
+// version_test.go drives the pure `-V` parsers and the versionAtLeast comparator (version.go) with fixtures covering both multiplexers' output shapes, plus malformed input and every relevant versionAtLeast boundary.
 
 package reedengine
 

@@ -1,10 +1,5 @@
-// testmain_test.go wires cmd/lyx's test binary into the hermetic git test
-// environment: lyxtest.HermeticGitEnv() runs once before any test, so cmd/lyx's
-// e2e tests (which spawn the lyx binary, which itself spawns git) never inherit
-// the operator's global gitconfig (see CONSTRAINTS.md's Hermetic Git Test
-// Environment Invariant). This is what makes the no-daemon guarantee reach
-// through the launched binary: HermeticGitEnv mutates this test process's own
-// environment, which launched child processes inherit by default.
+// testmain_test.go wires cmd/lyx's test binary into the hermetic git test environment: lyxtest.HermeticGitEnv() runs once before any test, so cmd/lyx's e2e tests (which spawn the lyx binary, which itself spawns git) never inherit the operator's global gitconfig (see CONSTRAINTS.md's Hermetic Git Test Environment Invariant).
+// This is what makes the no-daemon guarantee reach through the launched binary: HermeticGitEnv mutates this test process's own environment, which launched child processes inherit by default.
 
 package main
 
