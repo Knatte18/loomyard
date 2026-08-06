@@ -1,10 +1,5 @@
-// lifecycle_test.go drives the lifecycle ops' planning seams — the parts
-// that decide what would run without needing a live tmux server:
-// planUpLaunches (Up never launches anything) and planResumeLaunches across
-// the three states the discussion calls out (server dead, server-up/
-// CLI-restarted, a single strand's pane died). Any real-tmux round trip
-// (ensureServerAndSessionLocked, and Up/Resume/Down/Status themselves) is
-// out of hermetic reach and is not exercised here.
+// lifecycle_test.go drives the lifecycle ops' planning seams — the parts that decide what would run without needing a live tmux server: planUpLaunches (Up never launches anything) and planResumeLaunches across the three states the discussion calls out (server dead, server-up/ CLI-restarted, a single strand's pane died).
+// Any real-tmux round trip (ensureServerAndSessionLocked, and Up/Resume/Down/Status themselves) is out of hermetic reach and is not exercised here.
 
 package reedengine
 
@@ -26,8 +21,7 @@ func guids(strands []Strand) []string {
 	return out
 }
 
-// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact pins that header validation
-// runs before any tmux contact (validates validation ORDER, not just existence).
+// TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact pins that header validation runs before any tmux contact (validates validation ORDER, not just existence).
 func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.DebugLog = "0"
@@ -43,8 +37,7 @@ func TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact(t *testing.T) {
 	}
 }
 
-// TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped
-// before the tmux server inherits the boot env (long-lived singleton).
+// TestServerBootEnv_ExcludesTraceID pins that LYX_TRACE_ID is stripped before the tmux server inherits the boot env (long-lived singleton).
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 	t.Setenv("LYX_TRACE_ID", "somevalue")
 
@@ -121,17 +114,8 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 	}
 }
 
-// TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently pins
-// the fix for a real defect found live-driving debug_log against native
-// tmux: a debug-armed boot's -v/-vv global flag makes tmux log BOTH the
-// forked server (tmux-server-<pid>.log, documented and already pruned) AND
-// the client half of that same invocation (tmux-client-<pid>.log, observed
-// live — never surfaced before since the original debug-logging batch was
-// developed/reviewed against psmux on Windows, not native tmux). Without
-// pruning the client-prefixed files too, they accumulate unbounded across
-// repeated debug-armed boots/crashes while the server-prefixed files stay
-// capped — this test seeds both shapes plus an unrelated file the pruner
-// must never touch, and asserts each prefix is pruned to keep independently.
+// TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently pins the fix for a real defect found live-driving debug_log against native tmux: a debug-armed boot's -v/-vv global flag makes tmux log BOTH the forked server (tmux-server-<pid>.log, documented and already pruned) AND the client half of that same invocation (tmux-client-<pid>.log, observed live — never surfaced before since the original debug-logging batch was developed/reviewed against psmux on Windows, not native tmux).
+// Without pruning the client-prefixed files too, they accumulate unbounded across repeated debug-armed boots/crashes while the server-prefixed files stay capped — this test seeds both shapes plus an unrelated file the pruner must never touch, and asserts each prefix is pruned to keep independently.
 func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
@@ -257,8 +241,7 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	}
 }
 
-// TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure pins the
-// validateSplitCreatedNewPane guard at its call site (against regression).
+// TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure pins the validateSplitCreatedNewPane guard at its call site (against regression).
 func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
 	e := newTestEngine(t)
 
