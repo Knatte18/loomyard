@@ -109,10 +109,11 @@ The doc set is **twelve files, not four**, and the eight secondary ones are not 
   - `docs/reference/model-spec.md`
   - `manifest/designs/loom.md`
   - `manifest/designs/pattern.md`
+  - `CLAUDE.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** `model-spec.md:32` names `hubgeometry.ConfigFile`, which is `configengine.ConfigFile`. `loom.md` has three references — preflight's geometry check at line 38, the module table row at 103, and "launcher geometry already in `internal/hubgeometry`" at 129, which is `fabricengine` now. `pattern.md` has four at lines 3, 18, 47 and 62, asserting that `hubgeometry` declares the `_pattern` junction record and owns every `_pattern` path literal — contradicted twice over: the record moved to `fabricengine` and the constructors to `internal/pattern`. Note for the implementer: `loom.md:38` and `pattern.md:3,47` were written as status narrative ("built and merged", "✅ Done"); the edit is to the technical clause inside them, **not** to the status claim. Do not rewrite the status.
+- **Requirements:** `model-spec.md:32` names `hubgeometry.ConfigFile`, which is `configengine.ConfigFile`. `loom.md` has three references — preflight's geometry check at line 38, the module table row at 103, and "launcher geometry already in `internal/hubgeometry`" at 129, which is `fabricengine` now. `pattern.md` has four at lines 3, 18, 47 and 62, asserting that `hubgeometry` declares the `_pattern` junction record and owns every `_pattern` path literal — contradicted twice over: the record moved to `fabricengine` and the constructors to `internal/pattern`. Note for the implementer: `loom.md:38` and `pattern.md:3,47` were written as status narrative ("built and merged", "✅ Done"); the edit is to the technical clause inside them, **not** to the status claim. Do not rewrite the status. `CLAUDE.md:5`'s "Current invariants include the **Hub Geometry Invariant** (`internal/hubgeometry` owns all cwd/geometry and `_lyx`/config paths)" clause is this same inversion at the repo's own root guidance file — update it to name the **Cwd Resolution Invariant** and the narrower post-shrink contract (`internal/lyxcwd` owns cwd resolution alone; each module owns its own relative subpath).
 - **Commit:** `docs: correct the remaining hubgeometry references in loom, pattern and model-spec`
 
 ### Card 46: mark slice 7 shipped on the roadmap

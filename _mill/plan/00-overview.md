@@ -122,6 +122,7 @@ batches:
 
 ## All Files Touched
 
+- `CLAUDE.md`
 - `CONSTRAINTS.md`
 - `cmd/lyx/constructoranchoring_test.go`
 - `cmd/lyx/exitcode_test.go`
