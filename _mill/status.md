@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: golang-comments-linebreak-sweep
 branch: golang-comments-linebreak-sweep
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-06T14:37:38Z'
+done  '2026-08-06T15:01:17Z'
 ```
