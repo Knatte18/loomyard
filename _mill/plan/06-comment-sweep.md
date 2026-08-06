@@ -6,7 +6,7 @@ batch: 'comment and test vocabulary sweep'
 number: 6
 cards: 5
 verify: go vet -tags integration ./... && go test ./cmd/lyx/
-depends-on: [3]
+depends-on: [2, 3]
 ```
 
 ## Batch Scope
@@ -129,6 +129,8 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
   - `internal/websterengine/recoverbatch_test.go`
   - `internal/websterengine/config_test.go`
   - `internal/loomengine/config_test.go`
+  - `internal/loomengine/preflight_integration_test.go`
+  - `internal/websterengine/audit_test.go`
   - `internal/perchengine/run_test.go`
   - `internal/perchcli/cli_integration_test.go`
   - `internal/perchcli/run_test.go`
@@ -143,6 +145,11 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
 - **Requirements:** Hand-clean each listed test file of `weft`/`warp`/fabric-sense-`host` vocabulary that is NOT a reference to owner-package API.
   Specifically pinned by the discussion: `cmd/lyx/boardguard_test.go` calls the invariant "Weft Git Invariant" where `CONSTRAINTS.md` says "Fabric Git Invariant (warp + weft)" — align the name.
   KEEP verbatim: every `lyxtest` owner-API reference (`WeftPrime`, `WeftBare`, `WeftPath`, `CopyWeft`, `CopyPaired`, fixture struct fields), every `fabricengine`/`fabriccli` owner-API selector a test legitimately calls, `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-var names wherever set (they are the literal names of variables this task deliberately does not rename), the PowerShell `Write-Host` cmdlet in `reedcli` `--cmd` strings (not in this card's list, but do not "fix" it if encountered), and `cmd/lyx/tierpurity_test.go`'s banned-token test data (its mentions are `lyxtest.Copy*` tokens carried as data — reword only genuine prose, if any).
+  Two files carry vocabulary that cards 5 and 12 changed the code for but did not fully sweep, so they land here — this card is their only owner:
+  `internal/loomengine/preflight_integration_test.go` (~40 hits) — the test name `TestPreflight_WeftWorktreeRemoved` renames to `TestPreflight_FabricNotReady` (or equivalent fabric wording) along with its doc comment at `:302`, and the narrative comments at `:322,323,351,440` reword;
+  card 5(f) already changed this file's assertions, so this card touches only names and prose, and the two cards are DAG-ordered (batch 06 depends on batch 03, which batch 02 precedes via batch 04's join — verify the file's assertions still reference the post-card-5 `CheckID`s before renaming anything).
+  `internal/websterengine/audit_test.go` (~38 hits) — `TestWeftReferencePattern` (`:28,39`) renames to `TestRefScannerMatches` or similar, and its surrounding prose rewords;
+  card 12 already moved this file's helpers onto the scanner, so this card is prose and test-name only.
   `perchcli/run_integration_test.go` (~50 mentions) and `configcli/configcli_integration_test.go` (~24, including its "host worktree" comment cluster and the `hostLayout`/`hostWorktreePath` locals — rename locals only where they do not shadow a `lyxtest` fixture field name) are the two big files;
   fixture-construction code that genuinely builds paired worktrees via `lyxtest` keeps honest owner vocabulary, surrounding narrative prose rewords.
   Comments and test-local identifiers only — no assertion or behaviour changes;

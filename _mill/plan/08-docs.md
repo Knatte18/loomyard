@@ -59,6 +59,8 @@ a doc describing a consumer module's behaviour rewords.
   and its "agent prompt templates never instruct a weft git op" clause is restated to the stronger `templates-describe-one-repo` rule: templates never mention the two-repo structure at all.
   Any clause left invalid is removed, never left stale.
   In `docs/overview.md`: the Cwd Resolution Invariant section (`:63-79`) gains the vocabulary rule alongside the existing enforcement-test description.
+  Also reword `:133` ("loom resume works across machines *because* its status is weft-synced" → "fabric-synced") — that sentence describes loom's observable behaviour, not fabric's mechanism, so `doc-vocabulary-split` puts it on the reword side alongside `README.md:62`;
+  it sits outside the machine check, so it is a review obligation.
   Follow the repo's semantic-line-break markdown convention.
 - **Commit:** `docs: add Fabric Vocabulary Invariant to CONSTRAINTS.md and overview`
 

@@ -45,7 +45,7 @@ batches:
   - number: 6
     name: comment and test vocabulary sweep
     file: 06-comment-sweep.md
-    depends-on: [3]
+    depends-on: [2, 3]
     verify: go vet -tags integration ./... && go test ./cmd/lyx/
   - number: 7
     name: vocabulary enforcement test
@@ -138,6 +138,7 @@ batches:
 - `internal/builderengine/gitquery_test.go`
 - `internal/builderengine/implementer-template.md`
 - `internal/builderengine/orchestrator-template.md`
+- `internal/builderengine/runlevel.go`
 - `internal/builderengine/spawn.go`
 - `internal/builderengine/spawn_test.go`
 - `internal/builderengine/state.go`
@@ -145,6 +146,7 @@ batches:
 - `internal/burlercli/cli.go`
 - `internal/burlerengine/doc.go`
 - `internal/burlerengine/instruction-3-fix-template.md`
+- `internal/burlerengine/profile.go`
 - `internal/burlerengine/prompt.go`
 - `internal/burlerengine/template_test.go`
 - `internal/configcli/configcli.go`
@@ -156,6 +158,9 @@ batches:
 - `internal/fabricengine/checkout_index_refresh_test.go`
 - `internal/fabricengine/cleanreason_integration_test.go`
 - `internal/fabricengine/commit.go`
+- `internal/fabricengine/commit_gating_integration_test.go`
+- `internal/fabricengine/commit_integration_test.go`
+- `internal/fabricengine/commit_partial_integration_test.go`
 - `internal/fabricengine/committed_lyxonly_integration_test.go`
 - `internal/fabricengine/committed_test.go`
 - `internal/fabricengine/config_driven_junctions_integration_test.go`
@@ -168,10 +173,12 @@ batches:
 - `internal/fabricengine/healthreason_integration_test.go`
 - `internal/fabricengine/hostclean.go`
 - `internal/fabricengine/index.go`
+- `internal/fabricengine/index_integration_test.go`
 - `internal/fabricengine/junction_pattern_integration_test.go`
 - `internal/fabricengine/open.go`
 - `internal/fabricengine/open_integration_test.go`
 - `internal/fabricengine/pull.go`
+- `internal/fabricengine/pull_integration_test.go`
 - `internal/fabricengine/ready.go`
 - `internal/fabricengine/ready_integration_test.go`
 - `internal/fabricengine/reconcile_stale_registration_test.go`
@@ -179,11 +186,13 @@ batches:
 - `internal/fabricengine/refscanner.go`
 - `internal/fabricengine/refscanner_test.go`
 - `internal/fabricengine/revert.go`
+- `internal/fabricengine/snapshot_integration_test.go`
 - `internal/fabricengine/unwire.go`
 - `internal/fabricengine/warpforward.go`
 - `internal/fabricengine/warpforward_integration_test.go`
 - `internal/fabricengine/weftgit.go`
 - `internal/fabricengine/weftgit_exclude_test.go`
+- `internal/fabricengine/weftgit_pathspec_integration_test.go`
 - `internal/gitrepo/commitempty_integration_test.go`
 - `internal/gitrepo/doc.go`
 - `internal/logger/sink.go`

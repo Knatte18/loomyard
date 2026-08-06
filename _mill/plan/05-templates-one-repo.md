@@ -72,13 +72,16 @@ Also carries `burlerengine`'s prose (`doc.go`, `prompt.go`) because burlerengine
   - `internal/burlerengine/template_test.go`
   - `internal/burlerengine/doc.go`
   - `internal/burlerengine/prompt.go`
+  - `internal/burlerengine/profile.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Apply the discussion table's burlerengine rows verbatim — `instruction-3-fix-template.md:2` ("the never-push/never-touch-weft rule" → "the never-push/never-touch-`_lyx` rule"), `:26` heading ("## Never push, never touch the weft" → "## Never push, never touch `_lyx`"), `:29` ("against a `_lyx` or weft path" → "against a `_lyx` path"), `:30` ("commit-per-fix on the host repo, stay inside the host working tree" → "commit-per-fix on the repo, stay inside the working tree"), `:31` ("nothing here ever authorizes a weft commit" → "nothing here ever authorizes an `_lyx` commit").
   Update `template_test.go`'s pinned heading/literal assertions to the new wording.
   Reword `doc.go`'s ~12 weft/warp/host-phrase mentions (`:87-88`'s "host repo's own files"/"host working tree", `:111`'s "ordinary host-repo commit, not a weft…") and `prompt.go:124`'s rendered string "Write surface: the host working tree in this task worktree…" → "Write surface: the working tree in this task worktree…" — that string reaches an agent prompt, so it is a leak, not just a comment.
-  Zero-hit grep afterwards across the four files.
+  `profile.go:29`'s trailing comment on `FixScopeSource FixScope = "source"` reads "// host repo, with git commits" and rewords to "// the repo, with git commits" — the `FixScope` *value* `"source"` is unchanged;
+  this file belongs to no other card and would otherwise fail batch 07's rule (2) on first activation.
+  Zero-hit grep afterwards across the five files.
 - **Commit:** `refactor(burlerengine): one-repo template wording and prose`
 
 ## Batch Tests

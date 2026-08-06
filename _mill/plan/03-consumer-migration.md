@@ -127,6 +127,7 @@ After this batch, no production package outside the owner set calls `New`/`WeftW
 - **Edits:**
   - `internal/builderengine/chain.go`
   - `internal/builderengine/spawn.go`
+  - `internal/builderengine/runlevel.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -136,6 +137,7 @@ After this batch, no production package outside the owner set calls `New`/`WeftW
   `spawn.go:367`'s `fabricengine.New(…, fabricengine.WeftWorktree(…))` → `fabricengine.Open(deps.Layout)`.
   Reword the ~21 weft/warp comments in `spawn.go` and the ~5 in `chain.go`, plus `state.go`-style "host HEAD" phrases where they appear in these two files (decision `comment-fidelity`;
   `builderengine/state.go` itself is batch 06).
+  `runlevel.go:399` carries the policed phrase in a comment ("…host repo while holding an absolute report path inside the…") and rewords to "the repo" — it belongs to no other card and would otherwise fail batch 07's rule (2) on first activation.
   `spawn.go:9,232`'s "plain host filesystem" is the machine/OS sense of host and stays.
 - **Commit:** `refactor(builderengine): rename WarpResetter to FabricResetter, adopt Open`
 

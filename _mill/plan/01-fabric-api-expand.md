@@ -66,6 +66,7 @@ Batch-local decision: each new surface lives in its own new file (`open.go`, `re
 - **Context:**
   - `internal/fabricengine/classify.go`
   - `internal/fabricengine/config.go`
+  - `internal/fabricengine/fabric.go`
   - `internal/lyxtest/lyxtest.go`
   - `_mill/discussion.md`
 - **Edits:**

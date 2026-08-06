@@ -53,6 +53,8 @@ External interface for later batches: `Healthy(l) (bool, HealthReason, error)`, 
   `"%s is not a junction"`;
   `"%s junction points elsewhere"`.
   The config-load failure stays a Cause, not a promoted error return.
+  Two `drift.go` comments become factually false and must be corrected in this same card (a staleness fix, not a vocabulary exemption — `drift.go` keeps warp/weft words as an owner file, but it may not keep a wrong statement): `Healthy`'s doc comment at `:18-25` documents `Returns (true, "", nil)` and must describe the `HealthReason` return instead;
+  and the note at `:61-66` ending "the reason string must keep the substring `junction`" documents a dependency this card removes and is deleted.
   (b) In `loomengine/preflight.go`: replace the `strings.HasPrefix(reason, "host on ")` / `strings.Contains(reason, "junction")` classification at lines 117-141 with a switch on `reason.Cause` — `CauseBranchMismatch` → `CheckFabricSync`;
   the other four causes → `CheckJunction` with `check3BlocksSeed` set;
   `report.addFailure` prints `reason.Detail` verbatim.
