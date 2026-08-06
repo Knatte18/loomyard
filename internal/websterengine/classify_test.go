@@ -1,5 +1,7 @@
-// classify_test.go covers Classify's pinned decision order: a present Report short-circuits to terminal regardless of every other field,
-// and absent a report the dead-reason precedence runs TurnEnded -> timeout -> strand-died -> running, in that order.
+// classify_test.go covers Classify's pinned decision order: a present Report short-circuits to
+// terminal regardless of every other field,
+// and absent a report the dead-reason precedence runs TurnEnded -> timeout -> strand-died ->
+// running, in that order.
 // Tier 1: no git, inputs constructed directly.
 
 package websterengine

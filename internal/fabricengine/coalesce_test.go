@@ -1,4 +1,6 @@
-// coalesce_test.go covers coalescePush's loop-exit contract with scripted step closures: no real git is spawned, only a flock on a t.TempDir() path, so this file stays untagged per the Test Tier Purity Invariant.
+// coalesce_test.go covers coalescePush's loop-exit contract with scripted step closures: no real
+// git is spawned, only a flock on a t.TempDir() path, so this file stays untagged per the Test Tier
+// Purity Invariant.
 
 package fabricengine
 
@@ -10,7 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// TestCoalescePush_LoopsWhileProgressed asserts the loop-exit contract: a step returning progressed=true a fixed number of times before returning false runs exactly one more time than the number of true returns (the final, no-progress call that ends the loop), and a step that reports no-progress on its very first call runs exactly once — proving the loop does not spin depending on any external "still unpushed" signal, only on step's own return value.
+// TestCoalescePush_LoopsWhileProgressed asserts the loop-exit contract: a step returning
+// progressed=true a fixed number of times before returning false runs exactly one more time than
+// the number of true returns (the final, no-progress call that ends the loop), and a step that
+// reports no-progress on its very first call runs exactly once — proving the loop does not spin
+// depending on any external "still unpushed" signal, only on step's own return value.
 func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -41,7 +47,9 @@ func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
 	}
 }
 
-// TestCoalescePush_StepErrorAbortsImmediately asserts a step returning a non-nil error stops the loop on that call — no further step calls — and coalescePush returns that exact error to the caller.
+// TestCoalescePush_StepErrorAbortsImmediately asserts a step returning a non-nil error stops the
+// loop on that call — no further step calls — and coalescePush returns that exact error to the
+// caller.
 func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
 	wantErr := errors.New("boom")
@@ -61,7 +69,9 @@ func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 	}
 }
 
-// TestCoalescePush_ReleasesLockOnReturn asserts coalescePush releases its absorbing lock before returning: a second, independent AcquireWriteLock on the same path must succeed without blocking once coalescePush has returned.
+// TestCoalescePush_ReleasesLockOnReturn asserts coalescePush releases its absorbing lock before
+// returning: a second, independent AcquireWriteLock on the same path must succeed without blocking
+// once coalescePush has returned.
 func TestCoalescePush_ReleasesLockOnReturn(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
 

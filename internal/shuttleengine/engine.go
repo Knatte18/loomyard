@@ -1,6 +1,8 @@
 // engine.go defines the provider seam: the Engine interface every LLM adapter implements,
 // and the plain value types that cross it (Launch, PaneInput, Event, StartupState, Outcome).
-// shuttleengine owns this seam and never imports a concrete engine — the provider-seam import rule, enforced by seam_enforcement_test.go — so a second provider only ever needs to satisfy Engine, never touch the run loop or CLI machinery.
+// shuttleengine owns this seam and never imports a concrete engine — the provider-seam import rule,
+// enforced by seam_enforcement_test.go — so a second provider only ever needs to satisfy Engine,
+// never touch the run loop or CLI machinery.
 
 package shuttleengine
 
@@ -13,17 +15,20 @@ const (
 	OutcomeDone Outcome = "done"
 	// OutcomeAsking: agent ended turn without writing output files, last message reads as a question.
 	OutcomeAsking Outcome = "asking"
-	// OutcomeDied: pane died (or provider never became ready inside startup window) before output files written.
+	// OutcomeDied: pane died (or provider never became ready inside startup window) before output
+	// files written.
 	// Pane death is the only observable process failure;
 	// a provider crash mid-run behind a live pane shell classifies OutcomeTimeout instead.
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout: wall-clock Timeout elapsed before output files written.
-	// This also covers provider crashes mid-run behind a still-live pane shell (pane tells the operator which happened).
+	// This also covers provider crashes mid-run behind a still-live pane shell (pane tells the
+	// operator which happened).
 	OutcomeTimeout Outcome = "timeout"
 )
 
 // Launch carries the opaque, provider-specific command strings an Engine's Prepare produces.
-// Cmd is typed into a fresh pane to start, ResumeCmd to reattach an existing session (both name the session via SessionID).
+// Cmd is typed into a fresh pane to start, ResumeCmd to reattach an existing session (both name the
+// session via SessionID).
 // shuttle sends Cmd/ResumeCmd verbatim;
 // it never parses or modifies them.
 type Launch struct {
@@ -42,19 +47,23 @@ type PaneInput struct {
 	SettleMS int    // Milliseconds to pause after this step lands before the next step is sent (prevents escape-sequence coalescing).
 }
 
-// EventKind discriminates the two signals ParseEvents can surface from events.jsonl: a turn-end and a live question.
-// It is a parse-time discriminator only, selecting which payload field an Event's Message comes from.
+// EventKind discriminates the two signals ParseEvents can surface from events.jsonl: a turn-end and
+// a live question.
+// It is a parse-time discriminator only, selecting which payload field an Event's Message comes
+// from.
 type EventKind int
 
 // Kinds a parsed Event can carry.
 const (
 	// EventStop: provider's turn-end signal, agent ended its turn without writing output files.
 	EventStop EventKind = iota
-	// EventAsk: live, in-progress tool-call signal when the agent is asking a question (observed when tool call opens, not at turn end).
+	// EventAsk: live, in-progress tool-call signal when the agent is asking a question (observed when
+	// tool call opens, not at turn end).
 	EventAsk
 )
 
-// Event is one parsed line from events.jsonl: either a turn-end signal (EventStop) or a live ask (EventAsk).
+// Event is one parsed line from events.jsonl: either a turn-end signal (EventStop) or a live ask
+// (EventAsk).
 // Message carries the agent's final message (EventStop) or question text (EventAsk);
 // Raw is the exact JSON line.
 type Event struct {
@@ -63,7 +72,8 @@ type Event struct {
 	Raw     []byte    // Exact JSON line this Event was parsed from.
 }
 
-// StartupState classifies a pane's captured content during startup, between launch and provider ready.
+// StartupState classifies a pane's captured content during startup, between launch and provider
+// ready.
 type StartupState int
 
 // States Startup can classify a pane capture into.
@@ -72,12 +82,15 @@ const (
 	StartupPending StartupState = iota
 	// StartupReady: provider's input prompt is visible; run loop may proceed with ComposeSend.
 	StartupReady
-	// StartupTrustPrompt: provider showing one-time trust-this-folder gate; must be dismissed before becoming ready.
+	// StartupTrustPrompt: provider showing one-time trust-this-folder gate;
+	// must be dismissed before becoming ready.
 	StartupTrustPrompt
 )
 
-// Engine is the provider seam: the interface every LLM adapter implements so the run loop can drive any provider identically.
-// shuttleengine defines Engine and never imports a concrete implementation (the provider-seam import rule);
+// Engine is the provider seam: the interface every LLM adapter implements so the run loop can drive
+// any provider identically.
+// shuttleengine defines Engine and never imports a concrete implementation (the provider-seam
+// import rule);
 // concrete engines (e.g.
 // claudeengine) import shuttleengine and satisfy this interface.
 type Engine interface {

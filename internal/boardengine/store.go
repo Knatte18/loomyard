@@ -1,7 +1,9 @@
 // store.go — the in-memory task store over tasks.json.
 //
-// Load/Save plus all CRUD and validation: dangling-dependency, isolated/deferred rules, and cycle detection, with batch and merge applied atomically.
-// Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written file.
+// Load/Save plus all CRUD and validation: dangling-dependency, isolated/deferred rules, and cycle
+// detection, with batch and merge applied atomically.
+// Save and Load take the fine-grained swap lock so a concurrent read never sees a half-written
+// file.
 
 package boardengine
 
@@ -15,7 +17,8 @@ import (
 // swap, separate from board.lock to minimize read latency.
 const swapLockSuffix = ".swaplock"
 
-// BriefTask is the enriched read-only view returned by list, with Layer and HasProposal computed at read time.
+// BriefTask is the enriched read-only view returned by list, with Layer and HasProposal computed at
+// read time.
 type BriefTask struct {
 	ID          int      `json:"id"`
 	Slug        string   `json:"slug"`
@@ -381,7 +384,8 @@ func (s *Store) SetStatus(idOrSlug any, status *string) error {
 	return fmt.Errorf("task not found: %v", idOrSlug)
 }
 
-// SetDeps replaces the depends_on list for slug, running full validation. Returns error if slug not found.
+// SetDeps replaces the depends_on list for slug, running full validation.
+// Returns error if slug not found.
 func (s *Store) SetDeps(slug string, dependsOn []string) error {
 	var task *Task
 	for i := range s.tasks {
@@ -443,7 +447,8 @@ func (s *Store) ListTasksFull() []Task {
 	return result
 }
 
-// UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or none.
+// UpsertTasksBatch applies multiple upserts atomically — validates all first, then applies all or
+// none.
 // Each task's field map is validated by the upsert allowlist before projection.
 func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 	for _, fields := range tasks {
@@ -508,7 +513,8 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 // MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
 // setStatus is the resolved status-update step,
 // or nil to skip it.
-// When setStatus targets a missing task, SetStatus returns an error and writeOp discards the in-memory mutation without saving, leaving the on-disk state unchanged.
+// When setStatus targets a missing task, SetStatus returns an error and writeOp discards the
+// in-memory mutation without saving, leaving the on-disk state unchanged.
 func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	projected := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {

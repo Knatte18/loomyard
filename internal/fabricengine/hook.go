@@ -1,7 +1,11 @@
-// hook.go installs the embedded post-checkout drift-warning hook into the repo's common hooks directory.
-// The install is idempotent (sentinel-guarded) and non-clobbering: an existing user hook is chained rather than overwritten.
+// hook.go installs the embedded post-checkout drift-warning hook into the repo's common hooks
+// directory.
+// The install is idempotent (sentinel-guarded) and non-clobbering: an existing user hook is chained
+// rather than overwritten.
 //
-// The install sentinel is fabric's own ("FABRIC_SENTINEL: post-checkout drift warning"), so a fabric-installed hook can chain cleanly alongside any other hook already installed on the same repo.
+// The install sentinel is fabric's own ("FABRIC_SENTINEL: post-checkout drift warning"), so a
+// fabric-installed hook can chain cleanly alongside any other hook already installed on the same
+// repo.
 
 package fabricengine
 
@@ -44,7 +48,8 @@ SCRIPT_DIR="$(dirname "$0")"
 
 `
 
-// InstallPostCheckoutHook installs the embedded post-checkout drift-warning hook into the repo's common hooks directory.
+// InstallPostCheckoutHook installs the embedded post-checkout drift-warning hook into the repo's
+// common hooks directory.
 // Idempotent if already installed;
 // chains around any existing hook without clobbering.
 // On POSIX platforms, marks the file executable;

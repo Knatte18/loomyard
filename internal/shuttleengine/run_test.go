@@ -1,4 +1,7 @@
-// run_test.go covers Runner.Start: the happy path's exact AddSpec wiring (including SessionID/Display passthrough), validation short-circuiting before any reed call, run-dir cleanup on an AddStrand failure, and the opportunistic orphan sweep never blocking Start on its own failure.
+// run_test.go covers Runner.Start: the happy path's exact AddSpec wiring (including
+// SessionID/Display passthrough), validation short-circuiting before any reed call, run-dir cleanup
+// on an AddStrand failure, and the opportunistic orphan sweep never blocking Start on its own
+// failure.
 
 package shuttleengine
 

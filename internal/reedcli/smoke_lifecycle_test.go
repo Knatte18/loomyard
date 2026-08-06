@@ -80,8 +80,15 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 	}
 }
 
-// TestSmokeStackedAddsKeepEverySessionPane pins the composed split-path defect this round fixed: with several below-parent strands added in sequence, each add's session-target split-window must genuinely create a new pane rather than reusing an existing one — the old path could fail SILENTLY (exit 0, no new pane, prints an existing pane's id), binding the new strand to an existing pane, whose next select-layout's duplicate pane number made tmux destroy every pane in the session.
-// The fix splits the tallest alive pane explicitly and hard-errors on a non-new reported id, so this sequence must now yield one live pane per visible strand, plus one more for the always-present header pane.
+// TestSmokeStackedAddsKeepEverySessionPane pins the composed split-path defect this round fixed:
+// with several below-parent strands added in sequence, each add's session-target split-window must
+// genuinely create a new pane rather than reusing an existing one — the old path could fail
+// SILENTLY (exit 0, no new pane, prints an existing pane's id), binding the new strand to an
+// existing pane, whose next select-layout's duplicate pane number made tmux destroy every pane in
+// the session.
+// The fix splits the tallest alive pane explicitly and hard-errors on a non-new reported id, so
+// this sequence must now yield one live pane per visible strand, plus one more for the
+// always-present header pane.
 func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -131,12 +138,20 @@ func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 	}
 }
 
-// TestSmokeRemoveLastStrandThenAddRunsTheNewCommand pins the corpse-pane adoption defect this round fixed: kill-pane on a session's SOLE pane does not remove it — under remain-on-exit psmux corpses it as pane_dead=1 with exit 0 — and the old adopt path then bound the next added strand to that corpse, silently swallowing its send-keys (the command never ran, and the next verb's reconcile stripped the binding again).
-// The fix never adopts a dead pane, so the post-remove add must yield a strand that is live and STAYS live across the next reconciling verb.
+// TestSmokeRemoveLastStrandThenAddRunsTheNewCommand pins the corpse-pane adoption defect this round
+// fixed: kill-pane on a session's SOLE pane does not remove it — under remain-on-exit psmux corpses
+// it as pane_dead=1 with exit 0 — and the old adopt path then bound the next added strand to that
+// corpse, silently swallowing its send-keys (the command never ran, and the next verb's reconcile
+// stripped the binding again).
+// The fix never adopts a dead pane, so the post-remove add must yield a strand that is live and
+// STAYS live across the next reconciling verb.
 //
 // Caveat: this corpse-pane premise is PSMUX-SPECIFIC.
-// tmux behaves oppositely — killing a session's true last pane DESTROYS the session (and, if it was the server's only session, the server exits) rather than corpsing it — so this test's sole-pane remove would never reach an "adopt or not" decision at all on tmux;
-// see reedengine.RemoveStrand's emptied-session swallow (strand.go) for how that backend is handled.
+// tmux behaves oppositely — killing a session's true last pane DESTROYS the session (and, if it was
+// the server's only session, the server exits) rather than corpsing it — so this test's sole-pane
+// remove would never reach an "adopt or not" decision at all on tmux;
+// see reedengine.RemoveStrand's emptied-session swallow (strand.go) for how that backend is
+// handled.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	tmuxBinaryPath(t)
 
@@ -201,8 +216,14 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 	}
 }
 
-// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins the empty-layout defect this round fixed: with ZERO strands tracked and a foreign pane in the session (an operator's raw split-window — 2+ panes, none reed's), the old apply emitted a layout string enumerating no cells, which tmux answers (exit 0) by destroying EVERY pane — leaving a zero-pane zombie session in which add fails forever ("session has no panes to adopt or split") while up keeps reporting success.
-// Now (a) apply is skipped when no strand owns a present pane, so the foreign panes survive an up, and (b) even a zero-pane husk (simulated separately below via the same foreign route) is healed by the next up's fresh boot.
+// TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable pins the empty-layout defect this round fixed:
+// with ZERO strands tracked and a foreign pane in the session (an operator's raw split-window — 2+
+// panes, none reed's), the old apply emitted a layout string enumerating no cells, which tmux
+// answers (exit 0) by destroying EVERY pane — leaving a zero-pane zombie session in which add fails
+// forever ("session has no panes to adopt or split") while up keeps reporting success.
+// Now (a) apply is skipped when no strand owns a present pane, so the foreign panes survive an up,
+// and (b) even a zero-pane husk (simulated separately below via the same foreign route) is healed
+// by the next up's fresh boot.
 func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -274,9 +295,19 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	}
 }
 
-// TestSmokeHeaderPaneDisplaysRenderedHeaderText pins the header pane's actual OUTPUT — the rendered "hub: <hub path>" line from the embedded default template — not merely its liveness.
-// This is the regression test for the header-cwd defect the fable-header-r1 round found: the pane used to be split with -c layout.Hub, a container directory that is by definition not a git repo, so its "lyx reed header --blocking" command died at geometry resolution ({"ok":false,"error":"not a git repository"}) and the operator console showed a JSON error over a bash prompt forever — while every liveness-only assertion stayed green, because the pane's parent shell survived the failed command.
-// Two things make content assertable here where the other smoke tests cannot: up must run as a SUBPROCESS of the built lyx binary (the header pane boots os.Executable() + " reed header --blocking", and an in-process RunCLI's executable is this TEST binary, whose header invocation is nonsense), and the assertion polls capture-pane for the rendered text rather than list-panes for presence.
+// TestSmokeHeaderPaneDisplaysRenderedHeaderText pins the header pane's actual OUTPUT — the rendered
+// "hub: <hub path>" line from the embedded default template — not merely its liveness.
+// This is the regression test for the header-cwd defect the fable-header-r1 round found: the pane
+// used to be split with -c layout.Hub, a container directory that is by definition not a git repo,
+// so its "lyx reed header --blocking" command died at geometry resolution ({"ok":false,"error":"not
+// a git repository"}) and the operator console showed a JSON error over a bash prompt forever —
+// while every liveness-only assertion stayed green, because the pane's parent shell survived the
+// failed command.
+// Two things make content assertable here where the other smoke tests cannot: up must run as a
+// SUBPROCESS of the built lyx binary (the header pane boots os.Executable() + " reed header
+// --blocking", and an in-process RunCLI's executable is this TEST binary, whose header invocation
+// is nonsense), and the assertion polls capture-pane for the rendered text rather than list-panes
+// for presence.
 func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	lyxExe := buildLyxBinary(t)
@@ -324,8 +355,13 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	pollPaneContains(t, tmuxPath, socket, st.HeaderPaneID, "hub: "+fixture.Layout.HubPath, 20*time.Second)
 }
 
-// TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane keepalive guarantee this batch adds: the always-present header pane must survive a full up -> add -> remove -> add cycle and every reconcile along the way, never adopted/reaped as a strand's pane, and — the whole point — still alive even when the strand table momentarily drops to zero after a remove.
-// Mirrors TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's tmux-driven verification style (list-panes via the real binary, not reed's own reporting) but for the header instead of a foreign pane.
+// TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile pins the header-pane keepalive guarantee this
+// batch adds: the always-present header pane must survive a full up -> add -> remove -> add cycle
+// and every reconcile along the way, never adopted/reaped as a strand's pane, and — the whole point
+// — still alive even when the strand table momentarily drops to zero after a remove.
+// Mirrors TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable's tmux-driven verification style
+// (list-panes via the real binary, not reed's own reporting) but for the header instead of a
+// foreign pane.
 func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 

@@ -214,7 +214,8 @@ func (e *beginFakeEngine) AuditForksIncremental(sessionID, workdir string, seenT
 	return shuttleengine.ForkAudit{}, nil
 }
 
-// ModelSwitchSequence returns a single marker PaneInput naming model, so a test asserting BeginBatch's Injector call can read the target model back out of the recorded inputs.
+// ModelSwitchSequence returns a single marker PaneInput naming model, so a test asserting
+// BeginBatch's Injector call can read the target model back out of the recorded inputs.
 func (e *beginFakeEngine) ModelSwitchSequence(model string) []shuttleengine.PaneInput {
 	return []shuttleengine.PaneInput{{Text: "/model " + model, Submit: true}}
 }
@@ -278,7 +279,9 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
 }
 
-// TestBeginBatch_PauseSentinel proves the pause gate fires before anything else — including before the Injector is ever reached — and that the returned error satisfies errors.Is(err, websterengine.ErrPaused).
+// TestBeginBatch_PauseSentinel proves the pause gate fires before anything else — including before
+// the Injector is ever reached — and that the returned error satisfies errors.Is(err,
+// websterengine.ErrPaused).
 func TestBeginBatch_PauseSentinel(t *testing.T) {
 	fx := newBeginFixture(t)
 
@@ -295,7 +298,8 @@ func TestBeginBatch_PauseSentinel(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_FingerprintMismatch proves a plan edited after run init is refused at begin-batch entry with the ErrFingerprintMismatch sentinel, before the Injector is ever reached.
+// TestBeginBatch_FingerprintMismatch proves a plan edited after run init is refused at begin-batch
+// entry with the ErrFingerprintMismatch sentinel, before the Injector is ever reached.
 func TestBeginBatch_FingerprintMismatch(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -312,8 +316,12 @@ func TestBeginBatch_FingerprintMismatch(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_ModelAssertion proves the idempotent model-assertion rule: a begin-batch call injects exactly once when AssertedModel still names a different model, updating AssertedModel afterward, while a repeat call once AssertedModel already names the target model injects zero times.
-// There is no oversized escalation under the flat card-list model — every batch targets the same RoleMaster model.
+// TestBeginBatch_ModelAssertion proves the idempotent model-assertion rule: a begin-batch call
+// injects exactly once when AssertedModel still names a different model, updating AssertedModel
+// afterward, while a repeat call once AssertedModel already names the target model injects zero
+// times.
+// There is no oversized escalation under the flat card-list model — every batch targets the same
+// RoleMaster model.
 func TestBeginBatch_ModelAssertion(t *testing.T) {
 	t.Run("first call injects and updates AssertedModel", func(t *testing.T) {
 		fx := newBeginFixture(t)
@@ -384,7 +392,8 @@ func TestBeginBatch_ModelAssertion(t *testing.T) {
 	})
 }
 
-// TestBeginBatch_PromptFilePrevDigest proves the fork prompt is written under PromptsDir with {{.prev_digest}} populated from the immediately preceding batch's persisted digest for batch N>1,
+// TestBeginBatch_PromptFilePrevDigest proves the fork prompt is written under PromptsDir with
+// {{.prev_digest}} populated from the immediately preceding batch's persisted digest for batch N>1,
 // and the first-batch sentinel when there is no preceding batch.
 func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 	t.Run("batch 1 renders the first-batch sentinel", func(t *testing.T) {
@@ -446,7 +455,8 @@ func TestBeginBatch_PromptFilePrevDigest(t *testing.T) {
 	})
 }
 
-// TestBeginBatch_StateUpdated proves BeginBatch mutates State exactly as documented: CurrentBatch and the fresh BatchState fields for the batch it began.
+// TestBeginBatch_StateUpdated proves BeginBatch mutates State exactly as documented: CurrentBatch
+// and the fresh BatchState fields for the batch it began.
 // There is no chain/restart concept left under the flat card-list model.
 func TestBeginBatch_StateUpdated(t *testing.T) {
 	fx := newBeginFixture(t)
@@ -467,7 +477,11 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_CreatesReportsDir proves BeginBatch creates a missing reports dir itself: the fork writes its report there with whatever tool it likes — a plain shell redirect included, which never creates missing parents — and only the --fresh archive path recreated the dir before (crucible round fable-r1's F5: an ordinary first run left it absent and a shell-writing fork's report failed on ENOENT).
+// TestBeginBatch_CreatesReportsDir proves BeginBatch creates a missing reports dir itself: the fork
+// writes its report there with whatever tool it likes — a plain shell redirect included, which
+// never creates missing parents — and only the --fresh archive path recreated the dir before
+// (crucible round fable-r1's F5: an ordinary first run left it absent and a shell-writing fork's
+// report failed on ENOENT).
 func TestBeginBatch_CreatesReportsDir(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.ReportsDir = filepath.Join(t.TempDir(), "reports")
@@ -481,7 +495,8 @@ func TestBeginBatch_CreatesReportsDir(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_UnknownRoleErrors proves a missing role resolution fails loud rather than injecting a zero-value model, naming the missing role.
+// TestBeginBatch_UnknownRoleErrors proves a missing role resolution fails loud rather than
+// injecting a zero-value model, naming the missing role.
 func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
 	fx := newBeginFixture(t)
 	delete(fx.Deps.Roles, websterengine.RoleMaster)
@@ -495,7 +510,10 @@ func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_PreExistingReportRefused proves builder's pre-existing-report guard applies to the fork path: a batch whose report file already exists is refused loud (naming the recovery escape) with its BatchState left untouched — finished work is never silently overwritten by an accidental re-begin.
+// TestBeginBatch_PreExistingReportRefused proves builder's pre-existing-report guard applies to the
+// fork path: a batch whose report file already exists is refused loud (naming the recovery escape)
+// with its BatchState left untouched — finished work is never silently overwritten by an accidental
+// re-begin.
 // There is no --restart-chain escape under the flat card-list model.
 func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
 	fx := newBeginFixture(t)
@@ -522,7 +540,11 @@ func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite proves F9's guard: when the batch being begun as a fork carries a prior recovery record whose strand the reed still reports live (a dead recovery keeps its substrate alive by design), BeginBatch stops that strand before the record overwrite erases its StrandGUID — otherwise the unreclaimed strand would race the fresh fork on the host repo.
+// TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite proves F9's guard: when the batch being
+// begun as a fork carries a prior recovery record whose strand the reed still reports live (a dead
+// recovery keeps its substrate alive by design), BeginBatch stops that strand before the record
+// overwrite erases its StrandGUID — otherwise the unreclaimed strand would race the fresh fork on
+// the host repo.
 func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector

@@ -1,4 +1,5 @@
-// serverlog.go implements server-log concerns: mapping the opt-in debug_log config value to tmux verbose-logging flags,
+// serverlog.go implements server-log concerns: mapping the opt-in debug_log config value to tmux
+// verbose-logging flags,
 // and boot-time pruning of the per-hub server's log files under the hub's .lyx/logs/.
 // Both are pure planning helpers (no filesystem or process I/O);
 // the caller (lifecycle.go) performs the actual tmux spawn and file removals.

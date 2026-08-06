@@ -1,4 +1,5 @@
-// registry.go implements the package's name-keyed Batcher registry: library members self-register via their own init() (see identity.go),
+// registry.go implements the package's name-keyed Batcher registry: library members self-register
+// via their own init() (see identity.go),
 // and webster resolves the config-chosen active batcher back out by name via the exported Select.
 
 package batcher

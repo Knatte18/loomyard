@@ -24,7 +24,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original branch, coordinated-switches to a pre-existing divergent branch pair whose weft history predates that record, and asserts the lookup now misses (ErrNoCorrespondence) instead of serving the other branch's weft SHA.
+// TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original
+// branch, coordinated-switches to a pre-existing divergent branch pair whose weft history predates
+// that record, and asserts the lookup now misses (ErrNoCorrespondence) instead of serving the other
+// branch's weft SHA.
 func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	t.Parallel()
 

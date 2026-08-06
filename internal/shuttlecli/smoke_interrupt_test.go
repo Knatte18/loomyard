@@ -229,10 +229,16 @@ func pollFileContentEquals(path, want string, deadline time.Time) (last string, 
 	}
 }
 
-// TestSmokeInterruptSendContinues starts a run whose prompt directs an open-ended counting task, retries with a fresh run if real claude self-ends the turn before a mid-turn window is observed (see startMidTurnCountingRun), then calls run.Interrupt() followed by run.Send() with a one-line replacement instruction.
-// It asserts the deterministic property established live (see the file-level doc comment): the output file eventually carries the REDIRECTED content, proven by polling the file directly rather than asserting on Wait's classification of the interrupted turn.
+// TestSmokeInterruptSendContinues starts a run whose prompt directs an open-ended counting task,
+// retries with a fresh run if real claude self-ends the turn before a mid-turn window is observed
+// (see startMidTurnCountingRun), then calls run.Interrupt() followed by run.Send() with a one-line
+// replacement instruction.
+// It asserts the deterministic property established live (see the file-level doc comment): the
+// output file eventually carries the REDIRECTED content, proven by polling the file directly rather
+// than asserting on Wait's classification of the interrupted turn.
 // Wait is still drained and its outcome logged,
-// and a mechanism failure (an error, or a died/timeout outcome) still fails the test — only the specific "must be done" claim is dropped.
+// and a mechanism failure (an error, or a died/timeout outcome) still fails the test — only the
+// specific "must be done" claim is dropped.
 func TestSmokeInterruptSendContinues(t *testing.T) {
 	claudeBinaryPath(t)
 

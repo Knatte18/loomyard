@@ -1,4 +1,6 @@
-// detect_test.go table-drives DetectLanguage against synthetic marker trees built under t.TempDir with os.WriteFile — no git spawn, no subprocess launch, entirely offline and spawn-free per the batch's leaf test tier.
+// detect_test.go table-drives DetectLanguage against synthetic marker trees built under t.TempDir
+// with os.WriteFile — no git spawn, no subprocess launch, entirely offline and spawn-free per the
+// batch's leaf test tier.
 
 package scoutengine
 

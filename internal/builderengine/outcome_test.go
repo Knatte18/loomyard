@@ -1,4 +1,5 @@
-// outcome_test.go exercises ParseOutcome's accept/reject table and ArchiveStaleOutcome's rename/preserve/no-op/collision behavior.
+// outcome_test.go exercises ParseOutcome's accept/reject table and ArchiveStaleOutcome's
+// rename/preserve/no-op/collision behavior.
 
 package builderengine_test
 
@@ -24,8 +25,10 @@ func writeOutcomeFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParseOutcome_AcceptReject tables every outcome.yaml accept/reject case ParseOutcome's fail-loud discipline pins: a well-formed done/stuck/paused file parses;
-// an unrecognized outcome value, a stuck file missing stuck_reason, and an unknown extra key are all rejected loudly.
+// TestParseOutcome_AcceptReject tables every outcome.yaml accept/reject case ParseOutcome's
+// fail-loud discipline pins: a well-formed done/stuck/paused file parses;
+// an unrecognized outcome value, a stuck file missing stuck_reason, and an unknown extra key are
+// all rejected loudly.
 func TestParseOutcome_AcceptReject(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -98,8 +101,10 @@ func TestParseOutcome_AcceptReject(t *testing.T) {
 	}
 }
 
-// TestParseOutcome_MissingFile asserts a missing outcome.yaml is a wrapped error, not a guessed nil result — ParseOutcome is reserved for the done-outcome, file-present-but-malformed failure class;
-// a missing file belongs to run's own asking/died/timeout branch, which never calls ParseOutcome at all (see runlevel.go).
+// TestParseOutcome_MissingFile asserts a missing outcome.yaml is a wrapped error, not a guessed nil
+// result — ParseOutcome is reserved for the done-outcome, file-present-but-malformed failure class;
+// a missing file belongs to run's own asking/died/timeout branch, which never calls ParseOutcome at
+// all (see runlevel.go).
 func TestParseOutcome_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "outcome.yaml")
@@ -109,7 +114,8 @@ func TestParseOutcome_MissingFile(t *testing.T) {
 	}
 }
 
-// TestArchiveStaleOutcome_AbsentFileIsNoOp asserts archiving a builder dir with no outcome.yaml at all returns ("", nil) — not an error — per the discussion's "absent file -> no-op" rule.
+// TestArchiveStaleOutcome_AbsentFileIsNoOp asserts archiving a builder dir with no outcome.yaml at
+// all returns ("", nil) — not an error — per the discussion's "absent file -> no-op" rule.
 func TestArchiveStaleOutcome_AbsentFileIsNoOp(t *testing.T) {
 	dir := t.TempDir()
 
@@ -128,7 +134,9 @@ func fixedClock(t time.Time) func() time.Time {
 	return func() time.Time { return t }
 }
 
-// TestArchiveStaleOutcome_RenamesAndPreservesContent asserts a present outcome.yaml is renamed (never copied-and-left, never deleted) to outcome-<UTC-compact-timestamp>.yaml in the same directory, with its content preserved byte-for-byte, and the original path no longer exists.
+// TestArchiveStaleOutcome_RenamesAndPreservesContent asserts a present outcome.yaml is renamed
+// (never copied-and-left, never deleted) to outcome-<UTC-compact-timestamp>.yaml in the same
+// directory, with its content preserved byte-for-byte, and the original path no longer exists.
 func TestArchiveStaleOutcome_RenamesAndPreservesContent(t *testing.T) {
 	dir := t.TempDir()
 	original := filepath.Join(dir, "outcome.yaml")
@@ -159,7 +167,9 @@ func TestArchiveStaleOutcome_RenamesAndPreservesContent(t *testing.T) {
 	}
 }
 
-// TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix asserts a second archive call whose now() truncates to the same compact timestamp does not clobber the first archive: it appends a numeric suffix instead, per the discussion's collision rule.
+// TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix asserts a second archive call whose
+// now() truncates to the same compact timestamp does not clobber the first archive: it appends a
+// numeric suffix instead, per the discussion's collision rule.
 func TestArchiveStaleOutcome_SameSecondCollisionAppendsSuffix(t *testing.T) {
 	dir := t.TempDir()
 	clk := fixedClock(time.Date(2026, 7, 11, 13, 45, 0, 0, time.UTC))

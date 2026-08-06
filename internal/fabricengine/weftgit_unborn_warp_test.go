@@ -32,8 +32,13 @@ func newUnbornWarpRepo(t *testing.T) string {
 	return dir
 }
 
-// TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord asserts that CommitWeft against an unborn warp HEAD still commits (unlike the pre-fix behavior, which failed with "warp CurrentSHA: gitrepo: repository has no commits" before ever reaching StageAndCommit), that the resulting commit carries no Warp-SHA trailer (there is no warp SHA yet to name), and that no correspondence entry was recorded for it.
-// It then makes warp's first commit and calls CommitWeft again, asserting normal trailer/record behavior resumes — the unborn state is a one-time, self-healing condition, not a permanent mode.
+// TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord asserts that CommitWeft against an
+// unborn warp HEAD still commits (unlike the pre-fix behavior, which failed with "warp CurrentSHA:
+// gitrepo: repository has no commits" before ever reaching StageAndCommit), that the resulting
+// commit carries no Warp-SHA trailer (there is no warp SHA yet to name), and that no correspondence
+// entry was recorded for it.
+// It then makes warp's first commit and calls CommitWeft again, asserting normal trailer/record
+// behavior resumes — the unborn state is a one-time, self-healing condition, not a permanent mode.
 func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)

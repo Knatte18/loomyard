@@ -1,5 +1,8 @@
-// weftwiring_test.go unit-tests removeJunctionRecords directly against synthetic HostJunction slices — no build tag, since it touches only plain directories and fslink, never git.
-// It exists because HostJunctions(l, slug) still returns exactly one entry in this batch (a second entry is batch 5's job), so removeHostJunction's best-effort, continue-past-failure contract cannot be driven through the exported (l, slug) surface with more than one junction;
+// weftwiring_test.go unit-tests removeJunctionRecords directly against synthetic HostJunction
+// slices — no build tag, since it touches only plain directories and fslink, never git.
+// It exists because HostJunctions(l, slug) still returns exactly one entry in this batch (a second
+// entry is batch 5's job), so removeHostJunction's best-effort, continue-past-failure contract
+// cannot be driven through the exported (l, slug) surface with more than one junction;
 // this file drives the extracted loop directly instead.
 
 package fabricengine
@@ -10,7 +13,8 @@ import (
 	"testing"
 )
 
-// TestRemoveJunctionRecords_ContinuesPastFailure proves the function continues removing junctions after a per-junction failure.
+// TestRemoveJunctionRecords_ContinuesPastFailure proves the function continues removing junctions
+// after a per-junction failure.
 func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 	t.Parallel()
 

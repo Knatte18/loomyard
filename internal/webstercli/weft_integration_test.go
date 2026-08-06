@@ -135,7 +135,11 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 	}, weft
 }
 
-// TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves the Fabric.Commit error branch passes committed through instead of forcing it to false: with a directory squatting on the correspondence index path, the weft commit itself lands but RecordCorrespondence fails, and weftCommit must report (true, err) -- the commit is real, and Fabric.Commit's contract says the caller gets to know that alongside the error.
+// TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves the Fabric.Commit error
+// branch passes committed through instead of forcing it to false: with a directory squatting on the
+// correspondence index path, the weft commit itself lands but RecordCorrespondence fails, and
+// weftCommit must report (true, err) -- the commit is real, and Fabric.Commit's contract says the
+// caller gets to know that alongside the error.
 func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
@@ -164,11 +168,24 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	}
 }
 
-// TestWeftCommit_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, both round-loop modules' pause flags, webster's rendered fork prompts) stays uncommitted by REAL git at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
-// Exclusion is now enforced solely by the weft repo's .git/info/exclude (seeded by fabricengine.seedWeftArtifactExcludes, reached through Fabric.Commit's ensureWeftLockDir), not by any ":(exclude)" pathspec websterCLI builds itself -- weftCommit passes only the positive scoped _lyx pathspec.
-// The nested case is the regression guard for the pre-fix, unanchored ":(exclude)*.lock" spelling this migration retired: that spelling's one-star pathspec false-positive-matched the intermediate directories leading to a multi-segment positive pathspec and pruned the entire subtree, so `git add` staged nothing and weftCommit returned (false, nil) -- a completely silent no-op.
-// It is also the cross-module regression guard: a webster commit must hold back BUILDER's pause flag too, since both round-loop modules share one _lyx -- committing it pins it in weft HEAD, where builder can never stage its deletion (its own exclusion hides it from `git add`), so every other machine's weft pull materializes a pause request nobody made.
-// Each excluded artifact is asserted both absent from the commit AND still untracked via `git ls-files` -- proving the exclude file, not merely an already-tracked file happening to be omitted from this one commit.
+// TestWeftCommit_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, both
+// round-loop modules' pause flags, webster's rendered fork prompts) stays uncommitted by REAL git
+// at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
+// Exclusion is now enforced solely by the weft repo's .git/info/exclude (seeded by
+// fabricengine.seedWeftArtifactExcludes, reached through Fabric.Commit's ensureWeftLockDir), not by
+// any ":(exclude)" pathspec websterCLI builds itself -- weftCommit passes only the positive scoped
+// _lyx pathspec.
+// The nested case is the regression guard for the pre-fix, unanchored ":(exclude)*.lock" spelling
+// this migration retired: that spelling's one-star pathspec false-positive-matched the intermediate
+// directories leading to a multi-segment positive pathspec and pruned the entire subtree, so `git
+// add` staged nothing and weftCommit returned (false, nil) -- a completely silent no-op.
+// It is also the cross-module regression guard: a webster commit must hold back BUILDER's pause
+// flag too, since both round-loop modules share one _lyx -- committing it pins it in weft HEAD,
+// where builder can never stage its deletion (its own exclusion hides it from `git add`), so every
+// other machine's weft pull materializes a pause request nobody made.
+// Each excluded artifact is asserted both absent from the commit AND still untracked via `git
+// ls-files` -- proving the exclude file, not merely an already-tracked file happening to be omitted
+// from this one commit.
 // WEFT_SKIP_PUSH is set because the scratch weft repo has no remote;
 // the commit half is what is under test.
 func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {

@@ -1,5 +1,12 @@
-// settings.go composes the Claude Code settings.json document Prepare writes for each run: a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads),
-// and the PreToolUse guardrails that keep a run's work visible in its own pane — denying the in-process Agent tool (or, in a fork-mode run, allowing only unnamed fork calls through it), refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop can classify it as a real-time asking signal instead of waiting for the timeout.
+// settings.go composes the Claude Code settings.json document Prepare writes for each run: a Stop
+// hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents
+// reads),
+// and the PreToolUse guardrails that keep a run's work visible in its own pane — denying the
+// in-process Agent tool (or, in a fork-mode run, allowing only unnamed fork calls through it),
+// refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock
+// guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer
+// it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
+// loop can classify it as a real-time asking signal instead of waiting for the timeout.
 
 package claudeengine
 

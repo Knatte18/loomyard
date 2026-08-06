@@ -1,4 +1,7 @@
-// profile_test.go table-drives Profile.validate over the happy path and every fail-loud rule documented on validate: field-emptiness, path existence, FixScope legality, ClusterFan's fan-resolution gate, and in-place absolute-path resolution for both relative and already-absolute entries.
+// profile_test.go table-drives Profile.validate over the happy path and every fail-loud rule
+// documented on validate: field-emptiness, path existence, FixScope legality, ClusterFan's
+// fan-resolution gate, and in-place absolute-path resolution for both relative and already-absolute
+// entries.
 
 package burlerengine
 
@@ -314,7 +317,9 @@ func TestProfile_Validate(t *testing.T) {
 	}
 }
 
-// TestProfile_Validate_ResolvesPathsInPlace asserts the happy path documented on validate: every path field is rewritten in place to a cleaned absolute path, already-absolute entries are kept verbatim, and relative entries are joined onto worktreeRoot.
+// TestProfile_Validate_ResolvesPathsInPlace asserts the happy path documented on validate: every
+// path field is rewritten in place to a cleaned absolute path, already-absolute entries are kept
+// verbatim, and relative entries are joined onto worktreeRoot.
 func TestProfile_Validate_ResolvesPathsInPlace(t *testing.T) {
 	root, p := newValidProfileFixture(t)
 
@@ -358,7 +363,9 @@ func TestProfile_Validate_ResolvesPathsInPlace(t *testing.T) {
 	}
 }
 
-// TestProfile_Validate_AbsolutePathsKeptVerbatim asserts that an already-absolute Target.Paths entry outside worktreeRoot survives validate unchanged (only filepath.Clean-ed), proving relative-vs-absolute handling is per-entry, not per-field.
+// TestProfile_Validate_AbsolutePathsKeptVerbatim asserts that an already-absolute Target.Paths
+// entry outside worktreeRoot survives validate unchanged (only filepath.Clean-ed), proving
+// relative-vs-absolute handling is per-entry, not per-field.
 func TestProfile_Validate_AbsolutePathsKeptVerbatim(t *testing.T) {
 	root, p := newValidProfileFixture(t)
 
@@ -377,8 +384,10 @@ func TestProfile_Validate_AbsolutePathsKeptVerbatim(t *testing.T) {
 	}
 }
 
-// TestProfile_Validate_ClusterFanPopulatesLensesInOrder asserts the ClusterFan happy path: validate populates p.clusterLenses with the resolved fan's lenses in fan order,
-// and an empty ClusterFan leaves clusterLenses nil — clustering is never on unless a profile names a fan.
+// TestProfile_Validate_ClusterFanPopulatesLensesInOrder asserts the ClusterFan happy path: validate
+// populates p.clusterLenses with the resolved fan's lenses in fan order,
+// and an empty ClusterFan leaves clusterLenses nil — clustering is never on unless a profile names
+// a fan.
 func TestProfile_Validate_ClusterFanPopulatesLensesInOrder(t *testing.T) {
 	cfg := testClusterFanConfig()
 

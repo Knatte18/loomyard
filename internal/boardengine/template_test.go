@@ -1,6 +1,7 @@
 // template_test.go — tests for the boardengine ConfigTemplate generator.
 //
-// Covers: ConfigTemplate returns valid YAML with correct schema and resolves to the correct defaults when the environment is empty.
+// Covers: ConfigTemplate returns valid YAML with correct schema and resolves to the correct
+// defaults when the environment is empty.
 
 package boardengine
 
@@ -20,7 +21,8 @@ func TestConfigTemplate_ValidYAML(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_HasRequiredKeys asserts the template contains required keys (readme, design_prefix).
+// TestConfigTemplate_HasRequiredKeys asserts the template contains required keys (readme,
+// design_prefix).
 // The geometry key path is intentionally absent — fabricengine.BoardDir now owns the data dir.
 func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 	got := ConfigTemplate()
@@ -37,7 +39,8 @@ func TestConfigTemplate_HasRequiredKeys(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ResolvesToDefaults asserts the template resolves to correct defaults with empty environment.
+// TestConfigTemplate_ResolvesToDefaults asserts the template resolves to correct defaults with
+// empty environment.
 func TestConfigTemplate_ResolvesToDefaults(t *testing.T) {
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)

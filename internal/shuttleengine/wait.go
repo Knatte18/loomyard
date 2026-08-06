@@ -1,6 +1,12 @@
-// wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its terminal outcome (done/asking/died/timeout), probes the startup window for a trust-dialog dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run dir deletion).
-// Wait is the only place in the run loop that sleeps — the clock seam defined here lets tests replay a whole poll sequence instantly.
-// A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when every output file already exists — the file contract can be satisfied an instant before the process disappears, racing ahead of its own Stop hook.
+// wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its
+// terminal outcome (done/asking/died/timeout), probes the startup window for a trust-dialog
+// dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run
+// dir deletion).
+// Wait is the only place in the run loop that sleeps — the clock seam defined here lets tests
+// replay a whole poll sequence instantly.
+// A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
+// every output file already exists — the file contract can be satisfied an instant before the
+// process disappears, racing ahead of its own Stop hook.
 
 package shuttleengine
 

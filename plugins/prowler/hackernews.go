@@ -1,4 +1,7 @@
-// hackernews.go implements the Hacker News site adapter: it fetches a discussion thread's clean, structured JSON from the community-run Algolia API (https://hn.algolia.com/api/v1/items/{id}) rather than scraping HN's own server-rendered HTML, giving a second adapter strategy distinct from Reddit's HTML-fetch approach.
+// hackernews.go implements the Hacker News site adapter: it fetches a discussion thread's clean,
+// structured JSON from the community-run Algolia API (https://hn.algolia.com/api/v1/items/{id})
+// rather than scraping HN's own server-rendered HTML, giving a second adapter strategy distinct
+// from Reddit's HTML-fetch approach.
 
 package main
 
@@ -32,7 +35,8 @@ type hackerNewsItem struct {
 // individual item ("story") pages and formats them via the Algolia API.
 type hackerNewsAdapter struct{}
 
-// Matches reports whether url is a Hacker News item page (news.ycombinator.com/item?id=N, any scheme or optional "www."
+// Matches reports whether url is a Hacker News item page (news.ycombinator.com/item?id=N, any
+// scheme or optional "www."
 // prefix).
 func (hackerNewsAdapter) Matches(rawURL string) bool {
 	_, ok := hackerNewsItemID(rawURL)
@@ -40,7 +44,8 @@ func (hackerNewsAdapter) Matches(rawURL string) bool {
 }
 
 // Fetch retrieves the Algolia API representation and formats it into markdown.
-// Reports handled=false if the id can't be extracted, request fails, response is non-2xx/unparseable, or the item has neither title nor text.
+// Reports handled=false if the id can't be extracted, request fails, response is
+// non-2xx/unparseable, or the item has neither title nor text.
 func (hackerNewsAdapter) Fetch(ctx context.Context, f fetcher, rawURL string) (out string, handled bool) {
 	id, ok := hackerNewsItemID(rawURL)
 	if !ok {

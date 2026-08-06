@@ -1,5 +1,8 @@
-// hostlayout.go provides the guarded per-host-worktree Location deriver shared by Status and Reconcile: it avoids re-spawning git for the common case where the enumerated worktree is a hub sibling of the caller's already-resolved Location.
-// Its non-sibling fallback resolves via the gate-free lyxcwd.ResolveWorktree, not the gated Resolve, since it derives another worktree's geometry from its root, above any subpath anchor.
+// hostlayout.go provides the guarded per-host-worktree Location deriver shared by Status and
+// Reconcile: it avoids re-spawning git for the common case where the enumerated worktree is a hub
+// sibling of the caller's already-resolved Location.
+// Its non-sibling fallback resolves via the gate-free lyxcwd.ResolveWorktree, not the gated
+// Resolve, since it derives another worktree's geometry from its root, above any subpath anchor.
 
 package fabricengine
 

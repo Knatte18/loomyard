@@ -170,8 +170,15 @@ func main() {}
 	}
 }
 
-// TestReferences_InFile_Integration proves the Query.InFile resolve path — documentSymbol -> position -> textDocument/references — end to end against a real gopls, the InFile analogue of TestReferences_Integration's Query.Pos coverage above.
-// Both subcases route through ensureServer's now- live supervised dispatch (builtins()'s Go entry has HasNativeDaemon: true), which spawns a lyx-owned daemon that teardownConnection's connKindSupervised branch deliberately never kills — each subcase anchors WorktreeRoot at its own isolated t.TempDir() and reaps the spawned daemon in t.Cleanup, exactly like TestEnsureServer_Integration_ SupervisedDispatch (ensureserver_integration_test.go) and supervised_integration_test.go already do.
+// TestReferences_InFile_Integration proves the Query.InFile resolve path — documentSymbol ->
+// position -> textDocument/references — end to end against a real gopls, the InFile analogue of
+// TestReferences_Integration's Query.Pos coverage above.
+// Both subcases route through ensureServer's now- live supervised dispatch (builtins()'s Go entry
+// has HasNativeDaemon: true), which spawns a lyx-owned daemon that teardownConnection's
+// connKindSupervised branch deliberately never kills — each subcase anchors WorktreeRoot at its own
+// isolated t.TempDir() and reaps the spawned daemon in t.Cleanup, exactly like
+// TestEnsureServer_Integration_ SupervisedDispatch (ensureserver_integration_test.go) and
+// supervised_integration_test.go already do.
 func TestReferences_InFile_Integration(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip(builtins()["go"].InstallHint)

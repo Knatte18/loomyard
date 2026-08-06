@@ -1,4 +1,9 @@
-// prepare_test.go covers Prepare's effort and model/version handling: an unrealizable effort is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), a valid effort ends up in the returned Launch.Cmd, an empty effort emits no --effort flag at all, a bare-word model plus version composes into the pinned model id in Launch.Cmd, a dashed model plus version is rejected before any artifact is written, and Spec.ForkSubagents threads through to Launch.Cmd's CLAUDE_CODE_FORK_SUBAGENT env prefix.
+// prepare_test.go covers Prepare's effort and model/version handling: an unrealizable effort is
+// rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's
+// before-artifacts guarantee), a valid effort ends up in the returned Launch.Cmd, an empty effort
+// emits no --effort flag at all, a bare-word model plus version composes into the pinned model id
+// in Launch.Cmd, a dashed model plus version is rejected before any artifact is written, and
+// Spec.ForkSubagents threads through to Launch.Cmd's CLAUDE_CODE_FORK_SUBAGENT env prefix.
 
 package claudeengine
 
@@ -11,7 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestPrepare_BadEffortRejectedBeforeArtifacts proves an unrealizable effort value fails Prepare before prompt.md/settings.json are written — the same before-artifacts guarantee TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would look resumable to a later diagnosis pass.
+// TestPrepare_BadEffortRejectedBeforeArtifacts proves an unrealizable effort value fails Prepare
+// before prompt.md/settings.json are written — the same before-artifacts guarantee
+// TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would
+// look resumable to a later diagnosis pass.
 func TestPrepare_BadEffortRejectedBeforeArtifacts(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Effort: "bogus"}
@@ -34,7 +42,9 @@ func TestPrepare_BadEffortRejectedBeforeArtifacts(t *testing.T) {
 	}
 }
 
-// TestPrepare_ValidEffortLandsInLaunchCmd proves a valid effort survives Prepare's validation and is threaded into buildLaunchCmd, appearing in the returned Launch.Cmd exactly as buildLaunchCmd would render it.
+// TestPrepare_ValidEffortLandsInLaunchCmd proves a valid effort survives Prepare's validation and
+// is threaded into buildLaunchCmd, appearing in the returned Launch.Cmd exactly as buildLaunchCmd
+// would render it.
 func TestPrepare_ValidEffortLandsInLaunchCmd(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Effort: "high"}
@@ -50,7 +60,8 @@ func TestPrepare_ValidEffortLandsInLaunchCmd(t *testing.T) {
 	}
 }
 
-// TestPrepare_EmptyEffortEmitsNoFlag proves the zero-value Effort (the common case — no operator override) succeeds and emits no --effort flag at all, deferring entirely to claude's own default.
+// TestPrepare_EmptyEffortEmitsNoFlag proves the zero-value Effort (the common case — no operator
+// override) succeeds and emits no --effort flag at all, deferring entirely to claude's own default.
 func TestPrepare_EmptyEffortEmitsNoFlag(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing"}
@@ -66,7 +77,10 @@ func TestPrepare_EmptyEffortEmitsNoFlag(t *testing.T) {
 	}
 }
 
-// TestPrepare_ModelAndVersionComposePinnedID proves Prepare threads spec.Model and spec.Version through resolveModelID, so a Spec naming a bare-word model plus a dotted version produces a launch Cmd containing the pinned model id ("sonnet" + "4.5" -> "claude-sonnet-4-5"), not the bare-word model.
+// TestPrepare_ModelAndVersionComposePinnedID proves Prepare threads spec.Model and spec.Version
+// through resolveModelID, so a Spec naming a bare-word model plus a dotted version produces a
+// launch Cmd containing the pinned model id ("sonnet" + "4.5" -> "claude-sonnet-4-5"), not the
+// bare-word model.
 func TestPrepare_ModelAndVersionComposePinnedID(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Model: "sonnet", Version: "4.5"}
@@ -82,7 +96,11 @@ func TestPrepare_ModelAndVersionComposePinnedID(t *testing.T) {
 	}
 }
 
-// TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts proves a full model id (already containing a dash) combined with a non-empty Version fails Prepare — the id already pins its own version, so a second pin is a contradiction — and that the rejection happens before any run artifact is written, mirroring TestPrepare_BadEffortRejectedBeforeArtifacts's before-artifacts guarantee.
+// TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts proves a full model id (already
+// containing a dash) combined with a non-empty Version fails Prepare — the id already pins its own
+// version, so a second pin is a contradiction — and that the rejection happens before any run
+// artifact is written, mirroring TestPrepare_BadEffortRejectedBeforeArtifacts's before-artifacts
+// guarantee.
 func TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts(t *testing.T) {
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Model: "claude-sonnet-4-5", Version: "4.5"}
@@ -102,7 +120,9 @@ func TestPrepare_DashedModelWithVersionRejectedBeforeArtifacts(t *testing.T) {
 	}
 }
 
-// TestPrepare_ForkSubagentsThreadsIntoLaunchCmd proves Prepare threads spec.ForkSubagents through to buildLaunchCmd: a true value produces a Launch.Cmd containing the CLAUDE_CODE_FORK_SUBAGENT env prefix,
+// TestPrepare_ForkSubagentsThreadsIntoLaunchCmd proves Prepare threads spec.ForkSubagents through
+// to buildLaunchCmd: a true value produces a Launch.Cmd containing the CLAUDE_CODE_FORK_SUBAGENT
+// env prefix,
 // and a false value (the zero value) produces a Launch.Cmd with no such prefix.
 func TestPrepare_ForkSubagentsThreadsIntoLaunchCmd(t *testing.T) {
 	tests := []struct {

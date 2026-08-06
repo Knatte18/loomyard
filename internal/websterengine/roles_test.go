@@ -1,4 +1,7 @@
-// roles_test.go exercises ResolveRoles's pre-flight: both roles resolve cleanly, an unknown alias fails naming the offending role, an escape-form spec resolves with no registry entry at all, and a bracket param survives into the resolved Params map — the builderengine/roles_test.go pattern, narrowed to webster's two roles (no oversized role exists here).
+// roles_test.go exercises ResolveRoles's pre-flight: both roles resolve cleanly, an unknown alias
+// fails naming the offending role, an escape-form spec resolves with no registry entry at all, and
+// a bracket param survives into the resolved Params map — the builderengine/roles_test.go pattern,
+// narrowed to webster's two roles (no oversized role exists here).
 
 package websterengine_test
 

@@ -1,4 +1,7 @@
-// settings_test.go covers buildSettings' JSON composition across the agent-deny/askuser-deny toggle matrix and the interactive/autonomous split, the fork-mode conditional Agent hook, asserts the events path is embedded in its POSIX form, checks the no-single-quote steer invariant, and exercises Prepare end to end against a real temp directory.
+// settings_test.go covers buildSettings' JSON composition across the agent-deny/askuser-deny toggle
+// matrix and the interactive/autonomous split, the fork-mode conditional Agent hook, asserts the
+// events path is embedded in its POSIX form, checks the no-single-quote steer invariant, and
+// exercises Prepare end to end against a real temp directory.
 
 package claudeengine
 
@@ -216,9 +219,12 @@ func bashCommand(t *testing.T, doc map[string]any) (string, bool) {
 	return "", false
 }
 
-// TestBuildSettings_ForkContextWebsterGuard pins the fork-loop-deadlock guard: a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command before denying (with steerWebsterForkDeny),
+// TestBuildSettings_ForkContextWebsterGuard pins the fork-loop-deadlock guard: a fork-mode run
+// emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx
+// webster` command before denying (with steerWebsterForkDeny),
 // and always exits 0 via the trailing `; true`.
-// The guard is independent of ClaudeDenyAgentTool and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
+// The guard is independent of ClaudeDenyAgentTool and absent entirely when fork mode is off (no
+// Master, so no fork could reach the loop).
 func TestBuildSettings_ForkContextWebsterGuard(t *testing.T) {
 	t.Run("fork_mode_emits_bash_guard_independent_of_agent_deny", func(t *testing.T) {
 		for _, agentDeny := range []bool{true, false} {
@@ -286,7 +292,9 @@ func agentCommand(t *testing.T, doc map[string]any) (string, bool) {
 	return "", false
 }
 
-// TestBuildSettings_ForkMode covers the three-way interaction between cfg.ClaudeDenyAgentTool and forkSubagents: fork mode on with the deny configured replaces the blanket deny with the conditional grep hook;
+// TestBuildSettings_ForkMode covers the three-way interaction between cfg.ClaudeDenyAgentTool and
+// forkSubagents: fork mode on with the deny configured replaces the blanket deny with the
+// conditional grep hook;
 // fork mode off leaves today's blanket deny unchanged;
 // and the deny configured off entirely emits no Agent entry regardless of fork mode.
 func TestBuildSettings_ForkMode(t *testing.T) {
@@ -344,7 +352,10 @@ func TestBuildSettings_ForkMode(t *testing.T) {
 	})
 }
 
-// TestPrepare_PromptLaunchLimit pins the maxLaunchPromptBytes guard: a prompt over the limit is rejected up front with a self-describing error (before any run artifact is written), because past the Windows command-line ceiling the pane launch is guaranteed to fail and would otherwise surface only as an opaque `died` a full startup window later.
+// TestPrepare_PromptLaunchLimit pins the maxLaunchPromptBytes guard: a prompt over the limit is
+// rejected up front with a self-describing error (before any run artifact is written), because past
+// the Windows command-line ceiling the pane launch is guaranteed to fail and would otherwise
+// surface only as an opaque `died` a full startup window later.
 // A prompt exactly at the limit still prepares normally.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
 	cfg := shuttleengine.Config{}

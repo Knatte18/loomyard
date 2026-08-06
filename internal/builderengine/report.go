@@ -1,5 +1,10 @@
-// report.go implements ParseReport, the fail-loud parser for the batch- report YAML file an implementer writes as its final action to _lyx/builder/reports/NN-<batch-slug>.yaml (docs/reference/plan-format.md's "Batch-report" section).
-// Every distinct malformation — an unrecognized status/tests value, a missing batch, a stuck report with no stuck_reason, or an out_of_scope entry missing path/why — is its own wrapped error: the burler verdict-parse discipline applied here means an unparseable report is a loud error, never a guessed digest.
+// report.go implements ParseReport, the fail-loud parser for the batch- report YAML file an
+// implementer writes as its final action to _lyx/builder/reports/NN-<batch-slug>.yaml
+// (docs/reference/plan-format.md's "Batch-report" section).
+// Every distinct malformation — an unrecognized status/tests value, a missing batch, a stuck report
+// with no stuck_reason, or an out_of_scope entry missing path/why — is its own wrapped error: the
+// burler verdict-parse discipline applied here means an unparseable report is a loud error, never a
+// guessed digest.
 
 package builderengine
 
@@ -53,7 +58,8 @@ type OutOfScopeEntry struct {
 	Why string `yaml:"why" json:"why"`
 }
 
-// ParseReport reads and strictly decodes the batch-report YAML file at path, enforcing the schema's vocabulary and cross-field rules.
+// ParseReport reads and strictly decodes the batch-report YAML file at path, enforcing the schema's
+// vocabulary and cross-field rules.
 // Each violation is returned as its own distinct wrapped error naming path and the offending field.
 func ParseReport(path string) (*Report, error) {
 	data, err := os.ReadFile(path)

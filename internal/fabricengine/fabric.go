@@ -1,10 +1,18 @@
-// fabric.go — the Fabric handle: fabric's cross-repo coordination point over two internal/gitrepo.Repo instances, plus the sync-options/pathspec plumbing its cross-repo operations need.
-// Fabric exposes Warp and Weft directly as exported fields rather than a forwarding method per gitrepo operation — consumers call f.Warp.StageAndCommit(...) / f.Weft.ChangedFilesSince(...)
+// fabric.go — the Fabric handle: fabric's cross-repo coordination point over two
+// internal/gitrepo.Repo instances, plus the sync-options/pathspec plumbing its cross-repo
+// operations need.
+// Fabric exposes Warp and Weft directly as exported fields rather than a forwarding method per
+// gitrepo operation — consumers call f.Warp.StageAndCommit(...) / f.Weft.ChangedFilesSince(...)
 // for anything repo-specific and uncoordinated;
-// only the genuinely cross-repo operations (Commit, Pull, Diff, Status) get their own method on Fabric.
-// A single-sided, uncoordinated op also earns a named Fabric method — rather than staying direct field access — precisely when it must be callable from OUTSIDE this package, so the one-repo illusion holds at the public API boundary;
-// f.Warp/f.Weft field access remains correct for uncoordinated ops used only inside internal/fabricengine.
-// See warpforward.go's CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard for the warp-only examples of this carve-out.
+// only the genuinely cross-repo operations (Commit, Pull, Diff, Status) get their own method on
+// Fabric.
+// A single-sided, uncoordinated op also earns a named Fabric method — rather than staying direct
+// field access — precisely when it must be callable from OUTSIDE this package, so the one-repo
+// illusion holds at the public API boundary;
+// f.Warp/f.Weft field access remains correct for uncoordinated ops used only inside
+// internal/fabricengine.
+// See warpforward.go's CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard for the warp-only
+// examples of this carve-out.
 
 package fabricengine
 
@@ -19,11 +27,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// DefaultCommitMessage is the message used by every weft-commit caller that does not need a custom one.
+// DefaultCommitMessage is the message used by every weft-commit caller that does not need a custom
+// one.
 const DefaultCommitMessage = "weft sync"
 
-// ErrMissingPath is a typed error returned by New when either the warp or the weft path does not exist or is not a directory.
-// It names the specific missing path so a caller (or an operator reading the error) knows which of the two repos is absent, rather than a generic "one of the two is missing".
+// ErrMissingPath is a typed error returned by New when either the warp or the weft path does not
+// exist or is not a directory.
+// It names the specific missing path so a caller (or an operator reading the error) knows which of
+// the two repos is absent, rather than a generic "one of the two is missing".
 type ErrMissingPath struct {
 	Path string
 }
@@ -46,7 +57,8 @@ type Fabric struct {
 }
 
 // New returns a Fabric wrapping git checkouts at warpPath and weftPath.
-// Unlike gitrepo.New, it stat-checks that both paths exist as directories, returning an *ErrMissingPath naming any missing path.
+// Unlike gitrepo.New, it stat-checks that both paths exist as directories, returning an
+// *ErrMissingPath naming any missing path.
 // warpPath is checked first.
 func New(warpPath, weftPath string) (*Fabric, error) {
 	if err := requireDir(warpPath); err != nil {
@@ -83,7 +95,8 @@ type SyncOptions struct {
 	SkipPush bool // Skip push operations if true; affects push only.
 }
 
-// EnvSyncOptions reads the WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment variables and returns the SyncOptions they describe — the uniform test/CI bypass gate for every weft-touching operation.
+// EnvSyncOptions reads the WEFT_SKIP_GIT and WEFT_SKIP_PUSH environment variables and returns the
+// SyncOptions they describe — the uniform test/CI bypass gate for every weft-touching operation.
 func EnvSyncOptions() SyncOptions {
 	return SyncOptions{
 		SkipGit:  os.Getenv("WEFT_SKIP_GIT") == "1",
@@ -92,7 +105,9 @@ func EnvSyncOptions() SyncOptions {
 }
 
 // WeftWorktree returns the path to the weft worktree paired with l's host worktree.
-// It is the read-only accessor every non-fabric caller that needs to know the weft sibling's location goes through, closing the weft-visibility leak where those callers used to reach lyxcwd.Location directly for a fabric-owned path.
+// It is the read-only accessor every non-fabric caller that needs to know the weft sibling's
+// location goes through, closing the weft-visibility leak where those callers used to reach
+// lyxcwd.Location directly for a fabric-owned path.
 func WeftWorktree(l *lyxcwd.Location) string {
 	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
 }
@@ -103,7 +118,8 @@ func WeftLyxDir(l *lyxcwd.Location) string {
 	return filepath.Join(WeftWorktree(l), l.AnchorRel, configengine.LyxDirName)
 }
 
-// ScopedPathspec returns a slice of pathspec entries, each being the join of relPath with each directory in dirs.
+// ScopedPathspec returns a slice of pathspec entries, each being the join of relPath with each
+// directory in dirs.
 // At relPath == ".", this returns dirs unchanged;
 // at relPath == "sub", ["_lyx"] becomes ["sub/_lyx"].
 func ScopedPathspec(relPath string, dirs []string) []string {

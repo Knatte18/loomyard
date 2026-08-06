@@ -1,7 +1,9 @@
-// cli_test.go covers the reedcli cobra seam through RunCLI: bare-group listing, the unknown-subcommand JSON envelope, and the built attach invocation.
+// cli_test.go covers the reedcli cobra seam through RunCLI: bare-group listing, the
+// unknown-subcommand JSON envelope, and the built attach invocation.
 // No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build smoke.
-// Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test Tier Purity Invariant.
+// Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test
+// Tier Purity Invariant.
 
 package reedcli
 
@@ -12,7 +14,8 @@ import (
 	"testing"
 )
 
-// TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all seven registered verbs and exits 0.
+// TestRunCLI_NoArgs verifies that "lyx reed" with no subcommand lists all seven registered verbs
+// and exits 0.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -32,7 +35,8 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error envelope.
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
+// envelope.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -55,7 +59,8 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_NotAGitRepo verifies that a real verb invoked from a non-git directory surfaces the ErrNotAGitRepo error.
+// TestRunCLI_NotAGitRepo verifies that a real verb invoked from a non-git directory surfaces the
+// ErrNotAGitRepo error.
 func TestRunCLI_NotAGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -75,7 +80,8 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestAttachArgv verifies the attach invocation targets the worktree session by exact name using "-L <socket> attach-session -t =<session>".
+// TestAttachArgv verifies the attach invocation targets the worktree session by exact name using
+// "-L <socket> attach-session -t =<session>".
 func TestAttachArgv(t *testing.T) {
 	got := attachArgv("hub-abc123", "my-worktree")
 	want := []string{"-L", "hub-abc123", "attach-session", "-t", "=my-worktree"}

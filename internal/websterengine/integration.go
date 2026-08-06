@@ -1,6 +1,15 @@
-// integration.go implements the plan-level integration-suite stage: the skip-check (ShouldRunIntegration), the single dedicated integration fork's own await/report plumbing (AwaitIntegration/RunIntegration, reusing AwaitBatch's own bounded long-poll idiom over a fixed, non-batch report path, and webster's own ParseReport for the fork's OK/FAILED), and the in-process SHA-bisect + escalation path a FAILED report triggers (bisect, RecordIntegrationFailure, BisectAndEscalate).
-// The integration fork itself is spawned the same way a batch's own implementer is — Master's own in-session Agent-tool fork call, per master-template.md's own integration-fork bracket instruction — so this file never spawns anything;
-// it only confirms the fork's report has landed, interprets it, and — on failure — localizes and records the offending card entirely in-process (no fork per bisect candidate), per the integration-suite-fork-with-bisect decision.
+// integration.go implements the plan-level integration-suite stage: the skip-check
+// (ShouldRunIntegration), the single dedicated integration fork's own await/report plumbing
+// (AwaitIntegration/RunIntegration, reusing AwaitBatch's own bounded long-poll idiom over a fixed,
+// non-batch report path, and webster's own ParseReport for the fork's OK/FAILED), and the
+// in-process SHA-bisect + escalation path a FAILED report triggers (bisect,
+// RecordIntegrationFailure, BisectAndEscalate).
+// The integration fork itself is spawned the same way a batch's own implementer is — Master's own
+// in-session Agent-tool fork call, per master-template.md's own integration-fork bracket
+// instruction — so this file never spawns anything;
+// it only confirms the fork's report has landed, interprets it, and — on failure — localizes and
+// records the offending card entirely in-process (no fork per bisect candidate), per the
+// integration-suite-fork-with-bisect decision.
 
 package websterengine
 
@@ -16,7 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// WarpBisector is the git surface in-process bisect drives: capture branch, checkout SHA detached, restore branch.
+// WarpBisector is the git surface in-process bisect drives: capture branch, checkout SHA detached,
+// restore branch.
 // Satisfied by *gitrepo.Repo and *fabricengine.Fabric.
 type WarpBisector interface {
 	CurrentBranch() (string, error)
@@ -24,7 +34,10 @@ type WarpBisector interface {
 	RestoreBranch(ref string) error
 }
 
-// IntegrationReportFileName is the integration fork's own fixed report file name inside a webster reports dir — distinct from ReportFileName's per-batch "NN-<slug>.yaml" naming, since the integration stage is not itself a plan card or execution batch: there is exactly one integration report per run.
+// IntegrationReportFileName is the integration fork's own fixed report file name inside a webster
+// reports dir — distinct from ReportFileName's per-batch "NN-<slug>.yaml" naming, since the
+// integration stage is not itself a plan card or execution batch: there is exactly one integration
+// report per run.
 const IntegrationReportFileName = "integration.yaml"
 
 // IntegrationReportPath returns the path to the integration fork's report file inside reportsDir.
@@ -40,7 +53,8 @@ func ShouldRunIntegration(plan *planparser.Plan) bool {
 	return plan.Verify != ""
 }
 
-// IntegrationAwaitResult is what one AwaitIntegration call hands back: ReportPresent (report file existed) and ElapsedS (seconds blocked).
+// IntegrationAwaitResult is what one AwaitIntegration call hands back: ReportPresent (report file
+// existed) and ElapsedS (seconds blocked).
 type IntegrationAwaitResult struct {
 	ReportPresent bool
 	ElapsedS      int
@@ -143,7 +157,8 @@ func runVerifyCommand(verifyCmd, worktree string) (bool, error) {
 	return true, nil
 }
 
-// RecordIntegrationFailure marks a terminal, non-successful record for the integration stage into st under integrationBatchKey.
+// RecordIntegrationFailure marks a terminal, non-successful record for the integration stage into
+// st under integrationBatchKey.
 // Caller persists via SaveState.
 func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 	if st.Batches == nil {
@@ -162,7 +177,8 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 	}
 }
 
-// BisectAndEscalate runs bisect over shas, records the terminal escalation into st, and extends summary.md naming the localized card.
+// BisectAndEscalate runs bisect over shas, records the terminal escalation into st, and extends
+// summary.md naming the localized card.
 // When shas is empty, falls back to "unknown" for both SHA and card.
 // Caller persists via SaveState.
 func BisectAndEscalate(repo WarpBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {

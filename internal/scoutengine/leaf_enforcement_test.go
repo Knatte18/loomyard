@@ -1,5 +1,10 @@
-// leaf_enforcement_test.go enforces the Scoutengine Leaf Invariant: production code in internal/scoutengine imports ONLY the standard library, internal/configengine, internal/lock, internal/proc, internal/logger, and gopkg.in/yaml.v3 — never internal/output, cobra, or any internal/*cli package.
-// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray dependency (including batch 2's LSP subprocess client, which must stay stdlib-only) is caught with no list maintenance required.
+// leaf_enforcement_test.go enforces the Scoutengine Leaf Invariant: production code in
+// internal/scoutengine imports ONLY the standard library, internal/configengine, internal/lock,
+// internal/proc, internal/logger, and gopkg.in/yaml.v3 — never internal/output, cobra, or any
+// internal/*cli package.
+// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
+// import outside the allowed set fails the test, so a future stray dependency (including batch 2's
+// LSP subprocess client, which must stay stdlib-only) is caught with no list maintenance required.
 
 package scoutengine
 

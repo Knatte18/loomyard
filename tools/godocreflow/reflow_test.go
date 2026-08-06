@@ -2,14 +2,20 @@ package main
 
 import (
 	"go/token"
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func mustReflow(t *testing.T, src string) string {
 	t.Helper()
+	return mustReflowWidth(t, src, 1000) // wide enough that the width fallback never fires in these tests
+}
+
+func mustReflowWidth(t *testing.T, src string, maxWidth int) string {
+	t.Helper()
 	fset := token.NewFileSet()
-	out, err := reflowSource(fset, "test.go", src)
+	out, err := reflowSource(fset, "test.go", src, maxWidth)
 	if err != nil {
 		t.Fatalf("reflowSource: %v", err)
 	}
@@ -240,6 +246,108 @@ func Foo() {}
 	got := mustReflow(t, src)
 	if got != src {
 		t.Errorf("doc comment containing a Go 1.19 list was touched, want left alone:\n%s", got)
+	}
+}
+
+func TestWidthFallbackAppliesToOverwideAtomicLine(t *testing.T) {
+	// One long compound-predicate sentence with no semicolon/conjunction boundary to split at: the
+	// ordinary semantic splitter produces a single atomic line, which the width fallback must then wrap.
+	src := `// pkg.go implements the pkg package.
+
+package pkg
+
+// Foo validates the request thoroughly and writes a well-formed structured response back to the caller immediately.
+func Foo() {}
+`
+	got := mustReflowWidth(t, src, 60)
+	for _, line := range strings.Split(got, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "//") && len(line) > 60 {
+			t.Errorf("line exceeds max-width=60: %q", line)
+		}
+	}
+	if !strings.Contains(got, "// Foo validates the request thoroughly") {
+		t.Errorf("expected wrapped content preserved, got:\n%s", got)
+	}
+	// No word may be lost or reordered: whitespace-collapsed content must match the original.
+	collapse := func(s string) string {
+		return strings.Join(strings.Fields(strings.ReplaceAll(s, "//", " ")), " ")
+	}
+	if collapse(got) != collapse(src) {
+		t.Errorf("wrap fallback changed comment content:\ngot:  %s\nwant: %s", collapse(got), collapse(src))
+	}
+}
+
+func TestWidthFallbackDisabledAtZero(t *testing.T) {
+	src := `// pkg.go implements the pkg package.
+
+package pkg
+
+// Foo validates the request thoroughly and writes a well-formed structured response back to the caller immediately.
+func Foo() {}
+`
+	got := mustReflowWidth(t, src, 0)
+	if got != src {
+		t.Errorf("max-width=0 should disable the fallback (single-line group, nothing else to reflow), got:\n%s", got)
+	}
+}
+
+func TestWidthFallbackLeavesShortLinesAlone(t *testing.T) {
+	src := `// pkg.go implements the pkg package.
+
+package pkg
+
+// LoadPortfolio reads every position file in dir and validates each one against the schema.
+// It merges the valid files into a single Portfolio,
+// and it returns an error if any file fails validation or two files declare the same position ID.
+func LoadPortfolio(dir string) (*Portfolio, error) {
+	return nil, nil
+}
+`
+	// max-width well above every existing line's length: the fallback must never fire, so this must
+	// still be a no-op exactly like TestIdempotent.
+	got := mustReflowWidth(t, src, 100)
+	if got != src {
+		t.Errorf("width fallback fired on lines that already fit, want no-op:\n%s", got)
+	}
+}
+
+func TestWrapLongLine(t *testing.T) {
+	cases := []struct {
+		name      string
+		content   string
+		prefixLen int
+		maxWidth  int
+		want      []string
+	}{
+		{
+			name:      "fits, no wrap",
+			content:   "short line",
+			prefixLen: 3,
+			maxWidth:  100,
+			want:      []string{"short line"},
+		},
+		{
+			name:      "disabled",
+			content:   "a very long line that would otherwise need wrapping for sure",
+			prefixLen: 3,
+			maxWidth:  0,
+			want:      []string{"a very long line that would otherwise need wrapping for sure"},
+		},
+		{
+			name:      "wraps at word boundary",
+			content:   "one two three four five six seven eight",
+			prefixLen: 0,
+			maxWidth:  12,
+			want:      []string{"one two", "three four", "five six", "seven eight"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := wrapLongLine(c.content, c.prefixLen, c.maxWidth)
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("wrapLongLine(%q, %d, %d) = %#v, want %#v", c.content, c.prefixLen, c.maxWidth, got, c.want)
+			}
+		})
 	}
 }
 

@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 )
 
-// CreateDirLink establishes a symlink from link to target, refusing to clobber and creating parent directories.
+// CreateDirLink establishes a symlink from link to target, refusing to clobber and creating parent
+// directories.
 func CreateDirLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err

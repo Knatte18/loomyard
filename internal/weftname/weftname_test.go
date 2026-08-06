@@ -1,5 +1,7 @@
-// weftname_test.go exercises SiblingPath and BareSiblingPath over a range of container/base combinations,
-// and locks in the relationship between them that lyxtest's fixture builders rely on, so the two on-disk shapes can never independently drift.
+// weftname_test.go exercises SiblingPath and BareSiblingPath over a range of container/base
+// combinations,
+// and locks in the relationship between them that lyxtest's fixture builders rely on, so the two
+// on-disk shapes can never independently drift.
 
 package weftname_test
 
@@ -10,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestSiblingPath covers SiblingPath's container/base join over a range of path shapes, including a nested container and a multi-segment base.
+// TestSiblingPath covers SiblingPath's container/base join over a range of path shapes, including a
+// nested container and a multi-segment base.
 func TestSiblingPath(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -32,7 +35,8 @@ func TestSiblingPath(t *testing.T) {
 	}
 }
 
-// TestBareSiblingPath covers BareSiblingPath's container/base join, the bare-remote fixture directory paired with a weft sibling.
+// TestBareSiblingPath covers BareSiblingPath's container/base join, the bare-remote fixture
+// directory paired with a weft sibling.
 func TestBareSiblingPath(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -53,8 +57,11 @@ func TestBareSiblingPath(t *testing.T) {
 	}
 }
 
-// TestBareSiblingPath_AgreesWithSiblingPath locks in the relationship lyxtest's fixture builders depend on: a weft sibling's bare-remote fixture name is always SiblingPath's own result with "-bare" appended, never an independently-derived literal.
-// This is the drift BareSiblingPath exists to prevent between production geometry and the on-disk shape test fixtures must reproduce for the same input.
+// TestBareSiblingPath_AgreesWithSiblingPath locks in the relationship lyxtest's fixture builders
+// depend on: a weft sibling's bare-remote fixture name is always SiblingPath's own result with
+// "-bare" appended, never an independently-derived literal.
+// This is the drift BareSiblingPath exists to prevent between production geometry and the on-disk
+// shape test fixtures must reproduce for the same input.
 func TestBareSiblingPath_AgreesWithSiblingPath(t *testing.T) {
 	container, base := "/hub", "loomyard"
 	sibling := weftname.SiblingPath(container, base)

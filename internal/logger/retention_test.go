@@ -1,4 +1,6 @@
-// retention_test.go exercises Sweep's age bound, count bound, grammar-scoping, and delete-failure tolerance over a t.TempDir() — pure filesystem logic, no git/exec spawns, per the Test Tier Purity Invariant.
+// retention_test.go exercises Sweep's age bound, count bound, grammar-scoping, and delete-failure
+// tolerance over a t.TempDir() — pure filesystem logic, no git/exec spawns, per the Test Tier
+// Purity Invariant.
 
 package logger
 

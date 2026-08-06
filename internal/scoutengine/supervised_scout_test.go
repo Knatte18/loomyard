@@ -17,7 +17,8 @@ import (
 	"time"
 )
 
-// TestEnsureSupervised_StaleSocketCleanupAllowsRebind verifies stale sockets are cleaned up before rebind.
+// TestEnsureSupervised_StaleSocketCleanupAllowsRebind verifies stale sockets are cleaned up before
+// rebind.
 func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
@@ -68,10 +69,16 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 	}
 }
 
-// TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr is the regression test for the fd-leak this task fixed: a DetachBreakaway'd daemon whose Stderr is wired to the spawning process's own os.Stderr inherits that process's fds, including any pipe it happens to be part of.
+// TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr is the regression test for the fd-leak
+// this task fixed: a DetachBreakaway'd daemon whose Stderr is wired to the spawning process's own
+// os.Stderr inherits that process's fds, including any pipe it happens to be part of.
 // A reader on the other end of that pipe exiting before the daemon does (e.g.
-// a caller piped through "| head") leaves the daemon holding a write end nobody reads — the daemon's next stderr write raises SIGPIPE and kills it, silently defeating DetachBreakaway's entire point (reproduced live: a spawn behind "2>&1 | tail -5" hung until "tail" was killed, at which point the daemon itself crashed on its next log line).
-// Proving the daemon's diagnostics land in its own log file — never in this test process's os.Stderr — is what a caller-fd-independence regression test can assert deterministically;
+// a caller piped through "| head") leaves the daemon holding a write end nobody reads — the
+// daemon's next stderr write raises SIGPIPE and kills it, silently defeating DetachBreakaway's
+// entire point (reproduced live: a spawn behind "2>&1 | tail -5" hung until "tail" was killed, at
+// which point the daemon itself crashed on its next log line).
+// Proving the daemon's diagnostics land in its own log file — never in this test process's
+// os.Stderr — is what a caller-fd-independence regression test can assert deterministically;
 // SIGPIPE-on-a-dead-reader is not something this suite reproduces directly.
 func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
 	worktreeRoot := t.TempDir()

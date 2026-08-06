@@ -1,4 +1,6 @@
-// template.go embeds the four ephemeral-LLM-utility prompt templates (judge-circling, judge-milestone, triage, targeting) directly from their .md files at build time, mirroring internal/burlerengine/template.go's //go:embed-directly-into-a-package-variable pattern;
+// template.go embeds the four ephemeral-LLM-utility prompt templates (judge-circling,
+// judge-milestone, triage, targeting) directly from their .md files at build time, mirroring
+// internal/burlerengine/template.go's //go:embed-directly-into-a-package-variable pattern;
 // judge.go's and targeting.go's fill helpers render them via internal/stencil.
 
 package treadleengine

@@ -220,7 +220,10 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 	return &spawnFixture{Deps: deps, Engine: engine, Reed: reed, Worktree: worktree, ReportsDir: reportsDir}
 }
 
-// TestSpawnBatch_RoleSelectionMatrix proves the discussion's role-selection decision mechanically: a plain batch spawns implementer, an oversized batch spawns implementer_oversized, a recovery override always wins regardless of oversized, and any other override is rejected before the Starter is ever reached.
+// TestSpawnBatch_RoleSelectionMatrix proves the discussion's role-selection decision mechanically:
+// a plain batch spawns implementer, an oversized batch spawns implementer_oversized, a recovery
+// override always wins regardless of oversized, and any other override is rejected before the
+// Starter is ever reached.
 func TestSpawnBatch_RoleSelectionMatrix(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -272,7 +275,9 @@ func TestSpawnBatch_RoleSelectionMatrix(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_PauseSentinel proves the pause gate fires before anything else — including before the Starter is ever reached — and that the returned error satisfies errors.Is(err, builderengine.ErrPaused).
+// TestSpawnBatch_PauseSentinel proves the pause gate fires before anything else — including before
+// the Starter is ever reached — and that the returned error satisfies errors.Is(err,
+// builderengine.ErrPaused).
 func TestSpawnBatch_PauseSentinel(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -289,7 +294,9 @@ func TestSpawnBatch_PauseSentinel(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_StaleReportRefusal proves a pre-existing batch-report file is refused, as builder's own named error, before the Starter is ever reached — the discussion's "surface it as builder's own named error first" decision.
+// TestSpawnBatch_StaleReportRefusal proves a pre-existing batch-report file is refused, as
+// builder's own named error, before the Starter is ever reached — the discussion's "surface it as
+// builder's own named error first" decision.
 func TestSpawnBatch_StaleReportRefusal(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -310,7 +317,11 @@ func TestSpawnBatch_StaleReportRefusal(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_RecoveryArchivesStaleReport proves a --role recovery respawn of a stuck batch archives the pre-existing report (rather than being refused by the pre-existing-report guard) and reaches the Starter — the exact stuck -> recovery escalation the orchestrator drives, which is unreachable if the stale report is not cleared first (shuttle's own Spec.validate refuses a pre-existing OutputFiles entry too).
+// TestSpawnBatch_RecoveryArchivesStaleReport proves a --role recovery respawn of a stuck batch
+// archives the pre-existing report (rather than being refused by the pre-existing-report guard) and
+// reaches the Starter — the exact stuck -> recovery escalation the orchestrator drives, which is
+// unreachable if the stale report is not cleared first (shuttle's own Spec.validate refuses a
+// pre-existing OutputFiles entry too).
 // The stale report is archived, never deleted, so the prior stuck judgment stays auditable.
 func TestSpawnBatch_RecoveryArchivesStaleReport(t *testing.T) {
 	fx := newSpawnFixture(t)
@@ -360,7 +371,10 @@ func TestSpawnBatch_RecoveryArchivesStaleReport(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_FingerprintMismatchRefused proves a plan edited after run init is refused at spawn-batch entry — before the Starter is ever reached — with the same ErrFingerprintMismatch sentinel Run uses, so a mid-run plan mutation can never be driven against the stale state.json (found live in round fable-r2: a mutated plan spawned silently).
+// TestSpawnBatch_FingerprintMismatchRefused proves a plan edited after run init is refused at
+// spawn-batch entry — before the Starter is ever reached — with the same ErrFingerprintMismatch
+// sentinel Run uses, so a mid-run plan mutation can never be driven against the stale state.json
+// (found live in round fable-r2: a mutated plan spawned silently).
 func TestSpawnBatch_FingerprintMismatchRefused(t *testing.T) {
 	fx := newSpawnFixture(t)
 	fx.Deps.State.PlanFingerprint = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -377,8 +391,13 @@ func TestSpawnBatch_FingerprintMismatchRefused(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate proves a respawn of a dead-classified batch (the orchestrator's "respawn the SAME batch fresh" ladder) is never wedged by the batch's own kept-alive orphan: the late report the orphan wrote after its classification is archived (never refused, never deleted), and a still-live orphan strand is removed before the fresh spawn so it cannot race the new session.
-// A done batch's report keeps the loud refusal — an accidental respawn of finished work must not silently archive it away.
+// TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate proves a respawn of a dead-classified batch (the
+// orchestrator's "respawn the SAME batch fresh" ladder) is never wedged by the batch's own
+// kept-alive orphan: the late report the orphan wrote after its classification is archived (never
+// refused, never deleted), and a still-live orphan strand is removed before the fresh spawn so it
+// cannot race the new session.
+// A done batch's report keeps the loud refusal — an accidental respawn of finished work must not
+// silently archive it away.
 func TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -443,7 +462,10 @@ func TestSpawnBatch_DeadRespawnReclaimsKeptSubstrate(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_RestartChainPersistsStateBeforeSpawn proves the chain reset's state mutation reaches disk even when the spawn that follows it fails: the reset already hard-reset the repo and deleted member reports, so a state.json still recording the rolled-back members would disagree with the repo it describes across the failure.
+// TestSpawnBatch_RestartChainPersistsStateBeforeSpawn proves the chain reset's state mutation
+// reaches disk even when the spawn that follows it fails: the reset already hard-reset the repo and
+// deleted member reports, so a state.json still recording the rolled-back members would disagree
+// with the repo it describes across the failure.
 func TestSpawnBatch_RestartChainPersistsStateBeforeSpawn(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -477,7 +499,9 @@ func TestSpawnBatch_RestartChainPersistsStateBeforeSpawn(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_RestartChainStopsLiveMemberStrands proves --restart-chain stops every chain member's still-live strand before the hard reset — a kept-alive member left running would commit on top of the rolled-back tree.
+// TestSpawnBatch_RestartChainStopsLiveMemberStrands proves --restart-chain stops every chain
+// member's still-live strand before the hard reset — a kept-alive member left running would commit
+// on top of the rolled-back tree.
 func TestSpawnBatch_RestartChainStopsLiveMemberStrands(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -512,8 +536,12 @@ func TestSpawnBatch_RestartChainStopsLiveMemberStrands(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest proves --restart-chain re-points the spawn to the chain's LOWEST member even when the caller names a higher member.
-// The chain-end batch runs the chain's real verify:, so it is the member most likely to go stuck and thus the most likely --restart-chain target; spawning it directly on the rolled-back tree would skip every earlier member's just-discarded work — the round opus-r3 live defect this guards against.
+// TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest proves --restart-chain re-points the
+// spawn to the chain's LOWEST member even when the caller names a higher member.
+// The chain-end batch runs the chain's real verify:, so it is the member most likely to go stuck
+// and thus the most likely --restart-chain target; spawning it directly on the rolled-back tree
+// would skip every earlier member's just-discarded work — the round opus-r3 live defect this guards
+// against.
 // The fixture chain is {3,4} (chain-end 4), so the lowest member is 3.
 func TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest(t *testing.T) {
 	fx := newSpawnFixture(t)
@@ -546,8 +574,11 @@ func TestSpawnBatch_RestartChainFromNonLowestMemberSpawnsLowest(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_InFlightGuardMatrix proves the ErrBatchInFlight guard refuses a spawn exactly when a recorded non-terminal batch's strand is still live,
-// and never on the intended respawn ladders (terminal batch, dead strand, no cursor) nor when the reed status query itself fails (a downed reed hosts no live strand; Start surfaces real substrate errors).
+// TestSpawnBatch_InFlightGuardMatrix proves the ErrBatchInFlight guard refuses a spawn exactly when
+// a recorded non-terminal batch's strand is still live,
+// and never on the intended respawn ladders (terminal batch, dead strand, no cursor) nor when the
+// reed status query itself fails (a downed reed hosts no live strand; Start surfaces real substrate
+// errors).
 func TestSpawnBatch_InFlightGuardMatrix(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -599,7 +630,9 @@ func TestSpawnBatch_InFlightGuardMatrix(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_ChainAnchorRecordedOnce proves the chain-start SHA is recorded at whichever chain member spawns first and never overwritten by a later member's own spawn, per the discussion's chain-anchor decision.
+// TestSpawnBatch_ChainAnchorRecordedOnce proves the chain-start SHA is recorded at whichever chain
+// member spawns first and never overwritten by a later member's own spawn, per the discussion's
+// chain-anchor decision.
 func TestSpawnBatch_ChainAnchorRecordedOnce(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -624,7 +657,9 @@ func TestSpawnBatch_ChainAnchorRecordedOnce(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_StatePersisted proves a successful spawn's BatchState and CurrentBatch survive a fresh LoadState round-trip from disk, not merely the in-memory deps.State the caller already holds.
+// TestSpawnBatch_StatePersisted proves a successful spawn's BatchState and CurrentBatch survive a
+// fresh LoadState round-trip from disk, not merely the in-memory deps.State the caller already
+// holds.
 func TestSpawnBatch_StatePersisted(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -658,7 +693,8 @@ func TestSpawnBatch_StatePersisted(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_SpecFieldsMapped proves the shuttleengine.Spec built for the spawn matches modelspec's documented consumer mapping and the discussion's remaining Spec fields exactly.
+// TestSpawnBatch_SpecFieldsMapped proves the shuttleengine.Spec built for the spawn matches
+// modelspec's documented consumer mapping and the discussion's remaining Spec fields exactly.
 func TestSpawnBatch_SpecFieldsMapped(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -705,7 +741,9 @@ func TestSpawnBatch_SpecFieldsMapped(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_RestartChainOnChainlessBatchErrors proves --restart-chain against a chainless batch is refused before the Starter is ever reached and before any HeadSHA capture — the discussion's "error if the batch is chainless" requirement.
+// TestSpawnBatch_RestartChainOnChainlessBatchErrors proves --restart-chain against a chainless
+// batch is refused before the Starter is ever reached and before any HeadSHA capture — the
+// discussion's "error if the batch is chainless" requirement.
 func TestSpawnBatch_RestartChainOnChainlessBatchErrors(t *testing.T) {
 	fx := newSpawnFixture(t)
 
@@ -718,8 +756,13 @@ func TestSpawnBatch_RestartChainOnChainlessBatchErrors(t *testing.T) {
 	}
 }
 
-// TestSpawnBatch_RestartChainClearsStaleReportBeforeRefusal proves --restart-chain's own reset reaches and deletes a chain member's stale report BEFORE SpawnBatch's pre-existing-report check ever runs — the exact real-world invocation ("re-spawn the batch whose stale report is still on disk") --restart-chain exists to recover.
-// Reviewing this any other ordering (stale-report check before the reset) makes --restart-chain unreachable on every real call, since the report the caller is trying to clear is the same one that would trip the check first.
+// TestSpawnBatch_RestartChainClearsStaleReportBeforeRefusal proves --restart-chain's own reset
+// reaches and deletes a chain member's stale report BEFORE SpawnBatch's pre-existing-report check
+// ever runs — the exact real-world invocation ("re-spawn the batch whose stale report is still on
+// disk") --restart-chain exists to recover.
+// Reviewing this any other ordering (stale-report check before the reset) makes --restart-chain
+// unreachable on every real call, since the report the caller is trying to clear is the same one
+// that would trip the check first.
 func TestSpawnBatch_RestartChainClearsStaleReportBeforeRefusal(t *testing.T) {
 	fx := newSpawnFixture(t)
 

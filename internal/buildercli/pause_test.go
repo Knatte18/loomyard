@@ -1,5 +1,7 @@
-// pause_test.go covers the pause verb's envelope shape and confirms it writes the same flag file builderengine.PauseRequested/spawn-batch's own gate reads.
-// The seam a spawn-batch test observes against a real git fixture is covered in pause_spawnbatch_test.go (integration-tagged, since it needs newSpawnBatchFixture);
+// pause_test.go covers the pause verb's envelope shape and confirms it writes the same flag file
+// builderengine.PauseRequested/spawn-batch's own gate reads.
+// The seam a spawn-batch test observes against a real git fixture is covered in
+// pause_spawnbatch_test.go (integration-tagged, since it needs newSpawnBatchFixture);
 // the two tests below only touch t.TempDir(), so they stay in Tier 1.
 
 package buildercli

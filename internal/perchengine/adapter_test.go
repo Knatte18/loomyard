@@ -1,5 +1,8 @@
-// adapter_test.go checks buildRoundProfile's field mapping: every burlerengine content field carried 1:1 from Profile, the loop-owned ReviewPath/FixerReportPath set from the caller-supplied path strings, and the operator-owned prior lists passed through verbatim rather than invented.
-// Extracted from roundfiles_test.go (now internal/treadleengine/roundfiles_test.go) when buildRoundProfile itself moved here as the burler adapter's own field-mapping logic;
+// adapter_test.go checks buildRoundProfile's field mapping: every burlerengine content field
+// carried 1:1 from Profile, the loop-owned ReviewPath/FixerReportPath set from the caller-supplied
+// path strings, and the operator-owned prior lists passed through verbatim rather than invented.
+// Extracted from roundfiles_test.go (now internal/treadleengine/roundfiles_test.go) when
+// buildRoundProfile itself moved here as the burler adapter's own field-mapping logic;
 // its subject — buildRoundProfile — lives in adapter.go.
 
 package perchengine
@@ -11,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 )
 
-// TestBuildRoundProfile_FieldMapping asserts field mapping: every content field carried 1:1, paths from caller, prior lists unmodified.
+// TestBuildRoundProfile_FieldMapping asserts field mapping: every content field carried 1:1, paths
+// from caller, prior lists unmodified.
 func TestBuildRoundProfile_FieldMapping(t *testing.T) {
 	p := Profile{
 		Target:     burlerengine.FileSet{Paths: []string{"target.txt"}},

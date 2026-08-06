@@ -1,5 +1,8 @@
-// posix.go implements PosixPath, the Windows-to-git-bash path converter the claude engine embeds into hook commands.
-// Hook commands run under git-bash on Windows, so a bare backslash path would be silently misinterpreted (backslash is git-bash's escape character) — every path handed to a hook command must go through this conversion first.
+// posix.go implements PosixPath, the Windows-to-git-bash path converter the claude engine embeds
+// into hook commands.
+// Hook commands run under git-bash on Windows, so a bare backslash path would be silently
+// misinterpreted (backslash is git-bash's escape character) — every path handed to a hook command
+// must go through this conversion first.
 
 package shuttleengine
 
@@ -8,7 +11,8 @@ import (
 	"strings"
 )
 
-// PosixPath converts an absolute Windows path (e.g. `C:\a b\c`) to git-bash POSIX form (`/c/a b/c`).
+// PosixPath converts an absolute Windows path (e.g. `C:\a b\c`) to git-bash POSIX form (`/c/a
+// b/c`).
 // The drive letter is lowercased and moved behind a leading slash;
 // backslashes become forward slashes.
 // It returns an error for non-drive-rooted paths (UNC or relative).

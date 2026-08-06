@@ -84,7 +84,9 @@ func raddleFoldedBack(_ string) bool {
 	return false
 }
 
-// Cleanup finds weft branches with no corresponding host worktree sibling and reports or deletes them per the flag matrix: apply gates whether any deletion happens, force bypasses the _raddle merge-back gate, checked-out branches are always protected.
+// Cleanup finds weft branches with no corresponding host worktree sibling and reports or deletes
+// them per the flag matrix: apply gates whether any deletion happens, force bypasses the _raddle
+// merge-back gate, checked-out branches are always protected.
 func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult, error) {
 	// Enumerate host worktrees using git-registered entries only.
 	entries, err := List(l.WorktreePath())

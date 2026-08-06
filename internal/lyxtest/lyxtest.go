@@ -1,4 +1,5 @@
-// lyxtest.go implements the shared test-fixture builders and copy helpers used across worktree, weft, and paths tests.
+// lyxtest.go implements the shared test-fixture builders and copy helpers used across worktree,
+// weft, and paths tests.
 
 package lyxtest
 
@@ -29,7 +30,8 @@ func MustRun(tb testing.TB, dir string, args ...string) {
 	}
 }
 
-// SeedConfig seeds real configuration into a git repository: creates _lyx/config, writes each module's YAML file, and commits them.
+// SeedConfig seeds real configuration into a git repository: creates _lyx/config, writes each
+// module's YAML file, and commits them.
 // The map parameter maps module names to YAML content.
 // This preserves the leaf invariant by avoiding configreg imports.
 func SeedConfig(tb testing.TB, repoDir string, configByModule map[string]string) {
@@ -257,7 +259,8 @@ type HostFixture struct {
 	Bare string
 }
 
-// PairedFixture represents an isolated copy of the paired-Add fixture (host hub + bare + weft-prime + weft-bare).
+// PairedFixture represents an isolated copy of the paired-Add fixture (host hub + bare + weft-prime
+// + weft-bare).
 type PairedFixture struct {
 	Container string
 	Hub       string
@@ -485,10 +488,13 @@ func CopyPaired(tb testing.TB) PairedFixture {
 	}
 }
 
-// CopyPairedLocal returns an isolated copy of the paired-Add fixture optimized for SkipPush:true tests.
-// It copies only the host hub, host bare, and weft-prime, omitting the weft-bare (unused when the weft push is suppressed).
+// CopyPairedLocal returns an isolated copy of the paired-Add fixture optimized for SkipPush:true
+// tests.
+// It copies only the host hub, host bare, and weft-prime, omitting the weft-bare (unused when the
+// weft push is suppressed).
 // This reduces per-test filesystem-copy + Defender cost by ~25%.
-// The returned fixture has Container, Hub, Bare, WeftPrime, and Layout populated, but WeftBare is left empty.
+// The returned fixture has Container, Hub, Bare, WeftPrime, and Layout populated, but WeftBare is
+// left empty.
 // Pushing the weft branch against this fixture is unsupported;
 // use CopyPaired instead if the test exercises the weft-bare as a live push target.
 func CopyPairedLocal(tb testing.TB) PairedFixture {

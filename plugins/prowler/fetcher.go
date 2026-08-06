@@ -1,4 +1,6 @@
-// fetcher.go defines the injection seam every fetch code path is written against, so the whole static-fetch/Reddit/browser cascade can be unit tested with stubbed transports instead of real network or Chrome calls.
+// fetcher.go defines the injection seam every fetch code path is written against, so the whole
+// static-fetch/Reddit/browser cascade can be unit tested with stubbed transports instead of real
+// network or Chrome calls.
 
 package main
 

@@ -9,15 +9,22 @@
 // heuristics (abbreviations, backtick/paren-span guards, the Oxford-comma "first eligible comma" rule) are
 // ported from millhouse's plugins/mill/scripts/tools/pydocreflow/pydocreflow.py; see split.go.
 //
+// A semantic line that still exceeds -max-width after sentence/clause splitting -- and has no further
+// semicolon/conjunction boundary left to break at -- gets one last-resort greedy word-wrap. This is a
+// targeted exception for the rare over-wide outlier (uncomfortable in side-by-side diff view), not a
+// return to general fixed-column wrapping; see wrapLongLine in split.go. -max-width is a flag rather than
+// a compiled-in constant specifically so the column budget can be tuned per run with no rebuild.
+//
 // Left untouched: single-line comments that already fit on one line, end-of-line inline comments,
 // build/tool directive comments (//go:generate, //go:build, //nolint, struct-tag-adjacent comments a
 // linter parses), any comment block containing indented example code or a Go 1.19 doc-comment
 // heading/list, struct-field and interface-method doc comments, and generated files ("Code generated ...
 // DO NOT EDIT" header).
 //
-//	go run ./tools/godocreflow [-check] <file_or_dir> ...
+//	go run ./tools/godocreflow [-check] [-max-width N] <file_or_dir> ...
 //
-//	-check	print before/after blocks instead of writing files (dry run)
+//	-check		print before/after blocks instead of writing files (dry run)
+//	-max-width	last-resort word-wrap column budget, 0 disables it (default 100)
 //
 // Last run: 2026-08-06, repo-wide sweep (golang-comments-linebreak-sweep task).
 package main
@@ -33,10 +40,11 @@ import (
 
 func main() {
 	check := flag.Bool("check", false, "print before/after blocks instead of writing files (dry run)")
+	maxWidth := flag.Int("max-width", 100, "last-resort word-wrap column budget (indent + \"// \" + content); 0 disables it")
 	flag.Parse()
 	args := flag.Args()
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: godocreflow [-check] <file_or_dir> ...")
+		fmt.Fprintln(os.Stderr, "usage: godocreflow [-check] [-max-width N] <file_or_dir> ...")
 		os.Exit(2)
 	}
 
@@ -47,6 +55,7 @@ func main() {
 	}
 
 	changed := 0
+	wrapped := 0
 	for _, path := range files {
 		srcBytes, err := os.ReadFile(path)
 		if err != nil {
@@ -56,7 +65,7 @@ func main() {
 		src := string(srcBytes)
 
 		fset := token.NewFileSet()
-		edits, err := collectEdits(fset, path, src)
+		edits, err := collectEdits(fset, path, src, *maxWidth)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "SKIP (parse error) %s: %v\n", path, err)
 			continue
@@ -65,6 +74,9 @@ func main() {
 			continue
 		}
 		changed++
+		for _, e := range edits {
+			wrapped += e.wrapped
+		}
 		if *check {
 			printEdits(path, edits)
 			continue
@@ -81,6 +93,9 @@ func main() {
 		verb = "would change"
 	}
 	fmt.Fprintf(os.Stderr, "%d file(s) %s\n", changed, verb)
+	if wrapped > 0 {
+		fmt.Fprintf(os.Stderr, "%d line(s) needed the %d-char last-resort width fallback\n", wrapped, *maxWidth)
+	}
 }
 
 func collectGoFiles(args []string) ([]string, error) {

@@ -1,10 +1,13 @@
 // render.go — turns the task and note lists into the wiki's output files.
 //
-// Render is a pure function: tasks and notes in, a map of filename → content out (a single README.md carrying both a "# Tasks" and a "# Manifest" section, plus design-*.md for any task or note with a body).
+// Render is a pure function: tasks and notes in, a map of filename → content out (a single
+// README.md carrying both a "# Tasks" and a "# Manifest" section, plus design-*.md for any task or
+// note with a body).
 // No I/O — the caller writes the files.
 // The README's two sections are built by renderTasksSection and renderManifestSection;
 // the design files are built by renderDesigns.
-// RenderToDisk drives the write path and maintains a manifest sidecar (.board-rendered.json) so that renamed or removed outputs are cleaned up on the next render.
+// RenderToDisk drives the write path and maintains a manifest sidecar (.board-rendered.json) so
+// that renamed or removed outputs are cleaned up on the next render.
 
 package boardengine
 

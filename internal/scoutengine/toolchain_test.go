@@ -1,5 +1,9 @@
-// toolchain_test.go covers resolveGoToolchain's three observable paths — already-installed fast path, cold-cache install, and concurrent-install serialization — entirely offline: every sub-test swaps installGoToolchain for a fake before running and restores the original via t.Cleanup, so no sub-test ever spawns a real `go install`.
-// userCacheDir is likewise redirected at a t.TempDir() per sub-test, so nothing here touches the real machine-global toolchain cache.
+// toolchain_test.go covers resolveGoToolchain's three observable paths — already-installed fast
+// path, cold-cache install, and concurrent-install serialization — entirely offline: every sub-test
+// swaps installGoToolchain for a fake before running and restores the original via t.Cleanup, so no
+// sub-test ever spawns a real `go install`.
+// userCacheDir is likewise redirected at a t.TempDir() per sub-test, so nothing here touches the
+// real machine-global toolchain cache.
 
 package scoutengine
 

@@ -1,5 +1,7 @@
-// cli_unit_test.go holds the boardcli CLI tests that never reach layout resolution — no git repo or board config is spawned or seeded — so they stay in the untagged Tier 1 loop.
-// runCLI lives here (not in cli_test.go) because the untagged build must expose it to the integration-tagged cli_test.go in the same package.
+// cli_unit_test.go holds the boardcli CLI tests that never reach layout resolution — no git repo or
+// board config is spawned or seeded — so they stay in the untagged Tier 1 loop.
+// runCLI lives here (not in cli_test.go) because the untagged build must expose it to the
+// integration-tagged cli_test.go in the same package.
 
 package boardcli_test
 
@@ -23,8 +25,10 @@ func runCLI(t *testing.T, args ...string) (exitCode int, stdout string) {
 	return code, buf.String()
 }
 
-// TestCLINoArg asserts that invoking board with no subcommand exits 0 and lists available subcommands in the output.
-// Under cobra, the no-arg parent command prints usage/help and exits cleanly — no config resolution is attempted.
+// TestCLINoArg asserts that invoking board with no subcommand exits 0 and lists available
+// subcommands in the output.
+// Under cobra, the no-arg parent command prints usage/help and exits cleanly — no config resolution
+// is attempted.
 func TestCLINoArg(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -46,8 +50,10 @@ func TestCLINoArg(t *testing.T) {
 	}
 }
 
-// TestCLIUnknownSubcommand asserts that an unknown subcommand exits 1 and emits a JSON error envelope with ok=false.
-// GroupRunE handles the unknown-subcommand path, so the output is always a machine-parseable JSON envelope.
+// TestCLIUnknownSubcommand asserts that an unknown subcommand exits 1 and emits a JSON error
+// envelope with ok=false.
+// GroupRunE handles the unknown-subcommand path, so the output is always a machine-parseable JSON
+// envelope.
 func TestCLIUnknownSubcommand(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 

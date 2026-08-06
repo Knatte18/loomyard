@@ -1,6 +1,8 @@
-// helptree_test.go asserts that the lyx help tree is complete: the root help output names every module,
+// helptree_test.go asserts that the lyx help tree is complete: the root help output names every
+// module,
 // and each verb-module's help output names every one of its subcommands.
-// Tests use superset assertions (pinned set ⊆ output) so that cobra's auto-generated help and completion entries do not make them brittle.
+// Tests use superset assertions (pinned set ⊆ output) so that cobra's auto-generated help and
+// completion entries do not make them brittle.
 
 package main
 
@@ -10,8 +12,10 @@ import (
 	"testing"
 )
 
-// TestHelpTree_RootNamesAllModules asserts that running "lyx --help" (no args, which triggers cobra's help for the root) produces output that names every registered module.
-// The assertion is a superset check — extra text such as cobra's "help" and "completion" entries is tolerated.
+// TestHelpTree_RootNamesAllModules asserts that running "lyx --help" (no args, which triggers
+// cobra's help for the root) produces output that names every registered module.
+// The assertion is a superset check — extra text such as cobra's "help" and "completion" entries is
+// tolerated.
 func TestHelpTree_RootNamesAllModules(t *testing.T) {
 	var out bytes.Buffer
 	code := run(nil, &out)
@@ -39,8 +43,10 @@ func TestHelpTree_RootNamesAllModules(t *testing.T) {
 	}
 }
 
-// TestHelpTree_VerbModuleSubcommands asserts that each verb-module's help output names all of its subcommands.
-// Each module is invoked via the run() seam with only the module name so cobra prints the subcommand listing (exit 0).
+// TestHelpTree_VerbModuleSubcommands asserts that each verb-module's help output names all of its
+// subcommands.
+// Each module is invoked via the run() seam with only the module name so cobra prints the
+// subcommand listing (exit 0).
 // Assertions are superset checks so cobra's auto-added "help" entry is tolerated.
 func TestHelpTree_VerbModuleSubcommands(t *testing.T) {
 	tests := []struct {

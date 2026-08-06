@@ -46,7 +46,8 @@ func appendIntegrationVerify(t *testing.T, planDir, verify string) {
 	}
 }
 
-// TestShouldRunIntegration_TrueOnlyWhenPlanHasVerify proves the skip-check itself: a plan with no plan-level "## verify:" section reports false,
+// TestShouldRunIntegration_TrueOnlyWhenPlanHasVerify proves the skip-check itself: a plan with no
+// plan-level "## verify:" section reports false,
 // and the same plan directory reports true once that section is appended.
 func TestShouldRunIntegration_TrueOnlyWhenPlanHasVerify(t *testing.T) {
 	fx := newRunFixture(t, 1)
@@ -69,7 +70,9 @@ func TestShouldRunIntegration_TrueOnlyWhenPlanHasVerify(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_SkipsWhenPlanHasNoVerify proves the whole-run behavior for a plan with no plan-level verify: Run finishes with outcome: done exactly as it would without this task's own integration stage,
+// TestIntegrationStage_SkipsWhenPlanHasNoVerify proves the whole-run behavior for a plan with no
+// plan-level verify: Run finishes with outcome: done exactly as it would without this task's own
+// integration stage,
 // and the stage never even looks for an integration report.
 func TestIntegrationStage_SkipsWhenPlanHasNoVerify(t *testing.T) {
 	fx := newRunFixture(t, 1)
@@ -116,7 +119,9 @@ func TestIntegrationStage_SkipsWhenPlanHasNoVerify(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_PassingForkFinishesNormally proves the happy path: a plan-level verify present, every batch terminal-done, and an OK integration report already on disk by the time Master's own spawn finishes — Run succeeds with outcome: done and records no escalation.
+// TestIntegrationStage_PassingForkFinishesNormally proves the happy path: a plan-level verify
+// present, every batch terminal-done, and an OK integration report already on disk by the time
+// Master's own spawn finishes — Run succeeds with outcome: done and records no escalation.
 func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -182,8 +187,13 @@ func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_FailingForkTriggersBisectAndEscalates proves the full failure path against a real scratch repo with a known-bad commit: three batches' worth of real commits, the third introducing a file the plan-level verify command fails against.
-// A FAILED integration report triggers bisect, which localizes the third card without a linear scan (the binary search only ever checks the middle candidate), records the terminal escalation under state.json's reserved key, extends summary.md naming the offending card, and restores HEAD to the original branch.
+// TestIntegrationStage_FailingForkTriggersBisectAndEscalates proves the full failure path against a
+// real scratch repo with a known-bad commit: three batches' worth of real commits, the third
+// introducing a file the plan-level verify command fails against.
+// A FAILED integration report triggers bisect, which localizes the third card without a linear scan
+// (the binary search only ever checks the middle candidate), records the terminal escalation under
+// state.json's reserved key, extends summary.md naming the offending card, and restores HEAD to the
+// original branch.
 func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 	fx := newRunFixture(t, 3)
 	appendIntegrationVerify(t, fx.PlanDir, "test ! -f bad.marker")
@@ -265,8 +275,13 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 	}
 }
 
-// TestBisectAndEscalate_EmptySHAsDegradesGracefully proves bisect's other edge shape — a genuinely empty shas slice, distinct from the already-covered single-SHA "sole/HEAD card" degrade above — also degrades gracefully rather than erroring: BisectAndEscalate still records a terminal escalation and extends summary.md, falling back to "unknown" for both the offending card and SHA instead of indexing into the empty slice.
-// bisect returns before ever touching repo when shas is empty, so this needs no real git repo — a nil WarpBisector is never dereferenced.
+// TestBisectAndEscalate_EmptySHAsDegradesGracefully proves bisect's other edge shape — a genuinely
+// empty shas slice, distinct from the already-covered single-SHA "sole/HEAD card" degrade above —
+// also degrades gracefully rather than erroring: BisectAndEscalate still records a terminal
+// escalation and extends summary.md, falling back to "unknown" for both the offending card and SHA
+// instead of indexing into the empty slice.
+// bisect returns before ever touching repo when shas is empty, so this needs no real git repo — a
+// nil WarpBisector is never dereferenced.
 func TestBisectAndEscalate_EmptySHAsDegradesGracefully(t *testing.T) {
 	websterDir := t.TempDir()
 	summaryPath := websterengine.SummaryPath(websterDir)
@@ -296,7 +311,12 @@ func TestBisectAndEscalate_EmptySHAsDegradesGracefully(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_MissingReport_StuckOutcomePreserved proves the outcome-aware missing-report rule: a plan with a "## verify:" section, every batch terminal-done, Master reporting stuck, and NO integration report on disk is a CONSISTENT state (the integration fork died, or Master stuck out before the stage) — Run returns Master's own graceful stuck judgment rather than overwriting it with a missing-report error (crucible round fable-r1: the pre-fix backstop turned exactly this graceful stuck into a run ERROR after a real 30s wait).
+// TestIntegrationStage_MissingReport_StuckOutcomePreserved proves the outcome-aware missing-report
+// rule: a plan with a "## verify:" section, every batch terminal-done, Master reporting stuck, and
+// NO integration report on disk is a CONSISTENT state (the integration fork died, or Master stuck
+// out before the stage) — Run returns Master's own graceful stuck judgment rather than overwriting
+// it with a missing-report error (crucible round fable-r1: the pre-fix backstop turned exactly this
+// graceful stuck into a run ERROR after a real 30s wait).
 func TestIntegrationStage_MissingReport_StuckOutcomePreserved(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -337,7 +357,9 @@ func TestIntegrationStage_MissingReport_StuckOutcomePreserved(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud proves the other half of the outcome-aware rule: outcome: done CLAIMS a passing integration suite, so a missing integration report under a done outcome is a genuine inconsistency Run fails loud on.
+// TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud proves the other half of the
+// outcome-aware rule: outcome: done CLAIMS a passing integration suite, so a missing integration
+// report under a done outcome is a genuine inconsistency Run fails loud on.
 func TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud(t *testing.T) {
 	fx := newRunFixture(t, 1)
 	appendIntegrationVerify(t, fx.PlanDir, "true")
@@ -382,8 +404,14 @@ func TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud(t *testing.T) {
 	}
 }
 
-// TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud proves the FAILED integration report under a done outcome is fail-loud, SYMMETRIC with the missing-report-under-done case above: a done outcome CLAIMS a passing integration suite, so a Master that wrote outcome: done while the plan-level verify actually FAILED is a genuine inconsistency the run must not report as done.
-// It also proves the escalation still persists despite the loud return — the reserved -1 record and summary.md's SHA-bisect- localized card are written BEFORE the fail-loud error, so a resume or a human still sees the offending card. (Before this was fixed the run returned Master's done verbatim, contradicting its own escalated summary.md.)
+// TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud proves the FAILED integration report under
+// a done outcome is fail-loud, SYMMETRIC with the missing-report-under-done case above: a done
+// outcome CLAIMS a passing integration suite, so a Master that wrote outcome: done while the
+// plan-level verify actually FAILED is a genuine inconsistency the run must not report as done.
+// It also proves the escalation still persists despite the loud return — the reserved -1 record and
+// summary.md's SHA-bisect- localized card are written BEFORE the fail-loud error, so a resume or a
+// human still sees the offending card. (Before this was fixed the run returned Master's done
+// verbatim, contradicting its own escalated summary.md.)
 func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
 	fx := newRunFixture(t, 3)
 	appendIntegrationVerify(t, fx.PlanDir, "test ! -f bad.marker")

@@ -1,4 +1,7 @@
-// wait_test.go covers Run.Wait's poll loop against fakeReed/fakeEngine and a fake clock: all four outcome classifications, KeepPane skipping cleanup, the startup probe's trust-dismiss and fast-fail-on-timeout paths, multi-Stop offset tracking, events-offset resilience across a partial line, and finalize's fork-audit attach (only for a fork-mode spec's done classification).
+// wait_test.go covers Run.Wait's poll loop against fakeReed/fakeEngine and a fake clock: all four
+// outcome classifications, KeepPane skipping cleanup, the startup probe's trust-dismiss and
+// fast-fail-on-timeout paths, multi-Stop offset tracking, events-offset resilience across a partial
+// line, and finalize's fork-audit attach (only for a fork-mode spec's done classification).
 
 package shuttleengine
 
@@ -70,7 +73,8 @@ func newWaitTestRunner(t *testing.T, reed ReedOps, engine Engine, cfg Config) *R
 	return NewRunner(reed, engine, layout, cfg)
 }
 
-// TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms of 0 or below must fall back to the template default rather than making Wait tick with a zero sleep.
+// TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms of 0
+// or below must fall back to the template default rather than making Wait tick with a zero sleep.
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -216,7 +220,10 @@ func TestRun_Wait_Asking_CarriesMessageKeepsStrand(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking verifies a live ask (an EventAsk with no output files present) classifies OutcomeAsking carrying the question as the message, keeping the pane and run dir just like the existing turn-end asking case — proving the unchanged pollEventsTick branch also covers the live-ask signal ParseEvents now emits.
+// TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking verifies a live ask (an EventAsk with no output
+// files present) classifies OutcomeAsking carrying the question as the message, keeping the pane
+// and run dir just like the existing turn-end asking case — proving the unchanged pollEventsTick
+// branch also covers the live-ask signal ParseEvents now emits.
 func TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl")
@@ -257,7 +264,9 @@ func TestRun_Wait_LiveAsk_ClassifiesRealTimeAsking(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_LiveAsk_DoneFirstStillWins verifies that when a live ask arrives but the output files already exist, done-first classification still wins — an EventAsk never overrides an already-satisfied file contract.
+// TestRun_Wait_LiveAsk_DoneFirstStillWins verifies that when a live ask arrives but the output
+// files already exist, done-first classification still wins — an EventAsk never overrides an
+// already-satisfied file contract.
 func TestRun_Wait_LiveAsk_DoneFirstStillWins(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl")
@@ -440,7 +449,10 @@ func TestRun_Wait_Timeout_KeepsStrand(t *testing.T) {
 	}
 }
 
-// TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone proves finalize's AuditForks wiring: a fork-mode spec's done classification calls engine.AuditForks(sessionID, layout.AnchorPath()) and attaches its result to Result.ForkAudit, while a non-fork spec's done classification never calls AuditForks at all and leaves Result.ForkAudit nil.
+// TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone proves finalize's AuditForks wiring: a
+// fork-mode spec's done classification calls engine.AuditForks(sessionID, layout.AnchorPath()) and
+// attaches its result to Result.ForkAudit, while a non-fork spec's done classification never calls
+// AuditForks at all and leaves Result.ForkAudit nil.
 func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 	tests := []struct {
 		name          string

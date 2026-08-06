@@ -1,5 +1,7 @@
-// up.go implements the `up` and `down` reed verbs: up boots the substrate (server + session) this worktree's strands render into,
-// and down tears this worktree's session and persisted state back down (the shared per-hub server dies only when this was its last session).
+// up.go implements the `up` and `down` reed verbs: up boots the substrate (server + session) this
+// worktree's strands render into,
+// and down tears this worktree's session and persisted state back down (the shared per-hub server
+// dies only when this was its last session).
 // Neither verb touches a strand's command — up never launches one.
 
 package reedcli

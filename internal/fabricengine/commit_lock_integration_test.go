@@ -64,8 +64,13 @@ func weftWriteLockPath(t *testing.T, f *Fabric) string {
 	return filepath.Join(lockDir, weftWriteLockFile)
 }
 
-// TestCommitLock_WarpOnlySerializesConcurrentCommits asserts that two concurrent warp-only Fabric.Commit calls (weft-empty inputs) against one warp+weft pair serialize on the combined write lock: both commits land, neither corrupts the other's index (no git failure from a stray .git/index.lock collision), and the resulting warp history is linear (no merge commit, exactly two new commits on top of the fixture's initial one).
-// This is the scenario that fails against a lock scoped to the weft side only, since both calls here have zero weft-side files.
+// TestCommitLock_WarpOnlySerializesConcurrentCommits asserts that two concurrent warp-only
+// Fabric.Commit calls (weft-empty inputs) against one warp+weft pair serialize on the combined
+// write lock: both commits land, neither corrupts the other's index (no git failure from a stray
+// .git/index.lock collision), and the resulting warp history is linear (no merge commit, exactly
+// two new commits on top of the fixture's initial one).
+// This is the scenario that fails against a lock scoped to the weft side only, since both calls
+// here have zero weft-side files.
 func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -119,7 +124,10 @@ func TestCommitLock_WarpOnlySerializesConcurrentCommits(t *testing.T) {
 	}
 }
 
-// TestCommitLock_ContendsAcrossSides asserts that a warp-only, a weft-only, and a two-sided Fabric.Commit call all contend on the same combined write lock file: each subtest externally acquires the lock first, starts the Commit call, confirms it is still blocked while the external lock is held, releases the external lock, and confirms the call then completes.
+// TestCommitLock_ContendsAcrossSides asserts that a warp-only, a weft-only, and a two-sided
+// Fabric.Commit call all contend on the same combined write lock file: each subtest externally
+// acquires the lock first, starts the Commit call, confirms it is still blocked while the external
+// lock is held, releases the external lock, and confirms the call then completes.
 func TestCommitLock_ContendsAcrossSides(t *testing.T) {
 	t.Run("WarpOnly", func(t *testing.T) {
 		f, warpPath, _ := newCommitFixture(t)
@@ -194,7 +202,10 @@ func assertCommitBlocksOnHeldLock(t *testing.T, f *Fabric, files []string, msg s
 	}
 }
 
-// TestCommitLock_ReleasedBeforePush asserts that the combined write lock is NOT held at the moment spawnDetachedPushFn fires: the swapped seam attempts a non-blocking TryAcquireWriteLock on the same lock path Fabric.Commit uses, which must succeed because Commit has already released its own hold by the time it calls the seam (the commit-lock-scoped-to-commit-only Shared Decision).
+// TestCommitLock_ReleasedBeforePush asserts that the combined write lock is NOT held at the moment
+// spawnDetachedPushFn fires: the swapped seam attempts a non-blocking TryAcquireWriteLock on the
+// same lock path Fabric.Commit uses, which must succeed because Commit has already released its own
+// hold by the time it calls the seam (the commit-lock-scoped-to-commit-only Shared Decision).
 func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	lockPath := weftWriteLockPath(t, f)
@@ -227,7 +238,10 @@ func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 	}
 }
 
-// TestCommitLock_PushFiresOnPartialFailure asserts that Commit's WarpCommitted || WeftCommitted push gate still fires the push seam on a *PartialCommitError where the warp side landed but the weft commit itself failed — reusing commit_partial_integration_test.go's failure-injection approach (pre-creating the weft gitdir's index.lock) to force that outcome.
+// TestCommitLock_PushFiresOnPartialFailure asserts that Commit's WarpCommitted || WeftCommitted
+// push gate still fires the push seam on a *PartialCommitError where the warp side landed but the
+// weft commit itself failed — reusing commit_partial_integration_test.go's failure-injection
+// approach (pre-creating the weft gitdir's index.lock) to force that outcome.
 func TestCommitLock_PushFiresOnPartialFailure(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	calls := swapPushRecorder(t)

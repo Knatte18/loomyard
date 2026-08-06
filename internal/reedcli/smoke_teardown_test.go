@@ -95,8 +95,13 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	}
 }
 
-// TestSmokeDownLeavesNoTmuxOnSocket pins the stray-server guarantee down's robust teardown owns: after down tears the shared server down, ZERO tmux process may still name this worktree's socket — not the main server, not its __warm__ helper.
-// The tmux server is spawned with the worktree as its cwd, so a server that outlives down keeps the worktree directory busy (a real "no stray state" leak observed under down->up churn on a saturated machine, where a fixed-deadline server wait timed out and aborted down before the socket was cleared).
+// TestSmokeDownLeavesNoTmuxOnSocket pins the stray-server guarantee down's robust teardown owns:
+// after down tears the shared server down, ZERO tmux process may still name this worktree's socket
+// — not the main server, not its __warm__ helper.
+// The tmux server is spawned with the worktree as its cwd, so a server that outlives down keeps the
+// worktree directory busy (a real "no stray state" leak observed under down->up churn on a
+// saturated machine, where a fixed-deadline server wait timed out and aborted down before the
+// socket was cleared).
 // Several add->down cycles give the async kill-server a chance to lag.
 func TestSmokeDownLeavesNoTmuxOnSocket(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
@@ -133,10 +138,16 @@ func TestSmokeDownLeavesNoTmuxOnSocket(t *testing.T) {
 	}
 }
 
-// TestSmokeRemoveReapsRemovedPaneChildProcesses pins the reap gap this round generalized from down to remove: kill-pane on a removed strand's pane terminates that pane's children asynchronously,
-// and on Windows the process actually holding the worktree directory is a deep descendant of #{pane_pid} — so a remove that returned without reaping could leave a removed strand's grandchild alive and the worktree dir busy under load (the same class down's reap already closed).
-// remove now snapshots the removed panes' process subtrees before kill-pane and waits for them to exit before returning, so the instant remove returns every descendant of the removed pane must be gone.
-// A sibling strand is kept alive throughout so the session survives and the removed pane is never the sole pane.
+// TestSmokeRemoveReapsRemovedPaneChildProcesses pins the reap gap this round generalized from down
+// to remove: kill-pane on a removed strand's pane terminates that pane's children asynchronously,
+// and on Windows the process actually holding the worktree directory is a deep descendant of
+// #{pane_pid} — so a remove that returned without reaping could leave a removed strand's grandchild
+// alive and the worktree dir busy under load (the same class down's reap already closed).
+// remove now snapshots the removed panes' process subtrees before kill-pane and waits for them to
+// exit before returning, so the instant remove returns every descendant of the removed pane must be
+// gone.
+// A sibling strand is kept alive throughout so the session survives and the removed pane is never
+// the sole pane.
 func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
@@ -210,12 +221,22 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 	}
 }
 
-// TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive codifies the CROSS-WORKTREE SCOPE invariant: the tmux server identity is per-HUB (the -L socket derives from the hub) and shared by sibling worktrees, so `lyx reed down` in worktree A must tear down ONLY A's session, never worktree B's session, panes, or agents that share the same hub socket. (This psmux port backs each session with its own `psmux.exe server -s <session> -L <socket>` process on the shared socket, so "no duplicate server" is verified per session: exactly one backing process per live session, never two, zero once killed.)
-// Two clones under one hub `up` (same socket, distinct sessions, one backing process each), each adds a live strand;
+// TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive codifies the CROSS-WORKTREE SCOPE invariant:
+// the tmux server identity is per-HUB (the -L socket derives from the hub) and shared by sibling
+// worktrees, so `lyx reed down` in worktree A must tear down ONLY A's session, never worktree B's
+// session, panes, or agents that share the same hub socket. (This psmux port backs each session
+// with its own `psmux.exe server -s <session> -L <socket>` process on the shared socket, so "no
+// duplicate server" is verified per session: exactly one backing process per live session, never
+// two, zero once killed.)
+// Two clones under one hub `up` (same socket, distinct sessions, one backing process each), each
+// adds a live strand;
 // A goes `down`;
-// then B's session + pane + agent subtree + its single backing server must all still be live while A's session and pane subtree are gone.
+// then B's session + pane + agent subtree + its single backing server must all still be live while
+// A's session and pane subtree are gone.
 // B then `down`s last and the socket must be free of every tmux.
-// The core assertion is B's continued liveness AFTER A's down (see assertSiblingStaysLive) — a naive "down kills the whole socket's server set" implementation fails this test rather than reporting a false green.
+// The core assertion is B's continued liveness AFTER A's down (see assertSiblingStaysLive) — a
+// naive "down kills the whole socket's server set" implementation fails this test rather than
+// reporting a false green.
 func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 

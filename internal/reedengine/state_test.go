@@ -1,4 +1,5 @@
-// state_test.go round-trips ReedState through Save/Load and verifies toRenderStrands' field mapping and Live derivation.
+// state_test.go round-trips ReedState through Save/Load and verifies toRenderStrands' field mapping
+// and Live derivation.
 
 package reedengine
 

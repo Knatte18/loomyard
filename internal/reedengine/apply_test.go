@@ -1,5 +1,7 @@
-// apply_test.go verifies planLayout produces the same layout string and focus target render.Rules would for an equivalent canonical strand table (reusing render's golden expectations),
-// and that applyLayoutLocked skips tmux entirely when fewer than two panes are live — both hermetic, no live tmux required.
+// apply_test.go verifies planLayout produces the same layout string and focus target render.Rules
+// would for an equivalent canonical strand table (reusing render's golden expectations),
+// and that applyLayoutLocked skips tmux entirely when fewer than two panes are live — both
+// hermetic, no live tmux required.
 
 package reedengine
 
@@ -72,7 +74,8 @@ func TestPlanLayout_HiddenStrandExcludedFromPlacement(t *testing.T) {
 	}
 }
 
-// TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell pins planLayout's header presence filter: a stale absent header must render as if no header existed.
+// TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell pins planLayout's header presence
+// filter: a stale absent header must render as if no header existed.
 func TestPlanLayout_StaleHeaderPaneIDNeverEmittedAsLayoutCell(t *testing.T) {
 	e := newTestEngine(t)
 	e.cfg.Width, e.cfg.Height = 100, 21

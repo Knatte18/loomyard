@@ -1,5 +1,10 @@
-// audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy CheckFork/CheckParent enforce, the warning-only ForkWarnings case, the weftReferencePattern matcher (built from a fake lyxcwd.Location, never a hardcoded geometry token), and the attribution pipeline (NewTranscripts, SettleRetry with a recording fake Sleeper, and ClassifyAttribution's pinned check order).
-// Every case here is a pure fact-in/verdict-out table, per the discussion's TDD-centre framing: no git spawn, no real sleeping, no filesystem I/O.
+// audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy
+// CheckFork/CheckParent enforce, the warning-only ForkWarnings case, the weftReferencePattern
+// matcher (built from a fake lyxcwd.Location, never a hardcoded geometry token), and the
+// attribution pipeline (NewTranscripts, SettleRetry with a recording fake Sleeper, and
+// ClassifyAttribution's pinned check order).
+// Every case here is a pure fact-in/verdict-out table, per the discussion's TDD-centre framing: no
+// git spawn, no real sleeping, no filesystem I/O.
 
 package websterengine
 
@@ -20,9 +25,17 @@ func fakeLayout() *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
 
-// TestWeftReferencePattern matrixes weftReferencePattern against every Bash command shape CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Weft Git Invariant bans), the pre-cutover `lyx weft`/`lyx warp` spellings, a command referencing the weft worktree path directly (e.g. `git -C <weft-worktree> add`), and a set of weft-free commands that must never match.
-// The `lyx fabric` rows are the regression guard: the fabric cutover deleted `lyx weft`/`lyx warp` and renamed every weft-touching verb under `lyx fabric`, so a matcher that knows only the old spellings bans nothing an agent can actually run today.
-// The `lyx.exe` rows are the same guard for the Windows spelling — lyx's primary platform, where an agent writing the extension out would otherwise slip the whole audit — paired with a `lyx.exe board` row proving the extension did not widen the match to every lyx invocation.
+// TestWeftReferencePattern matrixes weftReferencePattern against every Bash command shape
+// CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Weft Git
+// Invariant bans), the pre-cutover `lyx weft`/`lyx warp` spellings, a command referencing the weft
+// worktree path directly (e.g. `git -C <weft-worktree> add`), and a set of weft-free commands that
+// must never match.
+// The `lyx fabric` rows are the regression guard: the fabric cutover deleted `lyx weft`/`lyx warp`
+// and renamed every weft-touching verb under `lyx fabric`, so a matcher that knows only the old
+// spellings bans nothing an agent can actually run today.
+// The `lyx.exe` rows are the same guard for the Windows spelling — lyx's primary platform, where an
+// agent writing the extension out would otherwise slip the whole audit — paired with a `lyx.exe
+// board` row proving the extension did not widen the match to every lyx invocation.
 func TestWeftReferencePattern(t *testing.T) {
 	layout := fakeLayout()
 	weftRef := weftReferencePattern(layout)
@@ -69,7 +82,9 @@ func cleanForkReport(path string) shuttleengine.ForkReport {
 	return shuttleengine.ForkReport{TranscriptPath: path, ReportReturned: true}
 }
 
-// TestCheckFork covers every violation CheckFork enforces plus the two cases the requirements pin as explicitly ALLOWED for a fork (Write/Edit and host-repo git), which is the opposite of burlerengine's read-only cluster-reviewer policy.
+// TestCheckFork covers every violation CheckFork enforces plus the two cases the requirements pin
+// as explicitly ALLOWED for a fork (Write/Edit and host-repo git), which is the opposite of
+// burlerengine's read-only cluster-reviewer policy.
 func TestCheckFork(t *testing.T) {
 	layout := fakeLayout()
 	weftRef := weftReferencePattern(layout)
@@ -177,7 +192,8 @@ func TestCheckFork(t *testing.T) {
 	}
 }
 
-// TestCheckParent covers every violation CheckParent enforces plus the two contract-file writes pinned as explicitly ALLOWED for Master.
+// TestCheckParent covers every violation CheckParent enforces plus the two contract-file writes
+// pinned as explicitly ALLOWED for Master.
 func TestCheckParent(t *testing.T) {
 	layout := fakeLayout()
 	weftRef := weftReferencePattern(layout)
@@ -280,7 +296,8 @@ func TestCheckParent(t *testing.T) {
 	}
 }
 
-// TestForkWarnings pins the one warning-only (never round-failing) class: a fork that never returned a final report.
+// TestForkWarnings pins the one warning-only (never round-failing) class: a fork that never
+// returned a final report.
 func TestForkWarnings(t *testing.T) {
 	tests := []struct {
 		name string
@@ -314,7 +331,8 @@ func TestForkWarnings(t *testing.T) {
 	}
 }
 
-// TestNewTranscripts pins the defensive re-filter: only ForkReport entries whose TranscriptPath is absent from seen come back, in original order.
+// TestNewTranscripts pins the defensive re-filter: only ForkReport entries whose TranscriptPath is
+// absent from seen come back, in original order.
 func TestNewTranscripts(t *testing.T) {
 	audit := shuttleengine.ForkAudit{
 		Forks: []shuttleengine.ForkReport{
@@ -354,7 +372,9 @@ func (s *recordingSleeper) Sleep(d time.Duration) {
 	}
 }
 
-// TestSettleRetry_ReturnsEarlyOnLaterTick pins SettleRetry's core contract: a transcript that only appears on the fetch AFTER the first Sleep call makes SettleRetry return immediately, without waiting out the rest of the settle window and without any real sleeping.
+// TestSettleRetry_ReturnsEarlyOnLaterTick pins SettleRetry's core contract: a transcript that only
+// appears on the fetch AFTER the first Sleep call makes SettleRetry return immediately, without
+// waiting out the rest of the settle window and without any real sleeping.
 func TestSettleRetry_ReturnsEarlyOnLaterTick(t *testing.T) {
 	calls := 0
 	fetch := func() (shuttleengine.ForkAudit, error) {
@@ -386,7 +406,9 @@ func TestSettleRetry_ReturnsEarlyOnLaterTick(t *testing.T) {
 	}
 }
 
-// TestSettleRetry_WindowExhausted pins the other half of the contract: zero new transcripts across every attempt returns with a nil error once window elapses — SettleRetry never manufactures the hard error itself.
+// TestSettleRetry_WindowExhausted pins the other half of the contract: zero new transcripts across
+// every attempt returns with a nil error once window elapses — SettleRetry never manufactures the
+// hard error itself.
 func TestSettleRetry_WindowExhausted(t *testing.T) {
 	fetch := func() (shuttleengine.ForkAudit, error) {
 		return shuttleengine.ForkAudit{}, nil
@@ -408,7 +430,8 @@ func TestSettleRetry_WindowExhausted(t *testing.T) {
 	}
 }
 
-// TestSettleRetry_FetchErrorPropagates pins the fail-loud posture: a fetch error returns immediately, with no retry — an audit read that itself failed has nothing safe to retry against.
+// TestSettleRetry_FetchErrorPropagates pins the fail-loud posture: a fetch error returns
+// immediately, with no retry — an audit read that itself failed has nothing safe to retry against.
 func TestSettleRetry_FetchErrorPropagates(t *testing.T) {
 	wantErr := errors.New("boom")
 	fetch := func() (shuttleengine.ForkAudit, error) {
@@ -425,7 +448,10 @@ func TestSettleRetry_FetchErrorPropagates(t *testing.T) {
 	}
 }
 
-// TestClassifyAttribution pins the pinned check order from discussion.md's fork-audit-policy decision: zero new transcripts is always a hard error (regardless of report presence — ClassifyAttribution takes no report argument at all, which is itself the enforcement), one new is clean, and more than one is a warning, never hard.
+// TestClassifyAttribution pins the pinned check order from discussion.md's fork-audit-policy
+// decision: zero new transcripts is always a hard error (regardless of report presence —
+// ClassifyAttribution takes no report argument at all, which is itself the enforcement), one new is
+// clean, and more than one is a warning, never hard.
 func TestClassifyAttribution(t *testing.T) {
 	tests := []struct {
 		name        string

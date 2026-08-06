@@ -1,4 +1,5 @@
-// token.go implements the non-blocking GitHub token resolution chain: GH_TOKEN, then GITHUB_TOKEN, then the on-disk cache (cache.go), then a bounded `gh auth token` shell-out.
+// token.go implements the non-blocking GitHub token resolution chain: GH_TOKEN, then GITHUB_TOKEN,
+// then the on-disk cache (cache.go), then a bounded `gh auth token` shell-out.
 // Every path returns quickly or returns a typed error — never a prompt,
 // and never `gh auth login`.
 
@@ -75,8 +76,10 @@ func realRunGHAuthToken(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// ErrTokenUnresolvable is returned by resolveToken when no credential source produced a usable token.
-// Callers surface this as a typed error rather than waiting or prompting — there is no code path from here to `gh auth login`.
+// ErrTokenUnresolvable is returned by resolveToken when no credential source produced a usable
+// token.
+// Callers surface this as a typed error rather than waiting or prompting — there is no code path
+// from here to `gh auth login`.
 var ErrTokenUnresolvable = errors.New("githubclient: no GitHub token available (set GH_TOKEN or GITHUB_TOKEN, or run `gh auth login`)")
 
 // resolveToken tries in order: GH_TOKEN, GITHUB_TOKEN, the on-disk cache, and

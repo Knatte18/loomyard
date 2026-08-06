@@ -1,4 +1,9 @@
-// identity.go implements perch's own block-identity derivation — ProfileHash, DeriveRunID, ValidRunID, sanitizeSlug — extracted out of the old state.go when its round-state machinery moved to treadleengine, plus perch's re-exports of treadleengine's identity/pause-flag/error-sentinel/ verdict vocabulary (the byte-identical-perch-api shared decision): TerminalOutcome, PauseFlagPath, PauseFlagName, ErrBlockBusy, and the JudgeVerdict/TriageVerdict types and constants.
+// identity.go implements perch's own block-identity derivation — ProfileHash, DeriveRunID,
+// ValidRunID, sanitizeSlug — extracted out of the old state.go when its round-state machinery moved
+// to treadleengine, plus perch's re-exports of treadleengine's identity/pause-flag/error-sentinel/
+// verdict vocabulary (the byte-identical-perch-api shared decision): TerminalOutcome,
+// PauseFlagPath, PauseFlagName, ErrBlockBusy, and the JudgeVerdict/TriageVerdict types and
+// constants.
 
 package perchengine
 
@@ -38,14 +43,16 @@ func ProfileHash(p Profile) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// DeriveRunID returns the default run-id for a standalone invocation: the profile file's sanitized basename plus first 8 hex characters of hash.
+// DeriveRunID returns the default run-id for a standalone invocation: the profile file's sanitized
+// basename plus first 8 hex characters of hash.
 func DeriveRunID(profilePath string, hash string) string {
 	base := filepath.Base(profilePath)
 	base = strings.TrimSuffix(base, filepath.Ext(base))
 	return fmt.Sprintf("%s-%s", sanitizeSlug(base), hash[:8])
 }
 
-// ValidRunID reports whether id is a legal explicit --run-id: lowercase alphanumerics and single dashes, no leading/trailing dash, non-empty.
+// ValidRunID reports whether id is a legal explicit --run-id: lowercase alphanumerics and single
+// dashes, no leading/trailing dash, non-empty.
 func ValidRunID(id string) bool {
 	if id == "" {
 		return false

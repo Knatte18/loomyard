@@ -1,7 +1,14 @@
-// audit.go implements webster's own fail-loud policy over the provider-invariant shuttleengine.ForkAudit/ForkReport fact shapes: the violation classes a forked implementer or Master's own parent session can trigger,
+// audit.go implements webster's own fail-loud policy over the provider-invariant
+// shuttleengine.ForkAudit/ForkReport fact shapes: the violation classes a forked implementer or
+// Master's own parent session can trigger,
 // and the weft-reference matcher both checks share.
-// Unlike burlerengine's read-only cluster-round policy (a fork reviewer must never mutate anything), webster's forks are implementers — Write/Edit and host-repo git are the whole point of a batch, so CheckFork bans only nesting (Agent calls), weft references, and writes to the run's two contract files (outcome.yaml/summary.md — Master's alone), never batch writes.
-// Master's own parent transcript is the mirror image: writes are banned everywhere EXCEPT the run's two contract files, since a Master that "helpfully" implements a batch itself or hand-writes a batch report defeats the fork-audit design as silently as a named spawn does.
+// Unlike burlerengine's read-only cluster-round policy (a fork reviewer must never mutate
+// anything), webster's forks are implementers — Write/Edit and host-repo git are the whole point of
+// a batch, so CheckFork bans only nesting (Agent calls), weft references, and writes to the run's
+// two contract files (outcome.yaml/summary.md — Master's alone), never batch writes.
+// Master's own parent transcript is the mirror image: writes are banned everywhere EXCEPT the run's
+// two contract files, since a Master that "helpfully" implements a batch itself or hand-writes a
+// batch report defeats the fork-audit design as silently as a named spawn does.
 // Every function here is pure — facts in, verdict out — per the discussion's TDD-centre framing;
 // all transcript reading stays in claudeengine, per the Shuttle Provider-Seam Invariant.
 
@@ -21,38 +28,53 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// AuditViolationClass discriminates the fail-loud violation classes CheckFork and CheckParent can report.
+// AuditViolationClass discriminates the fail-loud violation classes CheckFork and CheckParent can
+// report.
 // It exists so a caller (e.g.
 // record-batch's error message,
-// or a future metrics hook) can branch on WHAT kind of violation occurred without parsing Detail's free-text prose.
+// or a future metrics hook) can branch on WHAT kind of violation occurred without parsing Detail's
+// free-text prose.
 type AuditViolationClass string
 
 // The set of hard violation classes CheckFork and CheckParent can report.
 const (
-	// ClassNestedAgent means a fork's own transcript attempted an Agent tool call — forks cannot nest, even when Claude Code denied the attempt.
+	// ClassNestedAgent means a fork's own transcript attempted an Agent tool call — forks cannot nest,
+	// even when Claude Code denied the attempt.
 	ClassNestedAgent AuditViolationClass = "nested-agent"
-	// ClassWeftReference means a Bash command (fork or parent) invoked lyx fabric (or its pre-cutover spellings lyx weft/lyx warp),
+	// ClassWeftReference means a Bash command (fork or parent) invoked lyx fabric (or its pre-cutover
+	// spellings lyx weft/lyx warp),
 	// or referenced the weft worktree path — agents never touch weft directly.
 	ClassWeftReference AuditViolationClass = "weft-reference"
-	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a name parameter — named forks silently lose inherited context.
+	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a
+	// name parameter — named forks silently lose inherited context.
 	ClassNamedSpawn AuditViolationClass = "named-spawn"
-	// ClassParentWrite means Master's parent transcript wrote a file other than the run's two contract files (outcome.yaml, summary.md) — a Master implementing batches itself or hand-writing a batch report.
+	// ClassParentWrite means Master's parent transcript wrote a file other than the run's two contract
+	// files (outcome.yaml, summary.md) — a Master implementing batches itself or hand-writing a batch
+	// report.
 	ClassParentWrite AuditViolationClass = "parent-write"
-	// ClassForkContractWrite means a fork's own transcript wrote one of the run's two contract files (outcome.yaml, summary.md) — those are Master's only permitted writes, and a fork writing them forges the run's terminal judgment.
+	// ClassForkContractWrite means a fork's own transcript wrote one of the run's two contract files
+	// (outcome.yaml, summary.md) — those are Master's only permitted writes, and a fork writing them
+	// forges the run's terminal judgment.
 	ClassForkContractWrite AuditViolationClass = "fork-contract-write"
 )
 
-// AuditViolation is one hard fork-audit policy violation observed in either a fork's own transcript or Master's parent transcript.
-// Every hard violation is an error — the fail-loud posture treats a detected violation as build-breaking, not merely logged — so AuditViolation implements the error interface directly and a caller can return a []AuditViolation entry (or an aggregate wrapping them) as an ordinary Go error.
+// AuditViolation is one hard fork-audit policy violation observed in either a fork's own transcript
+// or Master's parent transcript.
+// Every hard violation is an error — the fail-loud posture treats a detected violation as
+// build-breaking, not merely logged — so AuditViolation implements the error interface directly and
+// a caller can return a []AuditViolation entry (or an aggregate wrapping them) as an ordinary Go
+// error.
 // TranscriptPath is the fork's TranscriptPath for a CheckFork violation,
-// or "" for a CheckParent violation (ForkAudit carries no path for Master's own parent transcript — webster tracks Master's session ID separately, in State.MasterSessionID).
+// or "" for a CheckParent violation (ForkAudit carries no path for Master's own parent transcript —
+// webster tracks Master's session ID separately, in State.MasterSessionID).
 type AuditViolation struct {
 	Class          AuditViolationClass
 	TranscriptPath string
 	Detail         string
 }
 
-// Error implements the error interface, formatting the violation as a single-line, webster-prefixed message a caller can wrap or surface verbatim.
+// Error implements the error interface, formatting the violation as a single-line, webster-prefixed
+// message a caller can wrap or surface verbatim.
 func (v AuditViolation) Error() string {
 	if v.TranscriptPath == "" {
 		return fmt.Sprintf("webster: %s violation: %s", v.Class, v.Detail)
@@ -75,8 +97,10 @@ func weftReferencePattern(layout *lyxcwd.Location) *regexp.Regexp {
 	return regexp.MustCompile(pattern)
 }
 
-// CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit and host-repo git are explicitly allowed.
-// It bans three hard violations: any attempted Agent call, any write to the two contract files (outcomePath or summaryPath), and any Bash command touching weft.
+// CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit
+// and host-repo git are explicitly allowed.
+// It bans three hard violations: any attempted Agent call, any write to the two contract files
+// (outcomePath or summaryPath), and any Bash command touching weft.
 func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
 	var violations []AuditViolation
 
@@ -146,7 +170,8 @@ func isTranscriptPathAbsolute(path string) bool {
 
 // CheckParent evaluates Master's own parent-session facts: the mirror image of CheckFork's policy.
 // Master must NOT write except to the two contract files (outcomePath and summaryPath).
-// It bans three hard violations: any named spawn, any parent write outside contract files, and any Bash command touching weft.
+// It bans three hard violations: any named spawn, any parent write outside contract files, and any
+// Bash command touching weft.
 func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
 	var violations []AuditViolation
 
@@ -184,7 +209,11 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir st
 	return violations
 }
 
-// ForkWarnings evaluates f for webster's warning-only (never round-failing) classes: a fork that never returned a final report is sloppiness no mechanism can prevent in advance (the fork ran clean but never delivered its findings), so it is collected as a warning rather than a hard violation — the same posture burlerengine's auditClusterRound takes for its own ReportReturned == false case.
+// ForkWarnings evaluates f for webster's warning-only (never round-failing) classes: a fork that
+// never returned a final report is sloppiness no mechanism can prevent in advance (the fork ran
+// clean but never delivered its findings), so it is collected as a warning rather than a hard
+// violation — the same posture burlerengine's auditClusterRound takes for its own ReportReturned ==
+// false case.
 func ForkWarnings(f shuttleengine.ForkReport) []string {
 	if !f.ReportReturned {
 		return []string{fmt.Sprintf("fork %q never returned a final report", f.TranscriptPath)}
@@ -193,18 +222,37 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 }
 
 // ErrNoForkTranscripts is the sentinel ClassifyAttribution's zero-new-transcript case wraps.
-// record-batch's caller (batch 5) issues this as its own hard error AFTER SettleRetry's settle window is exhausted — never on the first miss, since a fork's transcript file may not have flushed to disk yet the instant the Agent tool call returns (the discussion's "first miss is inconclusive" flush-timing caveat).
-// A report file existing alongside zero new transcripts does NOT save the batch from this error: a report with no fork behind it means Master wrote it itself, which is exactly the defect this check exists to catch (pinned check order: transcript count is decided BEFORE report presence).
-// The message names the operator recourse because this error is one leg of a three-verb refusal circle with no in-band exit: with a report on disk but no fork transcript, begin-batch refuses (report exists), record-batch errors here, and recover-batch refuses an OK report — a state a forged report produces, but ALSO a legitimate cross-machine resume of the report-landed-before-record-batch crash window, since fork transcripts live under the machine-local ~/.claude projects dir while state.json and reports are weft-synced (found live in crucible round fable-r1).
+// record-batch's caller (batch 5) issues this as its own hard error AFTER SettleRetry's settle
+// window is exhausted — never on the first miss, since a fork's transcript file may not have
+// flushed to disk yet the instant the Agent tool call returns (the discussion's "first miss is
+// inconclusive" flush-timing caveat).
+// A report file existing alongside zero new transcripts does NOT save the batch from this error: a
+// report with no fork behind it means Master wrote it itself, which is exactly the defect this
+// check exists to catch (pinned check order: transcript count is decided BEFORE report presence).
+// The message names the operator recourse because this error is one leg of a three-verb refusal
+// circle with no in-band exit: with a report on disk but no fork transcript, begin-batch refuses
+// (report exists), record-batch errors here, and recover-batch refuses an OK report — a state a
+// forged report produces, but ALSO a legitimate cross-machine resume of the
+// report-landed-before-record-batch crash window, since fork transcripts live under the
+// machine-local ~/.claude projects dir while state.json and reports are weft-synced (found live in
+// crucible round fable-r1).
 var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch)")
 
-// DefaultSettleWindow is SettleRetry's recommended total wait budget before its caller gives up and treats a zero-transcript result as final: a few seconds is enough slack for Claude Code to flush a just-returned fork's subagents/<id>.jsonl to disk without meaningfully slowing down a normal record-batch call (which almost always finds its transcript on the first scan).
+// DefaultSettleWindow is SettleRetry's recommended total wait budget before its caller gives up and
+// treats a zero-transcript result as final: a few seconds is enough slack for Claude Code to flush
+// a just-returned fork's subagents/<id>.jsonl to disk without meaningfully slowing down a normal
+// record-batch call (which almost always finds its transcript on the first scan).
 const DefaultSettleWindow = 3 * time.Second
 
-// DefaultSettleTick is SettleRetry's recommended re-scan interval within the settle window: frequent enough that a normal (non-degenerate) call resolves within one or two ticks of the transcript actually appearing.
+// DefaultSettleTick is SettleRetry's recommended re-scan interval within the settle window:
+// frequent enough that a normal (non-degenerate) call resolves within one or two ticks of the
+// transcript actually appearing.
 const DefaultSettleTick = 250 * time.Millisecond
 
-// Sleeper abstracts time.Sleep so SettleRetry's wait loop never blocks for real under test — a recording fake Sleeper lets a test assert exactly how many ticks were requested and drive SettleRetry's retry loop to completion instantly, mirroring the clock seam builderengine's PollUntilTerminal and shuttleengine's wait.go already establish for the same reason.
+// Sleeper abstracts time.Sleep so SettleRetry's wait loop never blocks for real under test — a
+// recording fake Sleeper lets a test assert exactly how many ticks were requested and drive
+// SettleRetry's retry loop to completion instantly, mirroring the clock seam builderengine's
+// PollUntilTerminal and shuttleengine's wait.go already establish for the same reason.
 type Sleeper interface {
 	// Sleep blocks (in production) or records a request to block (under test)
 	// for d.
@@ -212,7 +260,8 @@ type Sleeper interface {
 }
 
 // NewTranscripts returns the ForkReport entries in audit whose TranscriptPath is NOT in seen.
-// It is a defensive re-filter for callers that may not have used AuditForksIncremental or that are re-deriving after a settle retry.
+// It is a defensive re-filter for callers that may not have used AuditForksIncremental or that are
+// re-deriving after a settle retry.
 func NewTranscripts(audit shuttleengine.ForkAudit, seen []string) []shuttleengine.ForkReport {
 	seenSet := make(map[string]bool, len(seen))
 	for _, path := range seen {
@@ -228,10 +277,18 @@ func NewTranscripts(audit shuttleengine.ForkAudit, seen []string) []shuttleengin
 	return newReports
 }
 
-// SettleRetry re-invokes fetch on tick's cadence, sleeping via s between attempts, until at least one transcript new since seen appears or window elapses — implementing the flush-timing de-risk from discussion.md's fork-audit-policy decision ("first miss is inconclusive"): the zero-transcript hard error is only ever issued by the CALLER, and only after SettleRetry itself has exhausted the settle window, never on this function's first fetch.
-// SettleRetry returns as soon as fetch reports one or more new transcripts — it never sleeps out the rest of window once it has an answer.
-// A fetch error propagates immediately: an audit read that itself failed has nothing safe to retry against.
-// When window elapses with zero new transcripts, SettleRetry returns the last fetched audit, a nil (or empty) newReports slice, and a nil error — it is the caller's job (see ClassifyAttribution) to turn that empty result into ErrNoForkTranscripts.
+// SettleRetry re-invokes fetch on tick's cadence, sleeping via s between attempts, until at least
+// one transcript new since seen appears or window elapses — implementing the flush-timing de-risk
+// from discussion.md's fork-audit-policy decision ("first miss is inconclusive"): the
+// zero-transcript hard error is only ever issued by the CALLER, and only after SettleRetry itself
+// has exhausted the settle window, never on this function's first fetch.
+// SettleRetry returns as soon as fetch reports one or more new transcripts — it never sleeps out
+// the rest of window once it has an answer.
+// A fetch error propagates immediately: an audit read that itself failed has nothing safe to retry
+// against.
+// When window elapses with zero new transcripts, SettleRetry returns the last fetched audit, a nil
+// (or empty) newReports slice, and a nil error — it is the caller's job (see ClassifyAttribution)
+// to turn that empty result into ErrNoForkTranscripts.
 func SettleRetry(
 	fetch func() (shuttleengine.ForkAudit, error),
 	seen []string,

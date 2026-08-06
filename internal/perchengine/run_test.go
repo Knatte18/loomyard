@@ -1,4 +1,9 @@
-// run_test.go tables Engine.Run's deterministic round loop against a scripted fakeBurler (a queue of burlerengine.Result values, recording every Profile/RunOpts it received and writing the review/fixer files its scripted done-results imply) and a scripted queuedShuttle (a queue of judge/triage verdict-file contents or errors, recording every Spec it received) — the full fake-seam surface the discussion's Testing section pins for perch's strong deterministic test suite: no LLM, no tmux, no weft.
+// run_test.go tables Engine.Run's deterministic round loop against a scripted fakeBurler (a queue
+// of burlerengine.Result values, recording every Profile/RunOpts it received and writing the
+// review/fixer files its scripted done-results imply) and a scripted queuedShuttle (a queue of
+// judge/triage verdict-file contents or errors, recording every Spec it received) — the full
+// fake-seam surface the discussion's Testing section pins for perch's strong deterministic test
+// suite: no LLM, no tmux, no weft.
 
 package perchengine
 
@@ -102,7 +107,8 @@ type fakeBurler struct {
 	}
 }
 
-// Run implements Burler by dequeuing the next scripted result in FIFO order, failing the test if more calls arrive than scripted.
+// Run implements Burler by dequeuing the next scripted result in FIFO order, failing the test if
+// more calls arrive than scripted.
 func (f *fakeBurler) Run(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.Result, error) {
 	f.calls = append(f.calls, scriptedBurlerCall{profile: p, opts: opts})
 	if len(f.queue) == 0 {
@@ -237,7 +243,9 @@ func newTestLayout(t *testing.T) *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 }
 
-// TestRun_LoopUntilDry proves the base convergence path under GateLLMVerdict: BLOCKING, BLOCKING, APPROVED reaches OutcomeApproved after exactly 3 rounds, and hydration accumulates — round 3's burler profile lists rounds 1 and 2's review and fixer-report paths.
+// TestRun_LoopUntilDry proves the base convergence path under GateLLMVerdict: BLOCKING, BLOCKING,
+// APPROVED reaches OutcomeApproved after exactly 3 rounds, and hydration accumulates — round 3's
+// burler profile lists rounds 1 and 2's review and fixer-report paths.
 func TestRun_LoopUntilDry(t *testing.T) {
 	layout := newTestLayout(t)
 	runDir := filepath.Join(t.TempDir(), "run")
@@ -290,7 +298,8 @@ func TestRun_LoopUntilDry(t *testing.T) {
 	}
 }
 
-// TestRun_HardCap proves a block still BLOCKING at the ladder's final rung stops with STUCK/hard-cap unconditionally, issuing NO judge call at all for that final round.
+// TestRun_HardCap proves a block still BLOCKING at the ladder's final rung stops with
+// STUCK/hard-cap unconditionally, issuing NO judge call at all for that final round.
 func TestRun_HardCap(t *testing.T) {
 	layout := newTestLayout(t)
 	runDir := filepath.Join(t.TempDir(), "run")
@@ -323,8 +332,11 @@ func TestRun_HardCap(t *testing.T) {
 	}
 }
 
-// TestRun_MilestoneGate proves the milestone continuation gate at a non-final rung: CONTINUE and UNCERTAIN both let the loop proceed past the rung, STOP stops it immediately with STUCK/milestone-stop, and the rung round issues exactly one judge call either way.
-// RoundCaps = [1, 3] makes round 1 itself the milestone rung, so no circling-check scripting is needed to reach it.
+// TestRun_MilestoneGate proves the milestone continuation gate at a non-final rung: CONTINUE and
+// UNCERTAIN both let the loop proceed past the rung, STOP stops it immediately with
+// STUCK/milestone-stop, and the rung round issues exactly one judge call either way.
+// RoundCaps = [1, 3] makes round 1 itself the milestone rung, so no circling-check scripting is
+// needed to reach it.
 func TestRun_MilestoneGate(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -390,7 +402,9 @@ func TestRun_MilestoneGate(t *testing.T) {
 	}
 }
 
-// TestRun_PerRoundCircling proves the per-round circling check: a CIRCLING verdict at a mid-window round >= 2 stops the block immediately with STUCK/circling, no judge call is ever issued for round 1, and an APPROVED-verdict round never triggers a judge call at all.
+// TestRun_PerRoundCircling proves the per-round circling check: a CIRCLING verdict at a mid-window
+// round >= 2 stops the block immediately with STUCK/circling, no judge call is ever issued for
+// round 1, and an APPROVED-verdict round never triggers a judge call at all.
 func TestRun_PerRoundCircling(t *testing.T) {
 	t.Run("circling stops the loop at round 2", func(t *testing.T) {
 		layout := newTestLayout(t)
@@ -526,7 +540,11 @@ func TestRun_PerRoundCircling(t *testing.T) {
 	})
 }
 
-// TestRun_JudgeFailSafe proves every judge infrastructure failure (a shuttle Run error, a non-done outcome, and an unparseable verdict file) degrades to the safe default inside the judge call itself, so the loop continues rather than erroring or reporting STUCK — and that the fail-safe fallback is NEVER recorded in the round as if it were a real judge verdict: an operator reading state.json must be able to tell a genuine PROGRESSING from a judge that never actually answered.
+// TestRun_JudgeFailSafe proves every judge infrastructure failure (a shuttle Run error, a non-done
+// outcome, and an unparseable verdict file) degrades to the safe default inside the judge call
+// itself, so the loop continues rather than erroring or reporting STUCK — and that the fail-safe
+// fallback is NEVER recorded in the round as if it were a real judge verdict: an operator reading
+// state.json must be able to tell a genuine PROGRESSING from a judge that never actually answered.
 func TestRun_JudgeFailSafe(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -621,8 +639,11 @@ func (nonDoneJudgeShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error)
 	return shuttleengine.Result{Outcome: shuttleengine.OutcomeAsking}, nil
 }
 
-// TestRun_GateModes tables the pluggable convergence gate: GateLLMVerdict never even invokes the command runner;
-// GateCommand ignores the burler verdict entirely (an APPROVED round with a failing command does not converge, and its gate file is fed forward; a BLOCKING round with a passing command does converge);
+// TestRun_GateModes tables the pluggable convergence gate: GateLLMVerdict never even invokes the
+// command runner;
+// GateCommand ignores the burler verdict entirely (an APPROVED round with a failing command does
+// not converge, and its gate file is fed forward; a BLOCKING round with a passing command does
+// converge);
 // GateBoth requires both signals to agree.
 func TestRun_GateModes(t *testing.T) {
 	t.Run("llm-verdict never invokes the command runner", func(t *testing.T) {
@@ -979,8 +1000,10 @@ func TestRun_GateModes(t *testing.T) {
 	})
 }
 
-// TestRun_NonDoneOutcomes tables burler's non-done outcomes: a died attempt followed by a done attempt completes the round with Attempts 2 and a b-token review path;
-// a second consecutive died attempt is a hard error naming the session id and kept run dir, never STUCK;
+// TestRun_NonDoneOutcomes tables burler's non-done outcomes: a died attempt followed by a done
+// attempt completes the round with Attempts 2 and a b-token review path;
+// a second consecutive died attempt is a hard error naming the session id and kept run dir, never
+// STUCK;
 // an asking outcome triages RETRY (re-attempts) or GIVE_UP (errors, carrying the rationale);
 // and a triage infrastructure failure fail-safes to RETRY.
 func TestRun_NonDoneOutcomes(t *testing.T) {
@@ -1203,10 +1226,12 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 	})
 }
 
-// TestRun_Resume tables the resume mechanics: a fresh Engine.Run on a run dir with unfinished state continues at the recorded next round;
+// TestRun_Resume tables the resume mechanics: a fresh Engine.Run on a run dir with unfinished state
+// continues at the recorded next round;
 // a terminal state refuses to resume at all;
 // a profile-hash mismatch fails loud naming a fresh --run-id;
-// and a stale half-written artifact from an interrupted round is moved aside before that round re-runs from scratch.
+// and a stale half-written artifact from an interrupted round is moved aside before that round
+// re-runs from scratch.
 func TestRun_Resume(t *testing.T) {
 	t.Run("continues at the recorded next round", func(t *testing.T) {
 		layout := newTestLayout(t)
@@ -1577,7 +1602,10 @@ func TestRun_Resume(t *testing.T) {
 	})
 }
 
-// TestRun_ConcurrentSameRunDir proves a second Engine.Run against the SAME run dir, started while the first is still holding it open (blocked mid- round on a burler call that never returns until released), fails fast with a named "already running" error rather than silently interleaving rounds into the same state.json/artifact paths.
+// TestRun_ConcurrentSameRunDir proves a second Engine.Run against the SAME run dir, started while
+// the first is still holding it open (blocked mid- round on a burler call that never returns until
+// released), fails fast with a named "already running" error rather than silently interleaving
+// rounds into the same state.json/artifact paths.
 func TestRun_ConcurrentSameRunDir(t *testing.T) {
 	layout := newTestLayout(t)
 	runDir := filepath.Join(t.TempDir(), "run")
@@ -1644,7 +1672,9 @@ func (b *blockingBurler) Run(burlerengine.Profile, burlerengine.RunOpts) (burler
 	return burlerengine.Result{}, errors.New("blockingBurler: released without a scripted result")
 }
 
-// TestRun_Pause proves the pause boundary is checked only between rounds (never mid-round): a PauseRequested callback that turns true after round 1 stops the loop with OutcomePaused having called burler exactly once,
+// TestRun_Pause proves the pause boundary is checked only between rounds (never mid-round): a
+// PauseRequested callback that turns true after round 1 stops the loop with OutcomePaused having
+// called burler exactly once,
 // and a resumed run clears any leftover pause flag file rather than instantly re-pausing on it.
 func TestRun_Pause(t *testing.T) {
 	t.Run("pauses after round 1 completes, burler called exactly once", func(t *testing.T) {

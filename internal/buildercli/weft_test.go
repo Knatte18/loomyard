@@ -1,5 +1,9 @@
-// weft_test.go asserts weftCommit's guard ordering: the WEFT_SKIP_GIT bypass short-circuits before fabricengine.New's stat validation, while a non-bypass call surfaces New's typed ErrMissingPath when the host/weft pair is absent.
-// Pathspec-shape coverage now lives in weft_integration_test.go, which proves the exclude-file transients stay uncommitted through a real git repo rather than asserting a pathspec string shape against a since-deleted helper.
+// weft_test.go asserts weftCommit's guard ordering: the WEFT_SKIP_GIT bypass short-circuits before
+// fabricengine.New's stat validation, while a non-bypass call surfaces New's typed ErrMissingPath
+// when the host/weft pair is absent.
+// Pathspec-shape coverage now lives in weft_integration_test.go, which proves the exclude-file
+// transients stay uncommitted through a real git repo rather than asserting a pathspec string shape
+// against a since-deleted helper.
 
 package buildercli
 
@@ -12,7 +16,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree proves the WEFT_SKIP_GIT bypass short-circuits before stat validation, so CI never needs the worktree on disk.
+// TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree proves the WEFT_SKIP_GIT bypass short-circuits
+// before stat validation, so CI never needs the worktree on disk.
 func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	t.Setenv("WEFT_SKIP_PUSH", "")
@@ -30,7 +35,8 @@ func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 	}
 }
 
-// TestWeftCommit_NonBypassValidatesPairPaths proves that without WEFT_SKIP_GIT, weftCommit validates the worktree pair exists.
+// TestWeftCommit_NonBypassValidatesPairPaths proves that without WEFT_SKIP_GIT, weftCommit
+// validates the worktree pair exists.
 func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")

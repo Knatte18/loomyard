@@ -1,5 +1,10 @@
-// gitwrap.go re-points webster's git-query helpers at internal/gitrepo, replacing the helpers builderengine/gitquery.go implements locally over internal/gitexec directly: headSHA captures a batch's start-SHA and the report cross-check's actual HEAD, and dirty is the half-done-work signal.
-// Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo except dirty, which gitrepo exposes no porcelain/status method for and so wraps gitexec.RunGit directly — the one carved-out exception the decision names.
+// gitwrap.go re-points webster's git-query helpers at internal/gitrepo, replacing the helpers
+// builderengine/gitquery.go implements locally over internal/gitexec directly: headSHA captures a
+// batch's start-SHA and the report cross-check's actual HEAD, and dirty is the half-done-work
+// signal.
+// Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo
+// except dirty, which gitrepo exposes no porcelain/status method for and so wraps gitexec.RunGit
+// directly — the one carved-out exception the decision names.
 
 package websterengine
 

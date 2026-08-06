@@ -1,6 +1,10 @@
-// reed.go defines ReedOps, the package-local seam through which the run loop drives reed: only the subset of *reedengine.Engine's public API the run loop and the Interrupt/Send handle methods need (registering/removing a strand, reading session status, and the pane-transport ops).
-// The seam exists so Runner/Wait/Interrupt/Send are testable against a hermetic fake without a live tmux server;
-// *reedengine.Engine satisfies ReedOps as-is — the seam adds no adapter layer, it only narrows the type the run loop depends on.
+// reed.go defines ReedOps, the package-local seam through which the run loop drives reed: only the
+// subset of *reedengine.Engine's public API the run loop and the Interrupt/Send handle methods need
+// (registering/removing a strand, reading session status, and the pane-transport ops).
+// The seam exists so Runner/Wait/Interrupt/Send are testable against a hermetic fake without a live
+// tmux server;
+// *reedengine.Engine satisfies ReedOps as-is — the seam adds no adapter layer, it only narrows the
+// type the run loop depends on.
 
 package shuttleengine
 

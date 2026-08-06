@@ -1,8 +1,14 @@
-// strand.go implements webster's own strand/spawn seam helpers: webster-local copies of builderengine's StrandLive and TurnEnded (poll.go), the Starter seam (spawn.go), the OrchestratorStarter/ OrchestratorHandle spawn seam (runlevel.go), and RemoveStrandIfLive (spawn.go), inlining direct shuttleengine calls with no builder import.
-// Every borrowed symbol has an in-tree builder caller (frozen, per the Shared Decision builder-is-frozen-copy-not-move), so these are webster-local copies, not moves.
+// strand.go implements webster's own strand/spawn seam helpers: webster-local copies of
+// builderengine's StrandLive and TurnEnded (poll.go), the Starter seam (spawn.go), the
+// OrchestratorStarter/ OrchestratorHandle spawn seam (runlevel.go), and RemoveStrandIfLive
+// (spawn.go), inlining direct shuttleengine calls with no builder import.
+// Every borrowed symbol has an in-tree builder caller (frozen, per the Shared Decision
+// builder-is-frozen-copy-not-move), so these are webster-local copies, not moves.
 // StrandLive and TurnEnded are EXPORTED because internal/webstercli calls them directly;
-// the spawn-seam interfaces are exported so webstercli can assign a real *shuttleengine.Runner into them (Go's structural typing means *shuttleengine.Runner satisfies Starter with no adapter glue);
-// removeStrandIfLive stays engine-internal, consumed only by webster's own respawn ladders (wired in batch 7).
+// the spawn-seam interfaces are exported so webstercli can assign a real *shuttleengine.Runner into
+// them (Go's structural typing means *shuttleengine.Runner satisfies Starter with no adapter glue);
+// removeStrandIfLive stays engine-internal, consumed only by webster's own respawn ladders (wired
+// in batch 7).
 
 package websterengine
 
@@ -31,7 +37,8 @@ func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 }
 
 // TurnEnded reports whether an implementer's turn has ended without satisfying the file contract.
-// It delegates event-grammar parsing to engine.ParseEvents, reporting true only when at least one Event carries Kind == shuttleengine.EventStop.
+// It delegates event-grammar parsing to engine.ParseEvents, reporting true only when at least one
+// Event carries Kind == shuttleengine.EventStop.
 // Missing events file reports (false, nil).
 // ParseEvents errors propagate.
 func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
@@ -62,14 +69,16 @@ type Starter interface {
 	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
 }
 
-// OrchestratorHandle is the started-but-not-yet-finished orchestrator-role spawn a caller blocks on.
+// OrchestratorHandle is the started-but-not-yet-finished orchestrator-role spawn a caller blocks
+// on.
 // StrandGUID identifies the reed strand, Wait blocks until terminal shuttle outcome.
 type OrchestratorHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
 }
 
-// OrchestratorStarter is the seam a caller spawns an orchestrator-role strand through, deliberately two-phase (start, then wait) so strand identity is learned and persisted before blocking.
+// OrchestratorStarter is the seam a caller spawns an orchestrator-role strand through, deliberately
+// two-phase (start, then wait) so strand identity is learned and persisted before blocking.
 type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }

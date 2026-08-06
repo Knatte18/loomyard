@@ -1,6 +1,9 @@
-// trailer.go — the Warp-SHA git commit trailer: fabric's format and parse helpers for recording, inside a weft commit's own message, which warp SHA that weft commit corresponds to.
-// The trailer is the sole source of truth for warp<->weft correspondence (see corrindex.go, the derived-cache layer built on top of it);
-// it lives inside weft's own versioned commit history, so it can never drift out of sync with the commit it describes.
+// trailer.go — the Warp-SHA git commit trailer: fabric's format and parse helpers for recording,
+// inside a weft commit's own message, which warp SHA that weft commit corresponds to.
+// The trailer is the sole source of truth for warp<->weft correspondence (see corrindex.go, the
+// derived-cache layer built on top of it);
+// it lives inside weft's own versioned commit history, so it can never drift out of sync with the
+// commit it describes.
 
 package fabricengine
 
@@ -10,10 +13,12 @@ import (
 	"strings"
 )
 
-// WarpSHATrailerKey is the git-trailer key fabric writes into every weft commit's message, in the same convention as git's own "Co-authored-by:" trailer: "Warp-SHA: <sha>".
+// WarpSHATrailerKey is the git-trailer key fabric writes into every weft commit's message, in the
+// same convention as git's own "Co-authored-by:" trailer: "Warp-SHA: <sha>".
 const WarpSHATrailerKey = "Warp-SHA"
 
-// SnapshotTrailerKey is the git-trailer key fabric writes into a weft commit's message, once per caller-supplied snapshot tag, alongside the Warp-SHA trailer (see appendSnapshotTrailers).
+// SnapshotTrailerKey is the git-trailer key fabric writes into a weft commit's message, once per
+// caller-supplied snapshot tag, alongside the Warp-SHA trailer (see appendSnapshotTrailers).
 const SnapshotTrailerKey = "Snapshot"
 
 // snapshotTagPattern is the single-line token charset a snapshot tag must
@@ -24,7 +29,8 @@ const SnapshotTrailerKey = "Snapshot"
 // into the commit message).
 var snapshotTagPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-// ErrInvalidSnapshotTag is a typed error returned by validateSnapshotTag, naming the offending tag so a caller (or an operator reading the error) knows exactly which supplied tag was rejected.
+// ErrInvalidSnapshotTag is a typed error returned by validateSnapshotTag, naming the offending tag
+// so a caller (or an operator reading the error) knows exactly which supplied tag was rejected.
 type ErrInvalidSnapshotTag struct {
 	Tag string
 }

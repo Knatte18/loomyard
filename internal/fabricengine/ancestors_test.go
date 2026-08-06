@@ -8,7 +8,9 @@ import (
 	"testing"
 )
 
-// TestPruneEmptyAncestors tests the pruneEmptyAncestors helper with various scenarios: empty ancestors removed to stop, non-empty dirs halting walk, start == stop no-op, and idempotency on already-pruned trees.
+// TestPruneEmptyAncestors tests the pruneEmptyAncestors helper with various scenarios: empty
+// ancestors removed to stop, non-empty dirs halting walk, start == stop no-op, and idempotency on
+// already-pruned trees.
 func TestPruneEmptyAncestors(t *testing.T) {
 	tests := []struct {
 		name   string

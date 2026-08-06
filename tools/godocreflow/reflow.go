@@ -1,4 +1,8 @@
-// reflow.go locates the doc-comment groups eligible for reflow (file-level header comments, package doc comments, and comments immediately preceding an exported top-level declaration) using go/parser and go/ast, and splices in their reflowed text via direct byte-offset edits on the original source -- never through go/printer, so nothing outside the touched comment lines can change.
+// reflow.go locates the doc-comment groups eligible for reflow (file-level header comments, package
+// doc comments, and comments immediately preceding an exported top-level declaration) using
+// go/parser and go/ast, and splices in their reflowed text via direct byte-offset edits on the
+// original source -- never through go/printer, so nothing outside the touched comment lines can
+// change.
 
 package main
 
@@ -9,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
@@ -35,11 +40,13 @@ type edit struct {
 	line       int    // 1-based source line of the comment group, for -check display
 	old        string // the text being replaced, for -check display
 	text       string
+	wrapped    int // number of semantic lines that needed the last-resort width fallback
 }
 
-// collectEdits parses src and returns every reflow edit it qualifies for. err is non-nil only on a parse
-// failure; a generated file always yields (nil, nil, nil).
-func collectEdits(fset *token.FileSet, filename, src string) ([]edit, error) {
+// collectEdits parses src and returns every reflow edit it qualifies for. maxWidth is the last-resort
+// word-wrap column budget (indentation + "// " + content); pass 0 to disable it. err is non-nil only on a
+// parse failure; a generated file always yields (nil, nil, nil).
+func collectEdits(fset *token.FileSet, filename, src string, maxWidth int) ([]edit, error) {
 	if isGenerated(src) {
 		return nil, nil
 	}
@@ -50,7 +57,7 @@ func collectEdits(fset *token.FileSet, filename, src string) ([]edit, error) {
 
 	var edits []edit
 	for _, cg := range collectGroups(file) {
-		if e := planEdit(fset, src, cg); e != nil {
+		if e := planEdit(fset, src, cg, maxWidth); e != nil {
 			edits = append(edits, *e)
 		}
 	}
@@ -59,8 +66,8 @@ func collectEdits(fset *token.FileSet, filename, src string) ([]edit, error) {
 
 // reflowSource returns the reflowed source for src (the contents of a .go file), or src unchanged if
 // nothing qualifies. err is non-nil only on a parse failure.
-func reflowSource(fset *token.FileSet, filename, src string) (string, error) {
-	edits, err := collectEdits(fset, filename, src)
+func reflowSource(fset *token.FileSet, filename, src string, maxWidth int) (string, error) {
+	edits, err := collectEdits(fset, filename, src, maxWidth)
 	if err != nil {
 		return src, err
 	}
@@ -146,11 +153,16 @@ func specExported(spec ast.Spec) bool {
 
 // planEdit builds the replacement edit for one comment group, or returns nil if the group should be left
 // alone (too short, a directive, an indented code example, a heading/list line, or already correctly
-// reflowed).
-func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup) *edit {
-	if len(cg.List) < 2 {
-		return nil // single-line comment -- already fits on one line
-	}
+// reflowed). maxWidth (0 disables it) is the last-resort word-wrap fallback applied only to a semantic
+// line that is still too wide after sentence/clause splitting found no further boundary to break at.
+func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup, maxWidth int) *edit {
+	// Reuse the actual indentation bytes preceding the comment (which may be tabs), rather than
+	// reconstructing col-1 spaces from the column number -- gofmt-indented blocks use tabs, and
+	// synthesizing spaces there would visibly misindent every continuation line.
+	firstPos := fset.Position(cg.List[0].Pos())
+	lineStartOffset := fset.Position(fset.File(cg.List[0].Pos()).LineStart(firstPos.Line)).Offset
+	indent := src[lineStartOffset:firstPos.Offset]
+	prefixLen := utf8.RuneCountInString(indent) + len("// ")
 
 	type line struct {
 		raw     string // comment text with the leading "//" stripped
@@ -182,6 +194,16 @@ func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup) *edit {
 		lines[i] = line{raw: raw, content: content}
 	}
 
+	if len(cg.List) < 2 {
+		// A comment that already occupies exactly one physical source line has no existing hard-wrap to
+		// reflow. Leave it alone unless it violates -max-width, in which case fall through to the same
+		// pipeline a multi-line group gets: semantic+clause splitting may resolve it on its own, and the
+		// last-resort word wrap below catches whatever is still too wide after that.
+		if maxWidth <= 0 || prefixLen+utf8.RuneCountInString(lines[0].content) <= maxWidth {
+			return nil
+		}
+	}
+
 	// Split into blank-line-delimited paragraphs and reflow each one independently, preserving the
 	// paragraph breaks (a bare "//" line is a meaningful paragraph separator in godoc's format).
 	var paragraphs [][]string
@@ -202,12 +224,19 @@ func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup) *edit {
 	}
 
 	var newContentLines []string
+	wrapped := 0
 	for _, p := range paragraphs {
 		if p == nil {
 			newContentLines = append(newContentLines, "")
 			continue
 		}
-		newContentLines = append(newContentLines, reflowText(strings.Join(p, " "))...)
+		for _, semantic := range reflowText(strings.Join(p, " ")) {
+			pieces := wrapLongLine(semantic, prefixLen, maxWidth)
+			if len(pieces) > 1 {
+				wrapped++
+			}
+			newContentLines = append(newContentLines, pieces...)
+		}
 	}
 
 	origContentLines := make([]string, len(lines))
@@ -218,12 +247,6 @@ func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup) *edit {
 		return nil // already correctly reflowed
 	}
 
-	// Reuse the actual indentation bytes preceding the comment (which may be tabs), rather than
-	// reconstructing col-1 spaces from the column number -- gofmt-indented blocks use tabs, and
-	// synthesizing spaces there would visibly misindent every continuation line.
-	firstPos := fset.Position(cg.List[0].Pos())
-	lineStartOffset := fset.Position(fset.File(cg.List[0].Pos()).LineStart(firstPos.Line)).Offset
-	indent := src[lineStartOffset:firstPos.Offset]
 	build := func(contentLines []string) string {
 		var b strings.Builder
 		for i, c := range contentLines {
@@ -241,11 +264,12 @@ func planEdit(fset *token.FileSet, src string, cg *ast.CommentGroup) *edit {
 	}
 
 	return &edit{
-		start: fset.Position(cg.Pos()).Offset,
-		end:   fset.Position(cg.End()).Offset,
-		line:  fset.Position(cg.Pos()).Line,
-		old:   build(origContentLines),
-		text:  build(newContentLines),
+		start:   fset.Position(cg.Pos()).Offset,
+		end:     fset.Position(cg.End()).Offset,
+		line:    fset.Position(cg.Pos()).Line,
+		old:     build(origContentLines),
+		text:    build(newContentLines),
+		wrapped: wrapped,
 	}
 }
 

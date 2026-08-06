@@ -1,7 +1,14 @@
-// summary.go implements webster's own prose summary artifact contract: SummaryPath resolves the fixed summary.md path inside a webster dir;
-// ParseSummary enforces discussion.md's summary-artifact decision's minimal fail-loud validation (presence, non-empty, a "# <title>" first non-blank line with a non-empty title) — the artifact is the future loom-finalize PR-text source, never itself schema-validated beyond that;
-// ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than re-implementing the same-second collision loop;
-// and AppendIntegrationFailure extends an already-written summary.md with the integration-suite bisect's own localized finding (integration.go's BisectAndEscalate), the summary-document half of that escalation path.
+// summary.go implements webster's own prose summary artifact contract: SummaryPath resolves the
+// fixed summary.md path inside a webster dir;
+// ParseSummary enforces discussion.md's summary-artifact decision's minimal fail-loud validation
+// (presence, non-empty, a "# <title>" first non-blank line with a non-empty title) — the artifact
+// is the future loom-finalize PR-text source, never itself schema-validated beyond that;
+// ArchiveStaleSummary applies the same archive-never-refuse timestamp-rename discipline as
+// outcome.go's own archiveStaleOutcome, reusing archive.go's firstFreeArchivePath rather than
+// re-implementing the same-second collision loop;
+// and AppendIntegrationFailure extends an already-written summary.md with the integration-suite
+// bisect's own localized finding (integration.go's BisectAndEscalate), the summary-document half of
+// that escalation path.
 
 package websterengine
 
@@ -21,13 +28,16 @@ func SummaryPath(websterDir string) string {
 	return filepath.Join(websterDir, SummaryFileName)
 }
 
-// Summary is Master's final-action prose artifact: Title from the "# <title>" heading, Body from the remaining lines verbatim.
+// Summary is Master's final-action prose artifact: Title from the "# <title>" heading, Body from
+// the remaining lines verbatim.
 type Summary struct {
 	Title string
 	Body  string
 }
 
-// ParseSummary reads and validates summary.md at path with minimal fail-loud validation: file must exist, have at least one non-blank line, and that first line must be a "# <title>" heading with non-empty title.
+// ParseSummary reads and validates summary.md at path with minimal fail-loud validation: file must
+// exist, have at least one non-blank line, and that first line must be a "# <title>" heading with
+// non-empty title.
 // Every violation is its own distinct wrapped error.
 func ParseSummary(path string) (*Summary, error) {
 	data, err := os.ReadFile(path)
@@ -60,7 +70,8 @@ func ParseSummary(path string) (*Summary, error) {
 	return &Summary{Title: title, Body: body}, nil
 }
 
-// ArchiveStaleSummary renames websterDir's summary.md to summary-<UTC compact timestamp>.md, preserving it rather than deleting.
+// ArchiveStaleSummary renames websterDir's summary.md to summary-<UTC compact timestamp>.md,
+// preserving it rather than deleting.
 // Absent file returns ("", nil).
 // Collision within the same clock-second appends a numeric suffix.
 func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo string, err error) {
@@ -87,7 +98,8 @@ func ArchiveStaleSummary(websterDir string, now func() time.Time) (archivedTo st
 	return target, nil
 }
 
-// AppendIntegrationFailure appends a section naming the integration bisect's localized finding to summary.md.
+// AppendIntegrationFailure appends a section naming the integration bisect's localized finding to
+// summary.md.
 // Master's final-action rule guarantees summary.md exists before this runs.
 func AppendIntegrationFailure(websterDir, offendingCard, offendingSHA string) error {
 	path := SummaryPath(websterDir)

@@ -1,4 +1,6 @@
-// prompt.go composes the discussion producer's interview prompt: it builds the four marker values the embedded template (prompttemplate.go) requires and fills it via internal/stencil, mirroring internal/burlerengine's composePrompt shape.
+// prompt.go composes the discussion producer's interview prompt: it builds the four marker values
+// the embedded template (prompttemplate.go) requires and fills it via internal/stencil, mirroring
+// internal/burlerengine's composePrompt shape.
 
 package loomengine
 

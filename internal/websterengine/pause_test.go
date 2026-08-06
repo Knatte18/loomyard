@@ -1,4 +1,6 @@
-// pause_test.go covers the pause flag's request/observe/clear cycle (RequestPause, PauseRequested, ClearPause) end-to-end against a temp webster dir, plus the idempotent-request and idempotent-clear cases the entry-then-terminal double-clear pattern relies on.
+// pause_test.go covers the pause flag's request/observe/clear cycle (RequestPause, PauseRequested,
+// ClearPause) end-to-end against a temp webster dir, plus the idempotent-request and
+// idempotent-clear cases the entry-then-terminal double-clear pattern relies on.
 // Tier 1: no git, only t.TempDir().
 
 package websterengine_test

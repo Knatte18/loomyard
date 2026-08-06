@@ -1,4 +1,7 @@
-// profile.go defines Profile, treadle's per-block input contract: resolved plain data only (no config file, no model-spec parsing — see the treadle-owns-no-config shared decision), plus Gate and GateMode, the convergence-check vocabulary, and Profile.validate, the fail-loud structural check treadle runs once per block before the loop starts.
+// profile.go defines Profile, treadle's per-block input contract: resolved plain data only (no
+// config file, no model-spec parsing — see the treadle-owns-no-config shared decision), plus Gate
+// and GateMode, the convergence-check vocabulary, and Profile.validate, the fail-loud structural
+// check treadle runs once per block before the loop starts.
 
 package treadleengine
 
@@ -19,7 +22,9 @@ const (
 	GateBoth       GateMode = "both"
 )
 
-// Gate describes the convergence check: which signal(s) decide a round is clean (Mode), the argv to run when Mode consults a command (Command — no shell, so argv is portable), and how long the command may run (Timeout).
+// Gate describes the convergence check: which signal(s) decide a round is clean (Mode), the argv to
+// run when Mode consults a command (Command — no shell, so argv is portable), and how long the
+// command may run (Timeout).
 type Gate struct {
 	Mode    GateMode
 	Command []string

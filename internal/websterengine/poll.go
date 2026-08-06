@@ -1,5 +1,10 @@
-// poll.go implements webster's own long-poll loop: a webster-local copy of builderengine.PollUntilTerminal (builderengine/poll.go) retargeted to webster's Digest, plus the unexported clock seam (clock, realClock, pollTick) that copy relies on so a test can inject a fake clock and replay a whole poll sequence instantly.
-// The long-poll IS the notification (mirroring builder's own `poll` semantics decision): the loop blocks inside Go on a fixed tick, costing the caller nothing per tick, and returns the instant a batch reaches a terminal classification.
+// poll.go implements webster's own long-poll loop: a webster-local copy of
+// builderengine.PollUntilTerminal (builderengine/poll.go) retargeted to webster's Digest, plus the
+// unexported clock seam (clock, realClock, pollTick) that copy relies on so a test can inject a
+// fake clock and replay a whole poll sequence instantly.
+// The long-poll IS the notification (mirroring builder's own `poll` semantics decision): the loop
+// blocks inside Go on a fixed tick, costing the caller nothing per tick, and returns the instant a
+// batch reaches a terminal classification.
 
 package websterengine
 
@@ -23,7 +28,8 @@ func (realClock) Sleep(d time.Duration) { time.Sleep(d) }
 // pollTick is PollUntilTerminal's fixed re-run interval.
 const pollTick = 1 * time.Second
 
-// PollUntilTerminal repeatedly calls gather until it reports terminal or wait elapses, returning immediately on terminal.
+// PollUntilTerminal repeatedly calls gather until it reports terminal or wait elapses, returning
+// immediately on terminal.
 // A deadline returns the last running digest;
 // a gather error propagates.
 func PollUntilTerminal(gather func() (Digest, bool, error), wait time.Duration, clk clock) (Digest, error) {

@@ -28,7 +28,9 @@ func TestWorktreeChangedFiles_CleanRepo_ReturnsEmpty(t *testing.T) {
 	}
 }
 
-// TestWorktreeChangedFiles_ReportsModifiedUntrackedAndStaged asserts the three uncommitted-change shapes WorktreeChangedFiles must catch: a modification to an already-tracked file, a brand-new untracked file, and a separately-staged file — all reported together, none more than once.
+// TestWorktreeChangedFiles_ReportsModifiedUntrackedAndStaged asserts the three uncommitted-change
+// shapes WorktreeChangedFiles must catch: a modification to an already-tracked file, a brand-new
+// untracked file, and a separately-staged file — all reported together, none more than once.
 func TestWorktreeChangedFiles_ReportsModifiedUntrackedAndStaged(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")

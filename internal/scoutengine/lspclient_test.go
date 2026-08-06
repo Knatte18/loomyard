@@ -1,10 +1,16 @@
-// lspclient_test.go exercises lspClient's framing/protocol logic without launching a real subprocess: it builds the client over the newLSPClientFromRW(rwc) seam with an io.Pipe-backed transport, driven by a scripted fake-server goroutine that reads Content-Length-framed requests and writes back Content-Length-framed responses.
+// lspclient_test.go exercises lspClient's framing/protocol logic without launching a real
+// subprocess: it builds the client over the newLSPClientFromRW(rwc) seam with an io.Pipe-backed
+// transport, driven by a scripted fake-server goroutine that reads Content-Length-framed requests
+// and writes back Content-Length-framed responses.
 // Untagged and spawn-free — no subprocess launch anywhere in this file;
 // a real os/exec call belongs in refs_integration_test.go's //go:build integration test.
 //
-// The fake-server helpers report failures via t.Errorf and an "ok" return rather than t.Fatalf: testing.T's FailNow (which Fatalf calls) must only be invoked from the goroutine running the test function itself, never from a helper goroutine such as the fake server below.
+// The fake-server helpers report failures via t.Errorf and an "ok" return rather than t.Fatalf:
+// testing.T's FailNow (which Fatalf calls) must only be invoked from the goroutine running the test
+// function itself, never from a helper goroutine such as the fake server below.
 // Each test's goroutine body checks "ok" and returns early on a scripting failure;
-// the client-side call's own context timeout (5s in every test here) is what bounds the test's total runtime if the fake server bails out early without ever responding.
+// the client-side call's own context timeout (5s in every test here) is what bounds the test's
+// total runtime if the fake server bails out early without ever responding.
 
 package scoutengine
 
@@ -249,7 +255,8 @@ func TestLSPClient_AnswersServerInitiatedRequest(t *testing.T) {
 	<-done
 }
 
-// TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult asserts that references() sends includeDeclaration: true in its request context and correctly parses a multi-location response.
+// TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult asserts that references() sends
+// includeDeclaration: true in its request context and correctly parses a multi-location response.
 func TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -320,7 +327,10 @@ func TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult(t *testing.T
 	}
 }
 
-// TestLSPClient_DefinitionParsesMultipleWireShapes drives textDocument/definition against a fake server scripted to respond with each of the three LSP-legal response shapes for this method (bare Location, Location[], LocationLink[]) plus a null response, asserting client.definition (and therefore parseDefinitionResult) parses each shape correctly.
+// TestLSPClient_DefinitionParsesMultipleWireShapes drives textDocument/definition against a fake
+// server scripted to respond with each of the three LSP-legal response shapes for this method (bare
+// Location, Location[], LocationLink[]) plus a null response, asserting client.definition (and
+// therefore parseDefinitionResult) parses each shape correctly.
 func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -440,7 +450,11 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 	}
 }
 
-// TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy asserts that documentSymbol() sends the correct textDocument.uri in its textDocument/documentSymbol request and correctly parses a hierarchical DocumentSymbol[] response, preserving each node's Children subtree so a later caller's recursion (collectInFileMatches, refs.go) can reach nested symbols such as a method nested under its type.
+// TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy asserts that documentSymbol() sends the
+// correct textDocument.uri in its textDocument/documentSymbol request and correctly parses a
+// hierarchical DocumentSymbol[] response, preserving each node's Children subtree so a later
+// caller's recursion (collectInFileMatches, refs.go) can reach nested symbols such as a method
+// nested under its type.
 func TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -543,7 +557,9 @@ func TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy(t *testing.T) {
 	}
 }
 
-// TestLSPClient_SupportsDocumentSymbol asserts supportsDocumentSymbol() reflects whether the server's initialize response advertised documentSymbolProvider, mirroring TestLSPClient_InitializeCapturesCapabilities's coverage of supportsWorkspaceSymbol().
+// TestLSPClient_SupportsDocumentSymbol asserts supportsDocumentSymbol() reflects whether the
+// server's initialize response advertised documentSymbolProvider, mirroring
+// TestLSPClient_InitializeCapturesCapabilities's coverage of supportsWorkspaceSymbol().
 func TestLSPClient_SupportsDocumentSymbol(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -598,7 +614,9 @@ func TestLSPClient_SupportsDocumentSymbol(t *testing.T) {
 	}
 }
 
-// TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext asserts that a context whose deadline has already passed causes call() (exercised here via references()) to return ErrServerTimeout without ever blocking on a server response,
+// TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext asserts that a context whose deadline
+// has already passed causes call() (exercised here via references()) to return ErrServerTimeout
+// without ever blocking on a server response,
 // and that errors.Is matches it.
 func TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
@@ -621,7 +639,10 @@ func TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext(t *testing.T) {
 	}
 }
 
-// TestLSPClient_DialTransport_InitializeOverUnixSocket proves the dial transport (newLSPClientDial) is not a new protocol implementation, only a new way to obtain the io.ReadWriteCloser newLSPClientFromRW already knows how to drive: it runs the exact same initialize-handshake script TestLSPClient_InitializeCapturesCapabilities uses, but over a real net.Listen("unix", ...)
+// TestLSPClient_DialTransport_InitializeOverUnixSocket proves the dial transport (newLSPClientDial)
+// is not a new protocol implementation, only a new way to obtain the io.ReadWriteCloser
+// newLSPClientFromRW already knows how to drive: it runs the exact same initialize-handshake script
+// TestLSPClient_InitializeCapturesCapabilities uses, but over a real net.Listen("unix", ...)
 // socket instead of an in-process io.Pipe.
 func TestLSPClient_DialTransport_InitializeOverUnixSocket(t *testing.T) {
 	if runtime.GOOS == "windows" {

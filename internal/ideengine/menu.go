@@ -1,4 +1,5 @@
-// menu.go implements the interactive `ide menu` picker over active worktrees, resolving each worktree's title via the board facade and hard-erroring when the board fails its health check.
+// menu.go implements the interactive `ide menu` picker over active worktrees, resolving each
+// worktree's title via the board facade and hard-erroring when the board fails its health check.
 
 package ideengine
 
@@ -18,7 +19,8 @@ import (
 )
 
 // Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
-// It discovers active worktrees from fabricengine.List, excluding the main worktree and those without _lyx.
+// It discovers active worktrees from fabricengine.List, excluding the main worktree and those
+// without _lyx.
 // Titles are resolved through the board facade.
 // Returns an error on board config load or health check failure,
 // or nil on success.

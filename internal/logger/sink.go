@@ -1,7 +1,11 @@
-// sink.go implements the durable second sink: a per-process trace file opened lazily on one of two triggers (discussion.md's `sink-open-triggers` decision) — the first Info-or-above record,
-// or the process exiting with a non-zero code — and written to under a size cap with a single truncation marker once that cap is crossed.
-// Unlike the stderr sink logger.go already provides, this file is never the default `Debug`/`Info`/`Warn` output path itself;
-// batch 5 wires those helpers to fan out to it via ensureDurableSink once this file's open logic has run.
+// sink.go implements the durable second sink: a per-process trace file opened lazily on one of two
+// triggers (discussion.md's `sink-open-triggers` decision) — the first Info-or-above record,
+// or the process exiting with a non-zero code — and written to under a size cap with a single
+// truncation marker once that cap is crossed.
+// Unlike the stderr sink logger.go already provides, this file is never the default
+// `Debug`/`Info`/`Warn` output path itself;
+// batch 5 wires those helpers to fan out to it via ensureDurableSink once this file's open logic
+// has run.
 
 package logger
 
@@ -24,8 +28,10 @@ const dotLyxDirName = ".lyx"
 
 const sinkMaxBytes = 8 * 1024 * 1024
 
-// WorktreeLogsDir returns the path to the worktree-level directory where this package's durable trace sink writes one file per process.
-// It is WorktreePath-anchored so a caller invoked from anywhere in the worktree resolves the same logs directory.
+// WorktreeLogsDir returns the path to the worktree-level directory where this package's durable
+// trace sink writes one file per process.
+// It is WorktreePath-anchored so a caller invoked from anywhere in the worktree resolves the same
+// logs directory.
 // It lives under the ephemeral .lyx directory, never the durable, weft-synced _lyx.
 func WorktreeLogsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.WorktreePath(), dotLyxDirName, "logs")

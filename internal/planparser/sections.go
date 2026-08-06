@@ -1,5 +1,8 @@
-// sections.go extracts the overview's three optional plan-level body sections — "## Shared Decisions", "## Rename mechanic", and "## verify:" — into Plan's SharedDecisions, RenameMechanic, and Verify fields.
-// All three are read once from 00-overview.md's body by ParsePlan; nothing else in this package re-parses them.
+// sections.go extracts the overview's three optional plan-level body sections — "## Shared
+// Decisions", "## Rename mechanic", and "## verify:" — into Plan's SharedDecisions, RenameMechanic,
+// and Verify fields.
+// All three are read once from 00-overview.md's body by ParsePlan; nothing else in this package
+// re-parses them.
 
 package planparser
 

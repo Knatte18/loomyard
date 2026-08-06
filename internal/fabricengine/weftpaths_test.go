@@ -1,5 +1,9 @@
-// weftpaths_test.go covers the weft-sibling path accessors relocated from internal/lyxcwd in this batch — WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor — with both AnchorRel "." (root) and subpath cases, pinning the "-weft" sibling naming across container/base/subpath combinations the illusion depends on.
-// WeftRaddleDir had zero production callers and is deleted outright rather than relocated, so it has no coverage here.
+// weftpaths_test.go covers the weft-sibling path accessors relocated from internal/lyxcwd in this
+// batch — WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor — with both AnchorRel "."
+// (root) and subpath cases, pinning the "-weft" sibling naming across container/base/subpath
+// combinations the illusion depends on.
+// WeftRaddleDir had zero production callers and is deleted outright rather than relocated, so it
+// has no coverage here.
 
 package fabricengine
 
@@ -10,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestWeftPathAccessors covers WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor, verifying AnchorRel-mirroring and junction pairing against the host-side worktree.
+// TestWeftPathAccessors covers WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor,
+// verifying AnchorRel-mirroring and junction pairing against the host-side worktree.
 func TestWeftPathAccessors(t *testing.T) {
 	tests := []struct {
 		name    string

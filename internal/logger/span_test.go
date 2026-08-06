@@ -1,5 +1,8 @@
-// span_test.go covers Span's explicit-parent dotted-path construction, sibling independence (no global to leak between spans), End's record levels, and the durable sink's visibility of span= records versus open/close records.
-// Every sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, per sink.go's SetDurableSinkDir doc.
+// span_test.go covers Span's explicit-parent dotted-path construction, sibling independence (no
+// global to leak between spans), End's record levels, and the durable sink's visibility of span=
+// records versus open/close records.
+// Every sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one
+// call across cases, per sink.go's SetDurableSinkDir doc.
 
 package logger
 
@@ -90,7 +93,8 @@ func TestSpan_EndWithErrorRecordsErrorText(t *testing.T) {
 	}
 }
 
-// TestSpan_OpenCloseRecordsAbsentFromDurableSink verifies open/close records don't reach the durable sink.
+// TestSpan_OpenCloseRecordsAbsentFromDurableSink verifies open/close records don't reach the
+// durable sink.
 func TestSpan_OpenCloseRecordsAbsentFromDurableSink(t *testing.T) {
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)

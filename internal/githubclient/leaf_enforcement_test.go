@@ -1,5 +1,10 @@
-// leaf_enforcement_test.go enforces the GitHub Auth Invariant's leaf half: production code in internal/githubclient imports ONLY the standard library, go-github, golang.org/x/sys, and internal/proc -- never internal/output, cobra, internal/gitexec, internal/gitrepo, or golang.org/x/oauth2.
-// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray dependency is caught with no list maintenance required.
+// leaf_enforcement_test.go enforces the GitHub Auth Invariant's leaf half: production code in
+// internal/githubclient imports ONLY the standard library, go-github, golang.org/x/sys, and
+// internal/proc -- never internal/output, cobra, internal/gitexec, internal/gitrepo, or
+// golang.org/x/oauth2.
+// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
+// import outside the allowed set fails the test, so a future stray dependency is caught with no
+// list maintenance required.
 
 package githubclient
 
@@ -20,7 +25,8 @@ var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/proc": true,
 }
 
-// TestLeafInvariant_AllowlistOnly verifies every non-test .go file imports only stdlib or allowedImports.
+// TestLeafInvariant_AllowlistOnly verifies every non-test .go file imports only stdlib or
+// allowedImports.
 // Uses go/parser with ImportsOnly.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)

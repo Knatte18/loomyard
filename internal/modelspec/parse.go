@@ -1,5 +1,7 @@
 // parse.go implements Parse, the strict grammar checker for model-spec strings.
-// It recognizes exactly four shapes (alias, alias[bracket], engine:model, engine:model[bracket]) and rejects everything else with a loud error naming the offending token or character — see docs/reference/model-spec.md for the pinned grammar this file implements against.
+// It recognizes exactly four shapes (alias, alias[bracket], engine:model, engine:model[bracket])
+// and rejects everything else with a loud error naming the offending token or character — see
+// docs/reference/model-spec.md for the pinned grammar this file implements against.
 
 package modelspec
 

@@ -36,7 +36,9 @@ func headSHA(t *testing.T, dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// TestRunCLI_BypassPushAdvancesBothUpstreams builds weft and warp repos with unpushed commits, then asserts that --warp-path/--weft-path bypass push exits 0 and both bare upstreams' HEAD matches their local checkout's HEAD.
+// TestRunCLI_BypassPushAdvancesBothUpstreams builds weft and warp repos with unpushed commits, then
+// asserts that --warp-path/--weft-path bypass push exits 0 and both bare upstreams' HEAD matches
+// their local checkout's HEAD.
 func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 	weftFixture := lyxtest.CopyWeft(t)
 	warpFixture := lyxtest.CopyHostHub(t)
@@ -76,7 +78,8 @@ func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 	}
 }
 
-// TestRunCLI_WarpPathPushOnly verifies that --warp-path with a non-push subcommand returns exit 1 and a "subcommand requires a worktree context" error.
+// TestRunCLI_WarpPathPushOnly verifies that --warp-path with a non-push subcommand returns exit 1
+// and a "subcommand requires a worktree context" error.
 func TestRunCLI_WarpPathPushOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 

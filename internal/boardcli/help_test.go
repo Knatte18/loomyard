@@ -1,5 +1,7 @@
 // help_test.go pins the documented payload schema visible via --help for every board leaf command.
-// Each test drives RunCLI with --help and asserts that the Long output contains the documented field names and does NOT contain any removed token (id_or_slug, phase, group) that would signal a stale description.
+// Each test drives RunCLI with --help and asserts that the Long output contains the documented
+// field names and does NOT contain any removed token (id_or_slug, phase, group) that would signal a
+// stale description.
 
 package boardcli_test
 
@@ -22,7 +24,9 @@ func runHelp(t *testing.T, args ...string) string {
 	return buf.String()
 }
 
-// TestHelpSchema_LeafCommands asserts that each board leaf command's --help output contains the documented field names for the post-batch-1 schema and does not contain any removed token (id_or_slug, phase, group).
+// TestHelpSchema_LeafCommands asserts that each board leaf command's --help output contains the
+// documented field names for the post-batch-1 schema and does not contain any removed token
+// (id_or_slug, phase, group).
 func TestHelpSchema_LeafCommands(t *testing.T) {
 	// removedTokens are field names that were present in the old schema and must
 	// not appear in any --help output after the batch-1 rename.

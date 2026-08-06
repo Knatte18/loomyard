@@ -1,7 +1,15 @@
-// beginbatch.go implements the `begin-batch` webster verb: Master's own bracket call immediately before forking a batch's implementer.
-// It runs websterengine.BeginBatch under the state-mutation lease (load, mutate, save, release), then performs the first of webster's four weft-commit points (see the discussion's weft-ownership decision) -- state.json (the batch's start-SHA and record) durable before Master ever forks.
-// The freshly-written fork prompt is deliberately NOT part of that commit: websterWeftPathspec excludes prompts/* as machine-local re-renderable artifacts (BeginBatch rewrites a batch's own prompt on every begin).
-// ErrPaused is an operational refusal, not a hard error: Master reads the {"paused": true} envelope and writes its own outcome.yaml with outcome: paused, mirroring buildercli's own pausedEnvelope pattern but with an exit-0 success code, since begin-batch's own pause refusal is a steady-state signal Master's prompt is written to expect on every call, not a failure.
+// beginbatch.go implements the `begin-batch` webster verb: Master's own bracket call immediately
+// before forking a batch's implementer.
+// It runs websterengine.BeginBatch under the state-mutation lease (load, mutate, save, release),
+// then performs the first of webster's four weft-commit points (see the discussion's weft-ownership
+// decision) -- state.json (the batch's start-SHA and record) durable before Master ever forks.
+// The freshly-written fork prompt is deliberately NOT part of that commit: websterWeftPathspec
+// excludes prompts/* as machine-local re-renderable artifacts (BeginBatch rewrites a batch's own
+// prompt on every begin).
+// ErrPaused is an operational refusal, not a hard error: Master reads the {"paused": true} envelope
+// and writes its own outcome.yaml with outcome: paused, mirroring buildercli's own pausedEnvelope
+// pattern but with an exit-0 success code, since begin-batch's own pause refusal is a steady-state
+// signal Master's prompt is written to expect on every call, not a failure.
 package webstercli
 
 import (

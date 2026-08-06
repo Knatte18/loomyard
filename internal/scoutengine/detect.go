@@ -1,5 +1,6 @@
 // detect.go implements DetectLanguage, marker-based language detection over a target directory.
-// It never resolves the process's own cwd — targetDir is a plain argument the caller (batch 3's CLI layer) resolves — and it never spawns a subprocess;
+// It never resolves the process's own cwd — targetDir is a plain argument the caller (batch 3's CLI
+// layer) resolves — and it never spawns a subprocess;
 // every check is a stat call.
 
 package scoutengine
@@ -11,7 +12,8 @@ import (
 	"sort"
 )
 
-// DetectLanguage identifies which registered language targetDir belongs to, using langOverride if provided or marker-based detection otherwise.
+// DetectLanguage identifies which registered language targetDir belongs to, using langOverride if
+// provided or marker-based detection otherwise.
 // Returns ErrNoLanguage if no language matches.
 func DetectLanguage(targetDir string, reg Registry, langOverride string) (string, Entry, error) {
 	if langOverride != "" {

@@ -1,6 +1,7 @@
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
-// Covers: happy-path with template keys present, branch_prefix/pathspec parsing, environment variable resolution, and not-initialized error path.
+// Covers: happy-path with template keys present, branch_prefix/pathspec parsing, environment
+// variable resolution, and not-initialized error path.
 
 package fabricengine_test
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestLoadConfig_HappyPath tests that LoadConfig loads a valid config with all template keys present and both fields are parsed correctly.
+// TestLoadConfig_HappyPath tests that LoadConfig loads a valid config with all template keys
+// present and both fields are parsed correctly.
 func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -117,7 +119,8 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_NotInitialized tests that missing _lyx/ returns the fabric-specific not-initialized error.
+// TestLoadConfig_NotInitialized tests that missing _lyx/ returns the fabric-specific
+// not-initialized error.
 func TestLoadConfig_NotInitialized(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do NOT create _lyx/

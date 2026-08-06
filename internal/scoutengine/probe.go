@@ -1,6 +1,10 @@
-// probe.go implements the one readiness gate every EnsureServer strategy runs regardless of how it got its connection — a fresh spawn for native,
-// or a reused dial or a fresh spawn for supervised — before handing that connection back to the caller.
-// Per the design's caution, even a -remote=auto/dialed connection can silently hand back a reference to a hung shared instance, so a successful initialize handshake alone is not sufficient proof of health;
+// probe.go implements the one readiness gate every EnsureServer strategy runs regardless of how it
+// got its connection — a fresh spawn for native,
+// or a reused dial or a fresh spawn for supervised — before handing that connection back to the
+// caller.
+// Per the design's caution, even a -remote=auto/dialed connection can silently hand back a
+// reference to a hung shared instance, so a successful initialize handshake alone is not sufficient
+// proof of health;
 // probe is what actually exercises the connection end-to-end.
 
 package scoutengine

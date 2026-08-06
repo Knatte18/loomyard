@@ -90,7 +90,8 @@ func TestSync_DirtyBoard_CommitsAndPushes(t *testing.T) {
 	}
 }
 
-// TestSync_SeedsGitignoreWithLockAndManifestPatterns asserts Sync seeds .gitignore with lock and manifest patterns.
+// TestSync_SeedsGitignoreWithLockAndManifestPatterns asserts Sync seeds .gitignore with lock and
+// manifest patterns.
 func TestSync_SeedsGitignoreWithLockAndManifestPatterns(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -113,7 +114,8 @@ func TestSync_SeedsGitignoreWithLockAndManifestPatterns(t *testing.T) {
 	}
 }
 
-// TestSync_ConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on board.push.lock.
+// TestSync_ConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on
+// board.push.lock.
 func TestSync_ConcurrentCallSerializesOnBoardPushLock(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)

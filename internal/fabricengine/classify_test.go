@@ -1,11 +1,13 @@
-// classify_test.go — Tier-1 (untagged, no git spawn) table test for classifyPaths, the pure warp-vs-weft path classifier.
+// classify_test.go — Tier-1 (untagged, no git spawn) table test for classifyPaths, the pure
+// warp-vs-weft path classifier.
 
 package fabricengine
 
 import "testing"
 
 // TestClassifyPaths covers relPath "."
-// and "sub" scoping, the _lyxfoo segment-boundary case, empty input, all-warp and all-weft inputs, and a wiredNames set with more than two entries.
+// and "sub" scoping, the _lyxfoo segment-boundary case, empty input, all-warp and all-weft inputs,
+// and a wiredNames set with more than two entries.
 func TestClassifyPaths(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -109,7 +111,9 @@ func TestClassifyPaths(t *testing.T) {
 	}
 }
 
-// TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated asserts that for a mixed input, every original path appears in exactly one of the two output slices, in input order, with no path lost or duplicated.
+// TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated asserts that for a mixed input,
+// every original path appears in exactly one of the two output slices, in input order, with no path
+// lost or duplicated.
 func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) {
 	relPath := "."
 	wiredNames := []string{"_lyx", "_pattern"}

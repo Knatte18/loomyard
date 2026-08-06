@@ -1,4 +1,6 @@
-// template_test.go proves the embedded seed template always passes the loader's own validation: writing ConfigTemplate() verbatim to a fresh models.yaml must load with exactly the four documented live entries.
+// template_test.go proves the embedded seed template always passes the loader's own validation:
+// writing ConfigTemplate() verbatim to a fresh models.yaml must load with exactly the four
+// documented live entries.
 
 package modelspec
 

@@ -1,4 +1,5 @@
-// longlist_test.go asserts that root.Long names every module that is registered in the cobra root, so the --help prose never silently drifts from the live command tree.
+// longlist_test.go asserts that root.Long names every module that is registered in the cobra root,
+// so the --help prose never silently drifts from the live command tree.
 // The module set is derived from the live tree — no hardcoded list.
 
 package main
@@ -8,7 +9,8 @@ import (
 	"testing"
 )
 
-// TestLongList_NamesEveryRegisteredModule asserts every registered child command appears in root.Long.
+// TestLongList_NamesEveryRegisteredModule asserts every registered child command appears in
+// root.Long.
 func TestLongList_NamesEveryRegisteredModule(t *testing.T) {
 	root := newRoot()
 

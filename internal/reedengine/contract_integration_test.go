@@ -292,9 +292,18 @@ func TestMultiplexerContract(t *testing.T) {
 	}
 }
 
-// TestExactSessionTargetsNeverPrefixMatchSiblings pins the exact-match target forms exactSessionTarget ("=<name>") and exactSessionWindowTarget ("=<name>:") against a real multiplexer.
-// tmux resolves a bare -t session name by exact match first but falls back to PREFIX matching when no exact match exists — so with sessions "repo" and "repo2" on one shared per-hub server (exactly what two prefix-sharing sibling worktrees produce), a bare `kill-session -t repo` issued after "repo" is already gone KILLS "repo2", and a bare `has-session -t repo` false-positives on it (both verified live on tmux 3.6, which is what motivated the "=" forms).
-// This test asserts the engine's two target grammars behave exactly: they resolve the exact-named session while it exists, error (rather than prefix-match the sibling) once it is gone, and never touch the sibling — the canary for a configured binary (psmux) that does not implement the "=" target syntax.
+// TestExactSessionTargetsNeverPrefixMatchSiblings pins the exact-match target forms
+// exactSessionTarget ("=<name>") and exactSessionWindowTarget ("=<name>:") against a real
+// multiplexer.
+// tmux resolves a bare -t session name by exact match first but falls back to PREFIX matching when
+// no exact match exists — so with sessions "repo" and "repo2" on one shared per-hub server (exactly
+// what two prefix-sharing sibling worktrees produce), a bare `kill-session -t repo` issued after
+// "repo" is already gone KILLS "repo2", and a bare `has-session -t repo` false-positives on it
+// (both verified live on tmux 3.6, which is what motivated the "=" forms).
+// This test asserts the engine's two target grammars behave exactly: they resolve the exact-named
+// session while it exists, error (rather than prefix-match the sibling) once it is gone, and never
+// touch the sibling — the canary for a configured binary (psmux) that does not implement the "="
+// target syntax.
 func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -362,10 +371,19 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	}
 }
 
-// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the header-pane keepalive regression this batch adds: with the always-present header pane booted, removing a session's sole non-hidden strand must return success, leave reed.json holding zero persisted strands, AND leave both the session and the header pane specifically alive — the header's whole purpose.
-// This supersedes the original pre-header regression (removing a session's true last pane used to be backend-dependent: tmux destroyed the session outright, forcing RemoveStrand to swallow the resulting "no server running" error as an expected success — see removalEmptiedSession, strand.go).
-// With the header pane as a permanent second pane, killing the strand's pane is never a last-pane-destroy on ANY backend, so that swallow branch is no longer reached by this scenario at all;
-// it remains in place for the (now believed unreachable in practice, but still defensive) case where the header pane is itself somehow absent.
+// TestRemoveStrand_SoleStrandEmptiesSessionSucceeds is the header-pane keepalive regression this
+// batch adds: with the always-present header pane booted, removing a session's sole non-hidden
+// strand must return success, leave reed.json holding zero persisted strands, AND leave both the
+// session and the header pane specifically alive — the header's whole purpose.
+// This supersedes the original pre-header regression (removing a session's true last pane used to
+// be backend-dependent: tmux destroyed the session outright, forcing RemoveStrand to swallow the
+// resulting "no server running" error as an expected success — see removalEmptiedSession,
+// strand.go).
+// With the header pane as a permanent second pane, killing the strand's pane is never a
+// last-pane-destroy on ANY backend, so that swallow branch is no longer reached by this scenario at
+// all;
+// it remains in place for the (now believed unreachable in practice, but still defensive) case
+// where the header pane is itself somehow absent.
 func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -462,8 +480,16 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	}
 }
 
-// TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout drives the dead-header lifecycle the fable-header-r1 round found broken, end to end against a real multiplexer: the header's keepalive process exits (pane_dead=1 under remain-on-exit), a subsequent AddStrand must keep the corpse enumerable (reconcile's dead-kill exemption) and lay out with no window-bottom overflow and no stale-cell scramble (planLayout's presence filter), and the next Up must heal the header — kill the corpse, split a fresh header back in at the physical top, persist the new id — instead of treating the corpse as a working header (the old presence-keyed idempotency check) or wedging on a too-short split target (the old first-alive targeting).
-// Pre-fix this sequence scrambled every strand's height on the add and then failed every up with "no space for new pane" until a full down.
+// TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout drives the dead-header lifecycle the
+// fable-header-r1 round found broken, end to end against a real multiplexer: the header's keepalive
+// process exits (pane_dead=1 under remain-on-exit), a subsequent AddStrand must keep the corpse
+// enumerable (reconcile's dead-kill exemption) and lay out with no window-bottom overflow and no
+// stale-cell scramble (planLayout's presence filter), and the next Up must heal the header — kill
+// the corpse, split a fresh header back in at the physical top, persist the new id — instead of
+// treating the corpse as a working header (the old presence-keyed idempotency check) or wedging on
+// a too-short split target (the old first-alive targeting).
+// Pre-fix this sequence scrambled every strand's height on the add and then failed every up with
+// "no space for new pane" until a full down.
 func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -595,12 +621,19 @@ func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	}
 }
 
-// TestHeaderNeverGetsZeroHeightLayoutCell pins clampHeaderHeight's never-below-1 floor (height.go) against a real multiplexer.
-// A pathological config — height_rows large relative to a tiny window height — used to let clampHeaderHeight legally return 0, which bandHeader would then emit as a literal "WxH,..."
+// TestHeaderNeverGetsZeroHeightLayoutCell pins clampHeaderHeight's never-below-1 floor (height.go)
+// against a real multiplexer.
+// A pathological config — height_rows large relative to a tiny window height — used to let
+// clampHeaderHeight legally return 0, which bandHeader would then emit as a literal "WxH,..."
 // header cell with H=0 in the window_layout string.
-// Manual probing against a live tmux 3.6 instance showed that a genuinely zero-height cell is NOT rendered as "no header": select-layout accepts the string (no error),
-// but silently keeps a row for the header pane anyway, pushing every pane below it down by one row and overflowing the bottom of the window by exactly one row (the last pane's top+height exceeds the window height).
-// clampHeaderHeight now floors the header at 1 row whenever it exists, which this test confirms produces a layout the real multiplexer applies cleanly, with every pane's top+height staying within the window.
+// Manual probing against a live tmux 3.6 instance showed that a genuinely zero-height cell is NOT
+// rendered as "no header": select-layout accepts the string (no error),
+// but silently keeps a row for the header pane anyway, pushing every pane below it down by one row
+// and overflowing the bottom of the window by exactly one row (the last pane's top+height exceeds
+// the window height).
+// clampHeaderHeight now floors the header at 1 row whenever it exists, which this test confirms
+// produces a layout the real multiplexer applies cleanly, with every pane's top+height staying
+// within the window.
 func TestHeaderNeverGetsZeroHeightLayoutCell(t *testing.T) {
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)

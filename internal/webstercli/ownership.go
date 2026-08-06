@@ -1,6 +1,11 @@
-// ownership.go provides ownerlessRunWarnings, the shared helper every state-mutating bracket verb (begin/await/record/recover-batch) uses to append a warning when no live `lyx webster run` owns the state it is about to mutate.
+// ownership.go provides ownerlessRunWarnings, the shared helper every state-mutating bracket verb
+// (begin/await/record/recover-batch) uses to append a warning when no live `lyx webster run` owns
+// the state it is about to mutate.
 // A bracket verb is Master's own call and legitimately runs only under a live run holding run.lock;
-// a Master that keeps driving verbs after its run process died (the shuttle-asking exit leaves the pane alive) is a zombie whose mutations have no run-level owner and no run-exit backstop -- worth surfacing, never worth refusing (refusing would break the sandbox suite's sanctioned manual driving), so this is warning-only.
+// a Master that keeps driving verbs after its run process died (the shuttle-asking exit leaves the
+// pane alive) is a zombie whose mutations have no run-level owner and no run-exit backstop -- worth
+// surfacing, never worth refusing (refusing would break the sandbox suite's sanctioned manual
+// driving), so this is warning-only.
 package webstercli
 
 import "github.com/Knatte18/loomyard/internal/websterengine"

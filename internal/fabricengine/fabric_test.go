@@ -12,7 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestNew_MissingWarpPath asserts that a missing warp directory errors, naming the warp path specifically.
+// TestNew_MissingWarpPath asserts that a missing warp directory errors, naming the warp path
+// specifically.
 func TestNew_MissingWarpPath(t *testing.T) {
 	tmp := t.TempDir()
 	weftPath := filepath.Join(tmp, "weft")
@@ -30,7 +31,8 @@ func TestNew_MissingWarpPath(t *testing.T) {
 	}
 }
 
-// TestNew_MissingWeftPath asserts that a missing weft directory errors, naming the weft path specifically.
+// TestNew_MissingWeftPath asserts that a missing weft directory errors, naming the weft path
+// specifically.
 func TestNew_MissingWeftPath(t *testing.T) {
 	tmp := t.TempDir()
 	warpPath := filepath.Join(tmp, "warp")
@@ -48,7 +50,8 @@ func TestNew_MissingWeftPath(t *testing.T) {
 	}
 }
 
-// TestNew_HappyPath asserts that New yields a non-nil Warp and Weft when both paths exist as directories.
+// TestNew_HappyPath asserts that New yields a non-nil Warp and Weft when both paths exist as
+// directories.
 func TestNew_HappyPath(t *testing.T) {
 	tmp := t.TempDir()
 	warpPath := filepath.Join(tmp, "warp")
@@ -72,7 +75,8 @@ func TestNew_HappyPath(t *testing.T) {
 	}
 }
 
-// TestEnvSyncOptions covers the WEFT_SKIP_GIT / WEFT_SKIP_PUSH mapping: unset, "1", and other values.
+// TestEnvSyncOptions covers the WEFT_SKIP_GIT / WEFT_SKIP_PUSH mapping: unset, "1", and other
+// values.
 func TestEnvSyncOptions(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -111,7 +115,8 @@ func TestEnvSyncOptions(t *testing.T) {
 	}
 }
 
-// TestScopedPathspec covers ScopedPathspec's cases: root relPath (no-op join) and a nested relPath (prefixed join).
+// TestScopedPathspec covers ScopedPathspec's cases: root relPath (no-op join) and a nested relPath
+// (prefixed join).
 func TestScopedPathspec(t *testing.T) {
 	tests := []struct {
 		name    string

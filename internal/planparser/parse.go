@@ -1,6 +1,10 @@
-// parse.go implements ParsePlan: it reads a plan directory's 00-overview.md (scalar frontmatter + task framing + Card Index) and, for each card the index lists, that card's own NN-<card-slug>.md file, producing the in-memory Plan the rest of webster drives from.
-// Every distinct parse failure is a "planparser:"-prefixed wrapped error — plan-format-v3.md's fail-loud discipline admits no silent-default reading of a malformed plan document structure.
-// Per-card content defects (a missing field, a malformed Moves: bullet) are recorded leniently into the Card model instead, per the lenient-card-parse decision documented in doc.go.
+// parse.go implements ParsePlan: it reads a plan directory's 00-overview.md (scalar frontmatter +
+// task framing + Card Index) and, for each card the index lists, that card's own NN-<card-slug>.md
+// file, producing the in-memory Plan the rest of webster drives from.
+// Every distinct parse failure is a "planparser:"-prefixed wrapped error — plan-format-v3.md's
+// fail-loud discipline admits no silent-default reading of a malformed plan document structure.
+// Per-card content defects (a missing field, a malformed Moves: bullet) are recorded leniently into
+// the Card model instead, per the lenient-card-parse decision documented in doc.go.
 
 package planparser
 
@@ -20,8 +24,10 @@ import (
 // overviewFileName is the fixed filename of a plan's overview file, per plan-format-v3.md's on-disk layout.
 const overviewFileName = "00-overview.md"
 
-// PlanDirName is the relative-path segment planparser joins onto configengine.LyxDirName to form the plan directory's worktree-relative token.
-// planparser is this segment's sole declarer, per the module-owned-constructors per-segment join rule.
+// PlanDirName is the relative-path segment planparser joins onto configengine.LyxDirName to form
+// the plan directory's worktree-relative token.
+// planparser is this segment's sole declarer, per the module-owned-constructors per-segment join
+// rule.
 const PlanDirName = "plan"
 
 // PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`.
@@ -52,7 +58,8 @@ type cardIndexEntry struct {
 // cardIndexLineRe matches a plan-format-v3 Card Index entry's three fields, accepting either the em dash "—" or ASCII hyphens as separators.
 var cardIndexLineRe = regexp.MustCompile(`^(\d+)\s+(?:—|-{1,2})\s+(\S+)\s+(?:—|-{1,2})\s+(.+)$`)
 
-// ParsePlan reads the plan directory and returns the fully parsed Plan. It returns wrapped errors prefixed "planparser:" for every distinct failure mode.
+// ParsePlan reads the plan directory and returns the fully parsed Plan.
+// It returns wrapped errors prefixed "planparser:" for every distinct failure mode.
 func ParsePlan(planDir string) (*Plan, error) {
 	overviewPath := filepath.Join(planDir, overviewFileName)
 

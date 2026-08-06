@@ -1,4 +1,7 @@
-// rules_test.go golden-tests the composed Rules entry point: the below-parent stack ordered by parent chain, hidden-strand exclusion, empty/single-strand/parent-child edges, the checksum-prefix invariant, the own-window rejection error, pane-order resequencing to physical pane position, and the header top-band enumeration (Params.Header).
+// rules_test.go golden-tests the composed Rules entry point: the below-parent stack ordered by
+// parent chain, hidden-strand exclusion, empty/single-strand/parent-child edges, the
+// checksum-prefix invariant, the own-window rejection error, pane-order resequencing to physical
+// pane position, and the header top-band enumeration (Params.Header).
 
 package render
 
@@ -198,7 +201,11 @@ func TestRulesPaneOrderResequencesCellsToPhysicalOrder(t *testing.T) {
 	}
 }
 
-// TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell asserts the header top-band shape card 15/16 add: a fixed-height header cell at the top, followed by the below-parent stack laid out in the shrunk region below it — the emitted window_layout must enumerate the header cell plus every strand cell so the live-pane count the caller's select-layout applies against matches tmux's actual pane set.
+// TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell asserts the header top-band shape card
+// 15/16 add: a fixed-height header cell at the top, followed by the below-parent stack laid out in
+// the shrunk region below it — the emitted window_layout must enumerate the header cell plus every
+// strand cell so the live-pane count the caller's select-layout applies against matches tmux's
+// actual pane set.
 func TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell(t *testing.T) {
 	params := Params{
 		CollapsedStripRows: 2,
@@ -228,7 +235,13 @@ func TestRulesHeaderBandEnumeratesHeaderPlusEveryStrandCell(t *testing.T) {
 	}
 }
 
-// TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell pins the empty-stack header shape: with a header pane and ZERO placed strands, Rules must emit the header as a bracket-less single-cell body claiming the whole box — the same shape tmux reports for a one-pane window — never a zero-height header cell inside a group (the fable-header-r1 finding: headerHeight stayed 0 on this path and bandHeader emitted a literal "Wx0" cell, exactly the shape TestHeaderNeverGetsZeroHeightLayoutCell exists to forbid, while the doc comment claimed the header "may claim the whole box").
+// TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell pins the empty-stack header shape: with
+// a header pane and ZERO placed strands, Rules must emit the header as a bracket-less single-cell
+// body claiming the whole box — the same shape tmux reports for a one-pane window — never a
+// zero-height header cell inside a group (the fable-header-r1 finding: headerHeight stayed 0 on
+// this path and bandHeader emitted a literal "Wx0" cell, exactly the shape
+// TestHeaderNeverGetsZeroHeightLayoutCell exists to forbid, while the doc comment claimed the
+// header "may claim the whole box").
 // Unreachable through applyLayoutLocked today (anyPlacedStrand gates the apply),
 // but Rules is a pure function whose contract must hold for any caller.
 func TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
@@ -254,7 +267,9 @@ func TestRulesHeaderWithNoPlacedStrandClaimsWholeBoxAsSoleCell(t *testing.T) {
 	}
 }
 
-// TestRulesNoHeaderPreservesPreHeaderBehavior asserts a zero-value Params.Header (empty PaneID) produces byte-identical output to omitting Header entirely — every pre-header caller must be unaffected.
+// TestRulesNoHeaderPreservesPreHeaderBehavior asserts a zero-value Params.Header (empty PaneID)
+// produces byte-identical output to omitting Header entirely — every pre-header caller must be
+// unaffected.
 func TestRulesNoHeaderPreservesPreHeaderBehavior(t *testing.T) {
 	strands := belowParentChain()
 	box := Box{X: 0, Y: 0, W: 100, H: 21}

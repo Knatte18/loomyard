@@ -1,6 +1,12 @@
-// weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull, sync, diff) onto the "fabric" parent command built by fabric.go.
-// addWeftVerbs installs two hidden persistent flags — --weft-path and --warp-path — and a PersistentPreRunE scoped to these six verb names only — the topology verbs built in fabric.go resolve their own layout per invocation and never touch this file's closure state.
-// The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric handle) from bypass mode (either hidden path flag injected by the detached push child, push-only gate), driving fabricengine.Fabric's Status/Commit/PushWeft/Pull/Diff in normal mode and fabricengine.CoalescePushBothAt's loop-until-clean coalescing push directly in bypass mode.
+// weft_verbs.go wires the weft-git content-sync verbs (status, commit, push, pull, sync, diff) onto
+// the "fabric" parent command built by fabric.go.
+// addWeftVerbs installs two hidden persistent flags — --weft-path and --warp-path — and a
+// PersistentPreRunE scoped to these six verb names only — the topology verbs built in fabric.go
+// resolve their own layout per invocation and never touch this file's closure state.
+// The PersistentPreRunE splits normal mode (resolve cwd → layout → config → pathspec → Fabric
+// handle) from bypass mode (either hidden path flag injected by the detached push child, push-only
+// gate), driving fabricengine.Fabric's Status/Commit/PushWeft/Pull/Diff in normal mode and
+// fabricengine.CoalescePushBothAt's loop-until-clean coalescing push directly in bypass mode.
 
 package fabriccli
 

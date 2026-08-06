@@ -1,5 +1,7 @@
-// raddle_guard_test.go is a guard to ensure that internal/lyxcwd never discovers or enumerates the _raddle directory.
-// This documents that lyxcwd never scans the worktree to mirror dirs — a future nested/ignored _raddle can never be treated as a sibling.
+// raddle_guard_test.go is a guard to ensure that internal/lyxcwd never discovers or enumerates the
+// _raddle directory.
+// This documents that lyxcwd never scans the worktree to mirror dirs — a future nested/ignored
+// _raddle can never be treated as a sibling.
 // The guard scans every non-test .go file in the package;
 // no file is exempted.
 
@@ -14,7 +16,8 @@ import (
 	"testing"
 )
 
-// TestRaddleGuard verifies that no production source file in internal/lyxcwd contains the literal substring _raddle.
+// TestRaddleGuard verifies that no production source file in internal/lyxcwd contains the literal
+// substring _raddle.
 func TestRaddleGuard(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
 		// Resolve package directory relative to this test file.

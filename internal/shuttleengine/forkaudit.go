@@ -1,11 +1,15 @@
-// forkaudit.go defines the provider-invariant value types a fork-authorized run's audit surfaces: ForkAudit summarizes the parent session's own fork-spawning behavior,
+// forkaudit.go defines the provider-invariant value types a fork-authorized run's audit surfaces:
+// ForkAudit summarizes the parent session's own fork-spawning behavior,
 // and ForkReport summarizes one fork subagent's transcript.
-// Both are plain value types with no methods — the engine populates them from provider-specific transcript formats (claudeengine's own knowledge, never this package's), and a caller (burlerengine's cluster round) interprets the counts against its own policy.
+// Both are plain value types with no methods — the engine populates them from provider-specific
+// transcript formats (claudeengine's own knowledge, never this package's), and a caller
+// (burlerengine's cluster round) interprets the counts against its own policy.
 
 package shuttleengine
 
 // ForkAudit summarizes fork-spawning behavior in a fork-authorized run's parent session.
-// It counts Agent tool invocations (SpawnCalls) and named spawns (NamedSpawns, a defect signal since named forks lose inherited context).
+// It counts Agent tool invocations (SpawnCalls) and named spawns (NamedSpawns, a defect signal
+// since named forks lose inherited context).
 // Forks holds one ForkReport per fork subagent the parent spawned.
 type ForkAudit struct {
 	Forks              []ForkReport // One ForkReport per fork subagent, in discovery order.
@@ -16,7 +20,8 @@ type ForkAudit struct {
 	ParentBashCommands []string     // Verbatim Bash commands in parent's transcript (caller classifies git-mutating or disallowed).
 }
 
-// ForkReport summarizes one fork subagent's transcript: what it attempted and whether it produced a final report.
+// ForkReport summarizes one fork subagent's transcript: what it attempted and whether it produced a
+// final report.
 // Policy over these fields (e.g.
 // what counts as git-mutating,
 // or whether nested Agent calls are errors) is the caller's job;

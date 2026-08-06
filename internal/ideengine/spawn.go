@@ -1,4 +1,5 @@
-// spawn.go implements `ide spawn`: it assigns a title-bar color, generates the worktree's .vscode/ config when absent, and launches VS Code.
+// spawn.go implements `ide spawn`: it assigns a title-bar color, generates the worktree's .vscode/
+// config when absent, and launches VS Code.
 
 package ideengine
 

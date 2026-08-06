@@ -1,5 +1,9 @@
-// push.go implements the push surface: Push (a single synchronous push with rebase-retry resilience), PushCoalesced (a single-pusher lock plus one guarded push, coalescing across processes via the lock queue rather than an internal retry loop), and PushRebaseFree (a single plain push that never rebases, for callers that supply their own serialization).
-// All three are push-only; committing is always the caller's separate StageAndCommit or StageAllAndCommit call.
+// push.go implements the push surface: Push (a single synchronous push with rebase-retry
+// resilience), PushCoalesced (a single-pusher lock plus one guarded push, coalescing across
+// processes via the lock queue rather than an internal retry loop), and PushRebaseFree (a single
+// plain push that never rebases, for callers that supply their own serialization).
+// All three are push-only; committing is always the caller's separate StageAndCommit or
+// StageAllAndCommit call.
 
 package gitrepo
 
@@ -16,14 +20,16 @@ import (
 // It is a distinguishable error, not a failure.
 var ErrPushRejected = errors.New("gitrepo: push rejected (remote diverged)")
 
-// PushLockFileName is the name of the single-pusher lock file PushCoalesced acquires in the repo's worktree root.
+// PushLockFileName is the name of the single-pusher lock file PushCoalesced acquires in the repo's
+// worktree root.
 const PushLockFileName = ".gitrepo-push.lock"
 
 // rebaseRetryTriggers are the git-push stderr substrings indicating the
 // remote has commits this checkout lacks.
 var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"}
 
-// Push runs git push, recovering from one non-fast-forward rejection via pull --rebase before retrying.
+// Push runs git push, recovering from one non-fast-forward rejection via pull --rebase before
+// retrying.
 // The worktree must be clean.
 // Callers must re-read CurrentSHA after Push if SHAs were captured beforehand.
 func (r *Repo) Push() error {
@@ -71,7 +77,8 @@ func (r *Repo) pushWithRebaseRetry() error {
 	return nil
 }
 
-// PushRebaseFree runs git push without rebasing, establishing upstream via push.autoSetupRemote=true.
+// PushRebaseFree runs git push without rebasing, establishing upstream via
+// push.autoSetupRemote=true.
 // Returns ErrPushRejected on divergence.
 // Lock-free.
 func (r *Repo) PushRebaseFree() error {

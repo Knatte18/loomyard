@@ -1,5 +1,7 @@
-// patternpath_test.go covers the _pattern geometry surface this package owns: the DirName constant and the Dir/File/FileHere constructors.
-// Every case here is pure filepath.Join arithmetic — no subprocess is spawned and no fixture tree is copied — so this file stays untagged.
+// patternpath_test.go covers the _pattern geometry surface this package owns: the DirName constant
+// and the Dir/File/FileHere constructors.
+// Every case here is pure filepath.Join arithmetic — no subprocess is spawned and no fixture tree
+// is copied — so this file stays untagged.
 
 package pattern_test
 
@@ -64,7 +66,9 @@ func TestFile_Free(t *testing.T) {
 
 // TestLocation_PatternAccessors asserts FileHere(l)'s join for both AnchorRel == "."
 // and a nested AnchorRel of at least two segments.
-// The WeftPatternDir/WeftPatternDirFor/HostPatternLink/HostPatternLinkHere sub-tests that used to live here were dropped along with those four lyxcwd.Location accessors, which are deleted in batch 6;
+// The WeftPatternDir/WeftPatternDirFor/HostPatternLink/HostPatternLinkHere sub-tests that used to
+// live here were dropped along with those four lyxcwd.Location accessors, which are deleted in
+// batch 6;
 // their coverage is re-asserted there against the generic junction path.
 func TestLocation_PatternAccessors(t *testing.T) {
 	hub := filepath.Join("C:", "hub")
@@ -93,7 +97,9 @@ func TestLocation_PatternAccessors(t *testing.T) {
 	}
 }
 
-// TestFileHere_EqualsFileOfAnchorPath pins the equality FileHere() relies on: for any Location, FileHere(l) equals File(l.AnchorPath()) exactly, since filepath.Join(WorktreePath(), AnchorRel) collapses to AnchorPath() itself.
+// TestFileHere_EqualsFileOfAnchorPath pins the equality FileHere() relies on: for any Location,
+// FileHere(l) equals File(l.AnchorPath()) exactly, since filepath.Join(WorktreePath(), AnchorRel)
+// collapses to AnchorPath() itself.
 func TestFileHere_EqualsFileOfAnchorPath(t *testing.T) {
 	tests := []struct {
 		name    string

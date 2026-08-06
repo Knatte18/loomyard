@@ -1,4 +1,5 @@
-// pattern.go implements the PATTERN active check and the three role-specific directive constants Directive selects between.
+// pattern.go implements the PATTERN active check and the three role-specific directive constants
+// Directive selects between.
 // See doc.go for the package-level rationale.
 
 package pattern
@@ -10,7 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// DirName is the directory name for the PATTERN constraint-injection surface within a worktree (i.e. <worktree>/_pattern).
+// DirName is the directory name for the PATTERN constraint-injection surface within a worktree
+// (i.e. <worktree>/_pattern).
 // It is this package's own declaration of the "_pattern" geometry token;
 // use Dir/File/FileHere to obtain the paths built from it.
 const DirName = "_pattern"
@@ -26,7 +28,9 @@ func File(baseDir string) string {
 }
 
 // FileHere returns the path to the PATTERN.md file for the current worktree.
-// It is anchored at WorktreePath()+AnchorRel to correctly handle nested-hub geometry and to stay consistent with the junction endpoints lyxcwd still owns, which are all WorktreePath()+AnchorRel-anchored.
+// It is anchored at WorktreePath()+AnchorRel to correctly handle nested-hub geometry and to stay
+// consistent with the junction endpoints lyxcwd still owns, which are all
+// WorktreePath()+AnchorRel-anchored.
 func FileHere(l *lyxcwd.Location) string {
 	return File(filepath.Join(l.WorktreePath(), l.AnchorRel))
 }
@@ -80,7 +84,9 @@ const orchestratorDirective = `## Constraints — do this before you fork anythi
 // never reassigns it.
 var statFile = os.Stat
 
-// Directive reports whether PATTERN is active and returns the role's directive text to inject into the agent's prompt, or empty string if inactive or role is unknown.
+// Directive reports whether PATTERN is active and returns the role's directive text to inject into
+// the agent's prompt,
+// or empty string if inactive or role is unknown.
 func Directive(l *lyxcwd.Location, role Role) string {
 	if l == nil {
 		return ""

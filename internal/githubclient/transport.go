@@ -1,5 +1,7 @@
-// transport.go implements authRT, the client's outermost http.RoundTripper and the sole owner of the Authorization header.
-// It sets the header on every outbound request and, on a 401 response, invalidates the token cache, re-resolves once, and replays the request exactly once.
+// transport.go implements authRT, the client's outermost http.RoundTripper and the sole owner of
+// the Authorization header.
+// It sets the header on every outbound request and, on a 401 response, invalidates the token cache,
+// re-resolves once, and replays the request exactly once.
 
 package githubclient
 
@@ -27,7 +29,8 @@ func (rt *authRT) base() http.RoundTripper {
 
 // RoundTrip implements http.RoundTripper.
 // It sends req with a resolved token,
-// and on a 401, it invalidates the cache and replays exactly once with a fresh token (unless the token is environment-sourced, in which case it returns an error instead).
+// and on a 401, it invalidates the cache and replays exactly once with a fresh token (unless the
+// token is environment-sourced, in which case it returns an error instead).
 func (rt *authRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	tok, source, err := resolveToken()
 	if err != nil {

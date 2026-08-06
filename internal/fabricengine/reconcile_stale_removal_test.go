@@ -52,7 +52,10 @@ func findReconcilePair(t *testing.T, pairs []fabricengine.ReconcilePairResult, w
 	return nil
 }
 
-// TestReconcile_AddsMissingRemovesStaleNoOpsCorrect exercises all three per-junction convergence outcomes in a single pair: a missing desired junction (_pattern) is added, a stale on-disk junction absent from the repo-wide pathspec (_extra) is removed, and an already-correct junction (_lyx) is left untouched.
+// TestReconcile_AddsMissingRemovesStaleNoOpsCorrect exercises all three per-junction convergence
+// outcomes in a single pair: a missing desired junction (_pattern) is added, a stale on-disk
+// junction absent from the repo-wide pathspec (_extra) is removed, and an already-correct junction
+// (_lyx) is left untouched.
 func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	t.Parallel()
 
@@ -131,7 +134,9 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	}
 }
 
-// TestReconcile_CorrectJunctionsAreNoOp asserts that a pair whose on-disk junctions already exactly match the repo-wide pathspec produces a true no-op: ReconcileActionAlreadyHealthy with an empty Detail, not a spurious ReconcileActionStaleRemoved from an empty stale set.
+// TestReconcile_CorrectJunctionsAreNoOp asserts that a pair whose on-disk junctions already exactly
+// match the repo-wide pathspec produces a true no-op: ReconcileActionAlreadyHealthy with an empty
+// Detail, not a spurious ReconcileActionStaleRemoved from an empty stale set.
 func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	t.Parallel()
 
@@ -164,7 +169,10 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	}
 }
 
-// TestReconcile_ConvergesAllWorktreesToRepoWidePathspec proves the "repo-wide, not per-pair" property: two independently wired pairs both gain a new, non-reserved junction name after the repo-wide pathspec is widened, without either pair's own fabric.yaml (which does not exist) ever being consulted.
+// TestReconcile_ConvergesAllWorktreesToRepoWidePathspec proves the "repo-wide, not per-pair"
+// property: two independently wired pairs both gain a new, non-reserved junction name after the
+// repo-wide pathspec is widened, without either pair's own fabric.yaml (which does not exist) ever
+// being consulted.
 func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	t.Parallel()
 
@@ -215,7 +223,9 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	}
 }
 
-// TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig proves the fail-closed guard: when the repo-wide fabric.yaml cannot be loaded, Reconcile strips no junction and records the abort rather than treating the load failure as an empty (blanket-sweep) pathspec.
+// TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig proves the fail-closed guard:
+// when the repo-wide fabric.yaml cannot be loaded, Reconcile strips no junction and records the
+// abort rather than treating the load failure as an empty (blanket-sweep) pathspec.
 func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing.T) {
 	t.Parallel()
 
@@ -264,7 +274,9 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	}
 }
 
-// TestReconcile_NeverRemovesReservedHubName proves scanOnDiskJunctionNames' exclusion of fabricengine.HubReservedNames() holds end-to-end through Reconcile: a hub-structural name present on disk (here _raddle) is never swept even though it is absent from the repo-wide pathspec.
+// TestReconcile_NeverRemovesReservedHubName proves scanOnDiskJunctionNames' exclusion of
+// fabricengine.HubReservedNames() holds end-to-end through Reconcile: a hub-structural name present
+// on disk (here _raddle) is never swept even though it is absent from the repo-wide pathspec.
 func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	t.Parallel()
 
@@ -301,7 +313,12 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	}
 }
 
-// TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig is the repo-wide-base regression coverage card 10 calls for: with ONLY the repo-wide fabric.yaml seeded (no per-pair weft-base fabric.yaml exists anywhere in this fixture), the four sites card 7 migrated to RepoWiredNames still function — Healthy returns a real health verdict rather than "junction check unavailable", Topology.Checkout succeeds rather than hard-failing/rolling back on a name-set load error, and Topology.Remove still tears down junctions.
+// TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig is the repo-wide-base regression
+// coverage card 10 calls for: with ONLY the repo-wide fabric.yaml seeded (no per-pair weft-base
+// fabric.yaml exists anywhere in this fixture), the four sites card 7 migrated to RepoWiredNames
+// still function — Healthy returns a real health verdict rather than "junction check unavailable",
+// Topology.Checkout succeeds rather than hard-failing/rolling back on a name-set load error, and
+// Topology.Remove still tears down junctions.
 func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing.T) {
 	t.Parallel()
 

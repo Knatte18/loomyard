@@ -1,5 +1,8 @@
-// weftgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the package-level pushWeftAt and commitWeftAt for the detached-push child and board's warp-untethered weft:main commit (via Bolt).
-// commitWeft's commit carries a Warp-SHA trailer and records the correspondence immediately — except on an unborn warp HEAD (see warpHeadSHA), where both are skipped for that one commit.
+// weftgit.go — the weft-git content-sync verbs on Fabric: commitWeft, PushWeft, PullWeft, plus the
+// package-level pushWeftAt and commitWeftAt for the detached-push child and board's warp-untethered
+// weft:main commit (via Bolt).
+// commitWeft's commit carries a Warp-SHA trailer and records the correspondence immediately —
+// except on an unborn warp HEAD (see warpHeadSHA), where both are skipped for that one commit.
 
 package fabricengine
 

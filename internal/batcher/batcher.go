@@ -1,5 +1,7 @@
-// batcher.go defines the package's two core types: Batch, one ordered group of cards, and Batcher, the interface every batchifier implements.
-// Both types are deliberately minimal — the registry (registry.go) and the library members (identity.go, and future grouping batchifiers) build on top of them.
+// batcher.go defines the package's two core types: Batch, one ordered group of cards, and Batcher,
+// the interface every batchifier implements.
+// Both types are deliberately minimal — the registry (registry.go) and the library members
+// (identity.go, and future grouping batchifiers) build on top of them.
 
 package batcher
 

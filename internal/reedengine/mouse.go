@@ -1,4 +1,5 @@
-// mouse.go implements the mouse config value validator: mapping the mouse config key's raw string to the canonical "on"/"off" tmux option value the boot-time set-option call needs.
+// mouse.go implements the mouse config value validator: mapping the mouse config key's raw string
+// to the canonical "on"/"off" tmux option value the boot-time set-option call needs.
 // It is a pure planning helper (no filesystem or process I/O);
 // the caller (lifecycle.go) performs the actual tmux set-option round trip.
 

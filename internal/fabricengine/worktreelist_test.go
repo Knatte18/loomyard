@@ -117,7 +117,9 @@ func TestList(t *testing.T) {
 	}
 }
 
-// TestList_NotAGitRepo asserts that calling List against a directory that is not inside any git repository fails with an error composed from local context (the source directory and git's exit code), not git's raw stderr text.
+// TestList_NotAGitRepo asserts that calling List against a directory that is not inside any git
+// repository fails with an error composed from local context (the source directory and git's exit
+// code), not git's raw stderr text.
 func TestList_NotAGitRepo(t *testing.T) {
 	t.Parallel()
 

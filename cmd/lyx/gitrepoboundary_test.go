@@ -77,9 +77,14 @@ var gitrepoPinnedRunBoundMethods = map[string]bool{
 // is misconfigured rather than the package having genuinely shrunk.
 const gitrepoBoundaryMinScannedFiles = 5
 
-// TestGitrepoBoundary_PinnedRunCallSites walks internal/gitrepo's non-test .go files and asserts two things: (1) the set of methods whose body contains an r.run( call equals gitrepoPinnedRunBoundMethods exactly, and (2) after stripping comments, the token "gitexec."
+// TestGitrepoBoundary_PinnedRunCallSites walks internal/gitrepo's non-test .go files and asserts
+// two things: (1) the set of methods whose body contains an r.run( call equals
+// gitrepoPinnedRunBoundMethods exactly, and (2) after stripping comments, the token "gitexec."
 // appears exactly once in the package's non-test source, inside the run method's own body.
-// The second assertion closes the blind spot the first one has: a bare gitexec.RunGit call written directly inside a migrated method would satisfy an r.run(-keyed check while still violating the CLI/go-git boundary, since gitexec.RunGit is the CLI layer's own entry point, one level below r.run.
+// The second assertion closes the blind spot the first one has: a bare gitexec.RunGit call written
+// directly inside a migrated method would satisfy an r.run(-keyed check while still violating the
+// CLI/go-git boundary, since gitexec.RunGit is the CLI layer's own entry point, one level below
+// r.run.
 func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH,
 	// mirroring tierpurity_test.go and hermeticenv_test.go so this gate never

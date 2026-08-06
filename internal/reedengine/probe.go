@@ -1,4 +1,8 @@
-// probe.go implements the capability probe run once at server-ensure (lifecycle.go): a decidable, pure core (probeCapability) that checks a multiplexer's `-V` version against this GOOS's pinned floor (minMultiplexerVersion, version.go) and its `list-commands` output against the engine's required subcommand set, plus a thin Engine method (probeCapabilityLocked) that binds the pure core to a real exec.Command invocation of the configured tmux binary.
+// probe.go implements the capability probe run once at server-ensure (lifecycle.go): a decidable,
+// pure core (probeCapability) that checks a multiplexer's `-V` version against this GOOS's pinned
+// floor (minMultiplexerVersion, version.go) and its `list-commands` output against the engine's
+// required subcommand set, plus a thin Engine method (probeCapabilityLocked) that binds the pure
+// core to a real exec.Command invocation of the configured tmux binary.
 
 package reedengine
 
@@ -8,7 +12,8 @@ import (
 	"strings"
 )
 
-// CapabilityError reports the multiplexer binary does not meet minimum surface requirements (version floor or missing subcommands).
+// CapabilityError reports the multiplexer binary does not meet minimum surface requirements
+// (version floor or missing subcommands).
 type CapabilityError struct {
 	Reason string
 }

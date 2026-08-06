@@ -1,8 +1,11 @@
 // bench_test.go — offline (Tier 1) benchmarks for the core board commands.
 //
-// Benchmarks the pure Render and the Board facade (Board.UpsertTask) across board sizes of 10/100/1000 tasks, with git skipped (BOARD_SKIP_GIT=1) so they measure board logic + file I/O only and stay in the default offline loop.
+// Benchmarks the pure Render and the Board facade (Board.UpsertTask) across board sizes of
+// 10/100/1000 tasks, with git skipped (BOARD_SKIP_GIT=1) so they measure board logic + file I/O
+// only and stay in the default offline loop.
 // Also defines seedWiki, the task-seeding helper shared across this package.
-// The CLI-driven upsert/get/list benchmarks require a real git repo (config resolution) and so live behind `//go:build integration` in bench_cli_test.go.
+// The CLI-driven upsert/get/list benchmarks require a real git repo (config resolution) and so live
+// behind `//go:build integration` in bench_cli_test.go.
 
 package boardtest
 
@@ -113,7 +116,8 @@ func BenchmarkRender(b *testing.B) {
 // integration-tagged bench_cli_test.go: they drive boardcli.RunCLI, whose config
 // resolution requires a real git repo, so they spawn git and belong in Tier 2.
 
-// BenchmarkUpsertFacade measures Board.UpsertTask directly, bypassing the CLI's flag parsing and JSON (un)marshalling.
+// BenchmarkUpsertFacade measures Board.UpsertTask directly, bypassing the CLI's flag parsing and
+// JSON (un)marshalling.
 // The gap to BenchmarkUpsert is the per-command CLI overhead.
 func BenchmarkUpsertFacade(b *testing.B) {
 	for _, n := range benchSizes {

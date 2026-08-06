@@ -51,7 +51,9 @@ func commitFile(t *testing.T, dir, name, content, msg string) string {
 	return currentSHAOf(t, dir)
 }
 
-// TestFabricWarp_DetachVerifyRestoreRoundTrip proves CheckoutDetached and RestoreBranch round-trip: capture the current branch, make a new commit, detach HEAD to the commit before it, then restore the original branch and confirm HEAD is back where it started.
+// TestFabricWarp_DetachVerifyRestoreRoundTrip proves CheckoutDetached and RestoreBranch round-trip:
+// capture the current branch, make a new commit, detach HEAD to the commit before it, then restore
+// the original branch and confirm HEAD is back where it started.
 func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -92,7 +94,9 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	}
 }
 
-// TestFabricWarp_RestoreBranchInvalidRefErrors proves RestoreBranch returns a non-nil error when handed a ref that does not exist — the shape a caller would hit if the branch it captured earlier was deleted out from under it.
+// TestFabricWarp_RestoreBranchInvalidRefErrors proves RestoreBranch returns a non-nil error when
+// handed a ref that does not exist — the shape a caller would hit if the branch it captured earlier
+// was deleted out from under it.
 func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	t.Parallel()
 
@@ -107,7 +111,9 @@ func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	}
 }
 
-// TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges proves ResetHard discards both a later commit AND an uncommitted working-tree change, landing HEAD exactly at the older sha with the later file gone from disk.
+// TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges proves ResetHard discards both a later
+// commit AND an uncommitted working-tree change, landing HEAD exactly at the older sha with the
+// later file gone from disk.
 func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
 	t.Parallel()
 
@@ -139,7 +145,9 @@ func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
 	}
 }
 
-// TestFabricWarp_CurrentBranchErrorsOnDetachedHead proves CurrentBranch returns a non-nil error when warp's HEAD is already detached, matching gitrepo.Repo.CurrentBranch's documented detached-HEAD rejection.
+// TestFabricWarp_CurrentBranchErrorsOnDetachedHead proves CurrentBranch returns a non-nil error
+// when warp's HEAD is already detached, matching gitrepo.Repo.CurrentBranch's documented
+// detached-HEAD rejection.
 func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	t.Parallel()
 

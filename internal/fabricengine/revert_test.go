@@ -1,4 +1,5 @@
-// revert_test.go — untagged unit tests for classifyCorrespondence, the pure gap-classification core resolveRevertTarget's resolution step builds on.
+// revert_test.go — untagged unit tests for classifyCorrespondence, the pure gap-classification core
+// resolveRevertTarget's resolution step builds on.
 // No git spawn: every case works against a hand-built *corrIndex.
 
 package fabricengine
@@ -28,7 +29,8 @@ func buildIndexFromEntries(t *testing.T, entries []corrEntry) *corrIndex {
 	return ix
 }
 
-// TestClassifyCorrespondence_ExactHit asserts that an exact index entry for targetSHA wins outright, regardless of targetSeq.
+// TestClassifyCorrespondence_ExactHit asserts that an exact index entry for targetSHA wins
+// outright, regardless of targetSeq.
 func TestClassifyCorrespondence_ExactHit(t *testing.T) {
 	ix := buildIndexFromEntries(t, []corrEntry{
 		{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
@@ -47,7 +49,8 @@ func TestClassifyCorrespondence_ExactHit(t *testing.T) {
 	}
 }
 
-// TestClassifyCorrespondence_GapFallsBackToNearestOlder asserts that a target with no exact entry falls back to the nearest at-or-before entry and reports Exact = false.
+// TestClassifyCorrespondence_GapFallsBackToNearestOlder asserts that a target with no exact entry
+// falls back to the nearest at-or-before entry and reports Exact = false.
 func TestClassifyCorrespondence_GapFallsBackToNearestOlder(t *testing.T) {
 	ix := buildIndexFromEntries(t, []corrEntry{
 		{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
@@ -68,7 +71,8 @@ func TestClassifyCorrespondence_GapFallsBackToNearestOlder(t *testing.T) {
 	}
 }
 
-// TestClassifyCorrespondence_NoOlderEntryErrors asserts that a target whose WarpSeq precedes every recorded entry — and which has no exact entry either — returns wrapped ErrNoCorrespondence.
+// TestClassifyCorrespondence_NoOlderEntryErrors asserts that a target whose WarpSeq precedes every
+// recorded entry — and which has no exact entry either — returns wrapped ErrNoCorrespondence.
 func TestClassifyCorrespondence_NoOlderEntryErrors(t *testing.T) {
 	ix := buildIndexFromEntries(t, []corrEntry{
 		{WarpSHA: "w10", WeftSHA: "f10", WarpSeq: 10},
@@ -80,7 +84,8 @@ func TestClassifyCorrespondence_NoOlderEntryErrors(t *testing.T) {
 	}
 }
 
-// TestClassifyCorrespondence_EmptyIndexErrors asserts the degenerate case: an entirely empty index always reports ErrNoCorrespondence, exact or not.
+// TestClassifyCorrespondence_EmptyIndexErrors asserts the degenerate case: an entirely empty index
+// always reports ErrNoCorrespondence, exact or not.
 func TestClassifyCorrespondence_EmptyIndexErrors(t *testing.T) {
 	ix := buildIndexFromEntries(t, nil)
 

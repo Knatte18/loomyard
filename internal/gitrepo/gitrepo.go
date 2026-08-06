@@ -1,4 +1,6 @@
-// gitrepo.go defines the Repo type and its read/commit primitives: New, the shared run helper over gitexec.RunGit, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit, ChangedFilesSince, and SHAExists.
+// gitrepo.go defines the Repo type and its read/commit primitives: New, the shared run helper over
+// gitexec.RunGit, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit, ChangedFilesSince,
+// and SHAExists.
 
 package gitrepo
 
@@ -21,7 +23,8 @@ import (
 // ErrNoCommits is returned by CurrentSHA when the repository has no commits.
 var ErrNoCommits = errors.New("gitrepo: repository has no commits")
 
-// ErrInvalidSHA is returned when a caller-supplied SHA is not a valid hex object name, surfaced before reaching git.
+// ErrInvalidSHA is returned when a caller-supplied SHA is not a valid hex object name, surfaced
+// before reaching git.
 var ErrInvalidSHA = errors.New("gitrepo: invalid SHA")
 
 // ErrIndexNotEmpty is returned by CommitEmpty when the index has staged changes.
@@ -126,7 +129,8 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 	return sha, true, nil
 }
 
-// CommitEmpty records an empty commit (tree identical to its parent's) via `git commit --allow-empty`.
+// CommitEmpty records an empty commit (tree identical to its parent's) via `git commit
+// --allow-empty`.
 // It refuses if the index is dirty, returning ErrIndexNotEmpty.
 // Unlike StageAndCommit, it always commits when it succeeds.
 func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
@@ -175,7 +179,8 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 }
 
 // StageAllAndCommit stages every change via `git add -A` and commits with msg.
-// Return semantics mirror StageAndCommit: ("", false, nil) when nothing to commit, otherwise the new HEAD SHA with committed=true.
+// Return semantics mirror StageAndCommit: ("", false, nil) when nothing to commit, otherwise the
+// new HEAD SHA with committed=true.
 func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err error) {
 	_, stderr, code, err := r.run("add", "-A")
 	if err != nil {
@@ -296,7 +301,8 @@ func (r *Repo) RestoreBranch(ref string) error {
 	return nil
 }
 
-// ChangedFilesSince returns repo-relative paths that differ between sha and HEAD, considering committed history only.
+// ChangedFilesSince returns repo-relative paths that differ between sha and HEAD, considering
+// committed history only.
 // Returns ErrInvalidSHA if sha is invalid.
 // The returned order is not contractual.
 func (r *Repo) ChangedFilesSince(sha string) ([]string, error) {

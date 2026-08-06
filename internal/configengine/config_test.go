@@ -1,6 +1,9 @@
 // config_test.go — unit tests for the strict config loader.
 //
-// Tests cover: the strict Load contract using yamlengine + envsource, missing-key detection, absent-file errors, env variable resolution via templates, nested-key handling, the not-initialized error path, and the ConfigDir/ConfigFile/ LyxDirName path constructors configengine singly declares.
+// Tests cover: the strict Load contract using yamlengine + envsource, missing-key detection,
+// absent-file errors, env variable resolution via templates, nested-key handling, the
+// not-initialized error path, and the ConfigDir/ConfigFile/ LyxDirName path constructors
+// configengine singly declares.
 
 package configengine_test
 
@@ -346,7 +349,9 @@ func TestFindBaseDir_Absent(t *testing.T) {
 	}
 }
 
-// TestConfigDir verifies that ConfigDir joins baseDir with LyxDirName and the "config" subdirectory — moved here from lyxcwd's own unit test now that configengine is the single declarer of the "_lyx/config" path shape.
+// TestConfigDir verifies that ConfigDir joins baseDir with LyxDirName and the "config" subdirectory
+// — moved here from lyxcwd's own unit test now that configengine is the single declarer of the
+// "_lyx/config" path shape.
 func TestConfigDir(t *testing.T) {
 	t.Parallel()
 
@@ -359,7 +364,8 @@ func TestConfigDir(t *testing.T) {
 	}
 }
 
-// TestConfigFile verifies that ConfigFile joins ConfigDir with the module's ".yaml" filename — moved here from lyxcwd's own unit test alongside TestConfigDir.
+// TestConfigFile verifies that ConfigFile joins ConfigDir with the module's ".yaml" filename —
+// moved here from lyxcwd's own unit test alongside TestConfigDir.
 func TestConfigFile(t *testing.T) {
 	t.Parallel()
 
@@ -373,7 +379,9 @@ func TestConfigFile(t *testing.T) {
 	}
 }
 
-// TestLyxDirNameConstant verifies that LyxDirName is exported and has the expected value — moved here from lyxcwd's own unit test now that configengine is the single declarer of the "_lyx" token.
+// TestLyxDirNameConstant verifies that LyxDirName is exported and has the expected value — moved
+// here from lyxcwd's own unit test now that configengine is the single declarer of the "_lyx"
+// token.
 func TestLyxDirNameConstant(t *testing.T) {
 	t.Parallel()
 

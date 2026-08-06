@@ -1,4 +1,6 @@
-// header_test.go covers HeaderText and ValidateHeader hermetically: an Engine built from Config/*lyxcwd.Location struct literals (no lyxcwd.Resolve, no tmux spawn), per the Test Tier Purity Invariant.
+// header_test.go covers HeaderText and ValidateHeader hermetically: an Engine built from
+// Config/*lyxcwd.Location struct literals (no lyxcwd.Resolve, no tmux spawn), per the Test Tier
+// Purity Invariant.
 
 package reedengine
 

@@ -1,5 +1,9 @@
-// cli.go builds the cobra command tree for the reed module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "reed" command carries a PersistentPreRunE that resolves cwd -> layout -> config -> *reedengine.Engine exactly once per invocation, into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go, header.go) closes over, so no subcommand re-resolves geometry or config itself.
+// cli.go builds the cobra command tree for the reed module and the RunCLI seam that wires it into
+// the standard io.Writer-based call contract.
+// The parent "reed" command carries a PersistentPreRunE that resolves cwd -> layout -> config ->
+// *reedengine.Engine exactly once per invocation, into a receiver every verb (up.go, add.go,
+// remove.go, status.go, resume.go, attach.go, header.go) closes over, so no subcommand re-resolves
+// geometry or config itself.
 
 package reedcli
 
@@ -20,8 +24,12 @@ type reedCLI struct {
 
 // Command returns the cobra command tree for the reed module.
 //
-// The parent "reed" command carries a PersistentPreRunE that resolves cwd -> layout -> config -> *reedengine.Engine into c, skipping that resolution entirely when the group command itself is invoked (bare "lyx reed" listing or an unknown-subcommand error via GroupRunE) so neither path requires a git repository.
-// Every verb card (22-27) creates its own (c *reedCLI) xCmd() builder and registers it here via parent.AddCommand — this card registers no subcommands itself.
+// The parent "reed" command carries a PersistentPreRunE that resolves cwd -> layout -> config ->
+// *reedengine.Engine into c, skipping that resolution entirely when the group command itself is
+// invoked (bare "lyx reed" listing or an unknown-subcommand error via GroupRunE) so neither path
+// requires a git repository.
+// Every verb card (22-27) creates its own (c *reedCLI) xCmd() builder and registers it here via
+// parent.AddCommand — this card registers no subcommands itself.
 func Command() *cobra.Command {
 	c := &reedCLI{}
 
@@ -84,7 +92,8 @@ strands, plus rendering their layout on every mutation.`,
 
 // RunCLI is the public seam for the reed module CLI.
 //
-// It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer for all output (including cobra's error text).
+// It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer
+// for all output (including cobra's error text).
 // This preserves the existing call contract so that callers and tests are unchanged.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)

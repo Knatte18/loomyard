@@ -1,5 +1,7 @@
-// posix.go implements the Shell interface for a POSIX shell (sh/bash), the pane shell tmux launches on Linux.
-// It is deliberately plain (untagged) Go — not a `_linux.go` file — so it is host-testable on Windows even though it is only ever *selected* at runtime on Linux (see ForGOOS in shell.go).
+// posix.go implements the Shell interface for a POSIX shell (sh/bash), the pane shell tmux launches
+// on Linux.
+// It is deliberately plain (untagged) Go — not a `_linux.go` file — so it is host-testable on
+// Windows even though it is only ever *selected* at runtime on Linux (see ForGOOS in shell.go).
 
 package shell
 
@@ -18,7 +20,8 @@ func (p posixShell) Invoke(bin string) string {
 	return p.Quote(bin)
 }
 
-// ReadFile returns a double-quoted command substitution that expands path's contents into one argument, matching pwsh's Get-Content semantics.
+// ReadFile returns a double-quoted command substitution that expands path's contents into one
+// argument, matching pwsh's Get-Content semantics.
 func (p posixShell) ReadFile(path string) string {
 	return `"$(cat ` + p.Quote(path) + `)"`
 }

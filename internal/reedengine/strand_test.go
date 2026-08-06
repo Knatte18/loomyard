@@ -1,6 +1,12 @@
-// strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lyx: guid generation/uniqueness, unknown/cyclic parent rejection, the hidden-add no-launch path, the launch-path decision seam (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch itself is out of hermetic reach, see spawn_test.go), UpdateStrand's visible->hidden rejection, and RemoveStrand's non-leaf guard/cascade.
-// None of these touch tmux: addStrandLocked/updateStrandLocked only reach tmux through launchStrandLocked,
-// and every case here either stays hidden or is a rejection that never gets there; removeStrandLocked never touches tmux at all.
+// strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lyx: guid
+// generation/uniqueness, unknown/cyclic parent rejection, the hidden-add no-launch path, the
+// launch-path decision seam (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch
+// itself is out of hermetic reach, see spawn_test.go), UpdateStrand's visible->hidden rejection,
+// and RemoveStrand's non-leaf guard/cascade.
+// None of these touch tmux: addStrandLocked/updateStrandLocked only reach tmux through
+// launchStrandLocked,
+// and every case here either stays hidden or is a rejection that never gets there;
+// removeStrandLocked never touches tmux at all.
 
 package reedengine
 
@@ -46,8 +52,10 @@ func TestAddStrandLocked_HiddenAdd_GuidUniqueRecordStoredNoLaunch(t *testing.T) 
 	}
 }
 
-// TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad pins AddSpec.SessionID as opaque caller metadata: addStrandLocked stamps it verbatim into the appended Strand,
-// and it survives a SaveState/LoadState round trip on disk exactly like every other carrier field (Cmd, ResumeCmd, Name).
+// TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad pins AddSpec.SessionID as opaque caller
+// metadata: addStrandLocked stamps it verbatim into the appended Strand,
+// and it survives a SaveState/LoadState round trip on disk exactly like every other carrier field
+// (Cmd, ResumeCmd, Name).
 func TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad(t *testing.T) {
 	e := newTestEngine(t)
 	st := &ReedState{}
@@ -265,7 +273,10 @@ func TestRemoveStrandLocked_UnknownGuidRejected(t *testing.T) {
 	}
 }
 
-// TestRemovalEmptiedSession pins the four-way classification removalEmptiedSession makes: the success-swallow in RemoveStrand may only fire when the session is confirmed gone AND no remaining strand is expected to still own a live pane (mirroring anyPlacedStrand's Anchor != render.AnchorHidden filter).
+// TestRemovalEmptiedSession pins the four-way classification removalEmptiedSession makes: the
+// success-swallow in RemoveStrand may only fire when the session is confirmed gone AND no remaining
+// strand is expected to still own a live pane (mirroring anyPlacedStrand's Anchor !=
+// render.AnchorHidden filter).
 func TestRemovalEmptiedSession(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -338,7 +349,11 @@ func TestResolveStrandName(t *testing.T) {
 	}
 }
 
-// TestAddStrandLocked_AnchorValidatedAtEngineBoundary pins the engine-API guard the CLI cannot provide: an in-process caller (shuttle) passing the deferred own-window anchor or a mistyped anchor must be rejected BEFORE any pane is launched or record registered — without this, the strand would persist, its pane would launch, and every subsequent apply would fail in render until the strand was removed.
+// TestAddStrandLocked_AnchorValidatedAtEngineBoundary pins the engine-API guard the CLI cannot
+// provide: an in-process caller (shuttle) passing the deferred own-window anchor or a mistyped
+// anchor must be rejected BEFORE any pane is launched or record registered — without this, the
+// strand would persist, its pane would launch, and every subsequent apply would fail in render
+// until the strand was removed.
 func TestAddStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
 	e := newTestEngine(t)
 
@@ -354,7 +369,9 @@ func TestAddStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
 	}
 }
 
-// TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary mirrors the add guard for UpdateStrand: flipping a live strand's anchor to own-window (or garbage) must be rejected with the strand's display unchanged — a persisted own-window display would poison every later apply.
+// TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary mirrors the add guard for UpdateStrand:
+// flipping a live strand's anchor to own-window (or garbage) must be rejected with the strand's
+// display unchanged — a persisted own-window display would poison every later apply.
 func TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
 	e := newTestEngine(t)
 
@@ -372,7 +389,10 @@ func TestUpdateStrandLocked_AnchorValidatedAtEngineBoundary(t *testing.T) {
 	}
 }
 
-// TestAlivePanePIDs pins RemoveStrand's reap-root selection: only panes that are being removed AND are present AND not dead contribute their pane pid — a dead pane's recorded pid may already have been reused by an unrelated process, so it must never seed the descendant closure the reap force-kills.
+// TestAlivePanePIDs pins RemoveStrand's reap-root selection: only panes that are being removed AND
+// are present AND not dead contribute their pane pid — a dead pane's recorded pid may already have
+// been reused by an unrelated process, so it must never seed the descendant closure the reap
+// force-kills.
 func TestAlivePanePIDs(t *testing.T) {
 	live := []LivePane{
 		{ID: "%1", Dead: false, PID: 100},

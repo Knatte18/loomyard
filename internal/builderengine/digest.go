@@ -1,6 +1,10 @@
-// digest.go implements Digest and Distill, the pinned terse contract poll's terminal classification returns to the orchestrator (the discussion's "Digest contract" decision): exactly the decision fields plus what Go cannot cheaply compute itself — no prose, no file lists beyond the drift paths — the mill-go-bloat lesson made structural.
+// digest.go implements Digest and Distill, the pinned terse contract poll's terminal classification
+// returns to the orchestrator (the discussion's "Digest contract" decision): exactly the decision
+// fields plus what Go cannot cheaply compute itself — no prose, no file lists beyond the drift
+// paths — the mill-go-bloat lesson made structural.
 // Distill handles the report-present (done/stuck) branch;
-// the running/dead branches poll's own terminal-classification logic builds separately are out of this batch's scope.
+// the running/dead branches poll's own terminal-classification logic builds separately are out of
+// this batch's scope.
 
 package builderengine
 
@@ -61,7 +65,8 @@ type Digest struct {
 	ElapsedS int `json:"elapsed_s,omitempty"`
 }
 
-// Distill computes the terminal digest for a batch report, classifying changed files against scope and OutOfScope to identify unreported drift.
+// Distill computes the terminal digest for a batch report, classifying changed files against scope
+// and OutOfScope to identify unreported drift.
 func Distill(report *Report, changed []string, scope []string, dirty bool) Digest {
 	justified := make(map[string]bool, len(report.OutOfScope))
 	for _, e := range report.OutOfScope {

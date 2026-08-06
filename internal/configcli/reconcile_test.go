@@ -1,7 +1,8 @@
 // reconcile_test.go — tests for the lyx config reconcile subcommand.
 //
 // Migrated from internal/update/update_test.go.
-// The two git-init-backed scenarios (dry-run and --apply) now live in reconcile_integration_test.go per the Test Tier Purity Invariant;
+// The two git-init-backed scenarios (dry-run and --apply) now live in reconcile_integration_test.go
+// per the Test Tier Purity Invariant;
 // this file keeps the spawn-free not-a-git-repo error-path assertion.
 
 package configcli
@@ -13,7 +14,9 @@ import (
 	"testing"
 )
 
-// TestReconcile_NotAGitRepo verifies that "lyx config reconcile" run from a non-git temp directory surfaces lyxcwd's bare ErrNotAGitRepo sentinel with no "resolve layout:" prefix and no raw "fatal:" git stderr.
+// TestReconcile_NotAGitRepo verifies that "lyx config reconcile" run from a non-git temp directory
+// surfaces lyxcwd's bare ErrNotAGitRepo sentinel with no "resolve layout:" prefix and no raw
+// "fatal:" git stderr.
 func TestReconcile_NotAGitRepo(t *testing.T) {
 	tmpDir := t.TempDir()
 

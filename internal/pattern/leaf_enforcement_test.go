@@ -1,5 +1,9 @@
-// leaf_enforcement_test.go enforces the Pattern Leaf Invariant: production code in internal/pattern imports ONLY the standard library and internal/lyxcwd — never a feature package (builderengine, websterengine, burlerengine, loomengine, or any other).
-// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray dependency is caught with no list maintenance required.
+// leaf_enforcement_test.go enforces the Pattern Leaf Invariant: production code in internal/pattern
+// imports ONLY the standard library and internal/lyxcwd — never a feature package (builderengine,
+// websterengine, burlerengine, loomengine, or any other).
+// Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
+// import outside the allowed set fails the test, so a future stray dependency is caught with no
+// list maintenance required.
 
 package pattern
 
@@ -19,9 +23,11 @@ var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/lyxcwd": true,
 }
 
-// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in this package directory imports only stdlib (no '.'
+// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in this package directory
+// imports only stdlib (no '.'
 // in the first path segment) or an entry in allowedImports.
-// It uses go/parser with ImportsOnly so only real import declarations are inspected, never string literals in doc comments.
+// It uses go/parser with ImportsOnly so only real import declarations are inspected, never string
+// literals in doc comments.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

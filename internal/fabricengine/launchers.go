@@ -1,5 +1,7 @@
-// launchers.go writes and tears down the per-worktree launcher scripts and the container-root menu launcher.
-// Launchers are cross-platform: a .cmd script on Windows, an executable .sh script everywhere else, both built from the pure content builder in launcher_content.go.
+// launchers.go writes and tears down the per-worktree launcher scripts and the container-root menu
+// launcher.
+// Launchers are cross-platform: a .cmd script on Windows, an executable .sh script everywhere else,
+// both built from the pure content builder in launcher_content.go.
 // The checkout launcher file (fabric-checkout<ext>) invokes "lyx fabric checkout".
 
 package fabricengine
@@ -26,7 +28,8 @@ func launchersDir(l *lyxcwd.Location) string {
 
 // LauncherDir returns the path to the mirrored launcher directory for the given slug.
 // It is mirrored into the repo subpath structure, including AnchorRel segments.
-// Exported because its live test caller (reconcile_stale_registration_test.go) sits in the external package fabricengine_test, where an unexported identifier does not compile.
+// Exported because its live test caller (reconcile_stale_registration_test.go) sits in the external
+// package fabricengine_test, where an unexported identifier does not compile.
 func LauncherDir(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, launchersDirName, l.AnchorRel, slug)
 }

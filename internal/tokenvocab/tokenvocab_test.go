@@ -1,6 +1,10 @@
-// tokenvocab_test.go is the hermetic unit test suite for tokenvocab: each registry token's Resolve, Build's aggregate output, Render's happy path and its propagated unfilled-marker error, and a demonstration of the "one registry entry per token" extension rule.
-// Every case builds a lyxcwd.Location struct literal directly — never lyxcwd.Resolve — so this suite stays untagged and spawn-free (Test Tier Purity).
-// It is a same-package test so the token-by-token cases can inspect the unexported registry directly, rather than only observing it through Build's aggregated map.
+// tokenvocab_test.go is the hermetic unit test suite for tokenvocab: each registry token's Resolve,
+// Build's aggregate output, Render's happy path and its propagated unfilled-marker error, and a
+// demonstration of the "one registry entry per token" extension rule.
+// Every case builds a lyxcwd.Location struct literal directly — never lyxcwd.Resolve — so this
+// suite stays untagged and spawn-free (Test Tier Purity).
+// It is a same-package test so the token-by-token cases can inspect the unexported registry
+// directly, rather than only observing it through Build's aggregated map.
 
 package tokenvocab
 
@@ -25,7 +29,8 @@ func tokenByName(t *testing.T, name string) Token {
 	return Token{}
 }
 
-// TestTokenResolve covers each registry token's Resolve function, asserting it reads its own matching Layout field and not some other field of the same struct.
+// TestTokenResolve covers each registry token's Resolve function, asserting it reads its own
+// matching Layout field and not some other field of the same struct.
 func TestTokenResolve(t *testing.T) {
 	t.Parallel()
 
@@ -61,7 +66,10 @@ func TestTokenResolve(t *testing.T) {
 	}
 }
 
-// TestTokenResolve_RepoReadsFieldVerbatim verifies the repo token reflects Layout.Repo exactly regardless of how Repo was derived (resolveCore's -HUB-trim derivation, a hand-built literal, or any future derivation) — the token has no opinion about Repo's provenance, only that it reads the field verbatim.
+// TestTokenResolve_RepoReadsFieldVerbatim verifies the repo token reflects Layout.Repo exactly
+// regardless of how Repo was derived (resolveCore's -HUB-trim derivation, a hand-built literal, or
+// any future derivation) — the token has no opinion about Repo's provenance, only that it reads the
+// field verbatim.
 func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 	t.Parallel()
 
@@ -73,7 +81,8 @@ func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 	}
 }
 
-// TestBuild_ReturnsBothKeys verifies Build resolves the full registry into a flat map keyed by token name, with both current tokens (repo, hub) present and correctly valued.
+// TestBuild_ReturnsBothKeys verifies Build resolves the full registry into a flat map keyed by
+// token name, with both current tokens (repo, hub) present and correctly valued.
 func TestBuild_ReturnsBothKeys(t *testing.T) {
 	t.Parallel()
 
@@ -91,7 +100,8 @@ func TestBuild_ReturnsBothKeys(t *testing.T) {
 	}
 }
 
-// TestRender_FillsTemplateVerbatim verifies Render fills a two-marker template with the resolved vocabulary, byte-for-byte.
+// TestRender_FillsTemplateVerbatim verifies Render fills a two-marker template with the resolved
+// vocabulary, byte-for-byte.
 func TestRender_FillsTemplateVerbatim(t *testing.T) {
 	t.Parallel()
 
@@ -109,7 +119,9 @@ func TestRender_FillsTemplateVerbatim(t *testing.T) {
 	}
 }
 
-// TestRender_PropagatesUnknownTokenError verifies Render surfaces stencil.Fill's unfilled-top-level-marker error unchanged for a template referencing a token the registry does not define (e.g.
+// TestRender_PropagatesUnknownTokenError verifies Render surfaces stencil.Fill's
+// unfilled-top-level-marker error unchanged for a template referencing a token the registry does
+// not define (e.g.
 // the deferred "slug" token), rather than swallowing or rewording it.
 func TestRender_PropagatesUnknownTokenError(t *testing.T) {
 	t.Parallel()
@@ -127,8 +139,11 @@ func TestRender_PropagatesUnknownTokenError(t *testing.T) {
 	}
 }
 
-// TestRegistry_AddingATokenIsOneEntry documents the "one registry entry per token" extension rule from doc.go.
-// It builds a throwaway registry-shaped slice — copied from the real registry, never mutating it — appends a single hypothetical {Name, Resolve} entry, and resolves it the same way Build resolves the production registry, showing that one entry is sufficient to introduce a brand-new token.
+// TestRegistry_AddingATokenIsOneEntry documents the "one registry entry per token" extension rule
+// from doc.go.
+// It builds a throwaway registry-shaped slice — copied from the real registry, never mutating it —
+// appends a single hypothetical {Name, Resolve} entry, and resolves it the same way Build resolves
+// the production registry, showing that one entry is sufficient to introduce a brand-new token.
 func TestRegistry_AddingATokenIsOneEntry(t *testing.T) {
 	t.Parallel()
 

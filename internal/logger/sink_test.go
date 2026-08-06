@@ -1,5 +1,9 @@
-// sink_test.go covers the durable sink's naming, lazy-open header composition, both open triggers, and the size-cap truncation marker.
-// Every case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, so no lyxcwd.Resolve ever runs (Test Tier Purity) and every case starts from a fully reset sink regardless of what an earlier case in this file (or logger_test.go/span_test.go) already triggered.
+// sink_test.go covers the durable sink's naming, lazy-open header composition, both open triggers,
+// and the size-cap truncation marker.
+// Every case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across
+// cases, so no lyxcwd.Resolve ever runs (Test Tier Purity) and every case starts from a fully reset
+// sink regardless of what an earlier case in this file (or logger_test.go/span_test.go) already
+// triggered.
 
 package logger
 

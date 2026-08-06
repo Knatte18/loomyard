@@ -35,7 +35,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
-// TestWireJunctions_RepointsWrongTargetJunction points the host _lyx junction at an unrelated (but real) directory instead of the weft _lyx dir, then asserts WireJunctions removes and recreates it at the correct target instead of refusing it as pre-existing user content.
+// TestWireJunctions_RepointsWrongTargetJunction points the host _lyx junction at an unrelated (but
+// real) directory instead of the weft _lyx dir, then asserts WireJunctions removes and recreates it
+// at the correct target instead of refusing it as pre-existing user content.
 func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +85,10 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_RepointsWrongTargetJunction_Pattern is the _pattern counterpart of TestWireJunctions_RepointsWrongTargetJunction: the host _pattern junction, not _lyx, is pointed at an unrelated real directory, and WireJunctions must re-point it at the correct weft _pattern target — the same per-junction repair behaviour, exercised against the second junction.
+// TestWireJunctions_RepointsWrongTargetJunction_Pattern is the _pattern counterpart of
+// TestWireJunctions_RepointsWrongTargetJunction: the host _pattern junction, not _lyx, is pointed
+// at an unrelated real directory, and WireJunctions must re-point it at the correct weft _pattern
+// target — the same per-junction repair behaviour, exercised against the second junction.
 func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 	t.Parallel()
 
@@ -131,7 +136,9 @@ func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_RepointsDanglingJunction points the host _lyx junction at a target that does not exist, then asserts WireJunctions removes and recreates it at the correct target instead of refusing it.
+// TestWireJunctions_RepointsDanglingJunction points the host _lyx junction at a target that does
+// not exist, then asserts WireJunctions removes and recreates it at the correct target instead of
+// refusing it.
 func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	t.Parallel()
 
@@ -175,7 +182,11 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_RepointsDanglingJunction_Pattern is the _pattern counterpart of TestWireJunctions_RepointsDanglingJunction: the host _pattern junction, not _lyx, dangles (points at a nonexistent target), and WireJunctions must re-point it at the correct weft _pattern target rather than refusing it — the same per-junction repair behaviour, exercised against the second junction.
+// TestWireJunctions_RepointsDanglingJunction_Pattern is the _pattern counterpart of
+// TestWireJunctions_RepointsDanglingJunction: the host _pattern junction, not _lyx, dangles (points
+// at a nonexistent target), and WireJunctions must re-point it at the correct weft _pattern target
+// rather than refusing it — the same per-junction repair behaviour, exercised against the second
+// junction.
 func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
 	t.Parallel()
 

@@ -1,4 +1,6 @@
-// fetch.go implements the static-fetch extraction cascade: a matching site adapter first, then a plain HTTP GET run through Readability, falling back to raw body text and finally a headless-browser render when nothing else yields usable content.
+// fetch.go implements the static-fetch extraction cascade: a matching site adapter first, then a
+// plain HTTP GET run through Readability, falling back to raw body text and finally a
+// headless-browser render when nothing else yields usable content.
 // This is the same degrade-gracefully shape weblens uses.
 
 package main

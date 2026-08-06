@@ -1,6 +1,12 @@
-// set.go implements value-preserving single/multi-key YAML mutation for the non-interactive `lyx config <module> --set key=value` path.
-// Unlike Reconcile (which merges an entire existing file into a template), SetValues applies a small, explicit list of key=value pairs while still routing every write through the template-shaped working tree so partial/stale existing files never hide a valid key behind a missing node.
-// It also grafts any existing top-level key absent from the template onto the working tree whole, at root-key granularity, so a hand-edited or template-outgrown key is carried through into the merged output instead of silently vanishing.
+// set.go implements value-preserving single/multi-key YAML mutation for the non-interactive `lyx
+// config <module> --set key=value` path.
+// Unlike Reconcile (which merges an entire existing file into a template), SetValues applies a
+// small, explicit list of key=value pairs while still routing every write through the
+// template-shaped working tree so partial/stale existing files never hide a valid key behind a
+// missing node.
+// It also grafts any existing top-level key absent from the template onto the working tree whole,
+// at root-key granularity, so a hand-edited or template-outgrown key is carried through into the
+// merged output instead of silently vanishing.
 
 package yamlengine
 
@@ -36,8 +42,10 @@ type SetResult struct {
 }
 
 // SetValues applies pairs to a template-shaped YAML document, preserving comments and key order.
-// If any pairs[i].Key is absent from the template's leaf-key set, SetResult.Unknown is returned non-empty and Merged is nil.
-// Otherwise every pair is applied to the working tree (later pairs for a repeated key win) and the mutated tree is marshalled into SetResult.Merged.
+// If any pairs[i].Key is absent from the template's leaf-key set, SetResult.Unknown is returned
+// non-empty and Merged is nil.
+// Otherwise every pair is applied to the working tree (later pairs for a repeated key win) and the
+// mutated tree is marshalled into SetResult.Merged.
 func SetValues(template, existing []byte, pairs []KV) (SetResult, error) {
 	// Parse the template into the tree we will mutate and ultimately marshal.
 	var templateNode yaml.Node

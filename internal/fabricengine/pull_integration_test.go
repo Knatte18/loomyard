@@ -95,7 +95,10 @@ func revListCountBetween(t *testing.T, repoPath, rangeArg string) int {
 	return n
 }
 
-// TestPull_DetectsDriftUnreachableUnprunedObject asserts that Fabric.Pull detects a warp history rewrite via ancestry, not object-existence: after fetch, the rebased-away commit's object still resolves (git fetch never prunes) yet Pull still classifies the pull as a rewrite and reconciles — guarding against any regression to SHAExists-style detection.
+// TestPull_DetectsDriftUnreachableUnprunedObject asserts that Fabric.Pull detects a warp history
+// rewrite via ancestry, not object-existence: after fetch, the rebased-away commit's object still
+// resolves (git fetch never prunes) yet Pull still classifies the pull as a rewrite and reconciles
+// — guarding against any regression to SHAExists-style detection.
 func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
@@ -131,7 +134,8 @@ func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 	}
 }
 
-// TestPull_ReanchorsSingleCommitBack covers a rewrite that orphans only the single newest correspondence entry: the anchor resolves to the one directly before it.
+// TestPull_ReanchorsSingleCommitBack covers a rewrite that orphans only the single newest
+// correspondence entry: the anchor resolves to the one directly before it.
 func TestPull_ReanchorsSingleCommitBack(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 3)
@@ -156,7 +160,8 @@ func TestPull_ReanchorsSingleCommitBack(t *testing.T) {
 	}
 }
 
-// TestPull_ReanchorsMultiCommitBack covers a rewrite that orphans several correspondence entries at once: the anchor resolves to the nearest older one that still survives, several steps back.
+// TestPull_ReanchorsMultiCommitBack covers a rewrite that orphans several correspondence entries at
+// once: the anchor resolves to the nearest older one that still survives, several steps back.
 func TestPull_ReanchorsMultiCommitBack(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 4)
@@ -178,7 +183,9 @@ func TestPull_ReanchorsMultiCommitBack(t *testing.T) {
 	}
 }
 
-// TestPull_IdempotentAfterReconcile asserts that a second, immediate Fabric.Pull call against an already-reconciled pair reports no further rewrite or reconcile: the new re-anchor commit's own Warp-SHA trailer makes detection idempotent.
+// TestPull_IdempotentAfterReconcile asserts that a second, immediate Fabric.Pull call against an
+// already-reconciled pair reports no further rewrite or reconcile: the new re-anchor commit's own
+// Warp-SHA trailer makes detection idempotent.
 func TestPull_IdempotentAfterReconcile(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, _, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
@@ -205,7 +212,9 @@ func TestPull_IdempotentAfterReconcile(t *testing.T) {
 	}
 }
 
-// TestPull_LeavesWeftHistoryUntouched asserts that a reconcile adds exactly one new weft commit (the re-anchor commit) on top of pre-existing weft history, without altering any commit that was already there.
+// TestPull_LeavesWeftHistoryUntouched asserts that a reconcile adds exactly one new weft commit
+// (the re-anchor commit) on top of pre-existing weft history, without altering any commit that was
+// already there.
 func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
@@ -234,7 +243,10 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	}
 }
 
-// TestPull_IdentifiesPatternResidue seeds a synthetic _pattern/PATTERN.md weft commit (plus a non-_pattern weft commit) after the anchor point and asserts PatternResidue names exactly the _pattern-touching commit, not the others (including the pre-existing, already-synced content commit).
+// TestPull_IdentifiesPatternResidue seeds a synthetic _pattern/PATTERN.md weft commit (plus a
+// non-_pattern weft commit) after the anchor point and asserts PatternResidue names exactly the
+// _pattern-touching commit, not the others (including the pre-existing, already-synced content
+// commit).
 func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
@@ -285,7 +297,8 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	}
 }
 
-// TestPull_AbortsOnUnpushedPlusDiverged covers the double-conflict abort: local warp has an unpushed commit AND the remote diverged.
+// TestPull_AbortsOnUnpushedPlusDiverged covers the double-conflict abort: local warp has an
+// unpushed commit AND the remote diverged.
 // Fabric.Pull must return ErrWarpDivergedUnpushed and mutate neither repo.
 func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 	fixturesDir := t.TempDir()
@@ -309,7 +322,8 @@ func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 	}
 }
 
-// TestPull_NoSurvivingAnchorAborts covers a rewrite so thorough that no recorded correspondence entry survives at all: Fabric.Pull must return ErrNoSurvivingAnchor and mutate neither repo.
+// TestPull_NoSurvivingAnchorAborts covers a rewrite so thorough that no recorded correspondence
+// entry survives at all: Fabric.Pull must return ErrNoSurvivingAnchor and mutate neither repo.
 func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, warpPath, bareDir, weftFixture, initWarpSHA, _, _ := buildReconcileFixture(t, fixturesDir, 2)
@@ -332,7 +346,9 @@ func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 	}
 }
 
-// TestPull_CleanFastForwardAdvancesWarp covers a plain fast-forward remote: warp's local branch must actually move to the fetched tip, with no rewrite detected and weft history untouched — a regression guard against a fetch-only no-op.
+// TestPull_CleanFastForwardAdvancesWarp covers a plain fast-forward remote: warp's local branch
+// must actually move to the fetched tip, with no rewrite detected and weft history untouched — a
+// regression guard against a fetch-only no-op.
 func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
@@ -371,7 +387,9 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	}
 }
 
-// TestPull_EmptyIndexNoDrift covers a non-fast-forward remote with an empty correspondence index (warp commits that were never synced to weft at all): warp must still advance, with no reconcile commit written.
+// TestPull_EmptyIndexNoDrift covers a non-fast-forward remote with an empty correspondence index
+// (warp commits that were never synced to weft at all): warp must still advance, with no reconcile
+// commit written.
 func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	fixturesDir := t.TempDir()
 	warpPath := newPlainWarpRepo(t)
@@ -406,7 +424,9 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	}
 }
 
-// TestPull_WeftPullFailsWarpUntouched forces the weft ff-pull to fail (a local weft commit diverging from a remote-advanced upstream) and asserts warp is never fetched/reset, the error surfaces, and warp HEAD is unchanged.
+// TestPull_WeftPullFailsWarpUntouched forces the weft ff-pull to fail (a local weft commit
+// diverging from a remote-advanced upstream) and asserts warp is never fetched/reset, the error
+// surfaces, and warp HEAD is unchanged.
 func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 	fixturesDir := t.TempDir()
 	warpPath := newPlainWarpRepo(t)

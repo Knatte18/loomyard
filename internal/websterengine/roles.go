@@ -1,4 +1,7 @@
-// roles.go implements the role-resolution pre-flight: mapping webster.yaml's two role model-spec strings onto their resolved model-spec Resolved values, once, before any agent spawns. `run` calls ResolveRoles at entry so a typo'd alias in webster.yaml fails loud before Master ever starts, never mid-run when a role first spawns.
+// roles.go implements the role-resolution pre-flight: mapping webster.yaml's two role model-spec
+// strings onto their resolved model-spec Resolved values, once, before any agent spawns. `run`
+// calls ResolveRoles at entry so a typo'd alias in webster.yaml fails loud before Master ever
+// starts, never mid-run when a role first spawns.
 
 package websterengine
 
@@ -15,14 +18,18 @@ type Role string
 
 // The two webster roles, per docs/reference/model-spec.md's "Roles that use this notation" section.
 const (
-	// RoleMaster is the long-lived Master session that reads the plan once and forks one implementer per batch in-session.
+	// RoleMaster is the long-lived Master session that reads the plan once and forks one implementer
+	// per batch in-session.
 	RoleMaster Role = "master"
-	// RoleRecovery is the cold, fresh recovery strand recover-batch spawns when a fork reports stuck or writes no report.
+	// RoleRecovery is the cold, fresh recovery strand recover-batch spawns when a fork reports stuck
+	// or writes no report.
 	RoleRecovery Role = "recovery"
 )
 
-// ResolveRoles parses and resolves cfg's two role model-spec strings against reg, failing before Master spawns on any unknown alias.
-// It returns the resolved values keyed by Role, with each violation wrapped naming the offending role.
+// ResolveRoles parses and resolves cfg's two role model-spec strings against reg, failing before
+// Master spawns on any unknown alias.
+// It returns the resolved values keyed by Role, with each violation wrapped naming the offending
+// role.
 func ResolveRoles(cfg Config, reg modelspec.Registry) (map[Role]modelspec.Resolved, error) {
 	specsByRole := map[Role]string{
 		RoleMaster:   cfg.Master,

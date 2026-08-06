@@ -8,7 +8,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestWeftBranchName covers the uniform <host>/<host>-weft scheme across the primary branch, a prefixed task branch, and a plain (empty-prefix) slug.
+// TestWeftBranchName covers the uniform <host>/<host>-weft scheme across the primary branch, a
+// prefixed task branch, and a plain (empty-prefix) slug.
 func TestWeftBranchName(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -29,7 +30,8 @@ func TestWeftBranchName(t *testing.T) {
 	}
 }
 
-// TestWeftBranchName_RoundTripsWithWeftHostSlug asserts that fabricengine.WeftHostSlug, the documented inverse, recovers the original host branch from every WeftBranchName output.
+// TestWeftBranchName_RoundTripsWithWeftHostSlug asserts that fabricengine.WeftHostSlug, the
+// documented inverse, recovers the original host branch from every WeftBranchName output.
 func TestWeftBranchName_RoundTripsWithWeftHostSlug(t *testing.T) {
 	hostBranches := []string{"main", "hanf/foo", "foo"}
 	for _, host := range hostBranches {

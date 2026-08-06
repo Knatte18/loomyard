@@ -1,5 +1,13 @@
-// pause.go implements builder's pause-flag mechanics, mirroring perchengine's PauseFlagPath/clearPauseFlag discipline (internal/ perchengine/state.go) against a builder dir instead of a perch run dir: RequestPause writes a flag file that spawn-batch's batch-boundary check refuses against, PauseRequested observes it, and ClearPause removes it.
-// The clearing rules the discussion pins mirror perch's exactly: ClearPause must be called once run has passed its refusal gates and is committed to spawning (never instantly re-pause on the flag that requested the pause a resumed run is now resuming from — while a run that refuses on validation or a fingerprint mismatch leaves a pending pause intact) and again at every terminal outcome (a pause requested while the last batch was still in flight can lose the race against the boundary check settling on its own — the flag must not linger in a finished run's builder dir).
+// pause.go implements builder's pause-flag mechanics, mirroring perchengine's
+// PauseFlagPath/clearPauseFlag discipline (internal/ perchengine/state.go) against a builder dir
+// instead of a perch run dir: RequestPause writes a flag file that spawn-batch's batch-boundary
+// check refuses against, PauseRequested observes it, and ClearPause removes it.
+// The clearing rules the discussion pins mirror perch's exactly: ClearPause must be called once run
+// has passed its refusal gates and is committed to spawning (never instantly re-pause on the flag
+// that requested the pause a resumed run is now resuming from — while a run that refuses on
+// validation or a fingerprint mismatch leaves a pending pause intact) and again at every terminal
+// outcome (a pause requested while the last batch was still in flight can lose the race against the
+// boundary check settling on its own — the flag must not linger in a finished run's builder dir).
 
 package builderengine
 
@@ -10,18 +18,21 @@ import (
 )
 
 // PauseFlagName is the pause flag file's name inside a builder dir.
-// Exported so buildercli's pause verb can name the same file it writes without recomputing the join itself.
+// Exported so buildercli's pause verb can name the same file it writes without recomputing the join
+// itself.
 const PauseFlagName = "pause"
 
 // PauseFlagPath returns the path to the pause flag file inside builderDir.
 // buildercli's pause verb writes this file,
 // and spawn-batch's batch- boundary check reads it via PauseRequested;
-// both must resolve the same path, which is why this is exported rather than duplicated at each call site.
+// both must resolve the same path, which is why this is exported rather than duplicated at each
+// call site.
 func PauseFlagPath(builderDir string) string {
 	return filepath.Join(builderDir, PauseFlagName)
 }
 
-// RequestPause creates builderDir's pause flag file, creating builderDir itself first if it does not yet exist — a pause may be requested before any batch has ever spawned.
+// RequestPause creates builderDir's pause flag file, creating builderDir itself first if it does
+// not yet exist — a pause may be requested before any batch has ever spawned.
 // Creating an already-present flag file is not an error: RequestPause is idempotent.
 func RequestPause(builderDir string) error {
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
@@ -43,7 +54,8 @@ func PauseRequested(builderDir string) bool {
 }
 
 // ClearPause removes builderDir's pause flag, idempotently.
-// Callers must invoke this after passing refusal gates (to avoid re-pausing on a resumed run's own flag) and at every terminal outcome.
+// Callers must invoke this after passing refusal gates (to avoid re-pausing on a resumed run's own
+// flag) and at every terminal outcome.
 func ClearPause(builderDir string) error {
 	path := PauseFlagPath(builderDir)
 	if err := os.Remove(path); err != nil {

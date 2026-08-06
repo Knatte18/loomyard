@@ -1,4 +1,6 @@
-// adapter_test.go exercises fetchPage's site-adapter routing loop directly, independent of the concrete Reddit/Hacker News adapters, using a local configurable stub implementation of siteAdapter.
+// adapter_test.go exercises fetchPage's site-adapter routing loop directly, independent of the
+// concrete Reddit/Hacker News adapters, using a local configurable stub implementation of
+// siteAdapter.
 
 package main
 

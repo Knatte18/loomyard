@@ -1,5 +1,8 @@
-// set.go implements the non-interactive `lyx config <module> --set key=value` write path: scaffold-if-missing plus a single yamlengine.SetValues mutation, with no editor invocation and no validation loop.
-// It shares scaffoldIfMissing with Edit so both entry points create and roll back a fresh default-valued file identically.
+// set.go implements the non-interactive `lyx config <module> --set key=value` write path:
+// scaffold-if-missing plus a single yamlengine.SetValues mutation, with no editor invocation and no
+// validation loop.
+// It shares scaffoldIfMissing with Edit so both entry points create and roll back a fresh
+// default-valued file identically.
 
 package configengine
 

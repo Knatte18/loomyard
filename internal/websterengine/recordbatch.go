@@ -1,5 +1,12 @@
-// recordbatch.go implements RecordBatch, the second of webster's two bracket verbs Master calls around each in-session fork, immediately after a fork returns: the bracket-discipline fail-loud check (a record without a matching begin-batch record is refused), the incremental fork audit with its bounded settle retry, webster's fork-audit policy checks, the unconditional transcript-attribution advance, the batch-report presence check and parse, the head-SHA cross-check against the fork's own self-reported head_sha, and the distilled digest's persistence.
-// RecordBatch never touches weft — the caller weft-commits state.json and the batch report once RecordBatch returns successfully, mirroring builder's own weft-commit-boundary discipline.
+// recordbatch.go implements RecordBatch, the second of webster's two bracket verbs Master calls
+// around each in-session fork, immediately after a fork returns: the bracket-discipline fail-loud
+// check (a record without a matching begin-batch record is refused), the incremental fork audit
+// with its bounded settle retry, webster's fork-audit policy checks, the unconditional
+// transcript-attribution advance, the batch-report presence check and parse, the head-SHA
+// cross-check against the fork's own self-reported head_sha, and the distilled digest's
+// persistence.
+// RecordBatch never touches weft — the caller weft-commits state.json and the batch report once
+// RecordBatch returns successfully, mirroring builder's own weft-commit-boundary discipline.
 
 package websterengine
 
@@ -15,17 +22,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrNoBeginRecord is the sentinel RecordBatch returns when deps.State.Batches[batchNumber] is absent or already Terminal — a record call with no matching (or already-consumed) begin-batch record.
-// This is the bracket-discipline fail-loud check: a fork's own report, however legitimate it looks, is never trusted without Go's own record that begin-batch actually opened this batch first.
+// ErrNoBeginRecord is the sentinel RecordBatch returns when deps.State.Batches[batchNumber] is
+// absent or already Terminal — a record call with no matching (or already-consumed) begin-batch
+// record.
+// This is the bracket-discipline fail-loud check: a fork's own report, however legitimate it looks,
+// is never trusted without Go's own record that begin-batch actually opened this batch first.
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
 
-// RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently: Batches is the batchifier-derived execution batches (see internal/batcher.Select) `run` computed once at entry;
+// RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently:
+// Batches is the batchifier-derived execution batches (see internal/batcher.Select) `run` computed
+// once at entry;
 // State is the already-loaded run state RecordBatch reads and mutates;
 // Config is the loaded webster.yaml;
 // Engine supplies the incremental fork audit (AuditForksIncremental);
-// Layout resolves the pane's actual process cwd the audit reads against and the weft-reference pattern CheckFork/CheckParent consult;
-// WorktreeRoot is the host repo checkout the dirty-worktree warning and the head-SHA cross-check read;
-// OutcomePath and SummaryPath are the run's two Master contract files CheckParent's write-policy exempts;
+// Layout resolves the pane's actual process cwd the audit reads against and the weft-reference
+// pattern CheckFork/CheckParent consult;
+// WorktreeRoot is the host repo checkout the dirty-worktree warning and the head-SHA cross-check
+// read;
+// OutcomePath and SummaryPath are the run's two Master contract files CheckParent's write-policy
+// exempts;
 // Sleeper is the clock seam SettleRetry's bounded wait uses.
 type RecordDeps struct {
 	Batches      []batcher.Batch
@@ -40,16 +55,22 @@ type RecordDeps struct {
 	Sleeper      Sleeper
 }
 
-// RecordResult is what one successful RecordBatch call hands back to its caller (internal/webstercli's record-batch verb): Digest is the distilled digest once the batch reaches a terminal classification (nil when NoReport is true);
-// NoReport reports whether the batch-report file was still absent this call (the batch stays non-terminal and State.CurrentBatch stays unchanged — Master's ladder re-forks once);
-// Warnings carries every non-fatal fork-audit-policy warning observed this call (a multi-new-transcript notice, a fork that never returned a final report, or a dirty worktree after the batch's own commits), never treated as a failure.
+// RecordResult is what one successful RecordBatch call hands back to its caller
+// (internal/webstercli's record-batch verb): Digest is the distilled digest once the batch reaches
+// a terminal classification (nil when NoReport is true);
+// NoReport reports whether the batch-report file was still absent this call (the batch stays
+// non-terminal and State.CurrentBatch stays unchanged — Master's ladder re-forks once);
+// Warnings carries every non-fatal fork-audit-policy warning observed this call (a
+// multi-new-transcript notice, a fork that never returned a final report, or a dirty worktree after
+// the batch's own commits), never treated as a failure.
 type RecordResult struct {
 	Digest   *Digest
 	NoReport bool
 	Warnings []string
 }
 
-// RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit, fork-audit policy checks, transcript-attribution advance, report parse, and digest persistence.
+// RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit,
+// fork-audit policy checks, transcript-attribution advance, report parse, and digest persistence.
 // The caller persists deps.State via SaveState once RecordBatch returns successfully.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	bs, ok := deps.State.Batches[batchNumber]

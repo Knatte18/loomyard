@@ -1,4 +1,6 @@
-// profile.go defines Profile, the content contract for one burler round — what to review, what to judge it against, and how the round is allowed to write its fixes — plus its fail-loud validate method.
+// profile.go defines Profile, the content contract for one burler round — what to review, what to
+// judge it against, and how the round is allowed to write its fixes — plus its fail-loud validate
+// method.
 // Profile is pure data;
 // the shuttle interaction that consumes it lives in engine.go (added in the next batch).
 

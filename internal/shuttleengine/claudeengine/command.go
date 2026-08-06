@@ -1,6 +1,11 @@
-// command.go composes the opaque pane-shell command lines Prepare (settings.go) hands back as a Launch: the launch line that starts a fresh session and the resume line that reattaches an existing one.
-// Both are single-line strings typed verbatim into a pane via tmux send-keys (see reedengine/spawn.go's launchStrandLocked) — no newline may appear in either, since send-keys submits a line at a time.
-// Argument quoting, the call operator, and the prompt-file read idiom are pane-shell mechanics owned entirely by internal/shell (the Shell Mechanics Seam invariant);
+// command.go composes the opaque pane-shell command lines Prepare (settings.go) hands back as a
+// Launch: the launch line that starts a fresh session and the resume line that reattaches an
+// existing one.
+// Both are single-line strings typed verbatim into a pane via tmux send-keys (see
+// reedengine/spawn.go's launchStrandLocked) — no newline may appear in either, since send-keys
+// submits a line at a time.
+// Argument quoting, the call operator, and the prompt-file read idiom are pane-shell mechanics
+// owned entirely by internal/shell (the Shell Mechanics Seam invariant);
 // this file only ever calls into that seam and never emits raw pwsh/posix syntax of its own.
 
 package claudeengine

@@ -1,5 +1,8 @@
-// lock.go defines the Engine type — the domain kernel's public handle, holding a resolved Config, the worktree's lyxcwd.Location, and the TmuxCmd bound to this hub's socket — plus the single reed-operation lock every public engine op acquires exactly once at its outer boundary.
-// Every other file in this package (reconcile.go, apply.go, spawn.go, strand.go, lifecycle.go) hangs its exported/*Locked methods off *Engine.
+// lock.go defines the Engine type — the domain kernel's public handle, holding a resolved Config,
+// the worktree's lyxcwd.Location, and the TmuxCmd bound to this hub's socket — plus the single
+// reed-operation lock every public engine op acquires exactly once at its outer boundary.
+// Every other file in this package (reconcile.go, apply.go, spawn.go, strand.go, lifecycle.go)
+// hangs its exported/*Locked methods off *Engine.
 
 package reedengine
 
@@ -22,7 +25,8 @@ import (
 // LoadState/SaveState, while it is already holding reed.lock.
 const reedLockFileName = "reed.lock"
 
-// Engine is the domain kernel's public handle: a resolved Config, the worktree's Layout, and the TmuxCmd bound to this hub's socket.
+// Engine is the domain kernel's public handle: a resolved Config, the worktree's Layout, and the
+// TmuxCmd bound to this hub's socket.
 // The zero Engine is not valid;
 // build one via New.
 type Engine struct {

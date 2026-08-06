@@ -1,12 +1,20 @@
-// plan.go implements PlanSpec, the Plan producer's Spec factory, and its composePlanPrompt prompt composer.
-// Like the Discussion producer (discussion.go), the Plan producer is not a Go module — it is a prompt/profile fed to shuttle.Run, one shuttle.Run producing one artifact.
+// plan.go implements PlanSpec, the Plan producer's Spec factory, and its composePlanPrompt prompt
+// composer.
+// Like the Discussion producer (discussion.go), the Plan producer is not a Go module — it is a
+// prompt/profile fed to shuttle.Run, one shuttle.Run producing one artifact.
 // Its sole input is `_lyx/discussion/decision-record.md` (see layout.DiscussionDecisionRecord);
 // it never reads the support log and never reads the board.
-// Its output is a plan-format-v3 flat-card plan written into `_lyx/plan/`: one `NN-<card-slug>.md` per card plus `00-overview.md`, written LAST as the run's done-sentinel (see docs/reference/plan-format-v3.md).
-// The producer always writes `approved: false` in `00-overview.md`'s frontmatter — it has no review logic of its own (that is perch/burler's separate job); flipping `approved` to `true` after perch returns APPROVED is the future loom orchestrator's job, not built here.
+// Its output is a plan-format-v3 flat-card plan written into `_lyx/plan/`: one `NN-<card-slug>.md`
+// per card plus `00-overview.md`, written LAST as the run's done-sentinel (see
+// docs/reference/plan-format-v3.md).
+// The producer always writes `approved: false` in `00-overview.md`'s frontmatter — it has no review
+// logic of its own (that is perch/burler's separate job); flipping `approved` to `true` after perch
+// returns APPROVED is the future loom orchestrator's job, not built here.
 //
-// PlanSpec is a pure composer, exactly like DiscussionSpec: it does not stat the decision record, does not stat or create `_lyx/plan/`, and does not spawn anything.
-// Verifying the input exists and rotating a stale `_lyx/plan/` before a re-run are the future loom phase machine's responsibility.
+// PlanSpec is a pure composer, exactly like DiscussionSpec: it does not stat the decision record,
+// does not stat or create `_lyx/plan/`, and does not spawn anything.
+// Verifying the input exists and rotating a stale `_lyx/plan/` before a re-run are the future loom
+// phase machine's responsibility.
 
 package loomengine
 

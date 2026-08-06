@@ -1,4 +1,10 @@
-// symbol_test.go is the untagged, spawn-free counterpart to any future symbol_integration_test.go, mirroring definition_test.go's style for the legacy-path regression proof, and TestLSPClient_InitializeCapturesCapabilities's fake-server shape for symbolFromClient's own logic: Symbol's interesting behavior lives entirely in how symbolFromClient interprets workspace/symbol's result, and connection acquisition is already covered generically elsewhere, so these tests call symbolFromClient directly against a hand-built client rather than driving Symbol's full DetectLanguage/acquireConnection machinery, which would require a real spawn.
+// symbol_test.go is the untagged, spawn-free counterpart to any future symbol_integration_test.go,
+// mirroring definition_test.go's style for the legacy-path regression proof, and
+// TestLSPClient_InitializeCapturesCapabilities's fake-server shape for symbolFromClient's own
+// logic: Symbol's interesting behavior lives entirely in how symbolFromClient interprets
+// workspace/symbol's result, and connection acquisition is already covered generically elsewhere,
+// so these tests call symbolFromClient directly against a hand-built client rather than driving
+// Symbol's full DetectLanguage/acquireConnection machinery, which would require a real spawn.
 
 package scoutengine
 
@@ -9,7 +15,10 @@ import (
 	"time"
 )
 
-// TestSymbol_NonExistentServerBinaryYieldsErrServerNotFound points a synthetic registry entry's Command at a binary that cannot exist on $PATH and asserts Symbol maps the resulting exec.LookPath failure to ErrServerNotFoundSentinel — the same legacy-path regression proof definition_test.go's equivalent runs for Definition.
+// TestSymbol_NonExistentServerBinaryYieldsErrServerNotFound points a synthetic registry entry's
+// Command at a binary that cannot exist on $PATH and asserts Symbol maps the resulting
+// exec.LookPath failure to ErrServerNotFoundSentinel — the same legacy-path regression proof
+// definition_test.go's equivalent runs for Definition.
 // This one does exercise the full Symbol function, since it never reaches a connection at all.
 func TestSymbol_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 	dir := t.TempDir()
@@ -37,7 +46,10 @@ func TestSymbol_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 	}
 }
 
-// TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous asserts that symbolFromClient returns every candidate workspace/symbol reports rather than collapsing to ErrAmbiguousSymbol — a bug that accidentally reintroduces resolvePosition-style collapsing is exactly the regression this test exists to catch.
+// TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous asserts that symbolFromClient
+// returns every candidate workspace/symbol reports rather than collapsing to ErrAmbiguousSymbol — a
+// bug that accidentally reintroduces resolvePosition-style collapsing is exactly the regression
+// this test exists to catch.
 func TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -130,7 +142,8 @@ func TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous(t *testing
 	}
 }
 
-// TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound asserts that a workspace/symbol response with zero candidates maps to ErrSymbolNotFoundSentinel.
+// TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound asserts that a workspace/symbol
+// response with zero candidates maps to ErrSymbolNotFoundSentinel.
 func TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -177,8 +190,13 @@ func TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound(t *testing.T) {
 	}
 }
 
-// TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest asserts that when the server's initialize response omits workspaceSymbolProvider, symbolFromClient returns ErrResolverUnsupported and — critically — never sends a workspace/symbol request at all.
-// The fake server's own goroutine, still reading past the initialize handshake, is the witness: it fails the test via t.Errorf if it ever receives a further byte, and exits quietly when the transport closes with nothing written, which is the expected outcome once symbolFromClient returns without ever calling client.workspaceSymbol.
+// TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest asserts that when the server's
+// initialize response omits workspaceSymbolProvider, symbolFromClient returns
+// ErrResolverUnsupported and — critically — never sends a workspace/symbol request at all.
+// The fake server's own goroutine, still reading past the initialize handshake, is the witness: it
+// fails the test via t.Errorf if it ever receives a further byte, and exits quietly when the
+// transport closes with nothing written, which is the expected outcome once symbolFromClient
+// returns without ever calling client.workspaceSymbol.
 func TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 

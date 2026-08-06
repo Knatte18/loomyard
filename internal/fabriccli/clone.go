@@ -1,5 +1,9 @@
 // clone.go implements the fabriccli handler half for the fabric clone subcommand.
-// runCloneWithReset delegates into fabricengine.CloneHub after optionally tearing down an existing hub when --reset is given, then drives the config materialization + weft:main commit + junction wiring + reconcile sequence that makes "clone does everything" true at the command level — CloneHub itself stays git/geometry-focused so fabricengine never imports configsync (see fabricengine/clone.go's CloneResult doc comment for the import-cycle rationale).
+// runCloneWithReset delegates into fabricengine.CloneHub after optionally tearing down an existing
+// hub when --reset is given, then drives the config materialization + weft:main commit + junction
+// wiring + reconcile sequence that makes "clone does everything" true at the command level —
+// CloneHub itself stays git/geometry-focused so fabricengine never imports configsync (see
+// fabricengine/clone.go's CloneResult doc comment for the import-cycle rationale).
 
 package fabriccli
 

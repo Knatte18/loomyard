@@ -1,5 +1,7 @@
-// Package vscode generates VS Code configuration and manages VS Code-specific launch behavior for worktrees.
-// It is responsible for config generation (settings.json and tasks.json), color-palette selection, and launching VS Code.
+// Package vscode generates VS Code configuration and manages VS Code-specific launch behavior for
+// worktrees.
+// It is responsible for config generation (settings.json and tasks.json), color-palette selection,
+// and launching VS Code.
 // The mill values (palette, settings keys, cmd /c code) are baked in — no external Python is read.
 
 package vscode
@@ -12,7 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitignore"
 )
 
-// WriteConfig generates VS Code configuration files in a worktree, only if they don't already exist (never clobbering operator edits).
+// WriteConfig generates VS Code configuration files in a worktree, only if they don't already exist
+// (never clobbering operator edits).
 // Returns an error if I/O fails (but not if files already exist).
 func WriteConfig(worktreeDir, relpath, slug, color string) error {
 	dir := filepath.Join(worktreeDir, relpath)

@@ -1,6 +1,12 @@
-// judge.go implements treadle's two ephemeral LLM utility calls — the progress judge (per-round circling check, milestone continuation gate) and the asking-triage call — as fail-safe spawns over a package-local Shuttle seam, mirroring burlerengine.Engine's Shuttle pattern.
-// Unlike a round-runner attempt, none of the three calls here ever returns an error: any infrastructure failure degrades to the safe default and logs a logger.Warn, per perch's original error-and-fail-safe-posture decision (03-judge-triage.md) — a false STUCK is the costly failure mode, not a few extra bounded rounds.
-// Every Warn label is prefixed with the calling engine's name (threaded in as name), mirroring perch's own literal "perch: " prefix today (the name-parameterized-diagnostics shared decision).
+// judge.go implements treadle's two ephemeral LLM utility calls — the progress judge (per-round
+// circling check, milestone continuation gate) and the asking-triage call — as fail-safe spawns
+// over a package-local Shuttle seam, mirroring burlerengine.Engine's Shuttle pattern.
+// Unlike a round-runner attempt, none of the three calls here ever returns an error: any
+// infrastructure failure degrades to the safe default and logs a logger.Warn, per perch's original
+// error-and-fail-safe-posture decision (03-judge-triage.md) — a false STUCK is the costly failure
+// mode, not a few extra bounded rounds.
+// Every Warn label is prefixed with the calling engine's name (threaded in as name), mirroring
+// perch's own literal "perch: " prefix today (the name-parameterized-diagnostics shared decision).
 
 package treadleengine
 
@@ -14,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// Shuttle is the seam judge.go drives its three ephemeral calls through, satisfied by *shuttleengine.Runner in production and fakes in tests.
+// Shuttle is the seam judge.go drives its three ephemeral calls through, satisfied by
+// *shuttleengine.Runner in production and fakes in tests.
 type Shuttle interface {
 	Run(shuttleengine.Spec) (shuttleengine.Result, error)
 }

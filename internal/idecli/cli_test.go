@@ -37,7 +37,8 @@ func TestRunCLISpawnDispatch(t *testing.T) {
 	}
 }
 
-// TestRunCLI_NoArgs verifies that "lyx ide" with no subcommand prints the subcommand listing and exits 0 — layout resolution is never attempted, so no git repo is needed.
+// TestRunCLI_NoArgs verifies that "lyx ide" with no subcommand prints the subcommand listing and
+// exits 0 — layout resolution is never attempted, so no git repo is needed.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -54,7 +55,8 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error envelope with ok=false.
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
+// envelope with ok=false.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	t.Parallel()
 
@@ -79,7 +81,10 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_NotAGitRepo verifies that "lyx ide menu" run from a non-git temp directory surfaces lyxcwd's bare ErrNotAGitRepo sentinel with no "failed to resolve layout:" prefix and no raw "fatal:" git stderr — the PersistentPreRunE aborts before menu's body runs, so the interactive picker is never reached.
+// TestRunCLI_NotAGitRepo verifies that "lyx ide menu" run from a non-git temp directory surfaces
+// lyxcwd's bare ErrNotAGitRepo sentinel with no "failed to resolve layout:" prefix and no raw
+// "fatal:" git stderr — the PersistentPreRunE aborts before menu's body runs, so the interactive
+// picker is never reached.
 func TestRunCLI_NotAGitRepo(t *testing.T) {
 	tmpDir := t.TempDir()
 

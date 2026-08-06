@@ -1,8 +1,16 @@
 //go:build integration
 
-// boardjunction_integration_test.go covers the operator-convenience _board junction wireBoardLink wires: its creation at clone and add, its unconditional-with-respect-to-junction-health repair on reconcile (the placement this batch's card 38 gets right precisely because checkJunctionHealth never inspects it), its exclusion from every pathspec-derived route (filterHubReserved via WiredNames, and ScopedPathspec over the real loaded config), its removal on Unwire, and its absence until a pair is fully wired (RawAdopted leaves it unwired; the immediately following pass wires it).
+// boardjunction_integration_test.go covers the operator-convenience _board junction wireBoardLink
+// wires: its creation at clone and add, its unconditional-with-respect-to-junction-health repair on
+// reconcile (the placement this batch's card 38 gets right precisely because checkJunctionHealth
+// never inspects it), its exclusion from every pathspec-derived route (filterHubReserved via
+// WiredNames, and ScopedPathspec over the real loaded config), its removal on Unwire, and its
+// absence until a pair is fully wired (RawAdopted leaves it unwired; the immediately following pass
+// wires it).
 //
-// Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig (reconcile_stale_registration_test.go), makeBareRemote (clone_adopt_test.go), findReconcilePair (reconcile_stale_removal_test.go), and readExcludeLines (junction_pattern_integration_test.go);
+// Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig
+// (reconcile_stale_registration_test.go), makeBareRemote (clone_adopt_test.go), findReconcilePair
+// (reconcile_stale_removal_test.go), and readExcludeLines (junction_pattern_integration_test.go);
 // shares the single TestMain in testmain_test.go — no new TestMain is added here.
 package fabricengine_test
 
@@ -18,7 +26,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestBoardJunction_WiredAtClone asserts that CloneHub itself wires the _board link at <PrimeCwd>/_board, pointing at res.BoardDir — the "clone" half of card 37's "wired at clone and add" requirement.
+// TestBoardJunction_WiredAtClone asserts that CloneHub itself wires the _board link at
+// <PrimeCwd>/_board, pointing at res.BoardDir — the "clone" half of card 37's "wired at clone and
+// add" requirement.
 func TestBoardJunction_WiredAtClone(t *testing.T) {
 	fixtures := t.TempDir()
 	hostBare := makeBareRemote(t, fixtures, "board-clone-host")
@@ -55,7 +65,11 @@ func TestBoardJunction_WiredAtClone(t *testing.T) {
 	}
 }
 
-// TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves covers the "add" half of card 37's wiring requirement, the git-exclude seed, the stale-sweep protection (a reconcile pass immediately after wiring must not remove it — scanOnDiskJunctionNames' HubReservedNames skip, which this batch inherits rather than designs in), and Unwire's explicitly-named removal of both the link and the exclude entry.
+// TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves covers the "add" half of card
+// 37's wiring requirement, the git-exclude seed, the stale-sweep protection (a reconcile pass
+// immediately after wiring must not remove it — scanOnDiskJunctionNames' HubReservedNames skip,
+// which this batch inherits rather than designs in), and Unwire's explicitly-named removal of both
+// the link and the exclude entry.
 func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -116,8 +130,14 @@ func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testin
 	}
 }
 
-// TestBoardJunction_ReconcileRepairsOutsideHealthCheck is card 38's central regression: it constructs a pair with only the _board link broken (missing) and every pathspec junction intact, so checkJunctionHealth — which only ever inspects the pathspec name-set — reports the pair healthy.
-// It asserts both that Healthy() still reports true (the wire-only-and-unmonitored decision: a broken convenience link must never block loom preflight) and that Reconcile still re-wires the link despite reporting ReconcileActionAlreadyHealthy — the assertion that would have caught the board re-wire being placed inside the `!junctionHealthy` branch instead of next to it.
+// TestBoardJunction_ReconcileRepairsOutsideHealthCheck is card 38's central regression: it
+// constructs a pair with only the _board link broken (missing) and every pathspec junction intact,
+// so checkJunctionHealth — which only ever inspects the pathspec name-set — reports the pair
+// healthy.
+// It asserts both that Healthy() still reports true (the wire-only-and-unmonitored decision: a
+// broken convenience link must never block loom preflight) and that Reconcile still re-wires the
+// link despite reporting ReconcileActionAlreadyHealthy — the assertion that would have caught the
+// board re-wire being placed inside the `!junctionHealthy` branch instead of next to it.
 func TestBoardJunction_ReconcileRepairsOutsideHealthCheck(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -164,7 +184,9 @@ func TestBoardJunction_ReconcileRepairsOutsideHealthCheck(t *testing.T) {
 	}
 }
 
-// TestBoardJunction_ReconcileRepointsWrongTarget covers the mispointed shape of the same repair (as opposed to TestBoardJunction_ReconcileRepairsOutsideHealthCheck's missing shape): a _board link present but resolving to the wrong directory is re-pointed at the canonical target by Reconcile.
+// TestBoardJunction_ReconcileRepointsWrongTarget covers the mispointed shape of the same repair (as
+// opposed to TestBoardJunction_ReconcileRepairsOutsideHealthCheck's missing shape): a _board link
+// present but resolving to the wrong directory is re-pointed at the canonical target by Reconcile.
 func TestBoardJunction_ReconcileRepointsWrongTarget(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -212,9 +234,13 @@ func TestBoardJunction_ReconcileRepointsWrongTarget(t *testing.T) {
 	}
 }
 
-// TestBoardJunction_AbsentUntilPairFullyWired covers the missing-weft deferral: a raw host worktree created directly via `git worktree add` (bypassing topology.Add entirely) has no junction wired at all, including _board.
-// The first Reconcile pass adopts it (ReconcileActionRawAdopted), creating only a dormant weft worktree — no wiring happens on this action, so the board link stays absent.
-// The immediately following pass takes the weftWorktreeExists branch, wiring both the pathspec junctions and _board together.
+// TestBoardJunction_AbsentUntilPairFullyWired covers the missing-weft deferral: a raw host worktree
+// created directly via `git worktree add` (bypassing topology.Add entirely) has no junction wired
+// at all, including _board.
+// The first Reconcile pass adopts it (ReconcileActionRawAdopted), creating only a dormant weft
+// worktree — no wiring happens on this action, so the board link stays absent.
+// The immediately following pass takes the weftWorktreeExists branch, wiring both the pathspec
+// junctions and _board together.
 func TestBoardJunction_AbsentUntilPairFullyWired(t *testing.T) {
 	t.Parallel()
 
@@ -259,7 +285,10 @@ func TestBoardJunction_AbsentUntilPairFullyWired(t *testing.T) {
 	}
 }
 
-// TestBoardJunction_ExcludedFromPathspecRoutes guards the batch-local decision against a later "simplification": _board must appear in neither WiredNames' output (the exported wrapper over filterHubReserved) nor ScopedPathspec's output over the real loaded config's raw Dirs() — the two routes that respectively drive junction wiring and the weft commit pathspec.
+// TestBoardJunction_ExcludedFromPathspecRoutes guards the batch-local decision against a later
+// "simplification": _board must appear in neither WiredNames' output (the exported wrapper over
+// filterHubReserved) nor ScopedPathspec's output over the real loaded config's raw Dirs() — the two
+// routes that respectively drive junction wiring and the weft commit pathspec.
 func TestBoardJunction_ExcludedFromPathspecRoutes(t *testing.T) {
 	t.Parallel()
 

@@ -1,5 +1,7 @@
-// parse.go implements the pure, I/O-free parser the tmux overlay (overlay.go) calls after shelling out: pane-list parsing.
-// Keeping it free of subprocess I/O means it is unit-testable without a running tmux server, matching the module's hermetic-by-default testing posture.
+// parse.go implements the pure, I/O-free parser the tmux overlay (overlay.go) calls after shelling
+// out: pane-list parsing.
+// Keeping it free of subprocess I/O means it is unit-testable without a running tmux server,
+// matching the module's hermetic-by-default testing posture.
 
 package reedengine
 

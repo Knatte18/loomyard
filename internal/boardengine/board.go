@@ -1,25 +1,43 @@
 // Package boardengine provides a one-shot, daemonless file-locked task tracker.
 // Board is the only entry point callers use.
 //
-// Board sequences all mutating operations with a file lock: lock → load both stores → mutate → render → write files → save.
-// After each write, a detached background sync process (see sync.go) is launched to commit and push changes to the remote.
+// Board sequences all mutating operations with a file lock: lock → load both stores → mutate →
+// render → write files → save.
+// After each write, a detached background sync process (see sync.go) is launched to commit and push
+// changes to the remote.
 // The write returns immediately without waiting for the sync.
 // Read methods (Get/List) bypass the lock and load directly from disk.
 //
-// The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls, under board's own board.lock/board.push.lock write and push locks.
+// The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls,
+// under board's own board.lock/board.push.lock write and push locks.
 //
 // Storage: board lives at weft:main, never a separate repo.
-// fabricengine enforces one uniform branch-naming scheme with no exceptions: a host branch <branch> is always paired with weft branch <branch>-weft.
-// That means no task's weft branch can ever be named exactly the host's own default branch (every paired weft branch carries the -weft suffix) — which is what makes the unsuffixed name permanently unclaimed by the pairing convention and reserved exclusively for board.
-// This repo's earlier design considered and rejected two alternatives before landing here: a separate third repo for board is extra git-identity overhead for something that doesn't need its own identity;
-// and GitHub wiki rendering (an intermediate idea) requires whichever repo hosts the wiki to be public on GitHub's free tier — in the old separate-repo model that meant board's own repo, never the host/warp repo — disqualifying for private consulting work, where the host repo's wiki-hosting repo would have had to go public just to render board's front page.
+// fabricengine enforces one uniform branch-naming scheme with no exceptions: a host branch <branch>
+// is always paired with weft branch <branch>-weft.
+// That means no task's weft branch can ever be named exactly the host's own default branch (every
+// paired weft branch carries the -weft suffix) — which is what makes the unsuffixed name
+// permanently unclaimed by the pairing convention and reserved exclusively for board.
+// This repo's earlier design considered and rejected two alternatives before landing here: a
+// separate third repo for board is extra git-identity overhead for something that doesn't need its
+// own identity;
+// and GitHub wiki rendering (an intermediate idea) requires whichever repo hosts the wiki to be
+// public on GitHub's free tier — in the old separate-repo model that meant board's own repo, never
+// the host/warp repo — disqualifying for private consulting work, where the host repo's
+// wiki-hosting repo would have had to go public just to render board's front page.
 //
-// The long-lived "prime" worktree is the only worktree with a reason to check out two weft branches simultaneously: its own ordinary <name>-weft companion (the standard pairing rule, unchanged), plus weft:main for board access — never paired with any warp branch.
+// The long-lived "prime" worktree is the only worktree with a reason to check out two weft branches
+// simultaneously: its own ordinary <name>-weft companion (the standard pairing rule, unchanged),
+// plus weft:main for board access — never paired with any warp branch.
 // No other worktree checks out weft:main directly.
 //
-// Consequence for fabric: weft:main has no corresponding warp branch, so the Warp-SHA trailer / correspondence-index machinery (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not apply to it — board's reads/writes to weft:main are a standalone concern, not routed through fabric.Commit.
+// Consequence for fabric: weft:main has no corresponding warp branch, so the Warp-SHA trailer /
+// correspondence-index machinery (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not
+// apply to it — board's reads/writes to weft:main are a standalone concern, not routed through
+// fabric.Commit.
 //
-// Recorded for later, not acted on now: this repo's own manifest/roadmap.md and the mill wiki's task list are both candidates to eventually fold into board, once loomyard's own development moves off mill onto lyx/loom.
+// Recorded for later, not acted on now: this repo's own manifest/roadmap.md and the mill wiki's
+// task list are both candidates to eventually fold into board, once loomyard's own development
+// moves off mill onto lyx/loom.
 
 package boardengine
 
@@ -40,7 +58,8 @@ const (
 )
 
 // Board is the high-level facade over a board directory.
-// Every mutating method acquires an exclusive file lock, mutates the stores, and renders output files;
+// Every mutating method acquires an exclusive file lock, mutates the stores, and renders output
+// files;
 // the remote backup (commit + push) is detached.
 type Board struct {
 	boardPath string
@@ -212,7 +231,8 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 // MergeTasks atomically removes slugs, upserts one task, and optionally applies a status update.
 // setStatus carries the pre-resolved task selector and status value;
 // pass nil to skip the status step.
-// A status update that targets a missing task causes the entire merge to fail (writeOp discards the in-memory mutation).
+// A status update that targets a missing task causes the entire merge to fail (writeOp discards the
+// in-memory mutation).
 func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	result, err := b.writeOp(tasksTarget, func(target, other *Store) (any, error) {
 		if err := checkCrossStoreSlugAvailable(upsert, target, other); err != nil {
@@ -452,15 +472,24 @@ func taskToUpsertFields(t Task) map[string]any {
 	return fields
 }
 
-// PromoteNote moves the note identified by idOrSlug from notes.json into tasks.json: it upserts the note's content into the tasks store, saves it, then removes the entry from the notes store and saves that too.
-// Built directly on boardCriticalSection (not writeOp, which only saves one store) because PromoteNote must save both stores, in this order.
+// PromoteNote moves the note identified by idOrSlug from notes.json into tasks.json: it upserts the
+// note's content into the tasks store, saves it, then removes the entry from the notes store and
+// saves that too.
+// Built directly on boardCriticalSection (not writeOp, which only saves one store) because
+// PromoteNote must save both stores, in this order.
 //
-// Save ordering is the crash-safety contract this method exists to uphold: tasksStore.Save() happens FIRST, notesStore.Save() SECOND.
-// A crash between the two saves leaves the entry present in BOTH files — recoverable, never silently lost.
-// A retry after such a crash is a plain idempotent call: notesStore.GetTask still finds the note (removal never ran), and tasksStore.UpsertTask finds the slug already present and takes the ApplyPatch in-place-update branch (not NewTask), converging to the same result;
+// Save ordering is the crash-safety contract this method exists to uphold: tasksStore.Save()
+// happens FIRST, notesStore.Save() SECOND.
+// A crash between the two saves leaves the entry present in BOTH files — recoverable, never
+// silently lost.
+// A retry after such a crash is a plain idempotent call: notesStore.GetTask still finds the note
+// (removal never ran), and tasksStore.UpsertTask finds the slug already present and takes the
+// ApplyPatch in-place-update branch (not NewTask), converging to the same result;
 // notesStore.RemoveTask then completes on the retry.
 //
-// A note whose depends_on still names a notes.json-only, not-yet-promoted slug is rejected by tasksStore.UpsertTask's own validateWrite dangling-dependency check with no new code needed here — this is intended behavior (promote dependencies first), not a gap.
+// A note whose depends_on still names a notes.json-only, not-yet-promoted slug is rejected by
+// tasksStore.UpsertTask's own validateWrite dangling-dependency check with no new code needed here
+// — this is intended behavior (promote dependencies first), not a gap.
 func (b *Board) PromoteNote(idOrSlug any) (Task, error) {
 	result, err := b.boardCriticalSection(func(tasksStore, notesStore *Store) (any, error) {
 		note, found := notesStore.GetTask(idOrSlug)

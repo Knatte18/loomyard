@@ -19,8 +19,11 @@ import (
 	"testing"
 )
 
-// TestCommit_SkipGit_TwoSided asserts that under opts.SkipGit, a two-sided Fabric.Commit lands the warp side but no-ops the weft side entirely: no weft commit and unchanged weft HEAD.
-// Per the combined-commit-lock Shared Decision, the combined write lock is taken whenever the call commits anything at all, warp-only included — since this call's warp side is non-empty ("README"), the lock dir IS created here even though the weft side is skipped;
+// TestCommit_SkipGit_TwoSided asserts that under opts.SkipGit, a two-sided Fabric.Commit lands the
+// warp side but no-ops the weft side entirely: no weft commit and unchanged weft HEAD.
+// Per the combined-commit-lock Shared Decision, the combined write lock is taken whenever the call
+// commits anything at all, warp-only included — since this call's warp side is non-empty
+// ("README"), the lock dir IS created here even though the weft side is skipped;
 // that is the correct, intended behavior, not a weft-scoped-lock regression.
 func TestCommit_SkipGit_TwoSided(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
@@ -64,7 +67,8 @@ func TestCommit_SkipGit_TwoSided(t *testing.T) {
 	}
 }
 
-// TestCommit_SkipGit_WarpOnly asserts that a warp-only input under opts.SkipGit still lands its warp commit — SkipGit narrows to the weft side only, never suppressing the warp commit.
+// TestCommit_SkipGit_WarpOnly asserts that a warp-only input under opts.SkipGit still lands its
+// warp commit — SkipGit narrows to the weft side only, never suppressing the warp commit.
 func TestCommit_SkipGit_WarpOnly(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -83,7 +87,8 @@ func TestCommit_SkipGit_WarpOnly(t *testing.T) {
 	}
 }
 
-// TestCommit_TwoSided_NormalOpts_ControlCase is the control case for the two SkipGit tests above: under normal (zero-value) opts, a two-sided Fabric.Commit lands both sides.
+// TestCommit_TwoSided_NormalOpts_ControlCase is the control case for the two SkipGit tests above:
+// under normal (zero-value) opts, a two-sided Fabric.Commit lands both sides.
 func TestCommit_TwoSided_NormalOpts_ControlCase(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)

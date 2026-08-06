@@ -1,4 +1,5 @@
-// list.go exposes the worktree List operation as a Topology method over the package-local porcelain parser in worktreelist.go.
+// list.go exposes the worktree List operation as a Topology method over the package-local porcelain
+// parser in worktreelist.go.
 
 package fabricengine
 

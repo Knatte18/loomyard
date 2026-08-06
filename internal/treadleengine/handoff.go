@@ -1,6 +1,13 @@
-// handoff.go defines the judge-maintained handoff contract — the file a progress-judge call writes alongside its verdict so the NEXT judge call can bound its read-set to {latest valid handoff + reviews it has not absorbed} instead of {every prior round's review}.
-// Like judgeverdict.go, this is a two-layer posture: ParseHandoff is fail-loud and never silently defaults — a malformed handoff file is an agent defect that must be visible as an error to whatever calls this function directly (including tests).
-// The fail-safe posture — swallowing that error into a logger.Warn and falling back to the uncovered-reviews read-set, never propagating it as an engine error and never causing STUCK — lives one layer up, in the round loop (run.go) that calls ParseHandoff after a judge call, exactly mirroring how judge.go's spawners already treat ParseJudgeVerdict failures.
+// handoff.go defines the judge-maintained handoff contract — the file a progress-judge call writes
+// alongside its verdict so the NEXT judge call can bound its read-set to {latest valid handoff +
+// reviews it has not absorbed} instead of {every prior round's review}.
+// Like judgeverdict.go, this is a two-layer posture: ParseHandoff is fail-loud and never silently
+// defaults — a malformed handoff file is an agent defect that must be visible as an error to
+// whatever calls this function directly (including tests).
+// The fail-safe posture — swallowing that error into a logger.Warn and falling back to the
+// uncovered-reviews read-set, never propagating it as an engine error and never causing STUCK —
+// lives one layer up, in the round loop (run.go) that calls ParseHandoff after a judge call,
+// exactly mirroring how judge.go's spawners already treat ParseJudgeVerdict failures.
 package treadleengine
 
 import (
@@ -12,14 +19,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Handoff is a judge call's maintained state carried into the next: which rounds' reviews it has absorbed (CoversRounds), a finding-identity ledger (Ledger), and a prose narrative (Prose).
+// Handoff is a judge call's maintained state carried into the next: which rounds' reviews it has
+// absorbed (CoversRounds), a finding-identity ledger (Ledger), and a prose narrative (Prose).
 type Handoff struct {
 	CoversRounds []int
 	Ledger       []LedgerEntry
 	Prose        string
 }
 
-// LedgerEntry is one finding-identity record: a Key the judge uses to recognize recurring findings, the Rounds it was seen in, and its Status.
+// LedgerEntry is one finding-identity record: a Key the judge uses to recognize recurring findings,
+// the Rounds it was seen in, and its Status.
 type LedgerEntry struct {
 	Key    string
 	Rounds []int
@@ -44,8 +53,11 @@ type handoffLedgerEntry struct {
 }
 
 // ParseHandoff parses a judge handoff file into a Handoff.
-// The file must open and close with "---" delimiting YAML frontmatter; everything after is prose narrative.
-// Fails loud on malformed files: frontmatter must be valid YAML, covers_rounds must be non-empty positive integers, and each ledger entry must have a non-empty key, non-empty rounds list, and status of "open" or "resolved".
+// The file must open and close with "---" delimiting YAML frontmatter; everything after is prose
+// narrative.
+// Fails loud on malformed files: frontmatter must be valid YAML, covers_rounds must be non-empty
+// positive integers, and each ledger entry must have a non-empty key, non-empty rounds list, and
+// status of "open" or "resolved".
 func ParseHandoff(content []byte) (Handoff, error) {
 	header, err := splitFrontmatter(content, "handoff")
 	if err != nil {

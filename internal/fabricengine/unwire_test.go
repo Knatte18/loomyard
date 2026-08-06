@@ -30,7 +30,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
-// TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan enumeration property: Unwire removes every fabric junction present on disk for the worktree, including a junction (`_extra`) absent from the repo-wide pathspec that a config-driven name-set would have left behind.
+// TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan enumeration property:
+// Unwire removes every fabric junction present on disk for the worktree, including a junction
+// (`_extra`) absent from the repo-wide pathspec that a config-driven name-set would have left
+// behind.
 func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -75,7 +78,9 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	}
 }
 
-// TestUnwire_ClearsWeftLyxOnlyNeverPattern verifies the deliberate asymmetry Unwire ports from the deleted initengine.Undo: weft _lyx content is cleared (WeftContent == "cleared"), while weft _pattern content survives on disk untouched.
+// TestUnwire_ClearsWeftLyxOnlyNeverPattern verifies the deliberate asymmetry Unwire ports from the
+// deleted initengine.Undo: weft _lyx content is cleared (WeftContent == "cleared"), while weft
+// _pattern content survives on disk untouched.
 func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -162,7 +167,9 @@ func TestUnwire_RevertsGitignore(t *testing.T) {
 	}
 }
 
-// TestUnwire_NeverWiredHostIsIdempotentNoOp verifies that Unwire is a clean, error-free no-op on a host worktree that was never fabric-paired at all — no weft sibling, no junctions — mirroring initengine.Undo's TestUndo_NoWeftPairing coverage.
+// TestUnwire_NeverWiredHostIsIdempotentNoOp verifies that Unwire is a clean, error-free no-op on a
+// host worktree that was never fabric-paired at all — no weft sibling, no junctions — mirroring
+// initengine.Undo's TestUndo_NoWeftPairing coverage.
 func TestUnwire_NeverWiredHostIsIdempotentNoOp(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -189,7 +196,9 @@ func TestUnwire_NeverWiredHostIsIdempotentNoOp(t *testing.T) {
 	}
 }
 
-// TestUnwire_PreservesRepoWideRecords proves Unwire's per-worktree scope: the repo-wide weft:main records (.lyx-anchor, <BoardDir>/_lyx/config/fabric.yaml) survive a worktree's Unwire untouched, so a later `lyx fabric reconcile` can still re-wire it.
+// TestUnwire_PreservesRepoWideRecords proves Unwire's per-worktree scope: the repo-wide weft:main
+// records (.lyx-anchor, <BoardDir>/_lyx/config/fabric.yaml) survive a worktree's Unwire untouched,
+// so a later `lyx fabric reconcile` can still re-wire it.
 func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 

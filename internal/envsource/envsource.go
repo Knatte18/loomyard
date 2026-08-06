@@ -1,5 +1,6 @@
 // Package envsource reads environment variables from a .env file and OS environment.
-// It provides a single source of truth for how environment variables enter the system, isolating env-sourcing policy from the configuration engine.
+// It provides a single source of truth for how environment variables enter the system, isolating
+// env-sourcing policy from the configuration engine.
 package envsource
 
 import (
@@ -18,7 +19,8 @@ func DotEnv(baseDir string) string {
 	return filepath.Join(baseDir, dotEnvName)
 }
 
-// Build reads the .env file at DotEnv(baseDir) and overlays the OS environment, with OS values taking precedence.
+// Build reads the .env file at DotEnv(baseDir) and overlays the OS environment, with OS values
+// taking precedence.
 // The .env file is parsed line-by-line, skipping blank lines and comments;
 // each line is split on the first = only.
 // Absent .env files return only OS environment.

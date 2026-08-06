@@ -1,5 +1,7 @@
-// layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements within a Box into a tmux/psmux window_layout body and its checksum-prefixed full string.
-// It is region-relative — offsets are anchored to box.X/box.Y rather than the whole window — so the stack region can be rendered independently of the Box it is placed within.
+// layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements
+// within a Box into a tmux/psmux window_layout body and its checksum-prefixed full string.
+// It is region-relative — offsets are anchored to box.X/box.Y rather than the whole window — so the
+// stack region can be rendered independently of the Box it is placed within.
 // This file makes no placement or height decisions;
 // those live in policy.go and height.go.
 // It only renders the string from the placements it is given.

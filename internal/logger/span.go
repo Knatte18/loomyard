@@ -1,9 +1,14 @@
-// span.go implements explicit-parent diagnostic spans layered on top of the process-wide trace identity (trace.go): a Span is a plain value carrying a dotted path built up via StartSpan/Child, with span-scoped Debug/Info/Warn methods that stamp span=<path> alongside the trace= field every package-level Debug/Info/Warn call already stamps.
-// Per discussion.md's explicit-span-parenting decision, there is no ambient "current span" global -- a caller always holds and threads its own *Span explicitly.
+// span.go implements explicit-parent diagnostic spans layered on top of the process-wide trace
+// identity (trace.go): a Span is a plain value carrying a dotted path built up via StartSpan/Child,
+// with span-scoped Debug/Info/Warn methods that stamp span=<path> alongside the trace= field every
+// package-level Debug/Info/Warn call already stamps.
+// Per discussion.md's explicit-span-parenting decision, there is no ambient "current span" global
+// -- a caller always holds and threads its own *Span explicitly.
 
 package logger
 
-// Span represents one node in an explicit-parent span tree: a dotted path built by StartSpan and extended by Child.
+// Span represents one node in an explicit-parent span tree: a dotted path built by StartSpan and
+// extended by Child.
 type Span struct {
 	path string
 	err  error

@@ -81,8 +81,10 @@ func upstreamRef(t *testing.T, dir string) string {
 }
 
 // TestPush_CrossCloneRebaseRetry exercises fixture (a): a bare remote plus two clones.
-// Clone A's very first Push() has no upstream configured yet and must both succeed and establish tracking;
-// clone B then pushes ahead, putting clone A's next push into a non-fast-forward that Push() must recover from via one pull --rebase retry, landing both commits on the remote.
+// Clone A's very first Push() has no upstream configured yet and must both succeed and establish
+// tracking;
+// clone B then pushes ahead, putting clone A's next push into a non-fast-forward that Push() must
+// recover from via one pull --rebase retry, landing both commits on the remote.
 func TestPush_CrossCloneRebaseRetry(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -130,8 +132,11 @@ func TestPush_CrossCloneRebaseRetry(t *testing.T) {
 	}
 }
 
-// TestPush_RebaseRetryPrecondition_DirtyTrackedFileAborts asserts the documented rebase-retry precondition: pull --rebase aborts when the worktree has a dirty tracked file, so Push() surfaces an error instead of silently recovering.
-// This is a caller-precondition failure, not a gitrepo bug — the caller is responsible for a clean tree of tracked files before relying on the rebase-retry to recover a rejected push.
+// TestPush_RebaseRetryPrecondition_DirtyTrackedFileAborts asserts the documented rebase-retry
+// precondition: pull --rebase aborts when the worktree has a dirty tracked file, so Push() surfaces
+// an error instead of silently recovering.
+// This is a caller-precondition failure, not a gitrepo bug — the caller is responsible for a clean
+// tree of tracked files before relying on the rebase-retry to recover a rejected push.
 func TestPush_RebaseRetryPrecondition_DirtyTrackedFileAborts(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -162,8 +167,12 @@ func TestPush_RebaseRetryPrecondition_DirtyTrackedFileAborts(t *testing.T) {
 	}
 }
 
-// TestPush_RebaseConflict_AbortsToCleanState drives a genuine content conflict through the rebase-retry: both clones commit conflicting edits to the same file, so clone A's pull --rebase stops mid-rebase.
-// Push must surface an error AND leave the repository fully restored — clean worktree, no rebase in progress, HEAD back on the local commit — because the rebase-retry's contract is to never leave a rebase half-done.
+// TestPush_RebaseConflict_AbortsToCleanState drives a genuine content conflict through the
+// rebase-retry: both clones commit conflicting edits to the same file, so clone A's pull --rebase
+// stops mid-rebase.
+// Push must surface an error AND leave the repository fully restored — clean worktree, no rebase in
+// progress, HEAD back on the local commit — because the rebase-retry's contract is to never leave a
+// rebase half-done.
 func TestPush_RebaseConflict_AbortsToCleanState(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -218,7 +227,10 @@ func TestPush_RebaseConflict_AbortsToCleanState(t *testing.T) {
 	}
 }
 
-// TestPushRebaseFree_FirstPush_EstablishesUpstream exercises PushRebaseFree's first-push path: a checkout with no upstream tracking branch yet must both succeed and establish tracking (proving push.autoSetupRemote=true is applied, exactly as Push's own first-push path does), landing the local HEAD on the bare remote.
+// TestPushRebaseFree_FirstPush_EstablishesUpstream exercises PushRebaseFree's first-push path: a
+// checkout with no upstream tracking branch yet must both succeed and establish tracking (proving
+// push.autoSetupRemote=true is applied, exactly as Push's own first-push path does), landing the
+// local HEAD on the bare remote.
 func TestPushRebaseFree_FirstPush_EstablishesUpstream(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -251,7 +263,12 @@ func TestPushRebaseFree_FirstPush_EstablishesUpstream(t *testing.T) {
 	}
 }
 
-// TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected proves PushRebaseFree never recovers a non-fast-forward rejection: clone B pushes a commit clone A lacks, so clone A's next PushRebaseFree must return an error satisfying errors.Is(err, gitrepo.ErrPushRejected) and must leave the working tree completely untouched — no pull --rebase ever ran, so a dirty tracked file left in place before the call stays exactly as it was, no rebase is left in progress, and local HEAD does not move.
+// TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected proves PushRebaseFree never recovers a
+// non-fast-forward rejection: clone B pushes a commit clone A lacks, so clone A's next
+// PushRebaseFree must return an error satisfying errors.Is(err, gitrepo.ErrPushRejected) and must
+// leave the working tree completely untouched — no pull --rebase ever ran, so a dirty tracked file
+// left in place before the call stays exactly as it was, no rebase is left in progress, and local
+// HEAD does not move.
 func TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -315,9 +332,12 @@ func TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected(t *testing.T) {
 	}
 }
 
-// TestPush_NoRemoteConfigured_SurfacesGitError asserts the third fixture discussion.md calls out: a repo with zero remotes configured at all (not merely no upstream tracking branch — no "origin" either).
+// TestPush_NoRemoteConfigured_SurfacesGitError asserts the third fixture discussion.md calls out: a
+// repo with zero remotes configured at all (not merely no upstream tracking branch — no "origin"
+// either).
 // Push must not swallow this into a synthetic message;
-// the wrapped error must still carry git's own stderr, matching Push's documented "any other push failure returns an error including git's stderr" contract.
+// the wrapped error must still carry git's own stderr, matching Push's documented "any other push
+// failure returns an error including git's stderr" contract.
 func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "content")
@@ -332,7 +352,11 @@ func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 	}
 }
 
-// TestPushCoalesced_NoRemoteConfigured_SurfacesGitError is PushCoalesced's counterpart to TestPush_NoRemoteConfigured_SurfacesGitError: HasUnpushed treats the missing upstream as "unpushed" regardless of the missing remote, so PushCoalesced proceeds to the same pushWithRebaseRetry path and must surface the same unwrapped git error rather than the lock machinery masking it.
+// TestPushCoalesced_NoRemoteConfigured_SurfacesGitError is PushCoalesced's counterpart to
+// TestPush_NoRemoteConfigured_SurfacesGitError: HasUnpushed treats the missing upstream as
+// "unpushed" regardless of the missing remote, so PushCoalesced proceeds to the same
+// pushWithRebaseRetry path and must surface the same unwrapped git error rather than the lock
+// machinery masking it.
 func TestPushCoalesced_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "content")
@@ -347,9 +371,13 @@ func TestPushCoalesced_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
 	}
 }
 
-// TestPushCoalesced_LockBlocking_Serializes exercises fixture (b): a single clone (one worktree, one .gitrepo-push.lock).
-// Several commits are made before any push runs, then PushCoalesced is called concurrently from two goroutines;
-// they must serialize on the single-pusher lock and both return with no error, ending with everything pushed — the second goroutine finds nothing unpushed once it acquires the lock and returns immediately.
+// TestPushCoalesced_LockBlocking_Serializes exercises fixture (b): a single clone (one worktree,
+// one .gitrepo-push.lock).
+// Several commits are made before any push runs, then PushCoalesced is called concurrently from two
+// goroutines;
+// they must serialize on the single-pusher lock and both return with no error, ending with
+// everything pushed — the second goroutine finds nothing unpushed once it acquires the lock and
+// returns immediately.
 func TestPushCoalesced_LockBlocking_Serializes(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)
@@ -417,7 +445,10 @@ func TestPushCoalesced_LockBlocking_Serializes(t *testing.T) {
 	}
 }
 
-// TestPushCoalescedChildProcess is not a standalone test: it is the child body TestPushCoalesced_CrossProcess_Serializes re-execs from the test binary with GITREPO_TEST_PUSH_DIR set, so the single-pusher lock is exercised across genuinely separate OS processes.
+// TestPushCoalescedChildProcess is not a standalone test: it is the child body
+// TestPushCoalesced_CrossProcess_Serializes re-execs from the test binary with
+// GITREPO_TEST_PUSH_DIR set, so the single-pusher lock is exercised across genuinely separate OS
+// processes.
 // It skips in a normal run (env unset).
 func TestPushCoalescedChildProcess(t *testing.T) {
 	dir := os.Getenv("GITREPO_TEST_PUSH_DIR")
@@ -429,7 +460,10 @@ func TestPushCoalescedChildProcess(t *testing.T) {
 	}
 }
 
-// TestPushCoalesced_CrossProcess_Serializes proves the single-pusher lock holds across real OS processes, not just goroutines sharing one process (TestPushCoalesced_LockBlocking_Serializes' proxy): several re-exec'd child processes call PushCoalesced against the same clone concurrently, and every commit must land on the bare remote with all children succeeding.
+// TestPushCoalesced_CrossProcess_Serializes proves the single-pusher lock holds across real OS
+// processes, not just goroutines sharing one process (TestPushCoalesced_LockBlocking_Serializes'
+// proxy): several re-exec'd child processes call PushCoalesced against the same clone concurrently,
+// and every commit must land on the bare remote with all children succeeding.
 // Synchronization is the lock itself — no timing assumptions.
 func TestPushCoalesced_CrossProcess_Serializes(t *testing.T) {
 	container := t.TempDir()
@@ -488,8 +522,10 @@ func TestPushCoalesced_CrossProcess_Serializes(t *testing.T) {
 	}
 }
 
-// TestLockHolderChildProcess is not a standalone test: it is the child body TestPushCoalesced_LockHolderCrash_Recovers re-execs.
-// It acquires the repo's push lock, prints a marker so the parent knows the lock is held, and blocks until the parent SIGKILLs it.
+// TestLockHolderChildProcess is not a standalone test: it is the child body
+// TestPushCoalesced_LockHolderCrash_Recovers re-execs.
+// It acquires the repo's push lock, prints a marker so the parent knows the lock is held, and
+// blocks until the parent SIGKILLs it.
 // It skips in a normal run.
 func TestLockHolderChildProcess(t *testing.T) {
 	dir := os.Getenv("GITREPO_TEST_LOCKHOLD_DIR")
@@ -509,7 +545,10 @@ func TestLockHolderChildProcess(t *testing.T) {
 	}
 }
 
-// TestPushCoalesced_LockHolderCrash_Recovers proves the push lock does not wedge the repo when its holder dies without releasing: a child process acquires .gitrepo-push.lock (confirmed genuinely held cross-process via a failed TryAcquire), is SIGKILLed mid-hold, and a fresh PushCoalesced must then complete — the OS releases a flock on process death — and push the pending commit.
+// TestPushCoalesced_LockHolderCrash_Recovers proves the push lock does not wedge the repo when its
+// holder dies without releasing: a child process acquires .gitrepo-push.lock (confirmed genuinely
+// held cross-process via a failed TryAcquire), is SIGKILLed mid-hold, and a fresh PushCoalesced
+// must then complete — the OS releases a flock on process death — and push the pending commit.
 func TestPushCoalesced_LockHolderCrash_Recovers(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)

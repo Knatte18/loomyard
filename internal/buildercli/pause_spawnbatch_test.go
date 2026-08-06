@@ -17,7 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 )
 
-// TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd proves pause and spawn-batch share the same flag file: a pause written by pauseCmd is observed by spawnBatchCmd's own gate, the discussion's shared-seam requirement.
+// TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd proves pause and spawn-batch share the same
+// flag file: a pause written by pauseCmd is observed by spawnBatchCmd's own gate, the discussion's
+// shared-seam requirement.
 func TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newSpawnBatchFixture(t)

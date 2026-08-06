@@ -1,5 +1,8 @@
-// height_test.go exercises the derived height policy in height.go: the heights-fill-the-box invariant, the collapsed-strip height, the active pane's remainder rule, the too-short-window clamp order, and the header-vs-window height clamp (clampHeaderHeight).
-// It also exercises layout.go's buildStackBody/wrapLayout and focus.go's isAncestor, since cards 5 and 7 ship no standalone test file.
+// height_test.go exercises the derived height policy in height.go: the heights-fill-the-box
+// invariant, the collapsed-strip height, the active pane's remainder rule, the too-short-window
+// clamp order, and the header-vs-window height clamp (clampHeaderHeight).
+// It also exercises layout.go's buildStackBody/wrapLayout and focus.go's isAncestor, since cards 5
+// and 7 ship no standalone test file.
 
 package render
 
@@ -162,7 +165,9 @@ func TestStackHeightsExtremelyShortWindowNeverNonPositive(t *testing.T) {
 	}
 }
 
-// TestClampHeaderHeight covers the window-split clamp: the header yields rows first so the strand-stack region never shrinks below MinFullRows (floored at 1) total rows, distinct from clampToFit's job of distributing rows AMONG strands inside an already-shrunk box.
+// TestClampHeaderHeight covers the window-split clamp: the header yields rows first so the
+// strand-stack region never shrinks below MinFullRows (floored at 1) total rows, distinct from
+// clampToFit's job of distributing rows AMONG strands inside an already-shrunk box.
 func TestClampHeaderHeight(t *testing.T) {
 	tests := []struct {
 		name         string

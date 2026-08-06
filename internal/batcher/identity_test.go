@@ -1,6 +1,8 @@
-// identity_test.go covers identityBatcher's one-card-per-batch contract: N cards in, N single-card Batches out, in order, including the empty-input and one-card boundary cases.
+// identity_test.go covers identityBatcher's one-card-per-batch contract: N cards in, N single-card
+// Batches out, in order, including the empty-input and one-card boundary cases.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
-// The table is written generally enough (asserting only "one Batch per input card, in order") that a future grouping batchifier can reuse the same shape for its own contract test.
+// The table is written generally enough (asserting only "one Batch per input card, in order") that
+// a future grouping batchifier can reuse the same shape for its own contract test.
 
 package batcher
 

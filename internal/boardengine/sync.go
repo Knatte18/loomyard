@@ -2,7 +2,9 @@
 //
 // Writes only touch the filesystem;
 // Sync is what gets those changes to GitHub.
-// The absorbing-lock loop-until-clean coalescing is owned by fabricengine.Bolt.Sync, composed here with board's own step closure: ensureLockfilesIgnored + commitDirty (which holds board's own board.lock) and, unless skipPush is set, a push through the same Bolt value.
+// The absorbing-lock loop-until-clean coalescing is owned by fabricengine.Bolt.Sync, composed here
+// with board's own step closure: ensureLockfilesIgnored + commitDirty (which holds board's own
+// board.lock) and, unless skipPush is set, a push through the same Bolt value.
 // A single top-level push lock still serializes pushers across processes;
 // concurrent sync processes block, then exit quickly once there is nothing to do.
 // The write path launches `lyx board sync` detached (see spawn.go) so it never waits.
@@ -23,7 +25,8 @@ const (
 	pushLockFile  = "board.push.lock"
 )
 
-// Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes are gone.
+// Sync commits pending changes and pushes to the remote, looping until clean and unpushed changes
+// are gone.
 // skipGit disables it entirely;
 // skipPush commits locally but skips the push.
 // The absorbing-lock coalescing loop is delegated to fabricengine.NewBolt.

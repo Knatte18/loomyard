@@ -1,4 +1,5 @@
-// chrome_test.go verifies Chrome-discovery ordering using fake executables created under t.TempDir().
+// chrome_test.go verifies Chrome-discovery ordering using fake executables created under
+// t.TempDir().
 // No shelling out, no real Chrome required.
 
 package main

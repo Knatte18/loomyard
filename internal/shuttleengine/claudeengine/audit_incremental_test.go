@@ -1,5 +1,10 @@
-// audit_incremental_test.go covers AuditForksIncremental's seen-set filtering: only fork transcripts whose path is not a key of seenTranscripts are reported, a nil map is equivalent to AuditForks, and the parent facts (SpawnCalls/NamedSpawns/ParentWriteCalls/ParentWrites/ParentBashCommands) are unaffected by the seen set — they are always read in full.
-// Fixture transcripts are written directly with os.WriteFile (Tier 1: no fixture files, no subprocess).
+// audit_incremental_test.go covers AuditForksIncremental's seen-set filtering: only fork
+// transcripts whose path is not a key of seenTranscripts are reported, a nil map is equivalent to
+// AuditForks, and the parent facts
+// (SpawnCalls/NamedSpawns/ParentWriteCalls/ParentWrites/ParentBashCommands) are unaffected by the
+// seen set — they are always read in full.
+// Fixture transcripts are written directly with os.WriteFile (Tier 1: no fixture files, no
+// subprocess).
 
 package claudeengine
 
@@ -28,7 +33,8 @@ func writeForkTranscript(t *testing.T, subagentsDir, name string, lines []string
 	return dest
 }
 
-// TestAuditForksIncremental_SeenSetFiltering proves only fork transcripts whose full path is NOT a key of seenTranscripts are reported in Forks.
+// TestAuditForksIncremental_SeenSetFiltering proves only fork transcripts whose full path is NOT a
+// key of seenTranscripts are reported in Forks.
 func TestAuditForksIncremental_SeenSetFiltering(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -63,7 +69,8 @@ func TestAuditForksIncremental_SeenSetFiltering(t *testing.T) {
 	}
 }
 
-// TestAuditForksIncremental_NilMapEquivalentToAuditForks proves a nil seenTranscripts map reports every fork transcript, identically to AuditForks.
+// TestAuditForksIncremental_NilMapEquivalentToAuditForks proves a nil seenTranscripts map reports
+// every fork transcript, identically to AuditForks.
 func TestAuditForksIncremental_NilMapEquivalentToAuditForks(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -103,7 +110,9 @@ func TestAuditForksIncremental_NilMapEquivalentToAuditForks(t *testing.T) {
 	}
 }
 
-// TestAuditForksIncremental_ParentFactsUnaffectedBySeenSet proves the seen set only filters Forks — the parent-session facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites, ParentBashCommands) are always full/cumulative regardless of what seenTranscripts excludes.
+// TestAuditForksIncremental_ParentFactsUnaffectedBySeenSet proves the seen set only filters Forks —
+// the parent-session facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites,
+// ParentBashCommands) are always full/cumulative regardless of what seenTranscripts excludes.
 func TestAuditForksIncremental_ParentFactsUnaffectedBySeenSet(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

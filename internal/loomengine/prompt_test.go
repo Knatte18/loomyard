@@ -1,5 +1,6 @@
 // prompt_test.go — untagged Tier-1 unit tests for composePrompt and modeRules.
-// Assertions are stable substrings on load-bearing tokens, not full golden-file equality, so the template's prose can evolve without breaking this test.
+// Assertions are stable substrings on load-bearing tokens, not full golden-file equality, so the
+// template's prose can evolve without breaking this test.
 
 package loomengine
 
@@ -8,7 +9,8 @@ import (
 	"testing"
 )
 
-// TestComposePrompt_RendersMarkers verifies the rendered prompt has no unrendered markers, contains the slug and paths, and contains the board-read command.
+// TestComposePrompt_RendersMarkers verifies the rendered prompt has no unrendered markers, contains
+// the slug and paths, and contains the board-read command.
 func TestComposePrompt_RendersMarkers(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -48,7 +50,8 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 	}
 }
 
-// TestComposePrompt_ModeLanguageDiffers verifies the mode renderings carry different language and are not identical.
+// TestComposePrompt_ModeLanguageDiffers verifies the mode renderings carry different language and
+// are not identical.
 func TestComposePrompt_ModeLanguageDiffers(t *testing.T) {
 	slug := "add-json-flag"
 	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"

@@ -1,4 +1,7 @@
-// events_test.go exercises ParseEvents against a fixture JSONL containing two Stop events, an interleaved garbage line, a non-Stop/non-ask event, and a blank line — asserting the lenient skip behaviour and that Raw round trips the exact line it was parsed from — plus dedicated cases for the live-ask (PreToolUse+AskUserQuestion) signal.
+// events_test.go exercises ParseEvents against a fixture JSONL containing two Stop events, an
+// interleaved garbage line, a non-Stop/non-ask event, and a blank line — asserting the lenient skip
+// behaviour and that Raw round trips the exact line it was parsed from — plus dedicated cases for
+// the live-ask (PreToolUse+AskUserQuestion) signal.
 
 package claudeengine
 
@@ -43,7 +46,8 @@ func TestParseEvents_LenientFixture(t *testing.T) {
 	}
 }
 
-// TestParseEvents_LiveAsk verifies a PreToolUse+AskUserQuestion line becomes an EventAsk carrying every tool_input.questions[].question string newline-joined.
+// TestParseEvents_LiveAsk verifies a PreToolUse+AskUserQuestion line becomes an EventAsk carrying
+// every tool_input.questions[].question string newline-joined.
 func TestParseEvents_LiveAsk(t *testing.T) {
 	c := New()
 	const line = `{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which approach?"},{"question":"Proceed now?"}]}}`
@@ -66,7 +70,10 @@ func TestParseEvents_LiveAsk(t *testing.T) {
 	}
 }
 
-// TestParseEvents_LiveAsk_UnexpectedShape verifies a PreToolUse+AskUserQuestion line whose tool_input does not carry the expected questions shape still classifies as EventAsk (the hook_event_name/tool_name pair is confirmed) but with an empty Message, per the leniency contract — never an error.
+// TestParseEvents_LiveAsk_UnexpectedShape verifies a PreToolUse+AskUserQuestion line whose
+// tool_input does not carry the expected questions shape still classifies as EventAsk (the
+// hook_event_name/tool_name pair is confirmed) but with an empty Message, per the leniency contract
+// — never an error.
 func TestParseEvents_LiveAsk_UnexpectedShape(t *testing.T) {
 	c := New()
 	const line = `{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"unexpected":true}}`
@@ -85,7 +92,8 @@ func TestParseEvents_LiveAsk_UnexpectedShape(t *testing.T) {
 	}
 }
 
-// TestParseEvents_PreToolUse_OtherToolSkipped verifies a PreToolUse line for a tool other than AskUserQuestion is skipped entirely, same as any other unrecognized line.
+// TestParseEvents_PreToolUse_OtherToolSkipped verifies a PreToolUse line for a tool other than
+// AskUserQuestion is skipped entirely, same as any other unrecognized line.
 func TestParseEvents_PreToolUse_OtherToolSkipped(t *testing.T) {
 	c := New()
 	const line = `{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{}}`
@@ -98,7 +106,9 @@ func TestParseEvents_PreToolUse_OtherToolSkipped(t *testing.T) {
 	}
 }
 
-// TestParseEvents_RawPreservesSurroundingWhitespace verifies that Raw carries the exact original line bytes -- including incidental leading/trailing whitespace -- rather than the trimmed copy used internally for the blank-line check and JSON parse.
+// TestParseEvents_RawPreservesSurroundingWhitespace verifies that Raw carries the exact original
+// line bytes -- including incidental leading/trailing whitespace -- rather than the trimmed copy
+// used internally for the blank-line check and JSON parse.
 func TestParseEvents_RawPreservesSurroundingWhitespace(t *testing.T) {
 	c := New()
 	const line = `  {"hook_event_name":"Stop","last_assistant_message":"padded"}  `

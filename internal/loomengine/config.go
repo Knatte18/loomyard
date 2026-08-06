@@ -1,6 +1,10 @@
 // config.go — configuration for the loom module.
 //
-// Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file, then validates the discussion and plan role model-specs' grammar via modelspec.Parse so a typo'd spec fails loud at load time rather than hours into a run when the discussion or plan producer first spawns.
+// Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses
+// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config
+// file, then validates the discussion and plan role model-specs' grammar via modelspec.Parse so a
+// typo'd spec fails loud at load time rather than hours into a run when the discussion or plan
+// producer first spawns.
 
 package loomengine
 
@@ -28,41 +32,48 @@ func PlanDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, planparser.PlanDirName)
 }
 
-// PlanOverview returns the path to the plan's overview file: the Plan phase's done-sentinel and the Planner producer's sole Spec.OutputFiles entry.
+// PlanOverview returns the path to the plan's overview file: the Plan phase's done-sentinel and the
+// Planner producer's sole Spec.OutputFiles entry.
 // It shares PlanDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func PlanOverview(l *lyxcwd.Location) string {
 	return filepath.Join(PlanDir(l), "00-overview.md")
 }
 
-// DiscussionDir returns the path to the Discussion phase's output directory for this worktree (the decision-record.md/support-log.md pair).
+// DiscussionDir returns the path to the Discussion phase's output directory for this worktree (the
+// decision-record.md/support-log.md pair).
 // It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, discussionDirName)
 }
 
-// DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan producer's sole input from `_lyx/discussion/`.
+// DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
+// producer's sole input from `_lyx/discussion/`.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDecisionRecord(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "decision-record.md")
 }
 
-// DiscussionSupportLog returns the path to the raw support log read by the Discussion-review gate only.
+// DiscussionSupportLog returns the path to the raw support log read by the Discussion-review gate
+// only.
 // It shares DiscussionDir's AnchorPath anchoring.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionSupportLog(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "support-log.md")
 }
 
-// LoomStatusFile returns the path to the loom phase-machine's status.json sidecar for this worktree.
-// It is AnchorPath-anchored so a caller invoked from anywhere else within the worktree still resolves the one true status.json at the anchored subpath.
+// LoomStatusFile returns the path to the loom phase-machine's status.json sidecar for this
+// worktree.
+// It is AnchorPath-anchored so a caller invoked from anywhere else within the worktree still
+// resolves the one true status.json at the anchored subpath.
 func LoomStatusFile(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, "status.json")
 }
 
-// LoomStatusLock returns the path to the advisory lock file guarding concurrent access to LoomStatusFile(l).
+// LoomStatusLock returns the path to the advisory lock file guarding concurrent access to
+// LoomStatusFile(l).
 // It shares LoomStatusFile's AnchorPath anchoring.
 func LoomStatusLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, "status.json.lock")

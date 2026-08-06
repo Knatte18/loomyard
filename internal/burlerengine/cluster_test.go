@@ -1,4 +1,7 @@
-// cluster_test.go table-drives auditClusterRound over the full violation taxonomy (fork-count mismatch, Agent-call-in-fork, write-in-fork, git-mutation-in-fork, named spawns) plus the warning-only ReportReturned==false case, and separately matrixes mutatingGitPattern against a set of mutating and non-mutating Bash command strings.
+// cluster_test.go table-drives auditClusterRound over the full violation taxonomy (fork-count
+// mismatch, Agent-call-in-fork, write-in-fork, git-mutation-in-fork, named spawns) plus the
+// warning-only ReportReturned==false case, and separately matrixes mutatingGitPattern against a set
+// of mutating and non-mutating Bash command strings.
 
 package burlerengine
 
@@ -168,9 +171,11 @@ func TestAuditClusterRound(t *testing.T) {
 	}
 }
 
-// TestMutatingGitPattern matrixes mutatingGitPattern against every Bash command shape the audit must classify correctly: every listed mutating subcommand, tolerant of a leading path/&&/;
+// TestMutatingGitPattern matrixes mutatingGitPattern against every Bash command shape the audit
+// must classify correctly: every listed mutating subcommand, tolerant of a leading path/&&/;
 // chain prefix,
-// and — the false-positive guards — a subcommand word merely appearing inside a longer argument token, plus non-mutating git commands (log, diff, status) that must never match.
+// and — the false-positive guards — a subcommand word merely appearing inside a longer argument
+// token, plus non-mutating git commands (log, diff, status) that must never match.
 func TestMutatingGitPattern(t *testing.T) {
 	tests := []struct {
 		name string

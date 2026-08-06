@@ -1,6 +1,11 @@
-// state.go persists one treadle block's progress at <runDir>/state.json via internal/state's locked JSON I/O.
-// It implements the round-level crash-recovery mechanics: classifying an existing state file into fresh/resume/error, moving aside a partial round's stale artifacts before it re-runs, and the pause flag file the loop checks between rounds.
-// Identity derivation (ProfileHash, DeriveRunID, ValidRunID, sanitizeSlug) is NOT here — treadle takes ProfileHash as caller-supplied data (see Profile.ProfileHash and the treadle-owns-no-config shared decision);
+// state.go persists one treadle block's progress at <runDir>/state.json via internal/state's locked
+// JSON I/O.
+// It implements the round-level crash-recovery mechanics: classifying an existing state file into
+// fresh/resume/error, moving aside a partial round's stale artifacts before it re-runs, and the
+// pause flag file the loop checks between rounds.
+// Identity derivation (ProfileHash, DeriveRunID, ValidRunID, sanitizeSlug) is NOT here — treadle
+// takes ProfileHash as caller-supplied data (see Profile.ProfileHash and the treadle-owns-no-config
+// shared decision);
 // those functions stay with perchengine, in internal/perchengine/identity.go.
 
 package treadleengine
@@ -122,10 +127,13 @@ func loadOrInitState(name string, runDir string, hash string, caps []int) (runSt
 	return existing, resumeInfo{Fresh: false, NextRound: len(existing.Rounds) + 1}, nil
 }
 
-// TerminalOutcome reports the terminal Outcome recorded in runDir's state.json: ok is true only when a state file exists AND records a finished block (APPROVED or STUCK).
+// TerminalOutcome reports the terminal Outcome recorded in runDir's state.json: ok is true only
+// when a state file exists AND records a finished block (APPROVED or STUCK).
 // A missing state file or an in-flight block (empty Outcome) returns ok false with no error.
 // It exists for a caller's own pause verb (e.g.
-// perchcli's), which must refuse to write a pause flag against a block that already finished — no run loop will ever observe that flag, so reporting the pause as accepted would mislead the operator.
+// perchcli's), which must refuse to write a pause flag against a block that already finished — no
+// run loop will ever observe that flag, so reporting the pause as accepted would mislead the
+// operator.
 // Reads under the same state.json.lock discipline as loadOrInitState.
 func TerminalOutcome(runDir string) (Outcome, bool, error) {
 	path := filepath.Join(runDir, stateFileName)
@@ -202,7 +210,8 @@ func fileExists(path string) bool {
 // A caller's own pause verb (e.g.
 // perchcli's) writes this file,
 // and the run loop's PauseRequested seam checks for it between rounds;
-// both must resolve the same path, which is why this is exported rather than duplicated at each call site.
+// both must resolve the same path, which is why this is exported rather than duplicated at each
+// call site.
 func PauseFlagPath(runDir string) string {
 	return filepath.Join(runDir, PauseFlagName)
 }

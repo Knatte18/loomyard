@@ -1,6 +1,10 @@
-// server.go computes the per-hub tmux server identity: the server name (also reused as the -L socket name) and the per-worktree session name.
-// Server-name construction lives here, in the tmux domain, rather than in lyxcwd, because it is a tmux-specific derivation (not a filesystem path) computed from a Location.HubPath value lyxcwd already resolves.
-// The file is named server.go, not naming.go, so it is not confusable with the strand-name helpers in name.go.
+// server.go computes the per-hub tmux server identity: the server name (also reused as the -L
+// socket name) and the per-worktree session name.
+// Server-name construction lives here, in the tmux domain, rather than in lyxcwd, because it is a
+// tmux-specific derivation (not a filesystem path) computed from a Location.HubPath value lyxcwd
+// already resolves.
+// The file is named server.go, not naming.go, so it is not confusable with the strand-name helpers
+// in name.go.
 package reedengine
 
 import (
@@ -9,7 +13,8 @@ import (
 	"path/filepath"
 )
 
-// ServerName returns the deterministic tmux server name for the hub: "lyx-<basename>-<hash>", where hash ensures distinct hubs are distinct.
+// ServerName returns the deterministic tmux server name for the hub: "lyx-<basename>-<hash>", where
+// hash ensures distinct hubs are distinct.
 func ServerName(hubPath string) string {
 	abs := cleanAbsHubPath(hubPath)
 	base := filepath.Base(abs)

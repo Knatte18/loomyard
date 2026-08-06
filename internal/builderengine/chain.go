@@ -1,5 +1,9 @@
-// chain.go implements deferred-verify chain membership (ChainMembers, ChainEndFor) and the Go-owned rollback act RestartChain performs behind `spawn-batch --restart-chain`: reset the host repo to the chain's recorded start SHA, clear the chain members' stale reports, and reset their in-memory run state.
-// Per the discussion's correctness-by-tool- design decision, the recorded state.json SHA is the ONLY reset target — there is no caller-supplied SHA parameter anywhere in this file.
+// chain.go implements deferred-verify chain membership (ChainMembers, ChainEndFor) and the Go-owned
+// rollback act RestartChain performs behind `spawn-batch --restart-chain`: reset the host repo to
+// the chain's recorded start SHA, clear the chain members' stale reports, and reset their in-memory
+// run state.
+// Per the discussion's correctness-by-tool- design decision, the recorded state.json SHA is the
+// ONLY reset target — there is no caller-supplied SHA parameter anywhere in this file.
 
 package builderengine
 
@@ -10,7 +14,9 @@ import (
 	"sort"
 )
 
-// ChainMembers returns every batch number belonging to the deferred- verify chain whose terminal batch is chainEnd: every batch whose own ChainEnd equals chainEnd, plus chainEnd itself, sorted ascending.
+// ChainMembers returns every batch number belonging to the deferred- verify chain whose terminal
+// batch is chainEnd: every batch whose own ChainEnd equals chainEnd, plus chainEnd itself, sorted
+// ascending.
 // Returns nil when chainEnd names no chain at all — no batch's ChainEnd points at it.
 func ChainMembers(plan *Plan, chainEnd int) []int {
 	var members []int
@@ -28,7 +34,8 @@ func ChainMembers(plan *Plan, chainEnd int) []int {
 	return members
 }
 
-// ChainEndFor returns the chain-end batch number that batch belongs to: batch's own ChainEnd when it declares one,
+// ChainEndFor returns the chain-end batch number that batch belongs to: batch's own ChainEnd when
+// it declares one,
 // or batch itself when some other batch's ChainEnd names it.
 // Returns 0 when batch is chainless.
 func ChainEndFor(plan *Plan, batch int) int {
@@ -45,13 +52,20 @@ func ChainEndFor(plan *Plan, batch int) int {
 	return 0
 }
 
-// WarpResetter is the warp-only hard-reset surface RestartChain drives: a single ResetHard(sha) verb, structurally satisfied by both *gitrepo.Repo (tests, driving their scratch worktree directly) and *fabricengine.Fabric (production, which forwards to its warp repo).
+// WarpResetter is the warp-only hard-reset surface RestartChain drives: a single ResetHard(sha)
+// verb, structurally satisfied by both *gitrepo.Repo (tests, driving their scratch worktree
+// directly) and *fabricengine.Fabric (production, which forwards to its warp repo).
 // It exists so RestartChain never depends on a concrete git-handle type.
 type WarpResetter interface {
 	ResetHard(sha string) error
 }
 
-// RestartChain performs the chain-rollback act: it verifies st.ChainStartSHAs[chainEnd] is recorded (error if absent — that recorded SHA is the only reset target, so an unrecorded chain can never be rolled back to a hallucinated one), resets resetter's host repo to it via WarpResetter.ResetHard, deletes every chain member's batch-report file from reportsDir (named NN-<slug>.yaml, per plan-format.md's batch-report filename contract), and resets each member's BatchState entry plus st.CurrentBatch.
+// RestartChain performs the chain-rollback act: it verifies st.ChainStartSHAs[chainEnd] is recorded
+// (error if absent — that recorded SHA is the only reset target, so an unrecorded chain can never
+// be rolled back to a hallucinated one), resets resetter's host repo to it via
+// WarpResetter.ResetHard, deletes every chain member's batch-report file from reportsDir (named
+// NN-<slug>.yaml, per plan-format.md's batch-report filename contract), and resets each member's
+// BatchState entry plus st.CurrentBatch.
 // The caller is responsible for persisting st via SaveState afterward.
 func RestartChain(resetter WarpResetter, st *State, plan *Plan, chainEnd int, reportsDir string) error {
 	startSHA, ok := st.ChainStartSHAs[chainEnd]

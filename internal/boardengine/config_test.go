@@ -1,6 +1,7 @@
 // config_test.go — unit tests for boardengine.LoadConfig.
 //
-// Covers: happy-path with template keys present, missing-key error, absolute and relative path resolution, environment variable resolution, and not-initialized error path.
+// Covers: happy-path with template keys present, missing-key error, absolute and relative path
+// resolution, environment variable resolution, and not-initialized error path.
 
 package boardengine_test
 
@@ -14,7 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// TestLoadConfig_HappyPath tests that LoadConfig loads a valid config with all template keys present and resolves environment variables.
+// TestLoadConfig_HappyPath tests that LoadConfig loads a valid config with all template keys
+// present and resolves environment variables.
 // LoadConfig no longer sets Config.Path;
 // the caller does that via fabricengine.BoardDir.
 func TestLoadConfig_HappyPath(t *testing.T) {
@@ -56,7 +58,8 @@ design_prefix: proposal-
 	}
 }
 
-// TestLoadConfig_AbsolutePathResolution verifies that a path: key in the config file is ignored by LoadConfig because Config.Path has yaml:"-".
+// TestLoadConfig_AbsolutePathResolution verifies that a path: key in the config file is ignored by
+// LoadConfig because Config.Path has yaml:"-".
 // The board data dir is geometry owned by fabricengine.BoardDir;
 // the config key is a no-op.
 func TestLoadConfig_AbsolutePathResolution(t *testing.T) {
@@ -94,7 +97,8 @@ design_prefix: proposal-
 	}
 }
 
-// TestLoadConfig_RelativePathResolution verifies that a relative path: key in the config file is ignored by LoadConfig because Config.Path has yaml:"-".
+// TestLoadConfig_RelativePathResolution verifies that a relative path: key in the config file is
+// ignored by LoadConfig because Config.Path has yaml:"-".
 // LoadConfig no longer performs any relative-path resolution;
 // the board data dir is geometry owned by fabricengine.BoardDir.
 func TestLoadConfig_RelativePathResolution(t *testing.T) {
@@ -132,7 +136,8 @@ design_prefix: proposal-
 	}
 }
 
-// TestLoadConfig_EnvResolution verifies that a path: key using ${env:...} syntax in the config file is ignored by LoadConfig because Config.Path has yaml:"-".
+// TestLoadConfig_EnvResolution verifies that a path: key using ${env:...} syntax in the config file
+// is ignored by LoadConfig because Config.Path has yaml:"-".
 // The env-override mechanism for the board data dir has been removed;
 // the data dir is now geometry owned by fabricengine.BoardDir and is not env-overridable.
 func TestLoadConfig_EnvResolution(t *testing.T) {
@@ -172,7 +177,8 @@ design_prefix: proposal-
 	}
 }
 
-// TestLoadConfig_NotInitialized tests that missing _lyx/ returns the board-specific not-initialized error.
+// TestLoadConfig_NotInitialized tests that missing _lyx/ returns the board-specific not-initialized
+// error.
 func TestLoadConfig_NotInitialized(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do NOT create _lyx/

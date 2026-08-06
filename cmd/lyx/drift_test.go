@@ -1,5 +1,6 @@
 // drift_test.go asserts that every command in the lyx cobra tree has a non-empty Short description.
-// This is the structural self-documentation invariant: if a developer adds a subcommand without a Short, this test fails at CI time rather than silently producing a help tree with blank entries.
+// This is the structural self-documentation invariant: if a developer adds a subcommand without a
+// Short, this test fails at CI time rather than silently producing a help tree with blank entries.
 
 package main
 
@@ -10,7 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestDriftGuard_AllCommandsHaveShort asserts every command carries a non-empty Short, skipping cobra infrastructure.
+// TestDriftGuard_AllCommandsHaveShort asserts every command carries a non-empty Short, skipping
+// cobra infrastructure.
 func TestDriftGuard_AllCommandsHaveShort(t *testing.T) {
 	root := newRoot()
 	// Traverse the tree recursively and collect violations.

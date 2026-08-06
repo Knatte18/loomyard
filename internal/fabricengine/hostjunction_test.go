@@ -1,5 +1,10 @@
-// hostjunction_test.go covers the host-side junction primitives relocated from internal/lyxcwd in this batch — HostLyxLink, HostLyxLinkHere, HostJunctions and HostJunctionsHere, plus the HostJunction record shape — over synthetic *lyxcwd.Location literals rather than real fixtures, the same table shapes lyxcwd's own tests used.
-// Every _pattern row asserts against the generic config-driven junction join (filepath.Join(WorktreePath(l, slug), l.AnchorRel, pattern.DirName)) rather than a pattern-specific accessor, so this file survives card 35's deletion of those accessors unchanged.
+// hostjunction_test.go covers the host-side junction primitives relocated from internal/lyxcwd in
+// this batch — HostLyxLink, HostLyxLinkHere, HostJunctions and HostJunctionsHere, plus the
+// HostJunction record shape — over synthetic *lyxcwd.Location literals rather than real fixtures,
+// the same table shapes lyxcwd's own tests used.
+// Every _pattern row asserts against the generic config-driven junction join
+// (filepath.Join(WorktreePath(l, slug), l.AnchorRel, pattern.DirName)) rather than a
+// pattern-specific accessor, so this file survives card 35's deletion of those accessors unchanged.
 
 package fabricengine
 
@@ -12,7 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestHostLyxLinkMethods covers HostLyxLink(l, slug) and HostLyxLinkHere(l) with both AnchorRel "." (root) and subpath cases, verifying AnchorRel-mirroring and junction pairing against the weft-sibling worktree.
+// TestHostLyxLinkMethods covers HostLyxLink(l, slug) and HostLyxLinkHere(l) with both AnchorRel "."
+// (root) and subpath cases, verifying AnchorRel-mirroring and junction pairing against the
+// weft-sibling worktree.
 func TestHostLyxLinkMethods(t *testing.T) {
 	tests := []struct {
 		name                string
@@ -87,8 +94,11 @@ func TestHostLyxLinkMethods(t *testing.T) {
 	}
 }
 
-// TestHostJunctions verifies that HostJunctions(l, slug, names) returns one record per name in names, in names's own input order, with Link/Target correctly composed from l's WorktreePath/weft-sibling path and AnchorRel, at AnchorRel == "."
-// and at a nested AnchorRel, for an empty names slice, a 3-name slice, and a reversed 2-name slice — and that no entry's Name equals _raddle for the default two-name pathspec.
+// TestHostJunctions verifies that HostJunctions(l, slug, names) returns one record per name in
+// names, in names's own input order, with Link/Target correctly composed from l's
+// WorktreePath/weft-sibling path and AnchorRel, at AnchorRel == "."
+// and at a nested AnchorRel, for an empty names slice, a 3-name slice, and a reversed 2-name slice
+// — and that no entry's Name equals _raddle for the default two-name pathspec.
 // The _pattern row asserts against the generic join, not a pattern-specific accessor.
 func TestHostJunctions(t *testing.T) {
 	tests := []struct {
@@ -190,9 +200,11 @@ func TestHostJunctions(t *testing.T) {
 	})
 }
 
-// TestHostJunctionsHere verifies the Here-anchored, slug-free junction-detection accessor: it must return the expected Name/Link/Target for both RelPath == "."
+// TestHostJunctionsHere verifies the Here-anchored, slug-free junction-detection accessor: it must
+// return the expected Name/Link/Target for both RelPath == "."
 // and a nested RelPath,
-// and it must agree entry-for-entry with HostJunctions(l, slug, names) when l's slug and current worktree coincide — the precondition every health-check call site relies on.
+// and it must agree entry-for-entry with HostJunctions(l, slug, names) when l's slug and current
+// worktree coincide — the precondition every health-check call site relies on.
 func TestHostJunctionsHere(t *testing.T) {
 	t.Run("at root", func(t *testing.T) {
 		loc := &lyxcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}

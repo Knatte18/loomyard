@@ -1,6 +1,11 @@
-// split.go implements the sentence/clause-splitting core that decides where a semantic line break goes.
-// It is a Go port of the portable layer of millhouse's plugins/mill/scripts/tools/pydocreflow/pydocreflow.py (split_sentences, _semicolon_split, _conjunction_split, _has_subject_and_verb, the abbreviations set, the backtick/paren-span guards, and the Oxford-comma "only the first eligible comma" heuristic).
-// The AST/tokenize discovery layer and the Args:/Returns:-style structural reflow layer from that script are Python- and Google-docstring-specific and are intentionally not ported;
+// split.go implements the sentence/clause-splitting core that decides where a semantic line break
+// goes.
+// It is a Go port of the portable layer of millhouse's
+// plugins/mill/scripts/tools/pydocreflow/pydocreflow.py (split_sentences, _semicolon_split,
+// _conjunction_split, _has_subject_and_verb, the abbreviations set, the backtick/paren-span guards,
+// and the Oxford-comma "only the first eligible comma" heuristic).
+// The AST/tokenize discovery layer and the Args:/Returns:-style structural reflow layer from that
+// script are Python- and Google-docstring-specific and are intentionally not ported;
 // see reflow.go instead.
 
 package main
@@ -8,6 +13,7 @@ package main
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // abbreviations lists lowercase words whose trailing period must never be treated as a sentence end.
@@ -223,5 +229,42 @@ func reflowText(text string) []string {
 	for _, sentence := range splitSentences(joined) {
 		lines = append(lines, splitClauses(sentence)...)
 	}
+	return lines
+}
+
+// wrapLongLine is a last-resort fallback for a single already-atomic semantic line (one that
+// splitSentences/splitClauses found no further sentence, semicolon, or conjunction boundary to break at)
+// that is still too wide to read comfortably, especially in a side-by-side diff view. prefixLen is the
+// visual width of everything that precedes the content on its rendered line (indentation plus "// "). If
+// prefixLen+content already fits within maxWidth, or maxWidth is non-positive (disabled), content is
+// returned unchanged as a single-element slice.
+//
+// This is a targeted exception, not a return to general fixed-column wrapping: it only ever fires on the
+// rare line semantic+clause splitting could not shorten, and it greedily packs words up to the column
+// budget rather than breaking mid-phrase at an arbitrary column.
+func wrapLongLine(content string, prefixLen, maxWidth int) []string {
+	if maxWidth <= 0 || prefixLen+utf8.RuneCountInString(content) <= maxWidth {
+		return []string{content}
+	}
+	budget := maxWidth - prefixLen
+	words := strings.Fields(content)
+	if budget < 1 || len(words) == 0 {
+		return []string{content} // pathological config or nothing to wrap -- leave as-is
+	}
+
+	var lines []string
+	cur := words[0]
+	curLen := utf8.RuneCountInString(cur)
+	for _, w := range words[1:] {
+		wLen := utf8.RuneCountInString(w)
+		if curLen+1+wLen <= budget {
+			cur += " " + w
+			curLen += 1 + wLen
+			continue
+		}
+		lines = append(lines, cur)
+		cur, curLen = w, wLen
+	}
+	lines = append(lines, cur)
 	return lines
 }

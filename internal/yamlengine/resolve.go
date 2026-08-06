@@ -1,5 +1,6 @@
 // resolve.go implements environment variable expansion in YAML content.
-// It walks YAML node trees and replaces ${env:...} markers with values from a supplied environment map.
+// It walks YAML node trees and replaces ${env:...} markers with values from a supplied environment
+// map.
 
 package yamlengine
 

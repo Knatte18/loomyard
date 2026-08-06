@@ -1,6 +1,8 @@
 // state.go implements generic locked typed JSON I/O for persistent state.
 //
-// This package provides WriteJSON and ReadJSON to atomically read and write JSON-serialized values to disk with advisory file locking, ensuring concurrent readers and writers are properly synchronized.
+// This package provides WriteJSON and ReadJSON to atomically read and write JSON-serialized values
+// to disk with advisory file locking, ensuring concurrent readers and writers are properly
+// synchronized.
 
 package state
 

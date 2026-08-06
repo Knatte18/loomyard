@@ -1,4 +1,6 @@
-// unknown_subcommand_test.go covers W16 unknown-subcommand rejection and bare-group listing for module groups mounted under the real lyx root command, exercising the GroupRunE wiring and PersistentPreRunE guards via the run() seam.
+// unknown_subcommand_test.go covers W16 unknown-subcommand rejection and bare-group listing for
+// module groups mounted under the real lyx root command, exercising the GroupRunE wiring and
+// PersistentPreRunE guards via the run() seam.
 
 package main
 
@@ -9,7 +11,8 @@ import (
 	"testing"
 )
 
-// TestMountedUnknownSubcommand verifies "lyx <group> bogus" exits 1 with "unknown subcommand" in error.
+// TestMountedUnknownSubcommand verifies "lyx <group> bogus" exits 1 with "unknown subcommand" in
+// error.
 func TestMountedUnknownSubcommand(t *testing.T) {
 	tests := []struct {
 		group string
@@ -42,7 +45,8 @@ func TestMountedUnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestMountedBareGroupListing_NoGitRepo verifies bare "lyx <group>" exits 0 with subcommand listing.
+// TestMountedBareGroupListing_NoGitRepo verifies bare "lyx <group>" exits 0 with subcommand
+// listing.
 func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 	tests := []struct {
 		group       string

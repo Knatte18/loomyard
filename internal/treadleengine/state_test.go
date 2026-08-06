@@ -1,5 +1,8 @@
-// state_test.go table-drives loadOrInitState's fresh/resume/hash-mismatch/ terminal classification, exercises moveStaleArtifacts' renaming (including the double-.stale collision case), and round-trips a runState through saveState/loadOrInitState to check the persisted shape survives.
-// ProfileHash/DeriveRunID/ValidRunID's own tests live in internal/perchengine/identity_test.go — those functions stay perch-side.
+// state_test.go table-drives loadOrInitState's fresh/resume/hash-mismatch/ terminal classification,
+// exercises moveStaleArtifacts' renaming (including the double-.stale collision case), and
+// round-trips a runState through saveState/loadOrInitState to check the persisted shape survives.
+// ProfileHash/DeriveRunID/ValidRunID's own tests live in internal/perchengine/identity_test.go —
+// those functions stay perch-side.
 
 package treadleengine
 
@@ -169,7 +172,8 @@ func TestLoadOrInitState(t *testing.T) {
 	})
 }
 
-// TestSaveState_ReadJSONRoundTrip round-trips a runState through saveState and a direct state.ReadJSON read, checking every field survives the write/read cycle.
+// TestSaveState_ReadJSONRoundTrip round-trips a runState through saveState and a direct
+// state.ReadJSON read, checking every field survives the write/read cycle.
 func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 	runDir := t.TempDir()
 	gatePassed := true
@@ -240,7 +244,9 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 }
 
 // TestTerminalOutcome covers the three states a caller's own pause verb (e.g.
-// perchcli's) must distinguish before writing a pause flag: no state file at all (a run dir that never started a block), an in-flight block (empty Outcome), and a finished block, whose recorded Outcome is reported with ok true.
+// perchcli's) must distinguish before writing a pause flag: no state file at all (a run dir that
+// never started a block), an in-flight block (empty Outcome), and a finished block, whose recorded
+// Outcome is reported with ok true.
 func TestTerminalOutcome(t *testing.T) {
 	t.Run("no state file reports not terminal", func(t *testing.T) {
 		outcome, ok, err := TerminalOutcome(t.TempDir())

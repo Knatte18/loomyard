@@ -1,4 +1,7 @@
-// fingerprint.go implements Fingerprint, the plan-identity hash builder's run state uses to detect a stale on-disk plan across a crash/resume boundary: state.json records the fingerprint at first init, and every later run/spawn-batch entry recomputes and compares it, per the discussion's plan-fingerprint decision.
+// fingerprint.go implements Fingerprint, the plan-identity hash builder's run state uses to detect
+// a stale on-disk plan across a crash/resume boundary: state.json records the fingerprint at first
+// init, and every later run/spawn-batch entry recomputes and compares it, per the discussion's
+// plan-fingerprint decision.
 
 package builderengine
 
@@ -12,7 +15,8 @@ import (
 	"strings"
 )
 
-// Fingerprint computes a SHA-256 digest over every "*.md" file's name and contents in planDir, used to detect stale plans across crash/resume.
+// Fingerprint computes a SHA-256 digest over every "*.md" file's name and contents in planDir, used
+// to detect stale plans across crash/resume.
 // Returns the digest as lowercase hex.
 func Fingerprint(planDir string) (string, error) {
 	entries, err := os.ReadDir(planDir)
