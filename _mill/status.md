@@ -63,7 +63,9 @@ batches:
     start_sha: 796fa85d1ebaf00289be4ef5b11a12dc180eb124
     commit_sha: c450acf41295bf37f54d4f1d72754b216489dc40
   - name: module-owned-constructors
-    state: pending
+    state: running
+    implementer_session: dab52d05-c859-4ede-a25b-db3c0801e205
+    start_sha: 5846f2b6d40b61a37ed76f7d9c82063f8fb3c6d3
   - name: fabric-owns-the-illusion
     state: pending
   - name: board-junction
