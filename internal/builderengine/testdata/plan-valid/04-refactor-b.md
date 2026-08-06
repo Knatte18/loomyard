@@ -2,8 +2,8 @@
 
 ## Intent
 
-Second half of the refactor chain started in batch 03: rewires every call site onto the
-extracted mapper and restores a green build. This batch runs the chain's real verify:.
+Second half of the refactor chain started in batch 03: rewires every call site onto the extracted mapper and restores a green build.
+This batch runs the chain's real verify:.
 
 ## Scope
 
@@ -13,14 +13,10 @@ extracted mapper and restores a green build. This batch runs the chain's real ve
 
 ### Card 04.1 — rewire call sites
 
-**What:** Point every caller at the extracted mapper; delete the old inline
-implementation.
-**Context:** none
-**Edits:**
-- `04-refactor-b.md`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
+**What:** Point every caller at the extracted mapper;
+delete the old inline implementation.
+**Context:** none **Edits:**
+- `04-refactor-b.md` **Creates:** none **Deletes:** none **Moves:** none
 
 ## verify:
 

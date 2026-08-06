@@ -10,15 +10,21 @@ Nothing lyx-related should be visible in the host repo's own git history — eve
 
 ## `CONSTRAINTS.md`-equivalent — superseded by `PATTERN.md`
 
-**No longer this task's concern.** `PATTERN.md` (roadmap's Planned list) is the loomyard-owned `CONSTRAINTS.md`-equivalent, and it lives in `weft` (see the `internal/boardengine` package documentation — "everything that isn't warp already lives in weft"), a separate repo reached through a junction into the warp worktree — so it is **already invisible to the host repo's git history** simply by living there, with nothing extra to build. This task therefore reduces to `CLAUDE.local.md` below.
+**No longer this task's concern.** `PATTERN.md` (roadmap's Planned list) is the loomyard-owned `CONSTRAINTS.md`-equivalent,
+and it lives in `weft` (see the `internal/boardengine` package documentation — "everything that isn't warp already lives in weft"), a separate repo reached through a junction into the warp worktree — so it is **already invisible to the host repo's git history** simply by living there, with nothing extra to build.
+This task therefore reduces to `CLAUDE.local.md` below.
 
 ## `CLAUDE.local.md` (a single file)
 
-Loads alongside `CLAUDE.md`, additive. Must physically exist in host's working tree, so a directory junction doesn't apply directly:
+Loads alongside `CLAUDE.md`, additive.
+Must physically exist in host's working tree, so a directory junction doesn't apply directly:
 
-- **Symlinks, not hard links.** Hard links are inode-based, not path-based — if whatever regenerates the source `CLAUDE.md` in weft uses the standard safe-write pattern (write to a temp file, atomic rename over the target), a hard link on the host side keeps pointing at the *old* inode and silently stops reflecting updates. Symlinks are path-based and always resolve to whatever currently occupies the target path.
+- **Symlinks, not hard links.**
+  Hard links are inode-based, not path-based — if whatever regenerates the source `CLAUDE.md` in weft uses the standard safe-write pattern (write to a temp file, atomic rename over the target), a hard link on the host side keeps pointing at the *old* inode and silently stops reflecting updates.
+  Symlinks are path-based and always resolve to whatever currently occupies the target path.
 - **Windows note:** symlinks normally require admin, but Developer Mode (Settings → For Developers, Windows 10 1703+) grants `SeCreateSymbolicLinkPrivilege` to standard users without elevation — worth checking whether this can be enabled on managed/non-admin machines before assuming it's blocked.
-- **Fallback if symlinks aren't available:** explicit re-link (or copy) at `loom` init time, not automatic filesystem-level linking. Accepts staleness only within a single run, not across runs — acceptable since `CLAUDE.md` content changes rarely mid-session.
+- **Fallback if symlinks aren't available:** explicit re-link (or copy) at `loom` init time, not automatic filesystem-level linking.
+  Accepts staleness only within a single run, not across runs — acceptable since `CLAUDE.md` content changes rarely mid-session.
 - `CLAUDE.local.md` is **not** auto-gitignored by Claude Code — `loom`'s init step must explicitly ensure it's listed in host's `.gitignore` (same mechanism already used for weft junctions).
 - If host already has its own pre-existing, committed `CLAUDE.md` (someone deliberately approved Claude's use in that repo), that's fine — `CLAUDE.local.md` loads alongside it and takes precedence on conflict, no special handling needed.
 

@@ -5,9 +5,7 @@ approved: true
 
 # Plan: broken chain fixture
 
-Two batches whose chain-end: values are both invalid, tripping validation check 4
-(chain-end-dangling) twice: batch 01's target does not exist, and batch 02's target is
-itself verify: deferred.
+Two batches whose chain-end: values are both invalid, tripping validation check 4 (chain-end-dangling) twice: batch 01's target does not exist, and batch 02's target is itself verify: deferred.
 
 ## Batch Index
 
