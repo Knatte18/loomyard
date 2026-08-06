@@ -1,4 +1,7 @@
-// trace_test.go covers trace.go's mint/adopt/export precedence: LYX_TRACE_ID adoption, minted-value shape, empty/whitespace-only treated as unset, the lazy TraceID() path, and the env-propagation contract MintOrAdoptAndExport promises spawned children.
+// trace_test.go covers trace.go's mint/adopt/export precedence: LYX_TRACE_ID
+// adoption, minted-value shape, empty/whitespace-only treated as unset, the
+// lazy TraceID() path, and the env-propagation contract MintOrAdoptAndExport
+// promises spawned children.
 
 package logger
 

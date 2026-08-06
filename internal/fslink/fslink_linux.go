@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 )
 
-// CreateDirLink establishes a symlink from link to target, refusing to clobber and creating parent directories.
+// CreateDirLink establishes a symlink from link to target, refusing to
+// clobber and creating parent directories.
 func CreateDirLink(link, target string) error {
 	if err := prepareLink(link); err != nil {
 		return err
@@ -32,8 +33,8 @@ func IsLink(path string) (bool, error) {
 	return (info.Mode()&os.ModeSymlink != 0), nil
 }
 
-// PointsTo returns the resolved absolute target of a symlink.
-// Returns an error if link is not a symlink or if the target does not exist.
+// PointsTo returns the resolved absolute target of a symlink. Returns an error
+// if link is not a symlink or if the target does not exist.
 func PointsTo(link string) (string, error) {
 	isLink, err := IsLink(link)
 	if err != nil {

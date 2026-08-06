@@ -96,7 +96,9 @@ func newFabric(t *testing.T, warpPath, weftPath string) *Fabric {
 	return f
 }
 
-// TestWeftGitDir_ResolvesInsideWeftGitdir asserts that weftGitDir returns a path genuinely inside the weft worktree's own .git directory — the per-worktree gitdir the correspondence index is deliberately scoped to.
+// TestWeftGitDir_ResolvesInsideWeftGitdir asserts that weftGitDir returns a
+// path genuinely inside the weft worktree's own .git directory — the
+// per-worktree gitdir the correspondence index is deliberately scoped to.
 func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 	t.Parallel()
 
@@ -114,7 +116,10 @@ func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 	}
 }
 
-// TestRecordAndLookupCorrespondence_RoundTrip asserts that a RecordCorrespondence call is visible to a subsequent WeftSHAForWarpSHA lookup, with WarpSeq computed from the warp repo's first-parent commit count.
+// TestRecordAndLookupCorrespondence_RoundTrip asserts that a
+// RecordCorrespondence call is visible to a subsequent WeftSHAForWarpSHA
+// lookup, with WarpSeq computed from the warp repo's first-parent commit
+// count.
 func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -138,7 +143,8 @@ func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence covers the miss path: a warp SHA with no recorded correspondence at all.
+// TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence covers the miss
+// path: a warp SHA with no recorded correspondence at all.
 func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 	t.Parallel()
 
@@ -153,7 +159,11 @@ func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 	}
 }
 
-// TestRebuildIndex_ReproducesTrailerHistory asserts that RebuildIndex, run against a weft branch carrying several hand-crafted Warp-SHA trailer commits, reconstructs an index whose lookups match what recording each correspondence incrementally would have produced — never having called RecordCorrespondence itself.
+// TestRebuildIndex_ReproducesTrailerHistory asserts that RebuildIndex, run
+// against a weft branch carrying several hand-crafted Warp-SHA trailer
+// commits, reconstructs an index whose lookups match what recording each
+// correspondence incrementally would have produced — never having called
+// RecordCorrespondence itself.
 func TestRebuildIndex_ReproducesTrailerHistory(t *testing.T) {
 	t.Parallel()
 

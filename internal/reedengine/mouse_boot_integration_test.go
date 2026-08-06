@@ -78,7 +78,9 @@ func readMouseOption(t *testing.T, e *Engine) string {
 	return fields[1]
 }
 
-// TestMouseBootIntegration_PinsOptionAtBoot boots a fresh engine with Mouse set to "off" and then, on a separate fresh hub, "on", asserting the live server reports the matching value after Up() in both directions.
+// TestMouseBootIntegration_PinsOptionAtBoot boots a fresh engine with Mouse
+// set to "off" and then, on a separate fresh hub, "on", asserting the live
+// server reports the matching value after Up() in both directions.
 func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 	t.Run("off", func(t *testing.T) {
 		e := newIntegrationEngine(t, "off")
@@ -101,8 +103,12 @@ func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 	})
 }
 
-// TestMouseBootIntegration_NoLiveToggleWithoutRestart boots once with Mouse="off", confirms it, then builds a second Engine on the SAME layout with Mouse="on" and calls Up() again without tearing the first session down.
-// The already-up session must hit ensureServerAndSessionLocked's early return and never re-apply set-option, so the live value must stay "off" — proving there is no live toggle without a server restart.
+// TestMouseBootIntegration_NoLiveToggleWithoutRestart boots once with
+// Mouse="off", confirms it, then builds a second Engine on the SAME layout
+// with Mouse="on" and calls Up() again without tearing the first session
+// down. The already-up session must hit ensureServerAndSessionLocked's early
+// return and never re-apply set-option, so the live value must stay "off" —
+// proving there is no live toggle without a server restart.
 func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
 	e1 := newIntegrationEngine(t, "off")
 	if _, err := e1.Up(); err != nil {

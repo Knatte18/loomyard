@@ -1,5 +1,10 @@
-// snapshot.go — the snapshot-tracking read path: Fabric.snapshotWarpSHA, the entry point onto the Snapshot-trailer history the write path (trailer.go's appendSnapshotTrailers, threaded through commitWeftLocked) already records.
-// Per the trailer-is-truth-no-new-cache Shared Decision, this file adds no index and no cache of its own — it scans the same generalized trailer history index.go's scanWarpSHATrailers already builds for RebuildIndex, on demand, every call.
+// snapshot.go — the snapshot-tracking read path: Fabric.snapshotWarpSHA, the
+// entry point onto the Snapshot-trailer history the write path (trailer.go's
+// appendSnapshotTrailers, threaded through commitWeftLocked) already records.
+// Per the trailer-is-truth-no-new-cache Shared Decision, this file adds no
+// index and no cache of its own — it scans the same generalized trailer
+// history index.go's scanWarpSHATrailers already builds for RebuildIndex, on
+// demand, every call.
 
 package fabricengine
 

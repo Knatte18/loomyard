@@ -131,8 +131,12 @@ func TestSyncCleanTreeIsNoOp(t *testing.T) {
 	}
 }
 
-// TestSyncNothingPendingSkipsPushEntirely locks in the conditional-push contract the pre-gitrepo pushUnpushed provided: a Sync that finds a clean tree and nothing ahead of upstream must not contact the remote at all.
-// The unreachable-remote setup makes any push attempt fail loudly, so an unconditional per-iteration push (the regression this guards against) turns into a test failure instead of a silent wasted round-trip.
+// TestSyncNothingPendingSkipsPushEntirely locks in the conditional-push
+// contract the pre-gitrepo pushUnpushed provided: a Sync that finds a clean
+// tree and nothing ahead of upstream must not contact the remote at all. The
+// unreachable-remote setup makes any push attempt fail loudly, so an
+// unconditional per-iteration push (the regression this guards against) turns
+// into a test failure instead of a silent wasted round-trip.
 func TestSyncNothingPendingSkipsPushEntirely(t *testing.T) {
 	t.Parallel()
 	work, _, _ := newSyncRepo(t)

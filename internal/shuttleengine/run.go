@@ -1,5 +1,9 @@
-// run.go implements the run loop's provider-invariant core: Runner, the per-run Run handle, and Start — the sequence that prepares a run's artifacts, registers its strand with reed, and persists run.json so the CLI's interrupt/send verbs and a later diagnosis pass can find it again.
-// Wait (wait.go) and Interrupt/Send round out the Run handle's public surface.
+// run.go implements the run loop's provider-invariant core: Runner, the
+// per-run Run handle, and Start — the sequence that prepares a run's
+// artifacts, registers its strand with reed, and persists run.json so the
+// CLI's interrupt/send verbs and a later diagnosis pass can find it again.
+// Wait (wait.go) and Interrupt/Send round out the Run handle's public
+// surface.
 
 package shuttleengine
 
@@ -17,7 +21,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// Runner is the provider-invariant run loop: it drives one Engine implementation over the file contract through the ReedOps seam, so a caller (review, loom) constructs exactly one Runner per (reed, engine, layout, cfg) combination and calls Start/Run for every agent spawn.
+// Runner is the provider-invariant run loop: it drives one Engine
+// implementation over the file contract through the ReedOps seam, so a
+// caller (review, loom) constructs exactly one Runner per (reed, engine,
+// layout, cfg) combination and calls Start/Run for every agent spawn.
 type Runner struct {
 	reed   ReedOps
 	engine Engine
@@ -25,12 +32,17 @@ type Runner struct {
 	cfg    Config
 }
 
-// NewRunner returns a Runner ready to start runs against reed and engine, scoped to layout's worktree and cfg's tuning knobs.
+// NewRunner returns a Runner ready to start runs against reed and engine,
+// scoped to layout's worktree and cfg's tuning knobs.
 func NewRunner(reed ReedOps, engine Engine, layout *lyxcwd.Location, cfg Config) *Runner {
 	return &Runner{reed: reed, engine: engine, layout: layout, cfg: cfg}
 }
 
-// Result is a completed run's terminal report: how it was classified, the identities a caller needs to act on it further (SessionID for a resume, StrandGUID for interrupt/send/diagnosis), the agent's last message (set only for OutcomeAsking), and the run directory (already removed for a cleaned-up OutcomeDone, still present otherwise).
+// Result is a completed run's terminal report: how it was classified, the
+// identities a caller needs to act on it further (SessionID for a resume,
+// StrandGUID for interrupt/send/diagnosis), the agent's last message (set
+// only for OutcomeAsking), and the run directory (already removed for a
+// cleaned-up OutcomeDone, still present otherwise).
 type Result struct {
 	Outcome              Outcome
 	SessionID            string
@@ -43,9 +55,10 @@ type Result struct {
 	ForkAudit *ForkAudit
 }
 
-// Run is the handle to one in-progress or completed shuttle run, returned by Start.
-// Wait blocks until the run reaches a terminal outcome;
-// Interrupt and Send drive the live pane while Wait is blocked (or from another process, via the CLI verbs that resolve a Run from run.json).
+// Run is the handle to one in-progress or completed shuttle run, returned by
+// Start. Wait blocks until the run reaches a terminal outcome; Interrupt and
+// Send drive the live pane while Wait is blocked (or from another process,
+// via the CLI verbs that resolve a Run from run.json).
 type Run struct {
 	runner *Runner
 	spec   Spec
@@ -70,9 +83,10 @@ const (
 	eventsFileName   = "events.jsonl"
 )
 
-// Start prepares one run described by spec and registers it with reed, returning a handle without blocking.
-// On AddStrand failure the run directory is removed.
-// On a run.json persistence failure after AddStrand, both the directory and strand are cleaned up to avoid leaking an untracked agent pane.
+// Start prepares one run described by spec and registers it with reed,
+// returning a handle without blocking. On AddStrand failure the run directory
+// is removed. On a run.json persistence failure after AddStrand, both the
+// directory and strand are cleaned up to avoid leaking an untracked agent pane.
 func (r *Runner) Start(spec Spec) (*Run, error) {
 	if err := spec.validate(r.layout.WorktreePath(), r.cfg); err != nil {
 		return nil, err
@@ -149,13 +163,18 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 	}, nil
 }
 
-// StrandGUID returns the reed strand guid bound to this run.
-// It is available as soon as Start returns — before Wait completes — so an in-process caller holding the handle can capture the run's pane, log its identity, or resolve it for diagnosis while the run is still in flight (the same guid Result carries once Wait finishes).
+// StrandGUID returns the reed strand guid bound to this run. It is available
+// as soon as Start returns — before Wait completes — so an in-process caller
+// holding the handle can capture the run's pane, log its identity, or resolve
+// it for diagnosis while the run is still in flight (the same guid Result
+// carries once Wait finishes).
 func (run *Run) StrandGUID() string {
 	return run.state.StrandGUID
 }
 
-// Run starts spec and blocks until it reaches a terminal outcome — the Start+Wait convenience for a caller with no need to Interrupt/Send between the two.
+// Run starts spec and blocks until it reaches a terminal outcome — the
+// Start+Wait convenience for a caller with no need to Interrupt/Send between
+// the two.
 func (r *Runner) Run(spec Spec) (Result, error) {
 	run, err := r.Start(spec)
 	if err != nil {
@@ -189,9 +208,9 @@ func (r *Runner) sweepOrphansOpportunistic() {
 }
 
 // Interrupt stops run's in-progress turn without killing its pane or session.
-// Safe to call concurrently with a blocked Wait.
-// Note: Wait may classify and return from the interrupted turn's Stop event before a subsequent Send is issued;
-// the redirect is delivered but the same Wait call won't observe it.
+// Safe to call concurrently with a blocked Wait. Note: Wait may classify and
+// return from the interrupted turn's Stop event before a subsequent Send is
+// issued; the redirect is delivered but the same Wait call won't observe it.
 func (run *Run) Interrupt() error {
 	if err := requireReadyAgentPane(run.runner.reed, run.runner.engine, run.state.StrandGUID); err != nil {
 		return err
@@ -199,10 +218,9 @@ func (run *Run) Interrupt() error {
 	return playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.InterruptSequence())
 }
 
-// Send types text as run's next turn.
-// Text must be a single, non-empty line.
-// Verifies delivery by observing the text in the pane capture, replaying once if it never appears.
-// Safe to call concurrently with a blocked Wait.
+// Send types text as run's next turn. Text must be a single, non-empty line.
+// Verifies delivery by observing the text in the pane capture, replaying once
+// if it never appears. Safe to call concurrently with a blocked Wait.
 func (run *Run) Send(text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
@@ -225,8 +243,9 @@ func validateSendText(text string) error {
 	return nil
 }
 
-// Interrupt stops the in-progress turn of the run identified by guid, without needing an in-process Run handle.
-// This is how the CLI's interrupt verb reaches a run started by a separate process.
+// Interrupt stops the in-progress turn of the run identified by guid,
+// without needing an in-process Run handle. This is how the CLI's interrupt
+// verb reaches a run started by a separate process.
 func (r *Runner) Interrupt(guid string) error {
 	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
@@ -237,8 +256,9 @@ func (r *Runner) Interrupt(guid string) error {
 	return playInputs(r.reed, guid, r.engine.InterruptSequence())
 }
 
-// Send types text as the next turn of the run identified by guid, without needing an in-process Run handle.
-// This is how the CLI's send verb reaches a run started by a separate process.
+// Send types text as the next turn of the run identified by guid, without
+// needing an in-process Run handle. This is how the CLI's send verb reaches
+// a run started by a separate process.
 func (r *Runner) Send(guid, text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
@@ -252,9 +272,10 @@ func (r *Runner) Send(guid, text string) error {
 	return sendVerified(r.reed, r.engine, guid, text)
 }
 
-// Inject plays inputs into the live pane of the run identified by guid, without needing an in-process Run handle.
-// Unlike Send/Interrupt, Inject deliberately skips the requireReadyAgentPane guard to deliver keys while the provider is busy.
-// Empty inputs is rejected.
+// Inject plays inputs into the live pane of the run identified by guid,
+// without needing an in-process Run handle. Unlike Send/Interrupt, Inject
+// deliberately skips the requireReadyAgentPane guard to deliver keys while
+// the provider is busy. Empty inputs is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if len(inputs) == 0 {
 		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")

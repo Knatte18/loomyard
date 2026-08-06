@@ -1,8 +1,9 @@
 // config.go — configuration for the boardengine module.
 //
 // Defines the Config and Outputs types and LoadConfig.
-// LoadConfig uses internal/configengine.Load with the ConfigTemplate() to strictly validate and resolve the board config file;
-// the boardengine module never reads config files or knows their layout itself.
+// LoadConfig uses internal/configengine.Load with the ConfigTemplate() to strictly
+// validate and resolve the board config file; the boardengine module never reads
+// config files or knows their layout itself.
 
 package boardengine
 

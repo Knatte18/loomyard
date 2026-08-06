@@ -1,6 +1,8 @@
-// header_test.go covers the `header` verb's pure command construction: Use, Short, and the --blocking flag registration.
-// It never runs RunE/PreRunE and never invokes the --blocking path, since that path blocks forever by design;
-// the enveloped default's end-to-end PreRunE -> HeaderText round trip is covered by the reed smoke suite (batch 4), not here.
+// header_test.go covers the `header` verb's pure command construction: Use,
+// Short, and the --blocking flag registration. It never runs RunE/PreRunE
+// and never invokes the --blocking path, since that path blocks forever by
+// design; the enveloped default's end-to-end PreRunE -> HeaderText round
+// trip is covered by the reed smoke suite (batch 4), not here.
 
 package reedcli
 

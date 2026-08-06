@@ -1,5 +1,6 @@
 // reconcile.go implements config reconciliation and missing-key detection.
-// It merges a template with existing user configuration while preserving the template structure and user values.
+// It merges a template with existing user configuration while preserving
+// the template structure and user values.
 
 package yamlengine
 
@@ -11,10 +12,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Reconcile merges a template with existing user configuration, preserving template comments and key order.
-// Keys present in existing override template defaults;
-// keys absent from existing are reported in added, keys absent from template are reported in removed.
-// Reconcile is idempotent.
+// Reconcile merges a template with existing user configuration, preserving
+// template comments and key order. Keys present in existing override template
+// defaults; keys absent from existing are reported in added, keys absent from
+// template are reported in removed. Reconcile is idempotent.
 func Reconcile(template, existing []byte) (merged []byte, added, removed []string, err error) {
 	// Parse template into node tree
 	var templateNode yaml.Node
@@ -70,8 +71,8 @@ func Reconcile(template, existing []byte) (merged []byte, added, removed []strin
 	return merged, added, removed, nil
 }
 
-// MissingKeys returns the leaf key-paths present in template but absent from existing.
-// A key present with an empty value counts as present.
+// MissingKeys returns the leaf key-paths present in template but absent from
+// existing. A key present with an empty value counts as present.
 func MissingKeys(template, existing []byte) ([]string, error) {
 	// Parse template
 	var templateNode yaml.Node

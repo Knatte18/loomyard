@@ -128,7 +128,9 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 	}, weft
 }
 
-// TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves that when RecordCorrespondence fails after the commit lands, weftCommit reports (true, err), not (false, err).
+// TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves that
+// when RecordCorrespondence fails after the commit lands, weftCommit
+// reports (true, err), not (false, err).
 func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
@@ -157,7 +159,9 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	}
 }
 
-// TestWeftCommit_CommitsAtEveryRelPathDepth proves that machine-local transients (locks, pause flags, rendered prompts) stay excluded from REAL git commits at every AnchorRel depth via .git/info/exclude exclusion.
+// TestWeftCommit_CommitsAtEveryRelPathDepth proves that machine-local
+// transients (locks, pause flags, rendered prompts) stay excluded from
+// REAL git commits at every AnchorRel depth via .git/info/exclude exclusion.
 func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
 		name    string

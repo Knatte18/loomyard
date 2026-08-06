@@ -1,4 +1,6 @@
-// worktreelogs_test.go tests the WorktreePath-anchored WorktreeLogsDir constructor on a hand-built Location — pure path arithmetic, no spawning, untagged (Tier 1).
+// worktreelogs_test.go tests the WorktreePath-anchored WorktreeLogsDir
+// constructor on a hand-built Location — pure path arithmetic, no spawning,
+// untagged (Tier 1).
 
 package logger_test
 

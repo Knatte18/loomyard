@@ -1,5 +1,8 @@
-// identity_test.go tables ProfileHash, DeriveRunID, and ValidRunID — perch's own block-identity derivation (identity.go), extracted from state_test.go (now internal/treadleengine/state_test.go) when the round-state machinery it exercised moved to treadleengine;
-// these three functions and sanitizeSlug stayed perch-side.
+// identity_test.go tables ProfileHash, DeriveRunID, and ValidRunID —
+// perch's own block-identity derivation (identity.go), extracted from
+// state_test.go (now internal/treadleengine/state_test.go) when the
+// round-state machinery it exercised moved to treadleengine; these three
+// functions and sanitizeSlug stayed perch-side.
 
 package perchengine
 
@@ -67,7 +70,12 @@ func TestDeriveRunID(t *testing.T) {
 	}
 }
 
-// TestValidRunID proves the exact shape both perch CLI verbs must enforce on an explicit --run-id before joining it into a run-dir path: every id DeriveRunID could plausibly produce passes, while anything carrying a path separator, a leading/trailing dash, or other punctuation — the class of value that would escape RunsDir via filepath.Join — fails.
+// TestValidRunID proves the exact shape both perch CLI verbs must enforce on
+// an explicit --run-id before joining it into a run-dir path: every id
+// DeriveRunID could plausibly produce passes, while anything carrying a
+// path separator, a leading/trailing dash, or other punctuation — the class
+// of value that would escape RunsDir via filepath.Join —
+// fails.
 func TestValidRunID(t *testing.T) {
 	tests := []struct {
 		name string

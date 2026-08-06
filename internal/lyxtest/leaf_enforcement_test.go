@@ -1,5 +1,8 @@
-// leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: internal/lyxtest must not import internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli, selfreportengine/selfreportcli, fabricengine/fabriccli).
-// Tests that need real config seed it via SeedConfig with a configreg-free map[string]string (never configreg types).
+// leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: internal/lyxtest
+// must not import internal/configreg or any feature package (boardengine/boardcli,
+// ideengine/idecli, selfreportengine/selfreportcli, fabricengine/fabriccli). Tests
+// that need real config seed it via SeedConfig with a configreg-free
+// map[string]string (never configreg types).
 
 package lyxtest
 
@@ -13,8 +16,11 @@ import (
 	"testing"
 )
 
-// TestLeafInvariant verifies that lyxtest imports only stdlib and internal/lyxcwd, never internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli, selfreportengine/selfreportcli, or fabricengine/fabriccli).
-// It uses go/parser to read actual import paths, avoiding false positives from string literals in doc comments.
+// TestLeafInvariant verifies that lyxtest imports only stdlib and internal/lyxcwd,
+// never internal/configreg or any feature package (boardengine/boardcli,
+// ideengine/idecli, selfreportengine/selfreportcli, or fabricengine/fabriccli). It
+// uses go/parser to read actual import paths, avoiding false positives from string
+// literals in doc comments.
 func TestLeafInvariant(t *testing.T) {
 	// Resolve the lyxtest source directory via runtime.Caller.
 	_, file, _, ok := runtime.Caller(0)

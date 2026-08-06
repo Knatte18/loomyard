@@ -1,6 +1,9 @@
 // config.go — configuration for the reed module.
 //
-// Defines the Config type mirroring reed.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the reed config file; reed never reads config files or knows their on-disk layout itself.
+// Defines the Config type mirroring reed.yaml's keys and LoadConfig, which
+// uses internal/configengine.Load with ConfigTemplate() to strictly
+// validate and resolve the reed config file; reed never reads config files
+// or knows their on-disk layout itself.
 
 package reedengine
 

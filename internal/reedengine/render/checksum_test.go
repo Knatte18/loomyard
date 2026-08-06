@@ -1,4 +1,7 @@
-// checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, asserting that the tmux/psmux layout-checksum algorithm stays correct, and also asserts the general four-lowercase-hex-digit shape every checksum must have.
+// checksum_test.go pins a known-good layoutChecksum fixture from live psmux
+// testing, asserting that the tmux/psmux layout-checksum algorithm stays
+// correct, and also asserts the general four-lowercase-hex-digit shape every
+// checksum must have.
 
 package render
 

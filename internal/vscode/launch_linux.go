@@ -1,5 +1,6 @@
-// launch_linux.go launches VS Code on Linux by invoking the "code" binary directly from PATH;
-// unlike Windows there is no cmd.exe PATH-resolution shim or console window to hide, so this is a thin wrapper around exec.Command.
+// launch_linux.go launches VS Code on Linux by invoking the "code" binary
+// directly from PATH; unlike Windows there is no cmd.exe PATH-resolution shim
+// or console window to hide, so this is a thin wrapper around exec.Command.
 
 package vscode
 

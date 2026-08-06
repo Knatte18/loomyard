@@ -28,8 +28,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestWireJunctions_WiresEveryPassedName is the extensibility proof under the hybrid seam: WireJunctions/UnwireJunctions wire and unwire exactly the name-set they are given — here a three-name set including "_extra", a name that is neither part of the default pathspec nor hub-reserved — with no SeedConfig, because WireJunctions no longer reads config at all.
-// This is the proof that a future raddle/board append (one extra pathspec token) is wired with no fabric/lyxcwd code change: a caller sourcing an extended pathspec would pass its names exactly this way.
+// TestWireJunctions_WiresEveryPassedName is the extensibility proof under the
+// hybrid seam: WireJunctions/UnwireJunctions wire and unwire exactly the
+// name-set they are given — here a three-name set including "_extra", a name
+// that is neither part of the default pathspec nor hub-reserved — with no
+// SeedConfig, because WireJunctions no longer reads config at all. This is
+// the proof that a future raddle/board append (one extra pathspec token) is
+// wired with no fabric/lyxcwd code change: a caller sourcing an extended
+// pathspec would pass its names exactly this way.
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	t.Parallel()
 
@@ -76,10 +82,19 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	}
 }
 
-// TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy proof: Healthy loads its junction name-set from the repo-wide fabricengine.BoardDir(l.HubPath) fabric.yaml (card 7), so a worktree whose pathspec names only "_lyx" — narrower than the "_lyx _pattern" default — is reported in sync once "_lyx" alone is wired.
-// A narrow pathspec is a legitimate, unenforced reality (doc.go's narrow-pathspec asymmetry note), not a drift shape Healthy should flag.
+// TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy
+// proof: Healthy loads its junction name-set from the repo-wide
+// fabricengine.BoardDir(l.HubPath) fabric.yaml (card 7), so a worktree whose
+// pathspec names only "_lyx" — narrower than the "_lyx _pattern" default —
+// is reported in sync once "_lyx" alone is wired. A narrow pathspec is a
+// legitimate, unenforced reality (doc.go's narrow-pathspec asymmetry note),
+// not a drift shape Healthy should flag.
 //
-// Healthy checks weft-branch correspondence (weftBranch == WeftBranchName(hostBranch), drift.go:69-72) before the junction loop, and raw CopyPairedLocal leaves the weft prime on "main" (not "main-weft"), so this checks out the weft branch first — the same TestHealthy_JunctionDriftShapes pattern (junction_pattern_integration_test.go:~400).
+// Healthy checks weft-branch correspondence (weftBranch ==
+// WeftBranchName(hostBranch), drift.go:69-72) before the junction loop, and
+// raw CopyPairedLocal leaves the weft prime on "main" (not "main-weft"), so
+// this checks out the weft branch first — the same TestHealthy_JunctionDriftShapes
+// pattern (junction_pattern_integration_test.go:~400).
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 

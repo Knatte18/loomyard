@@ -1,7 +1,9 @@
 // config.go implements strict YAML configuration loading backed by yamlengine and envsource.
 //
-// The Load function reads a YAML config file, validates it against a template, resolves environment variables, and returns the resolved bytes.
-// The typed wrappers (board.LoadConfig, worktree.LoadConfig, weft.LoadConfig) unmarshal the resolved bytes into their own structs.
+// The Load function reads a YAML config file, validates it against a template,
+// resolves environment variables, and returns the resolved bytes. The typed wrappers
+// (board.LoadConfig, worktree.LoadConfig, weft.LoadConfig) unmarshal the resolved bytes
+// into their own structs.
 
 package configengine
 
@@ -14,18 +16,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// LyxDirName is the directory name for the lyx system directory within a worktree.
-// internal/configengine is the single declarer of this token;
-// every other module joins its own private relative-path constant onto a baseDir directly, never onto a fused "_lyx/..."
-// literal (per the Cwd Resolution Invariant's per-segment join rule).
+// LyxDirName is the directory name for the lyx system directory within a
+// worktree. internal/configengine is the single declarer of this token; every
+// other module joins its own private relative-path constant onto a baseDir
+// directly, never onto a fused "_lyx/..." literal (per the Cwd Resolution
+// Invariant's per-segment join rule).
 const LyxDirName = "_lyx"
 
 // configDirName is the subdirectory name within LyxDirName that holds
 // configuration files.
 const configDirName = "config"
 
-// FindBaseDir checks if <cwd>/_lyx exists, performing a strict check without walking up to parent directories.
-// Returns cwd on success or an error on failure.
+// FindBaseDir checks if <cwd>/_lyx exists, performing a strict check without
+// walking up to parent directories. Returns cwd on success or an error on failure.
 func FindBaseDir(cwd string) (string, error) {
 	lyxDir := filepath.Join(cwd, LyxDirName)
 	_, err := os.Stat(lyxDir)
@@ -48,7 +51,8 @@ func ConfigFile(baseDir, module string) string {
 }
 
 // Load loads and resolves configuration from a YAML file using a template.
-// Returns the resolved bytes or an error if the file is absent, missing keys, or cannot be resolved.
+// Returns the resolved bytes or an error if the file is absent, missing keys,
+// or cannot be resolved.
 func Load(baseDir, module string, template []byte) ([]byte, error) {
 	_, err := FindBaseDir(baseDir)
 	if err != nil {

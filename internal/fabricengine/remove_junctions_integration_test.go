@@ -28,7 +28,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
-// TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root (RelPath "sub") and asserts Remove leaves no junction behind at that nested path.
+// TestRemove_TearsDownNestedJunction wires a junction nested one level below
+// the worktree root (RelPath "sub") and asserts Remove leaves no junction
+// behind at that nested path.
 func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	t.Parallel()
 

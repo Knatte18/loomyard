@@ -1,7 +1,21 @@
-// cli.go builds the cobra command tree for the builder module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "builder" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle config -> reed config -> builder config -> model registry -> resolved roles -> reed engine -> claude engine -> shuttleengine.Runner exactly once per invocation, storing the resolved ingredients on builderCLI, mirroring perchcli's Cwd-anchoring rationale (internal/perchcli/cli.go): every _lyx/plan and _lyx/builder path this module touches is anchored at layout.AnchorPath() -- the directory lyx init ran in, never WorktreeRoot or a weft sibling.
+// cli.go builds the cobra command tree for the builder module and the
+// RunCLI seam that wires it into the standard io.Writer-based call contract.
+// The parent "builder" command carries a PersistentPreRunE that resolves
+// cwd -> layout -> shuttle config -> reed config -> builder config -> model
+// registry -> resolved roles -> reed engine -> claude engine ->
+// shuttleengine.Runner exactly once per invocation, storing the resolved
+// ingredients on builderCLI, mirroring perchcli's Cwd-anchoring rationale
+// (internal/perchcli/cli.go): every _lyx/plan and _lyx/builder path this
+// module touches is anchored at layout.AnchorPath() -- the directory lyx init ran
+// in, never WorktreeRoot or a weft sibling.
 //
-// Unlike perchcli (which stores only the resolved config ingredients and constructs a fresh *perchengine.Engine per invocation), builderCLI keeps the constructed shuttle Runner AND its two underlying engines directly: poll's terminal classification needs to call the claude engine's ParseEvents and the reed engine's Status directly, and Runner's own engine/reed fields are unexported, so builderCLI keeps its own handles to both rather than re-deriving them.
+// Unlike perchcli (which stores only the resolved config ingredients and
+// constructs a fresh *perchengine.Engine per invocation), builderCLI keeps
+// the constructed shuttle Runner AND its two underlying engines directly:
+// poll's terminal classification needs to call the claude engine's
+// ParseEvents and the reed engine's Status directly, and Runner's own
+// engine/reed fields are unexported, so builderCLI keeps its own handles to
+// both rather than re-deriving them.
 
 package buildercli
 
@@ -204,8 +218,9 @@ Verbs:
 
 // RunCLI is the public seam for the builder module CLI.
 //
-// It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer for all output (including cobra's error text).
-// This preserves the existing call contract so that callers and tests are unchanged.
+// It delegates to clihelp.Execute with the cobra command tree, passing out as
+// the capture writer for all output (including cobra's error text). This
+// preserves the existing call contract so that callers and tests are unchanged.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

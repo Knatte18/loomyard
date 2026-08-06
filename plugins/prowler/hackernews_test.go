@@ -1,5 +1,6 @@
-// hackernews_test.go exercises Hacker News item-URL matching and hackerNewsAdapter.Fetch's formatting/failure branches via a stubbed fetcher.do keyed on the Algolia API URL.
-// No network.
+// hackernews_test.go exercises Hacker News item-URL matching and
+// hackerNewsAdapter.Fetch's formatting/failure branches via a stubbed
+// fetcher.do keyed on the Algolia API URL. No network.
 
 package main
 

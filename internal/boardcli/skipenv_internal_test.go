@@ -1,6 +1,7 @@
 // skipenv_internal_test.go — white-box unit tests for applySkipEnv.
 //
-// Tests the env→cfg resolution helper that folds BOARD_SKIP_* environment variables into the Config struct at the CLI entry point.
+// Tests the env→cfg resolution helper that folds BOARD_SKIP_* environment variables
+// into the Config struct at the CLI entry point.
 
 package boardcli
 

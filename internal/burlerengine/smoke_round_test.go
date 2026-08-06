@@ -231,8 +231,14 @@ func distinctColorsMentioned(text string) []string {
 	return found
 }
 
-// TestSmokeBurlerRoundToyFixture drives one full burler round against a REAL claude in a REAL tmux pane, over a toy fixture whose chair and table colors deliberately mismatch: the target is unambiguous on purpose so this test proves the A->B machinery + file contract + verdict parse against a real engine, never review quality.
-// It constructs the real stack directly (reedengine + claudeengine + shuttleengine.Runner + burlerengine.Engine) — this test IS the caller the Shuttle Provider-Seam Invariant reserves that wiring for.
+// TestSmokeBurlerRoundToyFixture drives one full burler round against a REAL
+// claude in a REAL tmux pane, over a toy fixture whose chair and table
+// colors deliberately mismatch: the target is unambiguous on purpose so this
+// test proves the A->B machinery + file contract + verdict parse against a
+// real engine, never review quality. It constructs the real stack directly
+// (reedengine + claudeengine + shuttleengine.Runner + burlerengine.Engine) —
+// this test IS the caller the Shuttle Provider-Seam Invariant reserves that
+// wiring for.
 func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	claudeBinaryPath(t)
 

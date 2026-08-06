@@ -1,5 +1,11 @@
-// validate.go implements the `validate` builder verb: the standalone pre-flight half of the discussion's validate-both decision (the other half is the automatic gate builderengine.Run and builderengine.SpawnBatch run themselves before ever spawning an agent).
-// It parses the plan and runs every plan-format v2 machine check against it, printing exactly one JSON envelope: ok with {"valid": true, "batches": <n>} for a clean plan, or an error envelope carrying every finding for a plan with findings -- exit non-zero either way a finding exists, never plain text.
+// validate.go implements the `validate` builder verb: the standalone
+// pre-flight half of the discussion's validate-both decision (the other
+// half is the automatic gate builderengine.Run and builderengine.SpawnBatch
+// run themselves before ever spawning an agent). It parses the plan and
+// runs every plan-format v2 machine check against it, printing exactly one
+// JSON envelope: ok with {"valid": true, "batches": <n>} for a clean plan,
+// or an error envelope carrying every finding for a plan with findings --
+// exit non-zero either way a finding exists, never plain text.
 
 package buildercli
 

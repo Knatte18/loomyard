@@ -1,7 +1,8 @@
 // cli.go exposes the cobra command tree for the ide module.
 //
-// Command() returns the root "ide" command with two subcommands — spawn and menu — each wrapping the existing handler bodies.
-// Layout resolution happens once in a PersistentPreRunE so that the no-arg "lyx ide" listing never requires a git repo.
+// Command() returns the root "ide" command with two subcommands — spawn and menu —
+// each wrapping the existing handler bodies. Layout resolution happens once in a
+// PersistentPreRunE so that the no-arg "lyx ide" listing never requires a git repo.
 
 package idecli
 

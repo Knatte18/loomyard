@@ -9,7 +9,8 @@ import (
 	"testing"
 )
 
-// TestAppendParseWarpSHATrailer_RoundTrip covers append-then-parse round trips for a single-line subject and a multi-paragraph message.
+// TestAppendParseWarpSHATrailer_RoundTrip covers append-then-parse round trips
+// for a single-line subject and a multi-paragraph message.
 func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -37,8 +38,13 @@ func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock asserts that a single-line message -- even one shaped exactly like a trailer line, the "builder: <label>"/"webster: <label>" form every builder/webster weft commit uses -- gets its Warp-SHA trailer in a NEW blank-line-separated paragraph, keeping the git subject clean.
-// Joining instead would fold the trailer into the subject paragraph and pollute `git log --oneline` for every such commit (the round fable-r1 regression).
+// TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock asserts that a
+// single-line message -- even one shaped exactly like a trailer line, the
+// "builder: <label>"/"webster: <label>" form every builder/webster weft
+// commit uses -- gets its Warp-SHA trailer in a NEW blank-line-separated
+// paragraph, keeping the git subject clean. Joining instead would fold the
+// trailer into the subject paragraph and pollute `git log --oneline` for
+// every such commit (the round fable-r1 regression).
 func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -66,8 +72,9 @@ func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
 	}
 }
 
-// TestAppendWarpSHATrailer_JoinsExistingTrailerBlock asserts that appending to a message already ending in a trailer block (e.g.
-// a prior Co-authored-by:) joins the new line directly, without introducing a stray blank line.
+// TestAppendWarpSHATrailer_JoinsExistingTrailerBlock asserts that appending to
+// a message already ending in a trailer block (e.g. a prior Co-authored-by:)
+// joins the new line directly, without introducing a stray blank line.
 func TestAppendWarpSHATrailer_JoinsExistingTrailerBlock(t *testing.T) {
 	message := "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>"
 	want := "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>\nWarp-SHA: abc123"
@@ -78,7 +85,8 @@ func TestAppendWarpSHATrailer_JoinsExistingTrailerBlock(t *testing.T) {
 	}
 }
 
-// TestParseWarpSHATrailer_Absent asserts that parsing a message with no Warp-SHA trailer reports ok=false.
+// TestParseWarpSHATrailer_Absent asserts that parsing a message with no
+// Warp-SHA trailer reports ok=false.
 func TestParseWarpSHATrailer_Absent(t *testing.T) {
 	message := "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>"
 	sha, ok := parseWarpSHATrailer(message)
@@ -87,7 +95,8 @@ func TestParseWarpSHATrailer_Absent(t *testing.T) {
 	}
 }
 
-// TestParseWarpSHATrailer_MultipleTrailersLastWins asserts that when a message carries more than one Warp-SHA trailer line, the last one wins.
+// TestParseWarpSHATrailer_MultipleTrailersLastWins asserts that when a message
+// carries more than one Warp-SHA trailer line, the last one wins.
 func TestParseWarpSHATrailer_MultipleTrailersLastWins(t *testing.T) {
 	message := "raddle: sync module docs\n\nWarp-SHA: first000\nWarp-SHA: second111"
 
@@ -100,7 +109,9 @@ func TestParseWarpSHATrailer_MultipleTrailersLastWins(t *testing.T) {
 	}
 }
 
-// TestParseWarpSHATrailer_TolerantOfSurroundingWhitespace asserts that leading/trailing whitespace around the trailer line and its value does not prevent extraction.
+// TestParseWarpSHATrailer_TolerantOfSurroundingWhitespace asserts that
+// leading/trailing whitespace around the trailer line and its value does not
+// prevent extraction.
 func TestParseWarpSHATrailer_TolerantOfSurroundingWhitespace(t *testing.T) {
 	message := "raddle: sync module docs\n\n  Warp-SHA:   abc123   "
 
@@ -134,7 +145,8 @@ func parseSnapshotTags(message string) []string {
 	return tags
 }
 
-// TestAppendSnapshotTrailers_SingleTag asserts that a single tag appends one Snapshot: line in a new trailer-block paragraph.
+// TestAppendSnapshotTrailers_SingleTag asserts that a single tag appends one
+// Snapshot: line in a new trailer-block paragraph.
 func TestAppendSnapshotTrailers_SingleTag(t *testing.T) {
 	message := "weft sync"
 	want := "weft sync\n\nSnapshot: build-42"
@@ -148,7 +160,8 @@ func TestAppendSnapshotTrailers_SingleTag(t *testing.T) {
 	}
 }
 
-// TestAppendSnapshotTrailers_MultipleTags asserts that multiple tags each get their own Snapshot: line, one per tag, all inside the same trailer block.
+// TestAppendSnapshotTrailers_MultipleTags asserts that multiple tags each get
+// their own Snapshot: line, one per tag, all inside the same trailer block.
 func TestAppendSnapshotTrailers_MultipleTags(t *testing.T) {
 	message := "weft sync"
 	tags := []string{"build-42", "release-1.0", "nightly"}
@@ -166,8 +179,9 @@ func TestAppendSnapshotTrailers_MultipleTags(t *testing.T) {
 	}
 }
 
-// TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer asserts that Snapshot trailers appended after a Warp-SHA trailer already appended by the caller join the same trailer block,
-// and that both parse back independently.
+// TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer asserts that Snapshot
+// trailers appended after a Warp-SHA trailer already appended by the caller
+// join the same trailer block, and that both parse back independently.
 func TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer(t *testing.T) {
 	message := "weft sync"
 	withWarpSHA := appendWarpSHATrailer(message, "abc123")
@@ -191,7 +205,8 @@ func TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer(t *testing.T) {
 	}
 }
 
-// TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged asserts that an empty tags slice returns message unchanged with a nil error.
+// TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged asserts that an
+// empty tags slice returns message unchanged with a nil error.
 func TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged(t *testing.T) {
 	message := "weft sync\n\nWarp-SHA: abc123"
 
@@ -204,7 +219,10 @@ func TestAppendSnapshotTrailers_EmptyTagsReturnsMessageUnchanged(t *testing.T) {
 	}
 }
 
-// TestAppendSnapshotTrailers_RejectsInvalidTags asserts that a tag containing a newline, carriage return, colon, or any other out-of-charset character is rejected, and that rejection happens before anything is written (the returned message is empty on error).
+// TestAppendSnapshotTrailers_RejectsInvalidTags asserts that a tag containing
+// a newline, carriage return, colon, or any other out-of-charset character is
+// rejected, and that rejection happens before anything is written (the
+// returned message is empty on error).
 func TestAppendSnapshotTrailers_RejectsInvalidTags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -236,7 +254,10 @@ func TestAppendSnapshotTrailers_RejectsInvalidTags(t *testing.T) {
 	}
 }
 
-// TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList asserts that when a valid tag precedes an invalid one in the list, the whole call fails with no message written -- a caller must never end up with a partial trailer block.
+// TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList asserts that
+// when a valid tag precedes an invalid one in the list, the whole call fails
+// with no message written -- a caller must never end up with a partial
+// trailer block.
 func TestAppendSnapshotTrailers_FailsFastOnAnyInvalidTagInTheList(t *testing.T) {
 	got, err := appendSnapshotTrailers("weft sync", []string{"build-42", "bad:tag"})
 	if err == nil {

@@ -1,4 +1,8 @@
-// spawnbatch.go implements the `spawn-batch` builder verb: the same automatic plan-validation gate "validate" lints for, the ErrPaused "paused" signal, builderengine.SpawnBatch's role-override/restart-chain wiring, and the spawn-boundary weft commit of state.json -- the first of the loop's three weft-commit points (see builderengine's package doc).
+// spawnbatch.go implements the `spawn-batch` builder verb: the same
+// automatic plan-validation gate "validate" lints for, the ErrPaused
+// "paused" signal, builderengine.SpawnBatch's role-override/restart-chain
+// wiring, and the spawn-boundary weft commit of state.json -- the first of
+// the loop's three weft-commit points (see builderengine's package doc).
 
 package buildercli
 

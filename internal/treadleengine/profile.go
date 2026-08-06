@@ -1,4 +1,8 @@
-// profile.go defines Profile, treadle's per-block input contract: resolved plain data only (no config file, no model-spec parsing — see the treadle-owns-no-config shared decision), plus Gate and GateMode, the convergence-check vocabulary, and Profile.validate, the fail-loud structural check treadle runs once per block before the loop starts.
+// profile.go defines Profile, treadle's per-block input contract: resolved
+// plain data only (no config file, no model-spec parsing — see the
+// treadle-owns-no-config shared decision), plus Gate and GateMode, the
+// convergence-check vocabulary, and Profile.validate, the fail-loud
+// structural check treadle runs once per block before the loop starts.
 
 package treadleengine
 
@@ -7,9 +11,8 @@ import (
 	"time"
 )
 
-// GateMode selects how a round's convergence is decided.
-// It is safety-critical and gets no silent default;
-// validate rejects any unknown value.
+// GateMode selects how a round's convergence is decided. It is safety-critical
+// and gets no silent default; validate rejects any unknown value.
 type GateMode string
 
 // The three legal GateMode values.
@@ -19,22 +22,21 @@ const (
 	GateBoth       GateMode = "both"
 )
 
-// Gate describes the convergence check: which signal(s) decide a round is clean (Mode), the argv to run when Mode consults a command (Command — no shell, so argv is portable), and how long the command may run (Timeout).
+// Gate describes the convergence check: which signal(s) decide a round is
+// clean (Mode), the argv to run when Mode consults a command (Command — no
+// shell, so argv is portable), and how long the command may run (Timeout).
 type Gate struct {
 	Mode    GateMode
 	Command []string
 	Timeout time.Duration
 }
 
-// Profile is treadle's per-block input: resolved plain data only.
-// ProfileHash is caller-computed identity;
-// treadle stamps it into state.json verbatim.
-// Gate/GateDir select and locate the convergence check.
-// RoundCaps must be resolved and non-empty;
-// treadle does no default resolution.
-// JudgeModel/ JudgeEffort tune judge/triage calls;
-// Model/Effort/Timeout tune each round's attempt.
-// PreRoundTargeting gates the optional pre-round targeting capability.
+// Profile is treadle's per-block input: resolved plain data only. ProfileHash
+// is caller-computed identity; treadle stamps it into state.json verbatim.
+// Gate/GateDir select and locate the convergence check. RoundCaps must be
+// resolved and non-empty; treadle does no default resolution. JudgeModel/
+// JudgeEffort tune judge/triage calls; Model/Effort/Timeout tune each round's
+// attempt. PreRoundTargeting gates the optional pre-round targeting capability.
 type Profile struct {
 	ProfileHash       string
 	Gate              Gate

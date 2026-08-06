@@ -1,5 +1,8 @@
-// refs_test.go is the untagged, spawn-free counterpart to refs_integration_test.go: it exercises References's error-mapping paths that do not require a real language server.
-// exec.LookPath failing for a nonexistent binary happens before any subprocess is spawned, so this test needs no //go:build integration tag and no installed language server.
+// refs_test.go is the untagged, spawn-free counterpart to
+// refs_integration_test.go: it exercises References's error-mapping paths
+// that do not require a real language server. exec.LookPath failing for a
+// nonexistent binary happens before any subprocess is spawned, so this test
+// needs no //go:build integration tag and no installed language server.
 
 package scoutengine
 
@@ -126,7 +129,9 @@ func TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart(t *testing.
 	}
 }
 
-// TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound asserts a documentSymbol result with no exact-name match maps to ErrSymbolNotFoundSentinel.
+// TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound asserts a
+// documentSymbol result with no exact-name match maps to
+// ErrSymbolNotFoundSentinel.
 func TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -178,8 +183,11 @@ func TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound(t *testing.T) 
 	}
 }
 
-// TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol asserts a documentSymbol result with two exact-name matches (e.g.
-// a same-named method on two distinct types in the same file) maps to ErrAmbiguousSymbolSentinel, with Candidates formatted as file:line:col strings.
+// TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol asserts
+// a documentSymbol result with two exact-name matches (e.g. a same-named
+// method on two distinct types in the same file) maps to
+// ErrAmbiguousSymbolSentinel, with Candidates formatted as file:line:col
+// strings.
 func TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -297,7 +305,13 @@ func TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol(t *testin
 	}
 }
 
-// TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest asserts that when the server's initialize response omits documentSymbolProvider, resolvePosition's InFile branch returns ErrResolverUnsupported and never issues a textDocument/documentSymbol request at all — mirroring symbol_test.go's TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest precedent for the workspace/symbol path.
+// TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest
+// asserts that when the server's initialize response omits
+// documentSymbolProvider, resolvePosition's InFile branch returns
+// ErrResolverUnsupported and never issues a textDocument/documentSymbol
+// request at all — mirroring symbol_test.go's
+// TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest precedent
+// for the workspace/symbol path.
 func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 
@@ -363,11 +377,21 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 	<-unexpectedRequest
 }
 
-// TestReferences_HasNativeDaemonRoutesThroughEnsureServer proves that a registry entry with HasNativeDaemon: true takes the ensureServer path, not the legacy newLSPClient(entry.Command) path — without spawning a real gopls.
-// It swaps installGoToolchain for a fake that always fails with a distinct, recognizable error, then asserts References's returned error wraps that exact sentinel: only reachable if the call chain was References -> lookup -> acquireConnection -> ensureServer -> resolveGoToolchain -> the fake installer.
-// ensureServer resolves the toolchain directly and returns on failure before ever attempting ensureSupervised or ensureNative, so this fake-install failure never reaches either strategy.
-// Had References instead taken the legacy path, it would fail with ErrServerNotFoundSentinel from a literal, unresolved "gopls" lookup on $PATH — a categorically different error this assertion distinguishes from.
-// This is not a proof that a real gopls connection works end to end — that is ensureserver_integration_test.go (batch 5).
+// TestReferences_HasNativeDaemonRoutesThroughEnsureServer proves that a
+// registry entry with HasNativeDaemon: true takes the ensureServer path,
+// not the legacy newLSPClient(entry.Command) path — without spawning a
+// real gopls. It swaps installGoToolchain for a fake that always fails
+// with a distinct, recognizable error, then asserts References's returned
+// error wraps that exact sentinel: only reachable if the call chain was
+// References -> lookup -> acquireConnection -> ensureServer ->
+// resolveGoToolchain -> the fake installer. ensureServer resolves the
+// toolchain directly and returns on failure before ever attempting
+// ensureSupervised or ensureNative, so this fake-install failure never
+// reaches either strategy. Had References instead taken the legacy path,
+// it would fail with ErrServerNotFoundSentinel from a literal, unresolved
+// "gopls" lookup on $PATH — a categorically different error this assertion
+// distinguishes from. This is not a proof that a real gopls connection
+// works end to end — that is ensureserver_integration_test.go (batch 5).
 func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 	withTempUserCacheDir(t)
 
@@ -397,7 +421,12 @@ func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 	}
 }
 
-// TestReferences_NonExistentServerBinaryYieldsErrServerNotFound points a synthetic registry entry's Command at a binary that cannot exist on $PATH and asserts References maps the resulting exec.LookPath failure to ErrServerNotFoundSentinel, mirroring the equivalent //go:build integration subtest in refs_integration_test.go but without any dependency on gopls being installed.
+// TestReferences_NonExistentServerBinaryYieldsErrServerNotFound points a
+// synthetic registry entry's Command at a binary that cannot exist on
+// $PATH and asserts References maps the resulting exec.LookPath failure to
+// ErrServerNotFoundSentinel, mirroring the equivalent
+// //go:build integration subtest in refs_integration_test.go but without
+// any dependency on gopls being installed.
 func TestReferences_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 	dir := t.TempDir()
 	reg := Registry{

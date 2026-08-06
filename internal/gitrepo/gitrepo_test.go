@@ -181,8 +181,10 @@ func TestStageAndCommit_NeverStagesUnlistedFile(t *testing.T) {
 	}
 }
 
-// TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted asserts that an index entry staged outside the call (a human's half-staged WIP in the shared worktree) is not swept into the automated commit: only the listed file is committed,
-// and the pre-staged entry stays staged and uncommitted.
+// TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted asserts that an
+// index entry staged outside the call (a human's half-staged WIP in the
+// shared worktree) is not swept into the automated commit: only the listed
+// file is committed, and the pre-staged entry stays staged and uncommitted.
 func TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -227,7 +229,10 @@ func TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted(t *testing.T) {
 	}
 }
 
-// TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit asserts the documented empty-list contract holds even when the index already has a staged entry: ("", false, nil) with HEAD unmoved — an empty list must not become a commit of someone else's staged change.
+// TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit asserts the
+// documented empty-list contract holds even when the index already has a
+// staged entry: ("", false, nil) with HEAD unmoved — an empty list must not
+// become a commit of someone else's staged change.
 func TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -260,9 +265,18 @@ func TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit(t *testing.T) {
 	}
 }
 
-// TestStageAndCommit_MidMerge_RefusesPartialCommit asserts the documented mid-merge safety property: while a merge is in progress (MERGE_HEAD present), a pathspec-scoped StageAndCommit of an unrelated file is refused by git ("cannot do a partial commit during a merge") rather than silently finalizing the human's half-done merge under the automated message.
-// The merge is left clean and resolved (git merge --no-commit of a non-conflicting branch) on purpose: an unresolved conflict would block any commit and mask the distinction, so this test is load-bearing only against a clean merge-in- progress.
-// It guards the mid-merge consequence of the commit's pathspec scoping — `commit -- <files>` refuses a partial commit mid-merge, whereas an unscoped `git commit` would complete the merge — so the merge must still be pending afterward.
+// TestStageAndCommit_MidMerge_RefusesPartialCommit asserts the documented
+// mid-merge safety property: while a merge is in progress (MERGE_HEAD present),
+// a pathspec-scoped StageAndCommit of an unrelated file is refused by git
+// ("cannot do a partial commit during a merge") rather than silently finalizing
+// the human's half-done merge under the automated message. The merge is left
+// clean and resolved (git merge --no-commit of a non-conflicting branch) on
+// purpose: an unresolved conflict would block any commit and mask the
+// distinction, so this test is load-bearing only against a clean merge-in-
+// progress. It guards the mid-merge consequence of the commit's pathspec
+// scoping — `commit -- <files>` refuses a partial commit mid-merge, whereas an
+// unscoped `git commit` would complete the merge — so the merge must still be
+// pending afterward.
 func TestStageAndCommit_MidMerge_RefusesPartialCommit(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "base.txt", "base\n")
@@ -302,7 +316,12 @@ func TestStageAndCommit_MidMerge_RefusesPartialCommit(t *testing.T) {
 	}
 }
 
-// TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles asserts the wildcard-stage contract: dirtying the working tree with both a brand-new untracked file and a modification to an already-tracked file, neither named explicitly, must all land in one commit and leave the tree clean — the behavior StageAndCommit's explicit-file-list contract deliberately does not offer.
+// TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles asserts the
+// wildcard-stage contract: dirtying the working tree with both a brand-new
+// untracked file and a modification to an already-tracked file, neither
+// named explicitly, must all land in one commit and leave the tree clean —
+// the behavior StageAndCommit's explicit-file-list contract deliberately
+// does not offer.
 func TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -356,7 +375,9 @@ func TestStageAllAndCommit_CommitsBothUntrackedAndModifiedFiles(t *testing.T) {
 	}
 }
 
-// TestStageAllAndCommit_NothingToCommit_WhenTreeClean asserts the documented no-op signal: a clean working tree returns ("", false, nil) and creates no new commit, mirroring StageAndCommit's nothing-to-commit contract.
+// TestStageAllAndCommit_NothingToCommit_WhenTreeClean asserts the documented
+// no-op signal: a clean working tree returns ("", false, nil) and creates no
+// new commit, mirroring StageAndCommit's nothing-to-commit contract.
 func TestStageAllAndCommit_NothingToCommit_WhenTreeClean(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -384,7 +405,11 @@ func TestStageAllAndCommit_NothingToCommit_WhenTreeClean(t *testing.T) {
 	}
 }
 
-// TestStageAllAndCommit_CapturesFileExplicitListWouldMiss asserts the reason StageAllAndCommit exists: a new file not named in any explicit list — the kind of file an explicit-list StageAndCommit call would silently leave uncommitted — is still captured by the wildcard `add -A` path.
+// TestStageAllAndCommit_CapturesFileExplicitListWouldMiss asserts the
+// reason StageAllAndCommit exists: a new file not named in any explicit
+// list — the kind of file an explicit-list StageAndCommit call would
+// silently leave uncommitted — is still captured by the wildcard `add -A`
+// path.
 func TestStageAllAndCommit_CapturesFileExplicitListWouldMiss(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -502,7 +527,10 @@ func TestChangedFilesSince_ExcludesUncommittedEdit(t *testing.T) {
 	}
 }
 
-// TestChangedFilesSince_NonASCIIPathReturnedVerbatim asserts that a filename outside ASCII comes back as the literal on-disk path, not core.quotePath's C-quoted escape form ("\"bl\\303\\245b\\303\\246r.txt\"") that matches nothing on disk.
+// TestChangedFilesSince_NonASCIIPathReturnedVerbatim asserts that a filename
+// outside ASCII comes back as the literal on-disk path, not core.quotePath's
+// C-quoted escape form ("\"bl\\303\\245b\\303\\246r.txt\"") that matches
+// nothing on disk.
 func TestChangedFilesSince_NonASCIIPathReturnedVerbatim(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -526,8 +554,10 @@ func TestChangedFilesSince_NonASCIIPathReturnedVerbatim(t *testing.T) {
 	}
 }
 
-// TestChangedFilesSince_RenameReportsBothPaths asserts that a rename lists both the old path (which no longer exists at HEAD) and the new one;
-// git's default rename detection would report only the destination, leaving a consumer's per-file state for the old path stale forever.
+// TestChangedFilesSince_RenameReportsBothPaths asserts that a rename lists
+// both the old path (which no longer exists at HEAD) and the new one; git's
+// default rename detection would report only the destination, leaving a
+// consumer's per-file state for the old path stale forever.
 func TestChangedFilesSince_RenameReportsBothPaths(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "old.txt", "content that stays identical")
@@ -596,7 +626,11 @@ func TestSHAExists(t *testing.T) {
 	}
 }
 
-// TestBisectPrimitives_DetachRestoreCycle exercises the full in-place bisect cycle the integration bisect drives: capture the current branch, detach to an older commit, assert HEAD landed there detached, restore the branch, and assert HEAD is back on it — the exact CurrentBranch -> CheckoutDetached -> RestoreBranch sequence the bisect's per-candidate loop performs.
+// TestBisectPrimitives_DetachRestoreCycle exercises the full in-place bisect
+// cycle the integration bisect drives: capture the current branch, detach to
+// an older commit, assert HEAD landed there detached, restore the branch,
+// and assert HEAD is back on it — the exact CurrentBranch -> CheckoutDetached
+// -> RestoreBranch sequence the bisect's per-candidate loop performs.
 func TestBisectPrimitives_DetachRestoreCycle(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "first")
@@ -646,7 +680,9 @@ func TestBisectPrimitives_DetachRestoreCycle(t *testing.T) {
 	}
 }
 
-// TestCheckoutDetached_RejectsNonHexSHA asserts CheckoutDetached validates its sha argument the same way ChangedFilesSince and SHAExists do, before ever spawning git.
+// TestCheckoutDetached_RejectsNonHexSHA asserts CheckoutDetached validates
+// its sha argument the same way ChangedFilesSince and SHAExists do, before
+// ever spawning git.
 func TestCheckoutDetached_RejectsNonHexSHA(t *testing.T) {
 	_, repo := newRepo(t)
 
@@ -656,7 +692,9 @@ func TestCheckoutDetached_RejectsNonHexSHA(t *testing.T) {
 	}
 }
 
-// TestCurrentBranch_ErrorsOnDetachedHEAD asserts CurrentBranch surfaces an error rather than an empty string when HEAD is detached, so a caller can never mistake "no branch captured" for a legitimate empty branch name.
+// TestCurrentBranch_ErrorsOnDetachedHEAD asserts CurrentBranch surfaces an
+// error rather than an empty string when HEAD is detached, so a caller can
+// never mistake "no branch captured" for a legitimate empty branch name.
 func TestCurrentBranch_ErrorsOnDetachedHEAD(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")

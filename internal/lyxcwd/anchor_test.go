@@ -34,9 +34,10 @@ func writeAnchor(t *testing.T, hub, anchor string) {
 	}
 }
 
-// TestResolve_RootAnchor verifies that a root ("." ) recorded anchor resolves AnchorRel="."
-// from exactly the worktree root,
-// and that the strict gate now rejects a subdirectory of that root — the user-visible behaviour change documented in this batch's card 6 commit.
+// TestResolve_RootAnchor verifies that a root ("." ) recorded anchor resolves
+// AnchorRel="." from exactly the worktree root, and that the strict gate now
+// rejects a subdirectory of that root — the user-visible behaviour change
+// documented in this batch's card 6 commit.
 func TestResolve_RootAnchor(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +76,8 @@ func TestResolve_RootAnchor(t *testing.T) {
 	})
 }
 
-// TestResolve_SubpathAnchor verifies that a recorded subpath anchor ("backend") resolves AnchorRel="backend" exactly at the anchored directory,
+// TestResolve_SubpathAnchor verifies that a recorded subpath anchor
+// ("backend") resolves AnchorRel="backend" exactly at the anchored directory,
 // and that the strict gate now rejects a descendant of it.
 func TestResolve_SubpathAnchor(t *testing.T) {
 	t.Parallel()
@@ -116,8 +118,10 @@ func TestResolve_SubpathAnchor(t *testing.T) {
 	})
 }
 
-// TestResolve_CwdOutsideAnchor verifies that a cwd outside the recorded anchor's subtree is a hard error wrapping ErrCwdOutsideAnchor: a sibling directory of the anchor,
-// and the repo root itself (which sits above a subpath anchor).
+// TestResolve_CwdOutsideAnchor verifies that a cwd outside the recorded
+// anchor's subtree is a hard error wrapping ErrCwdOutsideAnchor: a sibling
+// directory of the anchor, and the repo root itself (which sits above a
+// subpath anchor).
 func TestResolve_CwdOutsideAnchor(t *testing.T) {
 	t.Parallel()
 
@@ -159,9 +163,13 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 	}
 }
 
-// TestResolve_AnchorAbsentFallsBackToDot verifies that when no .lyx-anchor marker is recorded, Resolve's AnchorRel falls back to "."
-// with no error at the worktree root — never to a cwd-derived relative path, which would make the Location name a lie — the mid-clone / lyxtest synthetic hub / non-fabric repo case.
-// The strict gate is hoisted to apply unconditionally (card 6), so with no anchor recorded lyx is accepted only at the worktree root, never in a subdirectory: a subdirectory now errors.
+// TestResolve_AnchorAbsentFallsBackToDot verifies that when no
+// .lyx-anchor marker is recorded, Resolve's AnchorRel falls back to "."
+// with no error at the worktree root — never to a cwd-derived relative path,
+// which would make the Location name a lie — the mid-clone / lyxtest
+// synthetic hub / non-fabric repo case. The strict gate is hoisted to apply
+// unconditionally (card 6), so with no anchor recorded lyx is accepted only
+// at the worktree root, never in a subdirectory: a subdirectory now errors.
 func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	t.Parallel()
 
@@ -194,7 +202,11 @@ func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	})
 }
 
-// TestResolveWorktree_SubpathAnchorNoGate verifies the exact geometry fabricengine's hostLayoutFor fallback hits: calling the gate-free resolver with a worktree root that sits ABOVE a recorded subpath anchor must return RelPath="backend" and must NOT return ErrCwdOutsideAnchor — this gate-free behavior is what distinguishes ResolveWorktree from Resolve.
+// TestResolveWorktree_SubpathAnchorNoGate verifies the exact geometry
+// fabricengine's hostLayoutFor fallback hits: calling the gate-free resolver
+// with a worktree root that sits ABOVE a recorded subpath anchor must return
+// RelPath="backend" and must NOT return ErrCwdOutsideAnchor — this gate-free
+// behavior is what distinguishes ResolveWorktree from Resolve.
 func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 	t.Parallel()
 

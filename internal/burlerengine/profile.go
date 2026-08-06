@@ -1,6 +1,8 @@
-// profile.go defines Profile, the content contract for one burler round — what to review, what to judge it against, and how the round is allowed to write its fixes — plus its fail-loud validate method.
-// Profile is pure data;
-// the shuttle interaction that consumes it lives in engine.go (added in the next batch).
+// profile.go defines Profile, the content contract for one burler round —
+// what to review, what to judge it against, and how the round is allowed to
+// write its fixes — plus its fail-loud validate method. Profile is pure data;
+// the shuttle interaction that consumes it lives in engine.go (added in the
+// next batch).
 
 package burlerengine
 
@@ -42,9 +44,8 @@ type Profile struct {
 	PriorFixerReports []string
 }
 
-// RunOpts carries run-tuning knobs kept off Profile.
-// Each field maps 1:1 onto shuttleengine.Spec;
-// zero values defer to engine/config default.
+// RunOpts carries run-tuning knobs kept off Profile. Each field maps 1:1
+// onto shuttleengine.Spec; zero values defer to engine/config default.
 type RunOpts struct {
 	Model   string
 	Effort  string

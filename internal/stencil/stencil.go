@@ -1,5 +1,7 @@
-// stencil.go implements Fill, the leaf that substitutes marker fields in a markdown template with caller-supplied values.
-// It refuses to render a template that would leave a required top-level marker unfilled, turning a silently-blank prompt field into a loud, early error instead.
+// stencil.go implements Fill, the leaf that substitutes marker fields in a markdown
+// template with caller-supplied values. It refuses to render a template that would
+// leave a required top-level marker unfilled, turning a silently-blank prompt field
+// into a loud, early error instead.
 
 package stencil
 
@@ -13,13 +15,14 @@ import (
 )
 
 // Fill renders a markdown template by substituting {{.X}} markers from values.
-// Every top-level marker absent from values or empty is collected and reported in one error;
-// the template is never executed with unfilled top-level markers.
+// Every top-level marker absent from values or empty is collected and reported
+// in one error; the template is never executed with unfilled top-level markers.
 func Fill(template []byte, values map[string]string) ([]byte, error) {
 	return FillOptional(template, values, nil)
 }
 
-// FillOptional renders a template like Fill, except names in optional are exempt from the unfilled-marker guarantee and render as nothing if absent or empty.
+// FillOptional renders a template like Fill, except names in optional are
+// exempt from the unfilled-marker guarantee and render as nothing if absent or empty.
 func FillOptional(template []byte, values map[string]string, optional []string) ([]byte, error) {
 	stripped := stripLeadingComment(string(template))
 

@@ -1,7 +1,9 @@
 // config.go — configuration for the shuttle module.
 //
-// Defines the Config type mirroring shuttle.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the shuttle config file;
-// shuttle never reads config files or knows their on-disk layout itself.
+// Defines the Config type mirroring shuttle.yaml's keys and LoadConfig, which
+// uses internal/configengine.Load with ConfigTemplate() to strictly
+// validate and resolve the shuttle config file; shuttle never reads config
+// files or knows their on-disk layout itself.
 
 package shuttleengine
 

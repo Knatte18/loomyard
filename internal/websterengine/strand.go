@@ -1,8 +1,17 @@
-// strand.go implements webster's own strand/spawn seam helpers: webster-local copies of builderengine's StrandLive and TurnEnded (poll.go), the Starter seam (spawn.go), the OrchestratorStarter/ OrchestratorHandle spawn seam (runlevel.go), and RemoveStrandIfLive (spawn.go), inlining direct shuttleengine calls with no builder import.
-// Every borrowed symbol has an in-tree builder caller (frozen, per the Shared Decision builder-is-frozen-copy-not-move), so these are webster-local copies, not moves.
-// StrandLive and TurnEnded are EXPORTED because internal/webstercli calls them directly;
-// the spawn-seam interfaces are exported so webstercli can assign a real *shuttleengine.Runner into them (Go's structural typing means *shuttleengine.Runner satisfies Starter with no adapter glue);
-// removeStrandIfLive stays engine-internal, consumed only by webster's own respawn ladders (wired in batch 7).
+// strand.go implements webster's own strand/spawn seam helpers:
+// webster-local copies of builderengine's StrandLive and TurnEnded
+// (poll.go), the Starter seam (spawn.go), the OrchestratorStarter/
+// OrchestratorHandle spawn seam (runlevel.go), and RemoveStrandIfLive
+// (spawn.go), inlining direct shuttleengine calls with no builder import.
+// Every borrowed symbol has an in-tree builder caller (frozen, per the
+// Shared Decision builder-is-frozen-copy-not-move), so these are
+// webster-local copies, not moves. StrandLive and TurnEnded are EXPORTED
+// because internal/webstercli calls them directly; the spawn-seam
+// interfaces are exported so webstercli can assign a real
+// *shuttleengine.Runner into them (Go's structural typing means
+// *shuttleengine.Runner satisfies Starter with no adapter glue);
+// removeStrandIfLive stays engine-internal, consumed only by webster's own
+// respawn ladders (wired in batch 7).
 
 package websterengine
 
@@ -13,10 +22,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// StrandLive reports whether guid names a strand reed currently tracks as live.
-// guid absent from the result reports (false, nil).
-// Liveness is NEVER read from persisted reed state;
-// only a live Status() query can answer this.
+// StrandLive reports whether guid names a strand reed currently tracks as
+// live. guid absent from the result reports (false, nil). Liveness is NEVER
+// read from persisted reed state; only a live Status() query can answer this.
 func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 	status, err := reed.Status()
 	if err != nil {
@@ -30,9 +38,10 @@ func StrandLive(reed shuttleengine.ReedOps, guid string) (bool, error) {
 	return false, nil
 }
 
-// TurnEnded reports whether an implementer's turn has ended without satisfying the file contract.
-// It delegates event-grammar parsing to engine.ParseEvents, reporting true only when at least one Event carries Kind == shuttleengine.EventStop.
-// Missing events file reports (false, nil).
+// TurnEnded reports whether an implementer's turn has ended without
+// satisfying the file contract. It delegates event-grammar parsing to
+// engine.ParseEvents, reporting true only when at least one Event carries
+// Kind == shuttleengine.EventStop. Missing events file reports (false, nil).
 // ParseEvents errors propagate.
 func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	data, err := os.ReadFile(eventsPath)
@@ -56,20 +65,23 @@ func TurnEnded(eventsPath string, engine shuttleengine.Engine) (bool, error) {
 	return false, nil
 }
 
-// Starter is the seam a batch's implementer or recovery strand spawns through.
-// Start is deliberately non-blocking.
+// Starter is the seam a batch's implementer or recovery strand spawns
+// through. Start is deliberately non-blocking.
 type Starter interface {
 	Start(shuttleengine.Spec) (*shuttleengine.Run, error)
 }
 
-// OrchestratorHandle is the started-but-not-yet-finished orchestrator-role spawn a caller blocks on.
-// StrandGUID identifies the reed strand, Wait blocks until terminal shuttle outcome.
+// OrchestratorHandle is the started-but-not-yet-finished orchestrator-role
+// spawn a caller blocks on. StrandGUID identifies the reed strand, Wait
+// blocks until terminal shuttle outcome.
 type OrchestratorHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
 }
 
-// OrchestratorStarter is the seam a caller spawns an orchestrator-role strand through, deliberately two-phase (start, then wait) so strand identity is learned and persisted before blocking.
+// OrchestratorStarter is the seam a caller spawns an orchestrator-role
+// strand through, deliberately two-phase (start, then wait) so strand
+// identity is learned and persisted before blocking.
 type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }

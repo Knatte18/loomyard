@@ -1,4 +1,7 @@
-// worktree.go adds WorktreeChangedFiles, the read-only working-tree scan Fabric.Status (a later fabricengine batch) uses to report uncommitted changes — as opposed to gitrepo.go's ChangedFilesSince, which compares two committed trees and never looks at the working tree at all.
+// worktree.go adds WorktreeChangedFiles, the read-only working-tree scan
+// Fabric.Status (a later fabricengine batch) uses to report uncommitted
+// changes — as opposed to gitrepo.go's ChangedFilesSince, which compares two
+// committed trees and never looks at the working tree at all.
 
 package gitrepo
 
@@ -13,9 +16,10 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
-// WorktreeChangedFiles returns repo-relative paths of every file with an uncommitted change (tracked-and-modified, staged, or untracked).
-// The set is not ordered contractually.
-// It manually reads .git/info/exclude since go-git's Worktree.Status() skips it due to path chrooting.
+// WorktreeChangedFiles returns repo-relative paths of every file with an
+// uncommitted change (tracked-and-modified, staged, or untracked). The set is
+// not ordered contractually. It manually reads .git/info/exclude since
+// go-git's Worktree.Status() skips it due to path chrooting.
 func (r *Repo) WorktreeChangedFiles() ([]string, error) {
 	repo, err := r.goGit()
 	if err != nil {

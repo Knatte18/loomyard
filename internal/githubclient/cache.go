@@ -1,5 +1,9 @@
-// cache.go implements the cross-platform half of githubclient's machine-global token cache: directory resolution, the on-disk schema, freshness computation, and the atomic-replace write path.
-// Platform-specific file hardening — stripping inherited ACLs on Windows so the cache file is readable only by its owner — is delegated to the unexported hardenCacheFile hook, implemented per platform in cache_windows.go and cache_other.go.
+// cache.go implements the cross-platform half of githubclient's
+// machine-global token cache: directory resolution, the on-disk schema,
+// freshness computation, and the atomic-replace write path. Platform-specific
+// file hardening — stripping inherited ACLs on Windows so the cache file is
+// readable only by its owner — is delegated to the unexported hardenCacheFile
+// hook, implemented per platform in cache_windows.go and cache_other.go.
 
 package githubclient
 

@@ -1,7 +1,11 @@
-// junctionnames_test.go — unit tests for junctionNames, filterHubReserved, and the hub-structural name constructors BoardDir, HubPath and IsReservedHubName relocated from internal/lyxcwd in this batch.
+// junctionnames_test.go — unit tests for junctionNames, filterHubReserved,
+// and the hub-structural name constructors BoardDir, HubPath and
+// IsReservedHubName relocated from internal/lyxcwd in this batch.
 //
-// Package fabricengine (not fabricengine_test) so it can call the unexported junctionNames and filterHubReserved directly.
-// Hermetic: no git spawn, so this stays a Tier-1 unit test even though the package as a whole also carries git-spawning integration tests elsewhere.
+// Package fabricengine (not fabricengine_test) so it can call the unexported
+// junctionNames and filterHubReserved directly. Hermetic: no git spawn, so
+// this stays a Tier-1 unit test even though the package as a whole also
+// carries git-spawning integration tests elsewhere.
 
 package fabricengine
 
@@ -10,7 +14,9 @@ import (
 	"testing"
 )
 
-// TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a config-load failure at baseDir is surfaced as a non-nil error and a nil name slice, never silently defaulted to _lyx/_pattern.
+// TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a
+// config-load failure at baseDir is surfaced as a non-nil error and a nil
+// name slice, never silently defaulted to _lyx/_pattern.
 func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
 	baseDir := t.TempDir() // no _lyx/, so LoadConfig cannot find fabric.yaml
 
@@ -23,7 +29,8 @@ func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
 	}
 }
 
-// TestFilterHubReserved covers filterHubReserved's table of shapes: mixed reserved/non-reserved input, all-reserved input, and no-reserved input.
+// TestFilterHubReserved covers filterHubReserved's table of shapes: mixed
+// reserved/non-reserved input, all-reserved input, and no-reserved input.
 func TestFilterHubReserved(t *testing.T) {
 	reserved := HubReservedNames()
 
@@ -145,7 +152,10 @@ func TestHubPath(t *testing.T) {
 	}
 }
 
-// TestIsReservedHubName verifies the reserved hub-entry name predicate slug validation (fabric's Add) gates on: every geometry-owned hub-level entry name is reserved (union of HubReservedNames() and the caller-supplied junctionNames), ordinary slugs and near-misses are not.
+// TestIsReservedHubName verifies the reserved hub-entry name predicate slug
+// validation (fabric's Add) gates on: every geometry-owned hub-level entry
+// name is reserved (union of HubReservedNames() and the caller-supplied
+// junctionNames), ordinary slugs and near-misses are not.
 func TestIsReservedHubName(t *testing.T) {
 	t.Parallel()
 

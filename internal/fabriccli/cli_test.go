@@ -62,7 +62,9 @@ func decodeResult(t *testing.T, buf *bytes.Buffer) map[string]any {
 	return result
 }
 
-// TestRunCLI_NoArgs verifies that "lyx fabric" with no subcommand prints the subcommand listing naming all 14 verbs — no git repo is needed, since the bare group command is excluded from weft-verb PersistentPreRunE resolution.
+// TestRunCLI_NoArgs verifies that "lyx fabric" with no subcommand prints the
+// subcommand listing naming all 14 verbs — no git repo is needed, since the bare
+// group command is excluded from weft-verb PersistentPreRunE resolution.
 func TestRunCLI_NoArgs(t *testing.T) {
 	t.Parallel()
 
@@ -86,7 +88,8 @@ func TestRunCLI_NoArgs(t *testing.T) {
 	}
 }
 
-// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error envelope with ok=false.
+// TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and
+// emits a JSON error envelope with ok=false.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	// A temp dir is sufficient: "fabric" is not in weftVerbNames, so the
 	// PersistentPreRunE guard returns nil early, bypassing all resolution.
@@ -109,7 +112,9 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_WeftPathPushOnly verifies that --weft-path with a non-push subcommand returns exit 1 and the JSON error envelope {"ok":false,"error":"subcommand requires a worktree context"}.
+// TestRunCLI_WeftPathPushOnly verifies that --weft-path with a non-push subcommand
+// returns exit 1 and the JSON error envelope {"ok":false,"error":"subcommand requires
+// a worktree context"}.
 func TestRunCLI_WeftPathPushOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -133,7 +138,8 @@ func TestRunCLI_WeftPathPushOnly(t *testing.T) {
 	}
 }
 
-// TestRunCLI_PairsReturnsPairsKey verifies that "fabric pairs" resolves the topology config from cwd and emits ok=true with a "pairs" key.
+// TestRunCLI_PairsReturnsPairsKey verifies that "fabric pairs" resolves the
+// topology config from cwd and emits ok=true with a "pairs" key.
 func TestRunCLI_PairsReturnsPairsKey(t *testing.T) {
 	setupCLIRepo(t)
 
@@ -152,8 +158,9 @@ func TestRunCLI_PairsReturnsPairsKey(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CommitHelp asserts that "fabric commit --help" output documents the fixed commit message and the Warp-SHA trailer,
-// and does not advertise a --message flag that does not exist.
+// TestRunCLI_CommitHelp asserts that "fabric commit --help" output documents the
+// fixed commit message and the Warp-SHA trailer, and does not advertise a
+// --message flag that does not exist.
 func TestRunCLI_CommitHelp(t *testing.T) {
 	t.Parallel()
 
@@ -177,7 +184,11 @@ func TestRunCLI_CommitHelp(t *testing.T) {
 	}
 }
 
-// TestRunCLI_PullHelp asserts that "fabric pull --help" documents the both-sides pull/reconcile behaviour — a help-accuracy assertion in the same style as TestRunCLI_CommitHelp, guarding against the CLI/Cobra Invariant's "stale help is review-blocking" obligation now that pull drives the unified Fabric.Pull instead of the weft-only PullWeft.
+// TestRunCLI_PullHelp asserts that "fabric pull --help" documents the
+// both-sides pull/reconcile behaviour — a help-accuracy assertion in the same
+// style as TestRunCLI_CommitHelp, guarding against the CLI/Cobra Invariant's
+// "stale help is review-blocking" obligation now that pull drives the
+// unified Fabric.Pull instead of the weft-only PullWeft.
 func TestRunCLI_PullHelp(t *testing.T) {
 	t.Parallel()
 
@@ -201,7 +212,11 @@ func TestRunCLI_PullHelp(t *testing.T) {
 	}
 }
 
-// TestRunCLI_PullShortNonEmpty asserts pullCmd's Short summary is non-empty and itself names the both-sides/reconcile behaviour, building the command tree via the fabriccli.Command() seam (the CLI/Cobra Invariant's "Short on every command" obligation, checked directly against pull's own Short rather than via --help output, where Long supersedes Short).
+// TestRunCLI_PullShortNonEmpty asserts pullCmd's Short summary is non-empty
+// and itself names the both-sides/reconcile behaviour, building the command
+// tree via the fabriccli.Command() seam (the CLI/Cobra Invariant's "Short on
+// every command" obligation, checked directly against pull's own Short
+// rather than via --help output, where Long supersedes Short).
 func TestRunCLI_PullShortNonEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -219,8 +234,9 @@ func TestRunCLI_PullShortNonEmpty(t *testing.T) {
 	}
 }
 
-// TestRunCLI_EnvMapToOption tests that the CLI edge properly maps WEFT_SKIP_PUSH to SyncOptions on the push verb.
-// This is a serial test because it exercises the cwd-based push command which reads the current directory.
+// TestRunCLI_EnvMapToOption tests that the CLI edge properly maps WEFT_SKIP_PUSH to
+// SyncOptions on the push verb. This is a serial test because it exercises the
+// cwd-based push command which reads the current directory.
 func TestRunCLI_EnvMapToOption(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 
@@ -264,7 +280,11 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneRequiresExactlyTwoArgs verifies that "fabric clone" rejects both too few (1) and too many (3, the old <host-url> <weft-url> <board-url> form this task removed) positional arguments with exit 1 and the updated usage message — runCloneWithReset's len(args) != 2 check runs before any git spawn, so a t.TempDir + t.Chdir is sufficient with no fixture.
+// TestRunCLI_CloneRequiresExactlyTwoArgs verifies that "fabric clone" rejects both
+// too few (1) and too many (3, the old <host-url> <weft-url> <board-url> form this
+// task removed) positional arguments with exit 1 and the updated usage message —
+// runCloneWithReset's len(args) != 2 check runs before any git spawn, so a
+// t.TempDir + t.Chdir is sufficient with no fixture.
 func TestRunCLI_CloneRequiresExactlyTwoArgs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -358,8 +378,13 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <host> <weft>" against a local two-repo fixture and asserts the end-to-end clone-does-everything contract: the JSON envelope, the wired host junctions, the anchor marker and repo-wide config committed onto weft:main, and per-worktree module config reconciliation — i.e.
-// that the card-16 CLI orchestration actually ran, not just fabricengine.CloneHub's own git-level clone.
+// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <host>
+// <weft>" against a local two-repo fixture and asserts the end-to-end
+// clone-does-everything contract: the JSON envelope, the wired host
+// junctions, the anchor marker and repo-wide config committed onto
+// weft:main, and per-worktree module config reconciliation — i.e. that the
+// card-16 CLI orchestration actually ran, not just fabricengine.CloneHub's
+// own git-level clone.
 func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	fixtures := t.TempDir()
 	hostBare := makeCLICloneHostBare(t, fixtures, "clonecli-host")
@@ -433,7 +458,8 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	}
 }
 
-// TestRunCLI_CloneDefaultSubpathAnchorsAtRoot asserts that "fabric clone" with no --subpath flag echoes anchor "." — the default root anchor.
+// TestRunCLI_CloneDefaultSubpathAnchorsAtRoot asserts that "fabric clone" with
+// no --subpath flag echoes anchor "." — the default root anchor.
 func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 	fixtures := t.TempDir()
 	hostBare := makeCLICloneHostBare(t, fixtures, "clonecli-root-host")

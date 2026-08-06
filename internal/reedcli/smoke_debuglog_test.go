@@ -143,9 +143,24 @@ func countLogsWithPrefix(t *testing.T, logsDir, prefix string) int {
 	return n
 }
 
-// TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs pins a real defect found live-driving debug_log against native tmux (not reproducible against psmux, the Windows dev-box default the original debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL tmux flags on the spawn invocation, and that invocation is simultaneously a CLIENT (the local process issuing the command) and, once forked, the SERVER it starts — so a debug-armed boot leaves BOTH a tmux-server-<pid>.log (documented, already pruned) and a tmux-client-<pid>.log (previously unpruned — it accumulated unbounded across repeated debug-armed boots since pruneServerLogsLocked only ever matched the server-prefixed shape).
-// At -vv (debug_log: 2) the server additionally writes a tmux-out-<pid>.log protocol-output log — a THIRD shape that only appears at the higher verbosity, so the earlier client-log fix (driven at -v) never surfaced it and it too accumulated unbounded across repeated -vv boots.
-// This test runs at LYX_REED_DEBUG=2 (which emits all three shapes, a strict superset of -v) so five kill-server-then-up cycles must leave at most 3 of EACH prefix in the hub logs dir, never an unbounded pile of any of them.
+// TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs pins a
+// real defect found live-driving debug_log against native tmux (not
+// reproducible against psmux, the Windows dev-box default the original
+// debug-logging batch was developed/reviewed against): -v/-vv are GLOBAL
+// tmux flags on the spawn invocation, and that invocation is simultaneously
+// a CLIENT (the local process issuing the command) and, once forked, the
+// SERVER it starts — so a debug-armed boot leaves BOTH a
+// tmux-server-<pid>.log (documented, already pruned) and a
+// tmux-client-<pid>.log (previously unpruned — it accumulated unbounded
+// across repeated debug-armed boots since pruneServerLogsLocked only ever
+// matched the server-prefixed shape). At -vv (debug_log: 2) the server
+// additionally writes a tmux-out-<pid>.log protocol-output log — a THIRD
+// shape that only appears at the higher verbosity, so the earlier client-log
+// fix (driven at -v) never surfaced it and it too accumulated unbounded
+// across repeated -vv boots. This test runs at LYX_REED_DEBUG=2 (which emits
+// all three shapes, a strict superset of -v) so five kill-server-then-up
+// cycles must leave at most 3 of EACH prefix in the hub logs dir, never an
+// unbounded pile of any of them.
 func TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	t.Setenv("LYX_REED_DEBUG", "2")

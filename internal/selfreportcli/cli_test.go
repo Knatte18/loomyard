@@ -1,8 +1,12 @@
 // cli_test.go contains white-box unit tests for the selfreport CLI.
 //
-// Tests live in package selfreportcli (same package as the production code) so the local stdin seam can be replaced without exporting it.
-// The GitHub transport is swapped via the exported selfreportengine.NewGitHubClient seam, injected with a real go-github client pointed at an httptest server rather than a fake RunGH -- that server is what lets these tests assert on the actual request shape (method, path, JSON body) instead of an argv slice that no longer exists.
-// All tests drive the full cobra->flag->CreateIssue->go-github pipeline through RunCLI.
+// Tests live in package selfreportcli (same package as the production code) so the
+// local stdin seam can be replaced without exporting it. The GitHub transport is
+// swapped via the exported selfreportengine.NewGitHubClient seam, injected with a
+// real go-github client pointed at an httptest server rather than a fake RunGH --
+// that server is what lets these tests assert on the actual request shape (method,
+// path, JSON body) instead of an argv slice that no longer exists. All tests drive
+// the full cobra->flag->CreateIssue->go-github pipeline through RunCLI.
 
 package selfreportcli
 
@@ -147,7 +151,10 @@ func contains(slice []string, s string) bool {
 	return false
 }
 
-// TestRunCreate_HappyPath drives the normal successful create flow: exit 0, ok:true, url and number match the server's typed response, and the recorded request matches the expected method, path, title, and default "bug" label.
+// TestRunCreate_HappyPath drives the normal successful create flow: exit 0,
+// ok:true, url and number match the server's typed response, and the
+// recorded request matches the expected method, path, title, and default
+// "bug" label.
 func TestRunCreate_HappyPath(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/123"
 	var captured []requestCapture
@@ -192,8 +199,9 @@ func TestRunCreate_HappyPath(t *testing.T) {
 	}
 }
 
-// TestRunCreate_CustomLabels verifies that explicit --label flags replace the default "bug" label entirely,
-// and that multiple labels survive in the order they were given.
+// TestRunCreate_CustomLabels verifies that explicit --label flags replace the
+// default "bug" label entirely, and that multiple labels survive in the
+// order they were given.
 func TestRunCreate_CustomLabels(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/99"
 	var captured []requestCapture
@@ -225,7 +233,8 @@ func TestRunCreate_CustomLabels(t *testing.T) {
 	}
 }
 
-// TestRunCreate_BodyViaFlag verifies that -b/--body passes the flag value directly through as the request body's "body" field.
+// TestRunCreate_BodyViaFlag verifies that -b/--body passes the flag value
+// directly through as the request body's "body" field.
 func TestRunCreate_BodyViaFlag(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/1"
 	var captured []requestCapture
@@ -246,7 +255,9 @@ func TestRunCreate_BodyViaFlag(t *testing.T) {
 	}
 }
 
-// TestRunCreate_BodyViaStdin verifies that -b "-" reads the entire stdin seam and passes its content intact as the request body's "body" field, preserving multi-line markdown.
+// TestRunCreate_BodyViaStdin verifies that -b "-" reads the entire stdin seam
+// and passes its content intact as the request body's "body" field,
+// preserving multi-line markdown.
 func TestRunCreate_BodyViaStdin(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/2"
 	var captured []requestCapture
@@ -275,8 +286,8 @@ func TestRunCreate_BodyViaStdin(t *testing.T) {
 	}
 }
 
-// TestRunCreate_BodyOmitted verifies that when --body is not set the request body carries no "body" field at all,
-// and the command still succeeds.
+// TestRunCreate_BodyOmitted verifies that when --body is not set the request
+// body carries no "body" field at all, and the command still succeeds.
 func TestRunCreate_BodyOmitted(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/3"
 	var captured []requestCapture
@@ -300,7 +311,10 @@ func TestRunCreate_BodyOmitted(t *testing.T) {
 	}
 }
 
-// TestRunCreate_WrongArgCount verifies that cobra's ExactArgs(1) guard rejects both too-few and too-many positional arguments: non-zero exit, the cobra "accepts 1 arg(s)" message in output, and no request ever reaches the transport at all.
+// TestRunCreate_WrongArgCount verifies that cobra's ExactArgs(1) guard rejects
+// both too-few and too-many positional arguments: non-zero exit, the cobra
+// "accepts 1 arg(s)" message in output, and no request ever reaches the
+// transport at all.
 func TestRunCreate_WrongArgCount(t *testing.T) {
 	tests := []struct {
 		name string
@@ -335,7 +349,10 @@ func TestRunCreate_WrongArgCount(t *testing.T) {
 	}
 }
 
-// TestRunCreate_TokenNotResolvable verifies that when the GitHub client factory itself fails -- the CLI-level analogue of the old "gh binary not found on PATH" case -- the envelope is ok:false with exit 1 and the error message surfaces the underlying token-resolution failure.
+// TestRunCreate_TokenNotResolvable verifies that when the GitHub client
+// factory itself fails -- the CLI-level analogue of the old "gh binary not
+// found on PATH" case -- the envelope is ok:false with exit 1 and the error
+// message surfaces the underlying token-resolution failure.
 func TestRunCreate_TokenNotResolvable(t *testing.T) {
 	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
 
@@ -354,8 +371,10 @@ func TestRunCreate_TokenNotResolvable(t *testing.T) {
 	}
 }
 
-// TestRunCreate_NonSuccessResponse verifies that when GitHub responds with a non-2xx status the envelope is ok:false with exit 1,
-// and the error message surfaces the response's message text -- the go-github equivalent of the old "gh issue create failed: <stderr>" case.
+// TestRunCreate_NonSuccessResponse verifies that when GitHub responds with a
+// non-2xx status the envelope is ok:false with exit 1, and the error message
+// surfaces the response's message text -- the go-github equivalent of the
+// old "gh issue create failed: <stderr>" case.
 func TestRunCreate_NonSuccessResponse(t *testing.T) {
 	const errMessage = "Validation Failed"
 	var captured []requestCapture
@@ -377,8 +396,10 @@ func TestRunCreate_NonSuccessResponse(t *testing.T) {
 	}
 }
 
-// TestRunCreate_NetworkFailure verifies that a network-level failure (the server address refuses the connection) surfaces distinctly from an API rejection: still ok:false with exit 1,
-// but without the response-message text a non-2xx case would carry.
+// TestRunCreate_NetworkFailure verifies that a network-level failure (the
+// server address refuses the connection) surfaces distinctly from an API
+// rejection: still ok:false with exit 1, but without the response-message
+// text a non-2xx case would carry.
 func TestRunCreate_NetworkFailure(t *testing.T) {
 	installGitHubClientPointedAtDeadAddress(t)
 
@@ -397,7 +418,11 @@ func TestRunCreate_NetworkFailure(t *testing.T) {
 	}
 }
 
-// TestRunCreate_NumberOmittedWhenZero verifies that when the server's typed response carries no issue number at all, the envelope's "number" field is absent -- the surviving form of the old unparseable-URL convention, now exercised through go-github's own nil-number case rather than a URL suffix parse.
+// TestRunCreate_NumberOmittedWhenZero verifies that when the server's typed
+// response carries no issue number at all, the envelope's "number" field is
+// absent -- the surviving form of the old unparseable-URL convention, now
+// exercised through go-github's own nil-number case rather than a URL
+// suffix parse.
 func TestRunCreate_NumberOmittedWhenZero(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/999"
 	var captured []requestCapture
@@ -421,8 +446,10 @@ func TestRunCreate_NumberOmittedWhenZero(t *testing.T) {
 	}
 }
 
-// TestRunCreate_NumberParsing verifies that a 201 response carrying number 123 produces number == 123 in the success envelope.
-// JSON unmarshal into map[string]any decodes all numbers as float64, so the comparison is against float64(123).
+// TestRunCreate_NumberParsing verifies that a 201 response carrying number
+// 123 produces number == 123 in the success envelope. JSON unmarshal into
+// map[string]any decodes all numbers as float64, so the comparison is
+// against float64(123).
 func TestRunCreate_NumberParsing(t *testing.T) {
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/123"
 	var captured []requestCapture

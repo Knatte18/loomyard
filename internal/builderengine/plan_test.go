@@ -1,5 +1,9 @@
-// plan_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Batch Index parsing including the mandatory "(C cards)" segment, framing extraction), its per-batch file-parsing behavior (frontmatter incl.
-// root:, Scope, the typed per-card model, verify: sections, and the "one or the other, never both" verify rule), and a full round-trip over the hand-written testdata/plan-valid fixture.
+// plan_test.go covers ParsePlan's overview-parsing behavior (frontmatter
+// decoding, Batch Index parsing including the mandatory "(C cards)"
+// segment, framing extraction), its per-batch file-parsing behavior
+// (frontmatter incl. root:, Scope, the typed per-card model, verify:
+// sections, and the "one or the other, never both" verify rule), and a
+// full round-trip over the hand-written testdata/plan-valid fixture.
 
 package builderengine_test
 
@@ -67,7 +71,12 @@ Add a --json output mode to lyx board list, emitting one JSON object per row.
 - 02 — list-tests (1 card) — cover --json in boardcli list tests and update help-tree pins
 `
 
-// TestParsePlan_InlineFieldValueFailsLoud proves a card file-op label line carrying an inline value other than "none" (e.g. "**Edits:** `foo.go`") is a fail-loud parse error, never silently read as an empty field: an empty-but-present field passes card-missing-field while its paths vanish from every other check — exactly the silent degradation the none-sentinel grammar exists to prevent.
+// TestParsePlan_InlineFieldValueFailsLoud proves a card file-op label line
+// carrying an inline value other than "none" (e.g. "**Edits:** `foo.go`")
+// is a fail-loud parse error, never silently read as an empty field: an
+// empty-but-present field passes card-missing-field while its paths vanish
+// from every other check — exactly the silent degradation the none-sentinel
+// grammar exists to prevent.
 func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 	t.Parallel()
 
@@ -378,7 +387,11 @@ func TestParsePlan_BatchFile_ScopeCardsVerify(t *testing.T) {
 	}
 }
 
-// TestParsePlan_Card_FiveFieldsNoneSentinel covers the three-way distinction plan-format v2 pins for each of the five typed file-op fields: absent entirely (nil slice, HasX == false), present with the literal "none" (empty non-nil slice, HasX == true), and present with bullets (populated non-nil slice, HasX == true).
+// TestParsePlan_Card_FiveFieldsNoneSentinel covers the three-way
+// distinction plan-format v2 pins for each of the five typed file-op
+// fields: absent entirely (nil slice, HasX == false), present with the
+// literal "none" (empty non-nil slice, HasX == true), and present with
+// bullets (populated non-nil slice, HasX == true).
 func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
 	t.Parallel()
 
@@ -475,8 +488,10 @@ func TestParsePlan_Card_FiveFieldsNoneSentinel(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_MovesGrammar covers Moves: bullets: well-formed pairs land in Moves (normalized),
-// and a bullet that fails the pair grammar is retained verbatim in MovesRaw rather than becoming a parse error (lenient-card-parse decision).
+// TestParsePlan_Card_MovesGrammar covers Moves: bullets: well-formed pairs
+// land in Moves (normalized), and a bullet that fails the pair grammar is
+// retained verbatim in MovesRaw rather than becoming a parse error
+// (lenient-card-parse decision).
 func TestParsePlan_Card_MovesGrammar(t *testing.T) {
 	t.Parallel()
 
@@ -496,7 +511,11 @@ func TestParsePlan_Card_MovesGrammar(t *testing.T) {
 	}
 }
 
-// TestParsePlan_RootNormalization covers the per-batch root: frontmatter shorthand and the "//" worktree-root-relative escape, across every case the per-batch-root-path-shorthand decision pins: root set, root absent, a "//"-escaped path under a set root, and a Moves: pair whose two sides cross the root boundary (one root-relative, one "//"-escaped).
+// TestParsePlan_RootNormalization covers the per-batch root: frontmatter
+// shorthand and the "//" worktree-root-relative escape, across every case
+// the per-batch-root-path-shorthand decision pins: root set, root absent,
+// a "//"-escaped path under a set root, and a Moves: pair whose two sides
+// cross the root boundary (one root-relative, one "//"-escaped).
 func TestParsePlan_RootNormalization(t *testing.T) {
 	t.Parallel()
 
@@ -579,7 +598,11 @@ func TestParsePlan_RootNormalization(t *testing.T) {
 	})
 }
 
-// TestParsePlan_HasRenameMechanic covers PlanBatch.HasRenameMechanic: it is true exactly when the batch body contains a "## Rename mechanic" heading at all (presence only, never the section's own prose), and the testdata/plan-valid fixture's own Moves batch (02-list-tests.md) has it set, since it is hand-written with the section already present.
+// TestParsePlan_HasRenameMechanic covers PlanBatch.HasRenameMechanic: it is
+// true exactly when the batch body contains a "## Rename mechanic" heading
+// at all (presence only, never the section's own prose), and the
+// testdata/plan-valid fixture's own Moves batch (02-list-tests.md) has it
+// set, since it is hand-written with the section already present.
 func TestParsePlan_HasRenameMechanic(t *testing.T) {
 	t.Parallel()
 
@@ -620,8 +643,11 @@ func TestParsePlan_HasRenameMechanic(t *testing.T) {
 	})
 }
 
-// TestParsePlan_CardHeading covers the "### Card NN.C — <title>" heading grammar: both em-dash and ASCII separators populate BatchPrefix/Number/ Title identically,
-// and a "### " heading that does not match the shape at all is a fail-loud parse error (document structure, not a card-level defect).
+// TestParsePlan_CardHeading covers the "### Card NN.C — <title>" heading
+// grammar: both em-dash and ASCII separators populate BatchPrefix/Number/
+// Title identically, and a "### " heading that does not match the shape at
+// all is a fail-loud parse error (document structure, not a card-level
+// defect).
 func TestParsePlan_CardHeading(t *testing.T) {
 	t.Parallel()
 
@@ -667,7 +693,9 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_CardCommitAndVerify covers the optional per-card "**Commit:**" field (backtick-stripped) and the optional per-card "**verify:**" field (taken verbatim, v1 semantics unchanged).
+// TestParsePlan_CardCommitAndVerify covers the optional per-card
+// "**Commit:**" field (backtick-stripped) and the optional per-card
+// "**verify:**" field (taken verbatim, v1 semantics unchanged).
 func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	t.Parallel()
 
@@ -686,8 +714,10 @@ func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	}
 }
 
-// TestParsePlan_IndexCardCount covers the Batch Index's mandatory "(C cards)" segment: it parses into IndexCardCount (singular "(1 card)" accepted),
-// and a missing segment is the pre-existing "unparseable batch index line" fail-loud error (batch-index-card-counts decision).
+// TestParsePlan_IndexCardCount covers the Batch Index's mandatory
+// "(C cards)" segment: it parses into IndexCardCount (singular "(1 card)"
+// accepted), and a missing segment is the pre-existing "unparseable batch
+// index line" fail-loud error (batch-index-card-counts decision).
 func TestParsePlan_IndexCardCount(t *testing.T) {
 	t.Parallel()
 
@@ -876,7 +906,10 @@ func TestParsePlan_BatchFile_NotFound(t *testing.T) {
 	}
 }
 
-// TestParsePlan_PlanValidFixture round-trips the hand-written testdata/plan-valid fixture exactly: every batch's number, slug, flags, chain-end, root, index card count, scope list, and every card's typed fields must match the fixture's own byte-consistent content.
+// TestParsePlan_PlanValidFixture round-trips the hand-written
+// testdata/plan-valid fixture exactly: every batch's number, slug, flags,
+// chain-end, root, index card count, scope list, and every card's typed
+// fields must match the fixture's own byte-consistent content.
 func TestParsePlan_PlanValidFixture(t *testing.T) {
 	t.Parallel()
 
@@ -943,7 +976,10 @@ func TestParsePlan_PlanValidFixture(t *testing.T) {
 	}
 }
 
-// TestParsePlan_OtherFixturesParseCleanly confirms the plan-unapproved and plan-broken-chain fixtures are each well-formed at the ParsePlan level — they are designed to trip Validate's checks (a design-level gate), never ParsePlan's fail-loud parse errors.
+// TestParsePlan_OtherFixturesParseCleanly confirms the plan-unapproved and
+// plan-broken-chain fixtures are each well-formed at the ParsePlan level —
+// they are designed to trip Validate's checks (a design-level gate), never
+// ParsePlan's fail-loud parse errors.
 func TestParsePlan_OtherFixturesParseCleanly(t *testing.T) {
 	t.Parallel()
 

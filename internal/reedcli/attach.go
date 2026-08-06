@@ -1,6 +1,8 @@
-// attach.go implements the `attach` reed verb: an in-place terminal handover into the tmux session — no new window is spawned.
-// attach is the one registered JSON-envelope exception in this package: every fallible step runs pre-flight on the envelope,
-// but the terminal-handover tail (once stdio is inherited by the child tmux process) emits no JSON on success.
+// attach.go implements the `attach` reed verb: an in-place terminal handover
+// into the tmux session — no new window is spawned. attach is the one
+// registered JSON-envelope exception in this package: every fallible step
+// runs pre-flight on the envelope, but the terminal-handover tail (once
+// stdio is inherited by the child tmux process) emits no JSON on success.
 
 package reedcli
 

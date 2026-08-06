@@ -1,6 +1,17 @@
-// recoverbatch.go implements the `recover-batch` webster verb: the re-entrant, bounded long-poll escalation call Master's own prompt makes when a fork reports stuck or never reports at all.
-// It drives websterengine's three lease-scoped phases with a real, wall-clock Clock: RecoverSpawnOrAttach under the state-mutation lease (saved and weft-committed "...
-// spawn" when this call performed the spawn), RecoverAwait with the lease RELEASED (a single wait blocks up to poll_wait_s -- holding the lease across it would stall every concurrent verb and run entry for minutes, the exact hold AcquireStateMutation's contract forbids), and, on a terminal digest, PersistRecoveryTerminal into a FRESHLY reloaded state under a re-acquired lease, followed by the "... <status>" terminal weft commit -- webster's third and fourth weft-commit points, each now carrying exactly the mutation its label names.
+// recoverbatch.go implements the `recover-batch` webster verb: the
+// re-entrant, bounded long-poll escalation call Master's own prompt makes
+// when a fork reports stuck or never reports at all. It drives
+// websterengine's three lease-scoped phases with a real, wall-clock Clock:
+// RecoverSpawnOrAttach under the state-mutation lease (saved and
+// weft-committed "... spawn" when this call performed the spawn),
+// RecoverAwait with the lease RELEASED (a single wait blocks up to
+// poll_wait_s -- holding the lease across it would stall every concurrent
+// verb and run entry for minutes, the exact hold AcquireStateMutation's
+// contract forbids), and, on a terminal digest, PersistRecoveryTerminal
+// into a FRESHLY reloaded state under a re-acquired lease, followed by the
+// "... <status>" terminal weft commit -- webster's third and fourth
+// weft-commit points, each now carrying exactly the mutation its label
+// names.
 package webstercli
 
 import (

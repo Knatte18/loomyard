@@ -180,8 +180,10 @@ func resolveRevOrFatal(t *testing.T, dir, rev string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// TestCurrentSHA_Parity_CommittedRepo asserts the oracle and gitrepo's CurrentSHA agree on an ordinary committed repo — trivially true in this batch, since gitrepo.CurrentSHA is still CLI-backed;
-// the value of this case is established now, before batch 3 flips it onto go-git.
+// TestCurrentSHA_Parity_CommittedRepo asserts the oracle and gitrepo's
+// CurrentSHA agree on an ordinary committed repo — trivially true in this
+// batch, since gitrepo.CurrentSHA is still CLI-backed; the value of this case
+// is established now, before batch 3 flips it onto go-git.
 func TestCurrentSHA_Parity_CommittedRepo(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -199,7 +201,12 @@ func TestCurrentSHA_Parity_CommittedRepo(t *testing.T) {
 	assertParitySHA(t, oracleSHA, implSHA)
 }
 
-// TestCurrentSHA_Parity_UnbornHEAD asserts the oracle and gitrepo's CurrentSHA agree on an unborn HEAD: both map git's ambiguous-HEAD stderr shape to their own sentinel (errOracleNoCommits and gitrepo.ErrNoCommits respectively), so the cross-target class comparison — never a raw string comparison, since the two sides never produce byte-identical errors — is what proves agreement.
+// TestCurrentSHA_Parity_UnbornHEAD asserts the oracle and gitrepo's
+// CurrentSHA agree on an unborn HEAD: both map git's ambiguous-HEAD stderr
+// shape to their own sentinel (errOracleNoCommits and gitrepo.ErrNoCommits
+// respectively), so the cross-target class comparison — never a raw string
+// comparison, since the two sides never produce byte-identical errors — is
+// what proves agreement.
 func TestCurrentSHA_Parity_UnbornHEAD(t *testing.T) {
 	dir := newEmptyRepoFixture(t)
 
@@ -215,7 +222,8 @@ func TestCurrentSHA_Parity_UnbornHEAD(t *testing.T) {
 	}
 }
 
-// TestSHAExists_Parity_CommittedSHA asserts the oracle and gitrepo's SHAExists agree that a real, committed SHA exists.
+// TestSHAExists_Parity_CommittedSHA asserts the oracle and gitrepo's
+// SHAExists agree that a real, committed SHA exists.
 func TestSHAExists_Parity_CommittedSHA(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -229,8 +237,10 @@ func TestSHAExists_Parity_CommittedSHA(t *testing.T) {
 	assertParityBool(t, oracleSHAExists(t, dir, sha), repo.SHAExists(sha))
 }
 
-// TestSHAExists_Parity_MissingAndNonHexSHA asserts the oracle and gitrepo agree that a well-formed-but-absent SHA,
-// and a non-hex string, both fold into false without either side treating the lookup itself as a failure worth surfacing.
+// TestSHAExists_Parity_MissingAndNonHexSHA asserts the oracle and gitrepo
+// agree that a well-formed-but-absent SHA, and a non-hex string, both fold
+// into false without either side treating the lookup itself as a failure
+// worth surfacing.
 func TestSHAExists_Parity_MissingAndNonHexSHA(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -250,7 +260,11 @@ func TestSHAExists_Parity_MissingAndNonHexSHA(t *testing.T) {
 	}
 }
 
-// TestSHAExists_Parity_TreeOrBlobSHA asserts the oracle and gitrepo agree that a tree or blob SHA — a real, valid-hex object name, just not a commit — is false, never true: the `^{commit}` peel is what makes this so, and it is exactly what the missing/non-hex cases above cannot distinguish, since neither of those SHAs resolves to any object at all.
+// TestSHAExists_Parity_TreeOrBlobSHA asserts the oracle and gitrepo agree
+// that a tree or blob SHA — a real, valid-hex object name, just not a commit
+// — is false, never true: the `^{commit}` peel is what makes this so, and it
+// is exactly what the missing/non-hex cases above cannot distinguish, since
+// neither of those SHAs resolves to any object at all.
 func TestSHAExists_Parity_TreeOrBlobSHA(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -271,7 +285,9 @@ func TestSHAExists_Parity_TreeOrBlobSHA(t *testing.T) {
 	}
 }
 
-// TestChangedFilesSince_Parity_NonASCIIPath asserts the oracle and gitrepo both return a non-ASCII filename verbatim — the on-disk literal, never core.quotePath's C-quoted escape form — and agree with each other.
+// TestChangedFilesSince_Parity_NonASCIIPath asserts the oracle and gitrepo
+// both return a non-ASCII filename verbatim — the on-disk literal, never
+// core.quotePath's C-quoted escape form — and agree with each other.
 func TestChangedFilesSince_Parity_NonASCIIPath(t *testing.T) {
 	dir, filename := newNonASCIIFixture(t)
 	since := firstCommitSHA(t, dir)
@@ -295,7 +311,9 @@ func TestChangedFilesSince_Parity_NonASCIIPath(t *testing.T) {
 	assertParityFileList(t, oracleFiles, implFiles)
 }
 
-// TestChangedFilesSince_Parity_Rename asserts the oracle and gitrepo both report a pure rename as its old path (deleted) and new path (added) separately, never folded into one entry, and agree with each other.
+// TestChangedFilesSince_Parity_Rename asserts the oracle and gitrepo both
+// report a pure rename as its old path (deleted) and new path (added)
+// separately, never folded into one entry, and agree with each other.
 func TestChangedFilesSince_Parity_Rename(t *testing.T) {
 	dir, oldName, newName := newRenameFixture(t)
 	since := firstCommitSHA(t, dir)
@@ -320,7 +338,9 @@ func TestChangedFilesSince_Parity_Rename(t *testing.T) {
 	assertParityFileList(t, oracleFiles, implFiles)
 }
 
-// TestChangedFilesSince_Parity_NonHexSHA asserts the oracle and gitrepo agree on error class for a non-hex sha: each side returns its own ErrInvalidSHA-class sentinel before either ever resolves or diffs anything.
+// TestChangedFilesSince_Parity_NonHexSHA asserts the oracle and gitrepo agree
+// on error class for a non-hex sha: each side returns its own
+// ErrInvalidSHA-class sentinel before either ever resolves or diffs anything.
 func TestChangedFilesSince_Parity_NonHexSHA(t *testing.T) {
 	dir, _ := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -344,7 +364,11 @@ func containsPath(haystack []string, needle string) bool {
 	return false
 }
 
-// TestCurrentBranch_Parity covers CurrentBranch across all four HEAD states the method can encounter: an ordinary branch, a detached HEAD (must be an error, never an empty string — a caller with no captured branch has no safe ref to hand RestoreBranch), an unborn HEAD (symbolic-ref succeeds and prints the branch name even with no commit yet), and an orphan branch.
+// TestCurrentBranch_Parity covers CurrentBranch across all four HEAD states
+// the method can encounter: an ordinary branch, a detached HEAD (must be an
+// error, never an empty string — a caller with no captured branch has no
+// safe ref to hand RestoreBranch), an unborn HEAD (symbolic-ref succeeds and
+// prints the branch name even with no commit yet), and an orphan branch.
 func TestCurrentBranch_Parity(t *testing.T) {
 	t.Run("OnBranch", func(t *testing.T) {
 		dir, repo := newRepo(t)
@@ -440,8 +464,13 @@ func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
 	}
 }
 
-// TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit asserts StageAndCommit's trailing r.CurrentSHA() call — a go-git ref read — sees the commit its own preceding `git commit` call just wrote, even when the Repo's go-git handle was warmed (opened and cached) before that commit landed.
-// This is the call-granular boundary's central mixed-backend site: a stale answer here would hand a wrong SHA to any caller that records StageAndCommit's return value as the checkout's new baseline.
+// TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit asserts
+// StageAndCommit's trailing r.CurrentSHA() call — a go-git ref read — sees
+// the commit its own preceding `git commit` call just wrote, even when the
+// Repo's go-git handle was warmed (opened and cached) before that commit
+// landed. This is the call-granular boundary's central mixed-backend site:
+// a stale answer here would hand a wrong SHA to any caller that records
+// StageAndCommit's return value as the checkout's new baseline.
 func TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -466,7 +495,10 @@ func TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) 
 	}
 }
 
-// TestStageAllAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit is TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit's counterpart for StageAllAndCommit, the wildcard sibling that ends with the identical r.CurrentSHA() call.
+// TestStageAllAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit is
+// TestStageAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit's counterpart
+// for StageAllAndCommit, the wildcard sibling that ends with the identical
+// r.CurrentSHA() call.
 func TestStageAllAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -491,8 +523,14 @@ func TestStageAllAndCommit_MixedBackend_PreWarmedHandleSeesCLICommit(t *testing.
 	}
 }
 
-// TestSHAExists_MixedBackend_RepackBetweenCommitAndRead is the hard variant of the mixed-backend interop cases: repo's go-git handle is frozen (via forcePackIndexFreeze) against a pack-less on-disk state, a new commit then lands, and a `git gc` repacks it BEFORE SHAExists ever reads it — the packfile-only-object shape Push's own pull --rebase retry can produce in production, and exactly what the fingerprint-gated reindex exists to survive.
-// Without it, SHAExists' failure-swallowing posture means this would fail silently (report false forever), never loudly.
+// TestSHAExists_MixedBackend_RepackBetweenCommitAndRead is the hard variant
+// of the mixed-backend interop cases: repo's go-git handle is frozen (via
+// forcePackIndexFreeze) against a pack-less on-disk state, a new commit then
+// lands, and a `git gc` repacks it BEFORE SHAExists ever reads it — the
+// packfile-only-object shape Push's own pull --rebase retry can produce in
+// production, and exactly what the fingerprint-gated reindex exists to
+// survive. Without it, SHAExists' failure-swallowing posture means this
+// would fail silently (report false forever), never loudly.
 func TestSHAExists_MixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -511,10 +549,18 @@ func TestSHAExists_MixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 	}
 }
 
-// TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo pins the fingerprint gate against a per-instance counter gate: repoA's go-git index is frozen against the pack-less on-disk state, then a SEPARATE gitrepo.New value on the identical path builds and repacks a new commit — a distinct *Repo, so repoA's own call count is never touched by any of it — and repoA's own SHAExists must still resolve the new, now-packed commit.
-// A per-*Repo call counter would never observe this write at all, since it only ever counts repoA's own calls;
-// the pack fingerprint is shared, on-disk ground truth every *Repo addressing the same checkout can observe regardless of which one performed the write.
-// This is the case that fails under a counter gate and passes under the fingerprint gate, so it pins the design rather than merely restating it.
+// TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo pins
+// the fingerprint gate against a per-instance counter gate: repoA's go-git
+// index is frozen against the pack-less on-disk state, then a SEPARATE
+// gitrepo.New value on the identical path builds and repacks a new commit —
+// a distinct *Repo, so repoA's own call count is never touched by any of it
+// — and repoA's own SHAExists must still resolve the new, now-packed
+// commit. A per-*Repo call counter would never observe this write at all,
+// since it only ever counts repoA's own calls; the pack fingerprint is
+// shared, on-disk ground truth every *Repo addressing the same checkout can
+// observe regardless of which one performed the write. This is the case
+// that fails under a counter gate and passes under the fingerprint gate, so
+// it pins the design rather than merely restating it.
 func TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo(t *testing.T) {
 	dir, repoA := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")

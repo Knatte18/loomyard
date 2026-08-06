@@ -1,8 +1,15 @@
-// prompt.go composes the burler round prompt: it renders the four embedded assets (template.go) — the orchestrator plus three instruction files — each with only its own marker subset,
-// and returns the orchestrator string plus the three rendered (path, content) instruction pairs the caller (Engine.Run) writes to disk.
-// composePrompt is called only after (*Profile).validate has run, so every path field it reads is already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already resolved.
-// composePrompt itself does no filesystem access beyond the directory check formatFileSet already performs on each Target/Fasit path — it takes the three instruction paths as plain string parameters rather than a *lyxcwd.Location, so it never gains geometry awareness of its own;
-// the caller computes both the directive and the three paths.
+// prompt.go composes the burler round prompt: it renders the four embedded
+// assets (template.go) — the orchestrator plus three instruction files —
+// each with only its own marker subset, and returns the orchestrator
+// string plus the three rendered (path, content) instruction pairs the
+// caller (Engine.Run) writes to disk. composePrompt is called only after
+// (*Profile).validate has run, so every path field it reads is already a
+// cleaned absolute path and p.clusterLenses (when ClusterFan was set) is
+// already resolved. composePrompt itself does no filesystem access beyond
+// the directory check formatFileSet already performs on each Target/Fasit
+// path — it takes the three instruction paths as plain string parameters
+// rather than a *lyxcwd.Location, so it never gains geometry awareness
+// of its own; the caller computes both the directive and the three paths.
 
 package burlerengine
 

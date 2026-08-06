@@ -1,4 +1,6 @@
-// headers.go defines the browser-identity HTTP headers and the shared client used by every static fetch, so requests present as a real browser instead of a bot-blockable default Go client.
+// headers.go defines the browser-identity HTTP headers and the shared client
+// used by every static fetch, so requests present as a real browser instead
+// of a bot-blockable default Go client.
 
 package main
 

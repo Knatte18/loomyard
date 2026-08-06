@@ -1,4 +1,7 @@
-// run_inject_test.go covers Runner.Inject: the happy path plays every input in order through the reed seam, a dead strand's pane refuses delivery, an unknown guid refuses before ever touching reed, and empty inputs is a rejected no-op.
+// run_inject_test.go covers Runner.Inject: the happy path plays every input
+// in order through the reed seam, a dead strand's pane refuses delivery, an
+// unknown guid refuses before ever touching reed, and empty inputs is a
+// rejected no-op.
 
 package shuttleengine
 

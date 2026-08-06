@@ -1,5 +1,8 @@
-// sandbox_coverage_test.go enforces the "Sandbox Suite Coverage" invariant: every registered lyx module must either be exercised by a scenario in one of the tools/sandbox/*SUITE.md suite files (declared via an explicit **Covers:** tag) or be named on this test's exclusion allowlist with a documented reason.
-// This is the sandbox-suite analogue of registration_test.go's "exists => registered" guard.
+// sandbox_coverage_test.go enforces the "Sandbox Suite Coverage" invariant: every
+// registered lyx module must either be exercised by a scenario in one of the
+// tools/sandbox/*SUITE.md suite files (declared via an explicit **Covers:**
+// tag) or be named on this test's exclusion allowlist with a documented reason. This
+// is the sandbox-suite analogue of registration_test.go's "exists => registered" guard.
 
 package main
 

@@ -1,5 +1,6 @@
-// pattern.go implements the PATTERN active check and the three role-specific directive constants Directive selects between.
-// See doc.go for the package-level rationale.
+// pattern.go implements the PATTERN active check and the three role-specific
+// directive constants Directive selects between. See doc.go for the
+// package-level rationale.
 
 package pattern
 
@@ -10,9 +11,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// DirName is the directory name for the PATTERN constraint-injection surface within a worktree (i.e. <worktree>/_pattern).
-// It is this package's own declaration of the "_pattern" geometry token;
-// use Dir/File/FileHere to obtain the paths built from it.
+// DirName is the directory name for the PATTERN constraint-injection surface
+// within a worktree (i.e. <worktree>/_pattern). It is this package's own
+// declaration of the "_pattern" geometry token; use Dir/File/FileHere to
+// obtain the paths built from it.
 const DirName = "_pattern"
 
 // Dir returns the path to the _pattern directory within a baseDir.
@@ -26,7 +28,9 @@ func File(baseDir string) string {
 }
 
 // FileHere returns the path to the PATTERN.md file for the current worktree.
-// It is anchored at WorktreePath()+AnchorRel to correctly handle nested-hub geometry and to stay consistent with the junction endpoints lyxcwd still owns, which are all WorktreePath()+AnchorRel-anchored.
+// It is anchored at WorktreePath()+AnchorRel to correctly handle nested-hub
+// geometry and to stay consistent with the junction endpoints lyxcwd still
+// owns, which are all WorktreePath()+AnchorRel-anchored.
 func FileHere(l *lyxcwd.Location) string {
 	return File(filepath.Join(l.WorktreePath(), l.AnchorRel))
 }

@@ -1,7 +1,16 @@
-// validate.go implements the `validate` webster verb: the standalone pre-flight half of the automatic gate websterengine.Run runs itself before ever spawning Master.
-// It parses the plan and runs every plan-format v3 machine check against it, printing exactly one JSON envelope: ok with {"valid": true, "cards": <n>} for a clean plan, or an error envelope carrying every finding for a plan with findings -- exit non-zero either way a finding exists, never plain text.
-// Unlike builder, webster's own Run pre-flight ALSO refuses a zero-batch plan outright (nothing-to-build is a malformed plan, never a vacuous outcome: done, per websterengine's runlevel.go);
-// validate surfaces that same emptiness through planparser.Validate's own findings set rather than a distinct check, since a zero-card plan already fails planparser's index-file-consistency checks.
+// validate.go implements the `validate` webster verb: the standalone
+// pre-flight half of the automatic gate websterengine.Run runs itself before
+// ever spawning Master. It parses the plan and runs every plan-format v3
+// machine check against it, printing exactly one JSON envelope: ok with
+// {"valid": true, "cards": <n>} for a clean plan, or an error envelope
+// carrying every finding for a plan with findings -- exit non-zero either
+// way a finding exists, never plain text. Unlike builder, webster's own Run
+// pre-flight ALSO refuses a zero-batch plan outright (nothing-to-build is a
+// malformed plan, never a vacuous outcome: done, per websterengine's
+// runlevel.go); validate surfaces that same emptiness through
+// planparser.Validate's own findings set rather than a distinct check,
+// since a zero-card plan already fails planparser's index-file-consistency
+// checks.
 package webstercli
 
 import (

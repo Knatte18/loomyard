@@ -1,4 +1,6 @@
-// tokenvocab.go defines the token vocabulary's core types (Ctx, Token) and the registry of always-resolvable tokens, plus Build, which resolves the whole registry into a flat map a template renderer (internal/stencil) can consume.
+// tokenvocab.go defines the token vocabulary's core types (Ctx, Token) and the
+// registry of always-resolvable tokens, plus Build, which resolves the whole
+// registry into a flat map a template renderer (internal/stencil) can consume.
 
 package tokenvocab
 
