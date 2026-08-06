@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: close the weft-visibility leak (slice 8)'
 slug: fabric-weft-visibility-cleanup
-approved: false
+approved: true
 started: '20260806-185219'
 parent: main
 root: ""
