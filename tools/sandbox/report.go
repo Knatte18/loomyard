@@ -1,8 +1,4 @@
-// report.go defines the sandbox-report.json contract shared with the launcher's
-// caller (the loomyard tooling described in millhouse#586) and implements
-// fetchReport, which reads the agent-written report out of the Hub host repo,
-// validates and stamps it, then writes a normalized, fingerprint-stamped copy
-// into the loomyard root's .scratch directory.
+// report.go defines the sandbox-report.json contract shared with the launcher's caller (the loomyard tooling described in millhouse#586) and implements fetchReport, which reads the agent-written report out of the Hub host repo, validates and stamps it, then writes a normalized, fingerprint-stamped copy into the loomyard root's .scratch directory.
 
 package main
 

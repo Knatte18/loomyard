@@ -1,6 +1,5 @@
-// devbin_test.go covers the RepoRoot/Dir/BinPath derivation helpers. All tests
-// are Go-native and Tier-1 pure: they only inspect derived paths and the local
-// filesystem layout of this checkout, with no process spawns.
+// devbin_test.go covers the RepoRoot/Dir/BinPath derivation helpers.
+// All tests are Go-native and Tier-1 pure: they only inspect derived paths and the local filesystem layout of this checkout, with no process spawns.
 
 package devbin
 
@@ -10,8 +9,7 @@ import (
 	"testing"
 )
 
-// TestRepoRoot_LocatesModuleRoot verifies RepoRoot returns the correct root
-// directory with this package's source beneath it.
+// TestRepoRoot_LocatesModuleRoot verifies RepoRoot returns the correct root directory with this package's source beneath it.
 func TestRepoRoot_LocatesModuleRoot(t *testing.T) {
 	root, err := RepoRoot()
 	if err != nil {
@@ -45,8 +43,7 @@ func TestDir_JoinsRepoRootWithDevBin(t *testing.T) {
 	}
 }
 
-// TestBinPath_PlatformBinaryName verifies BinPath returns the correct name
-// for the current platform.
+// TestBinPath_PlatformBinaryName verifies BinPath returns the correct name for the current platform.
 func TestBinPath_PlatformBinaryName(t *testing.T) {
 	dir, err := Dir()
 	if err != nil {

@@ -1,7 +1,5 @@
-// suite_test.go contains unit tests for the suite launcher functions: binary
-// fingerprinting, scheme rendering, git-exclude management, and the runSuite
-// orchestration. All tests use seam stubs and temp directories -- no real
-// lyx, claude, or network calls are made.
+// suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
+// All tests use seam stubs and temp directories -- no real lyx, claude, or network calls are made.
 
 package main
 
@@ -17,8 +15,7 @@ import (
 	"time"
 )
 
-// TestBinaryFingerprint_TempFile verifies that binaryFingerprint returns the
-// correct size, SHA256 prefix, and path for a real temp file.
+// TestBinaryFingerprint_TempFile verifies that binaryFingerprint returns the correct size, SHA256 prefix, and path for a real temp file.
 func TestBinaryFingerprint_TempFile(t *testing.T) {
 	content := []byte("fake lyx binary content for testing")
 	tmpDir := t.TempDir()
@@ -54,8 +51,7 @@ func TestBinaryFingerprint_TempFile(t *testing.T) {
 	}
 }
 
-// TestBinaryFingerprint_MissingPath verifies that binaryFingerprint returns
-// an error when the target file does not exist.
+// TestBinaryFingerprint_MissingPath verifies that binaryFingerprint returns an error when the target file does not exist.
 func TestBinaryFingerprint_MissingPath(t *testing.T) {
 	missingPath := filepath.Join(t.TempDir(), "nonexistent.exe")
 	_, err := binaryFingerprint(missingPath, sourceProd)
@@ -64,8 +60,7 @@ func TestBinaryFingerprint_MissingPath(t *testing.T) {
 	}
 }
 
-// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds
-// the fingerprint header and suite body.
+// TestRenderScheme_ContainsHeaderAndBody verifies that renderScheme embeds the fingerprint header and suite body.
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 	info := binaryInfo{
 		Path:    "/fake/lyx.exe",
@@ -93,8 +88,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 	}
 }
 
-// TestBinaryInfoHeader_ContainsSourceLine verifies that header() renders
-// a "- Source: %s" line for both sourceDev and sourceProd.
+// TestBinaryInfoHeader_ContainsSourceLine verifies that header() renders a "- Source: %s" line for both sourceDev and sourceProd.
 func TestBinaryInfoHeader_ContainsSourceLine(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -121,8 +115,7 @@ func TestBinaryInfoHeader_ContainsSourceLine(t *testing.T) {
 	}
 }
 
-// TestEnsureGitExclude covers the four behaviour scenarios for idempotent
-// exclude-file management.
+// TestEnsureGitExclude covers the four behaviour scenarios for idempotent exclude-file management.
 func TestEnsureGitExclude(t *testing.T) {
 	const entry = "SANDBOX-CORE-SUITE.md"
 
@@ -290,8 +283,7 @@ func makeFakeLyx(t *testing.T, tmpDir string) string {
 	return fakeLyx
 }
 
-// TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub
-// host subdirectory does not exist.
+// TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub host subdirectory does not exist.
 func TestRunSuite_HubAbsent(t *testing.T) {
 	parentDir := t.TempDir()
 
@@ -310,8 +302,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 	}
 }
 
-// TestRunSuite_LaunchInvocation verifies that runSuite calls launchAgent with
-// the correct arguments.
+// TestRunSuite_LaunchInvocation verifies that runSuite calls launchAgent with the correct arguments.
 func TestRunSuite_LaunchInvocation(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -344,8 +335,7 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 	}
 }
 
-// TestRunSuite_DevBinaryPrependsBinDir verifies that runSuite passes the dev
-// binary's directory as launchAgent's binDir when a dev binary exists.
+// TestRunSuite_DevBinaryPrependsBinDir verifies that runSuite passes the dev binary's directory as launchAgent's binDir when a dev binary exists.
 func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -390,8 +380,7 @@ func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 	}
 }
 
-// TestRunSuite_Overrides verifies that runSuite honours -claude and -prompt
-// override arguments.
+// TestRunSuite_Overrides verifies that runSuite honours -claude and -prompt override arguments.
 func TestRunSuite_Overrides(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -433,8 +422,7 @@ func TestRunSuite_Overrides(t *testing.T) {
 	}
 }
 
-// TestRunSuite_NonZeroLaunchTolerated verifies that a non-zero exit code from
-// launchAgent is tolerated (interactive sessions are expected to exit manually).
+// TestRunSuite_NonZeroLaunchTolerated verifies that a non-zero exit code from launchAgent is tolerated (interactive sessions are expected to exit manually).
 func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -453,8 +441,7 @@ func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ClaudeNotFound verifies that runSuite returns an error when
-// claude cannot be resolved from PATH.
+// TestRunSuite_ClaudeNotFound verifies that runSuite returns an error when claude cannot be resolved from PATH.
 func TestRunSuite_ClaudeNotFound(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -488,8 +475,7 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 	}
 }
 
-// TestRunSuite_StaleReportRemoved verifies that runSuite removes a prior
-// sandbox-report.json before launching the agent.
+// TestRunSuite_StaleReportRemoved verifies that runSuite removes a prior sandbox-report.json before launching the agent.
 func TestRunSuite_StaleReportRemoved(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -517,8 +503,7 @@ func TestRunSuite_StaleReportRemoved(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ExcludesReport verifies that runSuite registers
-// sandbox-report.json in .git/info/exclude.
+// TestRunSuite_ExcludesReport verifies that runSuite registers sandbox-report.json in .git/info/exclude.
 func TestRunSuite_ExcludesReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -545,8 +530,7 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedSpec_WritesReedFile verifies that runSuite(..., reedSuite)
-// writes SANDBOX-REED-SUITE.md with the fingerprint header.
+// TestRunSuite_ReedSpec_WritesReedFile verifies that runSuite(..., reedSuite) writes SANDBOX-REED-SUITE.md with the fingerprint header.
 func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -578,8 +562,7 @@ func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedSpec_ExcludesFiles verifies that a reedSuite run registers
-// its files in .git/info/exclude.
+// TestRunSuite_ReedSpec_ExcludesFiles verifies that a reedSuite run registers its files in .git/info/exclude.
 func TestRunSuite_ReedSpec_ExcludesFiles(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -606,8 +589,7 @@ func TestRunSuite_ReedSpec_ExcludesFiles(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedSpec_DeletesStaleReport verifies that a reedSuite run
-// deletes stale sandbox-report.json before launching the agent.
+// TestRunSuite_ReedSpec_DeletesStaleReport verifies that a reedSuite run deletes stale sandbox-report.json before launching the agent.
 func TestRunSuite_ReedSpec_DeletesStaleReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -634,8 +616,7 @@ func TestRunSuite_ReedSpec_DeletesStaleReport(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedSpec_DefaultInstruction verifies that a reedSuite run
-// passes the reed default instruction to launchAgent.
+// TestRunSuite_ReedSpec_DefaultInstruction verifies that a reedSuite run passes the reed default instruction to launchAgent.
 func TestRunSuite_ReedSpec_DefaultInstruction(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -659,8 +640,7 @@ func TestRunSuite_ReedSpec_DefaultInstruction(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedSpec_PromptOverride verifies that a -prompt override reaches
-// launchAgent verbatim for a reedSuite run.
+// TestRunSuite_ReedSpec_PromptOverride verifies that a -prompt override reaches launchAgent verbatim for a reedSuite run.
 func TestRunSuite_ReedSpec_PromptOverride(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -682,8 +662,7 @@ func TestRunSuite_ReedSpec_PromptOverride(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ShuttleSpec_WritesShuttleFile verifies that runSuite writes
-// SANDBOX-SHUTTLE-SUITE.md with the fingerprint header.
+// TestRunSuite_ShuttleSpec_WritesShuttleFile verifies that runSuite writes SANDBOX-SHUTTLE-SUITE.md with the fingerprint header.
 func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -718,8 +697,7 @@ func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ShuttleSpec_ExcludesFiles verifies that a shuttleSuite run
-// registers its files in .git/info/exclude.
+// TestRunSuite_ShuttleSpec_ExcludesFiles verifies that a shuttleSuite run registers its files in .git/info/exclude.
 func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -746,8 +724,7 @@ func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ShuttleSpec_DeletesStaleReport verifies that a shuttleSuite run
-// deletes stale sandbox-report.json before launching the agent.
+// TestRunSuite_ShuttleSpec_DeletesStaleReport verifies that a shuttleSuite run deletes stale sandbox-report.json before launching the agent.
 func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -774,8 +751,7 @@ func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ShuttleSpec_DefaultInstruction verifies that a shuttleSuite run
-// passes the shuttle default instruction to launchAgent.
+// TestRunSuite_ShuttleSpec_DefaultInstruction verifies that a shuttleSuite run passes the shuttle default instruction to launchAgent.
 func TestRunSuite_ShuttleSpec_DefaultInstruction(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -799,8 +775,7 @@ func TestRunSuite_ShuttleSpec_DefaultInstruction(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ShuttleSpec_PromptOverride verifies that a -prompt override
-// reaches launchAgent verbatim for a shuttleSuite run.
+// TestRunSuite_ShuttleSpec_PromptOverride verifies that a -prompt override reaches launchAgent verbatim for a shuttleSuite run.
 func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -834,8 +809,7 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 	}
 }
 
-// TestRunSuite_BurlerSpec_ReedTeardownAfterAgent verifies that a burlerSuite
-// run calls reedDown exactly once, after the agent session ends.
+// TestRunSuite_BurlerSpec_ReedTeardownAfterAgent verifies that a burlerSuite run calls reedDown exactly once, after the agent session ends.
 func TestRunSuite_BurlerSpec_ReedTeardownAfterAgent(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -873,8 +847,7 @@ func TestRunSuite_BurlerSpec_ReedTeardownAfterAgent(t *testing.T) {
 	}
 }
 
-// TestRunSuite_MainSpec_NoReedTeardown verifies that a mainSuite run never
-// calls reedDown.
+// TestRunSuite_MainSpec_NoReedTeardown verifies that a mainSuite run never calls reedDown.
 func TestRunSuite_MainSpec_NoReedTeardown(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -895,8 +868,7 @@ func TestRunSuite_MainSpec_NoReedTeardown(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedTeardownFailureTolerated verifies that a reedDown error
-// does not turn a completed session into a launcher failure.
+// TestRunSuite_ReedTeardownFailureTolerated verifies that a reedDown error does not turn a completed session into a launcher failure.
 func TestRunSuite_ReedTeardownFailureTolerated(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -916,8 +888,7 @@ func TestRunSuite_ReedTeardownFailureTolerated(t *testing.T) {
 	}
 }
 
-// TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit verifies that teardown runs
-// regardless of the agent's exit code.
+// TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit verifies that teardown runs regardless of the agent's exit code.
 func TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -942,8 +913,7 @@ func TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit(t *testing.T) {
 	}
 }
 
-// TestIsCharDevice_RegularFile verifies that isCharDevice reports false
-// for a regular file.
+// TestIsCharDevice_RegularFile verifies that isCharDevice reports false for a regular file.
 func TestIsCharDevice_RegularFile(t *testing.T) {
 	f, err := os.Open(makeFakeLyx(t, t.TempDir()))
 	if err != nil {
@@ -955,8 +925,7 @@ func TestIsCharDevice_RegularFile(t *testing.T) {
 	}
 }
 
-// TestLaunchAgent_NonInteractiveWarning verifies that launchAgent prints
-// nonInteractiveWarning when stdio is not attached to a console.
+// TestLaunchAgent_NonInteractiveWarning verifies that launchAgent prints nonInteractiveWarning when stdio is not attached to a console.
 func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
 	missingClaude := filepath.Join(t.TempDir(), "claude.exe")
 
@@ -986,8 +955,7 @@ func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
 	})
 }
 
-// TestRunSuite_PerchSpec_WritesPerchFile verifies that runSuite writes
-// SANDBOX-PERCH-SUITE.md with the fingerprint header.
+// TestRunSuite_PerchSpec_WritesPerchFile verifies that runSuite writes SANDBOX-PERCH-SUITE.md with the fingerprint header.
 func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -1022,8 +990,7 @@ func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerchSpec_ExcludesFiles verifies that a perchSuite run
-// registers its files in .git/info/exclude.
+// TestRunSuite_PerchSpec_ExcludesFiles verifies that a perchSuite run registers its files in .git/info/exclude.
 func TestRunSuite_PerchSpec_ExcludesFiles(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -1050,8 +1017,7 @@ func TestRunSuite_PerchSpec_ExcludesFiles(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerchSpec_DeletesStaleReport verifies that a perchSuite run
-// deletes stale sandbox-report.json before launching the agent.
+// TestRunSuite_PerchSpec_DeletesStaleReport verifies that a perchSuite run deletes stale sandbox-report.json before launching the agent.
 func TestRunSuite_PerchSpec_DeletesStaleReport(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -1078,8 +1044,7 @@ func TestRunSuite_PerchSpec_DeletesStaleReport(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerchSpec_DefaultInstruction verifies that a perchSuite run
-// passes the perch default instruction to launchAgent.
+// TestRunSuite_PerchSpec_DefaultInstruction verifies that a perchSuite run passes the perch default instruction to launchAgent.
 func TestRunSuite_PerchSpec_DefaultInstruction(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -1103,8 +1068,7 @@ func TestRunSuite_PerchSpec_DefaultInstruction(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerchSpec_PromptOverride verifies that a -prompt override
-// reaches launchAgent verbatim for a perchSuite run.
+// TestRunSuite_PerchSpec_PromptOverride verifies that a -prompt override reaches launchAgent verbatim for a perchSuite run.
 func TestRunSuite_PerchSpec_PromptOverride(t *testing.T) {
 	parentDir, _ := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
@@ -1126,8 +1090,7 @@ func TestRunSuite_PerchSpec_PromptOverride(t *testing.T) {
 	}
 }
 
-// TestRunSuite_PerchSpec_ReedTeardownAfterAgent verifies that a perchSuite
-// run calls reedDown exactly once, after the agent session ends.
+// TestRunSuite_PerchSpec_ReedTeardownAfterAgent verifies that a perchSuite run calls reedDown exactly once, after the agent session ends.
 func TestRunSuite_PerchSpec_ReedTeardownAfterAgent(t *testing.T) {
 	parentDir, hostRepoDir := makeHostRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)

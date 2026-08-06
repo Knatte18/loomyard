@@ -1,18 +1,7 @@
-// main.go implements the sandbox tool entry point, flag parsing, and subcommand
-// dispatch. It supports ten subcommands: "build" (default, clones the Hub),
-// "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "reed-suite" (runs the
-// embedded SANDBOX-REED-SUITE agent), "shuttle-suite" (runs the embedded
-// SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded
-// SANDBOX-BURLER-SUITE agent), "perch-suite" (runs the embedded
-// SANDBOX-PERCH-SUITE agent), "builder-suite" (runs the embedded
-// SANDBOX-BUILDER-SUITE agent), "webster-suite" (runs the embedded
-// SANDBOX-WEBSTER-SUITE agent), "fabric-suite" (clones the dedicated fabric
-// hub if absent, then runs the embedded SANDBOX-FABRIC-SUITE agent), and
-// "fetch" (collects the agent-written report into .scratch). Only -parent and
-// -loomyard live at the top level; -reset is a build-subcommand flag, parsed
-// after the "build" token like suite/reed-suite/shuttle-suite/burler-suite/
-// perch-suite/builder-suite/webster-suite/fabric-suite parse their
-// -claude/-prompt flags.
+// main.go implements the sandbox tool entry point, flag parsing, and subcommand dispatch.
+// It supports ten subcommands: "build" (default, clones the Hub), "suite" (runs the embedded SANDBOX-CORE-SUITE agent), "reed-suite" (runs the embedded SANDBOX-REED-SUITE agent), "shuttle-suite" (runs the embedded SANDBOX-SHUTTLE-SUITE agent), "burler-suite" (runs the embedded SANDBOX-BURLER-SUITE agent), "perch-suite" (runs the embedded SANDBOX-PERCH-SUITE agent), "builder-suite" (runs the embedded SANDBOX-BUILDER-SUITE agent), "webster-suite" (runs the embedded SANDBOX-WEBSTER-SUITE agent), "fabric-suite" (clones the dedicated fabric hub if absent, then runs the embedded SANDBOX-FABRIC-SUITE agent), and "fetch" (collects the agent-written report into .scratch).
+// Only -parent and -loomyard live at the top level;
+// -reset is a build-subcommand flag, parsed after the "build" token like suite/reed-suite/shuttle-suite/burler-suite/ perch-suite/builder-suite/webster-suite/fabric-suite parse their -claude/-prompt flags.
 
 package main
 
