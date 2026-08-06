@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -24,6 +25,59 @@ import (
 // same type.
 func WorktreePath(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, slug)
+}
+
+// HostLyxLink returns the path to the _lyx junction link in a named slug's host worktree.
+// It is the host-side junction endpoint that points into the paired weft worktree via WeftLyxDirFor(l, slug).
+func HostLyxLink(l *lyxcwd.Location, slug string) string {
+	return filepath.Join(l.HubPath, slug, l.AnchorRel, configengine.LyxDirName)
+}
+
+// HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
+// Derived from l.WorktreePath()+AnchorRel. It serves as the host-side junction endpoint
+// paired with WeftLyxDir(l).
+func HostLyxLinkHere(l *lyxcwd.Location) string {
+	return filepath.Join(l.WorktreePath(), l.AnchorRel, configengine.LyxDirName)
+}
+
+// HostJunction represents a directory junction in the host worktree that links to a weft directory.
+type HostJunction struct {
+	Name   string // Name is the directory name (e.g., "_lyx")
+	Link   string // Link is the host-side path to the junction
+	Target string // Target is the weft-side path the junction points to
+}
+
+// HostJunctions returns the list of host junctions for a given slug, one record per name in names,
+// in names's own order (no forced sort). For each name, the record is {Name, Link, Target} where
+// Link is HubPath/slug-anchored via WorktreePath(l, slug) and Target is computed via
+// WeftWorktreePath(l, slug) and AnchorRel.
+// HostJunctions is HubPath/slug-anchored; HostJunctionsHere below is the Here-anchored counterpart.
+func HostJunctions(l *lyxcwd.Location, slug string, names []string) []HostJunction {
+	junctions := make([]HostJunction, 0, len(names))
+	for _, name := range names {
+		junctions = append(junctions, HostJunction{
+			Name:   name,
+			Link:   filepath.Join(WorktreePath(l, slug), l.AnchorRel, name),
+			Target: filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, name),
+		})
+	}
+	return junctions
+}
+
+// HostJunctionsHere returns the same HostJunction records as HostJunctions(l, slug, names),
+// but resolved against the current worktree rather than a named slug: Link is built from
+// l.WorktreePath() and each Target from WeftWorktree(l). This mirrors HostLyxLinkHere(l)/HostLyxLink(l, slug).
+// It exists for health-check sites that are Here-anchored and have no slug available.
+func HostJunctionsHere(l *lyxcwd.Location, names []string) []HostJunction {
+	junctions := make([]HostJunction, 0, len(names))
+	for _, name := range names {
+		junctions = append(junctions, HostJunction{
+			Name:   name,
+			Link:   filepath.Join(l.WorktreePath(), l.AnchorRel, name),
+			Target: filepath.Join(WeftWorktree(l), l.AnchorRel, name),
+		})
+	}
+	return junctions
 }
 
 // WireJunctions creates directory junctions and seeds git-exclude entries for
@@ -50,7 +104,7 @@ func WireJunctions(l *lyxcwd.Location, slug string, names []string) error {
 // A correct link is left alone; a dangling or wrong link is re-pointed;
 // a real directory is refused.
 func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
-	junctions := l.HostJunctions(slug, names)
+	junctions := HostJunctions(l, slug, names)
 
 	for _, j := range junctions {
 		link := j.Link
@@ -129,7 +183,7 @@ func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
 // never-wired) worktree.
 type UnwireResult struct {
 	// JunctionsRemoved lists the Name of each junction that was actually present
-	// and removed, in l.HostJunctions(slug) order. A name slice, not a count or
+	// and removed, in HostJunctions(l, slug) order. A name slice, not a count or
 	// a bool: which junction(s) were removed is CLI-observable, and "1 of 2
 	// removed" tells an operator nothing about which one is still wired.
 	JunctionsRemoved []string
@@ -140,7 +194,7 @@ type UnwireResult struct {
 
 // UnwireJunctions reverses WireJunctions for the current worktree, keyed by slug,
 // over the same caller-supplied names: it removes every host junction in
-// l.HostJunctions(slug, names) and their shared .git/info/exclude entries, undoing
+// HostJunctions(l, slug, names) and their shared .git/info/exclude entries, undoing
 // exactly what WireJunctions seeded — nothing more (the worktree pairing and weft
 // content are untouched; see Remove for the larger paired-teardown operation).
 // Like WireJunctions, it loads no config itself.
@@ -173,7 +227,7 @@ func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (UnwireRes
 	return UnwireResult{JunctionsRemoved: removed, ExcludeChanged: changed}, nil
 }
 
-// unseedLyxJunction removes every host junction in l.HostJunctions(slug, names).
+// unseedLyxJunction removes every host junction in HostJunctions(l, slug, names).
 // It is a thin wrapper over unseedJunctionRecords, which owns the actual
 // per-junction loop; the split exists purely so the loop's abort-and-accumulate
 // contract is directly testable against a synthetic junction slice, since
@@ -184,7 +238,7 @@ func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (UnwireRes
 // already unwired; this is the legitimate no-op case, not an error. See
 // unseedJunctionRecords for the error cases.
 func unseedLyxJunction(l *lyxcwd.Location, slug string, names []string) (removed []string, err error) {
-	return unseedJunctionRecords(l.HostJunctions(slug, names))
+	return unseedJunctionRecords(HostJunctions(l, slug, names))
 }
 
 // unseedJunctionRecords removes each junction in junctions in order, mirroring
@@ -208,7 +262,7 @@ func unseedLyxJunction(l *lyxcwd.Location, slug string, names []string) (removed
 // junction's host path is a real directory rather than a junction, or if it
 // resolves to an unexpected target — all of these indicate corruption or
 // external modification rather than a normal unwire.
-func unseedJunctionRecords(junctions []lyxcwd.HostJunction) (removed []string, err error) {
+func unseedJunctionRecords(junctions []HostJunction) (removed []string, err error) {
 	for _, j := range junctions {
 		link := j.Link
 		target := j.Target
@@ -271,7 +325,7 @@ func unseedJunctionRecords(junctions []lyxcwd.HostJunction) (removed []string, e
 //
 // It resolves the exclude path exactly as seedGitExclude does (git rev-parse
 // --git-path info/exclude, joined with the worktree path if relative), then for
-// each junction in l.HostJunctions(slug, names) removes any line that trims to
+// each junction in HostJunctions(l, slug, names) removes any line that trims to
 // exactly that junction's Name (the same line-exact comparison seedGitExclude
 // uses to detect presence). The remaining lines are rewritten in their original
 // order.
@@ -307,9 +361,9 @@ func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed 
 	}
 
 	// Build the set of junction names to strip from the caller-supplied names,
-	// iterating l.HostJunctions(slug, names) for parity with seedGitExclude.
+	// iterating HostJunctions(l, slug, names) for parity with seedGitExclude.
 	stripSet := make(map[string]bool)
-	for _, j := range l.HostJunctions(slug, names) {
+	for _, j := range HostJunctions(l, slug, names) {
 		stripSet[j.Name] = true
 	}
 
@@ -335,7 +389,7 @@ func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed 
 
 // seedGitExclude adds junction names to the host worktree's .git/info/exclude file if not already present.
 //
-// It iterates over the junctions returned by l.HostJunctions(slug, names) and
+// It iterates over the junctions returned by HostJunctions(l, slug, names) and
 // appends each junction's Name to the exclude file if not already present.
 // Resolves the exclude path via git rev-parse --git-path info/exclude. If the
 // path is relative, joins it with the worktree path. Preserves line-exact
@@ -377,7 +431,7 @@ func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
 	contentStr := string(content)
 
 	// Iterate over junction names and append each if not already present.
-	junctions := l.HostJunctions(slug, names)
+	junctions := HostJunctions(l, slug, names)
 	for _, j := range junctions {
 		name := j.Name
 

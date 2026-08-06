@@ -1,7 +1,7 @@
 // weftwiring_test.go unit-tests removeJunctionRecords directly against
-// synthetic lyxcwd.HostJunction slices — no build tag, since it touches
+// synthetic HostJunction slices — no build tag, since it touches
 // only plain directories and fslink, never git. It exists because
-// l.HostJunctions(slug) still returns exactly one entry in this batch (a
+// HostJunctions(l, slug) still returns exactly one entry in this batch (a
 // second entry is batch 5's job), so removeHostJunction's best-effort,
 // continue-past-failure contract cannot be driven through the exported
 // (l, slug) surface with more than one junction; this file drives the
@@ -13,8 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestRemoveJunctionRecords_ContinuesPastFailure proves the function continues
@@ -40,7 +38,7 @@ func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 	lastTarget := filepath.Join(root, "last-target")
 	wireTestJunction(t, lastLink, lastTarget)
 
-	junctions := []lyxcwd.HostJunction{
+	junctions := []HostJunction{
 		{Name: "first", Link: firstLink, Target: firstTarget},
 		{Name: "middle", Link: middleLink, Target: filepath.Join(root, "middle-target")},
 		{Name: "last", Link: lastLink, Target: lastTarget},

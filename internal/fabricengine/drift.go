@@ -70,9 +70,9 @@ func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	}
 
 	// Verify every host junction is valid and points to its correct weft
-	// target — l.HostJunctionsHere(names), the same Here-anchored, slug-free
+	// target — HostJunctionsHere(l, names), the same Here-anchored, slug-free
 	// accessor checkJunctionHealth loops in reconcile.go.
-	for _, j := range l.HostJunctionsHere(names) {
+	for _, j := range HostJunctionsHere(l, names) {
 		// Distinguish a missing junction entry from an existing one that is not
 		// a link: fslink.IsLink reports (false, nil) for both shapes, and the
 		// loom preflight consumes these reason strings — a real directory

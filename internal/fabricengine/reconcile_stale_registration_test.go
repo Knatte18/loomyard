@@ -483,7 +483,7 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 
 	// Replace the junction with a real directory — the drift shape a
 	// pre-weft repo migration or a hand-created _lyx leaves behind.
-	hostLink := hostLayout.HostLyxLinkHere()
+	hostLink := fabricengine.HostLyxLinkHere(hostLayout)
 	if err := os.Remove(hostLink); err != nil {
 		t.Fatalf("remove host junction: %v", err)
 	}

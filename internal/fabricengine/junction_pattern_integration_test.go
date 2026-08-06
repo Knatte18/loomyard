@@ -89,7 +89,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 		t.Fatalf("weft target %s not materialised: stat err=%v", target, err)
 	}
 
-	link := l.HostLyxLink(slug)
+	link := fabricengine.HostLyxLink(l, slug)
 	isLink, err := fslink.IsLink(link)
 	if err != nil || !isLink {
 		t.Fatalf("junction at %s is not a link after WireJunctions: isLink=%v err=%v", link, isLink, err)
@@ -124,7 +124,7 @@ func TestWireJunctions_RefusesRealHostDirectory(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := l.HostLyxLink(slug)
+	link := fabricengine.HostLyxLink(l, slug)
 
 	// Seed a real, non-link directory at the host junction path — the
 	// "created _lyx by hand" mistake this card's message must guide an
@@ -203,7 +203,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 		t.Error("ExcludeChanged = false; want true")
 	}
 
-	lyxLink := l.HostLyxLink(slug)
+	lyxLink := fabricengine.HostLyxLink(l, slug)
 	if _, statErr := os.Lstat(lyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("junction %s still exists after UnwireJunctions", lyxLink)
 	}
@@ -383,7 +383,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 		{
 			name:      "Lyx",
 			dirName:   configengine.LyxDirName,
-			linkFor:   func(l *lyxcwd.Location) string { return l.HostLyxLinkHere() },
+			linkFor:   func(l *lyxcwd.Location) string { return fabricengine.HostLyxLinkHere(l) },
 			targetFor: func(l *lyxcwd.Location) string { return fabricengine.WeftLyxDir(l) },
 		},
 		{
@@ -584,7 +584,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 		t.Fatalf("remove _pattern junction to simulate legacy worktree: %v", err)
 	}
 
-	lyxLink := l.HostLyxLink(slug)
+	lyxLink := fabricengine.HostLyxLink(l, slug)
 	lyxResolvedBefore, err := fslink.PointsTo(lyxLink)
 	if err != nil {
 		t.Fatalf("PointsTo(%s) before upgrade: %v", lyxLink, err)

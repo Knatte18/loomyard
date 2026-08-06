@@ -270,7 +270,7 @@ func readBranch(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// checkJunctionHealth verifies that every junction in hostLayout.HostJunctionsHere(names)
+// checkJunctionHealth verifies that every junction in HostJunctionsHere(hostLayout, names)
 // is a link resolving to its Target, reporting the first unhealthy one found.
 // Returns (ok, reason) where ok is true only if every junction is correctly configured.
 func checkJunctionHealth(hostLayout *lyxcwd.Location) (bool, string) {
@@ -279,7 +279,7 @@ func checkJunctionHealth(hostLayout *lyxcwd.Location) (bool, string) {
 		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err)
 	}
 
-	for _, j := range hostLayout.HostJunctionsHere(names) {
+	for _, j := range HostJunctionsHere(hostLayout, names) {
 		_, err := os.Lstat(j.Link)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -312,14 +312,14 @@ func checkJunctionHealth(hostLayout *lyxcwd.Location) (bool, string) {
 }
 
 // junctionRepointedDetail formats ReconcileActionJunctionRepointed's Detail string,
-// naming every junction in hostLayout.HostJunctionsHere(names) as "Link → Target".
+// naming every junction in HostJunctionsHere(hostLayout, names) as "Link → Target".
 func junctionRepointedDetail(hostLayout *lyxcwd.Location) string {
 	names, err := RepoWiredNames(hostLayout)
 	if err != nil {
 		return "junction re-pointed: cannot load fabric.yaml: " + err.Error()
 	}
 
-	junctions := hostLayout.HostJunctionsHere(names)
+	junctions := HostJunctionsHere(hostLayout, names)
 	parts := make([]string, len(junctions))
 	for i, j := range junctions {
 		parts[i] = fmt.Sprintf("%s → %s", j.Link, j.Target)

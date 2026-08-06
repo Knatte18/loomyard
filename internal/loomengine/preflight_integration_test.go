@@ -404,7 +404,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 	}{
 		{
 			name:       "Lyx",
-			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return f.Layout.HostLyxLink(slug) },
+			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return fabricengine.HostLyxLink(f.Layout, slug) },
 			wantChecks: []CheckID{CheckSeedUnreadable},
 		},
 		{

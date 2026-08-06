@@ -53,7 +53,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	// Corrupt the host _lyx into a real directory: WireJunctions -> seedLyxJunction
 	// refuses a real (non-link) _lyx, so Checkout's step 5 fails after step 4 has
 	// already moved the weft.
-	hostLyx := l.HostLyxLinkHere()
+	hostLyx := fabricengine.HostLyxLinkHere(l)
 	if err := os.Remove(hostLyx); err != nil {
 		t.Fatalf("remove host junction to corrupt it: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
 
 	// Corrupt the host _lyx into a real directory so step 5 fails after the fork.
-	hostLyx := l.HostLyxLinkHere()
+	hostLyx := fabricengine.HostLyxLinkHere(l)
 	if err := os.Remove(hostLyx); err != nil {
 		t.Fatalf("remove host junction to corrupt it: %v", err)
 	}

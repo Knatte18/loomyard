@@ -128,7 +128,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 
 	// No-op: _lyx was already correct and desired, so it is left untouched by
 	// either step.
-	lyxLink := hostLayout.HostLyxLinkHere()
+	lyxLink := fabricengine.HostLyxLinkHere(hostLayout)
 	if isLink, err := fslink.IsLink(lyxLink); err != nil || !isLink {
 		t.Errorf("_lyx junction broken by Reconcile: isLink=%v err=%v", isLink, err)
 	}
@@ -267,7 +267,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 
 	// The load failure must never be interpreted as an empty pathspec: every
 	// junction wired before the corruption must still be present.
-	lyxLink := hostLayout.HostLyxLinkHere()
+	lyxLink := fabricengine.HostLyxLinkHere(hostLayout)
 	if isLink, err := fslink.IsLink(lyxLink); err != nil || !isLink {
 		t.Errorf("_lyx junction removed despite fail-closed guard: isLink=%v err=%v", isLink, err)
 	}
@@ -377,7 +377,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	if err := fabricengine.WireJunctions(removeHostLayout, removeSlug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions(%s): %v", removeSlug, err)
 	}
-	lyxLink := removeHostLayout.HostLyxLinkHere()
+	lyxLink := fabricengine.HostLyxLinkHere(removeHostLayout)
 	patternLink := removeHostLayout.HostPatternLinkHere()
 
 	if _, err := topology.Remove(l, removeSlug, true); err != nil {

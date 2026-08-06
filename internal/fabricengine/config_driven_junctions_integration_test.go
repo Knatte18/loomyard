@@ -50,7 +50,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	junctions := l.HostJunctions(slug, names)
+	junctions := fabricengine.HostJunctions(l, slug, names)
 	for _, j := range junctions {
 		isLink, err := fslink.IsLink(j.Link)
 		if err != nil || !isLink {

@@ -71,7 +71,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("WireJunctions(nested): %v", err)
 	}
 
-	nestedLyxLink := nestedLayout.HostLyxLink(slug)
+	nestedLyxLink := fabricengine.HostLyxLink(nestedLayout, slug)
 	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
 	}

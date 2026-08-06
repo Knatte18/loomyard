@@ -144,14 +144,14 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 // removeHostJunction removes every host junction for slug via fslink.Remove.
 // Returns nil if all are absent (idempotent).
 func removeHostJunction(l *lyxcwd.Location, slug string, names []string) error {
-	return removeJunctionRecords(l.HostJunctions(slug, names))
+	return removeJunctionRecords(HostJunctions(l, slug, names))
 }
 
 // removeJunctionRecords removes each junction via fslink.Remove in a
 // best-effort loop, continuing past per-junction failures and accumulating
 // errors. Returns nil if empty or all absent (idempotent); non-nil error does
 // not mean no junction was removed.
-func removeJunctionRecords(junctions []lyxcwd.HostJunction) error {
+func removeJunctionRecords(junctions []HostJunction) error {
 	var errs []error
 	for _, j := range junctions {
 		if err := fslink.Remove(j.Link); err != nil {

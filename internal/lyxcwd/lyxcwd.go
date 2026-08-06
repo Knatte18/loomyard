@@ -26,8 +26,7 @@ const (
 	// lyxDirName is the directory name for the lyx system directory within a worktree.
 	// internal/configengine.LyxDirName is the single exported declarer of this token now;
 	// this private const is a transitional second declarer for lyxcwd's own
-	// remaining _lyx-anchored methods (PortalTarget, HostLyxLink, HostLyxLinkHere),
-	// removed once those methods relocate.
+	// remaining _lyx-anchored method (PortalTarget), removed once that method relocates.
 	lyxDirName = "_lyx"
 
 	// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
@@ -299,70 +298,15 @@ func (l *Location) WeftPatternDirFor(slug string) string {
 	return filepath.Join(weftname.SiblingPath(l.HubPath, slug), l.AnchorRel, PatternDirName)
 }
 
-// HostLyxLink returns the path to the _lyx junction link in a named slug's host worktree.
-// It is the host-side junction endpoint that points into the paired weft worktree via WeftLyxDirFor(slug).
-func (l *Location) HostLyxLink(slug string) string {
-	return filepath.Join(l.HubPath, slug, l.AnchorRel, lyxDirName)
-}
-
-// HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
-// Derived from WorktreePath()+AnchorRel. It serves as the host-side junction endpoint
-// paired with WeftLyxDir().
-func (l *Location) HostLyxLinkHere() string {
-	return filepath.Join(l.WorktreePath(), l.AnchorRel, lyxDirName)
-}
-
 // HostPatternLink returns the path to the _pattern junction link in a named slug's host worktree.
-// It mirrors HostLyxLink exactly and points into the paired weft worktree via WeftPatternDirFor(slug).
+// It mirrors fabricengine.HostLyxLink exactly and points into the paired weft worktree via WeftPatternDirFor(slug).
 func (l *Location) HostPatternLink(slug string) string {
 	return filepath.Join(l.HubPath, slug, l.AnchorRel, PatternDirName)
 }
 
 // HostPatternLinkHere returns the path to the _pattern junction link in the current host worktree.
-// Derived from WorktreePath()+AnchorRel. It mirrors HostLyxLinkHere exactly and serves
+// Derived from WorktreePath()+AnchorRel. It mirrors fabricengine.HostLyxLinkHere exactly and serves
 // as the host-side junction endpoint paired with WeftPatternDir().
 func (l *Location) HostPatternLinkHere() string {
 	return filepath.Join(l.WorktreePath(), l.AnchorRel, PatternDirName)
-}
-
-// HostJunction represents a directory junction in the host worktree that links to a weft directory.
-type HostJunction struct {
-	Name   string // Name is the directory name (e.g., "_lyx")
-	Link   string // Link is the host-side path to the junction
-	Target string // Target is the weft-side path the junction points to
-}
-
-// HostJunctions returns the list of host junctions for a given slug, one record per name in names,
-// in names's own order (no forced sort). For each name, the record is {Name, Link, Target} where
-// Link is HubPath/slug-anchored (inlined here since fabricengine.WorktreePath is not importable from
-// this in-module method) and Target is computed via weftname.SiblingPath and AnchorRel (inlined for
-// the same reason WeftWorktreePath is, now that it lives in fabricengine).
-// HostJunctions is HubPath/slug-anchored; HostJunctionsHere below is the Here-anchored counterpart.
-func (l *Location) HostJunctions(slug string, names []string) []HostJunction {
-	junctions := make([]HostJunction, 0, len(names))
-	for _, name := range names {
-		junctions = append(junctions, HostJunction{
-			Name:   name,
-			Link:   filepath.Join(l.HubPath, slug, l.AnchorRel, name),
-			Target: filepath.Join(weftname.SiblingPath(l.HubPath, slug), l.AnchorRel, name),
-		})
-	}
-	return junctions
-}
-
-// HostJunctionsHere returns the same HostJunction records as HostJunctions(slug, names),
-// but resolved against the current worktree rather than a named slug: Link is built from
-// WorktreePath() and each Target from the current worktree's own weft sibling. This mirrors
-// HostLyxLinkHere()/HostLyxLink(slug). It exists for health-check sites that are Here-anchored
-// and have no slug available.
-func (l *Location) HostJunctionsHere(names []string) []HostJunction {
-	junctions := make([]HostJunction, 0, len(names))
-	for _, name := range names {
-		junctions = append(junctions, HostJunction{
-			Name:   name,
-			Link:   filepath.Join(l.WorktreePath(), l.AnchorRel, name),
-			Target: filepath.Join(weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath())), l.AnchorRel, name),
-		})
-	}
-	return junctions
 }

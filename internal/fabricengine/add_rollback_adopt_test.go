@@ -154,7 +154,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 		link   string
 		target string
 	}{
-		{"_lyx", l.HostLyxLink(slug), fabricengine.WeftLyxDirFor(l, slug)},
+		{"_lyx", fabricengine.HostLyxLink(l, slug), fabricengine.WeftLyxDirFor(l, slug)},
 		{"_pattern", l.HostPatternLink(slug), l.WeftPatternDirFor(slug)},
 	} {
 		isLink, err := fslink.IsLink(tc.link)
@@ -223,7 +223,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		name string
 		link string
 	}{
-		{"_lyx", l.HostLyxLink(slug)},
+		{"_lyx", fabricengine.HostLyxLink(l, slug)},
 		{"_pattern", l.HostPatternLink(slug)},
 	} {
 		if _, err := os.Lstat(tc.link); !os.IsNotExist(err) {
