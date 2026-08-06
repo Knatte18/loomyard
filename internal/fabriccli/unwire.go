@@ -8,14 +8,14 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
 // runUnwire executes the fabric unwire subcommand, removing every on-disk
 // fabric junction for this worktree and clearing weft-side _lyx content.
 func runUnwire(out io.Writer, _ []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

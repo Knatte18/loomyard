@@ -12,7 +12,7 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/spf13/cobra"
@@ -55,16 +55,16 @@ strands, plus rendering their layout on every mutation.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			layout, err := hubgeometry.Resolve(cwd)
+			layout, err := lyxcwd.Resolve(cwd)
 			if err != nil {
-				// hubgeometry.Resolve's error is already self-describing (it IS the
+				// lyxcwd.Resolve's error is already self-describing (it IS the
 				// "not a git repository" sentinel); pass it through bare rather than
 				// doubling that same text on top of it.
 				output.Err(out, err.Error())
@@ -72,10 +72,10 @@ strands, plus rendering their layout on every mutation.`,
 				return nil
 			}
 
-			// The _lyx/config/ root is anchored at layout.Cwd, not WorktreeRoot or
+			// The _lyx/config/ root is anchored at layout.AnchorPath(), not WorktreeRoot or
 			// any weft sibling — reed config lives with the worktree the operator is
 			// actually standing in.
-			cfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
+			cfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

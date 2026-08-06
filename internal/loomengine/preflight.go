@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -32,19 +32,19 @@ import (
 // Returns (Report{}, err) when Preflight could not determine an answer at all
 // — the caller must escalate, not treat this as "not ready".
 func Preflight() (Report, error) {
-	// Resolve cwd via hubgeometry.Getwd(), the only permitted raw-cwd read
-	// outside cmd/lyx/main.go (per the Hub Geometry Invariant).
-	cwd, err := hubgeometry.Getwd()
+	// Resolve cwd via lyxcwd.Getwd(), the only permitted raw-cwd read
+	// outside cmd/lyx/main.go (per the Cwd Resolution Invariant).
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return Report{}, err
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		// ErrNotAGitRepo is a determined verdict (check 1: not inside a git
 		// repository at all), not an infra failure — short-circuit with a single
 		// geometry failure rather than escalating.
-		if errors.Is(err, hubgeometry.ErrNotAGitRepo) {
+		if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
 			return Report{
 				OK:       false,
 				Failures: []Failure{{Check: CheckGeometry, Reason: "not inside a git repository"}},
@@ -60,11 +60,13 @@ func Preflight() (Report, error) {
 
 // checkResolved runs checks 1b–4 against an already-resolved Layout, allowing
 // tests to exercise preconditions in isolation.
-func checkResolved(l *hubgeometry.Layout) (Report, error) {
-	// Check 1b: geometry sanity. Resolve can succeed with no Prime when List
-	// found no main-worktree entry — treat that the same as "not a git repo"
-	// for Preflight's purposes, since there is no coherent worktree to check.
-	if l.Prime == "" {
+func checkResolved(l *lyxcwd.Location) (Report, error) {
+	// Check 1b: geometry sanity. A PrimeName resolution failure (List found no
+	// main-worktree entry, or the git subprocess itself failed) is treated the
+	// same as "not a git repo" for Preflight's purposes, since there is no
+	// coherent worktree to check — never a hard error, preserving Preflight's
+	// report-not-error contract.
+	if _, err := fabricengine.PrimeName(l); err != nil {
 		return Report{
 			OK:       false,
 			Failures: []Failure{{Check: CheckGeometry, Reason: "no main worktree resolved"}},
@@ -74,11 +76,11 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 	// since checks 2-4 all read state anchored at WorktreeRoot. A subdirectory
 	// invocation is reported distinctly (and short-circuits) rather than
 	// silently validating the wrong scope.
-	if l.RelPath != "." {
+	if l.AnchorRel != "." {
 		return Report{
 			OK: false,
 			Failures: []Failure{
-				{Check: CheckWorktreeRoot, Reason: fmt.Sprintf("invoked from subdirectory %q, not the worktree root", l.RelPath)},
+				{Check: CheckWorktreeRoot, Reason: fmt.Sprintf("invoked from subdirectory %q, not the worktree root", l.AnchorRel)},
 			},
 		}, nil
 	}
@@ -101,7 +103,7 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 	// fault of its own (missing weft worktree, or a broken junction) — check 4
 	// gates its classification on this, per strict-read-mechanism.
 	check3BlocksSeed := false
-	if _, err := os.Stat(l.WeftWorktree()); err != nil {
+	if _, err := os.Stat(fabricengine.WeftWorktree(l)); err != nil {
 		if !os.IsNotExist(err) {
 			return Report{}, err
 		}
@@ -142,7 +144,7 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 	}
 
 	// Check 4: seed presence, readability, and coherence.
-	if _, err := os.Stat(l.LoomStatusFile()); err != nil {
+	if _, err := os.Stat(LoomStatusFile(l)); err != nil {
 		switch {
 		case check3BlocksSeed:
 			// The seed is unreadable as a downstream consequence of check 3's
@@ -157,7 +159,7 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 			report.addFailure(CheckSeedUnreadable, err.Error())
 		}
 	} else {
-		s, found, rerr := state.ReadJSONStrict[Status](l.LoomStatusFile(), l.LoomStatusLock())
+		s, found, rerr := state.ReadJSONStrict[Status](LoomStatusFile(l), LoomStatusLock(l))
 		switch {
 		case rerr != nil:
 			// A decode failure (malformed JSON or an unknown field) is a
@@ -174,7 +176,7 @@ func checkResolved(l *hubgeometry.Layout) (Report, error) {
 			// vanished between the two calls — a TOCTOU race, not a determined
 			// verdict. Synthesize a non-nil error so this never masquerades as
 			// Report{}, nil.
-			return Report{}, fmt.Errorf("loomengine: seed vanished between stat and read: %s", l.LoomStatusFile())
+			return Report{}, fmt.Errorf("loomengine: seed vanished between stat and read: %s", LoomStatusFile(l))
 		default:
 			for _, f := range checkCoherence(s) {
 				report.addFailure(f.Check, f.Reason)

@@ -78,7 +78,7 @@ func collectMissingShorts(cmd *cobra.Command) []string {
 
 // TestRunCLI_Refs_NoLanguageError verifies "refs" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
 	// whatever git repo or servers.yaml the test happens to run inside.
 	t.Chdir(t.TempDir())
@@ -119,7 +119,7 @@ func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 
 // TestRunCLI_Definition_NoLanguageError verifies "definition" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
 	// whatever git repo or servers.yaml the test happens to run inside.
 	t.Chdir(t.TempDir())
@@ -158,7 +158,7 @@ func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
 
 // TestRunCLI_Symbol_NoLanguageError verifies "symbol" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
 	// whatever git repo or servers.yaml the test happens to run inside.
 	t.Chdir(t.TempDir())
@@ -698,7 +698,7 @@ func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 
 // TestRunCLI_AssertNoCallers_NoLanguageError verifies "assert-no-callers" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so hubgeometry.Resolve degrades to
+	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
 	// whatever git repo or servers.yaml the test happens to run inside.
 	t.Chdir(t.TempDir())

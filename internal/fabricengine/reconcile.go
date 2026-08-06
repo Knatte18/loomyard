@@ -11,7 +11,7 @@
 // Reconcile needs them first and both verbs share the same package.
 //
 // The junction name-set checkJunctionHealth/Reconcile/junctionRepointedDetail consult
-// is sourced from the repo-wide fabric.yaml at hubgeometry.BoardDir(l.Hub) — via
+// is sourced from the repo-wide fabric.yaml at BoardDir(l.HubPath) — via
 // RepoWiredNames — not from any individual pair's own weft base, so reconcile
 // converges every worktree to the same repo-wide pathspec.
 
@@ -23,9 +23,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // ReconcileAction describes the corrective action applied to one host↔weft pair.
@@ -88,8 +89,8 @@ type ReconcileResult struct {
 // applies a sequence of rules: recreate missing weft worktrees, re-point broken
 // junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs. Per-worktree
 // errors are recorded in ReconcilePairResult.Error.
-func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
-	entries, err := hubgeometry.List(l.WorktreeRoot)
+func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
+	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return ReconcileResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
@@ -101,7 +102,7 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 		hostPath = filepath.Clean(hostPath)
 
 		slug := filepath.Base(hostPath)
-		weftPath := l.WeftWorktreePath(slug)
+		weftPath := WeftWorktreePath(l, slug)
 
 		pr := ReconcilePairResult{
 			HostWorktree: filepath.ToSlash(hostPath),
@@ -149,6 +150,19 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 				pr.Action = ReconcileActionAlreadyHealthy
 			}
 
+			// Re-wire the operator-convenience _board junction unconditionally,
+			// regardless of junctionHealthy above: checkJunctionHealth only
+			// ever inspects the pathspec name-set, which _board is
+			// deliberately outside, so a pair whose *only* broken link is
+			// _board would report junctionHealthy == true and never reach
+			// here if this call sat inside the `!junctionHealthy` branch. A
+			// wiring failure is surfaced as a Detail note, never as an Error
+			// or a changed Action — this convenience link must never be able
+			// to downgrade a reconcile verdict.
+			if boardErr := wireBoardLink(hostLayout, slug); boardErr != nil {
+				appendPrDetail(&pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
+			}
+
 			applyStaleRemoval(hostLayout, slug, &pr)
 		}
 
@@ -162,14 +176,16 @@ func (t *Topology) Reconcile(l *hubgeometry.Layout) (ReconcileResult, error) {
 // does not exist for the given host worktree: recreate from the existing branch,
 // adopt a raw worktree, or report unmanaged.
 func (t *Topology) reconcileMissingWeft(
-	hostLayout *hubgeometry.Layout,
+	hostLayout *lyxcwd.Location,
 	hostPath, weftPath, slug, hostBranch string,
 	pr *ReconcilePairResult,
 ) ReconcileAction {
 	weftBranch := WeftBranchName(hostBranch)
 
 	if weftBranchExists(hostLayout, weftBranch) {
-		_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, hostLayout.WeftRepoRoot())
+		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(hostLayout); weftRepoRootErr == nil {
+			_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)
+		}
 
 		if err := adoptWeftWorktree(hostLayout, weftPath, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("recreate weft worktree: %v", err)
@@ -198,10 +214,14 @@ func (t *Topology) reconcileMissingWeft(
 
 // adoptWeftWorktree creates a git worktree at weftPath for the existing branch in
 // the weft repo. The branch already exists, so no -b flag is used.
-func adoptWeftWorktree(hostLayout *hubgeometry.Layout, weftPath, branch string) error {
+func adoptWeftWorktree(hostLayout *lyxcwd.Location, weftPath, branch string) error {
+	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(hostLayout)
+	if weftRepoRootErr != nil {
+		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
+	}
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", weftPath, branch},
-		hostLayout.WeftRepoRoot(),
+		weftRepoRoot,
 	)
 	if err != nil {
 		return fmt.Errorf("git worktree add: %w", err)
@@ -215,7 +235,7 @@ func adoptWeftWorktree(hostLayout *hubgeometry.Layout, weftPath, branch string) 
 // isRawHostWorktree reports whether the worktree at hostPath lacks any lyx management
 // markers. A worktree is raw when it has no _lyx junction or directory.
 func isRawHostWorktree(hostPath string) bool {
-	lyxPath := filepath.Join(hostPath, hubgeometry.LyxDirName)
+	lyxPath := filepath.Join(hostPath, configengine.LyxDirName)
 	_, err := os.Lstat(lyxPath)
 	return os.IsNotExist(err)
 }
@@ -223,8 +243,11 @@ func isRawHostWorktree(hostPath string) bool {
 // createDormantWeftForRawHost creates a weft branch and worktree for a raw host
 // worktree, leaving it dormant (no junction wiring). The weft branch forks from
 // the current weft HEAD.
-func createDormantWeftForRawHost(hostLayout *hubgeometry.Layout, slug, weftBranch string) error {
-	weftRoot := hostLayout.WeftRepoRoot()
+func createDormantWeftForRawHost(hostLayout *lyxcwd.Location, slug, weftBranch string) error {
+	weftRoot, err := WeftRepoRoot(hostLayout)
+	if err != nil {
+		return fmt.Errorf("resolve weft repo root: %w", err)
+	}
 
 	parentWeftOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
@@ -260,16 +283,16 @@ func readBranch(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// checkJunctionHealth verifies that every junction in hostLayout.HostJunctionsHere(names)
+// checkJunctionHealth verifies that every junction in HostJunctionsHere(hostLayout, names)
 // is a link resolving to its Target, reporting the first unhealthy one found.
 // Returns (ok, reason) where ok is true only if every junction is correctly configured.
-func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
+func checkJunctionHealth(hostLayout *lyxcwd.Location) (bool, string) {
 	names, err := RepoWiredNames(hostLayout)
 	if err != nil {
 		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err)
 	}
 
-	for _, j := range hostLayout.HostJunctionsHere(names) {
+	for _, j := range HostJunctionsHere(hostLayout, names) {
 		_, err := os.Lstat(j.Link)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -302,14 +325,14 @@ func checkJunctionHealth(hostLayout *hubgeometry.Layout) (bool, string) {
 }
 
 // junctionRepointedDetail formats ReconcileActionJunctionRepointed's Detail string,
-// naming every junction in hostLayout.HostJunctionsHere(names) as "Link → Target".
-func junctionRepointedDetail(hostLayout *hubgeometry.Layout) string {
+// naming every junction in HostJunctionsHere(hostLayout, names) as "Link → Target".
+func junctionRepointedDetail(hostLayout *lyxcwd.Location) string {
 	names, err := RepoWiredNames(hostLayout)
 	if err != nil {
 		return "junction re-pointed: cannot load fabric.yaml: " + err.Error()
 	}
 
-	junctions := hostLayout.HostJunctionsHere(names)
+	junctions := HostJunctionsHere(hostLayout, names)
 	parts := make([]string, len(junctions))
 	for i, j := range junctions {
 		parts[i] = fmt.Sprintf("%s → %s", j.Link, j.Target)
@@ -330,7 +353,7 @@ func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
 	}
 
 	reserved := make(map[string]bool)
-	for _, r := range hubgeometry.HubReservedNames() {
+	for _, r := range HubReservedNames() {
 		reserved[r] = true
 	}
 
@@ -350,27 +373,31 @@ func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
 	return names, nil
 }
 
+// appendPrDetail appends text to pr.Detail, joining on "; " when a prior
+// detail is already present. Shared by every reconcile step that annotates a
+// pair's outcome without touching its Action or Error — applyStaleRemoval's
+// skip-reasons and wireBoardLink's failure note in Reconcile above.
+func appendPrDetail(pr *ReconcilePairResult, text string) {
+	if pr.Detail == "" {
+		pr.Detail = text
+	} else {
+		pr.Detail = pr.Detail + "; " + text
+	}
+}
+
 // applyStaleRemoval converges hostLayout's on-disk junctions to the repo-wide pathspec
 // by removing any junction present on disk but absent from RepoWiredNames. Fail-closed:
 // if repo-wide fabric.yaml cannot be loaded or the on-disk scan fails, nothing is removed.
-func applyStaleRemoval(hostLayout *hubgeometry.Layout, slug string, pr *ReconcilePairResult) {
-	appendDetail := func(text string) {
-		if pr.Detail == "" {
-			pr.Detail = text
-		} else {
-			pr.Detail = pr.Detail + "; " + text
-		}
-	}
-
+func applyStaleRemoval(hostLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
 	desired, err := RepoWiredNames(hostLayout)
 	if err != nil {
-		appendDetail(fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
+		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
 		return
 	}
 
-	onDisk, err := scanOnDiskJunctionNames(hostLayout.WorktreeRoot, hostLayout.RelPath)
+	onDisk, err := scanOnDiskJunctionNames(hostLayout.WorktreePath(), hostLayout.AnchorRel)
 	if err != nil {
-		appendDetail(fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
+		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
 		return
 	}
 
@@ -396,7 +423,7 @@ func applyStaleRemoval(hostLayout *hubgeometry.Layout, slug string, pr *Reconcil
 		removed = append(removed, name)
 	}
 
-	appendDetail(fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
+	appendPrDetail(pr, fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
 
 	if pr.Action == ReconcileActionAlreadyHealthy {
 		pr.Action = ReconcileActionStaleRemoved

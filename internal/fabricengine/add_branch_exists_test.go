@@ -30,7 +30,7 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	const slug = "leftover-pair"
-	lyxtest.MustRun(t, l.WorktreeRoot, "git", "branch", slug)
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", slug)
 
 	_, err := topology.Add(l, slug, fabricengine.AddOptions{SkipGit: true})
 	if err == nil {

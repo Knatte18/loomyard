@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"gopkg.in/yaml.v3"
 )
@@ -26,11 +26,11 @@ import (
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()
 
-	configDir := hubgeometry.ConfigDir(baseDir)
+	configDir := configengine.ConfigDir(baseDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(baseDir, module)
+	configPath := configengine.ConfigFile(baseDir, module)
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config file: %v", err)
 	}

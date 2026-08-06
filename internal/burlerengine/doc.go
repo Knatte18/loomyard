@@ -33,8 +33,8 @@
 // instruction file carries exactly one step's rules, read only when the
 // round reaches that step. Engine.Run renders the three instruction files
 // per round and writes them to a fresh directory under .lyx
-// (layout.DotLyxDir(), machine-local, never committed — distinct from the
-// weft-synced _lyx), then hands the shuttle only the orchestrator, which
+// (this package's own dotLyxDirName join, machine-local, never committed —
+// distinct from the weft-synced _lyx), then hands the shuttle only the orchestrator, which
 // names their absolute paths so the agent reads each step's rules when it
 // reaches that step. Run never prunes these per-round directories itself —
 // they accumulate under .lyx/burler across rounds in a long-lived worktree.

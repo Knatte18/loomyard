@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestWireJunctions_RepointsWrongTargetJunction points the host _lyx junction
@@ -45,12 +46,12 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := l.HostLyxLink(slug)
-	correctTarget := l.WeftLyxDirFor(slug)
+	link := fabricengine.HostLyxLink(l, slug)
+	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
 	// Point the junction at an unrelated real directory instead.
 	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-lyx-dir")
@@ -97,12 +98,12 @@ func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := l.HostPatternLink(slug)
-	correctTarget := l.WeftPatternDirFor(slug)
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
+	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, pattern.DirName)
 
 	// Point the junction at an unrelated real directory instead.
 	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-pattern-dir")
@@ -147,12 +148,12 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := l.HostLyxLink(slug)
-	correctTarget := l.WeftLyxDirFor(slug)
+	link := fabricengine.HostLyxLink(l, slug)
+	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
 	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist")
 	if err := os.RemoveAll(link); err != nil {
@@ -196,12 +197,12 @@ func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.Hub)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := l.HostPatternLink(slug)
-	correctTarget := l.WeftPatternDirFor(slug)
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
+	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, pattern.DirName)
 
 	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist-pattern")
 	if err := os.RemoveAll(link); err != nil {

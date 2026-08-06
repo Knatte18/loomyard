@@ -174,8 +174,8 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 
 	st.Strands = append(st.Strands, Strand{
 		GUID:      guid,
-		Name:      resolveStrandName(e.cfg.StrandName, spec, guid, e.layout.WorktreeRoot),
-		Worktree:  e.layout.WorktreeRoot,
+		Name:      resolveStrandName(e.cfg.StrandName, spec, guid, e.layout.WorktreePath()),
+		Worktree:  e.layout.WorktreePath(),
 		Parent:    spec.Parent,
 		Cmd:       spec.Cmd,
 		ResumeCmd: spec.ResumeCmd,
@@ -309,7 +309,7 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 		// new PaneID), so the next reconcile repairs the layout — the launched
 		// pane never becomes an untracked orphan the next select-layout would
 		// silently reap.
-		if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+		if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), st); err != nil {
 			return fmt.Errorf("persist strand: %w", err)
 		}
 
@@ -350,7 +350,7 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 
 		// Persist immediately after a possible surface launch, before the
 		// layout apply, for the same orphan-avoidance reason as AddStrand.
-		if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+		if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), st); err != nil {
 			return fmt.Errorf("persist strand: %w", err)
 		}
 
@@ -476,7 +476,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 				// failed before reaching it) — persist the pruned state here
 				// so a later "lyx reed resume" does not resurrect the strand
 				// this call just removed.
-				if err := SaveState(e.layout.DotLyxDir(), st); err != nil {
+				if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), st); err != nil {
 					return fmt.Errorf("save state after emptying session: %w", err)
 				}
 				result = removed

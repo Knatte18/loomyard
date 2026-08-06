@@ -26,8 +26,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -100,7 +100,7 @@ type MasterStarter interface {
 
 // RunDeps carries every seam Run needs for testing. Starter spawns Master;
 // Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
-// PlanDir, WebsterDir, ReportsDir, PromptsDir, WorktreeRoot are hubgeometry-
+// PlanDir, WebsterDir, ReportsDir, PromptsDir, WorktreeRoot are lyxcwd-
 // resolved paths; Config and Roles carry the loaded configuration and
 // pre-flight-resolved role->model-spec map.
 type RunDeps struct {
@@ -108,7 +108,7 @@ type RunDeps struct {
 	Reed         shuttleengine.ReedOps
 	Engine       shuttleengine.Engine
 	ShuttleCfg   shuttleengine.Config
-	Layout       *hubgeometry.Layout
+	Layout       *lyxcwd.Location
 	Roles        map[Role]modelspec.Resolved
 	Config       Config
 	PlanDir      string
@@ -126,7 +126,7 @@ type RunDeps struct {
 	// Bisector is the integration stage's bisect-repo seam: nil (the
 	// production default) makes runIntegrationStage construct a real
 	// *fabricengine.Fabric inline via
-	// fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree()),
+	// fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout)),
 	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
 	// so the bisect path never requires a paired weft fixture.
 	Bisector WarpBisector
@@ -715,11 +715,11 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	weftRef := weftReferencePattern(deps.Layout)
 
 	var violations []error
-	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Layout.Cwd, weftRef) {
+	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Layout.AnchorPath(), weftRef) {
 		violations = append(violations, v)
 	}
 	for _, f := range result.ForkAudit.Forks {
-		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Layout.Cwd, weftRef) {
+		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Layout.AnchorPath(), weftRef) {
 			violations = append(violations, v)
 		}
 	}
@@ -818,12 +818,12 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 
 	// deps.Bisector is nil in production: construct the real paired-repo
 	// Fabric handle inline, the same way webstercli's weftCommit does from a
-	// *hubgeometry.Layout. A test instead injects a warp-only *gitrepo.Repo
+	// *lyxcwd.Location. A test instead injects a warp-only *gitrepo.Repo
 	// over its own scratch worktree (the WarpBisector seam), so the bisect
 	// path never requires a paired weft fixture.
 	bisector := deps.Bisector
 	if bisector == nil {
-		f, err := fabricengine.New(deps.Layout.WorktreeRoot, deps.Layout.WeftWorktree())
+		f, err := fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout))
 		if err != nil {
 			return err
 		}

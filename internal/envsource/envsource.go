@@ -7,19 +7,26 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
-
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
-// Build reads the .env file at hubgeometry.DotEnv(baseDir) and overlays the
+// dotEnvName is the filename for environment variable overrides.
+const dotEnvName = ".env"
+
+// DotEnv returns the path to the .env file within a baseDir.
+func DotEnv(baseDir string) string {
+	return filepath.Join(baseDir, dotEnvName)
+}
+
+// Build reads the .env file at DotEnv(baseDir) and overlays the
 // OS environment, with OS values taking precedence. The .env file is parsed
 // line-by-line, skipping blank lines and comments; each line is split on the
 // first = only. Absent .env files return only OS environment. Returns the
 // merged map, or an error if .env cannot be read.
 func Build(baseDir string) (map[string]string, error) {
 	// Read the .env file
-	dotEnvPath := hubgeometry.DotEnv(baseDir)
+	dotEnvPath := DotEnv(baseDir)
 	dotEnvMap, err := readDotEnv(dotEnvPath)
 	if err != nil {
 		return nil, err

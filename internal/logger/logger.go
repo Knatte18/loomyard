@@ -45,9 +45,8 @@
 //
 // Alongside the stderr sink above, every Info+ record also lands in a
 // second, durable sink (sink.go): one plain-text trace file per process,
-// under the current worktree's hubgeometry.Layout.WorktreeLogsDir()
-// (<WorktreeRoot>/.lyx/logs/), never constructed from a literal path inside
-// this package. The file opens lazily on whichever of two triggers fires
+// under the current worktree's own WorktreeLogsDir(l) (sink.go)
+// (<WorktreeRoot>/.lyx/logs/), this package's own declaration of that path. The file opens lazily on whichever of two triggers fires
 // first: (a) the first Info-or-above log record in the process, or (b) the
 // process exiting with a non-zero code, via NotifyExit -- so a run that logs
 // nothing above Debug but still fails leaves a reconstructable trace file
@@ -406,7 +405,7 @@ func SetVerbosity(count int) {
 // anything this package's trace/sink work adds. LYX_LOG_FILE redirects only
 // the stderr half to an operator-chosen, unmanaged, whole-verbosity file;
 // the durable sink independently opens its own Info+-only, lyx-managed,
-// retention-swept trace file under hubgeometry.Layout.WorktreeLogsDir(). An
+// retention-swept trace file under this package's own WorktreeLogsDir(l). An
 // Info+ line therefore lands in both files when LYX_LOG_FILE is set -- that
 // duplication is intended, not a bug to reconcile: the two are different
 // artifacts with different lifetimes, and neither should suppress the

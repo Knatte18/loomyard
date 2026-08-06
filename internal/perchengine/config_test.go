@@ -12,22 +12,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 )
 
 // seedLyxConfig creates <tmpDir>/_lyx/config/<module>.yaml with content.
 func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("mkdir _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir _lyx/config: %v", err)
 	}
-	configFile := hubgeometry.ConfigFile(tmpDir, module)
+	configFile := configengine.ConfigFile(tmpDir, module)
 	if err := os.WriteFile(configFile, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config file: %v", err)
 	}
@@ -36,15 +36,15 @@ func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 // seedModelsYAML writes a models.yaml registry into tmpDir's _lyx/config.
 func seedModelsYAML(t *testing.T, tmpDir, content string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, hubgeometry.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("mkdir _lyx: %v", err)
 	}
-	configDir := hubgeometry.ConfigDir(tmpDir)
+	configDir := configengine.ConfigDir(tmpDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir _lyx/config: %v", err)
 	}
-	modelsFile := hubgeometry.ConfigFile(tmpDir, "models")
+	modelsFile := configengine.ConfigFile(tmpDir, "models")
 	if err := os.WriteFile(modelsFile, []byte(content), 0o644); err != nil {
 		t.Fatalf("write models.yaml: %v", err)
 	}

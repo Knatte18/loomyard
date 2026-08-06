@@ -4,7 +4,7 @@
 // the notes group and promote-note). Configuration resolution happens once
 // in a PersistentPreRunE: the config file (readme, design_prefix) is loaded
 // from _lyx/config/board.yaml, and the board data dir is resolved as
-// hubgeometry.BoardDir(layout.Hub) via hubgeometry.Resolve. The hidden
+// fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve. The hidden
 // --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
 
@@ -19,7 +19,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -36,7 +37,7 @@ func Command() *cobra.Command {
 
 The config file (_lyx/config/board.yaml) controls non-geometry settings: readme
 and design_prefix filenames. The board data dir (<hub>/_board) is
-derived from the worktree layout via hubgeometry and is not config- or
+derived from the worktree layout via lyxcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lyx board" with no subcommand lists
 available subcommands without requiring a git repo.
@@ -67,7 +68,7 @@ moves an entry from one to the other.`,
 			cfg = boardengine.Config{Path: *boardPathFlag}
 		} else {
 			// Resolve configuration from the current working directory.
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
@@ -81,13 +82,13 @@ moves an entry from one to the other.`,
 				return nil
 			}
 
-			layout, rerr := hubgeometry.Resolve(cwd)
+			layout, rerr := lyxcwd.Resolve(cwd)
 			if rerr != nil {
 				output.Err(cmd.OutOrStdout(), rerr.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			cfg.Path = hubgeometry.BoardDir(layout.Hub)
+			cfg.Path = fabricengine.BoardDir(layout.HubPath)
 		}
 
 		cfg = applySkipEnv(cfg)

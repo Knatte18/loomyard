@@ -19,12 +19,20 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to
 // inject errors into fabric's own clone-orchestration teardown path.
 var RemoveAll = os.RemoveAll
+
+// staleFabricAnchorName is the pre-rename lyx-anchor marker filename. It has
+// no compatibility fallback read (lyxcwd.AnchorFileName does not read it);
+// it exists here only so CloneHub can detect an old clone's leftover marker
+// and hard-error with re-clone as the remedy, rather than silently
+// re-anchoring at the wrong subpath.
+const staleFabricAnchorName = ".fabric-anchor"
 
 // CloneResult carries the resolved geometry CloneHub hands back to the caller
 // once the git-level clone, board-worktree materialization, and anchor
@@ -37,7 +45,7 @@ var RemoveAll = os.RemoveAll
 type CloneResult struct {
 	HubPath  string // HubPath is the created <name>-HUB container directory.
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
-	BoardDir string // BoardDir is hubgeometry.BoardDir(HubPath), the weft:main checkout.
+	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.
 	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
 	PrimeCwd string // PrimeCwd is the resolved prime host worktree path at Anchor.
 }
@@ -87,7 +95,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	}
 
 	// Step 2: Compute Hub path
-	hubPath := hubgeometry.HubPath(cwd, name)
+	hubPath := HubPath(cwd, name)
 
 	// Step 3: Check if Hub already exists
 	if _, err := os.Stat(hubPath); err == nil {
@@ -109,16 +117,21 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// warnings fire on every subsequent git checkout within this repo.
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// the clone (the hook is belt-and-suspenders for usability, not correctness).
-	if hookLayout, err := hubgeometry.Resolve(hostWorktreePath); err == nil {
-		if hookErr := InstallPostCheckoutHook(hookLayout); hookErr != nil {
-			log.Printf("fabric clone: post-checkout hook install (non-fatal): %v", hookErr)
-		}
-	} else {
-		log.Printf("fabric clone: resolve layout for hook install (non-fatal): %v", err)
+	//
+	// hubPath and name are already in scope from steps 2 and 1; a direct
+	// struct construction is a simplification, not a correctness fix, since
+	// InstallPostCheckoutHook reads exactly one field (WorktreePath()) — it
+	// needs a path, not a resolution. Step 3 above aborts the clone if the hub
+	// already exists and step 4 creates it fresh, so at this point the hub is
+	// provably empty, <hubPath>/_board cannot exist, and a Resolve call here
+	// would always have succeeded — there is no failure path left to log.
+	hookLocation := &lyxcwd.Location{HubPath: hubPath, WorktreeName: name}
+	if hookErr := InstallPostCheckoutHook(hookLocation); hookErr != nil {
+		log.Printf("fabric clone: post-checkout hook install (non-fatal): %v", hookErr)
 	}
 
 	// Step 6: Clone weft repo
-	weftPath := hubgeometry.WeftSiblingPath(hubPath, name)
+	weftPath := weftname.SiblingPath(hubPath, name)
 	if err := cloneRepo(weftURL, weftPath); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
@@ -138,7 +151,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// on hostBranch — adopted if that branch already exists locally from
 	// step 6's clone, freshly orphan-created otherwise (a genuinely empty
 	// weft remote).
-	boardDir := hubgeometry.BoardDir(hubPath)
+	boardDir := BoardDir(hubPath)
 	if err := ensureBoardWorktree(weftPath, hostBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
@@ -147,7 +160,22 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// marker to the board worktree ON DISK. The CLI layer commits it onto
 	// weft:main (config materialization and the commit both live in
 	// internal/fabriccli to avoid the fabricengine → configsync import cycle).
-	markerPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	//
+	// A leftover pre-rename .fabric-anchor with no .lyx-anchor beside it is a
+	// hard error, not a silent fallback: without this check, an old clone
+	// would fall through to the create path below and re-anchor at "."
+	// (or the requested --subpath) even though a real anchor was already
+	// recorded under the old name, silently resolving _lyx to the wrong place
+	// for a subpath-anchored repo.
+	if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
+		if _, newErr := os.Stat(filepath.Join(boardDir, lyxcwd.AnchorFileName)); os.IsNotExist(newErr) {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
+				"found stale %s marker with no %s beside it at %s; re-clone this hub to migrate to the renamed marker",
+				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir))
+		}
+	}
+
+	markerPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	var anchor string
 	if data, statErr := os.ReadFile(markerPath); statErr == nil {
 		// Adopt path: ensureBoardWorktree checked out weft:main, which already
@@ -180,11 +208,20 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// Resolve the prime layout now that the marker exists on disk, so
 	// RelPath — and therefore WeftBase — reflects the resolved anchor.
 	primeCwd := filepath.Join(hostWorktreePath, anchor)
-	l, err := hubgeometry.Resolve(primeCwd)
+	l, err := lyxcwd.Resolve(primeCwd)
 	if err != nil {
 		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
 	}
-	weftBase := filepath.Join(l.WeftWorktree(), l.RelPath)
+
+	// Wire the operator-convenience _board junction as a named special case,
+	// the same point pathspec junctions are wired at the CLI layer (see
+	// internal/fabriccli/clone.go) — but here directly, since _board needs no
+	// fabric.yaml load and CloneHub must not import configsync.
+	if err := wireBoardLink(l, filepath.Base(hostWorktreePath)); err != nil {
+		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("wire board junction: %w", err))
+	}
+
+	weftBase := filepath.Join(WeftWorktree(l), l.AnchorRel)
 
 	return CloneResult{
 		HubPath:  hubPath,

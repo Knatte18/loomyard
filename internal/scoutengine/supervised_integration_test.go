@@ -23,8 +23,6 @@ import (
 	"os/exec"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // killRecordedDaemon kills the daemon PID recorded in the state file, ensuring cleanup.
@@ -53,8 +51,7 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 	// A fresh temp worktreeRoot per test run keeps runs isolated from each
 	// other and from any real worktree's own supervised daemon.
 	worktreeRoot := t.TempDir()
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
-	statePath := layout.ScoutDaemonStateFile(lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

@@ -15,16 +15,13 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // TestEnsureSupervised_StaleSocketCleanupAllowsRebind verifies stale sockets are cleaned up before rebind.
 func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
-	statePath := layout.ScoutDaemonStateFile(lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
@@ -88,8 +85,7 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
-	statePath := layout.ScoutDaemonStateFile(lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
 	logPath := filepath.Join(filepath.Dir(statePath), "daemon.log")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

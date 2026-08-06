@@ -20,8 +20,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +43,7 @@ sync, all under one module.
 
 Branch scheme: every fabric weft branch is named after the paired host branch
 plus a fixed suffix (e.g. host branch "wt-foo" pairs with weft branch
-"wt-foo` + hubgeometry.WeftSuffix + `") — uniform for every pair, including the
+"wt-foo` + weftname.Suffix + `") — uniform for every pair, including the
 clone-time primary.
 
 fabric is the sole host↔weft git-coordination module. See docs/overview.md.
@@ -64,7 +65,7 @@ subpath, repo-wide config, host junctions, .gitignore, and per-worktree module
 configs — a single command, no follow-up activation step required.
 
   <host-name>            — host prime (the main working repo)
-  <host-name>` + hubgeometry.WeftSuffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
+  <host-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 
@@ -75,7 +76,7 @@ subpath is adopted from weft:main; an explicit --subpath that disagrees with
 it is a hard error.
 
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
-"main` + hubgeometry.WeftSuffix + `" for default branch "main") — fabric's
+"main` + weftname.Suffix + `" for default branch "main") — fabric's
 uniform branch scheme applies from the very first pair. When the weft remote
 already carries that suffixed branch (a re-clone of a hub with synced weft
 history), it is adopted as a tracking branch, inheriting the existing weft
@@ -263,7 +264,7 @@ the managed .gitignore ".lyx/" entry.
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
 always tears wiring down. It leaves the repo's anchor and repo-wide config
-(.fabric-anchor, fabric.yaml on weft:main) intact, so a later
+(.lyx-anchor, fabric.yaml on weft:main) intact, so a later
 "lyx fabric reconcile" can re-wire this worktree.
 
 Example:
@@ -287,17 +288,17 @@ func RunCLI(out io.Writer, args []string) int {
 
 // runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
 func runAdd(out io.Writer, args []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -324,17 +325,17 @@ func runAdd(out io.Writer, args []string) int {
 
 // runList parses and executes the fabric list subcommand.
 func runList(out io.Writer, _ []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -354,12 +355,12 @@ func runList(out io.Writer, _ []string) int {
 // supplied, it resolves the current host branch and performs an in-place
 // re-checkout, re-pointing junctions and re-syncing weft.
 func runCheckout(out io.Writer, args []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -370,7 +371,7 @@ func runCheckout(out io.Writer, args []string) int {
 	} else {
 		branchOut, _, exitCode, runErr := gitexec.RunGit(
 			[]string{"branch", "--show-current"},
-			l.WorktreeRoot,
+			l.WorktreePath(),
 		)
 		if runErr != nil {
 			return output.Err(out, runErr.Error())
@@ -385,7 +386,7 @@ func runCheckout(out io.Writer, args []string) int {
 		}
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -405,17 +406,17 @@ func runCheckout(out io.Writer, args []string) int {
 // runPairs executes the fabric pairs subcommand, enumerating all host↔weft
 // pairs with drift and pollution data.
 func runPairs(out io.Writer, _ []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -434,17 +435,17 @@ func runPairs(out io.Writer, _ []string) int {
 // runReconcile executes the fabric reconcile subcommand, walking and repairing
 // all host↔weft pairs.
 func runReconcile(out io.Writer, _ []string) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -462,17 +463,17 @@ func runReconcile(out io.Writer, _ []string) int {
 
 // runPruneWithFlag executes the prune logic with the resolved apply flag.
 func runPruneWithFlag(out io.Writer, apply bool) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -491,17 +492,17 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 // runCleanupWithFlags executes the cleanup logic with the resolved apply and
 // force flags.
 func runCleanupWithFlags(out io.Writer, apply, force bool) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -519,17 +520,17 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 
 // runRemoveWithFlag executes the remove logic with the resolved force flag.
 func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(hubgeometry.BoardDir(l.Hub))
+	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

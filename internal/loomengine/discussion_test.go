@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
 // TestDiscussionSpec verifies DiscussionSpec's field mapping for both autonomous values.
 func TestDiscussionSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())
@@ -78,7 +78,7 @@ func TestDiscussionSpec(t *testing.T) {
 // TestDiscussionSpec_EmptySlug verifies an empty slug is rejected.
 func TestDiscussionSpec_EmptySlug(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
 	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
 
 	reg, err := modelspec.LoadRegistry(t.TempDir())

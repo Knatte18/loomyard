@@ -164,8 +164,8 @@
 //
 // websterengine is _lyx- and weft-blind: every function here takes an
 // already-resolved directory string, and all `_lyx/webster` path
-// construction lives in internal/hubgeometry (WebsterDir/
-// WebsterReportsDir/WebsterPromptsDir), per the Hub Geometry Invariant.
+// construction lives in internal/lyxcwd (WebsterDir/
+// WebsterReportsDir/WebsterPromptsDir), per the Cwd Resolution Invariant.
 // Every weft commit of a webster artifact (state.json, a batch report,
 // outcome.yaml, summary.md) happens in internal/webstercli, never here, at
 // the same deterministic boundary points: begin-batch, record-batch,

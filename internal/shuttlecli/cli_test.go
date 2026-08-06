@@ -10,10 +10,11 @@ package shuttlecli
 import (
 	"bytes"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -236,7 +237,7 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := &specCapturingEngine{}
-			layout := &hubgeometry.Layout{WorktreeRoot: t.TempDir()}
+			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 			runner := shuttleengine.NewRunner(noopReed{}, engine, layout, shuttleengine.Config{RunTimeoutMin: 30})
 
 			c := &shuttleCLI{runner: runner}

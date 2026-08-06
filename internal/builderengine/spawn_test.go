@@ -24,7 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -175,7 +175,7 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 
 	reed := &spawnFakeReed{}
 	engine := &spawnFakeEngine{}
-	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 	shuttleCfg := shuttleengine.Config{RunDir: runRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 

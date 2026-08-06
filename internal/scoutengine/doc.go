@@ -22,8 +22,8 @@
 // # The engine/CLI split
 //
 // scoutengine is a leaf package: it returns typed Go results and typed
-// errors and imports nothing beyond stdlib, internal/hubgeometry,
-// internal/lock, internal/proc, and gopkg.in/yaml.v3 — no io.Writer, no exit
+// errors and imports nothing beyond stdlib,
+// internal/configengine, internal/lock, internal/proc, and gopkg.in/yaml.v3 — no io.Writer, no exit
 // codes, no internal/output. internal/scoutcli is the sole consumer
 // that maps engine results/errors onto the internal/output JSON envelope
 // (output.Ok/output.Err), exactly the CLI/Cobra Invariant's "engine returns
@@ -109,8 +109,8 @@
 //     BuiltinRegistry() exposes this to any caller (the CLI uses it when no
 //     lyx-hub overlay base is resolvable).
 //   - Optional servers.yaml overlay (LoadRegistry(baseDir)): loaded via
-//     hubgeometry.ConfigFile(baseDir, "servers") — never hand-joined, per the
-//     Hub Geometry Invariant. An absent file is not an error (built-ins
+//     configengine.ConfigFile(baseDir, "servers") — never hand-joined, per the
+//     Cwd Resolution Invariant. An absent file is not an error (built-ins
 //     suffice); a present file decodes with yaml.Decoder.KnownFields(true)
 //     (an unknown field anywhere is a loud error naming the offending entry
 //     and file path) and every present entry whole-replaces its built-in
@@ -203,10 +203,10 @@
 // install-in-progress and a daemon-spawn-in-progress are unrelated races
 // that must not serialize on each other.
 //
-// This cache root is deliberately outside the Hub Geometry Invariant's
+// This cache root is deliberately outside the Cwd Resolution Invariant's
 // scope: it is machine-global, not worktree/hub geometry, so this file
 // hand-joins os.UserCacheDir() directly rather than routing through
-// internal/hubgeometry. That is deliberate, not an oversight — a pinned
+// internal/lyxcwd. That is deliberate, not an oversight — a pinned
 // gopls binary is shared across every worktree on the machine, which is the
 // entire point of pinning-and-caching it once rather than per worktree.
 //
@@ -214,9 +214,9 @@
 //
 // daemonstate.go implements the supervised strategy's runtime state: a JSON
 // state file plus a paired advisory lock per (worktreeRoot, lang), resolved
-// via hubgeometry.Layout.ScoutDaemonStateFile/ScoutDaemonLock at
+// via this package's own DaemonStateFile/DaemonLock at
 // .lyx/scout/<lang>/ — never _lyx/. That distinction matters: .lyx/ is
-// ephemeral, machine-bound runtime state (per the Hub Geometry Invariant's
+// ephemeral, machine-bound runtime state (per the Cwd Resolution Invariant's
 // durable-vs-ephemeral split), and a live daemon's PID, socket path, and
 // spawn time mean nothing on another machine or after this one is
 // rebooted, so this state must never be git-committed the way _lyx/'s

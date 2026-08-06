@@ -71,7 +71,7 @@ Example:
 				return nil
 			}
 
-			if findings := planparser.Validate(plan, c.layout.Cwd); len(findings) > 0 {
+			if findings := planparser.Validate(plan, c.layout.AnchorPath()); len(findings) > 0 {
 				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, findings))
 				return nil
 			}

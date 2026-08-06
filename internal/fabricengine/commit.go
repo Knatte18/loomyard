@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // CommitResult reports what Fabric.Commit did on each side: landed SHA and whether a commit was made,
@@ -86,7 +86,7 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // WarpCommitted || WeftCommitted guard here is a separate "did anything
 // land" gate, not an opts gate.
 func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (CommitResult, error) {
-	l, err := hubgeometry.ResolveWorktree(f.warpPath)
+	l, err := lyxcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
 		return CommitResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
 	}
@@ -95,7 +95,7 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		return CommitResult{}, err
 	}
 
-	warpFiles, weftFiles := classifyPaths(l.RelPath, wiredNames, files)
+	warpFiles, weftFiles := classifyPaths(l.AnchorRel, wiredNames, files)
 	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 
 	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)

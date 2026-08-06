@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // postCheckoutScript is the embedded POSIX sh post-checkout hook body.
@@ -51,12 +51,12 @@ SCRIPT_DIR="$(dirname "$0")"
 // hook into the repo's common hooks directory. Idempotent if already installed;
 // chains around any existing hook without clobbering. On POSIX platforms,
 // marks the file executable; on Windows, git ignores the mode.
-func InstallPostCheckoutHook(l *hubgeometry.Layout) error {
+func InstallPostCheckoutHook(l *lyxcwd.Location) error {
 	// Resolve the common git directory so the hook lands in the shared .git
 	// even when called from a linked worktree (where --git-dir differs).
 	commonDirOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--git-common-dir"},
-		l.WorktreeRoot,
+		l.WorktreePath(),
 	)
 	if err != nil {
 		return fmt.Errorf("resolve git common dir: %w", err)
@@ -71,7 +71,7 @@ func InstallPostCheckoutHook(l *hubgeometry.Layout) error {
 	// regardless of the test process's working directory.
 	commonDir := filepath.FromSlash(strings.TrimSpace(commonDirOut))
 	if !filepath.IsAbs(commonDir) {
-		commonDir = filepath.Join(l.WorktreeRoot, commonDir)
+		commonDir = filepath.Join(l.WorktreePath(), commonDir)
 	}
 	hookPath := filepath.Join(commonDir, "hooks", "post-checkout")
 

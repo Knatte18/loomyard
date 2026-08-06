@@ -253,11 +253,11 @@ The chair is red and the table is blue; they must match.
 
 	// Wire the real stack directly: perchengine never imports claudeengine
 	// itself, but this test is the caller and may.
-	reedCfg, err := reedengine.LoadConfig(fixture.Layout.Cwd, "reed")
+	reedCfg, err := reedengine.LoadConfig(fixture.Layout.AnchorPath(), "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.Cwd, "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.AnchorPath(), "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}

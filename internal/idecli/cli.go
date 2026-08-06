@@ -12,15 +12,15 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/ideengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
 
 // Command returns the cobra command tree for the ide module.
 func Command() *cobra.Command {
-	var l *hubgeometry.Layout
+	var l *lyxcwd.Location
 
 	cmd := &cobra.Command{
 		Use:   "ide",
@@ -33,14 +33,14 @@ func Command() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			resolved, err := hubgeometry.Resolve(cwd)
+			resolved, err := lyxcwd.Resolve(cwd)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), err.Error())
 				clihelp.Abort(ctx, 1)

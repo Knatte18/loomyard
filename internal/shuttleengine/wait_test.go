@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -71,7 +71,7 @@ var _ clock = (*scriptedClock)(nil)
 func newWaitTestRunner(t *testing.T, reed ReedOps, engine Engine, cfg Config) *Runner {
 	t.Helper()
 	root := t.TempDir()
-	layout := &hubgeometry.Layout{Cwd: root, WorktreeRoot: root}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
 	return NewRunner(reed, engine, layout, cfg)
 }
 
@@ -456,7 +456,7 @@ func TestRun_Wait_Timeout_KeepsStrand(t *testing.T) {
 
 // TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone proves finalize's
 // AuditForks wiring: a fork-mode spec's done classification calls
-// engine.AuditForks(sessionID, layout.Cwd) and attaches its result to
+// engine.AuditForks(sessionID, layout.AnchorPath()) and attaches its result to
 // Result.ForkAudit, while a non-fork spec's done classification never calls
 // AuditForks at all and leaves Result.ForkAudit nil.
 func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
@@ -506,8 +506,8 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 					t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
 				}
 				call := engine.AuditForksCalls[0]
-				if call.SessionID != "session-1" || call.Workdir != runner.layout.Cwd {
-					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", runner.layout.Cwd)
+				if call.SessionID != "session-1" || call.Workdir != runner.layout.AnchorPath() {
+					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", runner.layout.AnchorPath())
 				}
 				if result.ForkAudit == nil || !reflect.DeepEqual(*result.ForkAudit, cannedAudit) {
 					t.Errorf("Result.ForkAudit = %+v; want it to carry the fake's canned audit %+v", result.ForkAudit, cannedAudit)

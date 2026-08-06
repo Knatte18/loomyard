@@ -18,19 +18,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and writes a
 // _lyx/config/fabric.yaml config at the repo-wide board dir so RunCLI's
-// migrated topology-verb sites (LoadConfig(hubgeometry.BoardDir(l.Hub))) can
+// migrated topology-verb sites (LoadConfig(fabricengine.BoardDir(l.HubPath))) can
 // resolve it. f.Hub is the fixture's host worktree root, i.e.
-// hubgeometry.Layout.WorktreeRoot once resolved — the real hubgeometry Hub
-// (WorktreeRoot's parent) is filepath.Dir(f.Hub), matching the established
+// lyxcwd.Location.WorktreePath() once resolved — the real lyxcwd HubPath
+// (WorktreePath()'s parent) is filepath.Dir(f.Hub), matching the established
 // idiom in internal/boardcli's own cli_test.go/notes_test.go fixtures.
 // Returns the hub path. Stays serial (no t.Parallel) because t.Chdir is
 // required for RunCLI.
@@ -39,11 +42,11 @@ func setupCLIRepo(t *testing.T) string {
 	f := lyxtest.CopyHostHub(t)
 	t.Chdir(f.Hub)
 
-	boardDir := hubgeometry.BoardDir(filepath.Dir(f.Hub))
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	boardDir := fabricengine.BoardDir(filepath.Dir(f.Hub))
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: wt-\npathspec: _lyx\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: wt-\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write fabric.yaml: %v", err)
 	}
 	return f.Hub
@@ -240,22 +243,22 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	// Fabric config is a repo-wide fact read from the board dir (weft_verbs.go's
 	// migrated PersistentPreRunE), not from the weft-prime fixture's own _lyx —
 	// CopyPaired never materializes a _board dir, so seed it directly here.
-	// fixture.Container is the real hubgeometry Hub (fixture.Hub's parent; see
-	// CopyPaired's own doc comment), matching hubgeometry.Resolve(fixture.Hub).Hub.
-	boardDir := hubgeometry.BoardDir(fixture.Container)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	// fixture.Container is the real lyxcwd HubPath (fixture.Hub's parent; see
+	// CopyPaired's own doc comment), matching lyxcwd.Resolve(fixture.Hub).HubPath.
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create board config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("write board fabric.yaml: %v", err)
 	}
 
-	// Change to the hub directory so hubgeometry.Resolve can locate the repo from cwd;
+	// Change to the hub directory so lyxcwd.Resolve can locate the repo from cwd;
 	// t.Chdir restores the original cwd automatically after the test.
 	t.Chdir(fixture.Hub)
 
 	// Modify a file in the weft config that would be committed.
-	weftConfigFile := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -413,7 +416,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// The prime host worktree's _lyx/_pattern junctions must be wired.
 	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
-	for _, name := range []string{hubgeometry.LyxDirName, hubgeometry.PatternDirName} {
+	for _, name := range []string{configengine.LyxDirName, pattern.DirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {
@@ -425,7 +428,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		}
 	}
 
-	// The .fabric-anchor marker and repo-wide fabric.yaml must be committed
+	// The .lyx-anchor marker and repo-wide fabric.yaml must be committed
 	// onto weft:main (the board worktree), not merely present on disk. This
 	// checks tracked-ness directly (git ls-files) rather than a blanket
 	// `git status --porcelain` cleanliness assertion: CommitWeftAt/PushWeftAt
@@ -435,10 +438,10 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	// board worktree; that is a pre-existing gap in boardengine.Sync's own
 	// identical CommitWeftAt/PushWeftAt pairing, not something this batch's
 	// clone orchestration introduces or is responsible for fixing.
-	boardDir := hubgeometry.BoardDir(hubPath)
+	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
-		hubgeometry.FabricAnchorName,
-		filepath.Join(hubgeometry.LyxDirName, "config", "fabric.yaml"),
+		lyxcwd.AnchorFileName,
+		filepath.Join(configengine.LyxDirName, "config", "fabric.yaml"),
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
 		if tracked == "" {
@@ -448,8 +451,8 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// Per-worktree module configs (e.g. "board") must have been reconciled
 	// on the weft side.
-	weftBase := filepath.Join(hubgeometry.WeftSiblingPath(hubPath, "clonecli-host"), "backend")
-	boardConfigPath := hubgeometry.ConfigFile(weftBase, "board")
+	weftBase := filepath.Join(weftname.SiblingPath(hubPath, "clonecli-host"), "backend")
+	boardConfigPath := configengine.ConfigFile(weftBase, "board")
 	if _, err := os.Stat(boardConfigPath); err != nil {
 		t.Errorf("per-worktree board config missing at %s: %v", boardConfigPath, err)
 	}

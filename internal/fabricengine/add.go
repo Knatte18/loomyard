@@ -13,7 +13,8 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // AddOptions controls optional behaviour for Add. It is an alias of
@@ -34,7 +35,7 @@ type AddResult struct {
 // Add creates a new paired host and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, and pushes branches,
 // rolling back all changes on any failure.
-func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (AddResult, error) {
+func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
 	// (0) Slug validation. A slug is by contract a single path component:
 	// every consumer re-derives it from the host worktree path via
 	// filepath.Base (status, reconcile, prune) and the hub scan only looks at
@@ -50,16 +51,16 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	}
 
 	// Reject slugs ending with weft suffix to prevent collision with weft worktree directory naming.
-	if strings.HasSuffix(slug, hubgeometry.WeftSuffix) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, hubgeometry.WeftSuffix)
+	if strings.HasSuffix(slug, weftname.Suffix) {
+		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, weftname.Suffix)
 	}
 
 	// Reject reserved hub-level geometry names that would collide with hub structure.
-	if hubgeometry.IsReservedHubName(slug, t.cfg.Dirs()) {
+	if IsReservedHubName(slug, t.cfg.Dirs()) {
 		return AddResult{}, fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
 	}
 
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreeRoot)
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -73,7 +74,7 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	hostBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(hostBranch)
 
-	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + hostBranch}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + hostBranch}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -88,12 +89,12 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		)
 	}
 
-	target := l.WorktreePath(slug)
+	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		return AddResult{}, fmt.Errorf("worktree directory %q already exists", target)
 	}
 
-	stdout, _, exitCode, err = gitexec.RunGit([]string{"remote"}, l.WorktreeRoot)
+	stdout, _, exitCode, err = gitexec.RunGit([]string{"remote"}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -105,10 +106,14 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	}
 
 	if !weftRepoExists(l) {
-		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", l.WeftRepoRoot())
+		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+		if weftRepoRootErr != nil {
+			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
+		}
+		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", weftRepoRoot)
 	}
 
-	weftTarget := l.WeftWorktreePath(slug)
+	weftTarget := WeftWorktreePath(l, slug)
 	if _, err := os.Stat(weftTarget); !os.IsNotExist(err) {
 		return AddResult{}, fmt.Errorf("weft worktree directory already exists: %s", weftTarget)
 	}
@@ -116,7 +121,7 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
 
 	// Resolve parent host branch before worktree creation to avoid partial state on failure.
-	stdout, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreeRoot)
+	stdout, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)
 	}
@@ -126,7 +131,7 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 	parentBranch := strings.TrimSpace(stdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", hostBranch, target}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", hostBranch, target}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
@@ -141,12 +146,16 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		log.Printf("fabric add: post-checkout hook install (non-fatal): %v", hookErr)
 	}
 
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := WeftWorktreePath(l, slug)
 	if weftBranchAlreadyExists {
+		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
+		if weftRepoRootErr != nil {
+			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
+		}
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
 		_, _, exitCode, err := gitexec.RunGit(
 			[]string{"worktree", "add", weftPath, weftBranch},
-			l.WeftRepoRoot(),
+			weftRepoRoot,
 		)
 		if err != nil {
 			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
@@ -190,8 +199,17 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
+	// (10c) Wire the operator-convenience _board junction as a named special
+	// case, alongside the pathspec junctions above — see junction.go's
+	// wireBoardLink doc for why it is wired unconditionally rather than
+	// folded into names.
+	if err := wireBoardLink(l, slug); err != nil {
+		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		return AddResult{}, fmt.Errorf("wire board junction: %w", err)
+	}
+
 	// (11) Push host branch (LAST step for host)
-	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", hostBranch}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", hostBranch}, l.WorktreePath())
 	if err != nil {
 		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("push: %w", err)
@@ -219,7 +237,7 @@ func (t *Topology) Add(l *hubgeometry.Layout, slug string, opts AddOptions) (Add
 
 // rollbackAdd performs best-effort paired cleanup on Add failure, unwiring junctions,
 // removing worktrees and branches, preserving pre-existing adopted weft branches.
-func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBranch, target string, weftBranchAdopted bool) error {
+func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, hostBranch, weftBranch, target string, weftBranchAdopted bool) error {
 	var firstErr error
 
 	// (1) Remove the weft worktree; delete the weft branch only when this Add
@@ -260,7 +278,7 @@ func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBran
 	}
 
 	// (4) Remove host worktree
-	_, _, exitCode, err := gitexec.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreeRoot)
+	_, _, exitCode, err := gitexec.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreePath())
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -272,7 +290,7 @@ func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBran
 	}
 
 	// (5) Delete host branch
-	_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", hostBranch}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", hostBranch}, l.WorktreePath())
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -284,7 +302,7 @@ func (t *Topology) rollbackAdd(l *hubgeometry.Layout, slug, hostBranch, weftBran
 	}
 
 	// (6) Prune host worktrees
-	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreeRoot)
+	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {

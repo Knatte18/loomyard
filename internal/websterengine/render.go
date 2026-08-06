@@ -39,7 +39,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -126,8 +126,8 @@ func renderCardPointers(cards []planparser.Card) string {
 
 // RenderForkPrompt fills ForkTemplate for one execution batch's in-session fork.
 // Cards' SourcePath pointers are rendered verbatim; {{.worktree_root}} is filled
-// from l.Cwd. prevDigest is already rendered as a one-line summary by the caller.
-func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *hubgeometry.Layout, selfFixCap int) ([]byte, error) {
+// from l.AnchorPath(). prevDigest is already rendered as a one-line summary by the caller.
+func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *lyxcwd.Location, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -137,7 +137,7 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *hub
 		"card_pointers": renderCardPointers(batch.Cards),
 		"report_path":   reportPath,
 		"self_fix_cap":  fmt.Sprintf("%d", selfFixCap),
-		"worktree_root": l.Cwd,
+		"worktree_root": l.AnchorPath(),
 		"prev_digest":   digestLine,
 	}
 	prompt, err := stencil.Fill(composeForkTemplate(), values)
@@ -151,7 +151,7 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *hub
 // strand. Unlike RenderForkPrompt, the recovery strand inherits nothing, so its
 // prompt orients from plan/overview.md and CONSTRAINTS.md before the shared
 // implementer-job body runs. pattern_directive is injected if PATTERN is active.
-func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l *hubgeometry.Layout, selfFixCap int) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l *lyxcwd.Location, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -161,7 +161,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l 
 		"card_pointers":     renderCardPointers(batch.Cards),
 		"report_path":       reportPath,
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
-		"worktree_root":     l.Cwd,
+		"worktree_root":     l.AnchorPath(),
 		"prev_digest":       digestLine,
 		"pattern_directive": pattern.Directive(l, pattern.RoleImplementer),
 	}
@@ -198,7 +198,7 @@ const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 // RenderMasterPrompt fills master-template.md for one `lyx webster run` invocation.
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active
 // (Master never edits code, only forks).
-func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *hubgeometry.Layout) ([]byte, error) {
+func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *lyxcwd.Location) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath

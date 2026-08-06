@@ -24,7 +24,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below
@@ -42,38 +43,47 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("setup Add: %v", err)
 	}
 
-	// Resolve a nested layout: same worktree (l.WorktreeRoot), but Cwd one
-	// level deeper — RelPath becomes "sub", matching the hub-wide nesting
-	// convention HostLyxLink/WeftLyxDirFor assume (every sibling worktree
-	// nests at the same RelPath offset as the caller's own).
-	subDir := filepath.Join(l.WorktreeRoot, "sub")
+	// Resolve a nested layout: same worktree (l.WorktreePath()), but anchored
+	// one level deeper — AnchorRel becomes "sub", matching the hub-wide
+	// nesting convention HostLyxLink/WeftLyxDirFor assume (every sibling
+	// worktree nests at the same AnchorRel offset as the caller's own). The
+	// strict cwd gate requires the anchor to actually be recorded before
+	// Resolve(subDir) can succeed at that subpath.
+	subDir := filepath.Join(l.WorktreePath(), "sub")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", subDir, err)
 	}
-	nestedLayout, err := hubgeometry.Resolve(subDir)
-	if err != nil {
-		t.Fatalf("hubgeometry.Resolve(%s): %v", subDir, err)
+	anchorPath := filepath.Join(fabricengine.BoardDir(l.HubPath), lyxcwd.AnchorFileName)
+	if err := os.MkdirAll(filepath.Dir(anchorPath), 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
 	}
-	if nestedLayout.RelPath != "sub" {
-		t.Fatalf("nestedLayout.RelPath = %q; want %q", nestedLayout.RelPath, "sub")
+	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", anchorPath, err)
+	}
+	nestedLayout, err := lyxcwd.Resolve(subDir)
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(%s): %v", subDir, err)
+	}
+	if nestedLayout.AnchorRel != "sub" {
+		t.Fatalf("nestedLayout.AnchorRel = %q; want %q", nestedLayout.AnchorRel, "sub")
 	}
 
 	if err := fabricengine.WireJunctions(nestedLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions(nested): %v", err)
 	}
 
-	nestedLyxLink := nestedLayout.HostLyxLink(slug)
+	nestedLyxLink := fabricengine.HostLyxLink(nestedLayout, slug)
 	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
 	}
-	nestedPatternLink := nestedLayout.HostPatternLink(slug)
+	nestedPatternLink := filepath.Join(fabricengine.WorktreePath(nestedLayout, slug), nestedLayout.AnchorRel, pattern.DirName)
 	if isLink, err := fslink.IsLink(nestedPatternLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _pattern junction %s not wired: isLink=%v err=%v", nestedPatternLink, isLink, err)
 	}
 
 	// Remove loads the repo-wide config (best-effort) to know which nested
 	// junctions to tear down — newFabricFixture already materialized it at
-	// hubgeometry.BoardDir(l.Hub) via seedRepoWideFabricConfig, so Remove's
+	// fabricengine.BoardDir(l.HubPath) via seedRepoWideFabricConfig, so Remove's
 	// name-load finds "_lyx _pattern" (the default pathspec) regardless of
 	// this pair's RelPath, and the happy-path nested teardown below is
 	// actually exercised, not just the degraded nothing-removed path.

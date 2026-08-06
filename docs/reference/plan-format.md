@@ -35,7 +35,7 @@ _lyx/plan/
 
 The `NN` prefix *is* the order. No separate ordering metadata.
 
-**On-disk locations.** The plan lives at `_lyx/plan/`; batch-reports at `_lyx/builder/reports/NN-<batch-slug>.yaml`. Both are weft overlay, like the status file: agents write them via the junction, Go reads and commits them (Weft Git Invariant — see `CONSTRAINTS.md`). When builder is implemented, these paths resolve through `internal/hubgeometry` helpers like every other `_lyx` path (Hub Geometry Invariant); no other package constructs them.
+**On-disk locations.** The plan lives at `_lyx/plan/`; batch-reports at `_lyx/builder/reports/NN-<batch-slug>.yaml`. Both are weft overlay, like the status file: agents write them via the junction, Go reads and commits them (Weft Git Invariant — see `CONSTRAINTS.md`). `internal/planparser` owns the `_lyx/plan` relative token (`PlanDirName`/`PlanDirRel()`); `internal/loomengine.PlanDir` joins onto it. Each module constructs its own `_lyx` subpath this way — never through a shared geometry helper (Cwd Resolution Invariant); `internal/lyxcwd` resolves only the worktree coordinates every module joins its own token onto.
 
 ## `00-overview.md`
 

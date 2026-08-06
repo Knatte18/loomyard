@@ -24,7 +24,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -120,7 +121,7 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 
 	seedPlanFixture(t, hub, builderengineTestdataDir("plan-valid"))
 
-	layout := &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	reed := &spawnFakeReed{}
 	engine := &spawnFakeEngine{}
@@ -147,9 +148,9 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 			BatchCardCap:          10,
 		},
 		roles:      roles,
-		planDir:    hubgeometry.PlanDir(hub),
-		builderDir: hubgeometry.BuilderDir(hub),
-		reportsDir: hubgeometry.BuilderReportsDir(hub),
+		planDir:    loomengine.PlanDir(layout),
+		builderDir: builderengine.Dir(layout),
+		reportsDir: builderengine.ReportsDir(layout),
 	}
 
 	return &spawnBatchFixture{CLI: c, Engine: engine, Hub: hub}

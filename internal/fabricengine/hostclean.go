@@ -11,22 +11,22 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // Clean reports whether both the host and weft worktrees have no dirty paths,
 // including untracked files. It is package-level for use by loomengine.Preflight.
 // The weft-side check is skipped when the weft worktree does not exist.
 // Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
-func Clean(l *hubgeometry.Layout) (clean bool, reason string, err error) {
-	hostReason, err := dirtyReason("git status --porcelain", l.WorktreeRoot)
+func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
+	hostReason, err := dirtyReason("git status --porcelain", l.WorktreePath())
 	if err != nil {
 		return false, "", err
 	}
 
 	var weftReason string
-	if _, statErr := os.Stat(l.WeftWorktree()); statErr == nil {
-		weftReason, err = dirtyReason("git status --porcelain", l.WeftWorktree())
+	if _, statErr := os.Stat(WeftWorktree(l)); statErr == nil {
+		weftReason, err = dirtyReason("git status --porcelain", WeftWorktree(l))
 		if err != nil {
 			return false, "", err
 		}

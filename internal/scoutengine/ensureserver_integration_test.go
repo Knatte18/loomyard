@@ -33,8 +33,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 )
 
 // errNoWorkspaceSymbolCandidates reports when workspace/symbol returns no candidates.
@@ -141,8 +139,7 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 	// isolated from any other scout test's own supervised daemon,
 	// matching TestEnsureSupervised_Integration's own isolation.
 	worktreeRoot := t.TempDir()
-	layout := &hubgeometry.Layout{WorktreeRoot: worktreeRoot}
-	statePath := layout.ScoutDaemonStateFile("go")
+	statePath := DaemonStateFile(worktreeRoot, "go")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

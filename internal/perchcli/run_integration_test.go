@@ -15,8 +15,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -27,25 +29,25 @@ import (
 func seedRepoWideFabricConfig(t *testing.T, hub string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	configPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	configPath := configengine.ConfigFile(boardDir, "fabric")
 	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
 
-// seedFabricAnchor records relPath as the .fabric-anchor marker so Fabric.Commit resolves the correct RelPath.
+// seedFabricAnchor records relPath as the .lyx-anchor marker so Fabric.Commit resolves the correct RelPath.
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	t.Helper()
 
-	boardDir := hubgeometry.BoardDir(hub)
+	boardDir := fabricengine.BoardDir(hub)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
-	anchorPath := filepath.Join(boardDir, hubgeometry.FabricAnchorName)
+	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
@@ -87,7 +89,7 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	// so no junction exists yet — writing straight into WeftPrime is the
 	// established pattern other cli test suites use, e.g. fabriccli's
 	// TestRunCLI_EnvMapToOption).
-	placeholderDir := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "perch", "weft-on-error")
+	placeholderDir := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "weft-on-error")
 	if err := os.MkdirAll(placeholderDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -139,7 +141,7 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	// Stand in for a real block's run dir: state alongside the two lock
 	// files a real Engine.Run leaves behind (see the WeftSyncRunsOnEngineError
 	// test above for why this is planted straight into WeftPrime).
-	runDir := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "perch", "lock-exclusion")
+	runDir := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -209,7 +211,7 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 
 	// Stand in for a real block's run dir, nested under the recorded
 	// anchor's subpath exactly as the real weft junction would mirror it.
-	runDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), hubgeometry.LyxDirName, "perch", "nested-lock-exclusion")
+	runDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), configengine.LyxDirName, "perch", "nested-lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -271,11 +273,11 @@ func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 	// the weft tests above). runDirBase resolves against the HOST cwd, so
 	// hold the run.lock there; the dirty weft file proves the skipped sync
 	// had real material.
-	hostRunDir := filepath.Join(hubgeometry.PerchRunsDir(fixture.Hub), "busyblock")
+	hostRunDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "busyblock")
 	if err := os.MkdirAll(hostRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir host run dir: %v", err)
 	}
-	weftDirty := filepath.Join(fixture.WeftPrime, hubgeometry.LyxDirName, "perch", "busyblock")
+	weftDirty := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "busyblock")
 	if err := os.MkdirAll(weftDirty, 0o755); err != nil {
 		t.Fatalf("mkdir weft dirty dir: %v", err)
 	}

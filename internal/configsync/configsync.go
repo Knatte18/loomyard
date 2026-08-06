@@ -10,9 +10,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fsx"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -50,7 +50,7 @@ type Result struct {
 // since their values were never carried forward.
 func legacyFabricConfig(baseDir string) (existing []byte, migratedFrom []string) {
 	for _, legacy := range legacyFabricConfigModules {
-		data, err := os.ReadFile(hubgeometry.ConfigFile(baseDir, legacy))
+		data, err := os.ReadFile(configengine.ConfigFile(baseDir, legacy))
 		if err != nil {
 			continue // absent or unreadable: nothing to migrate from this file
 		}
@@ -81,11 +81,11 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 		if m.Name == "fabric" {
 			// fabric's config is repo-wide, not per-worktree: pathspec/branch_prefix
 			// are materialized once at clone via ReconcileFabricAt, keyed on the
-			// board dir at hubgeometry.BoardDir(Hub), never on a worktree baseDir.
+			// board dir at fabricengine.BoardDir(Hub), never on a worktree baseDir.
 			continue
 		}
 
-		cfgPath := hubgeometry.ConfigFile(baseDir, m.Name)
+		cfgPath := configengine.ConfigFile(baseDir, m.Name)
 
 		existing, err := os.ReadFile(cfgPath)
 		fileAbsent := os.IsNotExist(err)
@@ -140,7 +140,7 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 			}
 			result.Applied = true
 			for _, legacy := range migratedFrom {
-				legacyPath := hubgeometry.ConfigFile(baseDir, legacy)
+				legacyPath := configengine.ConfigFile(baseDir, legacy)
 				if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
 					return nil, fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)
 				}
@@ -154,7 +154,7 @@ func ReconcileAll(baseDir string, apply bool) ([]Result, error) {
 }
 
 // ReconcileFabricAt reconciles the repo-wide fabric.yaml at
-// hubgeometry.ConfigFile(boardDir, "fabric"), the counterpart to ReconcileAll's
+// configengine.ConfigFile(boardDir, "fabric"), the counterpart to ReconcileAll's
 // per-worktree loop. fabric's config is repo-wide (never per-worktree). When
 // absent, it carries the one-shot fabric-cutover migration folding in pre-cutover
 // warp.yaml/weft.yaml values and pruning them only when apply succeeds. Returns a
@@ -165,7 +165,7 @@ func ReconcileFabricAt(boardDir string, apply bool) (Result, error) {
 		return Result{}, fmt.Errorf("configreg: unknown module %q", "fabric")
 	}
 
-	cfgPath := hubgeometry.ConfigFile(boardDir, "fabric")
+	cfgPath := configengine.ConfigFile(boardDir, "fabric")
 
 	existing, err := os.ReadFile(cfgPath)
 	fileAbsent := os.IsNotExist(err)
@@ -197,7 +197,7 @@ func ReconcileFabricAt(boardDir string, apply bool) (Result, error) {
 	hasChanges := len(added)+len(removed) > 0
 
 	if apply && (fileAbsent || hasChanges) {
-		if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+		if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 			return Result{}, fmt.Errorf("mkdir config dir for fabric: %w", err)
 		}
 		if err := fsx.AtomicWriteBytes(cfgPath, merged); err != nil {
@@ -206,7 +206,7 @@ func ReconcileFabricAt(boardDir string, apply bool) (Result, error) {
 		result.Applied = true
 
 		for _, legacy := range migratedFrom {
-			legacyPath := hubgeometry.ConfigFile(boardDir, legacy)
+			legacyPath := configengine.ConfigFile(boardDir, legacy)
 			if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
 				return Result{}, fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)
 			}

@@ -9,9 +9,9 @@
 // itself for its own round; perch never routes a round through its own
 // Shuttle. Engine is weft-blind and geometry-blind: it never imports
 // fabricengine and never constructs a _lyx path itself; it operates
-// on a caller-supplied absolute runDir (the *hubgeometry.Layout it holds is
+// on a caller-supplied absolute runDir (the *lyxcwd.Location it holds is
 // used only to resolve the gate command's working directory,
-// layout.WorktreeRoot, which becomes treadleengine.Profile.GateDir).
+// layout.WorktreePath(), which becomes treadleengine.Profile.GateDir).
 
 package perchengine
 
@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
@@ -49,13 +49,13 @@ type Engine struct {
 	burler         Burler
 	shuttle        Shuttle
 	cfg            Config
-	layout         *hubgeometry.Layout
+	layout         *lyxcwd.Location
 	pauseRequested func() bool
 	runCommand     CommandRunner
 }
 
 // New returns an Engine ready to run one perch block's round loop.
-func New(burler Burler, shuttle Shuttle, cfg Config, layout *hubgeometry.Layout, opts Options) *Engine {
+func New(burler Burler, shuttle Shuttle, cfg Config, layout *lyxcwd.Location, opts Options) *Engine {
 	return &Engine{
 		burler:         burler,
 		shuttle:        shuttle,
@@ -72,7 +72,7 @@ func New(burler Burler, shuttle Shuttle, cfg Config, layout *hubgeometry.Layout,
 // against e.cfg (p.validate, profile.go — unchanged), builds the burler
 // adapter (adapter.go) closing over p's content fields, builds a
 // treadleengine.Profile from p's resolved gate/caps/tuning fields
-// (GateDir: e.layout.WorktreeRoot; Gate converted field-for-field), and
+// (GateDir: e.layout.WorktreePath(); Gate converted field-for-field), and
 // delegates to treadleengine.New("perch", adapter, e.shuttle, ...).Run —
 // then maps the treadleengine.Result back onto perch's own
 // Result/RoundSummary. treadleengine.Engine.Run owns creating runDir itself
@@ -96,7 +96,7 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 			Command: p.Gate.Command,
 			Timeout: p.Gate.Timeout,
 		},
-		GateDir:     e.layout.WorktreeRoot,
+		GateDir:     e.layout.WorktreePath(),
 		RoundCaps:   p.RoundCaps,
 		JudgeModel:  p.JudgeModel,
 		JudgeEffort: p.JudgeEffort,

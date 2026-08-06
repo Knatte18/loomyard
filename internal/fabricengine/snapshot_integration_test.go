@@ -268,7 +268,7 @@ func TestSnapshotWarpSHA_ByteExactMatching(t *testing.T) {
 // rather than answering cross-branch — the reader's per-branch contract.
 //
 // Topology.Checkout is deliberately not used here: it needs a full
-// *hubgeometry.Layout, and the only fixture in this package building one
+// *lyxcwd.Location, and the only fixture in this package building one
 // lives in the external fabricengine_test package, unreachable from this
 // internal-package file. It would also test the wrong thing — snapshotWarpSHA
 // scans the weft worktree's CURRENT branch and nothing else, so a weft-side

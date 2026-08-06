@@ -58,7 +58,7 @@ Example:
 				PlanDir:      c.planDir,
 				BuilderDir:   c.builderDir,
 				ReportsDir:   c.reportsDir,
-				WorktreeRoot: c.layout.Cwd,
+				WorktreeRoot: c.layout.AnchorPath(),
 				Config:       c.cfg,
 				Roles:        c.roles,
 			}

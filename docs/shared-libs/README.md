@@ -8,7 +8,7 @@ See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
 
 ## Libraries
 
-- [hubgeometry.md](hubgeometry.md) — `internal/hubgeometry`: canonical geometry resolver, sole owner of cwd/root math
+- [lyxcwd.md](lyxcwd.md) — `internal/lyxcwd`: entry gate that resolves cwd into a legal worktree's coordinates; sole owner of cwd resolution, nothing else
 - [yamlengine.md](yamlengine.md) — `internal/yamlengine`: pure YAML engine for env expansion and config reconciliation
 - [envsource.md](envsource.md) — `internal/envsource`: single source of truth for environment variable sourcing (`.env` + OS overlay)
 - [configengine.md](configengine.md) — `internal/configengine`: strict YAML config loading backed by yamlengine and envsource

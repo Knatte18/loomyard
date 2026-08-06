@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // buildReconcileFixture builds a warp+weft pair with a bare warp remote and n
@@ -255,7 +255,7 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
 
-	patternDir := filepath.Join(weftFixture.WeftPath, hubgeometry.PatternDirName)
+	patternDir := filepath.Join(weftFixture.WeftPath, pattern.DirName)
 	if err := os.MkdirAll(patternDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", patternDir, err)
 	}
@@ -289,7 +289,7 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	if entry.WeftSHA != patternCommitSHA {
 		t.Errorf("PatternResidue[0].WeftSHA = %q; want %q", entry.WeftSHA, patternCommitSHA)
 	}
-	wantPath := hubgeometry.PatternDirName + "/PATTERN.md"
+	wantPath := pattern.DirName + "/PATTERN.md"
 	found := false
 	for _, p := range entry.Paths {
 		if p == wantPath {

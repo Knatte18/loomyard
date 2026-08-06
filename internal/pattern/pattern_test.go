@@ -12,17 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// layoutAt builds a minimal *hubgeometry.Layout rooted at worktreeRoot, with
+// layoutAt builds a minimal *lyxcwd.Location rooted at worktreeRoot, with
 // the given RelPath, sufficient for PatternFileHere() to resolve — the only
 // accessor this package calls.
-func layoutAt(worktreeRoot, relPath string) *hubgeometry.Layout {
-	return &hubgeometry.Layout{
-		WorktreeRoot: worktreeRoot,
-		RelPath:      relPath,
-	}
+func layoutAt(worktreeRoot, relPath string) *lyxcwd.Location {
+	return &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: relPath}
 }
 
 // writePatternFile creates root/_pattern/PATTERN.md (and the _pattern

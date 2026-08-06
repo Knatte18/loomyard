@@ -2,7 +2,7 @@
 
 ## CONSTRAINTS.md is authoritative
 
-Read `CONSTRAINTS.md` before writing or reviewing any code, every session — never proceed as if there are no constraints. It encodes structural invariants enforced partly by `go test`/CI and partly by review discipline; violating one breaks the build or silently rots the design. Current invariants include the **Hub Geometry Invariant** (`internal/hubgeometry` owns all cwd/geometry and `_lyx`/config paths), the **lyxtest Leaf Invariant**, the **CLI/Cobra Invariant** (module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests), and the **Documentation Lifecycle**. Record any new cross-cutting invariant there, same commit.
+Read `CONSTRAINTS.md` before writing or reviewing any code, every session — never proceed as if there are no constraints. It encodes structural invariants enforced partly by `go test`/CI and partly by review discipline; violating one breaks the build or silently rots the design. Current invariants include the **Cwd Resolution Invariant** (`internal/lyxcwd` owns cwd resolution alone — never a weft path, a junction path, or any per-module subdirectory; each module owns its own relative subpath), the **lyxtest Leaf Invariant**, the **CLI/Cobra Invariant** (module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests), and the **Documentation Lifecycle**. Record any new cross-cutting invariant there, same commit.
 
 ## Persistent notes go in git, not file-memory
 

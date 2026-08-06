@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -24,19 +24,24 @@ type Shuttle interface {
 
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
+// dotLyxDirName is the directory name for the ephemeral, machine-bound .lyx
+// directory, this package's own declaration of the token for the join below.
+// It stays unpoliced this slice; slice 9 registers a single owner.
+const dotLyxDirName = ".lyx"
+
 // Engine drives burler rounds through a Shuttle, resolving Profile paths
 // against layout's worktree root and Profile.ClusterFan against cfg's
 // lens/fan library.
 type Engine struct {
 	shuttle Shuttle
-	layout  *hubgeometry.Layout
+	layout  *lyxcwd.Location
 	cfg     Config
 }
 
 // New returns an Engine ready to run rounds against shuttle, resolving
-// relative Profile paths against layout.WorktreeRoot and any Profile.ClusterFan
+// relative Profile paths against layout.WorktreePath() and any Profile.ClusterFan
 // against cfg (the burler.yaml lens/fan library, loaded via LoadConfig).
-func New(shuttle Shuttle, layout *hubgeometry.Layout, cfg Config) *Engine {
+func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config) *Engine {
 	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg}
 }
 
@@ -74,7 +79,7 @@ type Result struct {
 // Run drives one burler round for p, tuned by opts. Sequence: validate p
 // against the engine's worktree root; compose its prompt; materialize the
 // three rendered instruction files to a fresh per-round directory under
-// .lyx (layout.DotLyxDir()) so the orchestrator prompt can name their
+// .lyx (this package's own dotLyxDirName join) so the orchestrator prompt can name their
 // absolute paths; build the shuttle Spec (Interactive/Parent/Display/
 // KeepPane stay zero-valued — rounds are autonomous by default, per the
 // run-tuning-off-profile decision) with Prompt set to the thin
@@ -93,7 +98,7 @@ type Result struct {
 // defaulted verdict could silently terminate a caller's round loop on a
 // malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
-	if err := p.validate(e.layout.WorktreeRoot, e.cfg); err != nil {
+	if err := p.validate(e.layout.WorktreePath(), e.cfg); err != nil {
 		return Result{}, err
 	}
 
@@ -101,7 +106,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 
 	directive := pattern.Directive(e.layout, pattern.RoleReviewFix)
 
-	burlerDir := filepath.Join(e.layout.DotLyxDir(), "burler")
+	burlerDir := filepath.Join(e.layout.WorktreePath(), dotLyxDirName, "burler")
 	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
 		logger.Warn("burler: create instruction dir failed", "burlerDir", burlerDir, "round", opts.Round, "error", err)
 		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)

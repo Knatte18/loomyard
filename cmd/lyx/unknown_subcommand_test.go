@@ -57,7 +57,7 @@ func TestMountedBareGroupListing_NoGitRepo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.group, func(t *testing.T) {
 			// Run from a temp dir that is not a git repo; the PersistentPreRunE guard
-			// must fire before hubgeometry.Resolve is called, keeping the exit code at 0.
+			// must fire before lyxcwd.Resolve is called, keeping the exit code at 0.
 			tmpDir := t.TempDir()
 			t.Chdir(tmpDir)
 

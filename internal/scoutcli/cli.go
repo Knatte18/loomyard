@@ -43,7 +43,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/scoutengine"
 )
@@ -130,10 +130,10 @@ scoped to one package comes back both complete and precise:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// hubgeometry.Getwd() is the only permitted os.Getwd call outside
+			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
 			// cmd/lyx/main.go; it anchors both the default target directory and
 			// the overlay-base resolution below.
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -151,14 +151,14 @@ scoped to one package comes back both complete and precise:
 			worktreeRoot := resolveWorktreeRoot(cwd, dir)
 
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
+			// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
 			// silently miss every overlay, exactly as internal/buildercli/cli.go
-			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
+			// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := scoutengine.BuiltinRegistry()
-			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.Cwd)
+			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
+				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
 				if loadErr != nil {
 					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
 					return nil
@@ -276,10 +276,10 @@ structurally-identical interfaces in different packages).`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// hubgeometry.Getwd() is the only permitted os.Getwd call outside
+			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
 			// cmd/lyx/main.go; it anchors both the default target directory and
 			// the overlay-base resolution below.
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -297,14 +297,14 @@ structurally-identical interfaces in different packages).`,
 			worktreeRoot := resolveWorktreeRoot(cwd, dir)
 
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
+			// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
 			// silently miss every overlay, exactly as internal/buildercli/cli.go
-			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
+			// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := scoutengine.BuiltinRegistry()
-			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.Cwd)
+			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
+				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
 				if loadErr != nil {
 					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
 					return nil
@@ -397,10 +397,10 @@ matches into an ambiguity failure. Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// hubgeometry.Getwd() is the only permitted os.Getwd call outside
+			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
 			// cmd/lyx/main.go; it anchors both the default target directory and
 			// the overlay-base resolution below.
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -418,14 +418,14 @@ matches into an ambiguity failure. Example:
 			worktreeRoot := resolveWorktreeRoot(cwd, dir)
 
 			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-			// load the registry rooted at layout.Cwd (never layout.Hub — ConfigFile
+			// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
 			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
 			// silently miss every overlay, exactly as internal/buildercli/cli.go
-			// anchors every config load at layout.Cwd). Outside a lyx hub, degrade
+			// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
 			// to the pinned built-in registry rather than failing the lookup.
 			registry := scoutengine.BuiltinRegistry()
-			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.Cwd)
+			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
+				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
 				if loadErr != nil {
 					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
 					return nil
@@ -475,8 +475,8 @@ matches into an ambiguity failure. Example:
 // should use, returning the git repository root inside a lyx hub or the absolute
 // target directory otherwise.
 func resolveWorktreeRoot(cwd, targetDir string) string {
-	if layout, err := hubgeometry.Resolve(cwd); err == nil {
-		return layout.WorktreeRoot
+	if layout, err := lyxcwd.Resolve(cwd); err == nil {
+		return layout.WorktreePath()
 	}
 
 	abs, err := filepath.Abs(targetDir)
@@ -558,10 +558,10 @@ involved — only interface methods are at risk of this conflation.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// hubgeometry.Getwd() is the only permitted os.Getwd call outside
+			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
 			// cmd/lyx/main.go; it anchors both the default target directory and
 			// the overlay-base resolution below.
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -574,14 +574,14 @@ involved — only interface methods are at risk of this conflation.`,
 
 			registry := scoutengine.BuiltinRegistry()
 			var worktreeRoot string
-			if layout, resolveErr := hubgeometry.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.Cwd)
+			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
+				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
 				if loadErr != nil {
 					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
 					return nil
 				}
 				registry = loaded
-				worktreeRoot = layout.WorktreeRoot
+				worktreeRoot = layout.WorktreePath()
 			}
 
 			query, err := parseQuery(args[0])

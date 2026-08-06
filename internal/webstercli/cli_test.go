@@ -25,7 +25,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -131,12 +132,7 @@ func TestWeftCommit_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
 	hub := t.TempDir()
-	layout := &hubgeometry.Layout{
-		Hub:          hub,
-		WorktreeRoot: filepath.Join(hub, "host"),
-		Cwd:          filepath.Join(hub, "host"),
-		RelPath:      ".",
-	}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "host")), AnchorRel: "."}
 
 	committed, err := weftCommit(layout, "bypass probe")
 	if err != nil {
@@ -153,12 +149,7 @@ func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
 	hub := t.TempDir()
-	layout := &hubgeometry.Layout{
-		Hub:          hub,
-		WorktreeRoot: filepath.Join(hub, "host"),
-		Cwd:          filepath.Join(hub, "host"),
-		RelPath:      ".",
-	}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "host")), AnchorRel: "."}
 
 	committed, err := weftCommit(layout, "missing-pair probe")
 	if committed {
@@ -174,13 +165,14 @@ func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 func newTestCLI(t *testing.T) (*websterCLI, string) {
 	t.Helper()
 	hub := t.TempDir()
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &websterCLI{
-		layout:     &hubgeometry.Layout{WorktreeRoot: hub, Cwd: hub, RelPath: "."},
+		layout:     layout,
 		cfg:        websterengine.Config{},
-		planDir:    hubgeometry.PlanDir(hub),
-		websterDir: hubgeometry.WebsterDir(hub),
-		reportsDir: hubgeometry.WebsterReportsDir(hub),
-		promptsDir: hubgeometry.WebsterPromptsDir(hub),
+		planDir:    loomengine.PlanDir(layout),
+		websterDir: websterengine.Dir(layout),
+		reportsDir: websterengine.ReportsDir(layout),
+		promptsDir: websterengine.PromptsDir(layout),
 	}
 	return c, hub
 }

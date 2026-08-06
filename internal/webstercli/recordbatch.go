@@ -103,7 +103,7 @@ Example:
 				Config:       c.cfg,
 				Engine:       c.engine,
 				Layout:       c.layout,
-				WorktreeRoot: c.layout.Cwd,
+				WorktreeRoot: c.layout.AnchorPath(),
 				ReportsDir:   c.reportsDir,
 				OutcomePath:  websterengine.OutcomePath(c.websterDir),
 				SummaryPath:  websterengine.SummaryPath(c.websterDir),

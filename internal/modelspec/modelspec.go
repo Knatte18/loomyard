@@ -24,15 +24,15 @@
 // applies bracket-over-default precedence, yielding a Resolved.
 //
 // LoadRegistry fallback semantics: LoadRegistry(baseDir) reads
-// hubgeometry.ConfigFile(baseDir, "models"). An absent file is NOT an error — it
+// configengine.ConfigFile(baseDir, "models"). An absent file is NOT an error — it
 // returns the built-in fallback registry unchanged, so every consumer works with
 // zero config present. A present file's entries are validated and merged onto the
 // built-ins by whole-entry replacement per alias (a file entry for "sonnet"
 // replaces the built-in "sonnet" entirely; it does not merge field-by-field).
 //
 // Leaf import discipline: this package's production code imports ONLY the
-// standard library (including embed), internal/hubgeometry, and gopkg.in/yaml.v3
-// — never configreg, configengine, envsource, yamlengine, or any feature package.
+// standard library (including embed), internal/configengine, and gopkg.in/yaml.v3
+// — never configreg, envsource, yamlengine, lyxcwd, or any feature package.
 // This lets every future consumer (builder, perch/burler/loom configs) import
 // modelspec without creating an import cycle; configreg importing modelspec (for
 // ConfigTemplate) is the one allowed direction. Enforced by

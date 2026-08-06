@@ -8,15 +8,15 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
 	baseDir := t.TempDir()
-	if err := os.MkdirAll(hubgeometry.ConfigDir(baseDir), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", hubgeometry.ConfigDir(baseDir), err)
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", configengine.ConfigDir(baseDir), err)
 	}
-	path := hubgeometry.ConfigFile(baseDir, "models")
+	path := configengine.ConfigFile(baseDir, "models")
 	if err := os.WriteFile(path, []byte(ConfigTemplate()), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", path, err)
 	}

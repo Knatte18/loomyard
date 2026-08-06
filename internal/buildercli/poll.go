@@ -145,11 +145,11 @@ Example:
 			// (ChangedFiles/Dirty) run ONLY here -- a running tick must never
 			// shell out to git.
 			fillReportInputs := func(ins *builderengine.ClassifyInputs, report *builderengine.Report) error {
-				changed, err := builderengine.ChangedFiles(c.layout.Cwd, bs.StartSHA)
+				changed, err := builderengine.ChangedFiles(c.layout.AnchorPath(), bs.StartSHA)
 				if err != nil {
 					return err
 				}
-				dirty, err := builderengine.Dirty(c.layout.Cwd)
+				dirty, err := builderengine.Dirty(c.layout.AnchorPath())
 				if err != nil {
 					return err
 				}

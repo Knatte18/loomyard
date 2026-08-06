@@ -5,11 +5,11 @@
 // entry.Command[0] on $PATH via newLSPClient, the native Go strategy
 // (batch 5's ensureNative) always launches the exact pinned version this
 // file resolved, never whatever gopls happens to be on the operator's PATH.
-// The cache root is os.UserCacheDir(), not a Hub Geometry Invariant path:
+// The cache root is os.UserCacheDir(), not a Cwd Resolution Invariant path:
 // os.UserCacheDir() is the idiomatic stdlib answer to "OS-appropriate cache
 // root" with no platform-specific logic to get wrong, and it is explicitly
 // machine-global rather than worktree/hub geometry, which is why this file
-// hand-joins it directly instead of routing through internal/hubgeometry
+// hand-joins it directly instead of routing through internal/lyxcwd
 // (see _mill/discussion.md's toolchain-manager-authority decision).
 
 package scoutengine

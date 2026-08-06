@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
@@ -42,7 +42,7 @@ func printModule(baseDir string, out io.Writer, module string) int {
 		return output.Err(out, fmt.Sprintf("unknown config module: %s (known: %v)", module, configreg.Names()))
 	}
 
-	path := hubgeometry.ConfigFile(baseDir, module)
+	path := configengine.ConfigFile(baseDir, module)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -71,7 +71,7 @@ func printAll(baseDir string, out io.Writer) int {
 		// Write a section delimiter so the reader can separate module blocks.
 		fmt.Fprintf(out, "# %s\n", name)
 
-		path := hubgeometry.ConfigFile(baseDir, name)
+		path := configengine.ConfigFile(baseDir, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -190,8 +190,8 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 // The --set path is a fully non-interactive write: it never calls edit and is
 // mutually exclusive with --print. The baseDir is computed from the layout as
 // filepath.Join(WorktreeRoot, RelPath).
-func dispatch(l *hubgeometry.Layout, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
-	baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)
+func dispatch(l *lyxcwd.Location, in io.Reader, out io.Writer, args []string, edit configengine.EditorFunc, sync syncFunc, printOnly bool, setFlags []string) int {
+	baseDir := filepath.Join(l.WorktreePath(), l.AnchorRel)
 
 	// Handle --set before any --print/edit/menu dispatch: it is a fully
 	// non-interactive write path that never opens the editor, so its
@@ -254,20 +254,20 @@ func buildConfigLong() string {
 // 1 on any error.
 func runReconcile(out io.Writer, apply bool) int {
 	// Resolve the current working directory and layout.
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("getwd: %v", err))
 	}
 
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
-		// hubgeometry.Resolve's error is already self-describing; pass it
+		// lyxcwd.Resolve's error is already self-describing; pass it
 		// through bare rather than restating it with a redundant prefix.
 		return output.Err(out, err.Error())
 	}
 
 	// Compute baseDir as the host _lyx parent: the worktree root joined with the relative path.
-	baseDir := filepath.Join(l.WorktreeRoot, l.RelPath)
+	baseDir := filepath.Join(l.WorktreePath(), l.AnchorRel)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
 	results, err := configsync.ReconcileAll(baseDir, apply)
@@ -367,13 +367,13 @@ func RunCLI(out io.Writer, args []string) int {
 // "key=value" strings collected from repeated --set flags.
 func runConfig(out io.Writer, args []string, printOnly bool, setFlags []string) int {
 	// Resolve the current working directory.
-	cwd, err := hubgeometry.Getwd()
+	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
 	// Resolve the layout.
-	l, err := hubgeometry.Resolve(cwd)
+	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

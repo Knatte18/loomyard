@@ -77,7 +77,7 @@ Example:
 				ContextCapTokens: c.cfg.BatchContextCapTokens,
 				CardCap:          c.cfg.BatchCardCap,
 			}
-			if findings := builderengine.Validate(plan, c.layout.Cwd, caps); len(findings) > 0 {
+			if findings := builderengine.Validate(plan, c.layout.AnchorPath(), caps); len(findings) > 0 {
 				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, findings))
 				return nil
 			}

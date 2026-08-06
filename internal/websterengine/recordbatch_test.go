@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -133,7 +133,7 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 
 	engine := &recordFakeEngine{scripted: scripted}
 	sleeper := &recordFakeSleeper{}
-	layout := &hubgeometry.Layout{WorktreeRoot: worktree, Cwd: worktree}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 
 	state := &websterengine.State{
 		MasterSessionID: "session-1",

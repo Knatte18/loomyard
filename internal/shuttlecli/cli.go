@@ -12,7 +12,7 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -56,16 +56,16 @@ provider specifics.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			layout, err := hubgeometry.Resolve(cwd)
+			layout, err := lyxcwd.Resolve(cwd)
 			if err != nil {
-				// hubgeometry.Resolve's error is already self-describing (it
+				// lyxcwd.Resolve's error is already self-describing (it
 				// IS the "not a git repository" sentinel); pass it through
 				// bare rather than doubling that same text on top of it.
 				output.Err(out, err.Error())
@@ -73,17 +73,17 @@ provider specifics.`,
 				return nil
 			}
 
-			// Both configs are anchored at layout.Cwd, matching reedcli's own
+			// Both configs are anchored at layout.AnchorPath(), matching reedcli's own
 			// resolution: the worktree the operator is actually standing in,
 			// never WorktreeRoot or any weft sibling.
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.Cwd, "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
+			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

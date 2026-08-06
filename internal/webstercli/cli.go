@@ -7,7 +7,7 @@
 // ingredients on websterCLI -- buildercli's own cli.go
 // (internal/buildercli/cli.go) is the proven shape this file mirrors file
 // for file, per the discussion's cli-shape decision: every _lyx/plan and
-// _lyx/webster path this module touches is anchored at layout.Cwd -- the
+// _lyx/webster path this module touches is anchored at layout.AnchorPath() -- the
 // directory lyx init ran in, never WorktreeRoot or a weft sibling.
 //
 // Unlike buildercli (which stores only a builderengine.Starter and a
@@ -27,7 +27,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -51,7 +52,7 @@ type websterCLI struct {
 	engine shuttleengine.Engine
 	reed   shuttleengine.ReedOps
 
-	layout     *hubgeometry.Layout
+	layout     *lyxcwd.Location
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
 	roles      map[websterengine.Role]modelspec.Resolved
@@ -59,7 +60,7 @@ type websterCLI struct {
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher
 
-	// planDir, websterDir, reportsDir, and promptsDir are the hubgeometry-resolved _lyx dirs.
+	// planDir, websterDir, reportsDir, and promptsDir are the lyxcwd-resolved _lyx dirs.
 	planDir    string
 	websterDir string
 	reportsDir string
@@ -123,35 +124,35 @@ Verbs:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			layout, err := hubgeometry.Resolve(cwd)
+			layout, err := lyxcwd.Resolve(cwd)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.Cwd, "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
+			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			websterCfg, err := websterengine.LoadConfig(layout.Cwd, "webster")
+			websterCfg, err := websterengine.LoadConfig(layout.AnchorPath(), "webster")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -165,7 +166,7 @@ Verbs:
 				return nil
 			}
 
-			registry, err := modelspec.LoadRegistry(layout.Cwd)
+			registry, err := modelspec.LoadRegistry(layout.AnchorPath())
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -194,10 +195,10 @@ Verbs:
 			c.cfg = websterCfg
 			c.roles = roles
 			c.batcher = activeBatcher
-			c.planDir = hubgeometry.PlanDir(layout.Cwd)
-			c.websterDir = hubgeometry.WebsterDir(layout.Cwd)
-			c.reportsDir = hubgeometry.WebsterReportsDir(layout.Cwd)
-			c.promptsDir = hubgeometry.WebsterPromptsDir(layout.Cwd)
+			c.planDir = loomengine.PlanDir(layout)
+			c.websterDir = websterengine.Dir(layout)
+			c.reportsDir = websterengine.ReportsDir(layout)
+			c.promptsDir = websterengine.PromptsDir(layout)
 			return nil
 		},
 	}

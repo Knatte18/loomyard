@@ -1,6 +1,6 @@
 // load.go implements LoadRegistry, the optional servers.yaml overlay loader.
 // It mirrors internal/modelspec's LoadRegistry: the file is read via
-// hubgeometry.ConfigFile so its location is never hand-joined (Hub Geometry
+// configengine.ConfigFile so its location is never hand-joined (Cwd Resolution
 // Invariant), an absent file falls back to builtins() with no error, and
 // present entries whole-replace the corresponding built-in.
 
@@ -13,14 +13,14 @@ import (
 	"io"
 	"os"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
 // LoadRegistry loads the optional servers.yaml overlay, replacing built-in entries whole.
 // An absent file returns builtins(); an empty file also returns builtins() unchanged.
 func LoadRegistry(baseDir string) (Registry, error) {
-	path := hubgeometry.ConfigFile(baseDir, "servers")
+	path := configengine.ConfigFile(baseDir, "servers")
 
 	data, err := os.ReadFile(path)
 	if err != nil {

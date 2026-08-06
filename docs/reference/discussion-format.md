@@ -11,7 +11,7 @@
 
 Two files, not two sections of one file, on purpose: this mirrors Builder's "distilled digest, never raw prose" rule (see [builder-contract.md](builder-contract.md)'s digest contract). A hard filesystem boundary is stronger than a convention about which section an agent may read — the Plan producer cannot accidentally ingest the raw interview transcript, or pay its token cost, because the file isn't in its input set. Filenames are self-describing rather than terse, matching the existing naming.
 
-Both paths are durable **weft-overlay state**: they live under `_lyx/` (git-synced via weft), not `.lyx/`'s ephemeral machine-local state — that is what makes them survive a resume across machines. Their paths resolve via `internal/hubgeometry` once code lands; this doc describes the files, it does not construct the paths.
+Both paths are durable **weft-overlay state**: they live under `_lyx/` (git-synced via weft), not `.lyx/`'s ephemeral machine-local state — that is what makes them survive a resume across machines. Their paths resolve via `internal/loomengine` (`DiscussionDir`, `DiscussionDecisionRecord`, `DiscussionSupportLog`), joined onto `internal/lyxcwd`'s resolved coordinates; this doc describes the files, it does not construct the paths.
 
 ## `decision-record.md` shape
 

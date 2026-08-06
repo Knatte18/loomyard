@@ -3,7 +3,7 @@
 // config_driven_junctions_integration_test.go proves the two behaviors batch
 // 3 exists to prove: (1) the extensibility promise of the hybrid name-sourcing
 // seam — WireJunctions/UnwireJunctions wire and unwire exactly the name-set a
-// caller passes them, with no fabric/hubgeometry code change needed for a
+// caller passes them, with no fabric/lyxcwd code change needed for a
 // future module to append its own junction name to pathspec — and (2) that a
 // worktree whose pathspec is narrower than the default (only "_lyx") is still
 // reported healthy by Healthy(), since a narrow pathspec is a legitimate,
@@ -22,9 +22,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -34,7 +34,7 @@ import (
 // that is neither part of the default pathspec nor hub-reserved — with no
 // SeedConfig, because WireJunctions no longer reads config at all. This is
 // the proof that a future raddle/board append (one extra pathspec token) is
-// wired with no fabric/hubgeometry code change: a caller sourcing an extended
+// wired with no fabric/lyxcwd code change: a caller sourcing an extended
 // pathspec would pass its names exactly this way.
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	t.Parallel()
@@ -49,7 +49,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	junctions := l.HostJunctions(slug, names)
+	junctions := fabricengine.HostJunctions(l, slug, names)
 	for _, j := range junctions {
 		isLink, err := fslink.IsLink(j.Link)
 		if err != nil || !isLink {
@@ -84,7 +84,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 
 // TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy
 // proof: Healthy loads its junction name-set from the repo-wide
-// hubgeometry.BoardDir(l.Hub) fabric.yaml (card 7), so a worktree whose
+// fabricengine.BoardDir(l.HubPath) fabric.yaml (card 7), so a worktree whose
 // pathspec names only "_lyx" — narrower than the "_lyx _pattern" default —
 // is reported in sync once "_lyx" alone is wired. A narrow pathspec is a
 // legitimate, unenforced reality (doc.go's narrow-pathspec asymmetry note),
@@ -104,11 +104,11 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	// a _board dir, so create it and its _lyx/config/ first, mirroring
 	// seedRepoWideFabricConfig but with this test's narrow "_lyx"-only
 	// pathspec instead of the default template.
-	boardDir := hubgeometry.BoardDir(fixture.Layout.Hub)
-	if err := os.MkdirAll(hubgeometry.ConfigDir(boardDir), 0o755); err != nil {
+	boardDir := fabricengine.BoardDir(fixture.Layout.HubPath)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	if err := os.WriteFile(hubgeometry.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))

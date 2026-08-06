@@ -8,7 +8,7 @@
 // already resolved. composePrompt itself does no filesystem access beyond
 // the directory check formatFileSet already performs on each Target/Fasit
 // path — it takes the three instruction paths as plain string parameters
-// rather than a *hubgeometry.Layout, so it never gains geometry awareness
+// rather than a *lyxcwd.Location, so it never gains geometry awareness
 // of its own; the caller computes both the directive and the three paths.
 
 package burlerengine

@@ -1,8 +1,8 @@
 // enforcement_test.go is a repo-wide guard: it walks every package and fails
-// the build if any file outside internal/hubgeometry reaches for raw cwd or top-level
-// git geometry, keeping internal/hubgeometry the sole geometry owner.
+// the build if any file outside internal/lyxcwd reaches for raw cwd or top-level
+// git geometry, keeping internal/lyxcwd the sole geometry owner.
 
-package hubgeometry
+package lyxcwd
 
 import (
 	"go/ast"
@@ -62,7 +62,7 @@ func TestStripGoComments(t *testing.T) {
 	}{
 		{
 			name:    "line comment mentioning token is stripped",
-			src:     "package p\n// hubgeometry.Getwd is the only permitted os.Getwd caller\nvar _ = 1\n",
+			src:     "package p\n// lyxcwd.Getwd is the only permitted os.Getwd caller\nvar _ = 1\n",
 			present: false,
 		},
 		{
@@ -87,7 +87,7 @@ func TestStripGoComments(t *testing.T) {
 }
 
 // TestEnforcement walks the repo source tree and verifies that no source file
-// outside internal/hubgeometry and cmd/lyx contains the raw cwd/root primitives
+// outside internal/lyxcwd and cmd/lyx contains the raw cwd/root primitives
 // os.Getwd or git rev-parse --show-toplevel.
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
@@ -96,7 +96,7 @@ func TestEnforcement(t *testing.T) {
 		if !ok {
 			t.Fatal("could not determine test file location")
 		}
-		// Two levels up from internal/hubgeometry/enforcement_test.go → repo root
+		// Two levels up from internal/lyxcwd/enforcement_test.go → repo root
 		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(file)))
 
 		// Predicate: returns true if the bytes contain a banned token.
@@ -134,8 +134,8 @@ func TestEnforcement(t *testing.T) {
 				// Normalize path separators to forward slashes for comparison.
 				pkgDir = filepath.ToSlash(pkgDir)
 
-				// Check allowlist: internal/hubgeometry, cmd/lyx/main.go
-				isAllowed := pkgDir == "internal/hubgeometry" ||
+				// Check allowlist: internal/lyxcwd, cmd/lyx/main.go
+				isAllowed := pkgDir == "internal/lyxcwd" ||
 					(pkgDir == "cmd/lyx" && d.Name() == "main.go")
 
 				// Skip files in the allowlist (they are allowed to contain banned tokens).
@@ -145,7 +145,7 @@ func TestEnforcement(t *testing.T) {
 
 				// Check the file for banned tokens. Comments are stripped first so
 				// that a file which merely *names* a banned token in an explanatory
-				// comment (e.g. scoutcli/cli.go documenting why hubgeometry.Getwd
+				// comment (e.g. scoutcli/cli.go documenting why lyxcwd.Getwd
 				// is the only permitted os.Getwd caller) is not falsely flagged; the
 				// guard is about real code usage, not prose.
 				data, err := os.ReadFile(path)
@@ -210,19 +210,74 @@ func TestEnforcement(t *testing.T) {
 }
 
 // TestEnforcement_GeometryLiterals walks the repo source tree and verifies that no
-// production file outside internal/hubgeometry constructs a geometry path token as a string
-// literal in a path-construction context: a filepath.Join argument, a binary +
+// production file outside each token's registered owner directory (or directories,
+// during a transitional co-ownership window) constructs a geometry path token as a
+// string literal in a path-construction context: a filepath.Join argument, a binary +
 // operand, or a string const declaration value. Whole-token matching (exact equality,
 // not substring) avoids false positives on compound names such as "_boardroom" or
 // "-weft-bare". Test files (*_test.go) are excluded because test geometry is a review
 // rule, not a machine-enforced invariant.
 func TestEnforcement_GeometryLiterals(t *testing.T) {
-	// geometryToken reports whether s is exactly one of the forbidden geometry path
-	// tokens. Only internal/hubgeometry is permitted to use these in path-construction context.
+	// geometryToken reports whether s is exactly one of the policed geometry path
+	// tokens. Only a token's registered owner directory (below) may use it in
+	// path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
 		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_raddle", "_lyx", "_pattern":
 			return true
+		}
+		return false
+	}
+
+	// geometryTokenOwners maps each policed geometry token to the set of
+	// directories permitted to declare or construct it in path-construction
+	// context: the finished per-token ownership map, converged batch by batch
+	// from a single allowlisted directory (internal/hubgeometry, then
+	// internal/lyxcwd) to this map, each token's row landing in the same
+	// batch that moved its declaration.
+	//
+	// ".lyx" (the machine-local, never-git-tracked sibling of "_lyx") is
+	// deliberately NOT a policed token here. It is not unowned by oversight:
+	// slice 9 registers it as a pathspec junction and removes
+	// crossModuleMachineLocalExcludes, and that is where it gets an owner row.
+	// Adding a row for it now would have to be undone one slice later.
+	geometryTokenOwners := map[string][]string{
+		// "_board" and "-HUB" are dual-owned: internal/lyxcwd keeps a private
+		// boardDir/boardDirName pair (readRecordedAnchor's sole remaining
+		// reason to know the name) and a private hubSuffix const
+		// (Location.RepoName derives from it), while internal/fabricengine
+		// owns the exported BoardDir/HubPath constructors every other
+		// caller uses. The duplication is sanctioned by this map, not a leak.
+		"_board": {"internal/lyxcwd", "internal/fabricengine"},
+		"-weft":  {"internal/weftname"},
+		"-HUB":   {"internal/lyxcwd", "internal/fabricengine"},
+		// "_portals", "_launchers" and "_raddle" are fabric's own
+		// illusion-maintenance plumbing: the portal/launcher path surface
+		// relocated to internal/fabricengine in this batch, and "_raddle"
+		// has always been named only in HubReservedNames, which moved with it.
+		"_portals":   {"internal/fabricengine"},
+		"_launchers": {"internal/fabricengine"},
+		"_raddle":    {"internal/fabricengine"},
+		// "_lyx" is owned by internal/configengine.LyxDirName alone: the last
+		// internal/lyxcwd methods anchored on a private lyxDirName copy
+		// relocated in an earlier batch, so the transitional co-ownership
+		// this row once carried is retired.
+		"_lyx": {"internal/configengine"},
+		// "_pattern" is dual-owned: internal/pattern declares DirName for
+		// resolution-path use, and internal/fabricengine declares its own
+		// private patternDirName copy for the one caller that needs the bare
+		// name as a git pathspec argument (pull.go's patternResidueCommits).
+		// internal/lyxcwd's transitional PatternDirName const is gone as of
+		// this card; card 36 leaves this row untouched.
+		"_pattern": {"internal/pattern", "internal/fabricengine"},
+	}
+
+	// tokenOwnedByDir reports whether dir is one of tok's registered owners.
+	tokenOwnedByDir := func(tok, dir string) bool {
+		for _, owner := range geometryTokenOwners[tok] {
+			if owner == dir {
+				return true
+			}
 		}
 		return false
 	}
@@ -306,6 +361,76 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		return found
 	}
 
+	// geometryLiteralTokensInConstructionContext returns every policed geometry
+	// token found in path-construction context in f, in AST-visitation order
+	// (a token may repeat if the file constructs it more than once). It shares
+	// hasGeometryLiteralInConstructionContext's three contexts, but does not
+	// stop at the first match: the tree-scan sub-test below needs every distinct
+	// token a file constructs, so it can check each one's ownership separately
+	// rather than only knowing that *some* token was found.
+	geometryLiteralTokensInConstructionContext := func(f *ast.File) []string {
+		var tokens []string
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.CallExpr:
+				sel, ok := node.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "Join" {
+					break
+				}
+				ident, ok2 := sel.X.(*ast.Ident)
+				if !ok2 || ident.Name != "filepath" {
+					break
+				}
+				for _, arg := range node.Args {
+					lit, ok3 := arg.(*ast.BasicLit)
+					if !ok3 || lit.Kind != token.STRING {
+						continue
+					}
+					v, err := strconv.Unquote(lit.Value)
+					if err == nil && geometryToken(v) {
+						tokens = append(tokens, v)
+					}
+				}
+			case *ast.BinaryExpr:
+				if node.Op != token.ADD {
+					break
+				}
+				for _, operand := range []ast.Expr{node.X, node.Y} {
+					lit, ok := operand.(*ast.BasicLit)
+					if !ok || lit.Kind != token.STRING {
+						continue
+					}
+					v, err := strconv.Unquote(lit.Value)
+					if err == nil && geometryToken(v) {
+						tokens = append(tokens, v)
+					}
+				}
+			case *ast.GenDecl:
+				if node.Tok != token.CONST {
+					break
+				}
+				for _, spec := range node.Specs {
+					valSpec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for _, val := range valSpec.Values {
+						lit, ok2 := val.(*ast.BasicLit)
+						if !ok2 || lit.Kind != token.STRING {
+							continue
+						}
+						v, err := strconv.Unquote(lit.Value)
+						if err == nil && geometryToken(v) {
+							tokens = append(tokens, v)
+						}
+					}
+				}
+			}
+			return true
+		})
+		return tokens
+	}
+
 	// predicate sub-test: validates the AST detector against synthetic Go snippets
 	// parsed with go/parser. Positives must be detected; negatives must not.
 	t.Run("predicate", func(t *testing.T) {
@@ -383,15 +508,15 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		}
 	})
 
-	// tree-scan sub-test: walks every production Go file in the repo (excluding test
-	// files and the internal/hubgeometry allowlist) and fails if any file constructs a
-	// geometry token in a path context.
+	// tree-scan sub-test: walks every production Go file in the repo and fails if
+	// any file constructs a geometry token in a path context outside that
+	// token's registered owner directory (or directories, per geometryTokenOwners).
 	t.Run("tree-scan", func(t *testing.T) {
 		_, thisFile, _, ok := runtime.Caller(0)
 		if !ok {
 			t.Fatal("could not determine test file location via runtime.Caller")
 		}
-		// Two filepath.Dir calls walk from internal/hubgeometry/enforcement_test.go → repo root.
+		// Two filepath.Dir calls walk from internal/lyxcwd/enforcement_test.go → repo root.
 		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 
 		var scanned int
@@ -415,11 +540,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			if relErr != nil {
 				return relErr
 			}
-			// Allowlist: internal/hubgeometry is the sole permitted owner of geometry literals
-			// in path-construction context.
-			if filepath.ToSlash(filepath.Dir(relPath)) == "internal/hubgeometry" {
-				return nil
-			}
+			relDir := filepath.ToSlash(filepath.Dir(relPath))
 
 			fset := token.NewFileSet()
 			f, parseErr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
@@ -428,8 +549,11 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 				return nil
 			}
 			scanned++
-			if hasGeometryLiteralInConstructionContext(f) {
-				failures = append(failures, filepath.ToSlash(relPath))
+			for _, tok := range geometryLiteralTokensInConstructionContext(f) {
+				if !tokenOwnedByDir(tok, relDir) {
+					failures = append(failures, filepath.ToSlash(relPath))
+					break
+				}
 			}
 			return nil
 		})
@@ -437,17 +561,17 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			t.Fatalf("failed to walk repo tree: %v", err)
 		}
 
-		// Sanity check: at least one production file outside internal/hubgeometry must have
+		// Sanity check: at least one production file outside internal/lyxcwd must have
 		// been scanned so a misconfigured walk (wrong root, all files skipped) cannot
 		// silently produce a vacuous all-pass result.
 		t.Run("scanned_non_empty", func(t *testing.T) {
 			if scanned == 0 {
-				t.Error("geometry-literal guard: no production Go files scanned outside internal/hubgeometry; the AST walk may be misconfigured")
+				t.Error("geometry-literal guard: no production Go files scanned outside internal/lyxcwd; the AST walk may be misconfigured")
 			}
 		})
 
 		if len(failures) > 0 {
-			t.Errorf("geometry-literal construction found outside internal/hubgeometry in:\n%v", failures)
+			t.Errorf("geometry-literal construction found outside its registered owner directory in:\n%v", failures)
 		}
 	})
 }

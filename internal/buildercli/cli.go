@@ -6,7 +6,7 @@
 // shuttleengine.Runner exactly once per invocation, storing the resolved
 // ingredients on builderCLI, mirroring perchcli's Cwd-anchoring rationale
 // (internal/perchcli/cli.go): every _lyx/plan and _lyx/builder path this
-// module touches is anchored at layout.Cwd -- the directory lyx init ran
+// module touches is anchored at layout.AnchorPath() -- the directory lyx init ran
 // in, never WorktreeRoot or a weft sibling.
 //
 // Unlike perchcli (which stores only the resolved config ingredients and
@@ -24,7 +24,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -57,14 +58,14 @@ type builderCLI struct {
 	engine shuttleengine.Engine
 	reed   shuttleengine.ReedOps
 
-	layout     *hubgeometry.Layout
+	layout     *lyxcwd.Location
 	shuttleCfg shuttleengine.Config
 	cfg        builderengine.Config
 	roles      map[builderengine.Role]modelspec.Resolved
 
-	// planDir, builderDir, and reportsDir are the hubgeometry-resolved
+	// planDir, builderDir, and reportsDir are the lyxcwd-resolved
 	// _lyx/plan, _lyx/builder, and _lyx/builder/reports directories, all
-	// anchored at layout.Cwd -- never WorktreeRoot -- per the Hub Geometry
+	// anchored at layout.AnchorPath() -- never WorktreeRoot -- per the Cwd Resolution
 	// Invariant and this package's own Cwd-anchoring rationale (see the
 	// package doc above).
 	planDir    string
@@ -120,16 +121,16 @@ Verbs:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			layout, err := hubgeometry.Resolve(cwd)
+			layout, err := lyxcwd.Resolve(cwd)
 			if err != nil {
-				// hubgeometry.Resolve's error is already self-describing (it
+				// lyxcwd.Resolve's error is already self-describing (it
 				// IS the "not a git repository" sentinel); pass it through
 				// bare rather than doubling that same text on top of it.
 				output.Err(out, err.Error())
@@ -137,31 +138,31 @@ Verbs:
 				return nil
 			}
 
-			// Every config is anchored at layout.Cwd, matching perchcli's
+			// Every config is anchored at layout.AnchorPath(), matching perchcli's
 			// own resolution: the worktree the operator is actually
 			// standing in, never WorktreeRoot or any weft sibling.
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.Cwd, "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
+			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			builderCfg, err := builderengine.LoadConfig(layout.Cwd, "builder")
+			builderCfg, err := builderengine.LoadConfig(layout.AnchorPath(), "builder")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			registry, err := modelspec.LoadRegistry(layout.Cwd)
+			registry, err := modelspec.LoadRegistry(layout.AnchorPath())
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -190,7 +191,7 @@ Verbs:
 			c.shuttleCfg = shuttleCfg
 			c.cfg = builderCfg
 			c.roles = roles
-			// Anchored at layout.Cwd, like every config load above and
+			// Anchored at layout.AnchorPath(), like every config load above and
 			// like perchcli's own runDirBase: the initialized _lyx (the
 			// weft junction) lives at the directory lyx init ran in, which
 			// is Cwd -- not necessarily the git worktree root. Anchoring at
@@ -198,9 +199,9 @@ Verbs:
 			// these dirs outside the junctioned _lyx the weft commit's
 			// RelPath-scoped pathspec never includes, silently stranding
 			// every builder artifact outside the weft.
-			c.planDir = hubgeometry.PlanDir(layout.Cwd)
-			c.builderDir = hubgeometry.BuilderDir(layout.Cwd)
-			c.reportsDir = hubgeometry.BuilderReportsDir(layout.Cwd)
+			c.planDir = loomengine.PlanDir(layout)
+			c.builderDir = builderengine.Dir(layout)
+			c.reportsDir = builderengine.ReportsDir(layout)
 			return nil
 		},
 	}

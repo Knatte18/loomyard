@@ -19,7 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -39,7 +39,7 @@ type perchCLI struct {
 	// judge_model resolution and decodeProfile's judge-model/model
 	// resolution — no second models.yaml read anywhere in the same run.
 	modelReg   modelspec.Registry
-	layout     *hubgeometry.Layout
+	layout     *lyxcwd.Location
 	runDirBase string
 }
 
@@ -76,16 +76,16 @@ Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := hubgeometry.Getwd()
+			cwd, err := lyxcwd.Getwd()
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			layout, err := hubgeometry.Resolve(cwd)
+			layout, err := lyxcwd.Resolve(cwd)
 			if err != nil {
-				// hubgeometry.Resolve's error is already self-describing (it
+				// lyxcwd.Resolve's error is already self-describing (it
 				// IS the "not a git repository" sentinel); pass it through
 				// bare rather than doubling that same text on top of it.
 				output.Err(out, err.Error())
@@ -93,37 +93,37 @@ Example:
 				return nil
 			}
 
-			// Every config is anchored at layout.Cwd, matching
+			// Every config is anchored at layout.AnchorPath(), matching
 			// burlercli/shuttlecli's own resolution: the worktree the
 			// operator is actually standing in, never WorktreeRoot or any
 			// weft sibling.
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.Cwd, "shuttle")
+			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			reedCfg, err := reedengine.LoadConfig(layout.Cwd, "reed")
+			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			// Loaded ONCE here, at the same layout.Cwd anchor every config
+			// Loaded ONCE here, at the same layout.AnchorPath() anchor every config
 			// load above uses, and reused for both perchCfg's judge_model
 			// resolution (via LoadConfigWithRegistry) and decodeProfile's
 			// profile-field resolution in runCmd — models.yaml is read
 			// exactly once per invocation.
-			modelReg, err := modelspec.LoadRegistry(layout.Cwd)
+			modelReg, err := modelspec.LoadRegistry(layout.AnchorPath())
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
 
-			perchCfg, err := perchengine.LoadConfigWithRegistry(layout.Cwd, "perch", modelReg)
+			perchCfg, err := perchengine.LoadConfigWithRegistry(layout.AnchorPath(), "perch", modelReg)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -134,7 +134,7 @@ Example:
 			// failure — an absent burler.yaml is not an error, it decodes to
 			// the zero Config (clustering then fails later, at fan
 			// resolution, with a message naming `lyx config reconcile`).
-			burlerCfg, err := burlerengine.LoadConfig(layout.Cwd)
+			burlerCfg, err := burlerengine.LoadConfig(layout.AnchorPath())
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -148,7 +148,7 @@ Example:
 			c.perchCfg = perchCfg
 			c.modelReg = modelReg
 			c.layout = layout
-			// Anchored at layout.Cwd, like the config loads above and like
+			// Anchored at layout.AnchorPath(), like the config loads above and like
 			// Layout.LyxDir itself: the initialized _lyx (the weft junction,
 			// mirrored at <weft>/<RelPath>/_lyx) lives at the directory lyx
 			// init ran in, which is Cwd — not necessarily the git worktree
@@ -156,7 +156,7 @@ Example:
 			// repo, write run dirs into an un-junctioned _lyx the weft
 			// commit's RelPath-scoped pathspec never includes, silently
 			// stranding every artifact outside the weft.
-			c.runDirBase = hubgeometry.PerchRunsDir(layout.Cwd)
+			c.runDirBase = perchengine.RunsDir(layout)
 			return nil
 		},
 	}

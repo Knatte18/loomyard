@@ -5,12 +5,11 @@
 // invokes it), every shuttleengine.Outcome, the review-file parse path
 // (valid BLOCKING/APPROVED, missing file, malformed frontmatter) plus a
 // hard shuttle error, and the per-round instruction-file materialization
-// step (happy path writes exactly three files under layout.DotLyxDir(),
-// and a materialization failure returns a hard error before the shuttle
-// ever runs). Every *hubgeometry.Layout built here sets Cwd, not only
-// WorktreeRoot — DotLyxDir() is Cwd-anchored, so an unset Cwd would resolve
-// materialization into the real package source tree instead of a test
-// temp dir.
+// step (happy path writes exactly three files under this package's own
+// dotLyxDirName join, and a materialization failure returns a hard error
+// before the shuttle ever runs). Every *lyxcwd.Location built here sets
+// HubPath and WorktreeName to a test temp dir, so WorktreePath() resolves
+// materialization there rather than into the real package source tree.
 
 package burlerengine
 
@@ -22,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -62,7 +61,7 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 
 // newEngineTestProfile builds a minimal valid Profile (relative paths — the
 // engine resolves them against root via validate) plus the *Engine wired
-// to a *hubgeometry.Layout rooted at root and to shuttle.
+// to a *lyxcwd.Location rooted at root and to shuttle.
 func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 	t.Helper()
 	root = t.TempDir()
@@ -86,7 +85,7 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 }
 
 func newEngineForTest(root string, shuttle Shuttle) *Engine {
-	return New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, Config{})
+	return New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{})
 }
 
 const (
@@ -173,7 +172,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 				},
 			},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -190,7 +189,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -224,7 +223,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err == nil {
@@ -249,7 +248,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -274,7 +273,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 				ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}},
 			},
 		}
-		e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -451,8 +450,8 @@ func TestEngine_Run_ShuttleError(t *testing.T) {
 }
 
 // TestEngine_Run_MaterializesInstructionFiles proves Run writes exactly
-// three instruction files to a fresh per-round directory under
-// layout.DotLyxDir(), bakes their absolute paths into the orchestrator
+// three instruction files to a fresh per-round directory under this
+// package's own dotLyxDirName join, bakes their absolute paths into the orchestrator
 // prompt it hands the shuttle, and that a rendered file's content reflects
 // a filled marker from the profile.
 func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
@@ -462,14 +461,14 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 		fixerContent:  "nothing fixed",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	layout := &hubgeometry.Layout{WorktreeRoot: root, Cwd: root}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
 	e := New(shuttle, layout, Config{})
 
 	if _, err := e.Run(p, RunOpts{}); err != nil {
 		t.Fatalf("Run() = %v; want nil error", err)
 	}
 
-	burlerDir := filepath.Join(layout.DotLyxDir(), "burler")
+	burlerDir := filepath.Join(layout.WorktreePath(), dotLyxDirName, "burler")
 	matches, err := filepath.Glob(filepath.Join(burlerDir, "round-*", "instruction-*.md"))
 	if err != nil {
 		t.Fatalf("filepath.Glob() = %v; want nil", err)
@@ -504,15 +503,19 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 
-	// A regular file named "notdir" makes os.MkdirAll(<notdir>/.lyx/burler)
-	// fail: "notdir" cannot be traversed as a directory component.
-	notdir := filepath.Join(root, "notdir")
+	// A regular file at <root>/.lyx makes os.MkdirAll(<root>/.lyx/burler)
+	// fail: ".lyx" cannot be traversed as a directory component. The burler
+	// dir join is WorktreePath()-anchored (this package's own dotLyxDirName
+	// const), so the file must sit directly at WorktreePath()/.lyx rather
+	// than behind an AnchorRel segment; validate() resolves target.txt/
+	// fasit.txt against the same WorktreePath() root and is unaffected.
+	notdir := filepath.Join(root, dotLyxDirName)
 	if err := os.WriteFile(notdir, []byte("not a directory"), 0o644); err != nil {
 		t.Fatalf("WriteFile(notdir) = %v; want nil", err)
 	}
 
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	e := New(shuttle, &hubgeometry.Layout{WorktreeRoot: root, Cwd: notdir}, Config{})
+	e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{})
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {

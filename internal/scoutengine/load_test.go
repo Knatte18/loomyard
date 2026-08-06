@@ -1,5 +1,5 @@
 // load_test.go table-drives LoadRegistry against t.TempDir fixtures, using
-// hubgeometry.ConfigFile to build every servers.yaml path per the Hub
+// configengine.ConfigFile to build every servers.yaml path per the Hub
 // Geometry Invariant (which applies to test code too), mirroring
 // modelspec/load_test.go's pattern.
 
@@ -10,15 +10,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/hubgeometry"
+	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
 // writeServersYAML writes contents to the servers.yaml path under baseDir.
 func writeServersYAML(t *testing.T, baseDir, contents string) {
 	t.Helper()
-	path := hubgeometry.ConfigFile(baseDir, "servers")
-	if err := os.MkdirAll(hubgeometry.ConfigDir(baseDir), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", hubgeometry.ConfigDir(baseDir), err)
+	path := configengine.ConfigFile(baseDir, "servers")
+	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", configengine.ConfigDir(baseDir), err)
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", path, err)
@@ -188,7 +188,7 @@ go:
 	if err == nil {
 		t.Fatal("LoadRegistry(invalid match) returned nil error; want error naming the alias and path")
 	}
-	path := hubgeometry.ConfigFile(baseDir, "servers")
+	path := configengine.ConfigFile(baseDir, "servers")
 	if !strings.Contains(err.Error(), `"go"`) {
 		t.Errorf("LoadRegistry error = %q; want it to name the alias %q", err.Error(), "go")
 	}
