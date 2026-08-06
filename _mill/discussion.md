@@ -49,9 +49,10 @@ The Out list below contains only items excluded by a structural invariant, a phy
   `CommitResult.Committed()` replaces `WeftCommitted` reads;
   `Healthy` gains a typed reason;
   `Fabric.Warp`/`Fabric.Weft`, `PartialCommitError`'s fields, and `New` all go private.
-- **Identifiers and string literals** — every production `weft`/`warp` token outside the owner set, including `loomengine`'s `CheckID` values, `websterengine`'s violation-class value, `configcli`'s error strings and cobra `Long`, and the `"weftCommitted"` JSON key.
-- **Comments** — every production `weft`/`warp` comment mention outside the owner set (~380 across 55 files).
-- **Agent prompt templates** — the five `go:embed`-ed `.md` templates are rewritten to describe one repo.
+- **Identifiers and string literals** — every production `weft`/`warp`/`host` token outside the owner set, including `loomengine`'s `CheckID` values, `websterengine`'s violation-class value, `configcli`'s error strings and cobra `Long`, `drift.go`'s five reason strings, and the `"weftCommitted"` JSON key.
+- **Comments** — every production `weft`/`warp`/`host` comment mention outside the owner set (~380 `weft`/`warp` across 55 files, plus the `host` sweep).
+- **Agent prompt templates** — all **seven** `.md` templates rewritten to describe one repo: 30 occurrences across `websterengine`'s `master-template.md`, `implementer-body.md`, `fork-prefix.md`, `integration-template.md`, `builderengine`'s `implementer-template.md`, `orchestrator-template.md`, and `burlerengine`'s `instruction-3-fix-template.md`.
+  Every line is pinned in `templates-describe-one-repo`.
 - **Test files** — hand-cleaned of vocabulary that is not a reference to owner-package API, including `cmd/lyx/boardguard_test.go` (which calls the invariant "Weft Git Invariant" where `CONSTRAINTS.md` says "Fabric Git Invariant (warp + weft)") and `cmd/lyx/rawgitmutation_test.go:10,45` (which names `WarpBisector`/`WarpResetter` in comments this task renames).
   **Carve-out:** the retained env-var names `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` stay verbatim wherever they appear, including in `webstercli`, `buildercli`, `perchcli`, and `configcli` tests — they are the literal names of variables this task deliberately does not rename (see Out), so a test that sets one must spell it correctly.
 - **Enforcement** — new `TestEnforcement_FabricVocabulary`, covering production `.go` files and the embedded templates.
@@ -123,6 +124,11 @@ The Out list below contains only items excluded by a structural invariant, a phy
   `fabriccli/weft_verbs.go:160` prints `res.WeftCommitted` and `res.WeftSHA` on purpose — `lyx fabric weft …` exists to show an operator the weft side — and `fabriccli` is a separate Go package, so the fields cannot simply be unexported.
 - Rejected: splitting into `Commit(...) (bool, error)` plus a `CommitDetailed(...)` for fabric's own CLI — Go cannot enforce "fabric-only" on either, so it needs the identical enforcement test *and* costs a second method.
 - Rejected: collapsing to `CommitResult{SHA, Committed}` — fabric's own weft verbs lose the weft SHA they print by design.
+- **Value identity with today's `res.WeftCommitted`:** `Committed()` is `WarpCommitted || WeftCommitted`, which is *not* definitionally equal to `WeftCommitted` — `classifyPaths` (`classify.go:14-28`) routes to warp anything not under a wired prefix, so a warp commit would flip it.
+  It is equal for these three callers: each passes `ScopedPathspec(AnchorRel, ["_lyx"])`, and `_lyx` is by construction the base of `fabric.yaml`'s pathspec (`TestHealthy_NarrowPathspecIsHealthy` shows "narrow" means `_lyx` *alone*), so `warpFiles` is always empty and `WarpCommitted` always false.
+  The delta needs a `fabric.yaml` whose `pathspec` omits `_lyx`, which would break the `_lyx` junction itself — reachable in principle, not in any working configuration.
+  A test asserts that `_lyx`-only input never produces a warp commit, so the identity is pinned rather than assumed.
+- Rejected: defining `Committed()` as `WeftCommitted` alone — value-identical by construction, but a method named `Committed` on a two-sided result that ignores one side is a trap for the next caller.
 
 ### partial-commit-error-fields-private
 
@@ -164,6 +170,23 @@ The Out list below contains only items excluded by a structural invariant, a phy
   The equivalence test covers all five individually.
   The config-load failure stays a **cause**, not a promoted `error` return, even though it is an error surfaced as a reason: promoting it would change preflight's outcome for that case from "check failed" to "preflight aborted".
   Recorded here as a latent oddity for a later task, deliberately not fixed in a cleanup.
+- Type shape: `HealthReason struct { Cause HealthCause; Detail string }`, with `HealthCause` a string-const enum (`CauseBranchMismatch`, `CauseConfigLoadFailed`, `CauseJunctionMissing`, `CauseNotAJunction`, `CauseJunctionPointsElsewhere`).
+  The ok path returns the zero value `HealthReason{}`, whose `Cause` is the empty string — a caller that checks `ok` first never reads it.
+- Replacement display strings, which `loomengine` prints verbatim via `report.addFailure`:
+
+  | cause | today | becomes |
+  |---|---|---|
+  | branch mismatch | `"host on %s, weft on %s (want %s)"` | `"fabric out of sync: on %s (want %s)"` |
+  | config load failed | `"host junction check unavailable: cannot load fabric.yaml: %v"` | `"junction check unavailable: cannot load fabric.yaml: %v"` |
+  | junction missing | `"host %s junction missing"` | `"%s junction missing"` |
+  | not a junction | `"host %s is not a junction"` | `"%s is not a junction"` |
+  | points elsewhere | `"host %s junction points elsewhere"` | `"%s junction points elsewhere"` |
+
+- Deliberately dropped detail: the branch-mismatch string loses the second branch name (today's "weft on %s").
+  Its entire content is which checkout sits on which branch, and under one repo an operator has no second branch to act on — the remedy is `lyx fabric checkout` either way.
+  The four junction strings lose only the redundant "host" qualifier;
+  the junction name, which is the actionable part, is preserved in all four.
+- Rejected: a bare enum with no `Detail` — loses the junction name from four of the five.
 - Rationale: this is a vocabulary leak *and* a fragility, and one change fixes both.
   `drift.go:58` returns `"host on %s, weft on %s (want %s)"` — loomengine substring-matches it to pick a `CheckID` *and* prints it in loom's report, so the word crosses the boundary into operator output.
   `preflight.go:117-130`'s own comment already documents that any future reword of those reasons silently reverts the classification to `CheckWeftSync`;
@@ -194,12 +217,41 @@ The Out list below contains only items excluded by a structural invariant, a phy
 
 - Decision: the five `go:embed`-ed prompt templates are rewritten so that an agent is never told warp or weft exist.
   `_lyx` is presented as an ordinary directory in the fabric repo, with no mention of links, siblings, `-weft` names, or separate worktrees.
-  Concretely: `master-template.md:29`'s "`_lyx` is a link into a separate weft worktree (a sibling directory whose name ends in `-weft`): NEVER reference that physical weft path…" collapses to a **positive** rule that names no geometry — "`_lyx` holds plan and state files;
-  read and write them as ordinary files through `_lyx/...` paths.
+  The governing replacement is a **positive** rule that names no geometry: *"`_lyx` holds plan and state files — read and write them as ordinary files through `_lyx/...` paths.
   You never run git against `_lyx`;
-  it is committed for you." — and `:20`'s "you never run git against the weft" folds into the same rule plus a ban on driving fabric's git (`lyx fabric`) at all;
-  `:136`'s "a weft-reference" and `:140-142`'s "A weft-sync error" / "weft sync failed" follow the renamed violation class and the renamed CLI error strings.
-  `websterengine/template_test.go:246,257,318` and `builderengine`/`burlerengine` template tests update with them.
+  it is committed for you."*
+
+  Full inventory — **7 files, 30 occurrences**, swept mechanically.
+  Every line is decided here;
+  none is left to the plan writer.
+
+  | file:line | today | becomes |
+  |---|---|---|
+  | `websterengine/master-template.md:20` | "you never run git against the weft" | "you never run git" (Master commits nothing at all) |
+  | `master-template.md:29` | "`_lyx` is a link into a separate weft worktree (a sibling directory whose name ends in `-weft`): NEVER reference that physical weft path…" | the positive `_lyx` rule above |
+  | `master-template.md:136` | "a weft-reference" | "a fabric-reference" (matches the renamed violation class) |
+  | `master-template.md:140` (heading) | "## A weft-sync error ends your run as stuck" | "## A fabric-sync error ends your run as stuck" |
+  | `master-template.md:142` | "names a **weft sync** failure (e.g. `weft sync failed`)" | "**fabric sync** failure (e.g. `fabric sync failed`)" |
+  | `master-template.md:143` | "quoting the weft-sync failure" | "quoting the fabric-sync failure" |
+  | `master-template.md:148-149` | "NEVER run any git command against the weft, and NEVER reference the weft worktree's physical path… Weft git is Go's job" | "NEVER run any git command against `_lyx`, and never reference `_lyx` by any path other than `_lyx/...`. Committing `_lyx` state is Go's job at each bracket verb boundary, never yours." |
+  | `websterengine/implementer-body.md:31` | "Commit the card to the HOST repo … never the weft, never any `_lyx` path" | "Commit the card to the repo — normal dev git, run from `{{.worktree_root}}` — never any `_lyx` path" |
+  | `websterengine/fork-prefix.md:21` | "implement your cards … on the HOST repo" | "implement your cards … in your worktree" |
+  | `websterengine/integration-template.md:21` | "run the command below on the HOST repo at `{{.worktree_root}}`" | "run the command below at `{{.worktree_root}}`" |
+  | `builderengine/orchestrator-template.md:11` | "you never run git against the weft" | "you never run git" |
+  | `builderengine/orchestrator-template.md:88` | "against the weft or any `_lyx` path" | "against any `_lyx` path" |
+  | `builderengine/implementer-template.md:23` | "the host repo checkout for this task" | "the repo checkout for this task" |
+  | `builderengine/implementer-template.md:37` | "Commit the card to the HOST repo — never the weft repo, never any `_lyx` path." | "Commit the card to the repo — never any `_lyx` path." |
+  | `builderengine/implementer-template.md:64` (heading) | "## Never touch the weft" | "## Never touch `_lyx`" |
+  | `builderengine/implementer-template.md:66` | "against the weft repo or any `_lyx` path" | "against any `_lyx` path" |
+  | `builderengine/implementer-template.md:67` | "you DO commit your own code to the HOST repo" | "you DO commit your own code to the repo" |
+  | `burlerengine/instruction-3-fix-template.md:2` | "the never-push/never-touch-weft rule" | "the never-push/never-touch-`_lyx` rule" |
+  | `burlerengine/instruction-3-fix-template.md:26` (heading) | "## Never push, never touch the weft" | "## Never push, never touch `_lyx`" |
+  | `burlerengine/instruction-3-fix-template.md:29` | "against a `_lyx` or weft path" | "against a `_lyx` path" |
+  | `burlerengine/instruction-3-fix-template.md:30` | "commit-per-fix on the host repo, stay inside the host working tree" | "commit-per-fix on the repo, stay inside the working tree" |
+  | `burlerengine/instruction-3-fix-template.md:31` | "nothing here ever authorizes a weft commit" | "nothing here ever authorizes an `_lyx` commit" |
+
+  Three of these are section **headings** (`master-template.md:140`, `implementer-template.md:64`, `instruction-3-fix-template.md:26`) that pinned template tests assert on, so each heading change is also a test change.
+  `websterengine/template_test.go:246,257,318` and the `builderengine`/`burlerengine` template tests update with them.
 - Rationale: this is the largest leak in the system and the one that most directly contradicts the illusion — the templates do not merely mention weft, they *teach* every Builder and Webster agent that it exists, what it is called, and where it sits, and then forbid touching it.
   An agent that is never told cannot reference what it does not know;
   the `RefScanner` still catches a reference discovered some other way, so the enforcement does not weaken.
@@ -257,7 +309,10 @@ The Out list below contains only items excluded by a structural invariant, a phy
 
 ### fabric-vocabulary-rule
 
-- Decision: in production code, the tokens `weft` and `warp` may appear only in the **owner set**.
+- Decision: in production code, the tokens `weft`, `warp`, and `host` may appear only in the **owner set**.
+  `host` is policed as a whole word, on the same footing as the other two: "the HOST repo" teaches the two-repo model exactly as effectively as "the weft repo" does — `implementer-template.md:37` reads "Commit the card to the HOST repo — **never the weft repo**", and a reader who is told which repo to commit to has been told there is another one.
+  A non-owner occurrence where `host` means something other than the warp checkout (a hostname, an HTTP host) is recorded as an explicit exception in the owner map rather than silently permitted;
+  `internal/shell` is the likely case and the plan classifies each occurrence before renaming.
   Everywhere else — identifiers, string literals, comments, and embedded prompt templates — uses fabric vocabulary.
   Owner set:
   - `internal/fabricengine` — implements the illusion.
@@ -321,7 +376,8 @@ The Out list below contains only items excluded by a structural invariant, a phy
 
 - Decision: new `TestEnforcement_FabricVocabulary` in `internal/lyxcwd/enforcement_test.go`.
   It fails any file outside the owner set containing the token `weft` or `warp` — in identifiers, string literals, **or** comments — and any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname`.
-  Coverage: production `.go` files under `internal/` and `cmd/`, plus every `//go:embed`-ed `.md` prompt template under `internal/`.
+  Coverage: production `.go` files under `internal/` and `cmd/`, plus a plain `internal/**/*.md` walk — **not** a parse of `//go:embed` directives.
+  All seven leak-bearing `.md` files are embedded, so the two are equivalent today, and a plain walk is simpler and fails safe (a new non-embedded `.md` under `internal/` gets policed rather than silently skipped).
   `*_test.go` files are outside the machine check.
   Owners are expressed as a map in the same idiom as `geometryTokenOwners`, with `configsync` documented as string-literal-only.
   The three walks (`TestEnforcement`, `TestEnforcement_GeometryLiterals`, and this one) get a single extracted `filepath.WalkDir` helper as part of the work.
@@ -340,7 +396,11 @@ The Out list below contains only items excluded by a structural invariant, a phy
 
 - Decision, all in the same commit as the code:
   - `internal/fabricengine`'s package doc absorbs the durable contract: `Open` is the only constructor outside the package, `Committed()` the only result a consumer reads, `RefScanner` how a consumer asks about fabric-driving commands, `Healthy`'s typed reason, and the vocabulary rule with its owner set.
-  - `CONSTRAINTS.md` — the Cwd Resolution Invariant's fabric bullet (`:25-26`) widens to state the vocabulary rule and names `TestEnforcement_FabricVocabulary` under **Enforced by**.
+  - `CONSTRAINTS.md` — the vocabulary rule gets **its own section**, "Fabric Vocabulary Invariant", rather than hanging off the Cwd Resolution Invariant.
+    It is not a cwd rule: it governs what every module, template, and doc may say about fabric, and `lyxcwd` is merely one of the packages it binds.
+    The section states the policed tokens (`weft`, `warp`, `host`), the owner set, the prose-doc split from `doc-vocabulary-split` as a review obligation, and names `TestEnforcement_FabricVocabulary` under **Enforced by**.
+    The Cwd Resolution Invariant's fabric bullet (`:25-26`) gains a cross-reference to it and nothing more.
+    Placing the test file in `internal/lyxcwd/enforcement_test.go` is a convenience (it reuses that file's walk helper), not a claim about ownership — the section records that explicitly so the next reader does not infer one.
     The Fabric Git Invariant's heading and body keep `warp`/`weft` (that invariant is *about* the two-repo mechanism), but its **Enforced by** bullet (`:148-151`) is corrected: it currently names `websterengine`'s `weftReferencePattern` as the machine check for the agent half, a symbol this task deletes — it becomes `fabricengine.RefScanner`.
     Its "agent prompt templates never instruct a weft git op" clause is restated to match `templates-describe-one-repo`: templates never *mention* the two-repo structure at all, which is a stronger rule than the one it replaces.
     Any clause left invalid by these changes is removed rather than left stale.
@@ -396,7 +456,8 @@ Comment-only mentions also exist in low-level packages that never touch fabric's
 
 **Sequencing note for mill-plan:** unexporting `New` breaks `fabriccli` in the same compile unit, so the constructor change and every call site must land in one commit — the repo cannot be left non-compiling between batches.
 `healthy-typed-reason` is likewise atomic with `loomengine/preflight.go`.
-The comment-only cleanup in packages with no call site (`burlerengine`, `treadleengine`, `perchengine`, `logger`, `gitrepo`, `configengine`, `scoutengine`, `lyxcwd`, `configsync`, `selfreportcli`, `reedcli`, `reedengine`, `shuttlecli`, `burlercli`, `vscode`, `ideengine`) is independent and can be its own batch, but every batch must land before the enforcement test is enabled.
+The comment-only cleanup in packages with no call site (`treadleengine`, `perchengine`, `logger`, `gitrepo`, `configengine`, `scoutengine`, `lyxcwd`, `configsync`, `selfreportcli`, `reedcli`, `reedengine`, `shuttlecli`, `burlercli`, `vscode`, `ideengine`) is independent and can be its own batch, but every batch must land before the enforcement test is enabled.
+`burlerengine` is **not** in that list despite having no call site: it owns `instruction-3-fix-template.md` (6 occurrences, one of them a heading) and a pinned template test, so it must land with the template rewrite batch, not the comment batch.
 
 ## Constraints
 
@@ -494,3 +555,7 @@ The renames touch exported symbols in six packages, so compile breakage in test 
 - **Q:** Are repo-level prose docs (README, docs/) in scope? **A:** Split by what the doc describes — mechanism docs keep the vocabulary, consumer-behaviour docs reword.
 - **Q:** Why must a template warn an agent away from a sibling directory it has no reason to look for? **A:** It must not, and the earlier "never leave your worktree root" wording was wrong. The real discovery path is `_lyx` itself being the link (`realpath`/`readlink`/`find -L`/`git -C _lyx`), reachable from inside the agent's own worktree. The positive `_lyx` rule forbids exactly that without hinting the link exists.
 - **Q:** Does the scanner keep failing runs on the path half once nothing warns the agent? **A:** Yes, both halves stay hard-fail. The asymmetry is accepted and recorded.
+- **Q:** `Committed()` is `Warp || Weft`, but callers read `WeftCommitted` today — is that a value change? **A:** Not for these three callers, and a test pins it. Recorded with the one (non-working) config under which it would differ.
+- **Q:** Should `host` join the policed tokens? **A:** Yes. "Commit to the HOST repo — never the weft repo" teaches the two-repo model as effectively as any symbol; the templates see one repo, called fabric, and nothing else.
+- **Q:** How many templates need rewriting? **A:** All of them. A mechanical sweep found 7 files and 30 occurrences; every line is pinned in `templates-describe-one-repo`'s table. My earlier claim that templates were In scope had enumerated only `master-template.md`.
+- **Q:** Does the vocabulary rule get its own `CONSTRAINTS.md` section? **A:** Yes — it is not a cwd rule, and hanging it off the Cwd Resolution Invariant would misfile it.
