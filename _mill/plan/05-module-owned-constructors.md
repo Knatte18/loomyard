@@ -119,11 +119,12 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/perchcli/cli.go`
   - `internal/perchcli/cli_integration_test.go`
   - `internal/perchcli/run_integration_test.go`
+  - `internal/perchengine/identity.go`
   - `internal/perchengine/identity_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete `PerchRunsDir` from `internal/lyxcwd/lyxcwd.go`, and with it `lyxcwd_unit_test.go`'s `PerchRunsDir` sub-test at `:44-52` — superseded by card 28's anchoring table. Declare `const perchDirName = "perch"` and `func RunsDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, perchDirName)` in `internal/perchengine`. Retarget `perchcli/cli.go` and the two integration tests. `perchcli` already imports `perchengine`. `perchengine/identity_test.go:77`'s comment names `PerchRunsDir` under its batch-4 `lyxcwd.` spelling; correct it to the in-package `RunsDir` — that comment correction is the only reason the file is in this card's `Edits:`.
+- **Requirements:** Delete `PerchRunsDir` from `internal/lyxcwd/lyxcwd.go`, and with it `lyxcwd_unit_test.go`'s `PerchRunsDir` sub-test at `:44-52` — superseded by card 28's anchoring table. Declare `const perchDirName = "perch"` and `func RunsDir(l *lyxcwd.Location) string` = `filepath.Join(l.AnchorPath(), configengine.LyxDirName, perchDirName)` in `internal/perchengine/identity.go` — the module's other identity/path-derivation helpers already live there, and it is the file `identity_test.go` (already in this card's `Edits:`) covers. Retarget `perchcli/cli.go` and the two integration tests. `perchcli` already imports `perchengine`. `perchengine/identity_test.go:77`'s comment names `PerchRunsDir` under its batch-4 `lyxcwd.` spelling; correct it to the in-package `RunsDir`.
 - **Commit:** `refactor(perchengine): own the perch run-artifact path`
 
 ### Card 24: scout's daemon state and lock paths
