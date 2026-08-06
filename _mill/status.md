@@ -81,5 +81,7 @@ batches:
     start_sha: 14048653e9ce389ca6467827c0f465d0fd2de7ff
     commit_sha: b3fecb851e7bd8d83bc322ed3dc3f97af83ae4b3
   - name: guard-and-docs
-    state: pending
+    state: running
+    implementer_session: 9b67e3a0-213f-40ea-9ad7-340a7ac88468
+    start_sha: e99f99b90be34379f373a59789cc3ca3f7b8c328
 ```
