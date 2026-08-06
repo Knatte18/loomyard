@@ -30,16 +30,17 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
 
 ## Hub Geometry Invariants
 
-**All worktree and Hub geometry resolves through `internal/hubgeometry`.**
+**All cwd resolution goes through `internal/lyxcwd`, and nothing else.** `lyxcwd` owns cwd resolution alone — never a weft path, a junction path, or any per-module subdirectory; those are each owned by the module that constructs them.
 
-The `internal/hubgeometry` package is the sole owner of cwd and worktree-root geometry math. It exposes two entry points:
+`internal/lyxcwd` exposes a three-operation contract:
 
 - `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/lyx/main.go`.
-- `Resolve(cwd)` → `Layout` — one-stop geometry: cwd, repo root (from `git rev-parse --show-toplevel`), Hub, relative path, and Prime worktree.
+- `Resolve(cwd)` → `*Location` — resolves the current cwd into a legal worktree's coordinates, applying the strict cwd gate.
+- `ResolveWithAnchor(cwd, anchor)` / `ResolveWorktree(root)` — the two ungated variants, for callers that hold something other than an acting cwd (see `docs/shared-libs/lyxcwd.md`).
 
-The `Layout` type provides geometry methods: `LyxDir()`, `LoomStatusFile()`, `LoomStatusLock()`, `DiscussionDir()`, `DiscussionDecisionRecord()`, `DiscussionSupportLog()`, `WorktreePath(slug)`, `PortalsDir()`, `PortalLink(slug)`, `PortalTarget(slug)`, `LaunchersDir()`, `LauncherDir(slug)`, `MenuLauncherPath()`, `LauncherSpawnRel(slug)`, `MenuLauncherRel()`, `PrimeName()`, `WeftRepoRoot()`, `WeftWorktreePath(slug)`, `WeftWorktree()`, `WeftLyxDir()`, `WeftLyxDirFor(slug)`, `WeftRaddleDir()`, `HostLyxLink(slug)`, `HostLyxLinkHere()`, `HostJunctions(slug, names)`.
+`Location` carries exactly four fields — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — plus two derived accessors, `WorktreePath()` and `AnchorPath()`. Every other geometry token (weft paths, junctions, `_lyx/<module>`, `_pattern`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see `CONSTRAINTS.md`'s Hub Geometry Invariant for the full per-token ownership map.
 
-**Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/hubgeometry` and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by `internal/hubgeometry/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
+**Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`. The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist. A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
 
 See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
 
@@ -140,7 +141,7 @@ github.com/Knatte18/loomyard/
 ├── internal/selfreportcli/       the selfreport CLI command
 ├── internal/selfreportengine/    the selfreport domain kernel
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
-├── internal/hubgeometry/         geometry resolver (the sole owner of cwd/root math)
+├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
 ├── internal/gitrepo/             typed Repo over one local git checkout: go-git for local reads, gitexec for remote-auth/mutation
@@ -186,7 +187,7 @@ User-facing modules each get one `lyx <module>` namespace:
 
 The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) layer — the base of the stack; see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules; both folded back into reed — see the `internal/reedengine` package documentation.)
 
-The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/hubgeometry`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_pattern/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (builder implementer, webster fork/Master, burler review+fix, loom plan).
+The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_pattern/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (builder implementer, webster fork/Master, burler review+fix, loom plan).
 
 ## Execution stack (orchestration layers)
 
