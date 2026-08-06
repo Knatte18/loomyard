@@ -1,0 +1,36 @@
+MILL_REVIEW_BEGIN
+# Review: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometry (slice 9) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 4.5 (platform-labeled "Sonnet 5")
+reviewed_file: plan/
+date: 2026-08-06
+```
+
+## Findings
+
+### [BLOCKING] Batch 3 frontmatter cards count is wrong
+**Location:** `03-webster-builder-loom-scratch-seam.md` frontmatter **Issue:** Frontmatter declares `cards: 9` but the batch contains only 8 cards (15-22); global step numbering across the plan (1-52) is otherwise gap-free and sequential. **Fix:** Change `cards: 9` to `cards: 8` in the batch's yaml frontmatter.
+
+### [BLOCKING] Card 21 missing Context for perchengine.ScratchDir
+**Location:** batch 3, card 21 **Issue:** Requirements assert `perchengine.ScratchDir(l)`, defined in `internal/perchengine/identity.go`, but that file is absent from Card 21's `Context:`/`Edits:` (only `websterengine/state.go`, `builderengine/state.go`, `loomengine/config.go`, `lyxdirs/dirs.go` are listed). `cmd/lyx/constructoranchoring_test.go` (the Edits target) already imports perchengine for `RunsDir`, which mitigates but does not satisfy the rule. **Fix:** Add `internal/perchengine/identity.go` to Card 21's `Context:` list.
+
+### [BLOCKING] Card 31 missing Context for scoutengine and logger accessors
+**Location:** batch 5, card 31 **Issue:** The guard asserts `scoutengine.DaemonStateFile`/`DaemonLock` and `logger.LogsDir`, defined in `internal/scoutengine/daemonstate.go` and `internal/logger/sink.go` respectively, but neither file is listed in Card 31's `Context:` (only the webster/builder/perch/loom/treadle/lyxdirs/lyxcwd files are). **Fix:** Add both `internal/scoutengine/daemonstate.go` and `internal/logger/sink.go` to Card 31's `Context:` list.
+
+### [BLOCKING] Card 20's stated internal/lock rationale is factually wrong
+**Location:** batch 3, card 20 **Issue:** Card 20 claims "a lock read on a missing parent is what internal/lock already MkdirAlls for," instructing the implementer to verify this in `internal/lock/lock.go` — but `AcquireReadLock`/`AcquireWriteLock` there perform no MkdirAll at all, and the actual function `preflight.go` calls, `state.ReadJSONStrict`, is explicitly documented as NOT creating missing parent directories (unlike `state.ReadJSON`, which does). Following the card's own verification instruction leads to the wrong file and the wrong conclusion, risking Preflight escalating a missing-`.lyx` case to a hard infra error instead of its normal report-not-error contract. **Fix:** Correct the rationale to point at `internal/state/state.go`'s `ReadJSONStrict` doc comment (not `internal/lock/lock.go`), and require an explicit `os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755)` before the read rather than relying on a non-existent auto-create.
+
+### [BLOCKING] Batch 7 never edits CONSTRAINTS.md despite the Shared Decision
+**Location:** Shared Decision `docs-land-with-their-change`; batch 7 (all cards, `07-structural-dirs-and-never-committed-routing.md`) **Issue:** The decision states "CONSTRAINTS.md is edited in five different batches (1, 5, 6, 7, 8)," but no card in batch 7 lists `CONSTRAINTS.md` under `Edits:`. Batch 7 introduces the structural-directories invariant (`structuralCommittedDirs`/`structuralNeverCommittedDirs`, the third `classifyPaths` bucket, the `--exclude-standard` fix) and only batch 8's card 51 records it — one batch after the change lands — which violates the Documentation Lifecycle rule that docs land in the same commit as the change they describe. **Fix:** Add a CONSTRAINTS.md-editing card to batch 7 recording the structural-directories invariant when it is introduced, or correct the Shared Decision to name four batches and explicitly justify the one-batch documentation lag.
+
+### [NIT] Card 29's "three buildOptions call sites" undercounts
+**Location:** batch 4, card 29 **Issue:** `internal/scoutcli/cli.go`'s `buildOptions` is actually invoked 6 times (2 per verb: single-arg and batch mode), not 3 — the card's phrasing "all three buildOptions call sites (around the references, definition and symbol verbs)" could be read as literally 3 sites. **Fix:** Reword to "every buildOptions call site, across all three verbs' single-arg and batch-mode paths."
+
+## Verdict
+
+REQUEST_CHANGES
+Five BLOCKING findings: a card-count/frontmatter defect, two Context-completeness gaps, one factually-wrong rationale risking a Preflight regression, and a missed CONSTRAINTS.md update in batch 7.
+MILL_REVIEW_END

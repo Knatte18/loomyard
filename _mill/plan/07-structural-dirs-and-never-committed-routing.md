@@ -4,7 +4,7 @@
 task: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometry (slice 9)
 batch: structural-dirs-and-never-committed-routing
 number: 7
-cards: 8
+cards: 9
 verify: go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/configsync/... && go test -tags integration ./internal/fabricengine/... ./internal/fabriccli/...
 depends-on: [6]
 ```
@@ -203,6 +203,34 @@ No value-level config migration is attempted;
   In `internal/configsync/configsync_test.go`, update the two assertions that expect the template-default fallback to contain `_lyx` (`"only warp.yaml present, pathspec falls back to template default"` and the migrated-value case's expectations, keeping the migrated `pathspec: _lyx custom-dir` case asserting the *existing value is preserved*, which is the behaviour that must not change).
   Keep every `//go:build integration` line first in its file.
 - **Commit:** `test(fabricengine): cover structural sets, the third bucket and the routing set`
+
+### Card 44: record the structural-directories invariant
+
+- **Context:**
+  - `internal/fabricengine/junctionnames.go`
+  - `internal/fabricengine/classify.go`
+  - `internal/fabricengine/commit.go`
+  - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/template.yaml`
+  - `internal/fabricengine/structuraldirs_test.go`
+  - `internal/fabriccli/cli_test.go`
+  - `cmd/lyx/notransients_test.go`
+- **Edits:**
+  - `CONSTRAINTS.md`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** record this batch's invariant in the same commit range as the change, per the Documentation Lifecycle rule.
+  Extend the `## Durable-vs-Ephemeral State Invariant` section (added in batch 5) with the structural-directories clause: `_lyx` and `.lyx` are **structural** — injected by `internal/fabricengine` as `structuralCommittedDirs` and `structuralNeverCommittedDirs` — and are never read from `fabric.yaml`, whose `pathspec` key now names genuinely optional directories only (`_pattern` today).
+  Geometry is structural, never config/env-overridable, so a list an operator can edit is not where obligatory geometry may live.
+  Add to `## Fabric Git Invariant (warp + weft)` the never-committed routing clause: membership in `structuralNeverCommittedDirs` is what makes `.lyx` uncommittable;
+  the filtering lives where the pathspec is **constructed** (`ScopedPathspec`'s callers, via `pathspecNames`) and never inside `Config.Dirs()`, `WiredNames`, or the slug-reservation union, all three of which must keep seeing every name;
+  `classifyPaths` routes a never-committed path to a third bucket rather than letting it fall through to warp, and `Commit` turns a non-empty third bucket into a hard error naming the offending path — silent dropping is forbidden, because a caller passing a `.lyx` path is a bug and must be told.
+  State the reason the two halves both exist: `git add` on an ignored path fails the entire invocation with exit 1 and stages nothing, not even the legitimate `_lyx` files named in the same call, and `--exclude-standard` on `weftPathspecFilter`'s `git ls-files` probe closes the separate latent bug where an entry matching only ignored files was forwarded and toppled a whole commit.
+  Name the enforcing tests: `internal/fabricengine/structuraldirs_test.go`, `classify_test.go`, `template_test.go`, and `internal/fabriccli/cli_test.go`.
+  Do not add the junction-exclude, unwire-preservation or hub-`.lyx` clauses here — those describe batch 8's changes and are recorded there.
+  Follow the repo's semantic-line-break markdown rule.
+- **Commit:** `docs: record the structural-directories and never-committed routing invariant`
 
 ## Batch Tests
 

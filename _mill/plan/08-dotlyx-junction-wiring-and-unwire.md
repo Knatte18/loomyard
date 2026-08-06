@@ -39,7 +39,7 @@ Every card here is an edit or a create._
 
 ## Cards
 
-### Card 44: wire .lyx by folding the never-committed set into the wired names
+### Card 45: wire .lyx by folding the never-committed set into the wired names
 
 - **Context:**
   - `internal/lyxdirs/dirs.go`
@@ -56,7 +56,7 @@ Every card here is an edit or a create._
   Also note that `filterHubReserved` is applied only to the config names: a structural name is never filtered, and `.lyx` is deliberately absent from `HubReservedNames()` for exactly that reason.
 - **Commit:** `feat(fabricengine): wire .lyx as a weft-backed junction`
 
-### Card 45: add the .lyx-only content-adoption branch
+### Card 46: add the .lyx-only content-adoption branch
 
 - **Context:**
   - `internal/fslink/fslink.go`
@@ -80,7 +80,7 @@ Every card here is an edit or a create._
   Also state the upgrade reason: every worktree in existence today has a real `.lyx` (logger, reed, shuttle, scout and burler write it unconditionally), so without adoption the first `reconcile` after this change hard-errors everywhere.
 - **Commit:** `feat(fabricengine): adopt a pre-existing real .lyx into the weft target`
 
-### Card 46: seed the weft-side .lyx exclude at wiring time
+### Card 47: seed the weft-side .lyx exclude at wiring time
 
 - **Context:**
   - `internal/fabricengine/weftwiring.go`
@@ -101,7 +101,7 @@ Every card here is an edit or a create._
   A weft-side seeding failure is a hard error from `WireJunctions`, consistent with its existing posture.
 - **Commit:** `feat(fabricengine): seed the weft-side .lyx exclude at wiring time`
 
-### Card 47: delete the committed .gitignore .lyx/ block
+### Card 48: delete the committed .gitignore .lyx/ block
 
 - **Context:**
   - `internal/gitignore/gitignore.go`
@@ -123,7 +123,7 @@ Every card here is an edit or a create._
   Keep `internal/gitignore` itself — `internal/vscode` still uses it for `.vscode/`.
 - **Commit:** `refactor(fabric): stop writing a committed .gitignore .lyx/ block`
 
-### Card 48: stop Unwire deleting weft-side content
+### Card 49: stop Unwire deleting weft-side content
 
 - **Context:**
   - `internal/fabricengine/weftwiring.go`
@@ -143,11 +143,11 @@ Every card here is an edit or a create._
   State in the doc that the weft-side `.lyx` is never touched by unwire either;
   it disappears with the weft worktree when `Remove` tears the pair down, and on Windows an open handle inside it makes that `git worktree remove --force` fail with an OS error that surfaces as-is — remedy: stop the daemons and re-run.
   Drop the now-unused imports (`internal/lyxdirs` if it becomes unused here, and whatever `EnvSyncOptions`/`New`/`pushWeftAt` usage was the only reason for a given import).
-  In `internal/fabriccli/unwire.go`, remove the `"gitignore": res.Gitignore` key from the `output.Ok` map — this is an intentional output-envelope change, recorded in the module doc by card 51;
+  In `internal/fabriccli/unwire.go`, remove the `"gitignore": res.Gitignore` key from the `output.Ok` map — this is an intentional output-envelope change, recorded in the module doc by card 52;
   the envelope invariant governs *using* `output.Ok`/`output.Err`, which is unaffected.
 - **Commit:** `fix(fabricengine): unwire reverses wiring only, never deletes weft content`
 
-### Card 49: recognise <hub>/.lyx as hub-level geometry
+### Card 50: recognise <hub>/.lyx as hub-level geometry
 
 - **Context:**
   - `internal/fabricengine/junctionnames.go`
@@ -163,7 +163,7 @@ Every card here is an edit or a create._
   Do **not** remove `reedengine`'s own idempotent `MkdirAll(HubLogsDir(e.layout))` in its boot path: it must still work on hubs created before this change, reed can boot without any fabric verb having run first, and its documented reason — the directory must exist and be pruned before the boot loop so a fresh server's log lands somewhere that already exists — is unaffected.
 - **Commit:** `feat(fabricengine): create <hub>/.lyx during hub materialisation`
 
-### Card 50: cover the .lyx junction lifecycle, adoption and preservation
+### Card 51: cover the .lyx junction lifecycle, adoption and preservation
 
 - **Context:**
   - `internal/fabricengine/junction.go`
@@ -200,7 +200,7 @@ Every card here is an edit or a create._
   In `clone_test.go`, assert `CloneHub` creates `<hub>/.lyx`, and assert reed's own `MkdirAll` remains idempotent against an already-created directory (both halves, since the second is what covers pre-fix hubs) — if `clone_test.go` cannot reach `reedengine` without an import cycle or a tier violation, put that second half in the new integration file instead and say so in the commit message.
 - **Commit:** `test(fabricengine): cover the .lyx junction lifecycle, adoption and unwire preservation`
 
-### Card 51: record the junction, unwire and hub-geometry invariants
+### Card 52: record the junction, unwire and hub-geometry invariants
 
 - **Context:**
   - `internal/fabricengine/junction.go`
@@ -222,8 +222,10 @@ Every card here is an edit or a create._
 - **Moves:** none
 - **Requirements:** in `CONSTRAINTS.md`, add two clauses to the geometry sections this task has been building up: every host→weft junction is excluded through the warp's `.git/info/exclude`, never through a committed `.gitignore` in the user's repo;
   and unwiring reverses wiring only — it never deletes weft-side content.
-  Add the structural-directories clause too: `_lyx` and `.lyx` are structural, injected by `internal/fabricengine`, never read from `fabric.yaml`, whose `pathspec` now names optional directories only — and `<hub>/.lyx` is a fabric-recognised hub-level element alongside `<hub>/_board`, reserved so no worktree slug can claim it.
-  Place them in the existing `## Durable-vs-Ephemeral State Invariant` section from batch 5 where they extend it, and in `## Fabric Git Invariant (warp + weft)` where they concern git behaviour, rather than opening a fourth geometry section.
+  Add the hub-geometry clause too: `<hub>/.lyx` is a fabric-recognised hub-level element alongside `<hub>/_board` — created by fabric in `CloneHub`, a real directory and never a junction, and reserved so no worktree slug can claim it.
+  The structural-directories and never-committed-routing clauses are **already present** — batch 7's card 44 added them when that change landed;
+  extend them here only where this batch's wiring changes what they say (the wired name-set is now wider than the routing set by exactly `structuralNeverCommittedDirs`), and do not restate them.
+  Place all of the above in the existing `## Durable-vs-Ephemeral State Invariant` section from batch 5 where they extend it, and in `## Fabric Git Invariant (warp + weft)` where they concern git behaviour, rather than opening a fourth geometry section.
   Name the enforcing tests (`internal/fabricengine/dotlyxjunction_integration_test.go`, `structuraldirs_test.go`, `unwire_test.go`).
   In `docs/overview.md`, update the **Junction model** section: the wired set is no longer purely the repo-wide `pathspec` list — it is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated;
   the concrete junctions this repo ships with become three (`_lyx`, `.lyx`, `_pattern`);
@@ -237,7 +239,7 @@ Every card here is an edit or a create._
   Follow the repo's semantic-line-break markdown rule in every file.
 - **Commit:** `docs: record the .lyx junction, unwire and hub-geometry contracts`
 
-### Card 52: confirm no committed .lyx artifact and no .lyx in any pathspec
+### Card 53: confirm no committed .lyx artifact and no .lyx in any pathspec
 
 - **Context:**
   - `internal/fabriccli/clone.go`
@@ -256,7 +258,7 @@ Every card here is an edit or a create._
 - **Moves:** none
 - **Requirements:** verification-only gate, no edits.
   Confirm by grep across the whole repo that, in production code: no call to `gitignore.Ensure`/`gitignore.Remove` names `.lyx` (only `internal/vscode`'s `.vscode/` call remains);
-  no `ScopedPathspec` call site anywhere passes `structuralNeverCommittedDirs` or `lyxdirs.DotLyxDirName` (check `internal/fabriccli/weft_verbs.go`, `internal/perchcli/run.go`, `internal/webstercli/weft.go`, `internal/buildercli/weft.go`, and `internal/fabricengine/unwire.go` if any pathspec construction survived card 48);
+  no `ScopedPathspec` call site anywhere passes `structuralNeverCommittedDirs` or `lyxdirs.DotLyxDirName` (check `internal/fabriccli/weft_verbs.go`, `internal/perchcli/run.go`, `internal/webstercli/weft.go`, `internal/buildercli/weft.go`, and `internal/fabricengine/unwire.go` if any pathspec construction survived card 49);
   no production file outside `internal/lyxdirs` contains the literals `"_lyx"` or `".lyx"` in path-construction context (this duplicates the machine check in `internal/lyxcwd/enforcement_test.go` and should already pass — a hit means a card reintroduced one);
   and `crossModuleMachineLocalExcludes` no longer appears anywhere, including in comments.
   If any check fails, fix it under the card that owns the file rather than here, then re-run this gate.

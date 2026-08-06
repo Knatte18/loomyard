@@ -4,7 +4,7 @@
 task: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometry (slice 9)
 batch: webster-builder-loom-scratch-seam
 number: 3
-cards: 9
+cards: 8
 verify: go test ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/loomengine/... ./cmd/lyx/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/buildercli/... ./internal/loomengine/...
 depends-on: [1]
 ```
@@ -165,6 +165,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   - `internal/lyxdirs/dirs.go`
   - `internal/state/state.go`
   - `internal/lock/lock.go`
+  - `internal/reedengine/lock.go`
 - **Edits:**
   - `internal/loomengine/config.go`
   - `internal/loomengine/preflight.go`
@@ -173,9 +174,10 @@ Adding the field is what makes those internal calls re-keyable without the engin
 - **Moves:** none
 - **Requirements:** re-point `LoomStatusLock` to `filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "status.json.lock")` and rewrite its godoc: it no longer "shares LoomStatusFile's AnchorPath anchoring" as a joint `_lyx` path — it is stated outright as the mirrored `.lyx` sibling, because `loomengine` has no `Dir(l)` accessor to mirror and deriving it by analogy would be exactly the kind of implicit geometry this task removes.
   `LoomStatusFile` stays under `lyxdirs.LyxDirName` — loom's orchestration status is durable and weft-synced by design.
-  In `preflight.go`, the `state.ReadJSONStrict[Status](LoomStatusFile(l), LoomStatusLock(l))` call needs no argument change, but add an `os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755)` before it if — and only if — the surrounding code path can be reached before anything else creates the `.lyx` tree;
-  if the read is guarded by the existing `os.Stat(LoomStatusFile(l))` check that already requires a seeded status file, state that in a comment instead of adding the MkdirAll, since a lock read on a missing parent is what `internal/lock` already MkdirAlls for.
-  Verify which of the two applies by reading `internal/lock/lock.go` before editing.
+  In `preflight.go`, the `state.ReadJSONStrict[Status](LoomStatusFile(l), LoomStatusLock(l))` call needs no argument change, but it **does** need an explicit `os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755)` immediately before it, because nothing on that path creates the lock's new parent: `state.ReadJSONStrict`'s own doc comment in `internal/state/state.go` states outright that, unlike `ReadJSON`, it does **not** create missing parent directories, and `internal/lock`'s `AcquireReadLock`/`AcquireWriteLock` perform no `MkdirAll` either (gofrs/flock opens the lock file with `O_CREATE` but never creates parents — the same gap `internal/reedengine/lock.go` already works around with its own `MkdirAll`-before-lock).
+  Until now the lock sat beside `status.json` under `_lyx`, so its parent always existed by the time the guarding `os.Stat(LoomStatusFile(l))` succeeded;
+  moving it to `.lyx` breaks that coincidence, and without the `MkdirAll` Preflight would escalate a missing-`.lyx` worktree to a hard infra error instead of honouring its report-not-error contract.
+  Add a comment recording exactly that.
 - **Commit:** `refactor(loomengine): move status.json.lock under .lyx`
 
 ### Card 21: update the cross-module constructor anchoring table
@@ -184,6 +186,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   - `internal/websterengine/state.go`
   - `internal/builderengine/state.go`
   - `internal/loomengine/config.go`
+  - `internal/perchengine/identity.go`
   - `internal/lyxdirs/dirs.go`
 - **Edits:**
   - `cmd/lyx/constructoranchoring_test.go`

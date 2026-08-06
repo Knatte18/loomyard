@@ -183,7 +183,8 @@ Only reed's *worktree-level* state sites (`reed.json`, `reed.lock`) re-anchor.
   Thread the value: `acquireConnection` passes `opts.AnchorRoot` into `ensureServer`, which passes it into `ensureSupervised`, which resolves `statePath`/`lockPath` from it instead of from `worktreeRoot`.
   Keep `worktreeRoot` flowing through both functions unchanged for its existing uses.
   When `AnchorRoot` is empty (a caller outside a lyx hub, where `resolveWorktreeRoot` already falls back to an absolute target dir), fall back to `worktreeRoot` so the out-of-hub path behaves exactly as it does today — document that fallback at the field.
-  In `internal/scoutcli/cli.go`, add `resolveAnchorRoot(cwd, targetDir string) string` beside `resolveWorktreeRoot`, returning `layout.AnchorPath()` on a successful `lyxcwd.Resolve` and `""` otherwise, and add an `anchorRoot` parameter to `buildOptions` so all three `buildOptions` call sites (around the `references`, `definition` and `symbol` verbs) and the one hand-built `scoutengine.Options` literal thread it.
+  In `internal/scoutcli/cli.go`, add `resolveAnchorRoot(cwd, targetDir string) string` beside `resolveWorktreeRoot`, returning `layout.AnchorPath()` on a successful `lyxcwd.Resolve` and `""` otherwise, and add an `anchorRoot` parameter to `buildOptions` so **every** `buildOptions` call site threads it — six in total, two per verb (the single-arg path and the batch-mode path) across the `references`, `definition` and `symbol` verbs — plus the one hand-built `scoutengine.Options` literal.
+  Each verb also needs `anchorRoot := resolveAnchorRoot(cwd, dir)` alongside its existing `worktreeRoot := resolveWorktreeRoot(cwd, dir)` line.
 - **Commit:** `refactor(scout): resolve daemon state from an explicit anchor root`
 
 ### Card 30: collapse the anchoring table and correct the anchoring docs

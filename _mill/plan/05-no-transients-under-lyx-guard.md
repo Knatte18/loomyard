@@ -33,6 +33,8 @@ those are covered by feeding the guard perch's own `RunsDir`/`ScratchDir` pair p
   - `internal/perchengine/identity.go`
   - `internal/loomengine/config.go`
   - `internal/treadleengine/state.go`
+  - `internal/scoutengine/daemonstate.go`
+  - `internal/logger/sink.go`
   - `internal/lyxdirs/dirs.go`
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/lyxcwd/enforcement_test.go`
