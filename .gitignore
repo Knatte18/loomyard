@@ -4,6 +4,10 @@
 /lyx
 lyx.exe
 
+# Same for `go build ./tools/godocreflow/...` run without -o from the repo root.
+/godocreflow
+godocreflow.exe
+
 # Derived dev-only deploy target (tools/internal/devbin) — never the prod install dir.
 .dev-bin/
 
