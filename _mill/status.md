@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-guard-and-docs
+phase: holistic-reviewing
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-module-owned-constructors  '2026-08-06T06:12:07Z'
 approved-fabric-owns-the-illusion  '2026-08-06T07:13:04Z'
 approved-board-junction  '2026-08-06T07:26:08Z'
 approved-guard-and-docs  '2026-08-06T07:41:34Z'
+holistic-reviewing  '2026-08-06T07:43:45Z'
 ```
 
 ## Batches
