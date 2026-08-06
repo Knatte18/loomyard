@@ -1,6 +1,6 @@
 // leaf_enforcement_test.go enforces the Scoutengine Leaf Invariant:
 // production code in internal/scoutengine imports ONLY the standard
-// library, internal/lyxcwd, internal/configengine, internal/lock,
+// library, internal/configengine, internal/lock,
 // internal/proc, internal/logger, and gopkg.in/yaml.v3 — never
 // internal/output, cobra, or any internal/*cli package. Like modelspec's and
 // tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
@@ -22,7 +22,6 @@ import (
 
 // allowedImports lists the only non-stdlib imports allowed in production code.
 var allowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/lyxcwd":       true,
 	"github.com/Knatte18/loomyard/internal/configengine": true,
 	"github.com/Knatte18/loomyard/internal/lock":         true,
 	"github.com/Knatte18/loomyard/internal/proc":         true,
@@ -101,6 +100,6 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("Scoutengine Leaf Invariant violated; imports outside the allowlist (stdlib + lyxcwd + configengine + lock + proc + logger + yaml.v3) found: %v", failures)
+		t.Errorf("Scoutengine Leaf Invariant violated; imports outside the allowlist (stdlib + configengine + lock + proc + logger + yaml.v3) found: %v", failures)
 	}
 }

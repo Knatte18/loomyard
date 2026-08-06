@@ -22,7 +22,7 @@
 // # The engine/CLI split
 //
 // scoutengine is a leaf package: it returns typed Go results and typed
-// errors and imports nothing beyond stdlib, internal/lyxcwd,
+// errors and imports nothing beyond stdlib,
 // internal/configengine, internal/lock, internal/proc, and gopkg.in/yaml.v3 — no io.Writer, no exit
 // codes, no internal/output. internal/scoutcli is the sole consumer
 // that maps engine results/errors onto the internal/output JSON envelope
@@ -214,7 +214,7 @@
 //
 // daemonstate.go implements the supervised strategy's runtime state: a JSON
 // state file plus a paired advisory lock per (worktreeRoot, lang), resolved
-// via lyxcwd.Location.ScoutDaemonStateFile/ScoutDaemonLock at
+// via this package's own DaemonStateFile/DaemonLock at
 // .lyx/scout/<lang>/ — never _lyx/. That distinction matters: .lyx/ is
 // ephemeral, machine-bound runtime state (per the Hub Geometry Invariant's
 // durable-vs-ephemeral split), and a live daemon's PID, socket path, and

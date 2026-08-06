@@ -261,19 +261,6 @@ func (l *Location) DotLyxDir() string {
 	return filepath.Join(l.AnchorPath(), dotLyxDirName)
 }
 
-// ScoutDaemonStateFile returns the path to the scout daemon's runtime state file for the given
-// language. It is WorktreePath-anchored so the daemon is a worktree-wide singleton per language.
-// It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
-func (l *Location) ScoutDaemonStateFile(lang string) string {
-	return filepath.Join(l.WorktreePath(), dotLyxDirName, "scout", lang, "daemon.json")
-}
-
-// ScoutDaemonLock returns the path to the advisory lock file guarding concurrent access to
-// ScoutDaemonStateFile(lang). It shares that method's WorktreePath anchoring and per-lang scoping.
-func (l *Location) ScoutDaemonLock(lang string) string {
-	return filepath.Join(l.WorktreePath(), dotLyxDirName, "scout", lang, "daemon.lock")
-}
-
 // HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
 // writes its runtime log. It is hub-anchored so one server per hub resolves to one deterministic place.
 // It lives under the ephemeral .lyx directory; server logs are runtime artifacts, never weft-synced.

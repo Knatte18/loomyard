@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -67,9 +66,8 @@ func spawnAndHoldSubprocess(t *testing.T) int {
 func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-	statePath := layout.ScoutDaemonStateFile(lang)
-	lockPath := layout.ScoutDaemonLock(lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
+	lockPath := DaemonLock(worktreeRoot, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	// Record a state that reads as healthy (a confirmed-alive PID, the
@@ -135,9 +133,8 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-	statePath := layout.ScoutDaemonStateFile(lang)
-	lockPath := layout.ScoutDaemonLock(lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
+	lockPath := DaemonLock(worktreeRoot, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	// Record a state that reads as healthy (a confirmed-alive PID, the
@@ -216,9 +213,8 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 
 	worktreeRoot := t.TempDir()
 	const lang = "go"
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-	statePath := layout.ScoutDaemonStateFile(lang)
-	lockPath := layout.ScoutDaemonLock(lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
+	lockPath := DaemonLock(worktreeRoot, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	// A non-stale state (alive PID, current protocol version) naming the

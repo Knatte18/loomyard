@@ -48,7 +48,7 @@ Short, authoritative list of the repo's structural invariants. Each is partly ma
 
 ## Scoutengine Leaf Invariant
 
-`internal/scoutengine` production code imports only stdlib, `internal/lyxcwd`, `internal/configengine`, `internal/lock`, `internal/proc`, `internal/logger`, and `gopkg.in/yaml.v3` — no `internal/output`, `cobra`, or `internal/*cli`. Returns typed `(T, error)`, never touches `io.Writer`/exit codes/the output envelope; `internal/scoutcli` maps engine results into that envelope.
+`internal/scoutengine` production code imports only stdlib, `internal/configengine`, `internal/lock`, `internal/proc`, `internal/logger`, and `gopkg.in/yaml.v3` — no `internal/output`, `cobra`, or `internal/*cli`. Returns typed `(T, error)`, never touches `io.Writer`/exit codes/the output envelope; `internal/scoutcli` maps engine results into that envelope.
 
 - `scoutcli` → `scoutengine` is the only allowed direction.
 - **Enforced by** `internal/scoutengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).

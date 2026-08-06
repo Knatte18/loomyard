@@ -24,8 +24,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // funcDeclPattern matches top-level function declarations and captures the function name offset.
@@ -81,8 +79,7 @@ func TestReferences_Integration(t *testing.T) {
 		// binary's cwd and leaks the daemon; an isolated t.TempDir() plus a
 		// state-file-driven reap avoids both.
 		worktreeRoot := t.TempDir()
-		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-		statePath := layout.ScoutDaemonStateFile("go")
+		statePath := DaemonStateFile(worktreeRoot, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -199,8 +196,7 @@ func TestReferences_InFile_Integration(t *testing.T) {
 		// call spawns anchors there, never the real repo's own
 		// .lyx/scout/go/.
 		worktreeRoot := t.TempDir()
-		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-		statePath := layout.ScoutDaemonStateFile("go")
+		statePath := DaemonStateFile(worktreeRoot, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -238,8 +234,7 @@ func TestReferences_InFile_Integration(t *testing.T) {
 		writeAmbiguousModule(t, modRoot)
 
 		worktreeRoot := t.TempDir()
-		layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-		statePath := layout.ScoutDaemonStateFile("go")
+		statePath := DaemonStateFile(worktreeRoot, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

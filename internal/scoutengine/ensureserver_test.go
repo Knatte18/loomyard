@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestFinalizeConnection_SuccessReturnsNil verifies finalizeConnection succeeds with a responsive server.
@@ -360,7 +359,7 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 	})
 
 	worktreeRoot := t.TempDir()
-	lockPath := (&lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}).ScoutDaemonLock("go")
+	lockPath := DaemonLock(worktreeRoot, "go")
 	// The lock's parent directory does not otherwise exist under a fresh
 	// t.TempDir() worktree root — no daemon state write happens first to
 	// create it as a side effect here, unlike supervised_test.go's own
