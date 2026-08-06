@@ -1,8 +1,6 @@
-// gitquery.go implements builder's thin git query layer over
-// internal/gitexec: HeadSHA (batch start-SHA capture), ChangedFiles (the
-// drift computation's diff source), and Dirty (the half-done-work signal).
-// Every helper takes an explicit worktree cwd; none resolves geometry
-// itself.
+// gitquery.go implements builder's thin git query layer over internal/gitexec: HeadSHA (batch start-SHA capture), ChangedFiles (the drift computation's diff source), and Dirty (the half-done-work signal).
+// Every helper takes an explicit worktree cwd;
+// none resolves geometry itself.
 
 package builderengine
 
@@ -15,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
-// HeadSHA returns worktree's current HEAD commit SHA via `git rev-parse
-// HEAD`. A non-zero git exit wraps stderr into the returned error.
+// HeadSHA returns worktree's current HEAD commit SHA via `git rev-parse HEAD`.
+// A non-zero git exit wraps stderr into the returned error.
 func HeadSHA(worktree string) (string, error) {
 	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"rev-parse", "HEAD"}, worktree)
 	if err != nil {
@@ -28,8 +26,7 @@ func HeadSHA(worktree string) (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
-// ChangedFiles returns every file path that differs between sinceSHA and
-// HEAD in worktree, slash-normalized and sorted lexically.
+// ChangedFiles returns every file path that differs between sinceSHA and HEAD in worktree, slash-normalized and sorted lexically.
 func ChangedFiles(worktree, sinceSHA string) ([]string, error) {
 	rangeArg := sinceSHA + "..HEAD"
 	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"diff", "--name-only", rangeArg}, worktree)
@@ -52,8 +49,7 @@ func ChangedFiles(worktree, sinceSHA string) ([]string, error) {
 	return files, nil
 }
 
-// Dirty reports whether worktree has any uncommitted or untracked changes,
-// via a non-empty `git status --porcelain`.
+// Dirty reports whether worktree has any uncommitted or untracked changes, via a non-empty `git status --porcelain`.
 func Dirty(worktree string) (bool, error) {
 	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, worktree)
 	if err != nil {

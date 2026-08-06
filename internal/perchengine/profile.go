@@ -1,9 +1,5 @@
-// profile.go defines Profile, the content contract for one perch block: the
-// embedded burler content fields (what to review and how a round may fix it)
-// plus the perch-owned gate/caps/tuning keys that drive the loop itself. It
-// also defines Gate and GateMode, the convergence-check vocabulary, and
-// Profile.validate, the fail-loud default-resolution and check pass that
-// runs once per block before the loop starts.
+// profile.go defines Profile, the content contract for one perch block: the embedded burler content fields (what to review and how a round may fix it) plus the perch-owned gate/caps/tuning keys that drive the loop itself.
+// It also defines Gate and GateMode, the convergence-check vocabulary, and Profile.validate, the fail-loud default-resolution and check pass that runs once per block before the loop starts.
 
 package perchengine
 
@@ -19,17 +15,13 @@ type GateMode string
 
 // The three legal GateMode values.
 const (
-	// GateLLMVerdict treats a fresh round's burler verdict as the sole
-	// convergence signal: clean means the round's review came back
-	// burlerengine.VerdictApproved.
+	// GateLLMVerdict treats a fresh round's burler verdict as the sole convergence signal: clean means the round's review came back burlerengine.VerdictApproved.
 	GateLLMVerdict GateMode = "llm-verdict"
-	// GateCommand ignores the burler verdict for convergence and instead
-	// runs Gate.Command after each round's fix phase; a zero exit is clean.
-	// The burler review still drives what the fix phase changes — only
-	// convergence is decided elsewhere.
+	// GateCommand ignores the burler verdict for convergence and instead runs Gate.Command after each round's fix phase;
+	// a zero exit is clean.
+	// The burler review still drives what the fix phase changes — only convergence is decided elsewhere.
 	GateCommand GateMode = "command"
-	// GateBoth requires both signals: the burler verdict must be
-	// VerdictApproved AND Gate.Command must exit zero.
+	// GateBoth requires both signals: the burler verdict must be VerdictApproved AND Gate.Command must exit zero.
 	GateBoth GateMode = "both"
 )
 

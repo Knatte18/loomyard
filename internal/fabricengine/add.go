@@ -1,8 +1,5 @@
-// add.go implements the transactional Add: it creates the host worktree,
-// portal, and launchers, then pushes last, performing a best-effort full
-// rollback on any post-creation failure so a partial worktree pair is never
-// left behind. The weft side always uses the suffixed branch produced by
-// WeftBranchName.
+// add.go implements the transactional Add: it creates the host worktree, portal, and launchers, then pushes last, performing a best-effort full rollback on any post-creation failure so a partial worktree pair is never left behind.
+// The weft side always uses the suffixed branch produced by WeftBranchName.
 
 package fabricengine
 
@@ -17,11 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// AddOptions controls optional behaviour for Add. It is an alias of
-// SyncOptions (same SkipGit/SkipPush field shape as warp's own AddOptions)
-// rather than a distinct type, so Add can pass opts straight through to
-// pushWeftBranch, which already takes SyncOptions. Tests pass these directly
-// instead of relying on environment variables, which makes t.Parallel() safe.
+// AddOptions controls optional behaviour for Add.
+// It is an alias of SyncOptions (same SkipGit/SkipPush field shape as warp's own AddOptions) rather than a distinct type, so Add can pass opts straight through to pushWeftBranch, which already takes SyncOptions.
+// Tests pass these directly instead of relying on environment variables, which makes t.Parallel() safe.
 type AddOptions = SyncOptions
 
 // AddResult contains the result of successfully adding a new worktree pair.
@@ -33,8 +28,7 @@ type AddResult struct {
 }
 
 // Add creates a new paired host and weft git worktree with the given slug.
-// It validates the slug, creates both worktrees, wires junctions, and pushes branches,
-// rolling back all changes on any failure.
+// It validates the slug, creates both worktrees, wires junctions, and pushes branches, rolling back all changes on any failure.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
 	// (0) Slug validation. A slug is by contract a single path component:
 	// every consumer re-derives it from the host worktree path via

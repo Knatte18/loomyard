@@ -1,6 +1,5 @@
-// longlist_test.go asserts that root.Long names every module that is registered
-// in the cobra root, so the --help prose never silently drifts from the live
-// command tree. The module set is derived from the live tree — no hardcoded list.
+// longlist_test.go asserts that root.Long names every module that is registered in the cobra root, so the --help prose never silently drifts from the live command tree.
+// The module set is derived from the live tree — no hardcoded list.
 
 package main
 

@@ -1,11 +1,6 @@
-// overlay.go implements the tmux subprocess overlay: TmuxCmd wraps the raw
-// `tmux -L <socket> ...` invocation and exposes the typed helpers the
-// lifecycle layer (batch 5) composes into Add/Remove/reconcile/apply/up.
-// Every invocation is traced via logger.Debug so that -vv reveals the exact
-// tmux command line for diagnosis, while a normal run (default Warn
-// threshold) stays silent. This file is domain-free: it knows nothing about
-// Claude, review panes, or any caller vocabulary, only tmux session/pane
-// primitives.
+// overlay.go implements the tmux subprocess overlay: TmuxCmd wraps the raw `tmux -L <socket> ...` invocation and exposes the typed helpers the lifecycle layer (batch 5) composes into Add/Remove/reconcile/apply/up.
+// Every invocation is traced via logger.Debug so that -vv reveals the exact tmux command line for diagnosis, while a normal run (default Warn threshold) stays silent.
+// This file is domain-free: it knows nothing about Claude, review panes, or any caller vocabulary, only tmux session/pane primitives.
 
 package reedengine
 

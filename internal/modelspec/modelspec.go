@@ -1,7 +1,5 @@
-// modelspec.go declares the package's exported types and closed vocabularies. It
-// carries no logic — Parse (parse.go), Registry.Resolve and builtins (registry.go),
-// LoadRegistry (load.go), and ConfigTemplate (template.go) implement the behaviour
-// this file's types describe.
+// modelspec.go declares the package's exported types and closed vocabularies.
+// It carries no logic — Parse (parse.go), Registry.Resolve and builtins (registry.go), LoadRegistry (load.go), and ConfigTemplate (template.go) implement the behaviour this file's types describe.
 
 // Package modelspec parses and resolves the model-spec notation every
 // agent-spawning config in the stack uses to say which LLM runs a role
@@ -69,10 +67,8 @@ type Spec struct {
 	Params map[string]string
 }
 
-// Entry is one registry record: the engine + model a registry alias resolves to,
-// plus the parameter defaults applied when a spec's bracket doesn't set them. The
-// yaml tags are what LoadRegistry's strict decoder binds a models.yaml alias block
-// against.
+// Entry is one registry record: the engine + model a registry alias resolves to, plus the parameter defaults applied when a spec's bracket doesn't set them.
+// The yaml tags are what LoadRegistry's strict decoder binds a models.yaml alias block against.
 type Entry struct {
 	// Engine names the provider engine the alias requires (e.g. "claude").
 	Engine string `yaml:"engine"`
@@ -86,17 +82,12 @@ type Entry struct {
 	Defaults map[string]string `yaml:"defaults"`
 }
 
-// Registry maps a registry alias to the Entry it resolves to. The zero Registry
-// (nil map) is valid to Resolve against in escape form (which never consults the
-// registry) but resolves no alias form spec — every alias lookup against it
-// fails with an unknown-alias error naming the (empty) set of known aliases.
+// Registry maps a registry alias to the Entry it resolves to.
+// The zero Registry (nil map) is valid to Resolve against in escape form (which never consults the registry) but resolves no alias form spec — every alias lookup against it fails with an unknown-alias error naming the (empty) set of known aliases.
 type Registry map[string]Entry
 
-// Resolved is the fully resolved outcome of one Spec against one Registry (or,
-// for escape form, of the Spec alone): the provider engine, the provider-side
-// model string, and the final parameter map after bracket-over-default
-// precedence has been applied. Params is never nil — an empty map, not nil,
-// represents "no parameters" — so callers can range over it unconditionally.
+// Resolved is the fully resolved outcome of one Spec against one Registry (or, for escape form, of the Spec alone): the provider engine, the provider-side model string, and the final parameter map after bracket-over-default precedence has been applied.
+// Params is never nil — an empty map, not nil, represents "no parameters" — so callers can range over it unconditionally.
 type Resolved struct {
 	// Engine is the provider engine name to dispatch to.
 	Engine string

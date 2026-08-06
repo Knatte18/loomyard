@@ -1,5 +1,4 @@
-// branchname.go — the single derivation of a fabric weft branch name from its
-// paired host branch name, enforcing the uniform <host>/<host>-weft scheme.
+// branchname.go — the single derivation of a fabric weft branch name from its paired host branch name, enforcing the uniform <host>/<host>-weft scheme.
 
 package fabricengine
 

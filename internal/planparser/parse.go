@@ -1,11 +1,6 @@
-// parse.go implements ParsePlan: it reads a plan directory's 00-overview.md (scalar
-// frontmatter + task framing + Card Index) and, for each card the index lists, that
-// card's own NN-<card-slug>.md file, producing the in-memory Plan the rest of webster
-// drives from. Every distinct parse failure is a "planparser:"-prefixed wrapped
-// error — plan-format-v3.md's fail-loud discipline admits no silent-default reading
-// of a malformed plan document structure. Per-card content defects (a missing field,
-// a malformed Moves: bullet) are recorded leniently into the Card model instead,
-// per the lenient-card-parse decision documented in doc.go.
+// parse.go implements ParsePlan: it reads a plan directory's 00-overview.md (scalar frontmatter + task framing + Card Index) and, for each card the index lists, that card's own NN-<card-slug>.md file, producing the in-memory Plan the rest of webster drives from.
+// Every distinct parse failure is a "planparser:"-prefixed wrapped error — plan-format-v3.md's fail-loud discipline admits no silent-default reading of a malformed plan document structure.
+// Per-card content defects (a missing field, a malformed Moves: bullet) are recorded leniently into the Card model instead, per the lenient-card-parse decision documented in doc.go.
 
 package planparser
 
@@ -25,16 +20,14 @@ import (
 // overviewFileName is the fixed filename of a plan's overview file, per plan-format-v3.md's on-disk layout.
 const overviewFileName = "00-overview.md"
 
-// PlanDirName is the relative-path segment planparser joins onto
-// configengine.LyxDirName to form the plan directory's worktree-relative
-// token. planparser is this segment's sole declarer, per the module-owned-constructors
-// per-segment join rule.
+// PlanDirName is the relative-path segment planparser joins onto configengine.LyxDirName to form the plan directory's worktree-relative token.
+// planparser is this segment's sole declarer, per the module-owned-constructors per-segment join rule.
 const PlanDirName = "plan"
 
 // PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`.
-// Callers use this for relative plan-file pointers (e.g. this file's own
-// Card.SourcePath stamping below). It uses the stdlib path package so the
-// token is always forward-slash, never OS-dependent.
+// Callers use this for relative plan-file pointers (e.g.
+// this file's own Card.SourcePath stamping below).
+// It uses the stdlib path package so the token is always forward-slash, never OS-dependent.
 func PlanDirRel() string {
 	return path.Join(configengine.LyxDirName, PlanDirName)
 }

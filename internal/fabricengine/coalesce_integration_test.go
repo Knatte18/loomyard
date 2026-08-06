@@ -84,11 +84,8 @@ func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) erro
 	}
 }
 
-// TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoHostRootLock covers the
-// straightforward two-sided case: an unpushed commit on each side, and the
-// no-host-root-gitrepo-push-lock Shared Decision's assertion that the
-// warp-via-fabric path never leaves a .gitrepo-push.lock at the warp
-// worktree root.
+// TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoHostRootLock covers the straightforward two-sided case: an unpushed commit on each side,
+// and the no-host-root-gitrepo-push-lock Shared Decision's assertion that the warp-via-fabric path never leaves a .gitrepo-push.lock at the warp worktree root.
 func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoHostRootLock(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -115,12 +112,8 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoHostRootLock(t *testing.
 	}
 }
 
-// TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning covers
-// the rejection path: a second warp clone pushes a commit the original
-// checkout lacks, so the warp side's push is a non-fast-forward rejection.
-// CoalescePushBothAt must return nil (not an error), leave the warp bare's
-// HEAD unadvanced by this call, mutate no warp working-tree file, and return
-// promptly rather than spinning.
+// TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning covers the rejection path: a second warp clone pushes a commit the original checkout lacks, so the warp side's push is a non-fast-forward rejection.
+// CoalescePushBothAt must return nil (not an error), leave the warp bare's HEAD unadvanced by this call, mutate no warp working-tree file, and return promptly rather than spinning.
 func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *testing.T) {
 	fixtures := t.TempDir()
 
@@ -172,16 +165,8 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	}
 }
 
-// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the
-// weft-only "lyx fabric sync" production path (warpPath == "", the shape
-// spawnPush/SpawnDetachedPush always uses per fabriccli/spawn.go): with the
-// detached child's cwd left at some unrelated, non-git directory (nothing
-// overrides cmd.Dir), CoalescePushBothAt must still push the weft side and
-// return nil — not open (or fail to open) a git checkout at the inherited
-// cwd for the absent warp side. Before the headOrEmpty("") short-circuit
-// fix, this call errored (aborting the loop before the weft push ever ran)
-// because gitrepo.New("").CurrentSHA() resolves "" to the process's cwd via
-// filepath.Abs and found no .git there.
+// TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd covers the weft-only "lyx fabric sync" production path (warpPath == "", the shape spawnPush/SpawnDetachedPush always uses per fabriccli/spawn.go): with the detached child's cwd left at some unrelated, non-git directory (nothing overrides cmd.Dir), CoalescePushBothAt must still push the weft side and return nil — not open (or fail to open) a git checkout at the inherited cwd for the absent warp side.
+// Before the headOrEmpty("") short-circuit fix, this call errored (aborting the loop before the weft push ever ran) because gitrepo.New("").CurrentSHA() resolves "" to the process's cwd via filepath.Abs and found no .git there.
 func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.T) {
 	unrelatedCwd := t.TempDir()
 

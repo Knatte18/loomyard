@@ -1,14 +1,6 @@
-// validate_test.go covers all 14 of Validate's plan-format-v3 checks, each with
-// at least one triggering and one clean case. The three existence-dependent
-// checks (move-source-missing, move-target-collision, path-missing) build a
-// hermetic t.TempDir() worktreeRoot and materialize real files on disk — no git,
-// no fixtures outside this package — per the go-test-tiers-and-hermetic-git
-// Shared Decision. The golden happy-path test reuses the docs/reference/
-// plan-format-v3.md worked example (testdata/goodplan, already parsed by
-// parse_test.go's TestParsePlan_GoldenFixture) and materializes exactly the
-// files its cards' Edits:/Context: fields and Moves: source name, deliberately
-// leaving the Moves: destination and any Creates: target absent, so the whole
-// 14-check Validate run returns zero findings.
+// validate_test.go covers all 14 of Validate's plan-format-v3 checks, each with at least one triggering and one clean case.
+// The three existence-dependent checks (move-source-missing, move-target-collision, path-missing) build a hermetic t.TempDir() worktreeRoot and materialize real files on disk — no git, no fixtures outside this package — per the go-test-tiers-and-hermetic-git Shared Decision.
+// The golden happy-path test reuses the docs/reference/ plan-format-v3.md worked example (testdata/goodplan, already parsed by parse_test.go's TestParsePlan_GoldenFixture) and materializes exactly the files its cards' Edits:/Context: fields and Moves: source name, deliberately leaving the Moves: destination and any Creates: target absent, so the whole 14-check Validate run returns zero findings.
 
 package planparser_test
 
@@ -83,12 +75,8 @@ func materializeFiles(t *testing.T, root string, paths ...string) {
 	}
 }
 
-// TestValidate_GoldenFixture_ZeroFindings round-trips the pinned spec's own
-// worked example (testdata/goodplan) through Validate with every referenced
-// Edits:/Context: path and Moves: source materialized under a t.TempDir()
-// worktreeRoot, but deliberately NOT the Moves: destination (rowsjson.go) or
-// any Creates: target (the fixture has none) — proving all 14 checks pass
-// simultaneously on the plan-format-v3 happy path.
+// TestValidate_GoldenFixture_ZeroFindings round-trips the pinned spec's own worked example (testdata/goodplan) through Validate with every referenced Edits:/Context: path and Moves: source materialized under a t.TempDir() worktreeRoot,
+// but deliberately NOT the Moves: destination (rowsjson.go) or any Creates: target (the fixture has none) — proving all 14 checks pass simultaneously on the plan-format-v3 happy path.
 func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	t.Parallel()
 
@@ -112,9 +100,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	}
 }
 
-// TestValidate_FormatAndApproval covers format-unrecognized and
-// plan-unapproved together, since both stem from the same overview
-// frontmatter and plan-format-v3.md checks them as a pair.
+// TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since both stem from the same overview frontmatter and plan-format-v3.md checks them as a pair.
 func TestValidate_FormatAndApproval(t *testing.T) {
 	t.Parallel()
 
@@ -154,10 +140,7 @@ func TestValidate_FormatAndApproval(t *testing.T) {
 	}
 }
 
-// TestValidate_IndexFileMismatch covers the Card Index numbering-sequence half
-// of index-file-mismatch (the orphaned-on-disk-file half is exercised
-// implicitly by every other test's clean plan.Dir == "" case, where
-// os.ReadDir fails and that half is silently skipped).
+// TestValidate_IndexFileMismatch covers the Card Index numbering-sequence half of index-file-mismatch (the orphaned-on-disk-file half is exercised implicitly by every other test's clean plan.Dir == "" case, where os.ReadDir fails and that half is silently skipped).
 func TestValidate_IndexFileMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -187,9 +170,7 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_CardPathMalformed covers card-path-malformed with an absolute
-// (single leading "/") Edits: path — a form that already normalized (there is
-// no root:/// to resolve here) survives as a genuine malformed marker.
+// TestValidate_CardPathMalformed covers card-path-malformed with an absolute (single leading "/") Edits: path — a form that already normalized (there is no root:/// to resolve here) survives as a genuine malformed marker.
 func TestValidate_CardPathMalformed(t *testing.T) {
 	t.Parallel()
 
@@ -214,8 +195,7 @@ func TestValidate_CardPathMalformed(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveFormat covers move-format via Card.MovesRaw, the
-// lenient-card-parse slot a non-well-formed "Moves:" bullet lands in.
+// TestValidate_MoveFormat covers move-format via Card.MovesRaw, the lenient-card-parse slot a non-well-formed "Moves:" bullet lands in.
 func TestValidate_MoveFormat(t *testing.T) {
 	t.Parallel()
 
@@ -240,9 +220,7 @@ func TestValidate_MoveFormat(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveRedundant covers move-redundant: a path that is both a
-// Moves: endpoint (on one card) and a Creates: target (on another) anywhere in
-// the plan — the plan-wide scope v3 uses since batch is gone.
+// TestValidate_MoveRedundant covers move-redundant: a path that is both a Moves: endpoint (on one card) and a Creates: target (on another) anywhere in the plan — the plan-wide scope v3 uses since batch is gone.
 func TestValidate_MoveRedundant(t *testing.T) {
 	t.Parallel()
 
@@ -272,9 +250,7 @@ func TestValidate_MoveRedundant(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveMechanicMissing covers move-mechanic-missing: now
-// plan-level (Plan.RenameMechanic), fired only when some card actually parsed
-// a Moves: pair.
+// TestValidate_MoveMechanicMissing covers move-mechanic-missing: now plan-level (Plan.RenameMechanic), fired only when some card actually parsed a Moves: pair.
 func TestValidate_MoveMechanicMissing(t *testing.T) {
 	t.Parallel()
 
@@ -309,9 +285,7 @@ func TestValidate_MoveMechanicMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveSourceMissing covers move-source-missing hermetically: the
-// clean case materializes the Moves: source under a t.TempDir() worktreeRoot,
-// the dirty case leaves it absent.
+// TestValidate_MoveSourceMissing covers move-source-missing hermetically: the clean case materializes the Moves: source under a t.TempDir() worktreeRoot, the dirty case leaves it absent.
 func TestValidate_MoveSourceMissing(t *testing.T) {
 	t.Parallel()
 
@@ -343,8 +317,7 @@ func TestValidate_MoveSourceMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_MoveTargetCollision covers move-target-collision's
-// already-exists-on-disk condition hermetically.
+// TestValidate_MoveTargetCollision covers move-target-collision's already-exists-on-disk condition hermetically.
 func TestValidate_MoveTargetCollision(t *testing.T) {
 	t.Parallel()
 
@@ -375,9 +348,7 @@ func TestValidate_MoveTargetCollision(t *testing.T) {
 	})
 }
 
-// TestValidate_CardMissingField covers card-missing-field: a card missing one
-// of the seven required labels (What:/Context:/Edits:/Creates:/Deletes:/
-// Moves:/Depends-on:) yields one finding for that field.
+// TestValidate_CardMissingField covers card-missing-field: a card missing one of the seven required labels (What:/Context:/Edits:/Creates:/Deletes:/ Moves:/Depends-on:) yields one finding for that field.
 func TestValidate_CardMissingField(t *testing.T) {
 	t.Parallel()
 
@@ -403,8 +374,7 @@ func TestValidate_CardMissingField(t *testing.T) {
 	})
 }
 
-// TestValidate_CardFieldOverlap covers card-field-overlap: the same path in
-// two of a single card's fields is a contradiction.
+// TestValidate_CardFieldOverlap covers card-field-overlap: the same path in two of a single card's fields is a contradiction.
 func TestValidate_CardFieldOverlap(t *testing.T) {
 	t.Parallel()
 
@@ -430,11 +400,8 @@ func TestValidate_CardFieldOverlap(t *testing.T) {
 	})
 }
 
-// TestValidate_CardNumbering covers card-numbering: the card file's own
-// heading number must match the number the Card Index assigned it. Unlike
-// most other checks, this one re-reads the card file from plan.Dir, so both
-// cases need a real on-disk plan directory rather than a hand-built Plan
-// struct.
+// TestValidate_CardNumbering covers card-numbering: the card file's own heading number must match the number the Card Index assigned it.
+// Unlike most other checks, this one re-reads the card file from plan.Dir, so both cases need a real on-disk plan directory rather than a hand-built Plan struct.
 func TestValidate_CardNumbering(t *testing.T) {
 	t.Parallel()
 
@@ -471,9 +438,7 @@ func TestValidate_CardNumbering(t *testing.T) {
 	})
 }
 
-// TestValidate_PathMissing covers path-missing hermetically: the clean case
-// materializes the card's sole Edits: path under a t.TempDir() worktreeRoot,
-// the dirty case leaves it absent.
+// TestValidate_PathMissing covers path-missing hermetically: the clean case materializes the card's sole Edits: path under a t.TempDir() worktreeRoot, the dirty case leaves it absent.
 func TestValidate_PathMissing(t *testing.T) {
 	t.Parallel()
 
@@ -501,8 +466,7 @@ func TestValidate_PathMissing(t *testing.T) {
 	})
 }
 
-// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a
-// present Commit: must start with the card's own "N: " prefix.
+// TestValidate_CommitSubjectMismatch covers commit-subject-mismatch: a present Commit: must start with the card's own "N: " prefix.
 func TestValidate_CommitSubjectMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -527,9 +491,7 @@ func TestValidate_CommitSubjectMismatch(t *testing.T) {
 	})
 }
 
-// TestValidate_DependsOnOrder covers depends-on-order: a Depends-on: id must
-// name a strictly earlier card — naming itself, a later card, or a
-// nonexistent card number are each their own trigger.
+// TestValidate_DependsOnOrder covers depends-on-order: a Depends-on: id must name a strictly earlier card — naming itself, a later card, or a nonexistent card number are each their own trigger.
 func TestValidate_DependsOnOrder(t *testing.T) {
 	t.Parallel()
 

@@ -1,12 +1,5 @@
-// fakes_test.go implements the hermetic test doubles the rest of
-// shuttleengine's tests drive the run loop against: fakeReed (a ReedOps
-// double that records every call and lets a test script Status
-// liveness/CapturePane content per call and inject a per-method error) and
-// fakeEngine (an Engine double with a canned Launch, a trivial fixture
-// format for ParseEvents, a scriptable Startup sequence, fixed
-// InterruptSequence/ComposeSend choreographies, and a scriptable
-// AuditForks/AuditForksIncremental canned result/error). Neither fake asserts
-// anything itself — tests inspect their recorded calls.
+// fakes_test.go implements the hermetic test doubles the rest of shuttleengine's tests drive the run loop against: fakeReed (a ReedOps double that records every call and lets a test script Status liveness/CapturePane content per call and inject a per-method error) and fakeEngine (an Engine double with a canned Launch, a trivial fixture format for ParseEvents, a scriptable Startup sequence, fixed InterruptSequence/ComposeSend choreographies, and a scriptable AuditForks/AuditForksIncremental canned result/error).
+// Neither fake asserts anything itself — tests inspect their recorded calls.
 
 package shuttleengine
 
@@ -253,20 +246,17 @@ func (e *fakeEngine) Startup(capture string) StartupState {
 	return next
 }
 
-// InterruptSequence returns the canonical single-Escape interrupt
-// choreography — fixed, not scripted, so tests assert against it directly.
+// InterruptSequence returns the canonical single-Escape interrupt choreography — fixed, not scripted, so tests assert against it directly.
 func (e *fakeEngine) InterruptSequence() []PaneInput {
 	return []PaneInput{{Key: "Escape"}}
 }
 
-// TrustDismissSequence returns the canonical single-Enter trust dismissal —
-// fixed, not scripted, so tests assert against it directly.
+// TrustDismissSequence returns the canonical single-Enter trust dismissal — fixed, not scripted, so tests assert against it directly.
 func (e *fakeEngine) TrustDismissSequence() []PaneInput {
 	return []PaneInput{{Key: "Enter"}}
 }
 
-// ComposeSend returns the canonical Escape-then-submit-text choreography —
-// fixed, not scripted, so tests assert against it directly.
+// ComposeSend returns the canonical Escape-then-submit-text choreography — fixed, not scripted, so tests assert against it directly.
 func (e *fakeEngine) ComposeSend(text string) []PaneInput {
 	return []PaneInput{
 		{Key: "Escape"},
@@ -274,8 +264,7 @@ func (e *fakeEngine) ComposeSend(text string) []PaneInput {
 	}
 }
 
-// ModelSwitchSequence returns a canonical Escape-then-submit-model-command
-// choreography — fixed, not scripted, so tests assert against it directly.
+// ModelSwitchSequence returns a canonical Escape-then-submit-model-command choreography — fixed, not scripted, so tests assert against it directly.
 func (e *fakeEngine) ModelSwitchSequence(model string) []PaneInput {
 	return []PaneInput{
 		{Key: "Escape"},
@@ -283,20 +272,13 @@ func (e *fakeEngine) ModelSwitchSequence(model string) []PaneInput {
 	}
 }
 
-// AuditForks records the (sessionID, workdir) it was called with and returns
-// AuditForksResult/AuditForksErr — a test scripts the canned audit a
-// fork-mode done classification should attach to Result.ForkAudit. It forwards
-// to AuditForksIncremental with a nil seenTranscripts map, mirroring the
-// real engine's AuditForks-in-terms-of-AuditForksIncremental relationship.
+// AuditForks records the (sessionID, workdir) it was called with and returns AuditForksResult/AuditForksErr — a test scripts the canned audit a fork-mode done classification should attach to Result.ForkAudit.
+// It forwards to AuditForksIncremental with a nil seenTranscripts map, mirroring the real engine's AuditForks-in-terms-of-AuditForksIncremental relationship.
 func (e *fakeEngine) AuditForks(sessionID, workdir string) (ForkAudit, error) {
 	return e.AuditForksIncremental(sessionID, workdir, nil)
 }
 
-// AuditForksIncremental records the (sessionID, workdir, seenTranscripts) it was
-// called with and returns AuditForksResult/AuditForksErr, filtering
-// AuditForksResult.Forks down to reports whose TranscriptPath is not a key of
-// seenTranscripts (nil map == no filtering) — a test scripts the canned audit an
-// incremental caller should observe, and can assert the seen-set was applied.
+// AuditForksIncremental records the (sessionID, workdir, seenTranscripts) it was called with and returns AuditForksResult/AuditForksErr, filtering AuditForksResult.Forks down to reports whose TranscriptPath is not a key of seenTranscripts (nil map == no filtering) — a test scripts the canned audit an incremental caller should observe, and can assert the seen-set was applied.
 func (e *fakeEngine) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

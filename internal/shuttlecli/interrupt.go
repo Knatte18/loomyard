@@ -1,6 +1,4 @@
-// interrupt.go implements the `interrupt` shuttle verb: a thin guid-to-call
-// mapper over c.runner.Interrupt, letting an operator or another process
-// stop a shuttle run's in-progress turn without killing its pane or session.
+// interrupt.go implements the `interrupt` shuttle verb: a thin guid-to-call mapper over c.runner.Interrupt, letting an operator or another process stop a shuttle run's in-progress turn without killing its pane or session.
 
 package shuttlecli
 

@@ -1,8 +1,6 @@
 // edit_test.go — unit tests for the interactive config editing machinery (edit.go).
 //
-// Tests cover: scaffold-when-missing, edit of existing file, re-edit loop on
-// validation failure, abort on unchanged-after-failure (both scaffolded and
-// pre-existing), abort on editor error, and not-initialized propagation.
+// Tests cover: scaffold-when-missing, edit of existing file, re-edit loop on validation failure, abort on unchanged-after-failure (both scaffolded and pre-existing), abort on editor error, and not-initialized propagation.
 
 package configengine_test
 
@@ -16,9 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// TestEdit_ScaffoldWhenMissing tests that Edit writes the template to
-// _lyx/config/<module>.yaml before the editor runs, and that the fake editor
-// sees the template bytes.
+// TestEdit_ScaffoldWhenMissing tests that Edit writes the template to _lyx/config/<module>.yaml before the editor runs,
+// and that the fake editor sees the template bytes.
 func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -56,8 +53,8 @@ func TestEdit_ScaffoldWhenMissing(t *testing.T) {
 }
 
 // TestEdit_EditExistingFile tests that Edit opens an existing file in the editor,
-// and the editor can rewrite it with valid YAML. Edit returns nil and the file
-// holds the new bytes.
+// and the editor can rewrite it with valid YAML.
+// Edit returns nil and the file holds the new bytes.
 func TestEdit_EditExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -98,9 +95,7 @@ func TestEdit_EditExistingFile(t *testing.T) {
 	}
 }
 
-// TestEdit_ReEditLoop tests that when the fake editor writes invalid YAML on
-// the first pass and valid YAML on the second pass, Edit loops and invokes the
-// editor twice, returning nil on success.
+// TestEdit_ReEditLoop tests that when the fake editor writes invalid YAML on the first pass and valid YAML on the second pass, Edit loops and invokes the editor twice, returning nil on success.
 func TestEdit_ReEditLoop(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -134,9 +129,7 @@ func TestEdit_ReEditLoop(t *testing.T) {
 	}
 }
 
-// TestEdit_AbortOnUnchangedAfterFailure_Scaffolded tests that when the fake
-// editor writes invalid YAML and leaves it unchanged, Edit returns ErrAborted
-// and removes the scaffolded file (restoring the pre-call filesystem state).
+// TestEdit_AbortOnUnchangedAfterFailure_Scaffolded tests that when the fake editor writes invalid YAML and leaves it unchanged, Edit returns ErrAborted and removes the scaffolded file (restoring the pre-call filesystem state).
 func TestEdit_AbortOnUnchangedAfterFailure_Scaffolded(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -172,9 +165,7 @@ func TestEdit_AbortOnUnchangedAfterFailure_Scaffolded(t *testing.T) {
 	}
 }
 
-// TestEdit_AbortOnUnchangedAfterFailure_PreExisting tests that when the file
-// pre-existed and the editor writes invalid YAML then leaves it unchanged,
-// Edit returns ErrAborted but leaves the file in place.
+// TestEdit_AbortOnUnchangedAfterFailure_PreExisting tests that when the file pre-existed and the editor writes invalid YAML then leaves it unchanged, Edit returns ErrAborted but leaves the file in place.
 func TestEdit_AbortOnUnchangedAfterFailure_PreExisting(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -219,9 +210,8 @@ func TestEdit_AbortOnUnchangedAfterFailure_PreExisting(t *testing.T) {
 	}
 }
 
-// TestEdit_AbortOnEditorError tests that when the fake editor returns an error,
-// Edit returns ErrAborted (wrapping the editor error). If the file was scaffolded,
-// it is removed.
+// TestEdit_AbortOnEditorError tests that when the fake editor returns an error, Edit returns ErrAborted (wrapping the editor error).
+// If the file was scaffolded, it is removed.
 func TestEdit_AbortOnEditorError(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -256,8 +246,7 @@ func TestEdit_AbortOnEditorError(t *testing.T) {
 	}
 }
 
-// TestEdit_NotInitialized tests that calling Edit with a baseDir lacking _lyx/
-// returns the FindBaseDir not-initialized error (not ErrAborted).
+// TestEdit_NotInitialized tests that calling Edit with a baseDir lacking _lyx/ returns the FindBaseDir not-initialized error (not ErrAborted).
 func TestEdit_NotInitialized(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Do NOT create _lyx/ directory.

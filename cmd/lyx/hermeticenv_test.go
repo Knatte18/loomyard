@@ -1,10 +1,6 @@
-// hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant: every
-// test package whose tests spawn git — directly or via the lyxtest fixture helpers —
-// must run under lyxtest.HermeticGitEnv(), wired via a TestMain, or be named on an
-// allowlist with a reason. This is the repo-wide grep-guard companion to
-// tierpurity_test.go, machine-enforcing what the two-layer hermetic mechanism
-// otherwise relies on every new package remembering to do. See CONSTRAINTS.md's
-// Hermetic Git Test Environment Invariant.
+// hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant: every test package whose tests spawn git — directly or via the lyxtest fixture helpers — must run under lyxtest.HermeticGitEnv(), wired via a TestMain, or be named on an allowlist with a reason.
+// This is the repo-wide grep-guard companion to tierpurity_test.go, machine-enforcing what the two-layer hermetic mechanism otherwise relies on every new package remembering to do.
+// See CONSTRAINTS.md's Hermetic Git Test Environment Invariant.
 
 package main
 
@@ -77,15 +73,8 @@ type pkgHermeticStatus struct {
 	hermetic      bool
 }
 
-// TestHermeticGitEnv_GitSpawningPackagesHaveTestMain walks every *_test.go file
-// under the module root and fails if any package whose test files contain a
-// git-spawn token (directly or via the lyxtest fixture helpers) lacks the
-// hermetic presence token anywhere in its test files, unless the package is on
-// the allowedNonHermetic allowlist. Unlike TestTierPurity_UntaggedTestsSpawnNothing,
-// which only scans untagged files (its subject is Tier 1's offline guarantee),
-// this guard scans every *_test.go file regardless of build constraint: the
-// git-spawning set is almost exactly the integration-tagged set, so skipping
-// tagged files the way tierpurity does would make this guard vacuous.
+// TestHermeticGitEnv_GitSpawningPackagesHaveTestMain walks every *_test.go file under the module root and fails if any package whose test files contain a git-spawn token (directly or via the lyxtest fixture helpers) lacks the hermetic presence token anywhere in its test files, unless the package is on the allowedNonHermetic allowlist.
+// Unlike TestTierPurity_UntaggedTestsSpawnNothing, which only scans untagged files (its subject is Tier 1's offline guarantee), this guard scans every *_test.go file regardless of build constraint: the git-spawning set is almost exactly the integration-tagged set, so skipping tagged files the way tierpurity does would make this guard vacuous.
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH, mirroring
 	// tierpurity_test.go and crosscompile_test.go so this gate never blocks a

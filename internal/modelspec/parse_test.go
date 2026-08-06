@@ -1,7 +1,5 @@
-// parse_test.go table-drives Parse against the strict grammar: one table of
-// specs that must be accepted (with the exact Spec they must produce), and one
-// table of specs that must be rejected (with an exact substring every error
-// must contain, naming the offending token or character).
+// parse_test.go table-drives Parse against the strict grammar: one table of specs that must be accepted (with the exact Spec they must produce),
+// and one table of specs that must be rejected (with an exact substring every error must contain, naming the offending token or character).
 
 package modelspec
 

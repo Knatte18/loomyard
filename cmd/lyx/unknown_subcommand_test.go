@@ -1,6 +1,4 @@
-// unknown_subcommand_test.go covers W16 unknown-subcommand rejection and bare-group
-// listing for module groups mounted under the real lyx root command, exercising
-// the GroupRunE wiring and PersistentPreRunE guards via the run() seam.
+// unknown_subcommand_test.go covers W16 unknown-subcommand rejection and bare-group listing for module groups mounted under the real lyx root command, exercising the GroupRunE wiring and PersistentPreRunE guards via the run() seam.
 
 package main
 

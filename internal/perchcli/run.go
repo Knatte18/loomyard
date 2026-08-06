@@ -1,10 +1,5 @@
-// run.go implements the `run` perch verb: the profile-YAML-and-flags-to-Run
-// mapper that turns a "lyx perch run" invocation into a blocking
-// perchengine.Engine.Run call, commits+pushes the resulting block artifacts
-// through weft once at block exit, and prints the Result as a single JSON
-// envelope. It also owns decodeProfile, the strict YAML decode that maps a
-// profile file 1:1 onto perchengine.Profile, resolving its judge-model/model
-// keys' model-spec strings against the invocation's shared registry.
+// run.go implements the `run` perch verb: the profile-YAML-and-flags-to-Run mapper that turns a "lyx perch run" invocation into a blocking perchengine.Engine.Run call, commits+pushes the resulting block artifacts through weft once at block exit, and prints the Result as a single JSON envelope.
+// It also owns decodeProfile, the strict YAML decode that maps a profile file 1:1 onto perchengine.Profile, resolving its judge-model/model keys' model-spec strings against the invocation's shared registry.
 
 package perchcli
 

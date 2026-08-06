@@ -1,13 +1,6 @@
-// suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox
-// shuttle-suite", "sandbox burler-suite", "sandbox perch-suite", "sandbox
-// builder-suite", and "sandbox webster-suite" subcommands: copies one of the
-// embedded suite templates (main, reed, shuttle, burler, perch, builder, or
-// webster) into the Hub host repo, stamps a lyx binary fingerprint, registers
-// the file as a git exclude entry, and launches an interactive Claude session
-// to execute it. The seven suites share every mechanic (fingerprinting,
-// git-exclude, stale-report cleanup, agent launch, post-session reed teardown)
-// via the suiteSpec parameterization of runSuite; only the file name,
-// embedded doc body, default instruction, and reed-teardown flag differ.
+// suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox shuttle-suite", "sandbox burler-suite", "sandbox perch-suite", "sandbox builder-suite", and "sandbox webster-suite" subcommands: copies one of the embedded suite templates (main, reed, shuttle, burler, perch, builder, or webster) into the Hub host repo, stamps a lyx binary fingerprint, registers the file as a git exclude entry, and launches an interactive Claude session to execute it.
+// The seven suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent launch, post-session reed teardown) via the suiteSpec parameterization of runSuite;
+// only the file name, embedded doc body, default instruction, and reed-teardown flag differ.
 
 package main
 

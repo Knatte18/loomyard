@@ -123,10 +123,7 @@ func addLivePane(t *testing.T, eng *reedengine.Engine, role, round string) strin
 	}
 }
 
-// TestSmoke_PollDoneReleasesStrand proves against a real tmux server that a
-// done classification releases the batch's strand: the pane is gone from the
-// live reed Status after poll returns (the F1 leak, observed live as panes
-// accumulating across runs).
+// TestSmoke_PollDoneReleasesStrand proves against a real tmux server that a done classification releases the batch's strand: the pane is gone from the live reed Status after poll returns (the F1 leak, observed live as panes accumulating across runs).
 func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	eng, layout, hub := bootRealReed(t)
@@ -211,10 +208,7 @@ func (s smokeFailStarter) Start(spec shuttleengine.Spec) (*shuttleengine.Run, er
 	return nil, errors.New("starter must not be reached")
 }
 
-// TestSmoke_SpawnRefusedWhileStrandLive proves against a real tmux server
-// that spawn-batch's in-flight guard refuses while a non-terminal batch's
-// strand is genuinely live (the F4 double-spawn, observed live as two
-// implementer panes for the same batch).
+// TestSmoke_SpawnRefusedWhileStrandLive proves against a real tmux server that spawn-batch's in-flight guard refuses while a non-terminal batch's strand is genuinely live (the F4 double-spawn, observed live as two implementer panes for the same batch).
 func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "02-list-tests")
@@ -261,11 +255,7 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 	}
 }
 
-// TestSmoke_RunEntryReclaimsOrphanedOrchestrator proves against a real tmux
-// server that Run's entry-time reclaim stops a recorded orchestrator strand
-// the reed still reports live (the fable-r4 double-orchestrator: a killed
-// `run` process, or a timed-out orchestrator whose kept pane kept working)
-// before the fresh orchestrator spawn ever starts.
+// TestSmoke_RunEntryReclaimsOrphanedOrchestrator proves against a real tmux server that Run's entry-time reclaim stops a recorded orchestrator strand the reed still reports live (the fable-r4 double-orchestrator: a killed `run` process, or a timed-out orchestrator whose kept pane kept working) before the fresh orchestrator spawn ever starts.
 func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 	eng, _, hub := bootRealReed(t)
 	orphanGUID := addLivePane(t, eng, "orchestrator", "")

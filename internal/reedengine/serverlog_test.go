@@ -1,5 +1,5 @@
-// serverlog_test.go verifies the pure debug_log parsing helper. Untagged: no
-// filesystem or process I/O, per Test Tier Purity.
+// serverlog_test.go verifies the pure debug_log parsing helper.
+// Untagged: no filesystem or process I/O, per Test Tier Purity.
 
 package reedengine
 

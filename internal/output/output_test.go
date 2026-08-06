@@ -86,10 +86,8 @@ func TestErr_ReturnsOneExitCode(t *testing.T) {
 	}
 }
 
-// TestErr_TrimsTrailingNewline asserts that Err strips leading and trailing
-// whitespace from the message before encoding it into the JSON error field.
-// This covers embedded tool output such as "fatal: not a git repository\n"
-// which must not leak newline characters into the JSON value.
+// TestErr_TrimsTrailingNewline asserts that Err strips leading and trailing whitespace from the message before encoding it into the JSON error field.
+// This covers embedded tool output such as "fatal: not a git repository\n" which must not leak newline characters into the JSON value.
 func TestErr_TrimsTrailingNewline(t *testing.T) {
 	buf := &bytes.Buffer{}
 

@@ -1,6 +1,5 @@
-// add_test.go — unit tests for Add's slug validation. Validation runs before
-// any git operation, so these tests need no git fixture and stay untagged
-// Tier-1 (no spawn).
+// add_test.go — unit tests for Add's slug validation.
+// Validation runs before any git operation, so these tests need no git fixture and stay untagged Tier-1 (no spawn).
 
 package fabricengine_test
 
@@ -14,12 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestAdd_RejectsSeparatorSlug asserts that Add refuses a slug containing a
-// path separator before touching git or the filesystem. A slug is by contract
-// a single path component: consumers re-derive it via filepath.Base, so a
-// separator-containing slug would create a pair the module cannot re-identify
-// (pairs would report it broken, reconcile would misattribute it, prune could
-// never see it).
+// TestAdd_RejectsSeparatorSlug asserts that Add refuses a slug containing a path separator before touching git or the filesystem.
+// A slug is by contract a single path component: consumers re-derive it via filepath.Base, so a separator-containing slug would create a pair the module cannot re-identify (pairs would report it broken, reconcile would misattribute it, prune could never see it).
 func TestAdd_RejectsSeparatorSlug(t *testing.T) {
 	tests := []struct {
 		name string
@@ -49,10 +44,8 @@ func TestAdd_RejectsSeparatorSlug(t *testing.T) {
 	}
 }
 
-// TestAdd_RejectsEmptySlug asserts that Add refuses an empty or whitespace-only
-// slug before touching git or the filesystem. An empty slug has no name for the
-// pair and would otherwise fail deep in step 4 with a misleading "worktree
-// directory <HUB> already exists" (fabricengine.WorktreePath(l, "") is the hub root).
+// TestAdd_RejectsEmptySlug asserts that Add refuses an empty or whitespace-only slug before touching git or the filesystem.
+// An empty slug has no name for the pair and would otherwise fail deep in step 4 with a misleading "worktree directory <HUB> already exists" (fabricengine.WorktreePath(l, "") is the hub root).
 // Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsEmptySlug(t *testing.T) {
 	tests := []struct {
@@ -79,15 +72,10 @@ func TestAdd_RejectsEmptySlug(t *testing.T) {
 	}
 }
 
-// TestAdd_RejectsWeftSuffixSlug asserts that Add refuses a slug ending in the
-// weft suffix before touching git or the filesystem. Such a slug names a host
-// worktree directory (fabricengine.WorktreePath(l, slug)) that is indistinguishable from a
-// weft worktree directory: lyxcwd.WeftHostSlug accepts it, so prune's hub
-// scan misclassifies the host worktree as an orphaned weft and — under
-// --apply — os.RemoveAll's it, destroying the host worktree and any uncommitted
-// work. Rejecting the collision at the source is fabric's job (it owns the weft
-// suffix namespace). Validation runs before any git op, so this stays untagged
-// Tier-1.
+// TestAdd_RejectsWeftSuffixSlug asserts that Add refuses a slug ending in the weft suffix before touching git or the filesystem.
+// Such a slug names a host worktree directory (fabricengine.WorktreePath(l, slug)) that is indistinguishable from a weft worktree directory: lyxcwd.WeftHostSlug accepts it, so prune's hub scan misclassifies the host worktree as an orphaned weft and — under --apply — os.RemoveAll's it, destroying the host worktree and any uncommitted work.
+// Rejecting the collision at the source is fabric's job (it owns the weft suffix namespace).
+// Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
 	tests := []struct {
 		name string
@@ -116,13 +104,10 @@ func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
 	}
 }
 
-// TestAdd_RejectsReservedHubNameSlug asserts that Add refuses a slug naming a
-// reserved hub-level geometry entry before touching git or the filesystem. A
-// host worktree directory named after a geometry token collides with the paths
-// lyx composes at the hub level — a "_portals" worktree on a fresh hub would
-// have portal junctions created inside it, and a hub-level "_lyx" worktree
-// shadows the config-dir token. Validation runs before any git op, so this
-// stays untagged Tier-1.
+// TestAdd_RejectsReservedHubNameSlug asserts that Add refuses a slug naming a reserved hub-level geometry entry before touching git or the filesystem.
+// A host worktree directory named after a geometry token collides with the paths lyx composes at the hub level — a "_portals" worktree on a fresh hub would have portal junctions created inside it,
+// and a hub-level "_lyx" worktree shadows the config-dir token.
+// Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 	tests := []struct {
 		name string
@@ -158,12 +143,7 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 	}
 }
 
-// TestAdd_RejectsPathspecJunctionNameSlug asserts that Add refuses a slug
-// equal to a current pathspec junction name that is NOT one of
-// fabricengine.HubReservedNames()'s hub-structural tokens — proving the
-// config-driven arm of IsReservedHubName's union, not only the hub-structural
-// arm TestAdd_RejectsReservedHubNameSlug already covers. "_extra" here is
-// reserved only because it is in this Topology's configured pathspec.
+// TestAdd_RejectsPathspecJunctionNameSlug asserts that Add refuses a slug equal to a current pathspec junction name that is NOT one of fabricengine.HubReservedNames()'s hub-structural tokens — proving the config-driven arm of IsReservedHubName's union, not only the hub-structural arm TestAdd_RejectsReservedHubNameSlug already covers. "_extra" here is reserved only because it is in this Topology's configured pathspec.
 // Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsPathspecJunctionNameSlug(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern _extra"})

@@ -18,8 +18,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// TestHermeticGitEnv_QuietAndPinned verifies Layer B: a bare git init reads
-// fsmonitor and branch from the hermetic env config, not the operator's config.
+// TestHermeticGitEnv_QuietAndPinned verifies Layer B: a bare git init reads fsmonitor and branch from the hermetic env config, not the operator's config.
 func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 	t.Parallel()
 
@@ -49,8 +48,7 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 	}
 }
 
-// TestTemplateQuietConfig verifies Layer A: Copy* fixtures carry quiet git settings
-// in their own .git/config, independent of the hermetic env.
+// TestTemplateQuietConfig verifies Layer A: Copy* fixtures carry quiet git settings in their own .git/config, independent of the hermetic env.
 func TestTemplateQuietConfig(t *testing.T) {
 	t.Parallel()
 
@@ -270,8 +268,7 @@ func TestMustRun(t *testing.T) {
 	MustRun(t, fixture.Hub, "git", "rev-parse", "HEAD")
 }
 
-// TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using
-// the subprocess pattern to confirm non-zero exit.
+// TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using the subprocess pattern to confirm non-zero exit.
 func TestMustRun_Failure(t *testing.T) {
 	t.Parallel()
 

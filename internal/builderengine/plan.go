@@ -1,11 +1,7 @@
-// plan.go implements the plan-format v2 parser: ParsePlan reads a plan
-// directory's 00-overview.md (frontmatter + Batch Index + framing) and, for
-// each batch the index lists, its own NN-<batch-slug>.md file, producing the
-// in-memory Plan the rest of builderengine drives from. Every parse failure
-// is a distinct, "builder:"-prefixed wrapped error — plan-format.md's
-// fail-loud discipline admits no silent-default reading of a malformed
-// plan. This file currently parses only 00-overview.md; per-batch file
-// parsing is filled in by parseBatchFile (see plan.go's later revision).
+// plan.go implements the plan-format v2 parser: ParsePlan reads a plan directory's 00-overview.md (frontmatter + Batch Index + framing) and, for each batch the index lists, its own NN-<batch-slug>.md file, producing the in-memory Plan the rest of builderengine drives from.
+// Every parse failure is a distinct, "builder:"-prefixed wrapped error — plan-format.md's fail-loud discipline admits no silent-default reading of a malformed plan.
+// This file currently parses only 00-overview.md;
+// per-batch file parsing is filled in by parseBatchFile (see plan.go's later revision).
 
 package builderengine
 
@@ -24,10 +20,7 @@ import (
 // its plan directory, per plan-format.md's on-disk layout.
 const overviewFileName = "00-overview.md"
 
-// Plan is the in-memory form of a parsed plan-format v2 plan: the
-// overview's frontmatter and task framing, plus every batch the Batch Index
-// lists, each itself parsed from its own NN-<batch-slug>.md file (see
-// PlanBatch).
+// Plan is the in-memory form of a parsed plan-format v2 plan: the overview's frontmatter and task framing, plus every batch the Batch Index lists, each itself parsed from its own NN-<batch-slug>.md file (see PlanBatch).
 type Plan struct {
 	// Dir is the plan directory ParsePlan was given: _lyx/plan in
 	// production (resolved via loomengine.PlanDir by the caller), a plain
@@ -53,8 +46,7 @@ type Plan struct {
 	Batches []PlanBatch
 }
 
-// PlanBatch is one plan batch: the Batch Index entry's fields plus
-// everything parsed from its own NN-<batch-slug>.md file.
+// PlanBatch is one plan batch: the Batch Index entry's fields plus everything parsed from its own NN-<batch-slug>.md file.
 type PlanBatch struct {
 	// Number is the batch's NN ordering prefix, taken from the Batch Index
 	// entry (and expected to agree with the batch filename's own NN
@@ -132,20 +124,15 @@ type PlanBatch struct {
 	HasRenameMechanic bool
 }
 
-// MovePair is one well-formed "Moves:" sub-bullet: a card declaring that
-// Old is renamed to New (both normalized worktree-relative paths, per
-// normalizeCardPath). The repo's own rename convention — "git mv" first,
-// then only surgical edits — is what a card's Moves: entry declares; see
-// plan-format.md's Rename mechanic text.
+// MovePair is one well-formed "Moves:" sub-bullet: a card declaring that Old is renamed to New (both normalized worktree-relative paths, per normalizeCardPath).
+// The repo's own rename convention — "git mv" first, then only surgical edits — is what a card's Moves: entry declares;
+// see plan-format.md's Rename mechanic text.
 type MovePair struct {
 	Old, New string
 }
 
-// PlanCard is one "### Card NN.C — <title>" card parsed from a batch
-// file's "## Cards" section. Card-level defects (a missing field, a
-// malformed Moves: bullet) are never parse errors — plan-format.md's
-// lenient-card-parse discipline records them leniently here so Validate can
-// turn them into enumerable findings instead of a single fail-loud error.
+// PlanCard is one "### Card NN.C — <title>" card parsed from a batch file's "## Cards" section.
+// Card-level defects (a missing field, a malformed Moves: bullet) are never parse errors — plan-format.md's lenient-card-parse discipline records them leniently here so Validate can turn them into enumerable findings instead of a single fail-loud error.
 type PlanCard struct {
 	// BatchPrefix is the "NN" the card's own heading carries — the
 	// batch's zero-padded number as written in "### Card NN.C — <title>".
@@ -239,14 +226,8 @@ type indexEntry struct {
 // card-level defect).
 var indexLineRe = regexp.MustCompile(`^(\d+)\s+(?:—|-{1,2})\s+(\S+)\s+\((\d+)\s+cards?\)\s+(?:—|-{1,2})\s+(.+)$`)
 
-// ParsePlan reads the plan directory planDir and returns the fully parsed
-// Plan: 00-overview.md's frontmatter, framing, and Batch Index, plus every
-// listed batch's own per-batch file. Every distinct failure mode — a
-// missing overview file, missing or duplicate frontmatter keys, an
-// unparseable Batch Index line, or a per-batch file failure — is returned
-// as its own wrapped error, all prefixed "builder:" per the fail-loud,
-// never-misread discipline plan-format.md pins for every machine-read plan
-// artifact.
+// ParsePlan reads the plan directory planDir and returns the fully parsed Plan: 00-overview.md's frontmatter, framing, and Batch Index, plus every listed batch's own per-batch file.
+// Every distinct failure mode — a missing overview file, missing or duplicate frontmatter keys, an unparseable Batch Index line, or a per-batch file failure — is returned as its own wrapped error, all prefixed "builder:" per the fail-loud, never-misread discipline plan-format.md pins for every machine-read plan artifact.
 func ParsePlan(planDir string) (*Plan, error) {
 	overviewPath := filepath.Join(planDir, overviewFileName)
 

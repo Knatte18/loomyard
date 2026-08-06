@@ -1,12 +1,5 @@
-// strand.go implements the three strand-mutation engine ops —
-// AddStrand/UpdateStrand/RemoveStrand — plus the pure decision helpers each
-// composes: parent existence/cycle validation, display-name resolution, the
-// hidden<->visible transition rules, and the recursive-removal cascade.
-// Each exported op acquires the op lock once, delegates to an unexported
-// *Locked mutation helper, then runs the shared reconcile-apply-persist
-// tail (spawn.go's reconcileApplyPersistLocked) — composing reconcile
-// (card 17) and apply (card 18) exactly once per op, per the batch's
-// single-layer-lock decision.
+// strand.go implements the three strand-mutation engine ops — AddStrand/UpdateStrand/RemoveStrand — plus the pure decision helpers each composes: parent existence/cycle validation, display-name resolution, the hidden<->visible transition rules, and the recursive-removal cascade.
+// Each exported op acquires the op lock once, delegates to an unexported *Locked mutation helper, then runs the shared reconcile-apply-persist tail (spawn.go's reconcileApplyPersistLocked) — composing reconcile (card 17) and apply (card 18) exactly once per op, per the batch's single-layer-lock decision.
 
 package reedengine
 
@@ -29,8 +22,7 @@ type AddSpec struct {
 	Display   render.Display
 }
 
-// Removed reports every strand RemoveStrand deleted: the target plus its
-// whole cascaded descendant subtree.
+// Removed reports every strand RemoveStrand deleted: the target plus its whole cascaded descendant subtree.
 type Removed struct {
 	Strands []struct{ GUID, Name string }
 }
@@ -278,15 +270,9 @@ func removalEmptiedSession(remaining []Strand, sessionGone bool) bool {
 	return true
 }
 
-// AddStrand registers a new strand from spec and, unless added
-// anchor:hidden, realizes it into a live pane and runs its cmd, then
-// reconciles and re-applies the layout. The engine, not the caller, stamps
-// Worktree and generates GUID, since it owns both this worktree's geometry
-// and guid generation (the guid-dependent <SHORT_GUID> name token cannot be
-// computed before the guid exists). Pre-flights the session's existence
-// (mirroring Status) so running add before up fails with the same friendly
-// no-session error (see requireSessionLocked/noSessionMessage) instead of a
-// raw tmux error surfacing later from inside launchStrandLocked.
+// AddStrand registers a new strand from spec and, unless added anchor:hidden, realizes it into a live pane and runs its cmd, then reconciles and re-applies the layout.
+// The engine, not the caller, stamps Worktree and generates GUID, since it owns both this worktree's geometry and guid generation (the guid-dependent <SHORT_GUID> name token cannot be computed before the guid exists).
+// Pre-flights the session's existence (mirroring Status) so running add before up fails with the same friendly no-session error (see requireSessionLocked/noSessionMessage) instead of a raw tmux error surfacing later from inside launchStrandLocked.
 func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
@@ -323,15 +309,11 @@ func (e *Engine) AddStrand(spec AddSpec) (Strand, error) {
 	return result, err
 }
 
-// UpdateStrand mutates guid's display settings, then reconciles and
-// re-applies the layout. It rejects a visible->hidden transition
-// ("cannot hide a live strand in v1"); a hidden->visible transition
-// surfaces the strand (creates its pane, runs its cmd). Pre-flights the
-// session's existence (like AddStrand/RemoveStrand) so surfacing a hidden
-// strand before "up" fails with the friendly no-session error (see
-// requireSessionLocked/noSessionMessage) instead of a raw tmux error from
-// inside launchStrandLocked. UpdateStrand is engine-API-only in v1 — there
-// is no CLI verb for it.
+// UpdateStrand mutates guid's display settings, then reconciles and re-applies the layout.
+// It rejects a visible->hidden transition ("cannot hide a live strand in v1");
+// a hidden->visible transition surfaces the strand (creates its pane, runs its cmd).
+// Pre-flights the session's existence (like AddStrand/RemoveStrand) so surfacing a hidden strand before "up" fails with the friendly no-session error (see requireSessionLocked/noSessionMessage) instead of a raw tmux error from inside launchStrandLocked.
+// UpdateStrand is engine-API-only in v1 — there is no CLI verb for it.
 func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {
@@ -384,21 +366,10 @@ func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 	return pids
 }
 
-// RemoveStrand removes guid and, when it has descendants, cascades the
-// removal through its whole subtree (recursive must be true for a
-// non-leaf, or the call errors instead of silently deleting descendants),
-// then reconciles and re-applies the layout. Returns every strand actually
-// removed. Pre-flights the session's existence (mirroring Status) so
-// running remove before up fails with the same friendly no-session error
-// (see requireSessionLocked/noSessionMessage) instead of a raw tmux error
-// surfacing later from inside reconcileApplyPersistLocked's listPanes. Like
-// Down, it waits for the
-// destroyed panes' process subtrees to exit before returning: tmux
-// terminates a pane's children asynchronously, and on Windows the process
-// actually holding the worktree directory is a deep descendant of
-// #{pane_pid} — a remove that returned without the reap could leave a
-// removed strand's grandchild alive and the worktree dir busy (the same "no
-// stray state" gap Down's reap closed).
+// RemoveStrand removes guid and, when it has descendants, cascades the removal through its whole subtree (recursive must be true for a non-leaf, or the call errors instead of silently deleting descendants), then reconciles and re-applies the layout.
+// Returns every strand actually removed.
+// Pre-flights the session's existence (mirroring Status) so running remove before up fails with the same friendly no-session error (see requireSessionLocked/noSessionMessage) instead of a raw tmux error surfacing later from inside reconcileApplyPersistLocked's listPanes.
+// Like Down, it waits for the destroyed panes' process subtrees to exit before returning: tmux terminates a pane's children asynchronously, and on Windows the process actually holding the worktree directory is a deep descendant of #{pane_pid} — a remove that returned without the reap could leave a removed strand's grandchild alive and the worktree dir busy (the same "no stray state" gap Down's reap closed).
 func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 	var result Removed
 	err := e.withOpLock(func() error {

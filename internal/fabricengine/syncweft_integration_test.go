@@ -52,10 +52,7 @@ func commitMessageAt(t *testing.T, repoPath, rev string) string {
 	return string(out)
 }
 
-// TestRebuildIndex_EqualsIncrementallyBuiltIndex asserts that after several
-// Commit rounds (each incrementally updating the index via
-// RecordCorrespondence), a full RebuildIndex reconstructs an index whose
-// entries are identical to the incrementally-built one.
+// TestRebuildIndex_EqualsIncrementallyBuiltIndex asserts that after several Commit rounds (each incrementally updating the index via RecordCorrespondence), a full RebuildIndex reconstructs an index whose entries are identical to the incrementally-built one.
 func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
@@ -119,12 +116,9 @@ func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 	lyxtest.MustRun(t, repoPath, "git", "gc", "--prune=now", "-q")
 }
 
-// TestWeftSHAForWarpSHA_DetachedPathSelfCorrection covers the CLI detached
-// path's self-correction: CommitWeft records a pre-push SHA; the commit is
-// then amended in place (same trailer, new SHA) and the old
-// SHA is forced to genuinely stop resolving via expireAndPruneUnreachable.
-// WeftSHAForWarpSHA must heal via one RebuildIndex retry to the surviving
-// (amended) trailer commit.
+// TestWeftSHAForWarpSHA_DetachedPathSelfCorrection covers the CLI detached path's self-correction: CommitWeft records a pre-push SHA;
+// the commit is then amended in place (same trailer, new SHA) and the old SHA is forced to genuinely stop resolving via expireAndPruneUnreachable.
+// WeftSHAForWarpSHA must heal via one RebuildIndex retry to the surviving (amended) trailer commit.
 func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
@@ -209,9 +203,7 @@ func staleCorrespondenceFixture(t *testing.T) (f *Fabric, warpSHA string) {
 	return f, warpSHA
 }
 
-// TestWeftSHAForWarpSHA_StalenessSurvivesRebuild covers a history rewrite
-// RebuildIndex cannot recover from: WeftSHAForWarpSHA must surface wrapped
-// ErrStaleSHA (errors.Is).
+// TestWeftSHAForWarpSHA_StalenessSurvivesRebuild covers a history rewrite RebuildIndex cannot recover from: WeftSHAForWarpSHA must surface wrapped ErrStaleSHA (errors.Is).
 func TestWeftSHAForWarpSHA_StalenessSurvivesRebuild(t *testing.T) {
 	f, warpSHA := staleCorrespondenceFixture(t)
 

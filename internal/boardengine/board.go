@@ -1,49 +1,25 @@
 // Package boardengine provides a one-shot, daemonless file-locked task tracker.
 // Board is the only entry point callers use.
 //
-// Board sequences all mutating operations with a file lock: lock → load both
-// stores → mutate → render → write files → save. After each write, a detached
-// background sync process (see sync.go) is launched to commit and push
-// changes to the remote. The write returns immediately without waiting for
-// the sync. Read methods (Get/List) bypass the lock and load directly from
-// disk.
+// Board sequences all mutating operations with a file lock: lock → load both stores → mutate → render → write files → save.
+// After each write, a detached background sync process (see sync.go) is launched to commit and push changes to the remote.
+// The write returns immediately without waiting for the sync.
+// Read methods (Get/List) bypass the lock and load directly from disk.
 //
-// The detached sync path talks to git through fabricengine.Bolt, never
-// hand-rolled gitexec calls, under board's own board.lock/board.push.lock
-// write and push locks.
+// The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls, under board's own board.lock/board.push.lock write and push locks.
 //
-// Storage: board lives at weft:main, never a separate repo. fabricengine
-// enforces one uniform branch-naming scheme with no exceptions: a host
-// branch <branch> is always paired with weft branch <branch>-weft. That
-// means no task's weft branch can ever be named exactly the host's own
-// default branch (every paired weft branch carries the -weft suffix) —
-// which is what makes the unsuffixed name permanently unclaimed by the
-// pairing convention and reserved exclusively for board. This repo's
-// earlier design considered and rejected two alternatives before landing
-// here: a separate third repo for board is extra git-identity overhead
-// for something that doesn't need its own identity; and GitHub wiki
-// rendering (an intermediate idea) requires whichever repo hosts the wiki
-// to be public on GitHub's free tier — in the old separate-repo model that
-// meant board's own repo, never the host/warp repo — disqualifying for
-// private consulting work, where the host repo's wiki-hosting repo would
-// have had to go public just to render board's front page.
+// Storage: board lives at weft:main, never a separate repo.
+// fabricengine enforces one uniform branch-naming scheme with no exceptions: a host branch <branch> is always paired with weft branch <branch>-weft.
+// That means no task's weft branch can ever be named exactly the host's own default branch (every paired weft branch carries the -weft suffix) — which is what makes the unsuffixed name permanently unclaimed by the pairing convention and reserved exclusively for board.
+// This repo's earlier design considered and rejected two alternatives before landing here: a separate third repo for board is extra git-identity overhead for something that doesn't need its own identity;
+// and GitHub wiki rendering (an intermediate idea) requires whichever repo hosts the wiki to be public on GitHub's free tier — in the old separate-repo model that meant board's own repo, never the host/warp repo — disqualifying for private consulting work, where the host repo's wiki-hosting repo would have had to go public just to render board's front page.
 //
-// The long-lived "prime" worktree is the only worktree with a reason to
-// check out two weft branches simultaneously: its own ordinary
-// <name>-weft companion (the standard pairing rule, unchanged), plus
-// weft:main for board access — never paired with any warp branch. No
-// other worktree checks out weft:main directly.
+// The long-lived "prime" worktree is the only worktree with a reason to check out two weft branches simultaneously: its own ordinary <name>-weft companion (the standard pairing rule, unchanged), plus weft:main for board access — never paired with any warp branch.
+// No other worktree checks out weft:main directly.
 //
-// Consequence for fabric: weft:main has no corresponding warp branch, so
-// the Warp-SHA trailer / correspondence-index machinery
-// (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not apply
-// to it — board's reads/writes to weft:main are a standalone concern, not
-// routed through fabric.Commit.
+// Consequence for fabric: weft:main has no corresponding warp branch, so the Warp-SHA trailer / correspondence-index machinery (fabricengine.RecordCorrespondence / WeftSHAForWarpSHA) does not apply to it — board's reads/writes to weft:main are a standalone concern, not routed through fabric.Commit.
 //
-// Recorded for later, not acted on now: this repo's own manifest/roadmap.md
-// and the mill wiki's task list are both candidates to eventually fold
-// into board, once loomyard's own development moves off mill onto
-// lyx/loom.
+// Recorded for later, not acted on now: this repo's own manifest/roadmap.md and the mill wiki's task list are both candidates to eventually fold into board, once loomyard's own development moves off mill onto lyx/loom.
 
 package boardengine
 
@@ -64,8 +40,8 @@ const (
 )
 
 // Board is the high-level facade over a board directory.
-// Every mutating method acquires an exclusive file lock, mutates the stores,
-// and renders output files; the remote backup (commit + push) is detached.
+// Every mutating method acquires an exclusive file lock, mutates the stores, and renders output files;
+// the remote backup (commit + push) is detached.
 type Board struct {
 	boardPath string
 	out       Outputs
@@ -202,8 +178,8 @@ func checkCrossStoreSlugsAvailable(entries []map[string]any, target, other *Stor
 	return nil
 }
 
-// UpsertTask creates or updates the task identified by fields["slug"] under the
-// write lock; field validation (allowlist, slug shape) is the store's job.
+// UpsertTask creates or updates the task identified by fields["slug"] under the write lock;
+// field validation (allowlist, slug shape) is the store's job.
 func (b *Board) UpsertTask(fields map[string]any) (Task, error) {
 	result, err := b.writeOp(tasksTarget, func(target, other *Store) (any, error) {
 		if err := checkCrossStoreSlugAvailable(fields, target, other); err != nil {
@@ -233,10 +209,10 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 	return err
 }
 
-// MergeTasks atomically removes slugs, upserts one task, and optionally applies a
-// status update. setStatus carries the pre-resolved task selector and status value;
-// pass nil to skip the status step. A status update that targets a missing task
-// causes the entire merge to fail (writeOp discards the in-memory mutation).
+// MergeTasks atomically removes slugs, upserts one task, and optionally applies a status update.
+// setStatus carries the pre-resolved task selector and status value;
+// pass nil to skip the status step.
+// A status update that targets a missing task causes the entire merge to fail (writeOp discards the in-memory mutation).
 func (b *Board) MergeTasks(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	result, err := b.writeOp(tasksTarget, func(target, other *Store) (any, error) {
 		if err := checkCrossStoreSlugAvailable(upsert, target, other); err != nil {
@@ -274,8 +250,8 @@ func (b *Board) Rerender() error {
 	return err
 }
 
-// Sync backs up pending local changes to the remote (commit + push), looping
-// until nothing is left. It is what the detached `lyx board sync` process runs;
+// Sync backs up pending local changes to the remote (commit + push), looping until nothing is left.
+// It is what the detached `lyx board sync` process runs;
 // it can also be called directly to force a synchronous backup.
 func (b *Board) Sync() error {
 	return Sync(b.boardPath, b.skipGit, b.skipPush)
@@ -333,8 +309,8 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 	return store.ListTasksFull(), nil
 }
 
-// UpsertNote creates or updates the note identified by fields["slug"] under the
-// write lock; field validation (allowlist, slug shape) is the store's job.
+// UpsertNote creates or updates the note identified by fields["slug"] under the write lock;
+// field validation (allowlist, slug shape) is the store's job.
 // Mirrors UpsertTask, targeting notesFile instead of tasksFile.
 func (b *Board) UpsertNote(fields map[string]any) (Task, error) {
 	result, err := b.writeOp(notesTarget, func(target, other *Store) (any, error) {
@@ -349,8 +325,8 @@ func (b *Board) UpsertNote(fields map[string]any) (Task, error) {
 	return result.(Task), nil
 }
 
-// SetNoteStatus sets or clears the status field of the note identified by
-// idOrSlug. Mirrors SetStatus, targeting notesFile instead of tasksFile.
+// SetNoteStatus sets or clears the status field of the note identified by idOrSlug.
+// Mirrors SetStatus, targeting notesFile instead of tasksFile.
 func (b *Board) SetNoteStatus(idOrSlug any, status *string) error {
 	_, err := b.writeOp(notesTarget, func(target, _ *Store) (any, error) {
 		return nil, target.SetStatus(idOrSlug, status)
@@ -358,8 +334,8 @@ func (b *Board) SetNoteStatus(idOrSlug any, status *string) error {
 	return err
 }
 
-// RemoveNote deletes the note by ID or slug. Mirrors RemoveTask, targeting
-// notesFile instead of tasksFile.
+// RemoveNote deletes the note by ID or slug.
+// Mirrors RemoveTask, targeting notesFile instead of tasksFile.
 func (b *Board) RemoveNote(idOrSlug any) error {
 	_, err := b.writeOp(notesTarget, func(target, _ *Store) (any, error) {
 		return nil, target.RemoveTask(idOrSlug)
@@ -367,9 +343,8 @@ func (b *Board) RemoveNote(idOrSlug any) error {
 	return err
 }
 
-// MergeNotes atomically removes slugs, upserts one note, and optionally
-// applies a status update. Mirrors MergeTasks, targeting notesFile instead of
-// tasksFile.
+// MergeNotes atomically removes slugs, upserts one note, and optionally applies a status update.
+// Mirrors MergeTasks, targeting notesFile instead of tasksFile.
 func (b *Board) MergeNotes(removeSlugs []string, upsert map[string]any, setStatus *MergeStatusUpdate) (Task, error) {
 	result, err := b.writeOp(notesTarget, func(target, other *Store) (any, error) {
 		if err := checkCrossStoreSlugAvailable(upsert, target, other); err != nil {
@@ -383,8 +358,8 @@ func (b *Board) MergeNotes(removeSlugs []string, upsert map[string]any, setStatu
 	return result.(Task), nil
 }
 
-// SetNoteDeps replaces the depends_on list for a note. Mirrors SetDeps,
-// targeting notesFile instead of tasksFile.
+// SetNoteDeps replaces the depends_on list for a note.
+// Mirrors SetDeps, targeting notesFile instead of tasksFile.
 func (b *Board) SetNoteDeps(slug string, dependsOn []string) error {
 	_, err := b.writeOp(notesTarget, func(target, _ *Store) (any, error) {
 		return nil, target.SetDeps(slug, dependsOn)
@@ -392,8 +367,8 @@ func (b *Board) SetNoteDeps(slug string, dependsOn []string) error {
 	return err
 }
 
-// UpsertNotesBatch applies multiple note upserts atomically. Mirrors
-// UpsertTasksBatch, targeting notesFile instead of tasksFile.
+// UpsertNotesBatch applies multiple note upserts atomically.
+// Mirrors UpsertTasksBatch, targeting notesFile instead of tasksFile.
 func (b *Board) UpsertNotesBatch(notes []map[string]any) error {
 	_, err := b.writeOp(notesTarget, func(target, other *Store) (any, error) {
 		if err := checkCrossStoreSlugsAvailable(notes, target, other); err != nil {
@@ -404,8 +379,8 @@ func (b *Board) UpsertNotesBatch(notes []map[string]any) error {
 	return err
 }
 
-// GetNote looks up a note by integer ID or slug string. Mirrors GetTask,
-// targeting notesFile instead of tasksFile.
+// GetNote looks up a note by integer ID or slug string.
+// Mirrors GetTask, targeting notesFile instead of tasksFile.
 func (b *Board) GetNote(idOrSlug any) (Task, bool, error) {
 	// Short-circuit if board dir does not exist
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
@@ -421,8 +396,8 @@ func (b *Board) GetNote(idOrSlug any) (Task, bool, error) {
 	return note, found, nil
 }
 
-// ListNotesBrief returns all notes enriched with computed Layer/HasProposal
-// fields. Mirrors ListTasksBrief, targeting notesFile instead of tasksFile.
+// ListNotesBrief returns all notes enriched with computed Layer/HasProposal fields.
+// Mirrors ListTasksBrief, targeting notesFile instead of tasksFile.
 func (b *Board) ListNotesBrief() ([]BriefTask, error) {
 	// Short-circuit if board dir does not exist
 	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
@@ -477,25 +452,15 @@ func taskToUpsertFields(t Task) map[string]any {
 	return fields
 }
 
-// PromoteNote moves the note identified by idOrSlug from notes.json into
-// tasks.json: it upserts the note's content into the tasks store, saves it,
-// then removes the entry from the notes store and saves that too. Built
-// directly on boardCriticalSection (not writeOp, which only saves one store)
-// because PromoteNote must save both stores, in this order.
+// PromoteNote moves the note identified by idOrSlug from notes.json into tasks.json: it upserts the note's content into the tasks store, saves it, then removes the entry from the notes store and saves that too.
+// Built directly on boardCriticalSection (not writeOp, which only saves one store) because PromoteNote must save both stores, in this order.
 //
-// Save ordering is the crash-safety contract this method exists to uphold:
-// tasksStore.Save() happens FIRST, notesStore.Save() SECOND. A crash between
-// the two saves leaves the entry present in BOTH files — recoverable, never
-// silently lost. A retry after such a crash is a plain idempotent call:
-// notesStore.GetTask still finds the note (removal never ran), and
-// tasksStore.UpsertTask finds the slug already present and takes the
-// ApplyPatch in-place-update branch (not NewTask), converging to the same
-// result; notesStore.RemoveTask then completes on the retry.
+// Save ordering is the crash-safety contract this method exists to uphold: tasksStore.Save() happens FIRST, notesStore.Save() SECOND.
+// A crash between the two saves leaves the entry present in BOTH files — recoverable, never silently lost.
+// A retry after such a crash is a plain idempotent call: notesStore.GetTask still finds the note (removal never ran), and tasksStore.UpsertTask finds the slug already present and takes the ApplyPatch in-place-update branch (not NewTask), converging to the same result;
+// notesStore.RemoveTask then completes on the retry.
 //
-// A note whose depends_on still names a notes.json-only, not-yet-promoted
-// slug is rejected by tasksStore.UpsertTask's own validateWrite
-// dangling-dependency check with no new code needed here — this is intended
-// behavior (promote dependencies first), not a gap.
+// A note whose depends_on still names a notes.json-only, not-yet-promoted slug is rejected by tasksStore.UpsertTask's own validateWrite dangling-dependency check with no new code needed here — this is intended behavior (promote dependencies first), not a gap.
 func (b *Board) PromoteNote(idOrSlug any) (Task, error) {
 	result, err := b.boardCriticalSection(func(tasksStore, notesStore *Store) (any, error) {
 		note, found := notesStore.GetTask(idOrSlug)

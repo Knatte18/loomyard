@@ -1,9 +1,7 @@
-// cli_test.go covers the reedcli cobra seam through RunCLI: bare-group
-// listing, the unknown-subcommand JSON envelope, and the built attach
-// invocation. No live tmux session is required by any test in this file;
-// the real up/add/status/down round-trip lives in smoke_test.go behind
-// //go:build smoke. Config resolution against a real fixture hub now lives
-// in cli_integration_test.go per the Test Tier Purity Invariant.
+// cli_test.go covers the reedcli cobra seam through RunCLI: bare-group listing, the unknown-subcommand JSON envelope, and the built attach invocation.
+// No live tmux session is required by any test in this file;
+// the real up/add/status/down round-trip lives in smoke_test.go behind //go:build smoke.
+// Config resolution against a real fixture hub now lives in cli_integration_test.go per the Test Tier Purity Invariant.
 
 package reedcli
 

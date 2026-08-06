@@ -20,10 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestCLINotesContract tests the JSON envelope shape and exit code behavior
-// for each happy-path notes verb: upsert, list, get, set-status, remove.
-// Each case asserts exit 0 + ok=true + the verb's distinctive field, plus a
-// notes-specific assertion distinguishing it from the task-verb behavior.
+// TestCLINotesContract tests the JSON envelope shape and exit code behavior for each happy-path notes verb: upsert, list, get, set-status, remove.
+// Each case asserts exit 0 + ok=true + the verb's distinctive field, plus a notes-specific assertion distinguishing it from the task-verb behavior.
 func TestCLINotesContract(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 

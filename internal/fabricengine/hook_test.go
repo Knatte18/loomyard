@@ -43,8 +43,7 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 	return filepath.Join(commonDir, "hooks")
 }
 
-// TestInstallPostCheckoutHook_Idempotent verifies that calling InstallPostCheckoutHook
-// twice does not duplicate the script or alter the file content after the first install.
+// TestInstallPostCheckoutHook_Idempotent verifies that calling InstallPostCheckoutHook twice does not duplicate the script or alter the file content after the first install.
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	t.Parallel()
 
@@ -87,9 +86,7 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_ChainIdempotent verifies that when a user hook exists,
-// InstallPostCheckoutHook backs it up to post-checkout.user, writes a chained wrapper
-// that references the backup, and that a second install is a no-op (sentinel already present).
+// TestInstallPostCheckoutHook_ChainIdempotent verifies that when a user hook exists, InstallPostCheckoutHook backs it up to post-checkout.user, writes a chained wrapper that references the backup, and that a second install is a no-op (sentinel already present).
 func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	t.Parallel()
 
@@ -151,12 +148,8 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_WeftResolution_Prime verifies that the hook script
-// correctly resolves the <PrimeName>-weft sibling for a prime (main) worktree
-// under fabric's suffixed branch scheme: the weft prime must sit on
-// WeftBranchName(hostBranch) to be considered in sync, not on a literal
-// host-branch-name match. A real git checkout is performed for both the
-// in-sync and diverged cases.
+// TestInstallPostCheckoutHook_WeftResolution_Prime verifies that the hook script correctly resolves the <PrimeName>-weft sibling for a prime (main) worktree under fabric's suffixed branch scheme: the weft prime must sit on WeftBranchName(hostBranch) to be considered in sync, not on a literal host-branch-name match.
+// A real git checkout is performed for both the in-sync and diverged cases.
 func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	t.Parallel()
 
@@ -202,16 +195,12 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	}
 }
 
-// TestInstallPostCheckoutHook_WeftResolution_Child verifies that the hook script
-// correctly resolves the <slug>-weft sibling for a child (non-prime) worktree
-// under fabric's suffixed branch scheme. The child worktree pair is created
-// directly via `git worktree add` (fabricengine's own Add verb lands in a later
-// batch); the weft child's branch is WeftBranchName(slug).
+// TestInstallPostCheckoutHook_WeftResolution_Child verifies that the hook script correctly resolves the <slug>-weft sibling for a child (non-prime) worktree under fabric's suffixed branch scheme.
+// The child worktree pair is created directly via `git worktree add` (fabricengine's own Add verb lands in a later batch);
+// the weft child's branch is WeftBranchName(slug).
 //
-// Note: git worktrees cannot check out a branch that is already checked out in
-// another worktree. To trigger the hook without hitting that constraint, we create
-// an extra branch in the child host and switch between it and slug while the weft
-// child stays on a third, non-overlapping branch for the diverged case.
+// Note: git worktrees cannot check out a branch that is already checked out in another worktree.
+// To trigger the hook without hitting that constraint, we create an extra branch in the child host and switch between it and slug while the weft child stays on a third, non-overlapping branch for the diverged case.
 func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	t.Parallel()
 

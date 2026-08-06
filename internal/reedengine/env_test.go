@@ -1,6 +1,4 @@
-// env_test.go verifies CleanClaudeEnv strips exactly the CLAUDECODE /
-// CLAUDE_CODE_* keys, leaves unrelated keys untouched, and reports the
-// stripped keys in environ order.
+// env_test.go verifies CleanClaudeEnv strips exactly the CLAUDECODE / CLAUDE_CODE_* keys, leaves unrelated keys untouched, and reports the stripped keys in environ order.
 
 package reedengine
 

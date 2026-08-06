@@ -15,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestList covers the porcelain parser: a fresh repo yields exactly the main
-// worktree, and additional worktrees appear after it with Main=false.
+// TestList covers the porcelain parser: a fresh repo yields exactly the main worktree,
+// and additional worktrees appear after it with Main=false.
 func TestList(t *testing.T) {
 	t.Parallel()
 
@@ -117,9 +117,7 @@ func TestList(t *testing.T) {
 	}
 }
 
-// TestList_NotAGitRepo asserts that calling List against a directory that is not
-// inside any git repository fails with an error composed from local context (the
-// source directory and git's exit code), not git's raw stderr text.
+// TestList_NotAGitRepo asserts that calling List against a directory that is not inside any git repository fails with an error composed from local context (the source directory and git's exit code), not git's raw stderr text.
 func TestList_NotAGitRepo(t *testing.T) {
 	t.Parallel()
 

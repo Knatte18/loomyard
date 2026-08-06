@@ -1,8 +1,5 @@
 // parse.go implements Parse, the strict grammar checker for model-spec strings.
-// It recognizes exactly four shapes (alias, alias[bracket], engine:model,
-// engine:model[bracket]) and rejects everything else with a loud error naming
-// the offending token or character — see docs/reference/model-spec.md for the
-// pinned grammar this file implements against.
+// It recognizes exactly four shapes (alias, alias[bracket], engine:model, engine:model[bracket]) and rejects everything else with a loud error naming the offending token or character — see docs/reference/model-spec.md for the pinned grammar this file implements against.
 
 package modelspec
 
@@ -35,9 +32,8 @@ func validateCharset(s, kind string, allowed func(rune) bool) error {
 }
 
 // Parse checks s against the strict model-spec grammar and returns the parsed Spec.
-// It recognizes four shapes: alias, alias[k=v,...], engine:model-id, and
-// engine:model-id[k=v,...]. On success, Params is nil when s had no bracket, or the
-// parsed map otherwise.
+// It recognizes four shapes: alias, alias[k=v,...], engine:model-id, and engine:model-id[k=v,...].
+// On success, Params is nil when s had no bracket, or the parsed map otherwise.
 func Parse(s string) (Spec, error) {
 	if s == "" {
 		return Spec{}, fmt.Errorf("modelspec: empty spec string")

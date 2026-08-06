@@ -1,15 +1,6 @@
-// engine_test.go drives Engine.Run against a scripted fakeRunner
-// (RoundRunner) and a scripted queuedShuttle (judge/triage/targeting),
-// mirroring internal/perchengine/run_test.go's fakeBurler/queuedShuttle
-// style but adapted to the attempt-level RoundRunner seam. Deliberately
-// scoped to what the perch differential suite CANNOT prove — that the
-// generalized loop works against a non-burler runner and that the seam
-// contract itself holds: AttemptInput population and hydration, retry/
-// triage semantics at the seam, name-parameterized diagnostics for a
-// non-perch caller, ladder + gate parity, profile validation, and the
-// profile-gated pre-round targeting capability. Untagged file: no
-// spawning — the fake CommandRunner is an in-process func (Test Tier
-// Purity Invariant).
+// engine_test.go drives Engine.Run against a scripted fakeRunner (RoundRunner) and a scripted queuedShuttle (judge/triage/targeting), mirroring internal/perchengine/run_test.go's fakeBurler/queuedShuttle style but adapted to the attempt-level RoundRunner seam.
+// Deliberately scoped to what the perch differential suite CANNOT prove — that the generalized loop works against a non-burler runner and that the seam contract itself holds: AttemptInput population and hydration, retry/ triage semantics at the seam, name-parameterized diagnostics for a non-perch caller, ladder + gate parity, profile validation, and the profile-gated pre-round targeting capability.
+// Untagged file: no spawning — the fake CommandRunner is an in-process func (Test Tier Purity Invariant).
 
 package treadleengine
 
@@ -169,12 +160,7 @@ func stringSlicesEqual2(a, b []string) bool {
 	return true
 }
 
-// TestEngine_AttemptInputPopulation proves AttemptInput is populated
-// correctly per attempt: round/attempt numbers and the RoundToken letter
-// suffix on a retry, tuning passthrough (Model/Effort/Timeout), and
-// hydration accumulating across rounds — including a failed gate file fed
-// forward — with both attempts of the same round seeing IDENTICAL
-// hydration (a retry produces no new completed round).
+// TestEngine_AttemptInputPopulation proves AttemptInput is populated correctly per attempt: round/attempt numbers and the RoundToken letter suffix on a retry, tuning passthrough (Model/Effort/Timeout), and hydration accumulating across rounds — including a failed gate file fed forward — with both attempts of the same round seeing IDENTICAL hydration (a retry produces no new completed round).
 func TestEngine_AttemptInputPopulation(t *testing.T) {
 	runDir := filepath.Join(t.TempDir(), "run")
 	gateDir := t.TempDir()
@@ -266,10 +252,8 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 	}
 }
 
-// TestEngine_RetrySemantics proves the seam's retry policy: a second
-// consecutive non-done attempt is a name-prefixed hard error (never
-// STUCK), and an asking outcome's triage call determines whether the round
-// retries (RETRY) or the block errors (GIVE_UP).
+// TestEngine_RetrySemantics proves the seam's retry policy: a second consecutive non-done attempt is a name-prefixed hard error (never STUCK),
+// and an asking outcome's triage call determines whether the round retries (RETRY) or the block errors (GIVE_UP).
 func TestEngine_RetrySemantics(t *testing.T) {
 	t.Run("second consecutive died is a name-prefixed hard error", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
@@ -348,10 +332,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 	})
 }
 
-// TestEngine_NameParameterization proves an Engine constructed with a
-// non-perch name produces diagnostics carrying that name's prefix — even
-// for the ErrBlockBusy sentinel wrap — and that errors.Is still matches the
-// shared sentinel regardless of which name produced the wrap.
+// TestEngine_NameParameterization proves an Engine constructed with a non-perch name produces diagnostics carrying that name's prefix — even for the ErrBlockBusy sentinel wrap — and that errors.Is still matches the shared sentinel regardless of which name produced the wrap.
 func TestEngine_NameParameterization(t *testing.T) {
 	runDir := filepath.Join(t.TempDir(), "run")
 
@@ -416,11 +397,7 @@ func (b *blockingRunner) RunAttempt(AttemptInput) (AttemptResult, error) {
 	return AttemptResult{}, errors.New("blockingRunner: released without a scripted result")
 }
 
-// TestEngine_LadderAndGateParity smoke-tests the milestone ladder and
-// pluggable gate carried forward unchanged by the extraction: an
-// unconditional hard-cap STUCK, a milestone rung's STOP verdict, and
-// GateCommand convergence via a fake CommandRunner that observes
-// Profile.GateDir as its cwd argument.
+// TestEngine_LadderAndGateParity smoke-tests the milestone ladder and pluggable gate carried forward unchanged by the extraction: an unconditional hard-cap STUCK, a milestone rung's STOP verdict, and GateCommand convergence via a fake CommandRunner that observes Profile.GateDir as its cwd argument.
 func TestEngine_LadderAndGateParity(t *testing.T) {
 	t.Run("hard cap stops unconditionally with no judge call", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
@@ -502,9 +479,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 	})
 }
 
-// TestEngine_ProfileValidation proves Run's fail-loud profile checks reject
-// a structurally invalid Profile before ever touching the runner: an empty
-// ProfileHash, a non-increasing RoundCaps ladder, and an illegal Gate.Mode.
+// TestEngine_ProfileValidation proves Run's fail-loud profile checks reject a structurally invalid Profile before ever touching the runner: an empty ProfileHash, a non-increasing RoundCaps ladder, and an illegal Gate.Mode.
 func TestEngine_ProfileValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -571,12 +546,8 @@ func readRunState(t *testing.T, runDir string) runState {
 	return got
 }
 
-// TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced proves (a): a judge
-// round's HandoffPath is set only when the shuttle fake actually wrote a
-// valid handoff file alongside its verdict. A judge call whose verdict
-// succeeds but never produces a handoff file still records the round's
-// JudgeVerdict — the two are independent — and leaves HandoffPath empty,
-// never an error and never STUCK from the missing handoff alone.
+// TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced proves (a): a judge round's HandoffPath is set only when the shuttle fake actually wrote a valid handoff file alongside its verdict.
+// A judge call whose verdict succeeds but never produces a handoff file still records the round's JudgeVerdict — the two are independent — and leaves HandoffPath empty, never an error and never STUCK from the missing handoff alone.
 func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 	newProfile := func() Profile {
 		return Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
@@ -775,12 +746,9 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 	}
 }
 
-// TestEngine_HandoffLifecycle_InvalidHandoffFallback proves (d): a recorded
-// handoff whose file content is corrupted (fails ParseHandoff) is a
-// fail-safe skip, never a hard stop. The loop simply behaves as if that
-// round's handoff had never been produced — the next judge call's read-set
-// falls back to the older-or-all-reviews list, and the block continues
-// (never STUCK, never an error) purely from the handoff machinery.
+// TestEngine_HandoffLifecycle_InvalidHandoffFallback proves (d): a recorded handoff whose file content is corrupted (fails ParseHandoff) is a fail-safe skip, never a hard stop.
+// The loop simply behaves as if that round's handoff had never been produced — the next judge call's read-set falls back to the older-or-all-reviews list,
+// and the block continues (never STUCK, never an error) purely from the handoff machinery.
 func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	// These fail-safe Warns reach an operator's stderr on an ordinary run
 	// (logger's default threshold IS Warn), so the engine is named "tenter"
@@ -845,11 +813,7 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 	}
 }
 
-// TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews proves (e)
-// as its own minimal case: with no handoff ever produced at all, a judge
-// call's read-set is exactly today's all-reviews list — the degrade path a
-// block with handoff-maintenance disabled (or simply never yet exercised)
-// must still behave identically to pre-handoff perch.
+// TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews proves (e) as its own minimal case: with no handoff ever produced at all, a judge call's read-set is exactly today's all-reviews list — the degrade path a block with handoff-maintenance disabled (or simply never yet exercised) must still behave identically to pre-handoff perch.
 func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T) {
 	runDir := filepath.Join(t.TempDir(), "run")
 
@@ -886,15 +850,8 @@ func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T
 	}
 }
 
-// TestEngine_JudgeSkippedRoundReadsNoHandoffFiles proves the judge read-set
-// is assembled lazily, only inside the two judge branches: a judge-skipped
-// BLOCKING round — here, the round immediately after an APPROVED round under
-// a command gate — must neither walk recorded handoff files on disk nor emit
-// their corrupt-handoff Warns, since no judge call happens. The recorded
-// handoff is corrupted mid-block, at the exact judge-skipped round's attempt
-// (fakeRunner.onCall), so any handoff read on that round would surface as a
-// "recorded handoff file unparseable" Warn in the captured log — the
-// pre-fix behavior.
+// TestEngine_JudgeSkippedRoundReadsNoHandoffFiles proves the judge read-set is assembled lazily, only inside the two judge branches: a judge-skipped BLOCKING round — here, the round immediately after an APPROVED round under a command gate — must neither walk recorded handoff files on disk nor emit their corrupt-handoff Warns, since no judge call happens.
+// The recorded handoff is corrupted mid-block, at the exact judge-skipped round's attempt (fakeRunner.onCall), so any handoff read on that round would surface as a "recorded handoff file unparseable" Warn in the captured log — the pre-fix behavior.
 func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
@@ -977,15 +934,10 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 	}
 }
 
-// TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName covers the
-// one fail-safe path that only fires when a handoff was VALID at record time
-// and became unreadable afterwards: latestValidHandoff's newest-to-oldest
-// walk. Round 2 records a well-formed handoff; the fakeRunner hook corrupts
-// that file just before round 3's attempt, so round 3's circling judge finds
-// a recorded-but-broken handoff, skips it, and degrades its read-set. These
-// Warns reach an operator's stderr at logger's default threshold during an
-// ordinary run, so they must carry the CALLING engine's name — the engine is
-// named "tenter" here precisely so a hardcoded package label would fail.
+// TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName covers the one fail-safe path that only fires when a handoff was VALID at record time and became unreadable afterwards: latestValidHandoff's newest-to-oldest walk.
+// Round 2 records a well-formed handoff;
+// the fakeRunner hook corrupts that file just before round 3's attempt, so round 3's circling judge finds a recorded-but-broken handoff, skips it, and degrades its read-set.
+// These Warns reach an operator's stderr at logger's default threshold during an ordinary run, so they must carry the CALLING engine's name — the engine is named "tenter" here precisely so a hardcoded package label would fail.
 func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
@@ -1049,13 +1001,8 @@ func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.
 	}
 }
 
-// TestEngine_PreRoundTargeting drives Profile.PreRoundTargeting through
-// Engine.Run, covering (a)-(c) and (e) of the pre-round-targeting card's
-// requirements; (d)'s "targeting shuttle error" case is covered here too,
-// with the "non-done outcome"/"missing seed file" fail-safe paths covered
-// directly against runTargeting in TestRunTargeting_FailSafe below (the
-// scripted queuedShuttle fake used here has no way to produce a non-done
-// Outcome or a claimed-done-but-unwritten output file).
+// TestEngine_PreRoundTargeting drives Profile.PreRoundTargeting through Engine.Run, covering (a)-(c) and (e) of the pre-round-targeting card's requirements;
+// (d)'s "targeting shuttle error" case is covered here too, with the "non-done outcome"/"missing seed file" fail-safe paths covered directly against runTargeting in TestRunTargeting_FailSafe below (the scripted queuedShuttle fake used here has no way to produce a non-done Outcome or a claimed-done-but-unwritten output file).
 func TestEngine_PreRoundTargeting(t *testing.T) {
 	// roundsThroughHandoff scripts a fakeRunner/queuedShuttle pair that
 	// carries a block through round 1 (BLOCKING, no judge — nothing to
@@ -1313,11 +1260,7 @@ func (f *fixedShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
 	return f.result, f.err
 }
 
-// TestRunTargeting_FailSafe proves runTargeting's fail-safe posture directly
-// against every failure path (d) names: a shuttle Run error, a non-done
-// Outcome, and a claimed-done Outcome whose seed file was never actually
-// written (or was written empty) — every path returns ("", false) rather
-// than an error, mirroring runCircling/runMilestone/runTriage.
+// TestRunTargeting_FailSafe proves runTargeting's fail-safe posture directly against every failure path (d) names: a shuttle Run error, a non-done Outcome, and a claimed-done Outcome whose seed file was never actually written (or was written empty) — every path returns ("", false) rather than an error, mirroring runCircling/runMilestone/runTriage.
 func TestRunTargeting_FailSafe(t *testing.T) {
 	tests := []struct {
 		name  string

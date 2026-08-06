@@ -1,7 +1,5 @@
-// load.go implements LoadRegistry, the models.yaml loader. It reads the
-// optional per-hub registry file via configengine.ConfigFile, validates every
-// entry against the same closed vocabularies Parse and Resolve use, and
-// merges the file onto the built-in fallback set by whole-entry replacement.
+// load.go implements LoadRegistry, the models.yaml loader.
+// It reads the optional per-hub registry file via configengine.ConfigFile, validates every entry against the same closed vocabularies Parse and Resolve use, and merges the file onto the built-in fallback set by whole-entry replacement.
 
 package modelspec
 
@@ -16,9 +14,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoadRegistry loads the models.yaml registry rooted at baseDir. An absent file
-// returns builtins() unchanged; a present file is decoded with strict validation
-// and merged onto builtins() by whole-entry replacement (no field-level merge).
+// LoadRegistry loads the models.yaml registry rooted at baseDir.
+// An absent file returns builtins() unchanged;
+// a present file is decoded with strict validation and merged onto builtins() by whole-entry replacement (no field-level merge).
 func LoadRegistry(baseDir string) (Registry, error) {
 	path := configengine.ConfigFile(baseDir, "models")
 

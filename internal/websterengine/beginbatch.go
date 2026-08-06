@@ -1,17 +1,7 @@
-// beginbatch.go implements BeginBatch, the first of webster's two bracket
-// verbs Master calls around each in-session fork: the pause and fingerprint
-// refusal gates, start-SHA capture, the idempotent per-batch model
-// assertion (the ONLY model-injection site in webster — see doc.go's
-// package comment), the previous batch's persisted digest rendered into
-// the fork prompt, and the prompt file write itself. BeginBatch never
-// touches weft (webster is weft-blind throughout) and never persists
-// deps.State itself — the caller holds the state-mutation lease
-// (AcquireStateMutation) across its whole begin-batch call and saves state
-// via SaveState once BeginBatch returns successfully, mirroring builder's
-// own weft-commit-boundary discipline. Under the flat card-list model there
-// is no deferred-verify chain and no oversized-batch escalation: BeginBatch
-// always asserts the single RoleMaster model, and there is no
-// --restart-chain surface.
+// beginbatch.go implements BeginBatch, the first of webster's two bracket verbs Master calls around each in-session fork: the pause and fingerprint refusal gates, start-SHA capture, the idempotent per-batch model assertion (the ONLY model-injection site in webster — see doc.go's package comment), the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
+// BeginBatch never touches weft (webster is weft-blind throughout) and never persists deps.State itself — the caller holds the state-mutation lease (AcquireStateMutation) across its whole begin-batch call and saves state via SaveState once BeginBatch returns successfully, mirroring builder's own weft-commit-boundary discipline.
+// Under the flat card-list model there is no deferred-verify chain and no oversized-batch escalation: BeginBatch always asserts the single RoleMaster model,
+// and there is no --restart-chain surface.
 
 package websterengine
 
@@ -30,43 +20,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrPaused is the sentinel BeginBatch returns when deps.WebsterDir's pause
-// flag is present at the batch boundary (PauseRequested).
-// Exported so a caller can distinguish the operational "paused" refusal
-// from every other begin-batch failure via errors.Is(err, ErrPaused) —
-// webster's own sentinel, independent of builder's ErrPaused, per the
-// webster-owns-its-own-domain-types decision.
+// ErrPaused is the sentinel BeginBatch returns when deps.WebsterDir's pause flag is present at the batch boundary (PauseRequested).
+// Exported so a caller can distinguish the operational "paused" refusal from every other begin-batch failure via errors.Is(err, ErrPaused) — webster's own sentinel, independent of builder's ErrPaused, per the webster-owns-its-own-domain-types decision.
 var ErrPaused = errors.New("webster: paused")
 
-// ErrFingerprintMismatch is the sentinel BeginBatch returns when the
-// on-disk plan's recomputed fingerprint disagrees with State.PlanFingerprint
-// — the same crash/resume guard builder's own spawn-batch applies, but
-// webster's own sentinel identity (webster-owns-its-own-domain-types).
+// ErrFingerprintMismatch is the sentinel BeginBatch returns when the on-disk plan's recomputed fingerprint disagrees with State.PlanFingerprint — the same crash/resume guard builder's own spawn-batch applies,
+// but webster's own sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
-// Injector is the seam BeginBatch uses to switch Master's live pane to a
-// different model: exactly (*shuttleengine.Runner).Inject's signature, so
-// production code passes a real *shuttleengine.Runner directly and tests
-// pass a fake that records every (guid, inputs) call.
+// Injector is the seam BeginBatch uses to switch Master's live pane to a different model: exactly (*shuttleengine.Runner).Inject's signature, so production code passes a real *shuttleengine.Runner directly and tests pass a fake that records every (guid, inputs) call.
 type Injector interface {
 	Inject(guid string, inputs []shuttleengine.PaneInput) error
 }
 
-// BeginDeps carries every seam BeginBatch needs, so a test can fake each one
-// independently: Plan is the already-parsed plan; Batches is the
-// batchifier-derived execution batches (see internal/batcher.Select) `run`
-// computed once at entry and threads through every bracket verb call; State
-// is the already-loaded run state BeginBatch reads and mutates; Roles is the
-// pre-flight-resolved role->model-spec map (see ResolveRoles); Config is the
-// loaded webster.yaml; Engine supplies the provider-specific
-// ModelSwitchSequence choreography; Injector is what actually types that
-// choreography into Master's pane; Reed is the live reed query surface the
-// prior-recovery-strand reclaim consults (a dead-but-live recovery record a
-// fork batch is about to overwrite); WorktreeRoot is the host repo checkout
-// BeginBatch captures HeadSHA from; Layout is the resolved Location
-// RenderForkPrompt uses for {{.worktree_root}} (filled from Layout.AnchorPath());
-// WebsterDir, ReportsDir, and PromptsDir are the lyxcwd-resolved
-// _lyx/webster, _lyx/webster/reports, and _lyx/webster/prompts directories.
+// BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently: Plan is the already-parsed plan;
+// Batches is the batchifier-derived execution batches (see internal/batcher.Select) `run` computed once at entry and threads through every bracket verb call;
+// State is the already-loaded run state BeginBatch reads and mutates;
+// Roles is the pre-flight-resolved role->model-spec map (see ResolveRoles);
+// Config is the loaded webster.yaml;
+// Engine supplies the provider-specific ModelSwitchSequence choreography;
+// Injector is what actually types that choreography into Master's pane; Reed is the live reed query surface the prior-recovery-strand reclaim consults (a dead-but-live recovery record a fork batch is about to overwrite);
+// WorktreeRoot is the host repo checkout BeginBatch captures HeadSHA from;
+// Layout is the resolved Location RenderForkPrompt uses for {{.worktree_root}} (filled from Layout.AnchorPath());
+// WebsterDir, ReportsDir, and PromptsDir are the lyxcwd-resolved _lyx/webster, _lyx/webster/reports, and _lyx/webster/prompts directories.
 type BeginDeps struct {
 	Plan         *planparser.Plan
 	Batches      []batcher.Batch
@@ -118,15 +94,8 @@ func digestSummaryLine(d *Digest) string {
 	return line
 }
 
-// BeginBatch drives one begin-batch call to completion, immediately before
-// Master forks batchNumber's implementer: the pause gate, the fingerprint
-// gate, start-SHA capture, the previous batch's persisted digest rendered
-// into the fork prompt, the prompt file write itself, and — last, so an
-// earlier failure never leaves the pane switched with nothing persisted —
-// the idempotent per-batch model assertion. The caller holds the
-// state-mutation lease across this whole call and is responsible for
-// persisting deps.State via SaveState once BeginBatch returns successfully
-// — BeginBatch itself never calls SaveState and never touches weft.
+// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the pause gate, the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, the prompt file write itself, and — last, so an earlier failure never leaves the pane switched with nothing persisted — the idempotent per-batch model assertion.
+// The caller holds the state-mutation lease across this whole call and is responsible for persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself never calls SaveState and never touches weft.
 func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if PauseRequested(deps.WebsterDir) {
 		return nil, ErrPaused

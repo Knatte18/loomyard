@@ -1,12 +1,8 @@
-// selfreport.go contains the go-github client seam and CreateIssue domain
-// function for the selfreportengine package. It holds everything from the
-// selfreport module that does not belong to the cobra command layer:
-// the NewGitHubClient seam and CreateIssue.
+// selfreport.go contains the go-github client seam and CreateIssue domain function for the selfreportengine package.
+// It holds everything from the selfreport module that does not belong to the cobra command layer: the NewGitHubClient seam and CreateIssue.
 
-// Package selfreportengine provides the domain kernel for filing GitHub issues
-// via githubclient's authenticated go-github client. It exposes CreateIssue as
-// the single entry point and NewGitHubClient as a swappable factory seam for
-// testing, keeping targetRepo unexported.
+// Package selfreportengine provides the domain kernel for filing GitHub issues via githubclient's authenticated go-github client.
+// It exposes CreateIssue as the single entry point and NewGitHubClient as a swappable factory seam for testing, keeping targetRepo unexported.
 package selfreportengine
 
 import (
@@ -37,14 +33,12 @@ const targetRepo = "Knatte18/loomyard"
 // context.Background() to keep an autonomous run from hanging.
 const createIssueTimeout = 30 * time.Second
 
-// NewGitHubClient is the seam through which CreateIssue obtains an
-// authenticated *github.Client, swappable for testing.
+// NewGitHubClient is the seam through which CreateIssue obtains an authenticated *github.Client, swappable for testing.
 var NewGitHubClient = githubclient.New
 
 // CreateIssue files a GitHub issue with the given title, optional body, and labels.
 // It returns the issue's HTML URL and issue number on success.
-// Error handling distinguishes token-resolution failures (errors.Is(err, githubclient.ErrTokenUnresolvable)),
-// network failures (*github.ErrorResponse absent), and API rejections (*github.ErrorResponse present).
+// Error handling distinguishes token-resolution failures (errors.Is(err, githubclient.ErrTokenUnresolvable)), network failures (*github.ErrorResponse absent), and API rejections (*github.ErrorResponse present).
 func CreateIssue(title string, body *string, labels []string) (url string, number int, err error) {
 	client, err := NewGitHubClient()
 	if err != nil {

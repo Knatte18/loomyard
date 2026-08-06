@@ -1,10 +1,5 @@
-// cli.go builds the cobra command tree for the shuttle module and the
-// RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "shuttle" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> reed engine -> claude
-// engine -> shuttleengine.Runner exactly once per invocation, into a
-// receiver every verb (run.go, interrupt.go, send.go) closes over, so no
-// subcommand re-resolves geometry, config, or engine construction itself.
+// cli.go builds the cobra command tree for the shuttle module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
+// The parent "shuttle" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner exactly once per invocation, into a receiver every verb (run.go, interrupt.go, send.go) closes over, so no subcommand re-resolves geometry, config, or engine construction itself.
 
 package shuttlecli
 
@@ -27,8 +22,7 @@ type shuttleCLI struct {
 }
 
 // Command returns the cobra command tree for the shuttle module.
-// The parent command carries a PersistentPreRunE that resolves geometry and engines,
-// skipping resolution when the group command itself is invoked (no git repo required).
+// The parent command carries a PersistentPreRunE that resolves geometry and engines, skipping resolution when the group command itself is invoked (no git repo required).
 func Command() *cobra.Command {
 	c := &shuttleCLI{}
 
@@ -101,8 +95,7 @@ provider specifics.`,
 	return parent
 }
 
-// RunCLI is the public seam for the shuttle module CLI,
-// delegating to clihelp.Execute for output capture.
+// RunCLI is the public seam for the shuttle module CLI, delegating to clihelp.Execute for output capture.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

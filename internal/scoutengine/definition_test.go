@@ -1,9 +1,5 @@
-// definition_test.go is the untagged, spawn-free counterpart to any future
-// definition_integration_test.go, mirroring refs_test.go's style exactly:
-// it exercises Definition's error-mapping path that does not require a
-// real language server. exec.LookPath failing for a nonexistent binary
-// happens before any subprocess is spawned, so this test needs no
-// //go:build integration tag and no installed language server.
+// definition_test.go is the untagged, spawn-free counterpart to any future definition_integration_test.go, mirroring refs_test.go's style exactly: it exercises Definition's error-mapping path that does not require a real language server.
+// exec.LookPath failing for a nonexistent binary happens before any subprocess is spawned, so this test needs no //go:build integration tag and no installed language server.
 
 package scoutengine
 

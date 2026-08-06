@@ -1,9 +1,5 @@
-// ancestry_test.go covers IsAncestor's argument-validation guard — pure
-// string-matching logic that must reject a malformed sha or a leading-dash
-// ref before ever spawning git. It is deliberately untagged (no //go:build
-// constraint) and in the internal package so it can assert no git spawn
-// happens on the rejected path, keeping it in Tier 1 alongside plain
-// `go test` per the Test Tier Purity Invariant.
+// ancestry_test.go covers IsAncestor's argument-validation guard — pure string-matching logic that must reject a malformed sha or a leading-dash ref before ever spawning git.
+// It is deliberately untagged (no //go:build constraint) and in the internal package so it can assert no git spawn happens on the rejected path, keeping it in Tier 1 alongside plain `go test` per the Test Tier Purity Invariant.
 
 package gitrepo
 
@@ -12,12 +8,7 @@ import (
 	"testing"
 )
 
-// TestIsAncestor_RejectsInvalidArgs asserts a validSHA-failing sha and a
-// leading-dash ref (which git would otherwise parse as a flag) each return
-// ErrInvalidSHA via errors.Is, without spawning git — this test's own
-// untagged Tier-1 status is the proof of that: it runs under plain
-// `go test`, with no hermetic git test-binary requirement, so a call that
-// actually reached git would fail this file's own build/run contract.
+// TestIsAncestor_RejectsInvalidArgs asserts a validSHA-failing sha and a leading-dash ref (which git would otherwise parse as a flag) each return ErrInvalidSHA via errors.Is, without spawning git — this test's own untagged Tier-1 status is the proof of that: it runs under plain `go test`, with no hermetic git test-binary requirement, so a call that actually reached git would fail this file's own build/run contract.
 func TestIsAncestor_RejectsInvalidArgs(t *testing.T) {
 	repo := New(t.TempDir())
 

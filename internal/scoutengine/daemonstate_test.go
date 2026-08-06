@@ -1,12 +1,6 @@
-// daemonstate_test.go covers daemonstate.go's state-file round-trip,
-// two-part staleness check, and its concurrent-readers-never-see-a-partial-
-// write property, plus probe.go's readiness gate. It is untagged and
-// offline: every sub-test uses t.TempDir() and in-memory fakes, except
-// sub-test (3) below (TestDaemonStale_DeadPIDIsStale), which spawns a
-// short-lived exec.Command child to obtain a confirmed-dead PID fixture,
-// mirroring internal/proc/isalive_test.go's own technique. Its spawn trips
-// the Test Tier Purity Invariant guard and is allowlisted at the file level
-// in cmd/lyx/tierpurity_test.go's allowedSpawners map.
+// daemonstate_test.go covers daemonstate.go's state-file round-trip, two-part staleness check, and its concurrent-readers-never-see-a-partial- write property, plus probe.go's readiness gate.
+// It is untagged and offline: every sub-test uses t.TempDir() and in-memory fakes, except sub-test (3) below (TestDaemonStale_DeadPIDIsStale), which spawns a short-lived exec.Command child to obtain a confirmed-dead PID fixture, mirroring internal/proc/isalive_test.go's own technique.
+// Its spawn trips the Test Tier Purity Invariant guard and is allowlisted at the file level in cmd/lyx/tierpurity_test.go's allowedSpawners map.
 
 package scoutengine
 
@@ -168,8 +162,7 @@ func TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite(t *testing.T) {
 	readerWG.Wait()
 }
 
-// TestProbe_EmptyWorkspaceSymbolResultReturnsNil asserts probe returns nil
-// when the fake server answers workspace/symbol with an empty array.
+// TestProbe_EmptyWorkspaceSymbolResultReturnsNil asserts probe returns nil when the fake server answers workspace/symbol with an empty array.
 func TestProbe_EmptyWorkspaceSymbolResultReturnsNil(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -200,9 +193,7 @@ func TestProbe_EmptyWorkspaceSymbolResultReturnsNil(t *testing.T) {
 	<-done
 }
 
-// TestProbe_NoResponseReturnsErrServerTimeout asserts probe returns an
-// ErrServerTimeout-satisfying error once its own short timeout expires,
-// when the fake server never responds.
+// TestProbe_NoResponseReturnsErrServerTimeout asserts probe returns an ErrServerTimeout-satisfying error once its own short timeout expires, when the fake server never responds.
 func TestProbe_NoResponseReturnsErrServerTimeout(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
