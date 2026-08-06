@@ -201,6 +201,7 @@ External interface batch 6 consumes: nothing new — batch 6 depends on this bat
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/lyxcwd/lyxcwd_test.go`
   - `internal/lyxcwd/lyxcwd_unit_test.go`
+  - `internal/lyxcwd/weft_test.go`
   - `internal/reedcli/cli_integration_test.go`
   - `internal/reedcli/smoke_lifecycle_test.go`
   - `internal/reedengine/contract_integration_test.go`
