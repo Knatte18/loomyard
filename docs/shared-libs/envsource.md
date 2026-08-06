@@ -1,8 +1,11 @@
 # `internal/envsource`
 
-The **single source of truth** for how environment variables enter the system. It reads the `.env` file and overlays the OS environment into a unified map.
+The **single source of truth** for how environment variables enter the system.
+It reads the `.env` file and overlays the OS environment into a unified map.
 
-**Dependency direction (Go enforces it):** `internal/envsource` is a **stdlib-only leaf** — it imports no other internal package, `lyxcwd` included. It computes the `.env` path itself (`DotEnv`, below) rather than asking another module for it. All modules that need env data call `envsource.Build()`.
+**Dependency direction (Go enforces it):** `internal/envsource` is a **stdlib-only leaf** — it imports no other internal package, `lyxcwd` included.
+It computes the `.env` path itself (`DotEnv`, below) rather than asking another module for it.
+All modules that need env data call `envsource.Build()`.
 
 ## Exported functions
 
@@ -24,7 +27,8 @@ Reads and merges environment variables from `.env` and the OS environment.
 
 **`.env` file parsing:**
 
-- Each line is split on the first `=` only; `=` may appear multiple times in the value.
+- Each line is split on the first `=` only;
+  `=` may appear multiple times in the value.
 - Lines are taken literally: values are not trimmed, no quote-stripping, no interpretation.
 - Blank lines are skipped.
 - Lines beginning with `#` (after whitespace-trim) are treated as comments and skipped.
@@ -33,7 +37,8 @@ Reads and merges environment variables from `.env` and the OS environment.
 
 **Precedence:**
 
-OS environment variables always override `.env` variables for the same key. This allows a single `lyx` invocation to override `.env` with a real process environment variable if needed:
+OS environment variables always override `.env` variables for the same key.
+This allows a single `lyx` invocation to override `.env` with a real process environment variable if needed:
 
 ```bash
 # .env contains: HOME=/old/path
@@ -44,9 +49,11 @@ lyx board status          # uses /new/path from OS env, not .env
 
 **Eager evaluation:**
 
-The entire map is built once per `Build()` call and returned; there is no lazy evaluation or incremental updates.
+The entire map is built once per `Build()` call and returned;
+there is no lazy evaluation or incremental updates.
 
-**Returns:** A map of environment variable names to values, or an error if the `.env` file cannot be read (other than ENOENT).
+**Returns:** A map of environment variable names to values,
+or an error if the `.env` file cannot be read (other than ENOENT).
 
 ## Integration with yamlengine
 
@@ -70,16 +77,20 @@ The pure engine (`yamlengine.Resolve`) has no knowledge of `.env`, OS env, or wh
 
 **Single policy entry point:**
 
-All I/O for environment variable sourcing happens in `Build()`. There is only one place to change or extend env-sourcing behavior (adding support for a different file format, env-var prefixes, secrets stores, etc.).
+All I/O for environment variable sourcing happens in `Build()`.
+There is only one place to change or extend env-sourcing behavior (adding support for a different file format, env-var prefixes, secrets stores, etc.).
 
 **OS takes precedence:**
 
-The OS environment always wins over `.env`. This matches common dotenv library behavior and keeps the highest-priority override available to users via standard process env.
+The OS environment always wins over `.env`.
+This matches common dotenv library behavior and keeps the highest-priority override available to users via standard process env.
 
 **Predictable, eager:**
 
-The map is built completely upfront, not lazily. This makes the behavior predictable and testable: no surprises from side effects during env lookup later.
+The map is built completely upfront, not lazily.
+This makes the behavior predictable and testable: no surprises from side effects during env lookup later.
 
 **Decoupled from the engine:**
 
-`envsource.Build()` does not call `yamlengine.Resolve()` or vice versa. The separation keeps both modules independent and reusable in different contexts.
+`envsource.Build()` does not call `yamlengine.Resolve()` or vice versa.
+The separation keeps both modules independent and reusable in different contexts.

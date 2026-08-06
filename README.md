@@ -1,8 +1,12 @@
 # LoomYard
 
-LoomYard (LY) is a task-orchestration system for [Claude Code](https://claude.ai/code). It manages the lifecycle of coding tasks — from triaging issues to merging finished code — using AI subagents for design, planning, implementation, and review, with each task isolated in its own git worktree.
+LoomYard (LY) is a task-orchestration system for [Claude Code](https://claude.ai/code).
+It manages the lifecycle of coding tasks — from triaging issues to merging finished code — using AI subagents for design, planning, implementation, and review, with each task isolated in its own git worktree.
 
-At its center is **`lyx`** — a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, and (in progress) the orchestrator; everything else in LY is built around it. The repo is under active development: several modules ship today, and the orchestration layers are being built out.
+At its center is **`lyx`** — a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, and (in progress) the orchestrator;
+everything else in LY is built around it.
+The repo is under active development: several modules ship today,
+and the orchestration layers are being built out.
 
 > **A re-implementation of Millhouse in Go.** LoomYard is a ground-up rebuild of [Millhouse](https://github.com/Knatte18/millhouse) — same goal (task orchestration for Claude Code with isolated worktrees and AI subagents), rebuilt in Go instead of Python: one compiled binary, deep internal tests, and a cleaner geometry/overlay model.
 
@@ -20,17 +24,26 @@ Three names for three layers, deliberately non-overlapping:
 
 - **`lyx`** — the binary/CLI (**L**oom**Y**ard e**X**ecutable): one binary with a namespaced subcommand tree (`lyx board`, `lyx fabric`, `lyx builder`, …).
 - **`loom`** — the orchestrator *module* (`lyx loom run`), a domain like `board` or `fabric` that drives a phased run.
-- **`ly`** — the skill / orchestration plugin; skills are `/ly-*`.
+- **`ly`** — the skill / orchestration plugin;
+  skills are `/ly-*`.
 
 Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous call).
 
 ## Design principles
 
-1. **Toolkit-first.** Build small, composable primitives (board, fabric, reed) before the orchestrator that ties them together.
-2. **One-shot, daemonless, file-coordinated.** A command does its work, writes JSON to stdout, and exits. Concurrent processes cooperate through files and locks, not a server.
-3. **cwd-authoritative.** Config and state resolve from the current working directory, which need not equal the git-repo root.
-4. **Correctness by tool design, not by recall.** A `lyx` command makes the correct path the path of least resistance and makes drift *detectable*, rather than relying on an operator or agent to remember a rule.
-5. **Go where it can be; LLM only for judgment.** Deterministic work — verbs, control-flow, parsing, distillation, geometry, git — is Go; an LLM handles only the judgment a program can't (review verdicts, batch implementation, an orchestrator's recovery decisions).
+1. **Toolkit-first.**
+   Build small, composable primitives (board, fabric, reed) before the orchestrator that ties them together.
+2. **One-shot, daemonless, file-coordinated.**
+   A command does its work, writes JSON to stdout, and exits.
+   Concurrent processes cooperate through files and locks, not a server.
+3. **cwd-authoritative.**
+   Config and state resolve from the current working directory, which need not equal the git-repo root.
+4. **Correctness by tool design, not by recall.**
+   A `lyx` command makes the correct path the path of least resistance and makes drift *detectable*, rather than relying on an operator or agent to remember a rule.
+5. **Go where it can be;
+   LLM only for judgment.**
+   Deterministic work — verbs, control-flow, parsing, distillation, geometry, git — is Go;
+   an LLM handles only the judgment a program can't (review verdicts, batch implementation, an orchestrator's recovery decisions).
 
 ## Weft overlay model
 
@@ -45,19 +58,26 @@ LoomYard keeps the host repo pristine by routing all its own artifacts into a co
   └── _board/                       (weft:main worktree; the task store)
 ```
 
-Each host worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`, `_raddle/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection. Two state roots with opposite lifecycles: **`_lyx/`** is durable and weft-synced (config, board, orchestration status — resume works across machines); **`.lyx/`** is ephemeral and machine-bound (live tmux runtime state, never synced).
+Each host worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`, `_raddle/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection.
+Two state roots with opposite lifecycles: **`_lyx/`** is durable and weft-synced (config, board, orchestration status — resume works across machines);
+**`.lyx/`** is ephemeral and machine-bound (live tmux runtime state, never synced).
 
-All worktree and Hub geometry resolves through a single package, `internal/hubgeometry` — the sole owner of cwd and worktree-root math. See [CONSTRAINTS.md](CONSTRAINTS.md).
+All worktree and Hub geometry resolves through a single package, `internal/hubgeometry` — the sole owner of cwd and worktree-root math.
+See [CONSTRAINTS.md](CONSTRAINTS.md).
 
 ## Modules
 
-Every user-facing module is a `lyx <module>` namespace, assembled into one cobra root. All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..."}` on failure.
+Every user-facing module is a `lyx <module>` namespace, assembled into one cobra root.
+All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..."}` on failure.
 
 **Shipped:**
 
-- **init** — scaffolds `_lyx/` and reconciles every module's config against its template (idempotent; never clobbers existing values).
+- **init** — scaffolds `_lyx/` and reconciles every module's config against its template (idempotent;
+  never clobbers existing values).
 - **board** — the task-tracker board.
-- **config** — view/edit module configs; `lyx config reconcile` reconciles all configs against their templates; `lyx config <module> --set key=value` writes values non-interactively.
+- **config** — view/edit module configs;
+  `lyx config reconcile` reconciles all configs against their templates;
+  `lyx config <module> --set key=value` writes values non-interactively.
 - **fabric** — the sole host↔weft git-coordination module, unifying topology (clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup) and weft content-sync (`status|commit|push|pull|sync`) in one command tree.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
 - **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the proof-of-concept it was built from — `muxpoc` proved the risky parts, then was deleted once `reed` shipped.)
@@ -66,17 +86,22 @@ Every user-facing module is a `lyx <module>` namespace, assembled into one cobra
 - **builder** — an LLM orchestrator over Go verbs: drives a pinned implementation plan batch by batch, spawning each batch's implementer as its own tmux strand.
 - **webster** — a fork-based sibling of `builder` with its own plan format and report contract: one long-lived Master session reads the flat card-list plan (plan-format v3, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch. `builder` stays frozen in-tree as the plan-format-v2 consumer.
 - **perch** — a generic profile-driven review-gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK`, standalone or as loom's gate between phases.
-- **burler** — one review+fix round (review → fix, no self-grading) over the shuttle file contract; composed by `perch`.
+- **burler** — one review+fix round (review → fix, no self-grading) over the shuttle file contract;
+  composed by `perch`.
 
 **In progress (design):**
 
-- **loom** — the phased orchestrator (Preflight → Discussion → Plan → Builder → Raddle → Finalize), each producing phase gated by a `perch` review. Preflight is built; Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.
+- **loom** — the phased orchestrator (Preflight → Discussion → Plan → Builder → Raddle → Finalize), each producing phase gated by a `perch` review.
+  Preflight is built;
+  Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.
 
-The internal library **proc** (cross-OS process spawn) sits under all of these; see [manifest/designs/](manifest/designs/) for the not-yet-built ones' design docs.
+The internal library **proc** (cross-OS process spawn) sits under all of these;
+see [manifest/designs/](manifest/designs/) for the not-yet-built ones' design docs.
 
 ## Orchestration stack
 
-The orchestrator is a layered stack, each layer knowing only the one below. It has this shape because agents run as **interactive tmux sessions, never headless `claude -p`** — so spawning an agent is "place a pane, launch a provider, drive it, detect completion," not a plain `exec`.
+The orchestrator is a layered stack, each layer knowing only the one below.
+It has this shape because agents run as **interactive tmux sessions, never headless `claude -p`** — so spawning an agent is "place a pane, launch a provider, drive it, detect completion," not a plain `exec`.
 
 ```
 internal/proc     spawn any OS process, cross-OS                    [OS primitive]
@@ -87,7 +112,8 @@ perch             run burler rounds on one artifact → APPROVED/STUCK [builds o
 loom              phase machine: drive each phase through a gate     [builds on perch]
 ```
 
-`builder` and `webster` branch off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a `perch`/`burler` gate loop). The whole stack runs headless (auto mode): strands exist, agents run, output files are read, nobody need watch.
+`builder` and `webster` branch off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a `perch`/`burler` gate loop).
+The whole stack runs headless (auto mode): strands exist, agents run, output files are read, nobody need watch.
 
 ## Building
 
@@ -96,11 +122,14 @@ go build ./cmd/lyx        # build the lyx binary
 go test ./...             # run the full suite (structural invariants included)
 ```
 
-`deploy.cmd` builds and installs `lyx` onto PATH. Once deployed, run `lyx init` from a worktree to scaffold its `_lyx/` config.
+`deploy.cmd` builds and installs `lyx` onto PATH.
+Once deployed, run `lyx init` from a worktree to scaffold its `_lyx/` config.
 
 ## Sandbox Hub
 
-The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, exercising the real deployed binary end to end. Build it with `sandbox/build.cmd`, run the agent suite with `sandbox/core-suite.cmd`, and collect its findings with `sandbox/fetch.cmd`. See [docs/sandbox-howto.md](docs/sandbox-howto.md) for the runbook.
+The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, exercising the real deployed binary end to end.
+Build it with `sandbox/build.cmd`, run the agent suite with `sandbox/core-suite.cmd`, and collect its findings with `sandbox/fetch.cmd`.
+See [docs/sandbox-howto.md](docs/sandbox-howto.md) for the runbook.
 
 ## Requirements
 
@@ -108,7 +137,8 @@ The **sandbox Hub** is a dedicated bench for dogfooding `lyx` against itself, ex
 - Go 1.26+
 - A resolvable GitHub token for `selfreport`: set `GH_TOKEN` or `GITHUB_TOKEN`, or have the `gh` CLI installed and authenticated (`gh auth login`) as a fallback token source — `gh` is not required when either environment variable is set
 - Git 2.42+ (for `git worktree add --orphan`)
-- tmux (for the orchestration layers; on Windows via psmux)
+- tmux (for the orchestration layers;
+  on Windows via psmux)
 
 ## Documentation
 

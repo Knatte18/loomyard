@@ -13,9 +13,14 @@ This item is the **automation layer** on top of that already-shipped primitive �
 
 ## Curation flow (carried forward from `board-weft-storage.md`)
 
-- **Anyone can add a raw note, no intake gatekeeping.** Any worktree's LLM session can add one directly; a human can add one via a GitHub issue on the `weft` repo. Requiring every spontaneous idea to go through a single owner would create friction and lose ideas from discusser/planner sessions in other worktrees.
-- **Only the orchestrating thread (running in prime) curates notes.** This is where LLM judgment is actually needed — is this note coherent, well-formed, worth keeping — and where consistency of voice/format matters.
-- **Task extraction from the manifest is a deliberate, explicit, human-triggered command** (a skill, invoked by the operator), not an autonomous background loop. It promotes a note into a task via `promote-note`, consistent with this project's general pattern of starting cautious and only removing human-in-the-loop steps once behavior is observed and trusted.
+- **Anyone can add a raw note, no intake gatekeeping.**
+  Any worktree's LLM session can add one directly;
+  a human can add one via a GitHub issue on the `weft` repo.
+  Requiring every spontaneous idea to go through a single owner would create friction and lose ideas from discusser/planner sessions in other worktrees.
+- **Only the orchestrating thread (running in prime) curates notes.**
+  This is where LLM judgment is actually needed — is this note coherent, well-formed, worth keeping — and where consistency of voice/format matters.
+- **Task extraction from the manifest is a deliberate, explicit, human-triggered command** (a skill, invoked by the operator), not an autonomous background loop.
+  It promotes a note into a task via `promote-note`, consistent with this project's general pattern of starting cautious and only removing human-in-the-loop steps once behavior is observed and trusted.
 
 ## What this item still needs to design
 

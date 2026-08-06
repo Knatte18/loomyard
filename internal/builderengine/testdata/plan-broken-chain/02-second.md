@@ -7,8 +7,7 @@ chain-end: 2
 
 ## Intent
 
-Declares chain-end: 2 — itself — which also carries verify: deferred, so the
-"target is not itself deferred" rule is tripped.
+Declares chain-end: 2 — itself — which also carries verify: deferred, so the "target is not itself deferred" rule is tripped.
 
 ## Scope
 
@@ -19,9 +18,5 @@ Declares chain-end: 2 — itself — which also carries verify: deferred, so the
 ### Card 02.1 — placeholder
 
 **What:** Nothing — this fixture exists only to trip chain-end-dangling.
-**Context:** none
-**Edits:**
-- `02-second.md`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
+**Context:** none **Edits:**
+- `02-second.md` **Creates:** none **Deletes:** none **Moves:** none

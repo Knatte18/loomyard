@@ -7,9 +7,8 @@ chain-end: 4
 
 ## Intent
 
-First half of an atomic-refactor chain: extracts the row-envelope mapper into its own
-file. This intermediate state does not compile cleanly on its own, so verify is
-deferred to batch 04, the chain end.
+First half of an atomic-refactor chain: extracts the row-envelope mapper into its own file.
+This intermediate state does not compile cleanly on its own, so verify is deferred to batch 04, the chain end.
 
 ## Scope
 
@@ -19,11 +18,6 @@ deferred to batch 04, the chain end.
 
 ### Card 03.1 — extract mapper skeleton
 
-**What:** Move the row-to-envelope mapping function into its own file, leaving call
-sites pointing at the old location temporarily.
-**Context:** none
-**Edits:**
-- `03-refactor-a.md`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
+**What:** Move the row-to-envelope mapping function into its own file, leaving call sites pointing at the old location temporarily.
+**Context:** none **Edits:**
+- `03-refactor-a.md` **Creates:** none **Deletes:** none **Moves:** none

@@ -1,20 +1,33 @@
 # Running the tests
 
-How to run Loomyard's Go test suite, what the two tiers mean, and the timing harness that produces the tables in [test-suite-timing.md](test-suite-timing.md). For the recorded numbers themselves, see that file — this one is the "how", not the "how fast".
+How to run Loomyard's Go test suite, what the two tiers mean,
+and the timing harness that produces the tables in [test-suite-timing.md](test-suite-timing.md).
+For the recorded numbers themselves, see that file — this one is the "how", not the "how fast".
 
 ## The two tiers
 
-The suite is split into two tiers, and which tier a test belongs to is decided by one rule: **a test earns an opt-in build tag for touching a real substrate, never merely for being slow.** "Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, real cross-compilation, and real external-binary spawn (a language-server process, or similar — the category the `scout` tag exists for). A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in Tier 1.
+The suite is split into two tiers, and which tier a test belongs to is decided by one rule: **a test earns an opt-in build tag for touching a real substrate, never merely for being slow.**
+"Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, real cross-compilation, and real external-binary spawn (a language-server process, or similar — the category the `scout` tag exists for).
+A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in Tier 1.
 
-- **Tier 1 — the default offline loop** (`go test ./...`): pure-unit and static-guard tests only. No `git init` / `git worktree add` / fixture-tree copies anywhere in an untagged test — that is the tier's **premise** (a cheap, expected-to-fail `git rev-parse` on an error path, e.g. via `hubgeometry.Resolve`, is still allowed and does not violate it). Machine- enforced by `cmd/lyx/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`). Fast again: measured median ~29 s on Windows (Cortex XDR), ~1 s on Linux. This is what you run constantly and what must stay fast.
-- **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real `tmux` sessions, real cross-compilation, or real external-binary spawn. It is slow **by design** — it does far more work. Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux. Numbers and the full where-the-time-goes analysis: [test-suite-timing.md](test-suite-timing.md#current-best-times). Every git-spawning test package runs under the **Hermetic Git Test Environment Invariant** (`CONSTRAINTS.md`): a `TestMain` wires in `lyxtest.HermeticGitEnv()` before any test spawns git, which is what keeps this tier's git processes from inheriting the operator's global `~/.gitconfig` (and the `fsmonitor--daemon`/auto-`maintenance` spawns that config can trigger) — see [fixture-copy.md](fixture-copy.md) for the measured before/after.
+- **Tier 1 — the default offline loop** (`go test ./...`): pure-unit and static-guard tests only.
+  No `git init` / `git worktree add` / fixture-tree copies anywhere in an untagged test — that is the tier's **premise** (a cheap, expected-to-fail `git rev-parse` on an error path, e.g. via `hubgeometry.Resolve`, is still allowed and does not violate it).
+  Machine- enforced by `cmd/lyx/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`).
+  Fast again: measured median ~29 s on Windows (Cortex XDR), ~1 s on Linux.
+  This is what you run constantly and what must stay fast.
+- **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real `tmux` sessions, real cross-compilation, or real external-binary spawn.
+  It is slow **by design** — it does far more work.
+  Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux.
+  Numbers and the full where-the-time-goes analysis: [test-suite-timing.md](test-suite-timing.md#current-best-times).
+  Every git-spawning test package runs under the **Hermetic Git Test Environment Invariant** (`CONSTRAINTS.md`): a `TestMain` wires in `lyxtest.HermeticGitEnv()` before any test spawns git, which is what keeps this tier's git processes from inheriting the operator's global `~/.gitconfig` (and the `fsmonitor--daemon`/auto-`maintenance` spawns that config can trigger) — see [fixture-copy.md](fixture-copy.md) for the measured before/after.
 
 > **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside the default loop and made it slow (~82 s historically); the two-tier split moved that work behind `-tags integration`. Same work, now off the default path. When reading a timing table, compare _down_ a column (is this package fast in the loop I run?), never _across_ (Tier 1 vs Tier 2 are not comparable — Tier 2 is the superset).
 
 Two further opt-in tags exist alongside `integration`, each gating a distinct kind of live substrate rather than widening `integration` itself:
 
 - **`scout`** (`go test -tags scout ./...`): the real-external-binary-spawn substrate category above, split out on its own tag because it needs a language-server binary (`gopls`/`pyright`/`csharp-ls`, depending on language) on `$PATH` that most environments don't have installed — see the `## Commands` example below.
-- **`smoke`** (`go test -tags smoke ./...`): a third, pre-existing opt-in tag, distinct from both `integration` and `scout`. It requires a real logged-in `claude` session on `$PATH` and exercises live agent-session behavior no hermetic test can cover.
+- **`smoke`** (`go test -tags smoke ./...`): a third, pre-existing opt-in tag, distinct from both `integration` and `scout`.
+  It requires a real logged-in `claude` session on `$PATH` and exercises live agent-session behavior no hermetic test can cover.
 
 ## Commands
 
@@ -38,11 +51,16 @@ go test ./internal/fabricengine -count=1 -v
 go test -tags scout ./... -count=1
 ```
 
-`-count=1` disables the test cache so every run is honest; without it, unchanged packages report `(cached)` in ~0 s and the numbers lie.
+`-count=1` disables the test cache so every run is honest;
+without it, unchanged packages report `(cached)` in ~0 s and the numbers lie.
 
 ## Timing harness — `cmd/testtiming`
 
-The simplest way to get a sorted timing table is the bundled harness. It runs the suite and prints per-package times, the measured wall-clock, and the slowest top-level tests. No arguments needed; it works the same outside any editor.
+The simplest way to get a sorted timing table is the bundled harness.
+It runs the suite and prints per-package times, the measured wall-clock,
+and the slowest top-level tests.
+No arguments needed;
+it works the same outside any editor.
 
 ```sh
 # Fast: Tier 1 (offline). Windows ~29 s / Linux ~1 s (median of 3, 2026-07-13).
@@ -55,7 +73,8 @@ go run ./cmd/testtiming -full
 go run ./cmd/testtiming -full -top 30
 ```
 
-It shells out to `go test ./... -json -count=1` (adding `-tags integration` in full mode), so it needs nothing beyond a working Go toolchain. Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).
+It shells out to `go test ./... -json -count=1` (adding `-tags integration` in full mode), so it needs nothing beyond a working Go toolchain.
+Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).
 
 Example (Tier 1):
 
@@ -80,6 +99,9 @@ RESULT: all packages passed
 
 If the suite feels slow locally, the highest-leverage levers, in order:
 
-1. **Rely on the test cache** — drop `-count=1` for iterative runs; only changed packages re-run, so a no-op `go test ./...` returns in ~1 s.
+1. **Rely on the test cache** — drop `-count=1` for iterative runs;
+   only changed packages re-run, so a no-op `go test ./...` returns in ~1 s.
 2. **Scope to the package you're editing** — `go test ./internal/fabricengine` beats the whole repo.
-3. **Stay in the offline tier.** Tier 1 (`go test ./...`) spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#current-best-times)). Only reach for `-tags integration` when you are changing fabric / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.
+3. **Stay in the offline tier.**
+   Tier 1 (`go test ./...`) spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#current-best-times)).
+   Only reach for `-tags integration` when you are changing fabric / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.
