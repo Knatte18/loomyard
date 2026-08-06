@@ -212,7 +212,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	if err != nil {
 		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
 	}
-	weftBase := filepath.Join(l.WeftWorktree(), l.AnchorRel)
+	weftBase := filepath.Join(WeftWorktree(l), l.AnchorRel)
 
 	return CloneResult{
 		HubPath:  hubPath,

@@ -49,13 +49,13 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	f, err := fabricengine.New(l.WorktreePath(), l.WeftWorktree())
+	f, err := fabricengine.New(l.WorktreePath(), fabricengine.WeftWorktree(l))
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
 
 	// Record one correspondence on the original branch via a real scoped commit.
-	if err := os.WriteFile(filepath.Join(l.WeftWorktree(), "_lyx", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(fabricengine.WeftWorktree(l), "_lyx", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
 		t.Fatalf("write weft config: %v", err)
 	}
 	warpSHA, err := f.Warp.CurrentSHA()
@@ -77,7 +77,7 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	if _, err := top.Checkout(l, targetBranch); err != nil {
 		t.Fatalf("Checkout(%q): %v", targetBranch, err)
 	}
-	if got := currentBranchOf(t, l.WeftWorktree()); got != fabricengine.WeftBranchName(targetBranch) {
+	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != fabricengine.WeftBranchName(targetBranch) {
 		t.Fatalf("weft branch after Checkout = %q; want %q", got, fabricengine.WeftBranchName(targetBranch))
 	}
 

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestWeftBranchName covers the uniform <host>/<host>-weft scheme across the
@@ -32,13 +31,13 @@ func TestWeftBranchName(t *testing.T) {
 }
 
 // TestWeftBranchName_RoundTripsWithWeftHostSlug asserts that
-// lyxcwd.WeftHostSlug, the documented inverse, recovers the original host
+// fabricengine.WeftHostSlug, the documented inverse, recovers the original host
 // branch from every WeftBranchName output.
 func TestWeftBranchName_RoundTripsWithWeftHostSlug(t *testing.T) {
 	hostBranches := []string{"main", "hanf/foo", "foo"}
 	for _, host := range hostBranches {
 		weft := fabricengine.WeftBranchName(host)
-		gotHost, ok := lyxcwd.WeftHostSlug(weft)
+		gotHost, ok := fabricengine.WeftHostSlug(weft)
 		if !ok {
 			t.Errorf("WeftHostSlug(%q) ok = false; want true", weft)
 			continue

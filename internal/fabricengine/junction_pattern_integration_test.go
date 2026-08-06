@@ -72,7 +72,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	target := l.WeftLyxDirFor(slug)
+	target := fabricengine.WeftLyxDirFor(l, slug)
 
 	// The weft-prime template pre-seeds _lyx/config/placeholder; remove the
 	// whole target directory so it genuinely does not exist, matching the
@@ -384,7 +384,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 			name:      "Lyx",
 			dirName:   configengine.LyxDirName,
 			linkFor:   func(l *lyxcwd.Location) string { return l.HostLyxLinkHere() },
-			targetFor: func(l *lyxcwd.Location) string { return l.WeftLyxDir() },
+			targetFor: func(l *lyxcwd.Location) string { return fabricengine.WeftLyxDir(l) },
 		},
 		{
 			name:      "Pattern",
@@ -468,7 +468,7 @@ func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	var found bool
 	for _, pair := range result.Pairs {
 		if pair.WeftWorktree != filepath.ToSlash(weftPath) {

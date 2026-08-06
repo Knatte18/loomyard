@@ -24,11 +24,39 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
+
+// WeftWorktreePath returns the path to a sibling weft worktree with the given slug.
+func WeftWorktreePath(l *lyxcwd.Location, slug string) string {
+	return weftname.SiblingPath(l.HubPath, slug)
+}
+
+// WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
+// It is the junction target paired by spawn seeds and pairs with HostLyxLink(slug).
+func WeftLyxDirFor(l *lyxcwd.Location, slug string) string {
+	return filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, configengine.LyxDirName)
+}
+
+// WeftHostSlug parses a weft sibling directory name and returns the host slug it corresponds to.
+// It reports whether name ends with weftname.Suffix AND the stripped prefix is non-empty.
+func WeftHostSlug(name string) (slug string, ok bool) {
+	if !strings.HasSuffix(name, weftname.Suffix) {
+		return "", false
+	}
+	s := strings.TrimSuffix(name, weftname.Suffix)
+	if s == "" {
+		return "", false
+	}
+	return s, true
+}
 
 // weftRepoExists reports whether a weft repo exists and is a valid git
 // repository. An unresolvable weft repo root (PrimeName failure) reports
@@ -74,7 +102,7 @@ func weftBranchExists(l *lyxcwd.Location, branch string) bool {
 // createWeftWorktree creates a new weft worktree on branch, forking from
 // startPoint to preserve the merge-base for future squash-merge-back.
 func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) error {
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := WeftWorktreePath(l, slug)
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
@@ -98,7 +126,7 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 		return nil
 	}
 
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := WeftWorktreePath(l, slug)
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"push", "-u", "origin", branch},
 		weftPath,
@@ -137,7 +165,7 @@ func removeJunctionRecords(junctions []lyxcwd.HostJunction) error {
 // prunes stale worktree entries. Returns the first error encountered, or nil
 // if all steps succeed.
 func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, deleteBranch bool) error {
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := WeftWorktreePath(l, slug)
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)

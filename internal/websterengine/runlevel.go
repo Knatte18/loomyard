@@ -126,7 +126,7 @@ type RunDeps struct {
 	// Bisector is the integration stage's bisect-repo seam: nil (the
 	// production default) makes runIntegrationStage construct a real
 	// *fabricengine.Fabric inline via
-	// fabricengine.New(deps.Layout.WorktreePath(), deps.Layout.WeftWorktree()),
+	// fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout)),
 	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
 	// so the bisect path never requires a paired weft fixture.
 	Bisector WarpBisector

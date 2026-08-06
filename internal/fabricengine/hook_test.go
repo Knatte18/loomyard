@@ -230,7 +230,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", childHost, "-b", slug)
 
 	weftBranch := WeftBranchName(slug)
-	childWeft := l.WeftWorktreePath(slug)
+	childWeft := WeftWorktreePath(l, slug)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
 	// Install the hook (affects the shared common .git/hooks for the host repo,

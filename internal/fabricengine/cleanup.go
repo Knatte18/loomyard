@@ -8,7 +8,7 @@
 //   - apply == true && force == true → also delete gate-protected task branches.
 //   - force == true && !apply       → report only; force does not imply apply.
 //
-// A weft branch's host sibling is recovered via lyxcwd.WeftHostSlug(branch) —
+// A weft branch's host sibling is recovered via WeftHostSlug(branch) —
 // inverting WeftBranchName's suffix. The weft repo may also hold non-suffixed weft
 // branches inherited from history predating fabric's uniform naming scheme;
 // WeftHostSlug rejects those (ok == false), and by definition a non-suffixed weft
@@ -118,7 +118,7 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult
 
 		// Recover the host branch by inverting WeftBranchName's suffix.
 		// Non-fabric-managed branches are reported but never deleted.
-		hostBranch, ok := lyxcwd.WeftHostSlug(branch)
+		hostBranch, ok := WeftHostSlug(branch)
 		if !ok {
 			result.Entries = append(result.Entries, CleanupBranchEntry{
 				Branch:    branch,

@@ -109,7 +109,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 
 	// Assert _lyx/config/fabric.yaml is tracked/committed in the weft worktree.
-	weftWorktreePath := f.Layout.WeftWorktreePath(slug)
+	weftWorktreePath := fabricengine.WeftWorktreePath(f.Layout, slug)
 	configRelPath := configengine.ConfigFile(".", "fabric")
 	configPath := filepath.Join(weftWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).

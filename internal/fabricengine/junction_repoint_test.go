@@ -50,7 +50,7 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
 	link := l.HostLyxLink(slug)
-	correctTarget := l.WeftLyxDirFor(slug)
+	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
 	// Point the junction at an unrelated real directory instead.
 	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-lyx-dir")
@@ -152,7 +152,7 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
 	link := l.HostLyxLink(slug)
-	correctTarget := l.WeftLyxDirFor(slug)
+	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
 	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist")
 	if err := os.RemoveAll(link); err != nil {

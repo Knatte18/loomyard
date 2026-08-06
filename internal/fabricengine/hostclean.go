@@ -25,8 +25,8 @@ func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
 	}
 
 	var weftReason string
-	if _, statErr := os.Stat(l.WeftWorktree()); statErr == nil {
-		weftReason, err = dirtyReason("git status --porcelain", l.WeftWorktree())
+	if _, statErr := os.Stat(WeftWorktree(l)); statErr == nil {
+		weftReason, err = dirtyReason("git status --porcelain", WeftWorktree(l))
 		if err != nil {
 			return false, "", err
 		}

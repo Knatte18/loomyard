@@ -35,7 +35,7 @@ type CheckoutResult struct {
 // and refreshing the correspondence index — rolling back both sides on failure to preserve
 // all-or-nothing semantics.
 func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, error) {
-	weftWorktree := l.WeftWorktree()
+	weftWorktree := WeftWorktree(l)
 
 	// Refuse if the weft worktree is dirty to prevent half-switched pairs.
 	weftStatus, _, exitCode, err := gitexec.RunGit(
@@ -130,7 +130,7 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, 
 // switchOrForkWeft switches or forks the weft branch to match the host target,
 // reporting whether a new branch was created (forked) so rollback can clean it up.
 func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked bool, err error) {
-	weftWorktree := l.WeftWorktree()
+	weftWorktree := WeftWorktree(l)
 	weftBranch := WeftBranchName(branch)
 
 	if weftBranchExists(l, weftBranch) {
@@ -182,9 +182,9 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 func (t *Topology) rollbackSwitch(l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
 	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreePath())
 	if originalWeftBranch != "" {
-		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, l.WeftWorktree())
+		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, WeftWorktree(l))
 	}
 	if forkedWeftBranch != "" {
-		_, _, _, _ = gitexec.RunGit([]string{"branch", "-D", forkedWeftBranch}, l.WeftWorktree())
+		_, _, _, _ = gitexec.RunGit([]string{"branch", "-D", forkedWeftBranch}, WeftWorktree(l))
 	}
 }

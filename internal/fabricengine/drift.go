@@ -38,7 +38,7 @@ func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	hostBranch := strings.TrimSpace(hostOut)
 
 	// Verify the weft worktree's current branch via rev-parse --abbrev-ref HEAD.
-	weftWorktree := l.WeftWorktree()
+	weftWorktree := WeftWorktree(l)
 	weftOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		weftWorktree,

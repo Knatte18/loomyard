@@ -51,7 +51,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	}
 
 	if !force {
-		weftTarget := l.WeftWorktreePath(slug)
+		weftTarget := WeftWorktreePath(l, slug)
 		stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, weftTarget)
 		if err != nil {
 		} else if exitCode == 0 && strings.TrimSpace(stdout) != "" {

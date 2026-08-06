@@ -59,7 +59,7 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fixture.Layout.WeftWorktree())
+	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
 		t.Fatalf("fabricengine.New: %v", err)
 	}

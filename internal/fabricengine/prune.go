@@ -58,7 +58,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 		hostPath = filepath.Clean(hostPath)
 		slug := filepath.Base(hostPath)
 
-		weftPath := l.WeftWorktreePath(slug)
+		weftPath := WeftWorktreePath(l, slug)
 
 		_, hostStatErr := os.Stat(hostPath)
 		hostMissing := hostStatErr != nil
@@ -93,7 +93,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 
 		name := dirEntry.Name()
 
-		hostSlug, ok := lyxcwd.WeftHostSlug(name)
+		hostSlug, ok := WeftHostSlug(name)
 		if !ok {
 			continue
 		}

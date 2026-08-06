@@ -1,5 +1,11 @@
-// weft_test.go covers the weft geometry methods on Location and verifies the
-// host↔weft junction pairing for the AnchorRel "." and subpath cases.
+// weft_test.go covers the host-side junction geometry methods still owned by
+// Location — HostLyxLink/HostLyxLinkHere and HostJunctions — verifying the
+// host↔weft junction pairing for the AnchorRel "." and subpath cases. The
+// weft-side accessors (WeftWorktree, WeftWorktreePath, WeftLyxDir,
+// WeftLyxDirFor) relocated to internal/fabricengine; their coverage lives in
+// fabricengine/weftpaths_test.go now. This file computes the weft-sibling
+// half of each pairing assertion via weftname.SiblingPath directly, the same
+// way the relocated accessors themselves are built.
 
 package lyxcwd_test
 
@@ -8,65 +14,44 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// TestWeftGeometryMethods covers the eight weft geometry methods with both
-// AnchorRel "." (root) and subpath cases, verifying AnchorRel-mirroring and junction pairing.
-func TestWeftGeometryMethods(t *testing.T) {
+// TestHostLyxLinkMethods covers HostLyxLink(slug) and HostLyxLinkHere() with
+// both AnchorRel "." (root) and subpath cases, verifying AnchorRel-mirroring
+// and junction pairing against the weft-sibling worktree.
+func TestHostLyxLinkMethods(t *testing.T) {
 	tests := []struct {
-		name    string
-		hub     string
-		slug    string
-		relPath string
-		// Expected results for the remaining seven methods (computed in the
-		// test); WeftRepoRoot's replacement lives in fabricengine now, and its
-		// property is held by that package's own retargeted test callers.
-		wantWeftWorktree     string
-		wantWeftWorktreePath string
-		wantWeftLyxDir       string
-		wantWeftLyxDirFor    string
-		wantWeftRaddleDir    string
-		wantHostLyxLink      string
-		wantHostLyxLinkHere  string
+		name                string
+		hub                 string
+		slug                string
+		relPath             string
+		wantHostLyxLink     string
+		wantHostLyxLinkHere string
 	}{
 		{
-			name:                 "/h /h/main feat . case",
-			hub:                  "/h",
-			slug:                 "x",
-			relPath:              ".",
-			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
-			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "_lyx"),
-			wantWeftRaddleDir:    filepath.Join("/h", "feat-weft", "_raddle"),
-			wantHostLyxLink:      filepath.Join("/h", "x", "_lyx"),
-			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "_lyx"),
+			name:                "/h /h/main feat . case",
+			hub:                 "/h",
+			slug:                "x",
+			relPath:             ".",
+			wantHostLyxLink:     filepath.Join("/h", "x", "_lyx"),
+			wantHostLyxLinkHere: filepath.Join("/h", "feat", "_lyx"),
 		},
 		{
-			name:                 "/h /h/main feat sub case",
-			hub:                  "/h",
-			slug:                 "x",
-			relPath:              "sub",
-			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
-			wantWeftWorktreePath: filepath.Join("/h", "x-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "x-weft", "sub", "_lyx"),
-			wantWeftRaddleDir:    filepath.Join("/h", "feat-weft", "sub", "_raddle"),
-			wantHostLyxLink:      filepath.Join("/h", "x", "sub", "_lyx"),
-			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "sub", "_lyx"),
+			name:                "/h /h/main feat sub case",
+			hub:                 "/h",
+			slug:                "x",
+			relPath:             "sub",
+			wantHostLyxLink:     filepath.Join("/h", "x", "sub", "_lyx"),
+			wantHostLyxLinkHere: filepath.Join("/h", "feat", "sub", "_lyx"),
 		},
 		{
-			name:                 "/h /h/main feat sub/dir case",
-			hub:                  "/h",
-			slug:                 "y",
-			relPath:              "sub/dir",
-			wantWeftWorktree:     filepath.Join("/h", "feat-weft"),
-			wantWeftWorktreePath: filepath.Join("/h", "y-weft"),
-			wantWeftLyxDir:       filepath.Join("/h", "feat-weft", "sub/dir", "_lyx"),
-			wantWeftLyxDirFor:    filepath.Join("/h", "y-weft", "sub/dir", "_lyx"),
-			wantWeftRaddleDir:    filepath.Join("/h", "feat-weft", "sub/dir", "_raddle"),
-			wantHostLyxLink:      filepath.Join("/h", "y", "sub/dir", "_lyx"),
-			wantHostLyxLinkHere:  filepath.Join("/h", "feat", "sub/dir", "_lyx"),
+			name:                "/h /h/main feat sub/dir case",
+			hub:                 "/h",
+			slug:                "y",
+			relPath:             "sub/dir",
+			wantHostLyxLink:     filepath.Join("/h", "y", "sub/dir", "_lyx"),
+			wantHostLyxLinkHere: filepath.Join("/h", "feat", "sub/dir", "_lyx"),
 		},
 	}
 
@@ -76,31 +61,6 @@ func TestWeftGeometryMethods(t *testing.T) {
 				HubPath:      tt.hub,
 				WorktreeName: "feat",
 				AnchorRel:    tt.relPath,
-			}
-
-			// Test WeftWorktree()
-			if got := loc.WeftWorktree(); got != tt.wantWeftWorktree {
-				t.Errorf("WeftWorktree() = %q; want %q", got, tt.wantWeftWorktree)
-			}
-
-			// Test WeftWorktreePath(slug)
-			if got := loc.WeftWorktreePath(tt.slug); got != tt.wantWeftWorktreePath {
-				t.Errorf("WeftWorktreePath(%q) = %q; want %q", tt.slug, got, tt.wantWeftWorktreePath)
-			}
-
-			// Test WeftLyxDir()
-			if got := loc.WeftLyxDir(); got != tt.wantWeftLyxDir {
-				t.Errorf("WeftLyxDir() = %q; want %q", got, tt.wantWeftLyxDir)
-			}
-
-			// Test WeftLyxDirFor(slug)
-			if got := loc.WeftLyxDirFor(tt.slug); got != tt.wantWeftLyxDirFor {
-				t.Errorf("WeftLyxDirFor(%q) = %q; want %q", tt.slug, got, tt.wantWeftLyxDirFor)
-			}
-
-			// Test WeftRaddleDir()
-			if got := loc.WeftRaddleDir(); got != tt.wantWeftRaddleDir {
-				t.Errorf("WeftRaddleDir() = %q; want %q", got, tt.wantWeftRaddleDir)
 			}
 
 			// Test HostLyxLink(slug)
@@ -113,17 +73,17 @@ func TestWeftGeometryMethods(t *testing.T) {
 				t.Errorf("HostLyxLinkHere() = %q; want %q", got, tt.wantHostLyxLinkHere)
 			}
 
-			// Verify junction pairing: HostLyxLink(slug) and WeftLyxDirFor(slug) are
-			// siblings differing only by the -weft suffix on the worktree dir
+			// Verify junction pairing: HostLyxLink(slug) and the weft sibling's
+			// _lyx directory are siblings differing only by the -weft suffix on
+			// the worktree dir.
 			hostWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
-			weftWtName := filepath.Base(loc.WeftWorktreePath(tt.slug))
+			weftWtName := filepath.Base(weftname.SiblingPath(loc.HubPath, tt.slug))
 
-			// The junction pair should differ only by -weft in the worktree name
 			if hostWtName != tt.slug {
 				t.Errorf("WorktreePath(%q) base = %q; want %q", tt.slug, hostWtName, tt.slug)
 			}
 			if weftWtName != tt.slug+"-weft" {
-				t.Errorf("WeftWorktreePath(%q) base = %q; want %q", tt.slug, weftWtName, tt.slug+"-weft")
+				t.Errorf("weftname.SiblingPath(%q) base = %q; want %q", tt.slug, weftWtName, tt.slug+"-weft")
 			}
 
 			// Verify HostLyxLinkHere is based on WorktreePath+AnchorRel (documented intent).
@@ -138,7 +98,7 @@ func TestWeftGeometryMethods(t *testing.T) {
 
 // TestHostJunctions verifies that HostJunctions(slug, names) returns one record per name
 // in names, in names's own input order, with Link/Target correctly composed from the
-// Location's WorktreePath/WeftWorktreePath and AnchorRel, at AnchorRel == "." and at a nested
+// Location's WorktreePath/weft-sibling path and AnchorRel, at AnchorRel == "." and at a nested
 // AnchorRel, for an empty names slice, a 3-name slice, and a reversed 2-name slice — and that
 // no entry's Name equals _raddle for the default two-name pathspec.
 func TestHostJunctions(t *testing.T) {
@@ -220,7 +180,7 @@ func TestHostJunctions(t *testing.T) {
 				if got.Link != wantLink {
 					t.Errorf("HostJunctions(%q, %v)[%d].Link = %q; want %q", tt.slug, tt.names, i, got.Link, wantLink)
 				}
-				wantTarget := filepath.Join(loc.WeftWorktreePath(tt.slug), loc.AnchorRel, wantName)
+				wantTarget := filepath.Join(weftname.SiblingPath(loc.HubPath, tt.slug), loc.AnchorRel, wantName)
 				if got.Target != wantTarget {
 					t.Errorf("HostJunctions(%q, %v)[%d].Target = %q; want %q", tt.slug, tt.names, i, got.Target, wantTarget)
 				}

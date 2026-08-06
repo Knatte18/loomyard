@@ -113,7 +113,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", weftRepoRoot)
 	}
 
-	weftTarget := l.WeftWorktreePath(slug)
+	weftTarget := WeftWorktreePath(l, slug)
 	if _, err := os.Stat(weftTarget); !os.IsNotExist(err) {
 		return AddResult{}, fmt.Errorf("weft worktree directory already exists: %s", weftTarget)
 	}
@@ -146,7 +146,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		log.Printf("fabric add: post-checkout hook install (non-fatal): %v", hookErr)
 	}
 
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := WeftWorktreePath(l, slug)
 	if weftBranchAlreadyExists {
 		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
 		if weftRepoRootErr != nil {

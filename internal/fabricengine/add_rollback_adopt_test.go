@@ -120,8 +120,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 
 	// Everything Add itself created is rolled back: no weft worktree dir, no
 	// host worktree dir, no host branch.
-	if _, err := os.Stat(l.WeftWorktreePath(slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s", l.WeftWorktreePath(slug))
+	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("host worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
@@ -154,7 +154,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 		link   string
 		target string
 	}{
-		{"_lyx", l.HostLyxLink(slug), l.WeftLyxDirFor(slug)},
+		{"_lyx", l.HostLyxLink(slug), fabricengine.WeftLyxDirFor(l, slug)},
 		{"_pattern", l.HostPatternLink(slug), l.WeftPatternDirFor(slug)},
 	} {
 		isLink, err := fslink.IsLink(tc.link)
@@ -243,8 +243,8 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 
 	// Everything Add itself created is rolled back: no weft worktree dir, no
 	// host worktree dir, no host branch.
-	if _, err := os.Stat(l.WeftWorktreePath(slug)); !os.IsNotExist(err) {
-		t.Errorf("weft worktree dir still exists at %s", l.WeftWorktreePath(slug))
+	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s", fabricengine.WeftWorktreePath(l, slug))
 	}
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("host worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))

@@ -102,7 +102,7 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 		hostPath = filepath.Clean(hostPath)
 
 		slug := filepath.Base(hostPath)
-		weftPath := l.WeftWorktreePath(slug)
+		weftPath := WeftWorktreePath(l, slug)
 
 		pr := ReconcilePairResult{
 			HostWorktree: filepath.ToSlash(hostPath),

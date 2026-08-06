@@ -103,7 +103,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	pair := findReconcilePair(t, result.Pairs, weftPath)
 	if pair.Error != "" {
 		t.Errorf("Error = %q; want empty", pair.Error)
@@ -161,7 +161,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	pair := findReconcilePair(t, result.Pairs, l.WeftWorktreePath(slug))
+	pair := findReconcilePair(t, result.Pairs, fabricengine.WeftWorktreePath(l, slug))
 	if pair.Action != fabricengine.ReconcileActionAlreadyHealthy {
 		t.Errorf("Action = %q; want %q (fully correct pair, nothing to converge)", pair.Action, fabricengine.ReconcileActionAlreadyHealthy)
 	}
@@ -259,7 +259,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	pair := findReconcilePair(t, result.Pairs, l.WeftWorktreePath(slug))
+	pair := findReconcilePair(t, result.Pairs, fabricengine.WeftWorktreePath(l, slug))
 	combined := pair.Detail + pair.Error
 	if !strings.Contains(combined, "fabric.yaml") {
 		t.Errorf("Detail=%q Error=%q; want the load failure recorded (fail-closed abort), not silently ignored", pair.Detail, pair.Error)

@@ -83,7 +83,7 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 		hostPath := filepath.FromSlash(entry.Path)
 		hostPath = filepath.Clean(hostPath)
 
-		weftPath := l.WeftWorktreePath(filepath.Base(hostPath))
+		weftPath := WeftWorktreePath(l, filepath.Base(hostPath))
 
 		pair := PairStatus{
 			HostWorktree: filepath.ToSlash(hostPath),

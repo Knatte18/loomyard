@@ -1,6 +1,7 @@
-// geometry_test.go covers the pure geometry constructors and the WeftHostSlug reverse
-// parser added in the paths-foundation batch. It also asserts parity between the
-// refactored weft Location methods and their weftname.SiblingPath equivalents.
+// geometry_test.go covers the pure geometry constructors this module still owns —
+// weftname.SiblingPath's join shape, BoardDir, HubPath and IsReservedHubName. The
+// WeftHostSlug reverse parser and the weft Location-method parity coverage relocated
+// to internal/fabricengine along with the methods themselves.
 
 package lyxcwd_test
 
@@ -108,95 +109,6 @@ func TestHubPath(t *testing.T) {
 				t.Errorf("HubPath(%q, %q) = %q; want %q", tt.parent, tt.repoName, got, tt.want)
 			}
 		})
-	}
-}
-
-// TestWeftHostSlug verifies the reverse parser for weft sibling directory names.
-func TestWeftHostSlug(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		input    string
-		wantSlug string
-		wantOK   bool
-	}{
-		{
-			name:     "valid weft name",
-			input:    "feat-weft",
-			wantSlug: "feat",
-			wantOK:   true,
-		},
-		{
-			name:     "name without weft suffix",
-			input:    "feat",
-			wantSlug: "",
-			wantOK:   false,
-		},
-		{
-			name:     "bare suffix only (empty-slug guard)",
-			input:    "-weft",
-			wantSlug: "",
-			wantOK:   false,
-		},
-		{
-			name:     "multi-segment slug",
-			input:    "my-feature-weft",
-			wantSlug: "my-feature",
-			wantOK:   true,
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			wantSlug: "",
-			wantOK:   false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotSlug, gotOK := lyxcwd.WeftHostSlug(tt.input)
-			if gotSlug != tt.wantSlug || gotOK != tt.wantOK {
-				t.Errorf("WeftHostSlug(%q) = (%q, %v); want (%q, %v)",
-					tt.input, gotSlug, gotOK, tt.wantSlug, tt.wantOK)
-			}
-		})
-	}
-}
-
-// TestWeftLayoutMethodParity asserts that the refactored weft Location methods produce
-// byte-identical results to the direct WeftSiblingPath form.
-func TestWeftLayoutMethodParity(t *testing.T) {
-	t.Parallel()
-
-	hub := "/h"
-	slug := "feat"
-
-	loc := &lyxcwd.Location{
-		HubPath:      hub,
-		WorktreeName: slug,
-		AnchorRel:    ".",
-	}
-
-	// WeftWorktreePath(slug) must equal weftname.SiblingPath(hub, slug).
-	gotWorktreePath := loc.WeftWorktreePath(slug)
-	wantWorktreePath := weftname.SiblingPath(hub, slug)
-	if gotWorktreePath != wantWorktreePath {
-		t.Errorf("WeftWorktreePath(%q) = %q; want SiblingPath(%q, %q) = %q",
-			slug, gotWorktreePath, hub, slug, wantWorktreePath)
-	}
-
-	// WeftRepoRoot's replacement (fabricengine.WeftRepoRoot) lives outside this
-	// package now, and its property is held by fabricengine's own retargeted
-	// test callers — an in-package lyxcwd test cannot import fabricengine,
-	// which imports lyxcwd.
-
-	// WeftWorktree() must equal weftname.SiblingPath(hub, WorktreeName).
-	gotWeftWorktree := loc.WeftWorktree()
-	wantWeftWorktree := weftname.SiblingPath(hub, loc.WorktreeName)
-	if gotWeftWorktree != wantWeftWorktree {
-		t.Errorf("WeftWorktree() = %q; want SiblingPath(%q, %q) = %q",
-			gotWeftWorktree, hub, loc.WorktreeName, wantWeftWorktree)
 	}
 }
 

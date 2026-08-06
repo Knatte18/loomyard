@@ -57,7 +57,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 
 	// The drift injection: delete the weft worktree directory out from under
 	// git, exactly as a stray rm would — the registration and branch survive.
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	if err := os.RemoveAll(weftPath); err != nil {
 		t.Fatalf("hand-delete weft worktree: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 		t.Fatalf("Prune(apply=true): %v", err)
 	}
 
-	weftPath := l.WeftWorktreePath(slug)
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	entry := findPruneEntryByWeftPath(t, res.Entries, weftPath)
 	if !entry.Removed {
 		t.Errorf("Removed = false after apply; want true (error=%q)", entry.Error)
@@ -269,7 +269,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Fatalf("setup Add: %v", err)
 		}
 		hostPath := fabricengine.WorktreePath(l, slug)
-		weftPath := l.WeftWorktreePath(slug)
+		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
 		// Bare removal of the host directory leaves the git worktree
 		// registration stale (unlike `git worktree remove`), so both prune
@@ -312,7 +312,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Fatalf("setup Add: %v", err)
 		}
 		hostPath := fabricengine.WorktreePath(l, slug)
-		weftPath := l.WeftWorktreePath(slug)
+		weftPath := fabricengine.WeftWorktreePath(l, slug)
 
 		// Bare-remove BOTH sides, leaving both registrations stale. With the
 		// weft directory gone, Pass 1's removeStalePair has nothing to
@@ -353,7 +353,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	mainWeft := fabricengine.WeftBranchName("main")
-	weftPrime := l.WeftWorktree()
+	weftPrime := fabricengine.WeftWorktree(l)
 
 	// Move the weft primary off main-weft so main-weft is not the
 	// checked-out branch.

@@ -102,7 +102,7 @@ func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 
 	// Seed real content on the weft side of both junctions: WireJunctions
 	// only materializes the target directories, it writes no files.
-	weftLyxDir := hostLayout.WeftLyxDirFor(slug)
+	weftLyxDir := fabricengine.WeftLyxDirFor(hostLayout, slug)
 	if err := os.WriteFile(filepath.Join(weftLyxDir, "marker.txt"), []byte("lyx state"), 0o644); err != nil {
 		t.Fatalf("seed weft _lyx content: %v", err)
 	}

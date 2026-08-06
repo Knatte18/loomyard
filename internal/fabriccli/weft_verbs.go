@@ -101,7 +101,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 
 		pathspec = fabricengine.ScopedPathspec(l.AnchorRel, cfg.Dirs())
 
-		resolvedFabric, err := fabricengine.New(l.WorktreePath(), l.WeftWorktree())
+		resolvedFabric, err := fabricengine.New(l.WorktreePath(), fabricengine.WeftWorktree(l))
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)
@@ -243,7 +243,7 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			if err := spawnPush(l.WeftWorktree()); err != nil {
+			if err := spawnPush(fabricengine.WeftWorktree(l)); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}

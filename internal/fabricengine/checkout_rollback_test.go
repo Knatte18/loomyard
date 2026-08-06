@@ -48,7 +48,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
 	originalHostBranch := currentBranchOf(t, l.WorktreePath())
-	originalWeftBranch := currentBranchOf(t, l.WeftWorktree())
+	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
 
 	// Corrupt the host _lyx into a real directory: WireJunctions -> seedLyxJunction
 	// refuses a real (non-link) _lyx, so Checkout's step 5 fails after step 4 has
@@ -71,7 +71,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	if got := currentBranchOf(t, l.WorktreePath()); got != originalHostBranch {
 		t.Errorf("host branch after failed Checkout = %q; want %q (original)", got, originalHostBranch)
 	}
-	if got := currentBranchOf(t, l.WeftWorktree()); got != originalWeftBranch {
+	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 
@@ -105,7 +105,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 
 	originalHostBranch := currentBranchOf(t, l.WorktreePath())
-	originalWeftBranch := currentBranchOf(t, l.WeftWorktree())
+	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
 
 	// Corrupt the host _lyx into a real directory so step 5 fails after the fork.
 	hostLyx := l.HostLyxLinkHere()
@@ -124,7 +124,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	if got := currentBranchOf(t, l.WorktreePath()); got != originalHostBranch {
 		t.Errorf("host branch after failed Checkout = %q; want %q (original)", got, originalHostBranch)
 	}
-	if got := currentBranchOf(t, l.WeftWorktree()); got != originalWeftBranch {
+	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
 	}
 

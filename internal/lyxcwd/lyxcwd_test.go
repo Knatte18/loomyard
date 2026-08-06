@@ -13,8 +13,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // newTestLocation builds a Location by hand for join-arithmetic assertions,
@@ -458,28 +460,9 @@ func TestRefactoredMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("WeftLyxDir", func(t *testing.T) {
-		t.Parallel()
-
-		got := layout.WeftLyxDir()
-		want := filepath.Join(layout.WeftWorktree(), ".", "_lyx")
-
-		if got != want {
-			t.Errorf("WeftLyxDir() = %q; want %q", got, want)
-		}
-	})
-
-	t.Run("WeftLyxDirFor", func(t *testing.T) {
-		t.Parallel()
-
-		slug := "test-slug"
-		got := layout.WeftLyxDirFor(slug)
-		want := filepath.Join(layout.WeftWorktreePath(slug), ".", "_lyx")
-
-		if got != want {
-			t.Errorf("WeftLyxDirFor(%q) = %q; want %q", slug, got, want)
-		}
-	})
+	// WeftLyxDir and WeftLyxDirFor relocated to internal/fabricengine in this
+	// batch; their coverage lives in fabricengine/weftpaths_test.go now — this
+	// package cannot import fabricengine (fabricengine imports lyxcwd).
 
 	t.Run("HostLyxLink", func(t *testing.T) {
 		t.Parallel()
@@ -521,8 +504,9 @@ func TestRefactoredMethods(t *testing.T) {
 		if lyxJunction.Link != layout.HostLyxLink(slug) {
 			t.Errorf("HostJunctions()[0].Link = %q; want %q", lyxJunction.Link, layout.HostLyxLink(slug))
 		}
-		if lyxJunction.Target != layout.WeftLyxDirFor(slug) {
-			t.Errorf("HostJunctions()[0].Target = %q; want %q", lyxJunction.Target, layout.WeftLyxDirFor(slug))
+		wantLyxWeftTarget := filepath.Join(weftname.SiblingPath(layout.HubPath, slug), ".", configengine.LyxDirName)
+		if lyxJunction.Target != wantLyxWeftTarget {
+			t.Errorf("HostJunctions()[0].Target = %q; want %q", lyxJunction.Target, wantLyxWeftTarget)
 		}
 
 		patternJunction := junctions[1]
@@ -564,7 +548,7 @@ func TestHostJunctionsHere(t *testing.T) {
 
 		lyxJunction := junctions[0]
 		wantLyxLink := layout.HostLyxLinkHere()
-		wantLyxTarget := layout.WeftLyxDir()
+		wantLyxTarget := filepath.Join(weftname.SiblingPath(layout.HubPath, filepath.Base(layout.WorktreePath())), layout.AnchorRel, configengine.LyxDirName)
 		if lyxJunction.Name != "_lyx" {
 			t.Errorf("HostJunctionsHere()[0].Name = %q; want %q", lyxJunction.Name, "_lyx")
 		}
@@ -604,7 +588,7 @@ func TestHostJunctionsHere(t *testing.T) {
 
 		lyxJunction := junctions[0]
 		wantLyxLink := layout.HostLyxLinkHere()
-		wantLyxTarget := layout.WeftLyxDir()
+		wantLyxTarget := filepath.Join(weftname.SiblingPath(layout.HubPath, filepath.Base(layout.WorktreePath())), layout.AnchorRel, configengine.LyxDirName)
 		if lyxJunction.Link != wantLyxLink {
 			t.Errorf("HostJunctionsHere()[0].Link = %q; want %q", lyxJunction.Link, wantLyxLink)
 		}
@@ -681,7 +665,7 @@ func TestHostJunctionsHere(t *testing.T) {
 					if got.Link != wantLink {
 						t.Errorf("HostJunctionsHere(%v)[%d].Link = %q; want %q", rt.names, i, got.Link, wantLink)
 					}
-					wantTarget := filepath.Join(layout.WeftWorktree(), layout.AnchorRel, wantName)
+					wantTarget := filepath.Join(weftname.SiblingPath(layout.HubPath, filepath.Base(layout.WorktreePath())), layout.AnchorRel, wantName)
 					if got.Target != wantTarget {
 						t.Errorf("HostJunctionsHere(%v)[%d].Target = %q; want %q", rt.names, i, got.Target, wantTarget)
 					}

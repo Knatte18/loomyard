@@ -59,13 +59,13 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 
 	var result UnwireVerbResult
 
-	weftWorktree := l.WeftWorktree()
+	weftWorktree := WeftWorktree(l)
 	if _, statErr := os.Stat(weftWorktree); statErr != nil && !os.IsNotExist(statErr) {
 		return UnwireVerbResult{}, statErr
 	} else if os.IsNotExist(statErr) {
 		result.WeftContent = "not_present"
 	} else {
-		weftLyxDir := l.WeftLyxDirFor(slug)
+		weftLyxDir := WeftLyxDirFor(l, slug)
 		if _, statErr := os.Stat(weftLyxDir); statErr != nil && !os.IsNotExist(statErr) {
 			return UnwireVerbResult{}, statErr
 		} else if os.IsNotExist(statErr) {
