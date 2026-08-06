@@ -37,6 +37,8 @@ After this batch, no production package outside the owner set calls `New`/`WeftW
 - **Edits:**
   - `internal/buildercli/run.go`
   - `internal/buildercli/run_test.go`
+  - `internal/buildercli/spawnbatch.go`
+  - `internal/buildercli/poll.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:**
@@ -53,7 +55,11 @@ After this batch, no production package outside the owner set calls `New`/`WeftW
   diagnostic `"builder: run finished (%s) but the weft sync failed: %v"` → `"…but the fabric sync failed: %v"` — the wrapped `%v` stays fabricengine's own error, which may keep weft-level detail (decision `diagnostics-say-fabric-detail-says-weft`).
   In `run_test.go:150`: `"weftCommitted"` → `"fabricCommitted"`.
   In `sync_integration_test.go` (was `weft_integration_test.go:132-148`): the commit-landed-but-`RecordCorrespondence`-failed case must keep asserting `(true, err)` not `(false, err)` through the renamed helper and `Committed()`.
-  In `sync_test.go`: update the `weft.go:25` fixture comment ("Neither the host worktree nor its -weft sibling…") to fabric wording while keeping any `lyxtest` owner-API references verbatim.
+  In `sync_test.go`: update the `weft.go:25` fixture comment ("Neither the host worktree nor its -weft sibling…") to fabric wording while keeping any `lyxtest` owner-API references verbatim;
+  its `TestWeftCommit_*` test names and `weftCommit()` references in messages retarget onto `fabricSync`.
+  The helper rename breaks two more call sites in this package, so they land in this same card or the package does not compile: `spawnbatch.go:165` and `poll.go:339` (`if _, weftErr := weftCommit(c.layout, …)` → `fabricSync`, local `weftErr` → `syncErr`), together with the operator-facing `output.Err` strings on the following lines that say "the weft sync failed" → "the fabric sync failed".
+  Also reword `run.go:40` and `spawnbatch.go:48,183`'s cobra `Long`/flag-usage text ("runs a backstop weft commit" → "runs a backstop fabric commit";
+  "reset the host repo…" → "reset the repo…") under the CLI/Cobra Invariant's help-accuracy obligation, the same way card 10 handles `configcli.go:233`.
   Reword remaining weft/warp/host-phrase comments in all edited/moved files.
 - **Commit:** `refactor(buildercli): migrate to fabricengine.Open/Committed, rename weft.go to sync.go`
 
@@ -67,6 +73,12 @@ After this batch, no production package outside the owner set calls `New`/`WeftW
 - **Edits:**
   - `internal/webstercli/run.go`
   - `internal/webstercli/verbs_test.go`
+  - `internal/webstercli/beginbatch.go`
+  - `internal/webstercli/recordbatch.go`
+  - `internal/webstercli/recoverbatch.go`
+  - `internal/webstercli/awaitbatch.go`
+  - `internal/webstercli/status.go`
+  - `internal/webstercli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:**
@@ -76,6 +88,10 @@ After this batch, no production package outside the owner set calls `New`/`WeftW
   `run.go:105` JSON key `"weftCommitted"` → `"fabricCommitted"` and the run-finished diagnostic reworded to `"fabric sync failed"`;
   `sync_integration_test.go` (was `weft_integration_test.go:140-157`) keeps asserting `(true, err)` on the partial-failure path.
   `verbs_test.go:633`: the negative assertion `if strings.Contains(out.String(), "weft sync failed")` must be UPDATED to assert against `"fabric sync failed"`, not deleted — after the reword the old string can never appear, so leaving it would make the test pass forever while checking nothing.
+  The helper rename breaks four more call sites in this package, so they land in this same card or the package does not compile: `beginbatch.go:135`, `recordbatch.go:135`, and `recoverbatch.go:155,189` (`weftCommit` → `fabricSync`, local `weftErr` → `syncErr`), each with the operator-facing `output.Err` string on the following line ("… but the weft sync failed: %v" → "… but the fabric sync failed: %v", per `diagnostics-say-fabric-detail-says-weft` — the wrapped `%v` keeps fabric's own detail).
+  `cli_test.go:5,137,139,142,146,155,157,161` call the helper and name it in `TestWeftCommit_*` test names and messages — retarget onto `fabricSync` and rename the tests.
+  Cobra `Long` bodies also carry the vocabulary and reword under the CLI/Cobra help-accuracy obligation: `run.go:45` ("runs a backstop weft commit"), `status.go:31` ("no weft commit, no engine spawn"), `awaitbatch.go:33` ("no state.json, no weft"), and `recoverbatch.go:55,58,59` ("weft-commits the batch report…", "touching neither git nor weft", "A call that performs the spawn itself weft-commits").
+  Re-read each edited `Long` end-to-end afterwards to confirm it still reads correctly.
   Reword remaining weft/warp/host-phrase comments in all edited/moved files.
 - **Commit:** `refactor(webstercli): migrate to fabricengine.Open/Committed, rename weft.go to sync.go`
 
@@ -96,6 +112,9 @@ After this batch, no production package outside the owner set calls `New`/`WeftW
   JSON key `"weftCommitted"` → `"fabricCommitted"` (line 378);
   consumer-emitted diagnostics say "fabric sync" per decision `diagnostics-say-fabric-detail-says-weft`;
   the SkipGit guard comment rewords, behaviour unchanged.
+  Per decision `consumer-renames`, the locals rename here too — `weftWorktree` (`run.go:322`) is deleted outright (`Open(c.layout)` removes the need) and `weftErr` (`:341,344,345,347,359,365,367`) becomes `syncErr`;
+  leaving either would put a bare `weft` token in production code that batch 07's rule (1) fails on.
+  The two diagnostics carrying the local (`:360`'s "(additionally, the weft sync failed: %v)" and `:367`'s "perch: block %s finished (%s) but the weft sync failed: %v") reword to "fabric sync failed", keeping the wrapped `%v` as fabric's own error.
   Reword the ~20 weft/warp comments in `run.go`.
   `tools/sandbox/SANDBOX-PERCH-SUITE.md:119` updates `weftCommitted` → `fabricCommitted` in the same commit (decision `json-key-renamed`) — this is the only `tools/` edit in the task;
   the `weftURL`/`fabricWeftURL` identifiers and GitHub URLs elsewhere in `tools/` stay verbatim.

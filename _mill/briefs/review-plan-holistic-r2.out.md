@@ -1,0 +1,60 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: close the weft-visibility leak (slice 8) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: Claude Opus 4.x-class model (Anthropic), served as "Opus 5 (1M context)"
+reviewed_file: plan/
+date: 2026-08-06
+```
+
+## Findings
+
+### [BLOCKING] weftCommit rename leaves 6 call sites outside batch 03
+
+**Location:** batch 03, cards 7 and 8
+**Issue:** `weftCommit` is also called from `buildercli/spawnbatch.go:165`, `buildercli/poll.go:339`, `webstercli/beginbatch.go:135`, `webstercli/recordbatch.go:135`, `webstercli/recoverbatch.go:155,189`, and `webstercli/cli_test.go:137,155` — none of these files are in card 7/8 `Edits`, so renaming the helper to `fabricSync` leaves both packages non-compiling and batch 03's own `verify:` (`go test -tags integration ./internal/buildercli/ ./internal/webstercli/`) failing, contradicting the "every card-level commit compiles" Shared Decision.
+**Fix:** add those six files to cards 7/8 and remove them (or their `weftCommit`/`weftErr` lines) from batch 06 cards 21/23.
+
+### [BLOCKING] Cobra Long text and operator error strings misclassified as comments
+
+**Location:** batch 06 card 21; batch 03 cards 7, 8
+**Issue:** Card 21 asserts "Everything else in these files is comments", but `webstercli/status.go:31` and `webstercli/awaitbatch.go:33` and `webstercli/recoverbatch.go:55,58,59` are cobra `Long` bodies, and `webstercli/beginbatch.go:136`, `recordbatch.go:136`, `recoverbatch.go:156,190` are operator-facing `output.Err` strings saying "the weft sync failed"; cards 7/8 likewise never name `buildercli/run.go:40` and `webstercli/run.go:45`, both `Long` text reading "runs a backstop weft commit".
+**Fix:** enumerate these `Long` bodies and error strings explicitly under the CLI/Cobra help-accuracy obligation and the `diagnostics-say-fabric-detail-says-weft` decision, as card 10 already does for `configcli.go:233`.
+
+### [BLOCKING] perchcli card omits the weftErr local rename
+
+**Location:** batch 03, card 9
+**Issue:** Decision `consumer-renames` mandates `weftErr` → `syncErr` and deletion of the `weftWorktree` local, but card 9 scopes its non-constructor work to "the ~20 weft/warp comments in `run.go`", leaving the `weftErr` identifier at `perchcli/run.go:341,344,345,347,359,365,367` — a bare `weft` token in production code that batch 07 rule (1) fails on.
+**Fix:** name the `weftErr` → `syncErr` and `weftWorktree` deletions in card 9's `Requirements:` the way cards 7 and 8 do.
+
+### [NIT] Documentation deferred to batch 08, not the code commit
+
+**Location:** batch 08 (all cards) vs discussion decision `documentation`
+**Issue:** The decision opens "Decision, all in the same commit as the code" and CLAUDE.md's task-completion rule says the same; the plan lands every doc in a terminal batch with its own commits, without recording the deviation.
+**Fix:** add a Shared Decision recording that mill's per-card commit model forces docs into batch 08 and why that satisfies the intent.
+
+### [NIT] builderengine/runlevel_test.go has no owning card
+
+**Location:** batch 06, cards 23 and 24
+**Issue:** `internal/builderengine/runlevel_test.go:800` carries "the same host repo", a fabric-sense phrase that is neither owner API nor a named carve-out, but the file is absent from card 23's list — card 24's gate would flag it with no "responsible card's file" to amend.
+**Fix:** add `internal/builderengine/runlevel_test.go` to card 23's `Edits:` and to `## All Files Touched`.
+
+### [NIT] Rule (3) scope vs the *_test.go exclusion is ambiguous
+
+**Location:** batch 07, card 26
+**Issue:** Card 26 states "*_test.go files are excluded from the machine check" and separately that any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname` fails; `internal/lyxcwd/geometry_test.go:13` imports `weftname`, so the two clauses must be read together or batch 07 fails on first activation.
+**Fix:** state in card 26 that the test-file exclusion applies to all three rules, rule (3) included.
+
+### [NIT] Shared-Decision overlap exception list is incomplete
+
+**Location:** `00-overview.md`, decision `comments ride with code edits`
+**Issue:** The enumerated exceptions omit `internal/loomengine/preflight_integration_test.go` (cards 5 and 23) and `internal/websterengine/audit_test.go` (cards 12 and 23), both genuinely double-visited across batches.
+**Fix:** add both files to the exception list; both pairs are DAG-ordered, so no validator conflict arises.
+
+## Verdict
+
+REQUEST_CHANGES
+Batch 03 as written leaves buildercli and webstercli non-compiling.
+MILL_REVIEW_END

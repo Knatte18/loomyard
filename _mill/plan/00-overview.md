@@ -75,7 +75,7 @@ batches:
 
 - **Decision:** every card that edits a file also rewords that file's `weft`/`warp`/fabric-sense-`host` comments per `comment-fidelity`;
   batch 06 sweeps only files no code card touches.
-  A file appears in at most one batch, except `websterengine/integration.go` (card 12 identifier rename, card 20 residual comments — sequential via the DAG) and `fabricengine/doc.go`/`commit.go`/`open.go` (batches 01/04/08, all on one dependency chain).
+  A file appears in at most one batch, except four deliberate double-visits, each DAG-ordered so no two batches write it in parallel: `websterengine/integration.go` (card 12 identifier rename, card 20 residual comments), `fabricengine/doc.go`/`commit.go`/`open.go` (batches 01/04/08, one dependency chain), `loomengine/preflight_integration_test.go` (card 5 assertions, card 23 test-name and prose), and `websterengine/audit_test.go` (card 12 scanner migration, card 23 test-name and prose).
 - **Rationale:** avoids parallel-batch write conflicts and double-visits;
   the `parallel-modifies-overlap` validator only tolerates shared files on dependent batches.
 - **Applies to:** all batches
@@ -103,6 +103,16 @@ batches:
   the repo-wide `go test ./... && go test -tags integration ./...` runs once via the configured `pipeline.done_gate`, satisfying the discussion's full-suite gate.
 - **Rationale:** verify runs after every implementer and fixer round;
   the full dual-suite is minutes-long and belongs at the boundary, not in the loop.
+- **Applies to:** all batches
+
+### Decision: docs land in batch 08, not inside each code commit
+
+- **Decision:** the discussion's `documentation` decision opens "Decision, all in the same commit as the code", and CLAUDE.md's task-completion rule says a task changing observable CLI behaviour updates its docs in the same commit.
+  This plan instead lands every doc change in batch 08, as its own commits, and records the deviation here rather than leaving it silent.
+- **Rationale:** mill's execution model commits per card, and the doc content depends on facts that do not all exist until late — `CONSTRAINTS.md` must name `TestEnforcement_FabricVocabulary` (batch 07) and correct the Fabric Git Invariant's **Enforced by** bullet to `fabricengine.RefScanner` (batch 01) and to the stronger template rule (batch 05), while `fabricengine`'s package doc describes an API that is only final after batch 04's unexport.
+  Writing them earlier would mean writing them wrong and re-editing.
+  The rule's intent — the task never merges with stale docs — is satisfied because batch 08 is a hard dependency of task completion, not an optional follow-up: the DAG makes it the terminal batch, and the branch merges as one unit.
+  Per-card CLI help-text corrections are the exception and do NOT wait for batch 08: they ride with the code that changes the behaviour (cards 7, 8, 9, 10, 21), because a `Long` that contradicts its own command is a defect at that commit, not a documentation gap.
 - **Applies to:** all batches
 
 ## All Files Touched
@@ -139,6 +149,7 @@ batches:
 - `internal/builderengine/implementer-template.md`
 - `internal/builderengine/orchestrator-template.md`
 - `internal/builderengine/runlevel.go`
+- `internal/builderengine/runlevel_test.go`
 - `internal/builderengine/spawn.go`
 - `internal/builderengine/spawn_test.go`
 - `internal/builderengine/state.go`

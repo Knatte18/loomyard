@@ -49,7 +49,7 @@ Placing the test in `lyxcwd`'s file is a convenience (it reuses the walk helper)
   (2) same files containing a fabric-sense `host` phrase fail, where the predicate is phrase-based, never whole-word: `host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD` (any case, hyphenated or spaced), plus `host` as a component of a fabric-geometry identifier (`hostBranch`, `hostLayoutFor`, `hostReason`, `HostJunction`, `hostClean`);
   (3) any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname` fails.
   Coverage additionally includes a plain `internal/**/*.md` walk (NOT a parse of `//go:embed` directives — a plain walk fails safe for future non-embedded templates).
-  `*_test.go` files are excluded from the machine check.
+  `*_test.go` files are excluded from the machine check, and that exclusion applies to **all three rules, rule (3) included** — this is load-bearing, not editorial: `internal/lyxcwd/geometry_test.go:13` legitimately imports `internal/weftname` (it tests `weftname.SiblingPath`), so a rule (3) that walked test files would fail on first activation.
   Owner set expressed as a map in the same idiom as the file's existing `geometryTokenOwners`: `fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, and `configsync` documented as string-literal-only (a `configsync` identifier or comment hit still fails).
   `tools/` and `sandbox/` are outside the walked roots by construction — no per-file exception needed.
   Include comments in the scan (deliberate divergence from the sibling `stripGoComments` guard — here the prose is itself the leak).

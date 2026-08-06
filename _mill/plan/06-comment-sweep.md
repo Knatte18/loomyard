@@ -53,23 +53,16 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
 - **Context:**
   - `_mill/discussion.md`
 - **Edits:**
-  - `internal/webstercli/recoverbatch.go`
-  - `internal/webstercli/beginbatch.go`
-  - `internal/webstercli/recordbatch.go`
-  - `internal/webstercli/status.go`
-  - `internal/webstercli/awaitbatch.go`
   - `internal/webstercli/cli.go`
-  - `internal/buildercli/poll.go`
-  - `internal/buildercli/spawnbatch.go`
   - `internal/buildercli/cli.go`
   - `internal/buildercli/status.go`
   - `internal/perchcli/cli.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Reword every `weft`/`warp` mention and fabric-sense `host` phrase in the listed files.
-  Two are operator-visible strings, not comments: `buildercli/spawnbatch.go:48`'s command help prose ("--restart-chain resets the host repo to the batch's…" → "resets the repo to the batch's…") and `:183`'s flag usage string ("reset the host repo to this batch's deferred-verify chain start SHA…" → "reset the repo to…") — both fall under the CLI/Cobra Invariant's help-accuracy obligation, so re-read each surrounding `Short`/`Long` after editing.
-  Everything else in these files is comments.
+- **Requirements:** Reword every `weft`/`warp` mention and fabric-sense `host` phrase in the four listed files.
+  These are the residual cli-package files that cards 7-9 do not already own — every `weftCommit`/`weftErr` call site, its `output.Err` string, and every cobra `Long` body carrying the vocabulary belongs to cards 7, 8, or 9, because the helper rename would otherwise break the package compile.
+  Check each file for operator-visible text before assuming a hit is a comment: any `Short`/`Long`/flag-usage string that rewords falls under the CLI/Cobra Invariant's help-accuracy obligation, so re-read the surrounding command definition after editing.
 - **Commit:** `docs(webstercli,buildercli,perchcli): fabric-vocabulary sweep`
 
 ### Card 22: low-level package prose
@@ -124,6 +117,7 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
   - `internal/builderengine/config_test.go`
   - `internal/builderengine/spawn_test.go`
   - `internal/builderengine/gitquery_test.go`
+  - `internal/builderengine/runlevel_test.go`
   - `internal/websterengine/recordbatch_test.go`
   - `internal/websterengine/beginbatch_test.go`
   - `internal/websterengine/recoverbatch_test.go`
@@ -143,6 +137,7 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Hand-clean each listed test file of `weft`/`warp`/fabric-sense-`host` vocabulary that is NOT a reference to owner-package API.
+  `internal/builderengine/runlevel_test.go:800` carries "the same host repo" in a comment and rewords to "the same repo".
   Specifically pinned by the discussion: `cmd/lyx/boardguard_test.go` calls the invariant "Weft Git Invariant" where `CONSTRAINTS.md` says "Fabric Git Invariant (warp + weft)" — align the name.
   KEEP verbatim: every `lyxtest` owner-API reference (`WeftPrime`, `WeftBare`, `WeftPath`, `CopyWeft`, `CopyPaired`, fixture struct fields), every `fabricengine`/`fabriccli` owner-API selector a test legitimately calls, `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-var names wherever set (they are the literal names of variables this task deliberately does not rename), the PowerShell `Write-Host` cmdlet in `reedcli` `--cmd` strings (not in this card's list, but do not "fix" it if encountered), and `cmd/lyx/tierpurity_test.go`'s banned-token test data (its mentions are `lyxtest.Copy*` tokens carried as data — reword only genuine prose, if any).
   Two files carry vocabulary that cards 5 and 12 changed the code for but did not fully sweep, so they land here — this card is their only owner:
