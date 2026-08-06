@@ -11,12 +11,12 @@ import (
 )
 
 // TestConfigHelpers tests the free-function _lyx-anchored path helpers that
-// remain in hubgeometry (PerchRunsDir, PlanDir, BuilderDir, BuilderReportsDir).
-// ConfigDir, ConfigFile, DotEnv and the exported LyxDirName constant moved to
-// internal/configengine (and DotEnv to internal/envsource); their own
-// coverage now lives in those packages' test files. The want-expressions here
-// use the private, unexported lyxDirName transitional const, since this file
-// is in-package and these methods still anchor on it until they relocate.
+// remain in this package (PerchRunsDir). ConfigDir, ConfigFile, DotEnv and
+// the exported LyxDirName constant moved to internal/configengine (and
+// DotEnv to internal/envsource); their own coverage now lives in those
+// packages' test files. The want-expression here uses the private,
+// unexported lyxDirName transitional const, since this file is in-package
+// and this method still anchors on it until it relocates.
 func TestConfigHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -29,30 +29,6 @@ func TestConfigHelpers(t *testing.T) {
 
 		if got != want {
 			t.Errorf("PerchRunsDir(%q) = %q; want %q", baseDir, got, want)
-		}
-	})
-
-	t.Run("BuilderDir", func(t *testing.T) {
-		t.Parallel()
-
-		baseDir := "/home/user/project"
-		got := BuilderDir(baseDir)
-		want := filepath.Join(baseDir, lyxDirName, "builder")
-
-		if got != want {
-			t.Errorf("BuilderDir(%q) = %q; want %q", baseDir, got, want)
-		}
-	})
-
-	t.Run("BuilderReportsDir", func(t *testing.T) {
-		t.Parallel()
-
-		baseDir := "/home/user/project"
-		got := BuilderReportsDir(baseDir)
-		want := filepath.Join(baseDir, lyxDirName, "builder", "reports")
-
-		if got != want {
-			t.Errorf("BuilderReportsDir(%q) = %q; want %q", baseDir, got, want)
 		}
 	})
 }

@@ -21,6 +21,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// builderFixtureLocation builds the *lyxcwd.Location a seedBuilderFixture's
+// Hub resolves to for AnchorPath()-anchored constructors: Hub is itself the
+// worktree root (AnchorRel "."), so HubPath/WorktreeName split it the same
+// way lyxcwd.Resolve would.
+func builderFixtureLocation(hub string) *lyxcwd.Location {
+	return &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
+}
+
 func TestRunCLI_Status_Uninitialized(t *testing.T) {
 	seedBuilderFixture(t)
 
@@ -46,7 +54,7 @@ func TestRunCLI_Status_Initialized(t *testing.T) {
 			2: {Slug: "list-tests", StartSHA: "sha2", Role: "implementer", Terminal: false, Status: ""},
 		},
 	}
-	builderDir := lyxcwd.BuilderDir(fixture.Hub)
+	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
 	if err := builderengine.SaveState(builderDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
@@ -75,12 +83,12 @@ func TestRunCLI_Status_ReportOverridesStaleState(t *testing.T) {
 			1: {Slug: "json-flag", StartSHA: "sha1", Role: "implementer", Terminal: false},
 		},
 	}
-	builderDir := lyxcwd.BuilderDir(fixture.Hub)
+	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
 	if err := builderengine.SaveState(builderDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
-	reportsDir := lyxcwd.BuilderReportsDir(fixture.Hub)
+	reportsDir := builderengine.ReportsDir(builderFixtureLocation(fixture.Hub))
 	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
 		t.Fatalf("mkdir reports dir: %v", err)
 	}
@@ -112,12 +120,12 @@ func TestRunCLI_Status_MalformedReportSurfacesReportError(t *testing.T) {
 			1: {Slug: "json-flag", StartSHA: "sha1", Role: "implementer", Terminal: false},
 		},
 	}
-	builderDir := lyxcwd.BuilderDir(fixture.Hub)
+	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
 	if err := builderengine.SaveState(builderDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
-	reportsDir := lyxcwd.BuilderReportsDir(fixture.Hub)
+	reportsDir := builderengine.ReportsDir(builderFixtureLocation(fixture.Hub))
 	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
 		t.Fatalf("mkdir reports dir: %v", err)
 	}
@@ -143,7 +151,7 @@ func TestRunCLI_Status_MalformedReportSurfacesReportError(t *testing.T) {
 func TestRunCLI_Status_PausedTrue(t *testing.T) {
 	fixture := seedBuilderFixture(t)
 
-	builderDir := lyxcwd.BuilderDir(fixture.Hub)
+	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
 	st := &builderengine.State{RunGUID: "guid-2"}
 	if err := builderengine.SaveState(builderDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)

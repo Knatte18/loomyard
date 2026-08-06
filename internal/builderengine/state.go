@@ -5,8 +5,8 @@
 // SHA. LoadState/SaveState are state.json's only readers/writers; every
 // other builderengine file mutates the in-memory *State the caller loaded
 // and calls SaveState to persist it back. Callers resolve builderDir via
-// lyxcwd.BuilderDir — this file never constructs a _lyx path itself
-// (Cwd Resolution Invariant).
+// builderengine.Dir — this file also declares Dir/ReportsDir themselves,
+// the module's own _lyx/builder constructors (Cwd Resolution Invariant).
 
 package builderengine
 
@@ -15,9 +15,31 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/state"
 )
+
+// builderDirName is the relative-path segment builderengine joins onto
+// configengine.LyxDirName to form the builder's durable run-state
+// directory. builderengine is this segment's sole declarer.
+const builderDirName = "builder"
+
+// Dir returns the path to the builder's durable run state directory
+// (state.json, pause flag, outcome.yaml). It lives under _lyx so it is
+// weft-synced. Per the Hub Geometry Invariant, no other package may
+// construct this path.
+func Dir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, builderDirName)
+}
+
+// ReportsDir returns the path to the directory holding builder's per-batch
+// report files. It lives under _lyx so reports are weft-synced. Per the Hub
+// Geometry Invariant, no other package may construct this path.
+func ReportsDir(l *lyxcwd.Location) string {
+	return filepath.Join(Dir(l), "reports")
+}
 
 // stateFileName is state.json's fixed filename inside a builder dir.
 const stateFileName = "state.json"

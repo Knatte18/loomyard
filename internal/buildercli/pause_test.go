@@ -20,9 +20,10 @@ import (
 
 func TestPauseCmd_WritesFlagAndOkEnvelope(t *testing.T) {
 	hub := t.TempDir()
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
-		layout:     &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."},
-		builderDir: lyxcwd.BuilderDir(hub),
+		layout:     layout,
+		builderDir: builderengine.Dir(layout),
 	}
 
 	var out bytes.Buffer
@@ -41,9 +42,10 @@ func TestPauseCmd_WritesFlagAndOkEnvelope(t *testing.T) {
 
 func TestPauseCmd_IdempotentRePause(t *testing.T) {
 	hub := t.TempDir()
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
-		layout:     &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."},
-		builderDir: lyxcwd.BuilderDir(hub),
+		layout:     layout,
+		builderDir: builderengine.Dir(layout),
 	}
 
 	var out1 bytes.Buffer

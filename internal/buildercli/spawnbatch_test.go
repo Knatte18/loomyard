@@ -149,8 +149,8 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 		},
 		roles:      roles,
 		planDir:    loomengine.PlanDir(layout),
-		builderDir: lyxcwd.BuilderDir(hub),
-		reportsDir: lyxcwd.BuilderReportsDir(hub),
+		builderDir: builderengine.Dir(layout),
+		reportsDir: builderengine.ReportsDir(layout),
 	}
 
 	return &spawnBatchFixture{CLI: c, Engine: engine, Hub: hub}

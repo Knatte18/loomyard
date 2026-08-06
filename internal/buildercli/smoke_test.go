@@ -132,20 +132,20 @@ func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "01-json-flag")
 
-	// planDir is computed over a distinct, correctly-anchored Location (HubPath
-	// the hub's parent, not hub itself): bootRealReed's own layout deliberately
-	// sets HubPath: hub so reed's hub-anchored logs land inside the scratch
-	// hub for cleanup, which would double the worktree-name segment if reused
-	// here for an AnchorPath()-anchored path.
-	planLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
+	// Every AnchorPath()-anchored constructor below is computed over a
+	// distinct, correctly-anchored Location (HubPath the hub's parent, not
+	// hub itself): bootRealReed's own layout deliberately sets HubPath: hub
+	// so reed's hub-anchored logs land inside the scratch hub for cleanup,
+	// which would double the worktree-name segment if reused here.
+	anchorLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
 		engine:     &pollFakeEngine{},
 		reed:       eng,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    loomengine.PlanDir(planLocation),
-		builderDir: lyxcwd.BuilderDir(hub),
-		reportsDir: lyxcwd.BuilderReportsDir(hub),
+		planDir:    loomengine.PlanDir(anchorLocation),
+		builderDir: builderengine.Dir(anchorLocation),
+		reportsDir: builderengine.ReportsDir(anchorLocation),
 	}
 
 	startSHA := strings.TrimSpace(mustGit(t, hub, "rev-parse", "HEAD"))
@@ -219,10 +219,12 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "02-list-tests")
 
-	// See TestSmoke_PollDoneReleasesStrand's planLocation comment: bootRealReed's
-	// layout is reed-hub-anchored, not AnchorPath()-anchored, so planDir needs
-	// its own correctly-anchored Location.
-	planDir := loomengine.PlanDir(&lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."})
+	// See TestSmoke_PollDoneReleasesStrand's anchorLocation comment:
+	// bootRealReed's layout is reed-hub-anchored, not AnchorPath()-anchored,
+	// so these AnchorPath()-anchored constructors need their own
+	// correctly-anchored Location.
+	anchorLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
+	planDir := loomengine.PlanDir(anchorLocation)
 	plan, err := builderengine.ParsePlan(planDir)
 	if err != nil {
 		t.Fatalf("ParsePlan: %v", err)
@@ -247,8 +249,8 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 		},
 		Config:       builderengine.Config{SelfFixCap: 2, BatchTimeoutMin: 45},
 		WorktreeRoot: hub,
-		BuilderDir:   lyxcwd.BuilderDir(hub),
-		ReportsDir:   lyxcwd.BuilderReportsDir(hub),
+		BuilderDir:   builderengine.Dir(anchorLocation),
+		ReportsDir:   builderengine.ReportsDir(anchorLocation),
 		Layout:       layout,
 		Reed:         eng,
 	}
@@ -268,12 +270,13 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 	eng, _, hub := bootRealReed(t)
 	orphanGUID := addLivePane(t, eng, "orchestrator", "")
 
-	planDir := loomengine.PlanDir(&lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."})
+	anchorLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
+	planDir := loomengine.PlanDir(anchorLocation)
 	fingerprint, err := builderengine.Fingerprint(planDir)
 	if err != nil {
 		t.Fatalf("Fingerprint: %v", err)
 	}
-	builderDir := lyxcwd.BuilderDir(hub)
+	builderDir := builderengine.Dir(anchorLocation)
 	seeded := &builderengine.State{
 		RunGUID:            "smoke-orphan-run",
 		PlanFingerprint:    fingerprint,
@@ -301,7 +304,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 		},
 		PlanDir:      planDir,
 		BuilderDir:   builderDir,
-		ReportsDir:   lyxcwd.BuilderReportsDir(hub),
+		ReportsDir:   builderengine.ReportsDir(anchorLocation),
 		WorktreeRoot: hub,
 	}
 

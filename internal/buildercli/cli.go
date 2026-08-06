@@ -200,8 +200,8 @@ Verbs:
 			// RelPath-scoped pathspec never includes, silently stranding
 			// every builder artifact outside the weft.
 			c.planDir = loomengine.PlanDir(layout)
-			c.builderDir = lyxcwd.BuilderDir(layout.AnchorPath())
-			c.reportsDir = lyxcwd.BuilderReportsDir(layout.AnchorPath())
+			c.builderDir = builderengine.Dir(layout)
+			c.reportsDir = builderengine.ReportsDir(layout)
 			return nil
 		},
 	}

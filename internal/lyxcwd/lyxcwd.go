@@ -197,20 +197,6 @@ func PerchRunsDir(baseDir string) string {
 	return filepath.Join(baseDir, lyxDirName, "perch")
 }
 
-// BuilderDir returns the path to the builder's durable run state directory (state.json,
-// pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
-// Invariant, no other package may construct this path.
-func BuilderDir(baseDir string) string {
-	return filepath.Join(baseDir, lyxDirName, "builder")
-}
-
-// BuilderReportsDir returns the path to the directory holding builder's per-batch report files.
-// It lives under _lyx so reports are weft-synced. Per the Hub Geometry Invariant, no
-// other package may construct this path.
-func BuilderReportsDir(baseDir string) string {
-	return filepath.Join(BuilderDir(baseDir), "reports")
-}
-
 // WebsterDir returns the path to the webster's durable run state directory (state.json,
 // pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
 // Invariant, no other package may construct this path.

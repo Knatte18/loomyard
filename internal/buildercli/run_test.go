@@ -98,8 +98,8 @@ func newRunFixture(t *testing.T) *runFixture {
 		},
 		roles:      roles,
 		planDir:    loomengine.PlanDir(layout),
-		builderDir: lyxcwd.BuilderDir(hub),
-		reportsDir: lyxcwd.BuilderReportsDir(hub),
+		builderDir: builderengine.Dir(layout),
+		reportsDir: builderengine.ReportsDir(layout),
 	}
 
 	return &runFixture{CLI: c, Runner: runner, Hub: hub}

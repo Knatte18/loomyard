@@ -57,8 +57,8 @@ func newPollFixture(t *testing.T, engine shuttleengine.Engine, reed shuttleengin
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
 		planDir:    loomengine.PlanDir(layout),
-		builderDir: lyxcwd.BuilderDir(hub),
-		reportsDir: lyxcwd.BuilderReportsDir(hub),
+		builderDir: builderengine.Dir(layout),
+		reportsDir: builderengine.ReportsDir(layout),
 	}
 
 	return &pollFixture{CLI: c, Hub: hub}
