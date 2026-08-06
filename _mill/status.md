@@ -75,7 +75,9 @@ batches:
     start_sha: 9cf2e32e6bdbad8577c2404673f69a87ff61352c
     commit_sha: 9013f16658bbae81431f80311770e2d09bbdfbff
   - name: board-junction
-    state: pending
+    state: running
+    implementer_session: 4789b2c7-c7a7-453c-8f2a-13c3dd9612aa
+    start_sha: 14048653e9ce389ca6467827c0f465d0fd2de7ff
   - name: guard-and-docs
     state: pending
 ```
