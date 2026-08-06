@@ -1,10 +1,5 @@
-// gogit.go implements the go-git handle infrastructure every migrated read in
-// later batches builds on: goGit, the lazily-opened and cached *git.Repository
-// accessor, and lookupObjectRetrying, the pack-fingerprint-gated
-// reindex-and-retry helper every migrated object lookup (commit, tree, or
-// blob resolution) must route through. Nothing in this file changes any
-// existing method's backend — see gitrepo.go's Repo struct doc and this
-// file's own godoc for the locking discipline both pieces establish.
+// gogit.go implements the go-git handle infrastructure every migrated read in later batches builds on: goGit, the lazily-opened and cached *git.Repository accessor, and lookupObjectRetrying, the pack-fingerprint-gated reindex-and-retry helper every migrated object lookup (commit, tree, or blob resolution) must route through.
+// Nothing in this file changes any existing method's backend — see gitrepo.go's Repo struct doc and this file's own godoc for the locking discipline both pieces establish.
 
 package gitrepo
 

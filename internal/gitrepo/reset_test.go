@@ -14,8 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// TestResetHard_MovesToEarlierCommit asserts ResetHard restores an earlier
-// commit's file state and moves CurrentSHA back to it.
+// TestResetHard_MovesToEarlierCommit asserts ResetHard restores an earlier commit's file state and moves CurrentSHA back to it.
 func TestResetHard_MovesToEarlierCommit(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "v1")
@@ -49,12 +48,8 @@ func TestResetHard_MovesToEarlierCommit(t *testing.T) {
 	}
 }
 
-// TestResetHard_InvalidSHA_RejectedBeforeGitSpawn asserts that an
-// option-shaped or empty sha is rejected with ErrInvalidSHA before any git
-// spawn. The check is run against a path with no .git directory at all: if
-// ResetHard spawned git before validating sha, the result would be a git
-// failure (not a repository) rather than ErrInvalidSHA, so a passing
-// assertion here doubles as proof validation happens first.
+// TestResetHard_InvalidSHA_RejectedBeforeGitSpawn asserts that an option-shaped or empty sha is rejected with ErrInvalidSHA before any git spawn.
+// The check is run against a path with no .git directory at all: if ResetHard spawned git before validating sha, the result would be a git failure (not a repository) rather than ErrInvalidSHA, so a passing assertion here doubles as proof validation happens first.
 func TestResetHard_InvalidSHA_RejectedBeforeGitSpawn(t *testing.T) {
 	repo := gitrepo.New(t.TempDir())
 
@@ -75,10 +70,7 @@ func TestResetHard_InvalidSHA_RejectedBeforeGitSpawn(t *testing.T) {
 	}
 }
 
-// TestResetHard_WellFormedSHANotInHistory_ReturnsError asserts that a
-// well-formed but fabricated hex SHA — one that passes validSHA but names no
-// commit in this repo's history — surfaces as a genuine git failure, not
-// ErrInvalidSHA.
+// TestResetHard_WellFormedSHANotInHistory_ReturnsError asserts that a well-formed but fabricated hex SHA — one that passes validSHA but names no commit in this repo's history — surfaces as a genuine git failure, not ErrInvalidSHA.
 func TestResetHard_WellFormedSHANotInHistory_ReturnsError(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "v1")

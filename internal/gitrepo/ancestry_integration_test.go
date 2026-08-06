@@ -9,9 +9,7 @@ package gitrepo_test
 
 import "testing"
 
-// TestIsAncestor_Reachability asserts IsAncestor's three answer shapes:
-// (true, nil) when an ancestor, (false, nil) when not, and an error for
-// an absent SHA.
+// TestIsAncestor_Reachability asserts IsAncestor's three answer shapes: (true, nil) when an ancestor, (false, nil) when not, and an error for an absent SHA.
 func TestIsAncestor_Reachability(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "first")
