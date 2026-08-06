@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -131,12 +132,18 @@ func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "01-json-flag")
 
+	// planDir is computed over a distinct, correctly-anchored Location (HubPath
+	// the hub's parent, not hub itself): bootRealReed's own layout deliberately
+	// sets HubPath: hub so reed's hub-anchored logs land inside the scratch
+	// hub for cleanup, which would double the worktree-name segment if reused
+	// here for an AnchorPath()-anchored path.
+	planLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
 		engine:     &pollFakeEngine{},
 		reed:       eng,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    lyxcwd.PlanDir(hub),
+		planDir:    loomengine.PlanDir(planLocation),
 		builderDir: lyxcwd.BuilderDir(hub),
 		reportsDir: lyxcwd.BuilderReportsDir(hub),
 	}
@@ -212,7 +219,10 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 	eng, layout, hub := bootRealReed(t)
 	guid := addLivePane(t, eng, "implementer", "02-list-tests")
 
-	planDir := lyxcwd.PlanDir(hub)
+	// See TestSmoke_PollDoneReleasesStrand's planLocation comment: bootRealReed's
+	// layout is reed-hub-anchored, not AnchorPath()-anchored, so planDir needs
+	// its own correctly-anchored Location.
+	planDir := loomengine.PlanDir(&lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."})
 	plan, err := builderengine.ParsePlan(planDir)
 	if err != nil {
 		t.Fatalf("ParsePlan: %v", err)
@@ -258,7 +268,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 	eng, _, hub := bootRealReed(t)
 	orphanGUID := addLivePane(t, eng, "orchestrator", "")
 
-	planDir := lyxcwd.PlanDir(hub)
+	planDir := loomengine.PlanDir(&lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."})
 	fingerprint, err := builderengine.Fingerprint(planDir)
 	if err != nil {
 		t.Fatalf("Fingerprint: %v", err)

@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -55,7 +56,7 @@ func newPollFixture(t *testing.T, engine shuttleengine.Engine, reed shuttleengin
 		reed:       reed,
 		layout:     layout,
 		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    lyxcwd.PlanDir(hub),
+		planDir:    loomengine.PlanDir(layout),
 		builderDir: lyxcwd.BuilderDir(hub),
 		reportsDir: lyxcwd.BuilderReportsDir(hub),
 	}

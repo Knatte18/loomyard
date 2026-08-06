@@ -27,6 +27,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -194,7 +195,7 @@ Verbs:
 			c.cfg = websterCfg
 			c.roles = roles
 			c.batcher = activeBatcher
-			c.planDir = lyxcwd.PlanDir(layout.AnchorPath())
+			c.planDir = loomengine.PlanDir(layout)
 			c.websterDir = lyxcwd.WebsterDir(layout.AnchorPath())
 			c.reportsDir = lyxcwd.WebsterReportsDir(layout.AnchorPath())
 			c.promptsDir = lyxcwd.WebsterPromptsDir(layout.AnchorPath())

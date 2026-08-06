@@ -18,12 +18,26 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
 )
 
 // overviewFileName is the fixed filename of a plan's overview file, per plan-format-v3.md's on-disk layout.
 const overviewFileName = "00-overview.md"
+
+// PlanDirName is the relative-path segment planparser joins onto
+// configengine.LyxDirName to form the plan directory's worktree-relative
+// token. planparser is this segment's sole declarer, per the module-owned-constructors
+// per-segment join rule.
+const PlanDirName = "plan"
+
+// PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`.
+// Callers use this for relative plan-file pointers (e.g. this file's own
+// Card.SourcePath stamping below). It uses the stdlib path package so the
+// token is always forward-slash, never OS-dependent.
+func PlanDirRel() string {
+	return path.Join(configengine.LyxDirName, PlanDirName)
+}
 
 // cardIndexHeading is the exact "## " heading plan-format-v3.md pins for the overview's Card Index section.
 const cardIndexHeading = "## Card Index"
@@ -232,8 +246,8 @@ func parseCardFile(planDir string, entry cardIndexEntry) (Card, error) {
 		Number: entry.Number,
 		Slug:   entry.Slug,
 		Intent: entry.Intent,
-		// SourcePath is built from lyxcwd.PlanDirRel (the `_lyx/plan` segment) joined with fileName.
-		SourcePath: path.Join(lyxcwd.PlanDirRel(), fileName),
+		// SourcePath is built from this package's own PlanDirRel (the `_lyx/plan` segment) joined with fileName.
+		SourcePath: path.Join(PlanDirRel(), fileName),
 	}
 
 	filePath := filepath.Join(planDir, fileName)

@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -202,7 +203,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "."}
-	seedValidPlanDir(t, lyxcwd.PlanDir(worktree))
+	seedValidPlanDir(t, loomengine.PlanDir(layout))
 
 	reed := &verbsFakeReed{}
 	engine := &verbsFakeEngine{}
@@ -238,7 +239,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		},
 		roles:      roles,
 		batcher:    activeBatcher,
-		planDir:    lyxcwd.PlanDir(worktree),
+		planDir:    loomengine.PlanDir(layout),
 		websterDir: lyxcwd.WebsterDir(worktree),
 		reportsDir: lyxcwd.WebsterReportsDir(worktree),
 		promptsDir: lyxcwd.WebsterPromptsDir(worktree),

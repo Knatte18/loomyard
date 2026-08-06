@@ -59,9 +59,9 @@ func PlanSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry) (shut
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: plan role model-spec: %w", err)
 	}
 
-	decisionRecordPath := layout.DiscussionDecisionRecord()
-	planDir := layout.PlanDir()
-	overviewPath := layout.PlanOverview()
+	decisionRecordPath := DiscussionDecisionRecord(layout)
+	planDir := PlanDir(layout)
+	overviewPath := PlanOverview(layout)
 
 	directive := pattern.Directive(layout, pattern.RoleImplementer)
 	prompt, err := composePlanPrompt(decisionRecordPath, planDir, overviewPath, directive)

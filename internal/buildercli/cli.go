@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -198,7 +199,7 @@ Verbs:
 			// these dirs outside the junctioned _lyx the weft commit's
 			// RelPath-scoped pathspec never includes, silently stranding
 			// every builder artifact outside the weft.
-			c.planDir = lyxcwd.PlanDir(layout.AnchorPath())
+			c.planDir = loomengine.PlanDir(layout)
 			c.builderDir = lyxcwd.BuilderDir(layout.AnchorPath())
 			c.reportsDir = lyxcwd.BuilderReportsDir(layout.AnchorPath())
 			return nil

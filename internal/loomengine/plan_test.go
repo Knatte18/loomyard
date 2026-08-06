@@ -80,9 +80,9 @@ func TestPlanSpec_PromptFilled(t *testing.T) {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
 
-	decisionRecordPath := layout.DiscussionDecisionRecord()
-	planDir := layout.PlanDir()
-	overviewPath := layout.PlanOverview()
+	decisionRecordPath := DiscussionDecisionRecord(layout)
+	planDir := PlanDir(layout)
+	overviewPath := PlanOverview(layout)
 
 	for _, want := range []string{decisionRecordPath, planDir, overviewPath} {
 		if !strings.Contains(spec.Prompt, want) {

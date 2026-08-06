@@ -180,7 +180,7 @@ func recoveryTemplateMarkerValues() map[string]string {
 // cardWithSourcePath returns a minimal planparser.Card with SourcePath set
 // by hand: the inline fixture batches in this file are hand-built
 // batcher.Batch{Cards: [...]} values, not produced by ParsePlan, so
-// SourcePath — normally computed by planparser from lyxcwd.PlanDirRel()
+// SourcePath — normally computed by planparser from planparser.PlanDirRel()
 // plus the card's own NN-<slug>.md filename — must be set explicitly here.
 func cardWithSourcePath(number int, slug, intent string) planparser.Card {
 	return planparser.Card{
@@ -188,7 +188,7 @@ func cardWithSourcePath(number int, slug, intent string) planparser.Card {
 		Slug:       slug,
 		Title:      slug,
 		Intent:     intent,
-		SourcePath: fmt.Sprintf("%s/%02d-%s.md", lyxcwd.PlanDirRel(), number, slug),
+		SourcePath: fmt.Sprintf("%s/%02d-%s.md", planparser.PlanDirRel(), number, slug),
 	}
 }
 

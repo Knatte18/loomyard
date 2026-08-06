@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -147,7 +148,7 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 			BatchCardCap:          10,
 		},
 		roles:      roles,
-		planDir:    lyxcwd.PlanDir(hub),
+		planDir:    loomengine.PlanDir(layout),
 		builderDir: lyxcwd.BuilderDir(hub),
 		reportsDir: lyxcwd.BuilderReportsDir(hub),
 	}

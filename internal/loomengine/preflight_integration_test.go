@@ -78,7 +78,7 @@ func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 		Stage:     "produce",
 		Narration: "now: awaiting preflight / last: — / wait: —",
 	}
-	if err := state.WriteJSON(l.LoomStatusFile(), l.LoomStatusLock(), s); err != nil {
+	if err := state.WriteJSON(LoomStatusFile(l), LoomStatusLock(l), s); err != nil {
 		t.Fatalf("seed status.json: %v", err)
 	}
 }
@@ -346,13 +346,13 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 // Healthy's underlying loop was originally written and tested against.
 //
 // The seed-check expectation differs by junction, and deliberately so:
-// status.json lives under _lyx (l.LoomStatusFile() is _lyx-anchored), so a
+// status.json lives under _lyx (LoomStatusFile(l) is _lyx-anchored), so a
 // broken _lyx junction also makes the seed stat fail — classified
 // seed-unreadable (never seed-missing) because check 3 already failed. A
 // broken _pattern junction, by contrast, leaves the seed fully readable
 // through the still-healthy _lyx junction: check 3 still fails and still
 // classifies as CheckJunction (never CheckWeftSync), but no seed failure is
-// added at all, since check 4's stat of l.LoomStatusFile() succeeds either
+// added at all, since check 4's stat of LoomStatusFile(l) succeeds either
 // way. This asymmetry is exactly what "check3BlocksSeed" is named for: it
 // only changes check 4's classification of a stat failure that already
 // happened, it does not itself cause one.
@@ -509,7 +509,7 @@ func TestPreflight_SeedMissing(t *testing.T) {
 
 	f, _ := setupPreflightFixture(t)
 
-	if err := os.Remove(f.Layout.LoomStatusFile()); err != nil {
+	if err := os.Remove(LoomStatusFile(f.Layout)); err != nil {
 		t.Fatalf("remove seed: %v", err)
 	}
 	commitWeftStatus(t, f)
@@ -540,7 +540,7 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
   "next_action": null,
   "unknown_field": true
 }`
-	if err := os.WriteFile(f.Layout.LoomStatusFile(), []byte(raw), 0o644); err != nil {
+	if err := os.WriteFile(LoomStatusFile(f.Layout), []byte(raw), 0o644); err != nil {
 		t.Fatalf("write malformed seed: %v", err)
 	}
 	commitWeftStatus(t, f)
@@ -589,7 +589,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 			t.Parallel()
 
 			f, _ := setupPreflightFixture(t)
-			if err := state.WriteJSON(f.Layout.LoomStatusFile(), f.Layout.LoomStatusLock(), tt.seed()); err != nil {
+			if err := state.WriteJSON(LoomStatusFile(f.Layout), LoomStatusLock(f.Layout), tt.seed()); err != nil {
 				t.Fatalf("overwrite seed: %v", err)
 			}
 			commitWeftStatus(t, f)

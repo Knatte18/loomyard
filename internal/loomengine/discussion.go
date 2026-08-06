@@ -32,8 +32,8 @@ func DiscussionSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry,
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: discussion role model-spec: %w", err)
 	}
 
-	decisionRecordPath := layout.DiscussionDecisionRecord()
-	supportLogPath := layout.DiscussionSupportLog()
+	decisionRecordPath := DiscussionDecisionRecord(layout)
+	supportLogPath := DiscussionSupportLog(layout)
 
 	prompt, err := composePrompt(slug, decisionRecordPath, supportLogPath, autonomous)
 	if err != nil {

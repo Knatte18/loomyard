@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -27,8 +26,7 @@ const (
 	// lyxDirName is the directory name for the lyx system directory within a worktree.
 	// internal/configengine.LyxDirName is the single exported declarer of this token now;
 	// this private const is a transitional second declarer for lyxcwd's own
-	// remaining _lyx-anchored methods (PerchRunsDir, PlanDir, BuilderDir, WebsterDir,
-	// LyxDir, LoomStatusFile, LoomStatusLock, DiscussionDir, PortalTarget, HostLyxLink,
+	// remaining _lyx-anchored methods (LyxDir, PortalTarget, HostLyxLink,
 	// HostLyxLinkHere, WeftLyxDir, WeftLyxDirFor), removed once those methods relocate.
 	lyxDirName = "_lyx"
 
@@ -199,35 +197,6 @@ func PerchRunsDir(baseDir string) string {
 	return filepath.Join(baseDir, lyxDirName, "perch")
 }
 
-// PlanDir returns the path to the plan's artifact directory within a baseDir.
-// It holds 00-overview.md and per-plan-unit files. Both v1/v2 and v3 formats share this directory.
-// It lives under _lyx so the plan is weft-synced. Per the Hub Geometry Invariant, no other
-// package may construct this path.
-func PlanDir(baseDir string) string {
-	return filepath.Join(baseDir, lyxDirName, "plan")
-}
-
-// PlanDirRel returns the worktree-relative plan-directory token, `_lyx/plan`.
-// Callers use this for relative plan-file pointers (e.g. planparser's Card.SourcePath token).
-// It uses the stdlib path package so the token is always forward-slash, never OS-dependent.
-func PlanDirRel() string {
-	return path.Join(lyxDirName, "plan")
-}
-
-// PlanDir returns the path to the Plan phase's output directory for this worktree.
-// It is AnchorPath-anchored, matching DiscussionDir's rationale.
-// Per the Hub Geometry Invariant, no other package may construct this path.
-func (l *Location) PlanDir() string {
-	return PlanDir(l.AnchorPath())
-}
-
-// PlanOverview returns the path to the plan's overview file: the Plan phase's done-sentinel
-// and the Planner producer's sole Spec.OutputFiles entry. It shares PlanDir's AnchorPath
-// anchoring. Per the Hub Geometry Invariant, no other package may construct this path.
-func (l *Location) PlanOverview() string {
-	return filepath.Join(l.PlanDir(), "00-overview.md")
-}
-
 // BuilderDir returns the path to the builder's durable run state directory (state.json,
 // pause flag, outcome.yaml). It lives under _lyx so it is weft-synced. Per the Hub Geometry
 // Invariant, no other package may construct this path.
@@ -334,19 +303,6 @@ func (l *Location) DotLyxDir() string {
 	return filepath.Join(l.AnchorPath(), dotLyxDirName)
 }
 
-// LoomStatusFile returns the path to the loom phase-machine's status.json sidecar for this worktree.
-// It is AnchorPath-anchored so a caller invoked from anywhere else within the
-// worktree still resolves the one true status.json at the anchored subpath.
-func (l *Location) LoomStatusFile() string {
-	return filepath.Join(l.AnchorPath(), lyxDirName, "status.json")
-}
-
-// LoomStatusLock returns the path to the advisory lock file guarding concurrent access to LoomStatusFile().
-// It shares LoomStatusFile's AnchorPath anchoring.
-func (l *Location) LoomStatusLock() string {
-	return filepath.Join(l.AnchorPath(), lyxDirName, "status.json.lock")
-}
-
 // ScoutDaemonStateFile returns the path to the scout daemon's runtime state file for the given
 // language. It is WorktreePath-anchored so the daemon is a worktree-wide singleton per language.
 // It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
@@ -358,27 +314,6 @@ func (l *Location) ScoutDaemonStateFile(lang string) string {
 // ScoutDaemonStateFile(lang). It shares that method's WorktreePath anchoring and per-lang scoping.
 func (l *Location) ScoutDaemonLock(lang string) string {
 	return filepath.Join(l.WorktreePath(), dotLyxDirName, "scout", lang, "daemon.lock")
-}
-
-// DiscussionDir returns the path to the Discussion phase's output directory for this worktree
-// (the decision-record.md/support-log.md pair). It is AnchorPath-anchored.
-// Per the Hub Geometry Invariant, no other package may construct this path.
-func (l *Location) DiscussionDir() string {
-	return filepath.Join(l.AnchorPath(), lyxDirName, "discussion")
-}
-
-// DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
-// producer's sole input from `_lyx/discussion/`. It shares DiscussionDir's AnchorPath anchoring.
-// Per the Hub Geometry Invariant, no other package may construct this path.
-func (l *Location) DiscussionDecisionRecord() string {
-	return filepath.Join(l.DiscussionDir(), "decision-record.md")
-}
-
-// DiscussionSupportLog returns the path to the raw support log read by the Discussion-review gate only.
-// It shares DiscussionDir's AnchorPath anchoring. Per the Hub Geometry Invariant, no other
-// package may construct this path.
-func (l *Location) DiscussionSupportLog() string {
-	return filepath.Join(l.DiscussionDir(), "support-log.md")
 }
 
 // HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server

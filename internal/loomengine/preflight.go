@@ -144,7 +144,7 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 	}
 
 	// Check 4: seed presence, readability, and coherence.
-	if _, err := os.Stat(l.LoomStatusFile()); err != nil {
+	if _, err := os.Stat(LoomStatusFile(l)); err != nil {
 		switch {
 		case check3BlocksSeed:
 			// The seed is unreadable as a downstream consequence of check 3's
@@ -159,7 +159,7 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 			report.addFailure(CheckSeedUnreadable, err.Error())
 		}
 	} else {
-		s, found, rerr := state.ReadJSONStrict[Status](l.LoomStatusFile(), l.LoomStatusLock())
+		s, found, rerr := state.ReadJSONStrict[Status](LoomStatusFile(l), LoomStatusLock(l))
 		switch {
 		case rerr != nil:
 			// A decode failure (malformed JSON or an unknown field) is a
@@ -176,7 +176,7 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 			// vanished between the two calls — a TOCTOU race, not a determined
 			// verdict. Synthesize a non-nil error so this never masquerades as
 			// Report{}, nil.
-			return Report{}, fmt.Errorf("loomengine: seed vanished between stat and read: %s", l.LoomStatusFile())
+			return Report{}, fmt.Errorf("loomengine: seed vanished between stat and read: %s", LoomStatusFile(l))
 		default:
 			for _, f := range checkCoherence(s) {
 				report.addFailure(f.Check, f.Reason)

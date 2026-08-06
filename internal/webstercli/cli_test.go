@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -164,10 +165,11 @@ func TestWeftCommit_NonBypassValidatesPairPaths(t *testing.T) {
 func newTestCLI(t *testing.T) (*websterCLI, string) {
 	t.Helper()
 	hub := t.TempDir()
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &websterCLI{
-		layout:     &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."},
+		layout:     layout,
 		cfg:        websterengine.Config{},
-		planDir:    lyxcwd.PlanDir(hub),
+		planDir:    loomengine.PlanDir(layout),
 		websterDir: lyxcwd.WebsterDir(hub),
 		reportsDir: lyxcwd.WebsterReportsDir(hub),
 		promptsDir: lyxcwd.WebsterPromptsDir(hub),
