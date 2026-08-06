@@ -2,7 +2,8 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx` against the real GitHub test repos (`Knatte18/lyx-test` as host, `Knatte18/lyx-test-weft` as weft). Not an automated suite -- the value is a Claude session driving `lyx` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
+A structured test-loop for exercising `lyx` against the real GitHub test repos (`Knatte18/lyx-test` as host, `Knatte18/lyx-test-weft` as weft).
+Not an automated suite -- the value is a Claude session driving `lyx` by hand in a real hub, treating every break, surprise, or rough edge as a LoomYard finding to record in the report.
 
 This parallels how millhouse was bootstrapped: get lyx working well enough that an agent can operate it in a real repo, then use that experience to harden lyx.
 
@@ -10,9 +11,14 @@ This parallels how millhouse was bootstrapped: get lyx working well enough that 
 
 Before starting a session:
 
-1. **Deploy a fresh dev binary.** Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source. The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched. The deployed binary is a snapshot -- re-deploy after any source change you want to test.
-2. **Materialize the hub.** Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) to clone the host and weft into a fresh `lyx-test-HUB`.
-3. **`lyx` on PATH.** Confirm `lyx --help` works from any directory.
+1. **Deploy a fresh dev binary.**
+   Run `deploy-dev` to build `lyx.exe` into `.dev-bin` as current source.
+   The suite resolves `.dev-bin` itself and prepends it to the agent's PATH (the fingerprint header's `Source: dev` line confirms the dev build is under test) -- no PATH setup needed, and production `lyx` stays untouched.
+   The deployed binary is a snapshot -- re-deploy after any source change you want to test.
+2. **Materialize the hub.**
+   Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean) to clone the host and weft into a fresh `lyx-test-HUB`.
+3. **`lyx` on PATH.**
+   Confirm `lyx --help` works from any directory.
 
 ### PowerShell JSON-quoting
 
@@ -30,37 +36,50 @@ lyx board upsert '{"slug":"s3-demo","title":"S3 demo"}'
 
 ### Operating model
 
-lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a parent. The hub host repo is initialized at its root, so the agent runs the entire session from there (cwd is fixed at the root). Running a lyx command from a subdirectory that has not itself been initialized correctly reports `not initialized here; run "lyx fabric reconcile"` — that is expected behaviour, **not a finding**. The agent must **not** scaffold nested `_lyx/` during a session, with exactly one controlled exception: **S6** deliberately clones a second, subpath-anchored hub to prove the subpath-anchoring contract, and reverses that scaffolding with `lyx fabric unwire` at session end (see S6's durability note). Outside of S6, creating a nested `_lyx/` is out of scope for a session and not something to try "just to see what happens."
+lyx resolves against the current directory's own `_lyx/` and does **not** walk up to a parent.
+The hub host repo is initialized at its root, so the agent runs the entire session from there (cwd is fixed at the root).
+Running a lyx command from a subdirectory that has not itself been initialized correctly reports `not initialized here; run "lyx fabric reconcile"` — that is expected behaviour, **not a finding**.
+The agent must **not** scaffold nested `_lyx/` during a session, with exactly one controlled exception: **S6** deliberately clones a second, subpath-anchored hub to prove the subpath-anchoring contract, and reverses that scaffolding with `lyx fabric unwire` at session end (see S6's durability note).
+Outside of S6, creating a nested `_lyx/` is out of scope for a session and not something to try "just to see what happens."
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub host repo (`lyx-test-HUB/lyx-test`). It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH. It must not look for, read, or reason about the lyx source tree. No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
+**The agent under test works exclusively inside the Hub host repo (`lyx-test-HUB/lyx-test`).
+It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
+It must not look for, read, or reason about the lyx source tree.
+No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
 
 Discovering the command surface is done via `lyx`, `lyx <module>`, and `lyx <module> <subcommand> --help` alone -- not from documentation outside the Hub.
 
 ## Fingerprint header
 
-The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub host repo. The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
+The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub host repo.
+The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
-The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding. The agent does not need to transcribe the fingerprint anywhere itself.
+The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
+The agent does not need to transcribe the fingerprint anywhere itself.
 
 ## How to run a scenario
 
 For each scenario below:
 
-- Read the **Goal** -- it names the task, not the commands. Discover the commands via `lyx`, `lyx <module>`, and `--help` flags (S0 ethos).
-- **Watch** what lyx does. Note where it stalls, guesses wrong, or hits an error.
+- Read the **Goal** -- it names the task, not the commands.
+  Discover the commands via `lyx`, `lyx <module>`, and `--help` flags (S0 ethos).
+- **Watch** what lyx does.
+  Note where it stalls, guesses wrong, or hits an error.
 - Record the outcome per the verdict buckets: `OK` (worked) / `WARN` (rough edge) / `FAIL` (broke).
 
 ## Verdict key
 
 - `OK`   -- completed without friction
 - `WARN` -- completed but with confusion, awkward UX, or a non-fatal error
-- `FAIL` -- did not complete; lyx broke, panicked, or gave wrong output
+- `FAIL` -- did not complete;
+  lyx broke, panicked, or gave wrong output
 
 ## Capturing findings
 
-After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the host-repo cwd) on this exact schema. **Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the host-repo cwd) on this exact schema.
+**Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 ```json
 {
@@ -81,15 +100,20 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
-Write only `source` and `items` -- a separate fetch step (run after the session) stamps `meta` (including the binary fingerprint). Confine all free text to the `title`/`body` string fields so the JSON stays well-formed.
+Write only `source` and `items` -- a separate fetch step (run after the session) stamps `meta` (including the binary fingerprint).
+Confine all free text to the `title`/`body` string fields so the JSON stays well-formed.
 
 ## Scenarios
 
 ### S0 -- Discovery (help surface smoke test)
 
-**Goal:** "You have `lyx` on PATH and nothing else inside this repo. Find out what it can do and report the full command tree."
+**Goal:** "You have `lyx` on PATH and nothing else inside this repo.
+Find out what it can do and report the full command tree."
 
-**Watch:** Does `lyx` alone list modules? Does `lyx <module>` list subcommands? Is each description accurate and useful? Any command that cannot be discovered from the binary alone is a help gap.
+**Watch:** Does `lyx` alone list modules?
+Does `lyx <module>` list subcommands?
+Is each description accurate and useful?
+Any command that cannot be discovered from the binary alone is a help gap.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -97,9 +121,12 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 ### S1 -- Hub orientation
 
-**Goal:** "You are inside a hub that was set up from a host and a weft. Figure out what the hub contains and what state it is in."
+**Goal:** "You are inside a hub that was set up from a host and a weft.
+Figure out what the hub contains and what state it is in."
 
-**Watch:** Can you tell host from weft from board using only `lyx` commands? Does any `lyx` command report hub geometry or status? If you have to `ls` and guess, that is a missing command surface.
+**Watch:** Can you tell host from weft from board using only `lyx` commands?
+Does any `lyx` command report hub geometry or status?
+If you have to `ls` and guess, that is a missing command surface.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -109,7 +136,9 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Goal:** "Create something in the host repo (a file, a small change) and get it committed and tracked the way lyx intends."
 
-**Watch:** The host is an ordinary git repo — committing host changes with plain `git` is acceptable and **not** a finding. Watch lyx's actual responsibility: host/weft coordination (junctions wired correctly, weft mirroring behaves). The absence of a lyx-owned host-commit command is an intentional design choice, not a gap — do not file it as an enhancement suggestion.
+**Watch:** The host is an ordinary git repo — committing host changes with plain `git` is acceptable and **not** a finding.
+Watch lyx's actual responsibility: host/weft coordination (junctions wired correctly, weft mirroring behaves).
+The absence of a lyx-owned host-commit command is an intentional design choice, not a gap — do not file it as an enhancement suggestion.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -125,9 +154,13 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
 
-**Durability note:** The board is durable across sessions — it starts non-empty (e.g. a `T1 "Test task from S3"` task persists from prior runs). Do not assume a fresh board. Use `lyx board list` to observe current state before adding tasks, and use `lyx board remove` to clean up any test tasks you create at session end.
+**Durability note:** The board is durable across sessions — it starts non-empty (e.g. a `T1 "Test task from S3"` task persists from prior runs).
+Do not assume a fresh board.
+Use `lyx board list` to observe current state before adding tasks, and use `lyx board remove` to clean up any test tasks you create at session end.
 
-**Watch:** Board CRUD via `lyx board`. JSON output sane. State transitions work.
+**Watch:** Board CRUD via `lyx board`.
+JSON output sane.
+State transitions work.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -139,7 +172,10 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 **Covers:** config
 
-**Watch:** From the worktree root, write a value with `lyx config <module> --set key=value` (non-interactive, bypasses the editor; mutually exclusive with `--print`; requires a module argument), read it back with `lyx config <module> --print`, then run `lyx config reconcile`. Does the write/read round-trip the correct `_lyx/config/` file, and does `reconcile` report a clean (no unexpected added/removed keys) result against the value you just wrote?
+**Watch:** From the worktree root, write a value with `lyx config <module> --set key=value` (non-interactive, bypasses the editor;
+mutually exclusive with `--print`;
+requires a module argument), read it back with `lyx config <module> --print`, then run `lyx config reconcile`.
+Does the write/read round-trip the correct `_lyx/config/` file, and does `reconcile` report a clean (no unexpected added/removed keys) result against the value you just wrote?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -147,9 +183,18 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 ### S5 -- Wrong-directory and error ergonomics
 
-**Goal:** "Run a hub-only command from outside the hub. Run a command with a bad flag. Run an unknown subcommand."
+**Goal:** "Run a hub-only command from outside the hub.
+Run a command with a bad flag.
+Run an unknown subcommand."
 
-**Watch:** Are errors legible? Does lyx say what to do, or just fail? This is where standalone usability lives or dies. A legible `not initialized` / "run from the initialized root"-style message is the `OK` (ergonomics-pass) outcome — not a `FAIL`. Do not file it as a finding. `lyx`'s error output is a JSON envelope (`{"ok":false,"error":"..."}`) on every error path by design — that is the deliberate machine-parseable contract, not a defect. "Legible" means the `error` field's message text clearly identifies the problem, not that the output reads as human prose with a hint or usage suggestion. This does not cover a raw subprocess/tool string leaking unwrapped into the `error` field (e.g. a bare git `fatal:` line, or any other tool's raw stderr) — that is still a legitimate `WARN`/`FAIL` finding.
+**Watch:** Are errors legible?
+Does lyx say what to do, or just fail?
+This is where standalone usability lives or dies.
+A legible `not initialized` / "run from the initialized root"-style message is the `OK` (ergonomics-pass) outcome — not a `FAIL`.
+Do not file it as a finding. `lyx`'s error output is a JSON envelope (`{"ok":false,"error":"..."}`) on every error path by design — that is the deliberate machine-parseable contract, not a defect.
+"Legible" means the `error` field's message text clearly identifies the problem, not that the output reads as human prose with a hint or usage suggestion.
+This does not cover a raw subprocess/tool string leaking unwrapped into the `error` field (e.g. a bare git `fatal:` line,
+or any other tool's raw stderr) — that is still a legitimate `WARN`/`FAIL` finding.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -157,11 +202,20 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 ### S6 -- Subpath-anchored clone
 
-**Goal:** "Clone a second hub from the same host/weft repos into a scratch location, anchored at a subdirectory instead of the repo root, using `lyx fabric clone --subpath <sub> <host-url> <weft-url>`. From inside the anchored subpath, run `config` and `board`. Finally, tear the pair down with `lyx fabric unwire`."
+**Goal:** "Clone a second hub from the same host/weft repos into a scratch location, anchored at a subdirectory instead of the repo root, using `lyx fabric clone --subpath <sub> <host-url> <weft-url>`.
+From inside the anchored subpath, run `config` and `board`.
+Finally, tear the pair down with `lyx fabric unwire`."
 
-**Durability note:** Unlike the old subfolder-init scenario, S6 cannot retrofit the already-root-anchored main sandbox hub — the lyx-anchor subpath is recorded once, at clone time, onto `weft:main`. S6 instead clones a genuinely separate scratch hub from the same host/weft URLs, so it is not bound by the Black-box rule's "operate only inside the main Hub" scope for its own duration. Use `--reset` on the clone so repeated sandbox sessions are idempotent. `lyx fabric unwire`, run from inside the anchored subpath at session end, removes the junctions, clears the weft-side `_lyx` content, and reverts `.gitignore` there — it is not purely local: clearing weft-side `_lyx` content commits and pushes that deletion to the shared `lyx-test-weft` remote. `unwire` deliberately leaves the scratch hub's recorded anchor and repo-wide `fabric.yaml` on `weft:main` untouched (that is what lets a later `lyx fabric reconcile` re-wire it), so delete the scratch hub directory itself with a plain filesystem removal once `unwire` completes, rather than expecting `unwire` to remove it.
+**Durability note:** Unlike the old subfolder-init scenario, S6 cannot retrofit the already-root-anchored main sandbox hub — the lyx-anchor subpath is recorded once, at clone time, onto `weft:main`.
+S6 instead clones a genuinely separate scratch hub from the same host/weft URLs, so it is not bound by the Black-box rule's "operate only inside the main Hub" scope for its own duration.
+Use `--reset` on the clone so repeated sandbox sessions are idempotent. `lyx fabric unwire`, run from inside the anchored subpath at session end, removes the junctions, clears the weft-side `_lyx` content, and reverts `.gitignore` there — it is not purely local: clearing weft-side `_lyx` content commits and pushes that deletion to the shared `lyx-test-weft` remote. `unwire` deliberately leaves the scratch hub's recorded anchor and repo-wide `fabric.yaml` on `weft:main` untouched (that is what lets a later `lyx fabric reconcile` re-wire it), so delete the scratch hub directory itself with a plain filesystem removal once `unwire` completes, rather than expecting `unwire` to remove it.
 
-**Watch:** Does `lyx fabric clone --subpath <sub>` scaffold junctions and config at `<sub>/_lyx` inside the new hub's host worktree, not at the host worktree root — with no follow-up activation command needed? Does `lyx config --print`/`--set` run from inside `<sub>` resolve against `<sub>/_lyx/config` — the actual subpath-anchoring demonstrator? Does `lyx board` still run cleanly from inside `<sub>` — a "still works from the anchored subpath" smoke check only; board's data lives at the hub level, so this does *not* itself prove subpath resolution the way `config` does. Does running a lyx command from outside the anchored subpath (e.g. the new host worktree's root, when `<sub>` is not `.`) correctly hard-error rather than silently resolving the wrong subpath? Does `lyx fabric unwire` cleanly remove the junctions, clear the weft `_lyx` content, and revert `.gitignore`, while leaving the recorded anchor and repo-wide config intact?
+**Watch:** Does `lyx fabric clone --subpath <sub>` scaffold junctions and config at `<sub>/_lyx` inside the new hub's host worktree, not at the host worktree root — with no follow-up activation command needed?
+Does `lyx config --print`/`--set` run from inside `<sub>` resolve against `<sub>/_lyx/config` — the actual subpath-anchoring demonstrator?
+Does `lyx board` still run cleanly from inside `<sub>` — a "still works from the anchored subpath" smoke check only;
+board's data lives at the hub level, so this does *not* itself prove subpath resolution the way `config` does.
+Does running a lyx command from outside the anchored subpath (e.g. the new host worktree's root, when `<sub>` is not `.`) correctly hard-error rather than silently resolving the wrong subpath?
+Does `lyx fabric unwire` cleanly remove the junctions, clear the weft `_lyx` content, and revert `.gitignore`, while leaving the recorded anchor and repo-wide config intact?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -169,11 +223,13 @@ Write only `source` and `items` -- a separate fetch step (run after the session)
 
 ### S9 -- Builder plan validate/status
 
-**Goal:** "Exercise `lyx builder validate` and `lyx builder status` against a trivial, hand-written plan-format v2 plan: confirm status reports uninitialized, a valid plan passes clean, and a broken plan reports findings instead of a bare error."
+**Goal:** "Exercise `lyx builder validate` and `lyx builder status` against a trivial, hand-written plan-format v2 plan: confirm status reports uninitialized, a valid plan passes clean,
+and a broken plan reports findings instead of a bare error."
 
 **Covers:** builder
 
-**Note:** No agent spawns in this scenario. `lyx builder run` and `lyx builder spawn-batch` -- the verbs that spawn a real implementer session -- are deliberately NOT exercised here: a real end-to-end orchestrator run is slow, subscription-burning, and flaky, so it stays out of the CI/sandbox suite. This scenario only proves the fail-loud validate/status file-contract primitives.
+**Note:** No agent spawns in this scenario. `lyx builder run` and `lyx builder spawn-batch` -- the verbs that spawn a real implementer session -- are deliberately NOT exercised here: a real end-to-end orchestrator run is slow, subscription-burning, and flaky, so it stays out of the CI/sandbox suite.
+This scenario only proves the fail-loud validate/status file-contract primitives.
 
 **Watch:** From the Hub host repo root, create `_lyx/plan/00-overview.md` with:
 
@@ -222,7 +278,9 @@ Exists only so the plan has one well-formed batch.
 go version
 ```
 
-Run `lyx builder status` first, before writing any of the files above touches `_lyx/builder` -- expect `{"initialized": false}` since no run has ever started. Then, with the two plan files in place, run `lyx builder validate` -- expect the valid envelope `{"ok":true,"valid":true,"batches":1}`. Finally, edit `00-overview.md`, flipping `approved: true` to `approved: false`, and re-run `lyx builder validate` -- expect an error envelope (`"ok":false`) whose `findings` array carries a `plan-unapproved` finding, not a bare error string.
+Run `lyx builder status` first, before writing any of the files above touches `_lyx/builder` -- expect `{"initialized": false}` since no run has ever started.
+Then, with the two plan files in place, run `lyx builder validate` -- expect the valid envelope `{"ok":true,"valid":true,"batches":1}`.
+Finally, edit `00-overview.md`, flipping `approved: true` to `approved: false`, and re-run `lyx builder validate` -- expect an error envelope (`"ok":false`) whose `findings` array carries a `plan-unapproved` finding, not a bare error string.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -254,6 +312,11 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Notes
 
-- Scenario set is deliberately small and host/weft-centric -- that is the spine that matters now. Add scenarios as modules grow (shuttle, review, loom). A module whose testing model is fundamentally different gets its own sibling suite file (`*SUITE.md`), with reed (`SANDBOX-REED-SUITE.md`) as the precedent; the coverage guard scans all of them.
-- The tmux interactive launcher will replace the direct `claude` launch in a future iteration; the file contract (this `SANDBOX-CORE-SUITE.md` driving the agent) is unchanged.
-- The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring"; this refers to **weft path mirroring** (how the weft worktree mirrors host subpaths) — not to running lyx from subdirectories. "cwd-relpath" does not appear elsewhere in this scheme.
+- Scenario set is deliberately small and host/weft-centric -- that is the spine that matters now.
+  Add scenarios as modules grow (shuttle, review, loom).
+  A module whose testing model is fundamentally different gets its own sibling suite file (`*SUITE.md`), with reed (`SANDBOX-REED-SUITE.md`) as the precedent;
+  the coverage guard scans all of them.
+- The tmux interactive launcher will replace the direct `claude` launch in a future iteration;
+  the file contract (this `SANDBOX-CORE-SUITE.md` driving the agent) is unchanged.
+- The host repo `Knatte18/lyx-test` README uses the phrase "cwd-relpath mirroring";
+  this refers to **weft path mirroring** (how the weft worktree mirrors host subpaths) — not to running lyx from subdirectories. "cwd-relpath" does not appear elsewhere in this scheme.

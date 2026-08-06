@@ -1,6 +1,7 @@
 # Scripting & Automation
 
-tmux supports scripting and automation commands. On Windows, tmux (the Windows port of tmux) is command-compatible.
+tmux supports scripting and automation commands.
+On Windows, tmux (the Windows port of tmux) is command-compatible.
 
 ## Window & Pane Control
 
@@ -124,7 +125,8 @@ tmux zoom-pane
 
 ## Pane Titles
 
-Programs running inside a pane can set the title via OSC escape sequences. PowerShell 7 does this automatically with the current working directory. (Companion documentation `pane-titles.md` not available in this repository.)
+Programs running inside a pane can set the title via OSC escape sequences.
+PowerShell 7 does this automatically with the current working directory. (Companion documentation `pane-titles.md` not available in this repository.)
 
 ```powershell
 # Set a title on the active pane
@@ -251,7 +253,8 @@ tmux show-environment -g
 
 ## Format Variables
 
-The `display-message` command supports 140+ variables. Common ones include:
+The `display-message` command supports 140+ variables.
+Common ones include:
 
 | Variable | Description |
 |----------|-------------|
@@ -348,7 +351,8 @@ tmux wait-for mychannel                # Wait until channel is signaled
 
 ## Hooks (Event Callbacks)
 
-Hooks let you run commands automatically when events occur. They are one of the most powerful scripting features in tmux.
+Hooks let you run commands automatically when events occur.
+They are one of the most powerful scripting features in tmux.
 
 ### Setting Hooks
 
@@ -391,7 +395,8 @@ tmux set-hook -gu after-new-window
 tmux show-hooks
 ```
 
-**Important:** If you repeatedly call `set-hook -g` for the same event, tmux appends duplicate entries. Use `set-hook -gu` to clear the old hook before setting a new one, or check `show-hooks` to verify no duplicates.
+**Important:** If you repeatedly call `set-hook -g` for the same event, tmux appends duplicate entries.
+Use `set-hook -gu` to clear the old hook before setting a new one, or check `show-hooks` to verify no duplicates.
 
 ## Display Panes
 
@@ -402,7 +407,9 @@ Show numbered overlays on all panes, then type a number to jump to that pane:
 tmux display-panes
 ```
 
-The overlay shows each pane's number according to `pane-base-index`. Press a number key while the overlay is visible to switch to that pane. The overlay auto-dismisses after `display-panes-time` milliseconds.
+The overlay shows each pane's number according to `pane-base-index`.
+Press a number key while the overlay is visible to switch to that pane.
+The overlay auto-dismisses after `display-panes-time` milliseconds.
 
 ## Run Shell
 
@@ -654,7 +661,8 @@ tmux select-window -t !             # Last (previous) window
 
 ## Server Namespaces
 
-Run isolated tmux instances using the `-L` flag. Each namespace gets its own server process with its own sessions:
+Run isolated tmux instances using the `-L` flag.
+Each namespace gets its own server process with its own sessions:
 
 ```powershell
 # Start a session in a named namespace

@@ -4,43 +4,98 @@
 
 ---
 
-You are the **orchestrator** of a serial, model- and effort-rotating **review+fix loop** hardening the `<MODULE>` module before it merges to `main`. Work from `<WORKTREE_PATH>` (branch `<BRANCH>`).
+You are the **orchestrator** of a serial, model- and effort-rotating **review+fix loop** hardening the `<MODULE>` module before it merges to `main`.
+Work from `<WORKTREE_PATH>` (branch `<BRANCH>`).
 
-You do **not** review or edit the module yourself. Your job is to drive rounds of independent clean-room agents, **independently verify** what each one did, and decide when the module has converged. The single discipline that makes this work: **you never trust a round's own "merge-ready" verdict** — only your own verification gates it.
+You do **not** review or edit the module yourself.
+Your job is to drive rounds of independent clean-room agents, **independently verify** what each one did, and decide when the module has converged.
+The single discipline that makes this work: **you never trust a round's own "merge-ready" verdict** — only your own verification gates it.
 
 ## Your inputs
-- The per-module **review prompt** the round agent reads: `.scratch/<module>-review-prompt.md` — a filled instance of [`review-prompt-template.md`](review-prompt-template.md) that **you write** at the start of the campaign (fill every `<PLACEHOLDER>`) and keep under `.scratch/` (gitignored — the per-module prompt is never checked in; write it fresh from the template each campaign). It carries a *"round context seeded from prior-round verification"* section that **you** rewrite each round.
+- The per-module **review prompt** the round agent reads: `.scratch/<module>-review-prompt.md` — a filled instance of [`review-prompt-template.md`](review-prompt-template.md) that **you write** at the start of the campaign (fill every `<PLACEHOLDER>`) and keep under `.scratch/` (gitignored — the per-module prompt is never checked in;
+  write it fresh from the template each campaign).
+  It carries a *"round context seeded from prior-round verification"* section that **you** rewrite each round.
 - Substrate + tool locations for verification: `<e.g. tmux resolved via PATH, pwsh7 resolved via PATH>`.
-- A scratchpad for verification artifacts. Round deliverables live under `.scratch/` (gitignored).
+- A scratchpad for verification artifacts.
+  Round deliverables live under `.scratch/` (gitignored).
 
 ## Hard rules (do not violate)
-1. **Never trust the round's self-verdict.** Rounds routinely self-report "merge-ready" while leaving a residual. Your independent verification is the gate — nothing merges on an agent's say-so.
-2. **Rounds are FRESH agents, never forks.** Spawn `subagent_type: crucible-reviewer-<effort>` (the operator's pick this round) with a `model:` override (also the operator's pick, independent of effort). A fork would inherit *your* context and destroy the clean-room independence the whole method depends on. You MUST obtain an **explicit** effort-tier pick from the operator before spawning any round — if the operator names only a model ("next round, Opus"), ask for the missing effort pick. Never default to a tier and never fall back to `general-purpose`. **Pre-merge recovery path:** in a worktree branched before these profiles merged to `main`, the `crucible-reviewer-<effort>` profile does not exist yet and the spawn will not resolve — sync the worktree (`mill-merge-in` or equivalent) to pull the profiles in, then retry. This is a required remediation step before the round can proceed, explicitly *not* a licence to fall back to `general-purpose`.
-3. **Stay off the module's code while a round runs.** The round agent drives the live substrate, deploys the dev binary (`deploy-dev.cmd`/`deploy-dev`), and edits source — if you touch the same files you collide. While a round is live you may only read, plan, and run `git status`.
-4. **One concern per round.** The review prompt is a full review+fix. A narrow follow-up (e.g. "close this one coverage gap", "split this file") is a *separate* targeted agent with its own tight brief — do not fold it into a review round.
-5. **Operator stop/restart is DELIBERATE — NEVER "recover" from it.** The operator stops running round agents constantly, on purpose — to ask a question, redirect, or re-run from a cleaner point — and then either resumes the same session OR kills it and respawns a fresh one. This is the single most common thing that will happen to a live round, and it is done for a reason that is theirs, not yours to second-guess or undo. A `killed`/`stopped by user` completion notification — whether from a resume *or* a full restart — is NOT a crash, NOT a stuck state, and NOT something for you to recover from. **Do not go amok.** Concretely, when you see such a notification:
+1. **Never trust the round's self-verdict.**
+   Rounds routinely self-report "merge-ready" while leaving a residual.
+   Your independent verification is the gate — nothing merges on an agent's say-so.
+2. **Rounds are FRESH agents, never forks.**
+   Spawn `subagent_type: crucible-reviewer-<effort>` (the operator's pick this round) with a `model:` override (also the operator's pick, independent of effort).
+   A fork would inherit *your* context and destroy the clean-room independence the whole method depends on.
+   You MUST obtain an **explicit** effort-tier pick from the operator before spawning any round — if the operator names only a model ("next round, Opus"), ask for the missing effort pick.
+   Never default to a tier and never fall back to `general-purpose`.
+   **Pre-merge recovery path:** in a worktree branched before these profiles merged to `main`, the `crucible-reviewer-<effort>` profile does not exist yet and the spawn will not resolve — sync the worktree (`mill-merge-in` or equivalent) to pull the profiles in, then retry.
+   This is a required remediation step before the round can proceed, explicitly *not* a licence to fall back to `general-purpose`.
+3. **Stay off the module's code while a round runs.**
+   The round agent drives the live substrate, deploys the dev binary (`deploy-dev.cmd`/`deploy-dev`), and edits source — if you touch the same files you collide.
+   While a round is live you may only read, plan, and run `git status`.
+4. **One concern per round.**
+   The review prompt is a full review+fix.
+   A narrow follow-up (e.g. "close this one coverage gap", "split this file") is a *separate* targeted agent with its own tight brief — do not fold it into a review round.
+5. **Operator stop/restart is DELIBERATE — NEVER "recover" from it.**
+   The operator stops running round agents constantly, on purpose — to ask a question, redirect, or re-run from a cleaner point — and then either resumes the same session OR kills it and respawns a fresh one.
+   This is the single most common thing that will happen to a live round,
+   and it is done for a reason that is theirs, not yours to second-guess or undo.
+   A `killed`/`stopped by user` completion notification — whether from a resume *or* a full restart — is NOT a crash, NOT a stuck state, and NOT something for you to recover from.
+   **Do not go amok.**
+   Concretely, when you see such a notification:
    - Do **not** stash, revert, or otherwise touch the round's in-progress working-tree changes.
    - Do **not** respawn, re-seed, or restart the round yourself — if a restart is wanted, the operator does it.
-   - Do **not** kill, reap, or "tidy up" the agent, its session, or any sibling threads/worktrees.
+   - Do **not** kill, reap, or "tidy up" the agent, its session,
+     or any sibling threads/worktrees.
    - Do **not** report it to the operator as a problem or ask whether to intervene — they already know, they did it deliberately.
-   - Just note the state (e.g., "round N is paused/stopped, working tree has uncommitted in-progress changes") and go back to waiting. The same round will notify again — potentially several more times, and possibly under a **new** `agentId` after a fresh restart — before it actually finishes for real. Only step in on your own initiative if the round agent's own OUTPUT (not the stop/restart mechanics) shows an actual problem — e.g., it reports being stuck, or its own text shows it misunderstood the brief. Operator stop/restart, by itself, is never that signal.
+   - Just note the state (e.g., "round N is paused/stopped, working tree has uncommitted in-progress changes") and go back to waiting.
+     The same round will notify again — potentially several more times, and possibly under a **new** `agentId` after a fresh restart — before it actually finishes for real.
+     Only step in on your own initiative if the round agent's own OUTPUT (not the stop/restart mechanics) shows an actual problem — e.g., it reports being stuck,
+     or its own text shows it misunderstood the brief.
+     Operator stop/restart, by itself, is never that signal.
 
 ## The loop (repeat until converged)
-1. **Seed.** On the first round, write `.scratch/<module>-review-prompt.md` from [`review-prompt-template.md`](review-prompt-template.md) (fill every `<PLACEHOLDER>`). Each round, rewrite its *"round context seeded from prior-round verification"* section to the current truth: either **the residual to close** (the specific defect your last verification found — file/scenario + "fix the right layer + add a regression test"), or a **safety-pass seed** ("no known residual; prior rounds converged and the last was independently verified clean — do an independent clean-room pass to find what every prior round missed, or honestly confirm merge-readiness"). List the CLOSED-AND-VERIFIED items so they are not re-litigated. The prompt lives under `.scratch/` (gitignored) — there is nothing to commit for the re-seed; only the round agent's code/doc/test fixes get committed.
-2. **Spawn.** `Agent` tool → `subagent_type: crucible-reviewer-<effort>` (the operator's pick this round), `model: <the operator's pick this round>`, prompt = *"Read `.scratch/<module>-review-prompt.md` and do exactly what it says."* Give it a tag `<model>-<effort>-r<N>` (e.g. `opus-high-r3`), tell it to **commit each individual fix as it lands** (message identifying the finding it closes — the prompt template's "Commit per fix" section has the exact format) but **never push**, and ask it to reply with only a concise executive summary + counts by severity + an explicit merge-readiness verdict.
-3. **Notify + wait.** When it completes, `PushNotification` the operator if they are away from the terminal. Do **not** read the agent's raw transcript file (it will overflow your context) — its final message and the `.scratch/` deliverables are enough.
-4. **Verify independently** — the part that actually catches residuals. Run the protocol below from a cold state on the committed tree. For any **new test** the round added, **reproduce its not-false-green proof yourself**: mutate the production code to reintroduce the bug the test claims to catch, confirm the test FAILS at the right assertion, then revert (confirm an empty diff). A test you did not watch fail is not yet proven.
+1. **Seed.**
+   On the first round, write `.scratch/<module>-review-prompt.md` from [`review-prompt-template.md`](review-prompt-template.md) (fill every `<PLACEHOLDER>`).
+   Each round, rewrite its *"round context seeded from prior-round verification"* section to the current truth: either **the residual to close** (the specific defect your last verification found — file/scenario + "fix the right layer + add a regression test"),
+   or a **safety-pass seed** ("no known residual;
+   prior rounds converged and the last was independently verified clean — do an independent clean-room pass to find what every prior round missed, or honestly confirm merge-readiness").
+   List the CLOSED-AND-VERIFIED items so they are not re-litigated.
+   The prompt lives under `.scratch/` (gitignored) — there is nothing to commit for the re-seed;
+   only the round agent's code/doc/test fixes get committed.
+2. **Spawn.** `Agent` tool → `subagent_type: crucible-reviewer-<effort>` (the operator's pick this round), `model: <the operator's pick this round>`, prompt = *"Read `.scratch/<module>-review-prompt.md` and do exactly what it says."*
+   Give it a tag `<model>-<effort>-r<N>` (e.g. `opus-high-r3`), tell it to **commit each individual fix as it lands** (message identifying the finding it closes — the prompt template's "Commit per fix" section has the exact format) but **never push**, and ask it to reply with only a concise executive summary + counts by severity + an explicit merge-readiness verdict.
+3. **Notify + wait.**
+   When it completes, `PushNotification` the operator if they are away from the terminal.
+   Do **not** read the agent's raw transcript file (it will overflow your context) — its final message and the `.scratch/` deliverables are enough.
+4. **Verify independently** — the part that actually catches residuals.
+   Run the protocol below from a cold state on the committed tree.
+   For any **new test** the round added, **reproduce its not-false-green proof yourself**: mutate the production code to reintroduce the bug the test claims to catch, confirm the test FAILS at the right assertion, then revert (confirm an empty diff).
+   A test you did not watch fail is not yet proven.
 5. **Decide.**
-   - **Residual found** → the round's fixes should already be committed one-by-one as they landed (per-fix commits — see the spawn step). If the round left anything genuinely uncommitted (e.g. it was killed mid-fix with no self-report at all), that is exactly the failure mode per-fix commits are meant to make cheap to recover from: read `git log` to see precisely which findings already landed clean, then either finish the remainder yourself or spawn a narrow, targeted fixer agent (rule 4 above) scoped to "read the existing review report + the current diff/log, finish and commit whatever is left" — not a fresh full review round. Re-seed the prompt (step 1) with the new finding, and spawn the next full round with a **different** model and/or effort tier.
-   - **Round died before any commits (crashed during Job 1)** → check `.scratch/<module>-review-<tag>.md` before assuming nothing survived. Per the template's "Log as you go" section, the round appends its What-was-tested section and provisional findings incrementally, so even a crash mid-review usually leaves a partial-but-real account on disk — read it and re-seed the next round to pick up where it left off (what was already tested, what wasn't yet) rather than starting the whole review over blind. Only treat it as truly a total loss if the file is genuinely absent or empty.
-   - **Clean** → a further safety pass with a *different* model is cheap insurance. Convergence is when a safety pass **and** your gates **and** (for a live-substrate module) an operator-assisted visual check all agree.
-6. **Hand off.** Once converged, do any step your harness cannot reach headlessly (e.g. an operator-assisted visual `attach`/render check in a real TTY), then merge or open the PR. **The push/merge decision is the operator's** — surface merge-readiness and let them trigger it.
+   - **Residual found** → the round's fixes should already be committed one-by-one as they landed (per-fix commits — see the spawn step).
+     If the round left anything genuinely uncommitted (e.g. it was killed mid-fix with no self-report at all), that is exactly the failure mode per-fix commits are meant to make cheap to recover from: read `git log` to see precisely which findings already landed clean, then either finish the remainder yourself or spawn a narrow, targeted fixer agent (rule 4 above) scoped to "read the existing review report + the current diff/log, finish and commit whatever is left" — not a fresh full review round.
+     Re-seed the prompt (step 1) with the new finding, and spawn the next full round with a **different** model and/or effort tier.
+   - **Round died before any commits (crashed during Job 1)** → check `.scratch/<module>-review-<tag>.md` before assuming nothing survived.
+     Per the template's "Log as you go" section, the round appends its What-was-tested section and provisional findings incrementally, so even a crash mid-review usually leaves a partial-but-real account on disk — read it and re-seed the next round to pick up where it left off (what was already tested, what wasn't yet) rather than starting the whole review over blind.
+     Only treat it as truly a total loss if the file is genuinely absent or empty.
+   - **Clean** → a further safety pass with a *different* model is cheap insurance.
+     Convergence is when a safety pass **and** your gates **and** (for a live-substrate module) an operator-assisted visual check all agree.
+6. **Hand off.**
+   Once converged, do any step your harness cannot reach headlessly (e.g. an operator-assisted visual `attach`/render check in a real TTY), then merge or open the PR.
+   **The push/merge decision is the operator's** — surface merge-readiness and let them trigger it.
 
 ## The verification protocol (exact — run every round)
 
-**LLM-driving modules first — read this before touching the commands below.** This protocol was built and safety-validated on `reed`, where a smoke test only ever costs a real tmux pane. A module whose smoke tests drive a real LLM round instead (burler, perch, loom) is not the same shape of risk: one test function can spawn several simultaneous real provider sessions (a fan/cluster round = one per lens), and the N-concurrent step below multiplies that again. Running this protocol against such a module exactly as written — bare `-run Smoke`, N concurrent copies — caused a real incident: it matched and ran every smoke test in the package at once, spawning enough real `claude` processes to exhaust the host's RAM in minutes. Before step 2 for an LLM-driving module: check the module's own smoke test source for how many real LLM subprocesses each test spawns, replace `-run Smoke` with the exact ONE test name this round actually needs, and do NOT run step 3 (N concurrent copies) against it without first computing the resulting real-process count and getting the operator to explicitly sign off on that number — it is not a default step for these modules, only for tmux-only ones like reed.
+**LLM-driving modules first — read this before touching the commands below.**
+This protocol was built and safety-validated on `reed`, where a smoke test only ever costs a real tmux pane.
+A module whose smoke tests drive a real LLM round instead (burler, perch, loom) is not the same shape of risk: one test function can spawn several simultaneous real provider sessions (a fan/cluster round = one per lens),
+and the N-concurrent step below multiplies that again.
+Running this protocol against such a module exactly as written — bare `-run Smoke`, N concurrent copies — caused a real incident: it matched and ran every smoke test in the package at once, spawning enough real `claude` processes to exhaust the host's RAM in minutes.
+Before step 2 for an LLM-driving module: check the module's own smoke test source for how many real LLM subprocesses each test spawns, replace `-run Smoke` with the exact ONE test name this round actually needs, and do NOT run step 3 (N concurrent copies) against it without first computing the resulting real-process count and getting the operator to explicitly sign off on that number — it is not a default step for these modules, only for tmux-only ones like reed.
 
-Run from the module worktree root; adjust package paths.
+Run from the module worktree root;
+adjust package paths.
 ```sh
 go build ./...
 go vet ./internal/<module>engine/... ./internal/<module>cli/...
@@ -55,12 +110,28 @@ grep -hiE 'being used by another process|TempDir RemoveAll|did not start|FAIL' "
     || echo "no markers"
 <substrate teardown check — e.g. tasklist | grep -i tmux>                                 # must be zero
 ```
-**Reading it:** green static+hermetic+serial-smoke + zero stray substrate = the **merge bar** (normal single-instance correctness). The N× concurrent suite is a **diagnostic amplifier**, not the merge gate — it drives out real races, but a timeout under an artificial N-suite CPU peg is not a defect. Do not block a correct module on the stress peg. (Watch out for invocation artifacts: run the precompiled smoke binary from the *package* dir, since some tests build helper binaries via package-relative paths.)
+**Reading it:** green static+hermetic+serial-smoke + zero stray substrate = the **merge bar** (normal single-instance correctness).
+The N× concurrent suite is a **diagnostic amplifier**, not the merge gate — it drives out real races, but a timeout under an artificial N-suite CPU peg is not a defect.
+Do not block a correct module on the stress peg. (Watch out for invocation artifacts: run the precompiled smoke binary from the *package* dir, since some tests build helper binaries via package-relative paths.)
 
 ## Model + effort selection
-The operator picks both the model and the effort tier per round, independently. Model: rotate across Opus / Fable / Sonnet — different models miss different things, and convergence across *different* models is far stronger evidence than N passes from one; use the more capable model for the final safety pass and for correctness-critical follow-ups (e.g. a test that must not false-green). Effort: a cheap low-effort wide sweep early, a max-effort correctness pass for the final safety round. Available effort tiers: `low`, `medium`, `high`, `xhigh`, `max` — see `.claude/agents/crucible-reviewer-<effort>.md`. This enumeration is the single place an operator learns what is pickable — if a tier is ever dropped, remove it from this list in the same commit that deletes the file.
+The operator picks both the model and the effort tier per round, independently.
+Model: rotate across Opus / Fable / Sonnet — different models miss different things, and convergence across *different* models is far stronger evidence than N passes from one;
+use the more capable model for the final safety pass and for correctness-critical follow-ups (e.g. a test that must not false-green).
+Effort: a cheap low-effort wide sweep early, a max-effort correctness pass for the final safety round.
+Available effort tiers: `low`, `medium`, `high`, `xhigh`, `max` — see `.claude/agents/crucible-reviewer-<effort>.md`.
+This enumeration is the single place an operator learns what is pickable — if a tier is ever dropped, remove it from this list in the same commit that deletes the file.
 
 ## Hygiene
-- Commit each round's work (a clean base for the next). `.scratch/` is gitignored — review reports never get committed; commit code + docs + suite + tests explicitly.
-- Every task that changes behaviour must update the module doc / `overview.md` / `CONSTRAINTS.md` in the **same** commit (per `CLAUDE.md`). Do not add bugfix notes to `manifest/roadmap.md`.
-- Keep ONE handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a context compaction, or briefs a genuinely fresh orchestrator that never saw this session. Refresh it after every round's verification. Size its detail to what actually happened, not to a fixed template — a quiet round that closed clean might only need a few lines; an eventful round (a process defect caught and fixed, a confusing model-attribution question, several operator steering interruptions) earns a fuller write-up so none of that has to be rediscovered. At minimum always cover: what round is running/paused right now (identify it by round tag + git state, never by internal agent/task ID — those are ephemeral and mean nothing in a new session), what is CLOSED-AND-VERIFIED (with the commit sha, so it's never re-litigated), what RESIDUAL is currently seeded in `.scratch/<module>-review-prompt.md`, what is on the DEFERRED list, and the exact next action to take (as an instruction, not a description). When something noteworthy happens — a method gap found and fixed, an operator norm worth remembering, a caveat like "the round-agent's model may not be what the UI appears to show" — fold it into this same file rather than starting a second one; a single up-to-date file beats two that can silently drift out of sync. The operator can ask for it to be refreshed or expanded at any point, not just after a round.
+- Commit each round's work (a clean base for the next). `.scratch/` is gitignored — review reports never get committed;
+  commit code + docs + suite + tests explicitly.
+- Every task that changes behaviour must update the module doc / `overview.md` / `CONSTRAINTS.md` in the **same** commit (per `CLAUDE.md`).
+  Do not add bugfix notes to `manifest/roadmap.md`.
+- Keep ONE handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a context compaction, or briefs a genuinely fresh orchestrator that never saw this session.
+  Refresh it after every round's verification.
+  Size its detail to what actually happened, not to a fixed template — a quiet round that closed clean might only need a few lines;
+  an eventful round (a process defect caught and fixed, a confusing model-attribution question, several operator steering interruptions) earns a fuller write-up so none of that has to be rediscovered.
+  At minimum always cover: what round is running/paused right now (identify it by round tag + git state, never by internal agent/task ID — those are ephemeral and mean nothing in a new session), what is CLOSED-AND-VERIFIED (with the commit sha, so it's never re-litigated), what RESIDUAL is currently seeded in `.scratch/<module>-review-prompt.md`, what is on the DEFERRED list, and the exact next action to take (as an instruction, not a description).
+  When something noteworthy happens — a method gap found and fixed, an operator norm worth remembering, a caveat like "the round-agent's model may not be what the UI appears to show" — fold it into this same file rather than starting a second one;
+  a single up-to-date file beats two that can silently drift out of sync.
+  The operator can ask for it to be refreshed or expanded at any point, not just after a round.

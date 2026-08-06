@@ -2,7 +2,8 @@
 
 > **Status: Design / plan — not built.** Authored once the `lyx` spine (`shuttle → burler → perch → loom`) can consume it.
 
-In mill the skills *were* the orchestrator (LLM-driven). In lyx, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lyx` verbs, not skills. **~44 mill skills → ~10 real LY skills.**
+In mill the skills *were* the orchestrator (LLM-driven).
+In lyx, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `lyx` verbs, not skills. **~44 mill skills → ~10 real LY skills.**
 
 ## Decision rules
 
@@ -34,7 +35,8 @@ Mirrors millhouse's `millhouse` / `mill` / `millpy` split — the plugin takes t
 
 ## The LoomYard skill set
 
-One table per plugin, one row per skill. Installed set for LoomYard: **`ly + craft + golang + raddle`**.
+One table per plugin, one row per skill.
+Installed set for LoomYard: **`ly + craft + golang + raddle`**.
 
 ### `ly` — core plugin (loomyard-specific)
 
@@ -47,9 +49,12 @@ One table per plugin, one row per skill. Installed set for LoomYard: **`ly + cra
 
 #### `ly-triage` contract — whole board in, delta out
 
-File contract (same shape as burler): **Go writes the input, the skill writes the output, Go executes.** The skill is source-agnostic — `ref` is an opaque identity string Go minted (gh-issue number, report id, …); the skill echoes it back and Go maps `ref` → real action (close issue N, etc.).
+File contract (same shape as burler): **Go writes the input, the skill writes the output, Go executes.**
+The skill is source-agnostic — `ref` is an opaque identity string Go minted (gh-issue number, report id, …);
+the skill echoes it back and Go maps `ref` → real action (close issue N, etc.).
 
-**In — `triage-in.json` (Go writes, skill reads).** The board goes in *whole* — the skill needs it to judge fold-vs-new (find overlap) and avoid slug collision:
+**In — `triage-in.json` (Go writes, skill reads).**
+The board goes in *whole* — the skill needs it to judge fold-vs-new (find overlap) and avoid slug collision:
 
 ```json
 {
@@ -60,7 +65,8 @@ File contract (same shape as burler): **Go writes the input, the skill writes th
 }
 ```
 
-**Out — `triage-out.json` (skill writes, Go reads).** A *delta* (decisions), never a rewritten board — the skill can only add / fold / skip, so it physically cannot drop or mangle an existing task:
+**Out — `triage-out.json` (skill writes, Go reads).**
+A *delta* (decisions), never a rewritten board — the skill can only add / fold / skip, so it physically cannot drop or mangle an existing task:
 
 ```json
 {
@@ -70,7 +76,9 @@ File contract (same shape as burler): **Go writes the input, the skill writes th
 }
 ```
 
-**"Delta" is not a board operation** — it is the shape of the output artifact. Go is the translator; the board stays dumb CRUD (`internal/boardengine`):
+**"Delta" is not a board operation** — it is the shape of the output artifact.
+Go is the translator;
+the board stays dumb CRUD (`internal/boardengine`):
 
 | out entry | Go call (existing board primitive) |
 |---|---|
@@ -78,7 +86,10 @@ File contract (same shape as burler): **Go writes the input, the skill writes th
 | `fold_ins[]` | per fold: `GetTask(slug)` → append to body → `UpsertTask` (bounded, additive) |
 | `skips[]` | no board call — Go just closes/labels the source item |
 
-**Go-enforced invariants (fail-loud):** (1) every input `ref` appears exactly once across `new_tasks`∪`fold_ins`∪`skips`; (2) slug matches `[a-z][a-z0-9-]*`, no board collision; (3) fold target exists *and* is unclaimed (`status==null && !deferred`) — re-checked at apply time against the snapshot race. The asymmetry mirrors burler: rich read-input, narrow validatable write.
+**Go-enforced invariants (fail-loud):** (1) every input `ref` appears exactly once across `new_tasks`∪`fold_ins`∪`skips`;
+(2) slug matches `[a-z][a-z0-9-]*`, no board collision;
+(3) fold target exists *and* is unclaimed (`status==null && !deferred`) — re-checked at apply time against the snapshot race.
+The asymmetry mirrors burler: rich read-input, narrow validatable write.
 
 ### `craft` — generic authoring (language-agnostic)
 
@@ -108,7 +119,8 @@ File contract (same shape as burler): **Go writes the input, the skill writes th
 | `raddle-maintain` | Fix / repair existing docs |
 | `raddle-setup` | Initialise / activate raddle in a repo |
 
-The review-interpretation discipline (mill's `mill-receiving-review`) lives in the shared **review→fix prompt template**, not a skill — used by **both** consumers of that two-step pattern: `burler` (interprets its own A-review in B) and `hardener` (roadmap #23; shares the burler round discipline).
+The review-interpretation discipline (mill's `mill-receiving-review`) lives in the shared **review→fix prompt template**, not a skill — used by **both** consumers of that two-step pattern: `burler` (interprets its own A-review in B) and `hardener` (roadmap #23;
+shares the burler round discipline).
 
 ## Fate of every mill skill
 
@@ -164,7 +176,8 @@ The review-interpretation discipline (mill's `mill-receiving-review`) lives in t
 
 ### → loom commit path (Go-deterministic + prompt template)
 
-Nothing new to CLAUDE.md — always-on text is forgotten. The rules live where commits actually happen.
+Nothing new to CLAUDE.md — always-on text is forgotten.
+The rules live where commits actually happen.
 
 | mill skill | Why |
 |---|---|
@@ -194,4 +207,5 @@ Nothing new to CLAUDE.md — always-on text is forgotten. The rules live where c
 
 - **`craft` name** — vs `authoring` / `core` (the language-agnostic authoring plugin).
 - **`ly-selfreport` / `ly-autofix`** — thin skills, or lean on `lyx selfreport` + `loom --auto`.
-- **`raddle`-native generator timing** — millhouse-codeguide is the stopgap; the plugin boundary is the same either way.
+- **`raddle`-native generator timing** — millhouse-codeguide is the stopgap;
+  the plugin boundary is the same either way.

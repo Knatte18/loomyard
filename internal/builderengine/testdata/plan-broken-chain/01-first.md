@@ -18,9 +18,5 @@ Declares chain-end: 3, but there is no batch 03 in this fixture — a dangling t
 ### Card 01.1 — placeholder
 
 **What:** Nothing — this fixture exists only to trip chain-end-dangling.
-**Context:** none
-**Edits:**
-- `01-first.md`
-**Creates:** none
-**Deletes:** none
-**Moves:** none
+**Context:** none **Edits:**
+- `01-first.md` **Creates:** none **Deletes:** none **Moves:** none

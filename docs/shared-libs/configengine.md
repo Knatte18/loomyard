@@ -1,6 +1,7 @@
 # `internal/configengine`
 
-Loads and resolves a module's configuration from the current working directory. This is the one place that knows the `_lyx/` layout and enforces strict validation against a template.
+Loads and resolves a module's configuration from the current working directory.
+This is the one place that knows the `_lyx/` layout and enforces strict validation against a template.
 
 ## Layout
 
@@ -17,7 +18,10 @@ Loads and resolves a module's configuration from the current working directory. 
 ├── .env                git-IGNORED — local env values (KEY=value)
 ```
 
-`_lyx/` presence is what makes a directory "initialised"; if it is absent, `configengine` errors (see `FindBaseDir`'s error messages below). Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a first-class constraint; it caused constant trouble in millpy precisely because it was designed in and then forgotten).
+`_lyx/` presence is what makes a directory "initialised";
+if it is absent, `configengine` errors (see `FindBaseDir`'s error messages below).
+Resolution is **cwd-authoritative** — the cwd does **not** need to equal the git-repo root (a first-class constraint;
+it caused constant trouble in millpy precisely because it was designed in and then forgotten).
 
 ## Resolution model
 
@@ -28,15 +32,18 @@ The `Load(baseDir, module, template []byte)` function reads the on-disk config f
 **Flow:**
 
 1. Call `FindBaseDir(baseDir)` — check that `_lyx/` exists at baseDir.
-2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`). If absent, return an error instructing the user to run `lyx config reconcile`.
-3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`. If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx config reconcile`.
+2. Read the config file at `configengine.ConfigFile(baseDir, module)` (e.g., `_lyx/config/board.yaml`).
+   If absent, return an error instructing the user to run `lyx config reconcile`.
+3. Check for missing template keys via `yamlengine.MissingKeys(template, fileBytes)`.
+   If any keys are missing, return an error naming the file, the missing key-paths, and instructing the user to run `lyx config reconcile`.
 4. Build the environment via `envsource.Build(baseDir)` (reads `.env`, overlays OS env).
 5. Resolve environment variables via `yamlengine.Resolve(fileBytes, env)` (expands `${env:...}` markers).
 6. Return the resolved bytes (see "What it returns" below).
 
 **Key properties:**
 
-- **All defaults live in the template YAML file**, not in code. The template is embedded via `//go:embed` and passed to `Load()`.
+- **All defaults live in the template YAML file**, not in code.
+  The template is embedded via `//go:embed` and passed to `Load()`.
 - **Errors are strict**: missing template keys, absent files, or unset required env vars cause hard errors with clear messages naming the file and the problem.
 - **Extra/stale keys are tolerated** by `Load()` and cleaned up by `lyx config reconcile` (reconciliation).
 - **A key present with an empty value counts as present** and is not flagged missing.
@@ -45,8 +52,12 @@ The `Load(baseDir, module, template []byte)` function reads the on-disk config f
 
 Config values use POSIX-style brace-delimited env markers:
 
-- **`${env:NAME}`** (required) — Substituted with the value of `NAME` from the environment. If `NAME` is absent, a hard error is returned. If `NAME` is present but empty, the empty string is used.
-- **`${env:NAME:-default}`** (optional) — Substituted with the value of `NAME` if present and non-empty; otherwise, substituted with the literal default text between `:-` and the closing `}`. Spaces, special characters, and all text are preserved verbatim in the default (no trimming, no quote-stripping).
+- **`${env:NAME}`** (required) — Substituted with the value of `NAME` from the environment.
+  If `NAME` is absent, a hard error is returned.
+  If `NAME` is present but empty, the empty string is used.
+- **`${env:NAME:-default}`** (optional) — Substituted with the value of `NAME` if present and non-empty;
+  otherwise, substituted with the literal default text between `:-` and the closing `}`.
+  Spaces, special characters, and all text are preserved verbatim in the default (no trimming, no quote-stripping).
 
 **Interpolation:** Markers may appear inside a larger string:
 
@@ -55,31 +66,40 @@ path: ${env:LYX_EXAMPLE_PATH:-../_board}/sub
 url: https://${env:HOST:-localhost}:${env:PORT:-8080}
 ```
 
-Multiple markers in one value are all expanded. A value with no marker is a literal.
+Multiple markers in one value are all expanded.
+A value with no marker is a literal.
 
-**No recursion or escaping:** Resolved text is never re-expanded. There is no escape mechanism for a literal `${env:` or a literal `}` inside a default.
+**No recursion or escaping:** Resolved text is never re-expanded.
+There is no escape mechanism for a literal `${env:` or a literal `}` inside a default.
 
 ## `.env` loading
 
 Environment variables are sourced by `envsource.Build(baseDir)`, which reads `envsource.DotEnv(baseDir)` (typically `<cwd>/.env`) and overlays the OS environment.
 
 - **Format**: `KEY=VALUE` lines, blank lines skipped, lines starting with `#` are comments, split on first `=` only.
-- **Precedence: OS env wins.** Any variable set in the process environment overrides the corresponding `.env` value.
+- **Precedence: OS env wins.**
+  Any variable set in the process environment overrides the corresponding `.env` value.
 - **If `.env` is absent**, only OS environment variables are used (no error).
 
 ## What it returns
 
-Resolved YAML bytes (as returned by `yamlengine.Resolve`). Typed wrappers (`board.LoadConfig`, `worktree.LoadConfig`, `weft.LoadConfig`) unmarshal this into their own config structs. Callers never see raw YAML or unexpanded tokens.
+Resolved YAML bytes (as returned by `yamlengine.Resolve`).
+Typed wrappers (`board.LoadConfig`, `worktree.LoadConfig`, `weft.LoadConfig`) unmarshal this into their own config structs.
+Callers never see raw YAML or unexpanded tokens.
 
 ## Migration from old format
 
-Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`. Running `lyx config reconcile --apply` from the host worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present. Because the host `_lyx` is a directory junction into the weft worktree's `_lyx`, a single host `lyx config reconcile` reaches all config files (board, worktree, and weft). No separate command in the weft sibling is needed.
+Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`.
+Running `lyx config reconcile --apply` from the host worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
+Because the host `_lyx` is a directory junction into the weft worktree's `_lyx`, a single host `lyx config reconcile` reaches all config files (board, worktree, and weft).
+No separate command in the weft sibling is needed.
 
 ## Exported functions
 
 ### `LyxDirName` (constant, `"_lyx"`)
 
-The directory name for the lyx system directory within a worktree. `internal/configengine` is the single declarer of this token; every other module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, configengine.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in `CONSTRAINTS.md`'s Cwd Resolution Invariant.
+The directory name for the lyx system directory within a worktree. `internal/configengine` is the single declarer of this token;
+every other module joins its own private relative-path constant onto a `baseDir` directly (e.g. `filepath.Join(baseDir, configengine.LyxDirName, "plan")`), never onto a fused `"_lyx/..."` literal — see the per-segment join rule in `CONSTRAINTS.md`'s Cwd Resolution Invariant.
 
 ### `ConfigDir(baseDir string) string`
 
@@ -93,15 +113,19 @@ Returns `filepath.Join(ConfigDir(baseDir), module+".yaml")` — the path to a sp
 
 Checks whether the given directory is an initialized Loomyard base directory.
 
-**Behavior:** Performs a strict check that `<cwd>/_lyx` exists; it never walks up to parent directories. This is the cwd-authoritative model — the provided `cwd` must itself be initialized.
+**Behavior:** Performs a strict check that `<cwd>/_lyx` exists;
+it never walks up to parent directories.
+This is the cwd-authoritative model — the provided `cwd` must itself be initialized.
 
-**Returns:** On success, the `cwd` itself (unchanged). On failure, an empty string and an error.
+**Returns:** On success, the `cwd` itself (unchanged).
+On failure, an empty string and an error.
 
 **Error messages:**
 - If `<cwd>/_lyx` does not exist: `not initialized: _lyx/ directory not found in <dir>`.
 - If stat fails for another reason: `stat _lyx: <underlying error>`.
 
-**Note on error rewrapping:** The `board.LoadConfig` and other typed wrappers match the substring `"not initialized"` in the error text to rewrap it into a module-level message like `not initialized here; run "lyx init"`. Do not conflate:
+**Note on error rewrapping:** The `board.LoadConfig` and other typed wrappers match the substring `"not initialized"` in the error text to rewrap it into a module-level message like `not initialized here; run "lyx init"`.
+Do not conflate:
 - Raw `FindBaseDir` error: `not initialized: _lyx/ directory not found in <dir>`
 - Board-level rewrapped: `not initialized here; run "lyx init"`
 
@@ -121,17 +145,20 @@ Loads and resolves a module's configuration from disk.
 
 All error messages include the file path and context to guide the user.
 
-**Returns:** On success, the resolved YAML bytes. On error, nil bytes and an error message.
+**Returns:** On success, the resolved YAML bytes.
+On error, nil bytes and an error message.
 
 ### `Set(baseDir, module, template string, pairs []yamlengine.KV) ([]string, error)`
 
-Writes an explicit list of key=value pairs into a module's config file. This is the non-interactive counterpart to `Edit` used by the `lyx config <module> --set key=value` CLI path — no editor is invoked and there is no validation loop.
+Writes an explicit list of key=value pairs into a module's config file.
+This is the non-interactive counterpart to `Edit` used by the `lyx config <module> --set key=value` CLI path — no editor is invoked and there is no validation loop.
 
 **Behavior:**
 
 1. Calls `FindBaseDir(baseDir)` to check that `_lyx/` exists, then scaffolds the config file from `template` when it is absent (the same `scaffoldIfMissing` helper `Edit` uses, so both entry points create and roll back a fresh default-valued file identically).
 2. Delegates the actual mutation to `yamlengine.SetValues(template, existingBytes, pairs)`, which validates every requested pair's key against the template's leaf-key set and, when all keys are known, applies the pairs and marshals the merged result.
-3. Rejects the whole call — freshly-scaffolded file removed, existing file left untouched — when any *requested* pair's key is absent from the template's leaf-key set (existing, unchanged behavior; see `internal/yamlengine`'s `SetValues` documentation for the full validation and preservation mechanism).
+3. Rejects the whole call — freshly-scaffolded file removed, existing file left untouched — when any *requested* pair's key is absent from the template's leaf-key set (existing, unchanged behavior;
+   see `internal/yamlengine`'s `SetValues` documentation for the full validation and preservation mechanism).
 4. On any error return, a freshly-scaffolded file is removed before returning, exactly mirroring `Edit`'s abort-removes-scaffold contract: a failed `--set` never leaves a fresh default-valued file behind on disk.
 
 **Error cases:**
@@ -141,4 +168,7 @@ Writes an explicit list of key=value pairs into a module's config file. This is 
 - **Unknown config key(s):** Returns error `unknown config key(s): <requested keys> (known: <template's known keys>)`.
 - **Read/write failure:** Propagates the underlying filesystem error.
 
-**Returns:** On success, the sorted list of pre-existing top-level config keys not present in `template` that were preserved verbatim rather than dropped (see `internal/yamlengine`'s `SetValues` documentation for the full preservation mechanism), and a nil error. This list is nil/empty when no such orphaned key was present. On any error return, the returned `[]string` is always nil.
+**Returns:** On success, the sorted list of pre-existing top-level config keys not present in `template` that were preserved verbatim rather than dropped (see `internal/yamlengine`'s `SetValues` documentation for the full preservation mechanism),
+and a nil error.
+This list is nil/empty when no such orphaned key was present.
+On any error return, the returned `[]string` is always nil.
