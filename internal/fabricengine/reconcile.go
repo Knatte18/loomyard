@@ -150,6 +150,19 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 				pr.Action = ReconcileActionAlreadyHealthy
 			}
 
+			// Re-wire the operator-convenience _board junction unconditionally,
+			// regardless of junctionHealthy above: checkJunctionHealth only
+			// ever inspects the pathspec name-set, which _board is
+			// deliberately outside, so a pair whose *only* broken link is
+			// _board would report junctionHealthy == true and never reach
+			// here if this call sat inside the `!junctionHealthy` branch. A
+			// wiring failure is surfaced as a Detail note, never as an Error
+			// or a changed Action — this convenience link must never be able
+			// to downgrade a reconcile verdict.
+			if boardErr := wireBoardLink(hostLayout, slug); boardErr != nil {
+				appendPrDetail(&pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
+			}
+
 			applyStaleRemoval(hostLayout, slug, &pr)
 		}
 
@@ -360,27 +373,31 @@ func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
 	return names, nil
 }
 
+// appendPrDetail appends text to pr.Detail, joining on "; " when a prior
+// detail is already present. Shared by every reconcile step that annotates a
+// pair's outcome without touching its Action or Error — applyStaleRemoval's
+// skip-reasons and wireBoardLink's failure note in Reconcile above.
+func appendPrDetail(pr *ReconcilePairResult, text string) {
+	if pr.Detail == "" {
+		pr.Detail = text
+	} else {
+		pr.Detail = pr.Detail + "; " + text
+	}
+}
+
 // applyStaleRemoval converges hostLayout's on-disk junctions to the repo-wide pathspec
 // by removing any junction present on disk but absent from RepoWiredNames. Fail-closed:
 // if repo-wide fabric.yaml cannot be loaded or the on-disk scan fails, nothing is removed.
 func applyStaleRemoval(hostLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
-	appendDetail := func(text string) {
-		if pr.Detail == "" {
-			pr.Detail = text
-		} else {
-			pr.Detail = pr.Detail + "; " + text
-		}
-	}
-
 	desired, err := RepoWiredNames(hostLayout)
 	if err != nil {
-		appendDetail(fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
+		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
 		return
 	}
 
 	onDisk, err := scanOnDiskJunctionNames(hostLayout.WorktreePath(), hostLayout.AnchorRel)
 	if err != nil {
-		appendDetail(fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
+		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
 		return
 	}
 
@@ -406,7 +423,7 @@ func applyStaleRemoval(hostLayout *lyxcwd.Location, slug string, pr *ReconcilePa
 		removed = append(removed, name)
 	}
 
-	appendDetail(fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
+	appendPrDetail(pr, fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
 
 	if pr.Action == ReconcileActionAlreadyHealthy {
 		pr.Action = ReconcileActionStaleRemoved
