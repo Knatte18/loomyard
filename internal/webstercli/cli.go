@@ -1,25 +1,7 @@
-// cli.go builds the cobra command tree for the webster module and the
-// RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "webster" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> webster config -> model
-// registry -> resolved roles -> reed engine -> claude engine ->
-// shuttleengine.Runner exactly once per invocation, storing the resolved
-// ingredients on websterCLI -- buildercli's own cli.go
-// (internal/buildercli/cli.go) is the proven shape this file mirrors file
-// for file, per the discussion's cli-shape decision: every _lyx/plan and
-// _lyx/webster path this module touches is anchored at layout.AnchorPath() -- the
-// directory lyx init ran in, never WorktreeRoot or a weft sibling.
+// cli.go builds the cobra command tree for the webster module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
+// The parent "webster" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle config -> reed config -> webster config -> model registry -> resolved roles -> reed engine -> claude engine -> shuttleengine.Runner exactly once per invocation, storing the resolved ingredients on websterCLI -- buildercli's own cli.go (internal/buildercli/cli.go) is the proven shape this file mirrors file for file, per the discussion's cli-shape decision: every _lyx/plan and _lyx/webster path this module touches is anchored at layout.AnchorPath() -- the directory lyx init ran in, never WorktreeRoot or a weft sibling.
 //
-// Unlike buildercli (which stores only a builderengine.Starter and a
-// builderengine.OrchestratorStarter adapter over the same Runner),
-// websterCLI stores THREE adapted views of the one constructed Runner:
-// starter (websterengine.Starter, webster's own local copy of the spawn
-// seam, consumed by recover-batch's cold-strand spawn), injector
-// (websterengine.Injector, consumed by begin-batch's model-switch
-// choreography), and masterStarter (websterengine.MasterStarter, behind the
-// runnerMasterStarter adapter, consumed by run's Master spawn) -- because
-// webster's three verbs each need a distinct narrow seam onto the same
-// underlying *shuttleengine.Runner, none of which the others expose.
+// Unlike buildercli (which stores only a builderengine.Starter and a builderengine.OrchestratorStarter adapter over the same Runner), websterCLI stores THREE adapted views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of the spawn seam, consumed by recover-batch's cold-strand spawn), injector (websterengine.Injector, consumed by begin-batch's model-switch choreography), and masterStarter (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master spawn) -- because webster's three verbs each need a distinct narrow seam onto the same underlying *shuttleengine.Runner, none of which the others expose.
 package webstercli
 
 import (
@@ -83,8 +65,7 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine
 
 // Command returns the cobra command tree for the webster module.
 //
-// The parent "webster" command carries a PersistentPreRunE that resolves cwd and configs into c,
-// skipping resolution when the group command itself is invoked.
+// The parent "webster" command carries a PersistentPreRunE that resolves cwd and configs into c, skipping resolution when the group command itself is invoked.
 func Command() *cobra.Command {
 	c := &websterCLI{}
 
@@ -217,9 +198,8 @@ Verbs:
 
 // RunCLI is the public seam for the webster module CLI.
 //
-// It delegates to clihelp.Execute with the cobra command tree, passing out as
-// the capture writer for all output (including cobra's error text). This
-// preserves the existing call contract so that callers and tests are unchanged.
+// It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer for all output (including cobra's error text).
+// This preserves the existing call contract so that callers and tests are unchanged.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

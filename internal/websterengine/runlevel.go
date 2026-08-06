@@ -1,16 +1,5 @@
-// runlevel.go implements Run, webster's `run` verb engine core: the
-// run-level exclusive lease, the automatic validation gate (including the
-// zero-batch pre-flight refusal), the state-phase entry-time reclaim of
-// webster's own two reclaimable substrates (Master's own strand and any
-// non-terminal recovery-batch strand — forks die with Master, so there is
-// never a third), the plan-fingerprint crash/resume guard with its --fresh
-// archive/re-init escape, the never-instantly-re-pause clear, the
-// stale-outcome/summary archive, the always-fresh Master spawn
-// (fork-authorized, both output files), the shuttle-outcome-to-RunResult
-// mapping, and the run-exit whole-session audit cross-check that backstops
-// record-batch's own per-batch incremental audit. Named runlevel.go, not
-// run.go, mirroring builderengine's own runlevel.go naming note (avoiding a
-// clash with any future poll/spawn-style file name).
+// runlevel.go implements Run, webster's `run` verb engine core: the run-level exclusive lease, the automatic validation gate (including the zero-batch pre-flight refusal), the state-phase entry-time reclaim of webster's own two reclaimable substrates (Master's own strand and any non-terminal recovery-batch strand — forks die with Master, so there is never a third), the plan-fingerprint crash/resume guard with its --fresh archive/re-init escape, the never-instantly-re-pause clear, the stale-outcome/summary archive, the always-fresh Master spawn (fork-authorized, both output files), the shuttle-outcome-to-RunResult mapping, and the run-exit whole-session audit cross-check that backstops record-batch's own per-batch incremental audit.
+// Named runlevel.go, not run.go, mirroring builderengine's own runlevel.go naming note (avoiding a clash with any future poll/spawn-style file name).
 
 package websterengine
 
@@ -40,20 +29,14 @@ import (
 // same state.json and reports, then both drive the Master spawn at once.
 const runLockName = "run.lock"
 
-// ErrRunBusy marks Run's fail-fast refusal when another invocation already
-// holds websterDir's run.lock. It is webster's own sentinel (independent of
-// builderengine.ErrRunBusy, per the webster-owns-its-own-domain-types
-// decision) because the caller must treat this refusal differently from
-// every other hard error: the losing call touched NOTHING on disk — the
-// winner is mid-run and owns the state — so webstercli must not run its own
-// exit-time weft backstop for it.
+// ErrRunBusy marks Run's fail-fast refusal when another invocation already holds websterDir's run.lock.
+// It is webster's own sentinel (independent of builderengine.ErrRunBusy, per the webster-owns-its-own-domain-types decision) because the caller must treat this refusal differently from every other hard error: the losing call touched NOTHING on disk — the winner is mid-run and owns the state — so webstercli must not run its own exit-time weft backstop for it.
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
-// RunActive reports whether a live `lyx webster run` currently holds
-// websterDir's run.lock. It probes non-blocking: if the lock can be
-// acquired, no run owns it and the probe returns false; otherwise it
-// returns true. Probe errors (filesystem failures) are returned so the
-// caller can decide.
+// RunActive reports whether a live `lyx webster run` currently holds websterDir's run.lock.
+// It probes non-blocking: if the lock can be acquired, no run owns it and the probe returns false;
+// otherwise it returns true.
+// Probe errors (filesystem failures) are returned so the caller can decide.
 func RunActive(websterDir string) (bool, error) {
 	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, runLockName))
 	if err != nil {
@@ -69,9 +52,8 @@ func RunActive(websterDir string) (bool, error) {
 }
 
 // OutcomeFileName is outcome.yaml's fixed filename inside a webster dir.
-// The name matches builder's own outcome-file convention by heritage, but
-// the file's schema is webster's alone (outcome.go) — webster is not
-// contract-compatible with builder.
+// The name matches builder's own outcome-file convention by heritage,
+// but the file's schema is webster's alone (outcome.go) — webster is not contract-compatible with builder.
 const OutcomeFileName = "outcome.yaml"
 
 // OutcomePath returns the path to outcome.yaml inside websterDir.
@@ -79,30 +61,23 @@ func OutcomePath(websterDir string) string {
 	return filepath.Join(websterDir, OutcomeFileName)
 }
 
-// MasterHandle is the started-but-not-yet-finished Master spawn Run blocks
-// on: StrandGUID identifies the reed strand Master runs in (available
-// immediately after the start, so Run can persist it to state.json BEFORE
-// blocking — the record the next run's entry-time reclaim reads), and Wait
-// blocks until the spawn reaches a terminal shuttle outcome.
-// *shuttleengine.Run satisfies this structurally.
+// MasterHandle is the started-but-not-yet-finished Master spawn Run blocks on: StrandGUID identifies the reed strand Master runs in (available immediately after the start, so Run can persist it to state.json BEFORE blocking — the record the next run's entry-time reclaim reads), and Wait blocks until the spawn reaches a terminal shuttle outcome. *shuttleengine.Run satisfies this structurally.
 type MasterHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
 }
 
-// MasterStarter is the seam Run spawns Master through: builderengine's own
-// OrchestratorStarter shape (runlevel.go), webster-named. Production code
-// passes an adapter over *shuttleengine.Runner (webstercli's own starter);
+// MasterStarter is the seam Run spawns Master through: builderengine's own OrchestratorStarter shape (runlevel.go), webster-named.
+// Production code passes an adapter over *shuttleengine.Runner (webstercli's own starter);
 // tests pass a local fake.
 type MasterStarter interface {
 	StartMaster(shuttleengine.Spec) (MasterHandle, error)
 }
 
-// RunDeps carries every seam Run needs for testing. Starter spawns Master;
-// Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
-// PlanDir, WebsterDir, ReportsDir, PromptsDir, WorktreeRoot are lyxcwd-
-// resolved paths; Config and Roles carry the loaded configuration and
-// pre-flight-resolved role->model-spec map.
+// RunDeps carries every seam Run needs for testing.
+// Starter spawns Master; Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
+// PlanDir, WebsterDir, ReportsDir, PromptsDir, WorktreeRoot are lyxcwd- resolved paths;
+// Config and Roles carry the loaded configuration and pre-flight-resolved role->model-spec map.
 type RunDeps struct {
 	Starter      MasterStarter
 	Reed         shuttleengine.ReedOps
@@ -132,17 +107,13 @@ type RunDeps struct {
 	Bisector WarpBisector
 }
 
-// RunOptions carries one `run` invocation's caller-supplied choices. Fresh
-// requests the fingerprint-mismatch escape: archive the stale state.json and
-// reports dir, clear the re-renderable prompts dir, and re-init, rather than
-// refusing with ErrFingerprintMismatch.
+// RunOptions carries one `run` invocation's caller-supplied choices.
+// Fresh requests the fingerprint-mismatch escape: archive the stale state.json and reports dir, clear the re-renderable prompts dir, and re-init, rather than refusing with ErrFingerprintMismatch.
 type RunOptions struct {
 	Fresh bool
 }
 
-// RunResult is what one successful Run call hands back: the parsed
-// outcome.yaml's judgment (Outcome/StuckReason/BatchesDone) plus the
-// summary.md's title.
+// RunResult is what one successful Run call hands back: the parsed outcome.yaml's judgment (Outcome/StuckReason/BatchesDone) plus the summary.md's title.
 type RunResult struct {
 	// Outcome is one of webster's own outcomeDone, outcomeStuck, or
 	// outcomePaused values (outcome.go), taken verbatim from the parsed
@@ -173,12 +144,9 @@ func newRunGUID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// MasterAskingError marks Run's mapping of a shuttle OutcomeAsking result
-// for Master's own spawn: Master ended its turn asking a question instead
-// of ever reaching its own outcome-file final action. Unwrap returns
-// ErrMasterAsking so a caller can classify via errors.Is without needing the
-// concrete type; the concrete type itself carries the per-call SessionID,
-// RunDir, and LastAssistantMessage a caller needs to log or resume from.
+// MasterAskingError marks Run's mapping of a shuttle OutcomeAsking result for Master's own spawn: Master ended its turn asking a question instead of ever reaching its own outcome-file final action.
+// Unwrap returns ErrMasterAsking so a caller can classify via errors.Is without needing the concrete type;
+// the concrete type itself carries the per-call SessionID, RunDir, and LastAssistantMessage a caller needs to log or resume from.
 type MasterAskingError struct {
 	SessionID string
 	RunDir    string
@@ -195,9 +163,7 @@ func (e *MasterAskingError) Unwrap() error { return ErrMasterAsking }
 // ErrMasterAsking is the sentinel MasterAskingError wraps.
 var ErrMasterAsking = errors.New("webster: master asking")
 
-// MasterDiedError marks Run's mapping of a shuttle OutcomeDied result for
-// Master's own spawn: its pane died (or it never became ready) before it
-// ever reached its own outcome-file final action.
+// MasterDiedError marks Run's mapping of a shuttle OutcomeDied result for Master's own spawn: its pane died (or it never became ready) before it ever reached its own outcome-file final action.
 type MasterDiedError struct {
 	SessionID string
 	RunDir    string
@@ -213,10 +179,7 @@ func (e *MasterDiedError) Unwrap() error { return ErrMasterDied }
 // ErrMasterDied is the sentinel MasterDiedError wraps.
 var ErrMasterDied = errors.New("webster: master died")
 
-// MasterTimeoutError marks Run's mapping of a shuttle OutcomeTimeout result
-// for Master's own spawn: its wall-clock Timeout (MasterTimeoutMin, the
-// whole-run analog of builder's orchestrator_timeout_min) elapsed before it
-// ever reached its own outcome-file final action.
+// MasterTimeoutError marks Run's mapping of a shuttle OutcomeTimeout result for Master's own spawn: its wall-clock Timeout (MasterTimeoutMin, the whole-run analog of builder's orchestrator_timeout_min) elapsed before it ever reached its own outcome-file final action.
 type MasterTimeoutError struct {
 	SessionID string
 	RunDir    string
@@ -298,11 +261,9 @@ func countBegunForkBatches(st *State, sessionID string) int {
 	return count
 }
 
-// Run drives one `lyx webster run` invocation to completion: the run-level
-// mutex, validation gate, state-phase entry-time reclaim, plan-fingerprint
-// crash/resume guard with its --fresh escape, and Master spawn to outcome.
-// ErrRunBusy and ErrFingerprintMismatch are exported sentinels; non-done
-// shuttle outcomes return *Master*Error types.
+// Run drives one `lyx webster run` invocation to completion: the run-level mutex, validation gate, state-phase entry-time reclaim, plan-fingerprint crash/resume guard with its --fresh escape, and Master spawn to outcome.
+// ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
+// non-done shuttle outcomes return *Master*Error types.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.WebsterDir, err)

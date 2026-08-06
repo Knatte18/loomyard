@@ -1,8 +1,5 @@
-// archive_test.go covers firstFreeArchivePath's same-second collision
-// suffixing, archiveStateFile's absent-file no-op and rename/preserve
-// behavior, and archiveReportsDir's recreate-after-archive and
-// absent-dir-still-recreates behavior. Tier 1: no git, only t.TempDir()
-// plus an injected now.
+// archive_test.go covers firstFreeArchivePath's same-second collision suffixing, archiveStateFile's absent-file no-op and rename/preserve behavior, and archiveReportsDir's recreate-after-archive and absent-dir-still-recreates behavior.
+// Tier 1: no git, only t.TempDir() plus an injected now.
 
 package websterengine
 

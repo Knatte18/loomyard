@@ -1,7 +1,5 @@
-// report_test.go covers Report's round-trip through WriteReport->ParseReport
-// for both terminal statuses and both empty and populated deviation lists,
-// plus ParseReport's strict-decode rejections: an unknown key, a missing
-// head_sha, and an unrecognized status. Tier 1: no git, only t.TempDir().
+// report_test.go covers Report's round-trip through WriteReport->ParseReport for both terminal statuses and both empty and populated deviation lists, plus ParseReport's strict-decode rejections: an unknown key, a missing head_sha, and an unrecognized status.
+// Tier 1: no git, only t.TempDir().
 
 package websterengine
 

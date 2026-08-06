@@ -1,7 +1,4 @@
-// summary_test.go exercises ParseSummary's accept/reject table and
-// ArchiveStaleSummary's rename/preserve/no-op/collision behavior, mirroring
-// builderengine's own outcome_test.go coverage shape for the same act
-// applied to summary.md instead of outcome.yaml.
+// summary_test.go exercises ParseSummary's accept/reject table and ArchiveStaleSummary's rename/preserve/no-op/collision behavior, mirroring builderengine's own outcome_test.go coverage shape for the same act applied to summary.md instead of outcome.yaml.
 
 package websterengine_test
 
@@ -27,9 +24,7 @@ func writeSummaryFile(t *testing.T, path, content string) {
 	}
 }
 
-// TestParseSummary_ValidParsesTitleAndBody asserts a well-formed summary.md
-// (a "# <title>" heading followed by free-form narrative) parses into its
-// Title and Body exactly, with the heading line itself excluded from Body.
+// TestParseSummary_ValidParsesTitleAndBody asserts a well-formed summary.md (a "# <title>" heading followed by free-form narrative) parses into its Title and Body exactly, with the heading line itself excluded from Body.
 func TestParseSummary_ValidParsesTitleAndBody(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, websterengine.SummaryFileName)
@@ -48,9 +43,7 @@ func TestParseSummary_ValidParsesTitleAndBody(t *testing.T) {
 	}
 }
 
-// TestParseSummary_LeadingBlankLinesSkipped asserts a heading preceded by
-// blank lines still parses — the first NON-BLANK line is what must be the
-// heading, not necessarily the file's first line.
+// TestParseSummary_LeadingBlankLinesSkipped asserts a heading preceded by blank lines still parses — the first NON-BLANK line is what must be the heading, not necessarily the file's first line.
 func TestParseSummary_LeadingBlankLinesSkipped(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, websterengine.SummaryFileName)
@@ -65,8 +58,7 @@ func TestParseSummary_LeadingBlankLinesSkipped(t *testing.T) {
 	}
 }
 
-// TestParseSummary_MissingFile asserts a missing summary.md is a wrapped
-// error, never a guessed nil result.
+// TestParseSummary_MissingFile asserts a missing summary.md is a wrapped error, never a guessed nil result.
 func TestParseSummary_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, websterengine.SummaryFileName)
@@ -76,8 +68,7 @@ func TestParseSummary_MissingFile(t *testing.T) {
 	}
 }
 
-// TestParseSummary_EmptyFile asserts a present-but-empty (or blank-only)
-// summary.md is rejected loud rather than parsed as a title-less summary.
+// TestParseSummary_EmptyFile asserts a present-but-empty (or blank-only) summary.md is rejected loud rather than parsed as a title-less summary.
 func TestParseSummary_EmptyFile(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -99,9 +90,7 @@ func TestParseSummary_EmptyFile(t *testing.T) {
 	}
 }
 
-// TestParseSummary_NoHeadingFirstLine asserts a file whose first non-blank
-// line is not a "# " heading is rejected loud rather than silently treating
-// the whole file as an untitled body.
+// TestParseSummary_NoHeadingFirstLine asserts a file whose first non-blank line is not a "# " heading is rejected loud rather than silently treating the whole file as an untitled body.
 func TestParseSummary_NoHeadingFirstLine(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, websterengine.SummaryFileName)
@@ -112,8 +101,7 @@ func TestParseSummary_NoHeadingFirstLine(t *testing.T) {
 	}
 }
 
-// TestParseSummary_EmptyTitle asserts a "# " heading whose title is blank
-// (or whitespace-only) is rejected loud.
+// TestParseSummary_EmptyTitle asserts a "# " heading whose title is blank (or whitespace-only) is rejected loud.
 func TestParseSummary_EmptyTitle(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, websterengine.SummaryFileName)
@@ -131,9 +119,7 @@ func summaryFixedClock(t time.Time) func() time.Time {
 	return func() time.Time { return t }
 }
 
-// TestArchiveStaleSummary_AbsentFileIsNoOp asserts archiving a webster dir
-// with no summary.md at all returns ("", nil) — not an error — per the
-// discussion's "absent file -> no-op" rule.
+// TestArchiveStaleSummary_AbsentFileIsNoOp asserts archiving a webster dir with no summary.md at all returns ("", nil) — not an error — per the discussion's "absent file -> no-op" rule.
 func TestArchiveStaleSummary_AbsentFileIsNoOp(t *testing.T) {
 	dir := t.TempDir()
 
@@ -146,10 +132,7 @@ func TestArchiveStaleSummary_AbsentFileIsNoOp(t *testing.T) {
 	}
 }
 
-// TestArchiveStaleSummary_RenamesAndPreservesContent asserts a present
-// summary.md is renamed (never copied-and-left, never deleted) to
-// summary-<UTC-compact-timestamp>.md in the same directory, with its content
-// preserved byte-for-byte, and the original path no longer exists.
+// TestArchiveStaleSummary_RenamesAndPreservesContent asserts a present summary.md is renamed (never copied-and-left, never deleted) to summary-<UTC-compact-timestamp>.md in the same directory, with its content preserved byte-for-byte, and the original path no longer exists.
 func TestArchiveStaleSummary_RenamesAndPreservesContent(t *testing.T) {
 	dir := t.TempDir()
 	original := filepath.Join(dir, websterengine.SummaryFileName)
@@ -180,10 +163,7 @@ func TestArchiveStaleSummary_RenamesAndPreservesContent(t *testing.T) {
 	}
 }
 
-// TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix asserts a second
-// archive call whose now() truncates to the same compact timestamp does not
-// clobber the first archive: it appends a numeric suffix instead, per the
-// discussion's collision rule.
+// TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix asserts a second archive call whose now() truncates to the same compact timestamp does not clobber the first archive: it appends a numeric suffix instead, per the discussion's collision rule.
 func TestArchiveStaleSummary_SameSecondCollisionAppendsSuffix(t *testing.T) {
 	dir := t.TempDir()
 	clk := summaryFixedClock(time.Date(2026, 7, 11, 13, 45, 0, 0, time.UTC))

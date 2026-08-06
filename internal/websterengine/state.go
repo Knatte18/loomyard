@@ -1,22 +1,10 @@
-// state.go implements the durable run state webster keeps at
-// _lyx/webster/state.json: the run identity, the plan-fingerprint anchor
-// crash/resume compares against, the current-batch cursor, Master's own
-// strand/session identity and last-asserted model, every batch's own
-// persisted record (including its carried-forward digest and per-card SHA
-// trail), and the set of fork transcripts already attributed across every
-// batch. LoadState/SaveState are state.json's only readers/writers; every
-// other websterengine file mutates the in-memory *State the caller loaded
-// and calls SaveState to persist it back. Callers resolve websterDir via
-// websterengine.Dir — this file also declares Dir/ReportsDir/PromptsDir
-// themselves, the module's own _lyx/webster constructors (Cwd Resolution
-// Invariant).
+// state.go implements the durable run state webster keeps at _lyx/webster/state.json: the run identity, the plan-fingerprint anchor crash/resume compares against, the current-batch cursor, Master's own strand/session identity and last-asserted model, every batch's own persisted record (including its carried-forward digest and per-card SHA trail), and the set of fork transcripts already attributed across every batch.
+// LoadState/SaveState are state.json's only readers/writers;
+// every other websterengine file mutates the in-memory *State the caller loaded and calls SaveState to persist it back.
+// Callers resolve websterDir via websterengine.Dir — this file also declares Dir/ReportsDir/PromptsDir themselves, the module's own _lyx/webster constructors (Cwd Resolution Invariant).
 //
-// webster's State is its own schema, independent of builderengine.State: the
-// two modules' state files never share a Go type or a sentinel error, so
-// errors.Is can never conflate a builder run with a webster run (see the
-// discussion's "webster-owns-its-own-domain-types" decision). BatchState.Digest
-// is the webster-local *Digest (digest.go) — webster's own fork-return-derived
-// batch-outcome snapshot, not builderengine's.
+// webster's State is its own schema, independent of builderengine.State: the two modules' state files never share a Go type or a sentinel error, so errors.Is can never conflate a builder run with a webster run (see the discussion's "webster-owns-its-own-domain-types" decision).
+// BatchState.Digest is the webster-local *Digest (digest.go) — webster's own fork-return-derived batch-outcome snapshot, not builderengine's.
 
 package websterengine
 
@@ -36,25 +24,23 @@ import (
 // directory. websterengine is this segment's sole declarer.
 const websterDirName = "webster"
 
-// Dir returns the path to the webster's durable run state directory
-// (state.json, pause flag, outcome.yaml). It lives under _lyx so it is
-// weft-synced. Per the Cwd Resolution Invariant, no other package may
-// construct this path.
+// Dir returns the path to the webster's durable run state directory (state.json, pause flag, outcome.yaml).
+// It lives under _lyx so it is weft-synced.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)
 }
 
-// ReportsDir returns the path to the directory holding webster's per-batch
-// report files. It lives under _lyx so reports are weft-synced. Per the Hub
-// Geometry Invariant, no other package may construct this path.
+// ReportsDir returns the path to the directory holding webster's per-batch report files.
+// It lives under _lyx so reports are weft-synced.
+// Per the Hub Geometry Invariant, no other package may construct this path.
 func ReportsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "reports")
 }
 
-// PromptsDir returns the path to the directory holding webster's rendered
-// fork prompts. Prompts are machine-local, re-renderable artifacts excluded
-// from weft commits. Per the Cwd Resolution Invariant, no other package may
-// construct this path.
+// PromptsDir returns the path to the directory holding webster's rendered fork prompts.
+// Prompts are machine-local, re-renderable artifacts excluded from weft commits.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
 func PromptsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "prompts")
 }
@@ -72,13 +58,8 @@ const stateFileName = "state.json"
 // webstercli's websterWeftPathspec).
 const stateMutateLockName = "mutate.lock"
 
-// AcquireStateMutation acquires websterDir's exclusive state-mutation
-// lease, blocking until it is free — every holder's critical section is
-// bounded (a begin-batch, a record-batch persist, a recover-batch spawn or
-// terminal persist), so blocking is always short and never a deadlock risk.
-// Callers hold it across their WHOLE load-mutate-save sequence and Release
-// it as soon as the save lands, never across a long block (recover-batch's
-// bounded poll wait).
+// AcquireStateMutation acquires websterDir's exclusive state-mutation lease, blocking until it is free — every holder's critical section is bounded (a begin-batch, a record-batch persist, a recover-batch spawn or terminal persist), so blocking is always short and never a deadlock risk.
+// Callers hold it across their WHOLE load-mutate-save sequence and Release it as soon as the save lands, never across a long block (recover-batch's bounded poll wait).
 func AcquireStateMutation(websterDir string) (*lock.FileLock, error) {
 	if err := os.MkdirAll(websterDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create webster dir %s: %w", websterDir, err)
@@ -90,8 +71,7 @@ func AcquireStateMutation(websterDir string) (*lock.FileLock, error) {
 	return l, nil
 }
 
-// State is the durable run state persisted at <websterDir>/state.json:
-// run identity, plan-fingerprint, batch records, and Master strand/session.
+// State is the durable run state persisted at <websterDir>/state.json: run identity, plan-fingerprint, batch records, and Master strand/session.
 type State struct {
 	// RunGUID identifies this webster run, minted once at first init.
 	RunGUID string `json:"runGuid"`
@@ -191,10 +171,9 @@ type BatchState struct {
 	EventsPath string `json:"eventsPath,omitempty"`
 }
 
-// LoadState reads <websterDir>/state.json. A missing file returns (nil,
-// nil) — no run has started yet, not an error. An unreadable or malformed
-// file is a wrapped error: fail loud, never guess at a corrupted run's
-// state.
+// LoadState reads <websterDir>/state.json.
+// A missing file returns (nil, nil) — no run has started yet, not an error.
+// An unreadable or malformed file is a wrapped error: fail loud, never guess at a corrupted run's state.
 func LoadState(websterDir string) (*State, error) {
 	path := filepath.Join(websterDir, stateFileName)
 	lockPath := path + ".lock"
@@ -209,9 +188,7 @@ func LoadState(websterDir string) (*State, error) {
 	return &st, nil
 }
 
-// SaveState writes st to <websterDir>/state.json: MkdirAll followed by an
-// atomic write (temp file + rename), so a crash mid-write never leaves a
-// reader observing a half-written file.
+// SaveState writes st to <websterDir>/state.json: MkdirAll followed by an atomic write (temp file + rename), so a crash mid-write never leaves a reader observing a half-written file.
 func SaveState(websterDir string, st *State) error {
 	path := filepath.Join(websterDir, stateFileName)
 	lockPath := path + ".lock"

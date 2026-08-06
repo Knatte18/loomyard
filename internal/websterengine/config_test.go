@@ -1,10 +1,4 @@
-// config_test.go verifies webster.yaml's template parses, defaults resolve
-// through LoadConfig, overrides round-trip, and a malformed role model-spec
-// fails loud naming the offending key — the builderengine config_test.go
-// pattern, but seeded via plain os.MkdirAll/os.WriteFile against a
-// t.TempDir() rather than lyxtest's weft/config fixture-copy helpers: configengine.Load
-// only requires a filesystem _lyx/config/<module>.yaml, no git repository,
-// so this test stays untagged and spawn-free (Test Tier Purity Invariant).
+// config_test.go verifies webster.yaml's template parses, defaults resolve through LoadConfig, overrides round-trip, and a malformed role model-spec fails loud naming the offending key — the builderengine config_test.go pattern, but seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather than lyxtest's weft/config fixture-copy helpers: configengine.Load only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged and spawn-free (Test Tier Purity Invariant).
 
 package websterengine_test
 
@@ -36,9 +30,7 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 	}
 }
 
-// TestConfigTemplate_ParsesAsYAML asserts the embedded template is
-// well-formed YAML on its own, independent of LoadConfig's strict-decode
-// path.
+// TestConfigTemplate_ParsesAsYAML asserts the embedded template is well-formed YAML on its own, independent of LoadConfig's strict-decode path.
 func TestConfigTemplate_ParsesAsYAML(t *testing.T) {
 	var out map[string]any
 	if err := yaml.Unmarshal([]byte(websterengine.ConfigTemplate()), &out); err != nil {
@@ -46,8 +38,7 @@ func TestConfigTemplate_ParsesAsYAML(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_RoundTripsThroughLoadConfig seeds the template
-// verbatim and asserts LoadConfig resolves it into the documented defaults.
+// TestConfigTemplate_RoundTripsThroughLoadConfig seeds the template verbatim and asserts LoadConfig resolves it into the documented defaults.
 func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 	baseDir := t.TempDir()
 	seedConfig(t, baseDir, "webster", websterengine.ConfigTemplate())
@@ -71,10 +62,7 @@ func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via
-// reflection and asserts every yaml tag appears in the template text — so a
-// struct field added without a matching template line is caught
-// mechanically rather than relying on review to notice the gap.
+// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts every yaml tag appears in the template text — so a struct field added without a matching template line is caught mechanically rather than relying on review to notice the gap.
 func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	text := websterengine.ConfigTemplate()
 
