@@ -1,16 +1,12 @@
 // main.go is the entry point for the lyx CLI.
 //
-// It assembles a single cobra root command from every module's Command(), wires
-// the persistent --json flag and JSON help renderer, and routes output to the
-// appropriate writer. Cobra-level errors (unknown command, bad flag) are wrapped
-// in the JSON envelope by clihelp.RunRoot so the caller always receives a
-// machine-parseable error. The testable run() seam merges stdout and stderr so
-// tests capture all output from one buffer; main() keeps stdout and stderr split
-// as callers of the production binary expect.
+// It assembles a single cobra root command from every module's Command(), wires the persistent --json flag and JSON help renderer, and routes output to the appropriate writer.
+// Cobra-level errors (unknown command, bad flag) are wrapped in the JSON envelope by clihelp.RunRoot so the caller always receives a machine-parseable error.
+// The testable run() seam merges stdout and stderr so tests capture all output from one buffer;
+// main() keeps stdout and stderr split as callers of the production binary expect.
 
 // Package main is the cobra root for the lyx CLI.
-// It assembles each module's Command() into a single root, installs --json help,
-// and delegates execution to cobra via clihelp.RunRoot.
+// It assembles each module's Command() into a single root, installs --json help, and delegates execution to cobra via clihelp.RunRoot.
 package main
 
 import (

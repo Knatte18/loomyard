@@ -1,22 +1,11 @@
-// constructoranchoring_test.go pins every constructor batch 5 relocated out
-// of internal/lyxcwd into its owning module to the anchoring table the
-// overview's Shared Decisions record: there is no single base. It lives in
-// cmd/lyx because this is the only package that may import every owning
-// module at once (loomengine, builderengine, websterengine, perchengine,
-// scoutengine, pattern, logger, reedengine, planparser). Every case here is
-// pure filepath.Join arithmetic -- no subprocess is spawned and no fixture
-// tree is copied -- so this file stays untagged, per the Test Tier Purity
-// Invariant.
+// constructoranchoring_test.go pins every constructor batch 5 relocated out of internal/lyxcwd into its owning module to the anchoring table the overview's Shared Decisions record: there is no single base.
+// It lives in cmd/lyx because this is the only package that may import every owning module at once (loomengine, builderengine, websterengine, perchengine, scoutengine, pattern, logger, reedengine, planparser).
+// Every case here is pure filepath.Join arithmetic -- no subprocess is spawned and no fixture tree is copied -- so this file stays untagged, per the Test Tier Purity Invariant.
 //
-// The check is anchor-aware, not byte-identical: two synthetic
-// *lyxcwd.Location values are built, one unanchored (AnchorRel == ".") and
-// one subpath-anchored (AnchorRel == "backend"). For the unanchored fixture
-// every constructor in all three groups is byte-identical to a plain
-// filepath.Join computed independently in this file. For the
-// subpath-anchored fixture, the _lyx-durable group (AnchorPath-anchored)
-// intentionally moves down by AnchorRel, while the .lyx group and
-// HubLogsDir (WorktreePath/HubPath-anchored) stay byte-identical to their
-// unanchored-fixture values.
+// The check is anchor-aware, not byte-identical: two synthetic *lyxcwd.Location values are built, one unanchored (AnchorRel == ".")
+// and one subpath-anchored (AnchorRel == "backend").
+// For the unanchored fixture every constructor in all three groups is byte-identical to a plain filepath.Join computed independently in this file.
+// For the subpath-anchored fixture, the _lyx-durable group (AnchorPath-anchored) intentionally moves down by AnchorRel, while the .lyx group and HubLogsDir (WorktreePath/HubPath-anchored) stay byte-identical to their unanchored-fixture values.
 package main
 
 import (
@@ -46,9 +35,8 @@ func anchoringFixture(hubPath, worktreeName, anchorRel string) *lyxcwd.Location 
 	}
 }
 
-// TestConstructorAnchoring_Unanchored asserts every relocated constructor at
-// AnchorRel == "." against a plain filepath.Join computed independently
-// here, for all three anchoring groups.
+// TestConstructorAnchoring_Unanchored asserts every relocated constructor at AnchorRel == "."
+// against a plain filepath.Join computed independently here, for all three anchoring groups.
 func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	hub := filepath.Join("home", "user", "repo-HUB")
 	l := anchoringFixture(hub, "repo", ".")
@@ -88,9 +76,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, ".lyx", "logs"))
 }
 
-// TestConstructorAnchoring_SubpathAnchored asserts the anchor-aware move: the
-// _lyx-durable group moves down by AnchorRel, while the .lyx group and
-// HubLogsDir stay byte-identical to their unanchored-fixture values.
+// TestConstructorAnchoring_SubpathAnchored asserts the anchor-aware move: the _lyx-durable group moves down by AnchorRel, while the .lyx group and HubLogsDir stay byte-identical to their unanchored-fixture values.
 func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	hub := filepath.Join("home", "user", "repo-HUB")
 	anchorRel := "backend"

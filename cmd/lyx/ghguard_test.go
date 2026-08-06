@@ -1,8 +1,7 @@
-// ghguard_test.go enforces the GitHub Auth Invariant's shell-out half: no
-// production (non-test) package outside internal/githubclient may shell out to the
-// `gh` CLI. internal/githubclient owns the one bounded, timeout-guarded `gh auth
-// token` shell-out (token.go); every other package must go through it rather than
-// growing its own credential path. See CONSTRAINTS.md's GitHub Auth Invariant.
+// ghguard_test.go enforces the GitHub Auth Invariant's shell-out half: no production (non-test) package outside internal/githubclient may shell out to the `gh` CLI.
+// internal/githubclient owns the one bounded, timeout-guarded `gh auth token` shell-out (token.go);
+// every other package must go through it rather than growing its own credential path.
+// See CONSTRAINTS.md's GitHub Auth Invariant.
 
 package main
 
@@ -35,13 +34,8 @@ var ghExecSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 // ambiguity to worry about.
 const ghLookPathLiteral = `LookPath("gh")`
 
-// TestGHGuard_NoShellOutOutsideGithubclient walks every non-test *.go file under
-// the module root and fails if any file outside ghGuardAllowlistDir contains a
-// banned `gh` shell-out token. A bare "gh" substring is unusable as a banned
-// token -- it matches "through", "right", "highlight" and hundreds of other
-// words repo-wide -- so, following tools/sandbox/pathresolve_guard_test.go's
-// precedent, both banned forms carry the quoted binary name so no English word
-// can match.
+// TestGHGuard_NoShellOutOutsideGithubclient walks every non-test *.go file under the module root and fails if any file outside ghGuardAllowlistDir contains a banned `gh` shell-out token.
+// A bare "gh" substring is unusable as a banned token -- it matches "through", "right", "highlight" and hundreds of other words repo-wide -- so, following tools/sandbox/pathresolve_guard_test.go's precedent, both banned forms carry the quoted binary name so no English word can match.
 func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH,
 	// mirroring tierpurity_test.go and hermeticenv_test.go so this gate never

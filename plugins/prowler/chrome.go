@@ -1,7 +1,5 @@
-// chrome.go locates a Chrome/Chromium executable on the host so the browser
-// fallback (browser.go) knows what binary to launch. Discovery never shells
-// out — it only checks the filesystem, so it stays fast and side-effect free
-// even when no browser fallback ends up being used.
+// chrome.go locates a Chrome/Chromium executable on the host so the browser fallback (browser.go) knows what binary to launch.
+// Discovery never shells out — it only checks the filesystem, so it stays fast and side-effect free even when no browser fallback ends up being used.
 
 package main
 
