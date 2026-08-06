@@ -156,7 +156,7 @@ Example:
 			// repo, write run dirs into an un-junctioned _lyx the weft
 			// commit's RelPath-scoped pathspec never includes, silently
 			// stranding every artifact outside the weft.
-			c.runDirBase = lyxcwd.PerchRunsDir(layout.AnchorPath())
+			c.runDirBase = perchengine.RunsDir(layout)
 			return nil
 		},
 	}

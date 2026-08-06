@@ -74,7 +74,7 @@ func TestDeriveRunID(t *testing.T) {
 // an explicit --run-id before joining it into a run-dir path: every id
 // DeriveRunID could plausibly produce passes, while anything carrying a
 // path separator, a leading/trailing dash, or other punctuation — the class
-// of value that would escape lyxcwd.PerchRunsDir via filepath.Join —
+// of value that would escape RunsDir via filepath.Join —
 // fails.
 func TestValidRunID(t *testing.T) {
 	tests := []struct {

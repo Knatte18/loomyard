@@ -1,7 +1,7 @@
-// lyxcwd_unit_test.go — pure path-math unit tests for the _lyx-anchored
-// path helpers that remain in this package and a couple of Location methods with
-// distinct anchoring rules (DotLyxDir, HubLogsDir). These tests do not require
-// a git repository and run under standard unit test verification.
+// lyxcwd_unit_test.go — pure path-math unit tests for a couple of Location
+// methods with distinct anchoring rules (DotLyxDir, HubLogsDir). These
+// tests do not require a git repository and run under standard unit test
+// verification.
 
 package lyxcwd
 
@@ -9,29 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 )
-
-// TestConfigHelpers tests the free-function _lyx-anchored path helpers that
-// remain in this package (PerchRunsDir). ConfigDir, ConfigFile, DotEnv and
-// the exported LyxDirName constant moved to internal/configengine (and
-// DotEnv to internal/envsource); their own coverage now lives in those
-// packages' test files. The want-expression here uses the private,
-// unexported lyxDirName transitional const, since this file is in-package
-// and this method still anchors on it until it relocates.
-func TestConfigHelpers(t *testing.T) {
-	t.Parallel()
-
-	t.Run("PerchRunsDir", func(t *testing.T) {
-		t.Parallel()
-
-		baseDir := "/home/user/project"
-		got := PerchRunsDir(baseDir)
-		want := filepath.Join(baseDir, lyxDirName, "perch")
-
-		if got != want {
-			t.Errorf("PerchRunsDir(%q) = %q; want %q", baseDir, got, want)
-		}
-	})
-}
 
 // TestDotLyxDir verifies that DotLyxDir resolves to "<AnchorPath>/.lyx" and is distinct
 // from LyxDir ("<AnchorPath>/_lyx"), since the two directories serve different durability

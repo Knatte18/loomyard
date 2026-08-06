@@ -272,7 +272,7 @@ func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 	// the weft tests above). runDirBase resolves against the HOST cwd, so
 	// hold the run.lock there; the dirty weft file proves the skipped sync
 	// had real material.
-	hostRunDir := filepath.Join(lyxcwd.PerchRunsDir(fixture.Hub), "busyblock")
+	hostRunDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "busyblock")
 	if err := os.MkdirAll(hostRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir host run dir: %v", err)
 	}

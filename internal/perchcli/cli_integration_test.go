@@ -64,7 +64,7 @@ func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
 func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	fixture := seedPerchFixture(t)
 
-	runDir := filepath.Join(lyxcwd.PerchRunsDir(fixture.Hub), "finishedrun")
+	runDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "finishedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -126,7 +126,8 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 
 	t.Chdir(nested)
 
-	runDir := filepath.Join(lyxcwd.PerchRunsDir(nested), "nestedrun")
+	nestedLayout := &lyxcwd.Location{HubPath: fixture.Layout.HubPath, WorktreeName: fixture.Layout.WorktreeName, AnchorRel: "nested"}
+	runDir := filepath.Join(perchengine.RunsDir(nestedLayout), "nestedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -166,7 +167,7 @@ func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
 func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 	fixture := seedPerchFixture(t)
 
-	runDir := filepath.Join(lyxcwd.PerchRunsDir(fixture.Hub), "myrun")
+	runDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "myrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}

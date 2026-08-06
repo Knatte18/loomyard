@@ -190,13 +190,6 @@ func buildLocation(cwd, workTreeRoot, hubPath, anchorRel string, applyGate bool)
 	}, nil
 }
 
-// PerchRunsDir returns the path to the base directory for perch run artifacts.
-// It lives under _lyx so artifacts are weft-synced. Per the Hub Geometry Invariant, no other
-// package may construct this path.
-func PerchRunsDir(baseDir string) string {
-	return filepath.Join(baseDir, lyxDirName, "perch")
-}
-
 // PatternDir returns the path to the _pattern directory within a baseDir.
 // Per the Hub Geometry Invariant, no other package may construct this path.
 func PatternDir(baseDir string) string {
