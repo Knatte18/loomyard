@@ -75,18 +75,21 @@ batches:
 
 - **Decision:** every card that edits a file also rewords that file's `weft`/`warp`/fabric-sense-`host` comments per `comment-fidelity`;
   batch 06 sweeps only files no code card touches.
-  A file appears in at most one batch, except four deliberate double-visits, each DAG-ordered so no two batches write it in parallel: `websterengine/integration.go` (card 12 identifier rename, card 20 residual comments), `fabricengine/doc.go`/`commit.go`/`open.go` (batches 01/04/08, one dependency chain), `loomengine/preflight_integration_test.go` (card 5 assertions, card 23 test-name and prose), and `websterengine/audit_test.go` (card 12 scanner migration, card 23 test-name and prose).
+  A file appears in at most one batch, except four deliberate double-visits, each DAG-ordered so no two batches write it in parallel: `websterengine/integration.go` (card 12 identifier rename, card 20 residual comments), `fabricengine/doc.go`/`commit.go`/`open.go` (batches 01/04/08, one dependency chain), `loomengine/preflight_integration_test.go` (card 5 assertions, card 23 test-name and prose), `websterengine/audit_test.go` (card 12 scanner migration, card 23 test-name and prose), and `webstercli/cli_test.go` (card 8 helper retarget, card 23 residual prose).
 - **Rationale:** avoids parallel-batch write conflicts and double-visits;
   the `parallel-modifies-overlap` validator only tolerates shared files on dependent batches.
 - **Applies to:** all batches
 
 ### Decision: vocabulary owner set and carve-outs
 
-- **Decision:** owners (vocabulary stays): `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals only), `tools/`, `sandbox/`.
+- **Decision:** owners (vocabulary stays): `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals **and comments**, never identifiers — see below), `tools/`, `sandbox/`.
   Verbatim carve-outs everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH`, the PowerShell cmdlet `Write-Host`, `lyxtest` owner-API selectors in tests, and the `lyx-test-weft`/`lyx-fabric-test-weft` GitHub URLs plus the identifiers naming them.
   `host` is policed only as a fabric-sense phrase (`host repo`, `host worktree`, `host HEAD`, `hostBranch`, …), never as a bare word.
 - **Rationale:** decisions `fabric-vocabulary-rule` and the discussion's Out list;
   the carve-outs are external resources or owner API, not leaks.
+  The `configsync` row widens from the discussion's "string literals only" to "string literals and comments" because the discussion's own justification — the strings are on-disk legacy config filenames the migration must read by name — applies verbatim to the comments that document them (`configsync.go:21,36-37,46,160` name `warp.yaml`/`weft.yaml` and cannot be reworded without becoming factually wrong).
+  A token scan cannot distinguish "comment documenting the carved-out literal" from any other comment in that file, so the machine rule is the coarser one and the finer distinction is a review obligation;
+  identifiers still fail, which is what keeps the row from becoming a blanket exemption.
 - **Applies to:** all batches
 
 ### Decision: test tagging for new tests
@@ -115,6 +118,21 @@ batches:
   Per-card CLI help-text corrections are the exception and do NOT wait for batch 08: they ride with the code that changes the behaviour (cards 7, 8, 9, 10, 21), because a `Long` that contradicts its own command is a defect at that commit, not a documentation gap.
 - **Applies to:** all batches
 
+### Decision: repo-prose sweep boundary
+
+- **Decision:** a mechanical sweep of every `.md` outside `internal/`/`cmd/` found 20 repo-prose files carrying `weft`/`warp`.
+  Card 29 rewords four of them (`README.md:62`, `docs/skills.md`, `docs/reference/builder-contract.md`, `docs/benchmarks/test-suite-timing.md`) per the discussion's `doc-vocabulary-split`, plus two the sweep added on the same rule — `docs/reference/status-schema.md` and `docs/reference/plan-format.md`.
+  Card 28 rewords `docs/overview.md:133`.
+  Every remaining file is deliberately left alone: `docs/shared-libs/lyxcwd.md`, `docs/shared-libs/configengine.md`, `docs/sandbox-howto.md`, `docs/sandbox-hub.md`, `docs/benchmarks/fixture-copy.md`, `docs/reference/discussion-format.md`, everything under `docs/research/`, `manifest/roadmap.md`, and every `manifest/designs/*.md` except `fabric-unified-view.md`.
+- **Rationale:** the two additions are the same class the discussion already named — `status-schema.md:33` describes loom preflight's "weft pairing in sync" precondition, which this task renames, so leaving it makes the doc factually stale rather than merely off-vocabulary;
+  `plan-format.md:212` ("commits per card to the **host** repo") is builder's contract prose, identical to `builder-contract.md`.
+  The exclusions are mechanism, historical, or on-disk-name docs: `lyxcwd.md` documents the ownership boundary itself ("no weft path lives here") and the geometry test's literal `-weft` token;
+  `configengine.md` names the on-disk `weft.yaml` config module, the same carve-out `configsync` gets;
+  `docs/research/` and `manifest/designs/` are historical records, which `doc-vocabulary-split` keeps on the mechanism side alongside README's architecture section.
+  The discussion's Scope scopes doc work to "the repo-prose docs named in `doc-vocabulary-split`", so widening past this line is a scope decision for a later task.
+  Recorded here so a future reader knows these files were examined and classified, not missed — none of them is covered by the machine check.
+- **Applies to:** batch 08
+
 ## All Files Touched
 
 - `CONSTRAINTS.md`
@@ -125,6 +143,8 @@ batches:
 - `docs/benchmarks/test-suite-timing.md`
 - `docs/overview.md`
 - `docs/reference/builder-contract.md`
+- `docs/reference/plan-format.md`
+- `docs/reference/status-schema.md`
 - `docs/skills.md`
 - `internal/batcher/doc.go`
 - `internal/buildercli/cli.go`
@@ -164,6 +184,7 @@ batches:
 - `internal/configcli/configcli_integration_test.go`
 - `internal/configcli/configcli_test.go`
 - `internal/configengine/config.go`
+- `internal/configsync/configsync.go`
 - `internal/fabriccli/weft_verbs.go`
 - `internal/fabricengine/boardjunction_integration_test.go`
 - `internal/fabricengine/checkout_index_refresh_test.go`
@@ -213,6 +234,7 @@ batches:
 - `internal/loomengine/report.go`
 - `internal/loomengine/status.go`
 - `internal/lyxcwd/anchor.go`
+- `internal/lyxcwd/anchor_test.go`
 - `internal/lyxcwd/enforcement_test.go`
 - `internal/lyxcwd/geometry_test.go`
 - `internal/lyxcwd/lyxcwd.go`

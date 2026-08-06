@@ -39,6 +39,7 @@ No external interface changes for later batches: from outside fabric, `Open` is 
   - `internal/fabricengine/weftgit_exclude_test.go`
   - `internal/fabricengine/warpforward_integration_test.go`
   - `internal/fabricengine/checkout_index_refresh_test.go`
+  - `internal/fabricengine/fabric_test.go`
   - `internal/fabricengine/index_integration_test.go`
   - `internal/fabricengine/commit_gating_integration_test.go`
   - `internal/fabricengine/commit_partial_integration_test.go`
@@ -56,8 +57,8 @@ No external interface changes for later batches: from outside fabric, `Open` is 
   Migrate the three `package fabricengine_test` files onto the shim — `weftgit_exclude_test.go` (4 uses), `warpforward_integration_test.go` (4), and `checkout_index_refresh_test.go` (2) — these build fixtures from raw scratch paths no `lyxcwd.Location` describes, so they keep the raw-path constructor via the shim rather than `Open`.
   Separately, six `package fabricengine` (in-package) test files also reference the renamed symbols and retarget onto `newPaired`/`f.warp`/`f.weft` directly — no shim needed, since they compile inside the package: `index_integration_test.go:92,94` (`New(warpPath, weftPath)` plus its error message), `commit_gating_integration_test.go:35,57` and `commit_partial_integration_test.go:84,103` (`f.Weft.CurrentSHA()`), `pull_integration_test.go:125,128` (`f.Warp.SHAExists`/`IsAncestor`), `snapshot_integration_test.go:532,557` (`f.Warp.SHAExists`, one of them in a comment), and `weftgit_pathspec_integration_test.go:5` (a comment naming `f.Weft.StageAndCommit`).
   Comment references to the renamed symbols update along with the code.
-  `fabric_test.go` is card 15's file — leave it compiling by whatever minimal shim references it needs only if the compiler forces it;
-  otherwise do not touch it here.
+  `internal/fabricengine/fabric_test.go` is also `package fabricengine_test` and calls `fabricengine.New` at `:25,44,66` plus `f.Warp`/`f.Weft` at `:70-74`, so the compiler forces it in this card — retarget all seven uses mechanically onto the `export_test.go` shim here, so card 14's own `verify:` passes.
+  Card 15 then restates the missing-path contract through `Open` as a separate, behaviour-level follow-up on the already-compiling file.
 - **Commit:** `refactor(fabricengine): unexport New as newPaired, make Fabric.warp/weft private`
 
 ### Card 15: restate `fabric_test.go` through `Open`

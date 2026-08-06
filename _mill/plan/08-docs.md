@@ -75,13 +75,20 @@ a doc describing a consumer module's behaviour rewords.
   - `docs/skills.md`
   - `docs/reference/builder-contract.md`
   - `docs/benchmarks/test-suite-timing.md`
+  - `docs/reference/status-schema.md`
+  - `docs/reference/plan-format.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** `manifest/designs/fabric-unified-view.md`: compact slice 8's section to a shipped summary and resolve/remove the "Open questions" entry "Slice 8's CLI-wording question" (`:185`);
   the file itself survives (its own header says it lives until slice 10 and slice 6's open half land).
   Per decision `doc-vocabulary-split` — KEEP vocabulary in `README.md:50,55,57,58,61,81` (the architecture section) and the rest of the design doc;
-  REWORD `README.md:62` ("`_lyx/` is durable and weft-synced" → fabric-synced state semantics), `docs/skills.md:14,167,184`, `docs/reference/builder-contract.md:22,24` ("Performs the loop's exit-time backstop weft commit" → fabric-worded: builder's contract must not say weft exists), and `docs/benchmarks/test-suite-timing.md`'s weft mentions.
+  REWORD `README.md:62` ("`_lyx/` is durable and weft-synced" → fabric-synced state semantics), `docs/skills.md:14,167,184`, `docs/reference/builder-contract.md:22,24,167` ("Performs the loop's exit-time backstop weft commit", and `:167`'s "would lose every weft-synced batch on a crash mid-run" → fabric-worded: builder's contract must not say weft exists), and `docs/benchmarks/test-suite-timing.md`'s weft mentions.
+  Two further consumer-behaviour docs reword, found by a mechanical repo-prose sweep rather than named in the discussion, and belonging to the same class `doc-vocabulary-split` puts on the reword side:
+  `docs/reference/status-schema.md:11` ("durable **weft-overlay state** … git-synced via weft") and `:33` — the latter names loom preflight's "weft pairing in sync" precondition, which this task renames to `CheckFabricReady`/"fabric not ready", so leaving it makes the doc factually stale, not merely off-vocabulary;
+  and `docs/reference/plan-format.md:212` ("The implementer commits per card to the **host** repo"), which is builder's own contract prose, the identical case to `docs/reference/builder-contract.md`.
+  `plan-format.md:53`'s "weft overlay … (Weft Git Invariant)" names that invariant by its constraints-file title and stays verbatim.
+  Every other repo-prose doc carrying the vocabulary is deliberately left alone — see the overview's `repo-prose sweep boundary` Shared Decision for the enumerated list and why.
   `manifest/roadmap.md` does NOT move — slice 8 is a planned item inside an existing campaign.
   Follow the semantic-line-break convention;
   do not hard-wrap.

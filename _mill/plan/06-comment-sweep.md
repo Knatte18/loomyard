@@ -87,6 +87,7 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
   - `internal/perchengine/doc.go`
   - `internal/perchengine/identity.go`
   - `internal/perchengine/engine.go`
+  - `internal/configsync/configsync.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -97,6 +98,9 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
   `treadleengine/run.go:213`'s "the host repo's own build/test surface" → "the repo's own build/test surface".
   OS-sense `host` (e.g. `reedengine/lifecycle.go`'s "cannot host a strand") stays untouched — only the one weft/warp mention in that file rewords.
   `lyxcwd`'s import cap and code are untouched: comments only (Cwd Resolution Invariant).
+  `internal/configsync/configsync.go` is carved out of the machine check for both literals and comments (see the overview's `vocabulary owner set and carve-outs` decision), so nothing here is load-bearing for batch 07 — but the finer distinction is a review obligation this card discharges.
+  Leave `:24`'s `legacyFabricConfigModules = []string{"warp", "weft"}` and the comments at `:21`, `:36-37`, `:46`, `:160` verbatim: they name the on-disk legacy filenames `warp.yaml`/`weft.yaml` and the module names those literals hold, and cannot be reworded without becoming wrong.
+  Reword only `:28`'s `// Module is the name of the config module (e.g., "board", "worktree", "weft")` — an illustrative example list, not documentation of the legacy literal — replacing `"weft"` with another live module name (e.g. `"fabric"`).
 - **Commit:** `docs(internal): fabric-vocabulary comment sweep in low-level packages`
 
 ### Card 23: test-file hand-clean
@@ -133,11 +137,14 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
   - `internal/gitrepo/commitempty_integration_test.go`
   - `internal/pattern/patternpath_test.go`
   - `internal/lyxcwd/geometry_test.go`
+  - `internal/lyxcwd/anchor_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Hand-clean each listed test file of `weft`/`warp`/fabric-sense-`host` vocabulary that is NOT a reference to owner-package API.
   `internal/builderengine/runlevel_test.go:800` carries "the same host repo" in a comment and rewords to "the same repo".
+  `internal/lyxcwd/anchor_test.go:203` names `fabricengine`'s `hostLayoutFor` in prose — that is an owner-package symbol reference, so keep the identifier spelled correctly and reword only any surrounding fabric-sense prose;
+  it is listed here so card 24's gate has a classified owner rather than an unexplained hit.
   Specifically pinned by the discussion: `cmd/lyx/boardguard_test.go` calls the invariant "Weft Git Invariant" where `CONSTRAINTS.md` says "Fabric Git Invariant (warp + weft)" — align the name.
   KEEP verbatim: every `lyxtest` owner-API reference (`WeftPrime`, `WeftBare`, `WeftPath`, `CopyWeft`, `CopyPaired`, fixture struct fields), every `fabricengine`/`fabriccli` owner-API selector a test legitimately calls, `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-var names wherever set (they are the literal names of variables this task deliberately does not rename), the PowerShell `Write-Host` cmdlet in `reedcli` `--cmd` strings (not in this card's list, but do not "fix" it if encountered), and `cmd/lyx/tierpurity_test.go`'s banned-token test data (its mentions are `lyxtest.Copy*` tokens carried as data — reword only genuine prose, if any).
   Two files carry vocabulary that cards 5 and 12 changed the code for but did not fully sweep, so they land here — this card is their only owner:
@@ -165,6 +172,9 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
   Every surviving non-owner production hit must be fixed before this card completes (fold the fix into a follow-up commit amending the responsible card's file);
   every surviving test hit must be an owner-API reference or a named carve-out.
   This is the precondition gate for batch 07 — the enforcement test must go green on first activation, not flush out stragglers.
+  If the gate finds a straggler, fix it and land it as its own new commit on this card (`docs: fabric-vocabulary sweep stragglers`) — never by amending an earlier card's commit, which would violate the repo's commit-per-fix discipline.
+  The card is diff-free in the expected case;
+  `Commit: none` describes that case, and a straggler commit is the documented exception.
 - **Commit:** none
 
 ## Batch Tests

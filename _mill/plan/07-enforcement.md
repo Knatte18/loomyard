@@ -50,7 +50,8 @@ Placing the test in `lyxcwd`'s file is a convenience (it reuses the walk helper)
   (3) any file outside `{fabricengine, fabriccli, lyxtest}` importing `internal/weftname` fails.
   Coverage additionally includes a plain `internal/**/*.md` walk (NOT a parse of `//go:embed` directives — a plain walk fails safe for future non-embedded templates).
   `*_test.go` files are excluded from the machine check, and that exclusion applies to **all three rules, rule (3) included** — this is load-bearing, not editorial: `internal/lyxcwd/geometry_test.go:13` legitimately imports `internal/weftname` (it tests `weftname.SiblingPath`), so a rule (3) that walked test files would fail on first activation.
-  Owner set expressed as a map in the same idiom as the file's existing `geometryTokenOwners`: `fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, and `configsync` documented as string-literal-only (a `configsync` identifier or comment hit still fails).
+  Owner set expressed as a map in the same idiom as the file's existing `geometryTokenOwners`: `fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, and `configsync` documented as string-literal-and-comment (a `configsync` **identifier** hit still fails;
+  its literals and the comments documenting them are carved out — see the overview's `vocabulary owner set and carve-outs` decision for why the machine rule is coarser than the review rule here).
   `tools/` and `sandbox/` are outside the walked roots by construction — no per-file exception needed.
   Include comments in the scan (deliberate divergence from the sibling `stripGoComments` guard — here the prose is itself the leak).
   Predicate sub-test on synthetic snippets, mirroring the existing `t.Run("predicate", …)` idiom: a non-owner file with `weft` in an identifier fails;
@@ -58,7 +59,7 @@ Placing the test in `lyxcwd`'s file is a convenience (it reuses the walk helper)
   `weft` in a comment fails;
   an embedded-`.md`-style body with `weft` fails;
   an owner-set file with all of the above passes;
-  a `configsync`-row file passes on a string literal but fails on an identifier;
+  a `configsync`-row file passes on a string literal and on a comment but fails on an identifier;
   `host` cases in both directions — `"the host repo"` and `hostBranch` fail;
   `"cannot host a strand"`, `"a non-Windows test host"`, and `Write-Host` pass.
   Also hand-clean any of this file's own pre-existing prose that the new rules would flag if it were production code, purely for consistency (test files are outside the machine check).
