@@ -25,9 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestE2ESyncIntegration is an e2e test using CopyPaired: creates a host worktree with
-// dispatch, edits a config, and verifies the file is tracked in the weft repo while the
-// host stays pristine.
+// TestE2ESyncIntegration is an e2e test using CopyPaired: creates a host worktree with dispatch,
+// edits a config, and verifies the file is tracked in the weft repo while the host stays pristine.
 func TestE2ESyncIntegration(t *testing.T) {
 	const slug = "config-e2e-test"
 
@@ -169,20 +168,19 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 }
 
-// TestDispatchSet_PreservedKeyDetectedByReconcile is the end-to-end test that
-// closes the loop on the task's second symptom: reconcile "not detecting
-// drift". It chains --set into reconcile so that a preserved orphan key
-// planted by --set is then correctly reported by reconcile's own
-// drift-detection, proving reconcile never gets a chance to look once --set
-// stops silently destroying the key first.
+// TestDispatchSet_PreservedKeyDetectedByReconcile is the end-to-end test that closes the loop on
+// the task's second symptom: reconcile "not detecting drift".
+// It chains --set into reconcile so that a preserved orphan key planted by --set is then correctly
+// reported by reconcile's own drift-detection, proving reconcile never gets a chance to look once
+// --set stops silently destroying the key first.
 //
-// Uses "board" rather than "fabric": since configsync.ReconcileAll now skips
-// "fabric" entirely (its config is repo-wide at fabricengine.BoardDir, never
-// per-worktree — see ReconcileAll's doc comment), a module RunCLI(reconcile)
-// still processes generically is needed to exercise this drift-detection
-// path; "board" is that generic module, and the scenario under test (a
-// preserved orphan key surviving --set, then reported by reconcile) is not
-// module-specific.
+// Uses "board" rather than "fabric": since configsync.ReconcileAll now skips "fabric" entirely (its
+// config is repo-wide at fabricengine.BoardDir, never per-worktree — see ReconcileAll's doc
+// comment), a module RunCLI(reconcile) still processes generically is needed to exercise this
+// drift-detection path;
+// "board" is that generic module,
+// and the scenario under test (a preserved orphan key surviving --set, then reported by reconcile)
+// is not module-specific.
 func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	tmpDir := t.TempDir()
 

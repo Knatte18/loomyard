@@ -1,11 +1,10 @@
-// pull.go — the unified Fabric.Pull entry point: weft ff-pull followed by
-// warp fetch/inspect/reconcile, detecting a warp history rewrite (rebase or
-// force-push) and, when it is safe to do so, re-anchoring weft's own
-// correspondence to the new upstream tip via the existing empty-commit
-// machinery. This file defines PullResult and *PartialPullError — the result
-// and partial-failure contract batches 3-4 (the CLI and docs layers) consume
-// — mirroring PartialCommitError's shape (commit.go), with the two sides'
-// roles swapped to match Pull's weft-first ordering.
+// pull.go — the unified Fabric.Pull entry point: weft ff-pull followed by warp
+// fetch/inspect/reconcile, detecting a warp history rewrite (rebase or force-push) and, when it is
+// safe to do so, re-anchoring weft's own correspondence to the new upstream tip via the existing
+// empty-commit machinery.
+// This file defines PullResult and *PartialPullError — the result and partial-failure contract
+// batches 3-4 (the CLI and docs layers) consume — mirroring PartialCommitError's shape (commit.go),
+// with the two sides' roles swapped to match Pull's weft-first ordering.
 
 package fabricengine
 
@@ -26,10 +25,9 @@ import (
 // pathspec argument must be a bare string, not a joined path.
 const patternDirName = "_pattern"
 
-// PullResult reports what Fabric.Pull actually did, on both sides
-// independently, and — when a warp history rewrite forced a reconcile — the
-// re-anchor baseline and the weft content a caller should treat as
-// PATTERN-residue (potentially replayed against the wrong warp baseline).
+// PullResult reports what Fabric.Pull actually did, on both sides independently, and — when a warp
+// history rewrite forced a reconcile — the re-anchor baseline and the weft content a caller should
+// treat as PATTERN-residue (potentially replayed against the wrong warp baseline).
 type PullResult struct {
 	// WeftPulled reports whether the weft ff-pull (PullWeft) ran and
 	// succeeded. Every field below is only ever populated once this is true —
@@ -73,31 +71,28 @@ type PullResult struct {
 }
 
 // PatternResidueEntry names one post-anchor weft commit and the _pattern/...
-// paths it touched, as enumerated by Fabric.Pull's reconcile branch (see
-// patternResidueCommits).
+// paths it touched, as enumerated by Fabric.Pull's reconcile branch (see patternResidueCommits).
 type PatternResidueEntry struct {
 	WeftSHA string
 	Paths   []string
 }
 
-// PartialPullError reports a Fabric.Pull call whose weft side completed
-// cleanly but whose warp-side work did not — mirroring PartialCommitError's
-// shape (commit.go) with the two sides' roles swapped, per the
-// weft-first-ordering / report-not-rollback Shared Decision. WeftPulled is
-// always true for this type: a weft-side failure never produces a
-// *PartialPullError at all, since Fabric.Pull returns immediately on that
-// path (see Fabric.Pull's doc comment). Stage names which warp-side step
-// failed (e.g. "fetch", "reset", "reanchor"), so a caller (or an operator
-// reading the error) knows exactly where the call stopped without
-// re-deriving it from Err's message.
+// PartialPullError reports a Fabric.Pull call whose weft side completed cleanly but whose warp-side
+// work did not — mirroring PartialCommitError's shape (commit.go) with the two sides' roles
+// swapped, per the weft-first-ordering / report-not-rollback Shared Decision.
+// WeftPulled is always true for this type: a weft-side failure never produces a *PartialPullError
+// at all, since Fabric.Pull returns immediately on that path (see Fabric.Pull's doc comment).
+// Stage names which warp-side step failed (e.g. "fetch", "reset", "reanchor"), so a caller (or an
+// operator reading the error) knows exactly where the call stopped without re-deriving it from
+// Err's message.
 type PartialPullError struct {
 	WeftPulled bool
 	Stage      string
 	Err        error
 }
 
-// Error implements the error interface, stating that weft succeeded and
-// naming the warp-side stage that failed.
+// Error implements the error interface, stating that weft succeeded and naming the warp-side stage
+// that failed.
 func (e *PartialPullError) Error() string {
 	return fmt.Sprintf("fabricengine: weft pull succeeded, warp %s failed: %v", e.Stage, e.Err)
 }
@@ -107,19 +102,17 @@ func (e *PartialPullError) Unwrap() error {
 	return e.Err
 }
 
-// ErrWarpDivergedUnpushed is returned by Fabric.Pull when the warp remote's
-// history has been rewritten AND local warp already carries unpushed
-// commits of its own — the double-conflict case Fabric.Pull refuses to
-// reconcile automatically, since resolving it would require deciding what
-// happens to the caller's own unpushed work. Fabric.Pull makes no change to
-// either repo when this is returned.
+// ErrWarpDivergedUnpushed is returned by Fabric.Pull when the warp remote's history has been
+// rewritten AND local warp already carries unpushed commits of its own — the double-conflict case
+// Fabric.Pull refuses to reconcile automatically, since resolving it would require deciding what
+// happens to the caller's own unpushed work.
+// Fabric.Pull makes no change to either repo when this is returned.
 var ErrWarpDivergedUnpushed = errors.New("fabricengine: warp remote diverged and local warp has unpushed commits; aborting, no changes")
 
-// ErrNoSurvivingAnchor is returned by Fabric.Pull when the warp remote's
-// history has been rewritten so thoroughly that no entry in the
-// correspondence index survives — reachableAnchor found nothing reachable
-// from the new upstream tip — leaving no safe baseline to re-anchor weft
-// against. Fabric.Pull makes no change to either repo when this is returned.
+// ErrNoSurvivingAnchor is returned by Fabric.Pull when the warp remote's history has been rewritten
+// so thoroughly that no entry in the correspondence index survives — reachableAnchor found nothing
+// reachable from the new upstream tip — leaving no safe baseline to re-anchor weft against.
+// Fabric.Pull makes no change to either repo when this is returned.
 var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and no recorded correspondence survives; aborting, no changes")
 
 // warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
@@ -139,10 +132,10 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 	return strings.TrimSpace(stdout), nil
 }
 
-// Pull is fabric's unified pull entry point: it pulls weft first, then fetches
-// and inspects warp, reconciling weft's correspondence when warp's history has
-// been rewritten. A warp-side failure reports the accumulated result rather than
-// unwinding the weft pull (weft-first-ordering / report-not-rollback).
+// Pull is fabric's unified pull entry point: it pulls weft first, then fetches and inspects warp,
+// reconciling weft's correspondence when warp's history has been rewritten.
+// A warp-side failure reports the accumulated result rather than unwinding the weft pull
+// (weft-first-ordering / report-not-rollback).
 func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	if opts.SkipGit {
 		return PullResult{}, nil

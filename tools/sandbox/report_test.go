@@ -1,6 +1,6 @@
-// report_test.go contains unit tests for the sandbox-report.json contract and
-// the fetchReport validate/stamp/fetch pipeline. All tests use t.TempDir() --
-// no real lyx, claude, or network calls are made.
+// report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport
+// validate/stamp/fetch pipeline.
+// All tests use t.TempDir() -- no real lyx, claude, or network calls are made.
 
 package main
 
@@ -98,8 +98,8 @@ func TestFetchReport_HappyPath(t *testing.T) {
 	}
 }
 
-// TestFetchReport_EmptyItemsPresent verifies that a report with a present but
-// empty items array is accepted and written, not rejected as malformed.
+// TestFetchReport_EmptyItemsPresent verifies that a report with a present but empty items array is
+// accepted and written, not rejected as malformed.
 func TestFetchReport_EmptyItemsPresent(t *testing.T) {
 	hostRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
@@ -137,8 +137,9 @@ func TestFetchReport_ItemsKeyAbsent(t *testing.T) {
 	}
 }
 
-// TestFetchReport_MalformedJSON verifies that truncated/non-JSON input
-// produces a parse error mentioning the source path, and writes nothing.
+// TestFetchReport_MalformedJSON verifies that truncated/non-JSON input produces a parse error
+// mentioning the source path,
+// and writes nothing.
 func TestFetchReport_MalformedJSON(t *testing.T) {
 	hostRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
@@ -159,8 +160,8 @@ func TestFetchReport_MalformedJSON(t *testing.T) {
 	}
 }
 
-// TestFetchReport_WrongSource verifies that a structurally valid report with
-// a missing or incorrect "source" field is rejected by validation.
+// TestFetchReport_WrongSource verifies that a structurally valid report with a missing or incorrect
+// "source" field is rejected by validation.
 func TestFetchReport_WrongSource(t *testing.T) {
 	tests := []struct {
 		name string
@@ -188,9 +189,9 @@ func TestFetchReport_WrongSource(t *testing.T) {
 	}
 }
 
-// TestFetchReport_MissingReport verifies that an absent sandbox-report.json
-// produces a missing-file error distinct from the JSON parse error, so an
-// operator can tell "the agent wrote nothing" from "the agent wrote garbage".
+// TestFetchReport_MissingReport verifies that an absent sandbox-report.json produces a missing-file
+// error distinct from the JSON parse error, so an operator can tell "the agent wrote nothing" from
+// "the agent wrote garbage".
 func TestFetchReport_MissingReport(t *testing.T) {
 	hostRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
@@ -208,8 +209,8 @@ func TestFetchReport_MissingReport(t *testing.T) {
 	}
 }
 
-// TestFetchReport_ScratchDirCreated verifies that fetchReport creates
-// loomyardRoot/.scratch when it does not already exist.
+// TestFetchReport_ScratchDirCreated verifies that fetchReport creates loomyardRoot/.scratch when it
+// does not already exist.
 func TestFetchReport_ScratchDirCreated(t *testing.T) {
 	hostRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()

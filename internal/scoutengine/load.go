@@ -1,8 +1,7 @@
 // load.go implements LoadRegistry, the optional servers.yaml overlay loader.
-// It mirrors internal/modelspec's LoadRegistry: the file is read via
-// configengine.ConfigFile so its location is never hand-joined (Cwd Resolution
-// Invariant), an absent file falls back to builtins() with no error, and
-// present entries whole-replace the corresponding built-in.
+// It mirrors internal/modelspec's LoadRegistry: the file is read via configengine.ConfigFile so its
+// location is never hand-joined (Cwd Resolution Invariant), an absent file falls back to builtins()
+// with no error, and present entries whole-replace the corresponding built-in.
 
 package scoutengine
 
@@ -18,7 +17,8 @@ import (
 )
 
 // LoadRegistry loads the optional servers.yaml overlay, replacing built-in entries whole.
-// An absent file returns builtins(); an empty file also returns builtins() unchanged.
+// An absent file returns builtins();
+// an empty file also returns builtins() unchanged.
 func LoadRegistry(baseDir string) (Registry, error) {
 	path := configengine.ConfigFile(baseDir, "servers")
 

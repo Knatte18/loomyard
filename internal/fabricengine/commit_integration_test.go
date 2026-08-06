@@ -109,9 +109,9 @@ func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 	return f, warpPath, weftFixture.WeftPath
 }
 
-// TestCommit_TwoSided_WarpFirstOrdering asserts that a two-sided
-// Fabric.Commit's weft commit carries a Warp-SHA trailer naming the warp
-// commit Fabric.Commit just made — never the prior warp HEAD.
+// TestCommit_TwoSided_WarpFirstOrdering asserts that a two-sided Fabric.Commit's weft commit
+// carries a Warp-SHA trailer naming the warp commit Fabric.Commit just made — never the prior warp
+// HEAD.
 func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -136,9 +136,8 @@ func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
 	}
 }
 
-// TestCommit_TwoSided_RecordsCorrespondence asserts that a two-sided
-// Fabric.Commit's weft commit is recorded in the correspondence index
-// against the warp SHA it just created.
+// TestCommit_TwoSided_RecordsCorrespondence asserts that a two-sided Fabric.Commit's weft commit is
+// recorded in the correspondence index against the warp SHA it just created.
 func TestCommit_TwoSided_RecordsCorrespondence(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -160,10 +159,9 @@ func TestCommit_TwoSided_RecordsCorrespondence(t *testing.T) {
 	}
 }
 
-// TestCommit_ResultFields asserts CommitResult field population across the
-// two-sided, warp-only, and weft-only shapes — including, on the warp-only
-// path, the plain-git property (no trailer, no correspondence entry) a bare
-// warp commit must have.
+// TestCommit_ResultFields asserts CommitResult field population across the two-sided, warp-only,
+// and weft-only shapes — including, on the warp-only path, the plain-git property (no trailer, no
+// correspondence entry) a bare warp commit must have.
 func TestCommit_ResultFields(t *testing.T) {
 	t.Run("TwoSided", func(t *testing.T) {
 		f, warpPath, weftPath := newCommitFixture(t)
@@ -229,9 +227,9 @@ func TestCommit_ResultFields(t *testing.T) {
 	})
 }
 
-// TestCommit_SnapshotTrailers asserts a Snapshot: trailer is present on the
-// weft commit for each snapshotTags entry, and absent entirely when
-// snapshotTags is empty.
+// TestCommit_SnapshotTrailers asserts a Snapshot: trailer is present on the weft commit for each
+// snapshotTags entry,
+// and absent entirely when snapshotTags is empty.
 func TestCommit_SnapshotTrailers(t *testing.T) {
 	t.Run("Present", func(t *testing.T) {
 		f, warpPath, weftPath := newCommitFixture(t)
@@ -273,9 +271,8 @@ func TestCommit_SnapshotTrailers(t *testing.T) {
 	})
 }
 
-// TestCommit_MessageHandling asserts the warp commit message is the bare
-// msg, and the weft commit message carries msg plus its Warp-SHA and
-// Snapshot trailers.
+// TestCommit_MessageHandling asserts the warp commit message is the bare msg,
+// and the weft commit message carries msg plus its Warp-SHA and Snapshot trailers.
 func TestCommit_MessageHandling(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -305,9 +302,8 @@ func TestCommit_MessageHandling(t *testing.T) {
 	}
 }
 
-// TestCommit_InvokesPushRecorder asserts a successful two-sided
-// Fabric.Commit invokes spawnDetachedPushFn exactly once with (warpPath,
-// weftPath).
+// TestCommit_InvokesPushRecorder asserts a successful two-sided Fabric.Commit invokes
+// spawnDetachedPushFn exactly once with (warpPath, weftPath).
 func TestCommit_InvokesPushRecorder(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	calls := swapPushRecorder(t)
@@ -327,9 +323,9 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 	}
 }
 
-// TestCommit_NoOp_DoesNotInvokePushRecorder asserts a Fabric.Commit call
-// that lands nothing on either side — an empty files list, or a warp-only
-// input whose content is unchanged — never invokes spawnDetachedPushFn.
+// TestCommit_NoOp_DoesNotInvokePushRecorder asserts a Fabric.Commit call that lands nothing on
+// either side — an empty files list,
+// or a warp-only input whose content is unchanged — never invokes spawnDetachedPushFn.
 func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 	t.Run("EmptyFiles", func(t *testing.T) {
 		f, _, _ := newCommitFixture(t)
@@ -368,15 +364,13 @@ func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 	})
 }
 
-// TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit is the inverted form
-// of the old TestCommit_WarpOnly_SnapshotTagsDropped: since the
-// tags-force-a-weft-commit Shared Decision, a warp-only Fabric.Commit call
-// carrying a non-empty snapshotTags no longer drops the tags — it commits
-// the warp side as before AND lands an empty weft commit carrying both a
-// Warp-SHA trailer (naming the warp commit that just landed) and a
-// Snapshot: trailer per tag. The old name asserted the opposite of what this
-// batch makes true, so it is renamed rather than merely re-bodied: the name
-// is the clearest single statement of the behaviour this batch reverses.
+// TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit is the inverted form of the old
+// TestCommit_WarpOnly_SnapshotTagsDropped: since the tags-force-a-weft-commit Shared Decision, a
+// warp-only Fabric.Commit call carrying a non-empty snapshotTags no longer drops the tags — it
+// commits the warp side as before AND lands an empty weft commit carrying both a Warp-SHA trailer
+// (naming the warp commit that just landed) and a Snapshot: trailer per tag.
+// The old name asserted the opposite of what this batch makes true, so it is renamed rather than
+// merely re-bodied: the name is the clearest single statement of the behaviour this batch reverses.
 func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -404,17 +398,15 @@ func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
 	}
 }
 
-// TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline is the
-// correctness-hole regression this whole batch exists to close: two
-// Fabric.Commit calls land the IDENTICAL weft content under the same
-// snapshot tag, at two different warp SHAs. Before the empty-commit rule,
-// the second call's weft-side StageAndCommit would report committed=false
-// (nothing changed against HEAD), no weft commit would land, and
-// snapshotWarpSHA would keep answering with the first call's now-stale warp
-// SHA forever — despite the second regeneration having just confirmed
-// itself current against a newer baseline. This test must fail before the
-// implementation and pass after; a pass before the implementation means the
-// fixture itself is wrong.
+// TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline is the correctness-hole
+// regression this whole batch exists to close: two Fabric.Commit calls land the IDENTICAL weft
+// content under the same snapshot tag, at two different warp SHAs.
+// Before the empty-commit rule, the second call's weft-side StageAndCommit would report
+// committed=false (nothing changed against HEAD), no weft commit would land, and snapshotWarpSHA
+// would keep answering with the first call's now-stale warp SHA forever — despite the second
+// regeneration having just confirmed itself current against a newer baseline.
+// This test must fail before the implementation and pass after;
+// a pass before the implementation means the fixture itself is wrong.
 func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -484,12 +476,12 @@ func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	}
 }
 
-// TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath is the regression
-// guard for the card-6 fix: Fabric.Commit must classify against the
-// resolved worktree's l.RelPath, not a hardcoded ".". With a recorded
-// two-segment anchor ("wts/some-task"), a file physically nested at
-// <RelPath>/_lyx/... in the weft checkout must still route to the weft side
-// and land in a real commit — proving the fix beyond the RelPath=="."
+// TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath is the regression guard for the card-6
+// fix: Fabric.Commit must classify against the resolved worktree's l.RelPath, not a hardcoded ".".
+// With a recorded two-segment anchor ("wts/some-task"), a file physically nested at
+// <RelPath>/_lyx/...
+// in the weft checkout must still route to the weft side and land in a real commit — proving the
+// fix beyond the RelPath=="."
 // coverage every other test in this file exercises.
 func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
@@ -544,12 +536,10 @@ func newUnbornWeftRepo(t *testing.T) string {
 	return dir
 }
 
-// TestCommit_TagsOnly_LandsEmptyWeftCommit pins the tags-only supported call
-// shape (Commit(nil, msg, tags, opts)): a nil files list with a non-empty
-// snapshotTags still takes the combined write lock (proven here by
-// externally holding it and observing the call block until released),
-// lands an empty weft commit, and snapshotWarpSHA resolves the tag to
-// warp's current HEAD.
+// TestCommit_TagsOnly_LandsEmptyWeftCommit pins the tags-only supported call shape (Commit(nil,
+// msg, tags, opts)): a nil files list with a non-empty snapshotTags still takes the combined write
+// lock (proven here by externally holding it and observing the call block until released), lands an
+// empty weft commit, and snapshotWarpSHA resolves the tag to warp's current HEAD.
 func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -611,10 +601,9 @@ func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
 	}
 }
 
-// TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit covers
-// the `!positive` fall-through: a weft-side pathspec entry that
-// weftPathspecFilter drops (it matches nothing in the worktree or index)
-// still lands an empty weft commit when snapshotTags is non-empty.
+// TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit covers the `!positive`
+// fall-through: a weft-side pathspec entry that weftPathspecFilter drops (it matches nothing in the
+// worktree or index) still lands an empty weft commit when snapshotTags is non-empty.
 func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -649,10 +638,9 @@ func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testi
 // defense-in-depth for a StageAndCommit caller other than commitWeftLocked's
 // own pre-checked path, not something this package's own tests can force.
 
-// TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit covers the case that
-// is NOT an exception to the empty-commit rule: an unborn weft HEAD still
-// gets an empty commit as its own root commit, carrying its Warp-SHA and
-// Snapshot trailers like any other — contrast with the unborn-WARP case
+// TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit covers the case that is NOT an exception to
+// the empty-commit rule: an unborn weft HEAD still gets an empty commit as its own root commit,
+// carrying its Warp-SHA and Snapshot trailers like any other — contrast with the unborn-WARP case
 // below, which drops the tags entirely.
 func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
@@ -689,10 +677,9 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 	}
 }
 
-// TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit covers the
-// empty-commit rule's one genuine exception: an unborn warp HEAD drops the
-// tags exactly as before this batch — no commit, no trailer, no error —
-// because a snapshot's whole content is a warp SHA and there is none to
+// TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit covers the empty-commit rule's one
+// genuine exception: an unborn warp HEAD drops the tags exactly as before this batch — no commit,
+// no trailer, no error — because a snapshot's whole content is a warp SHA and there is none to
 // record yet.
 func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
@@ -725,11 +712,10 @@ func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 	}
 }
 
-// TestCommit_SkipGit_WithTags_NoWeftCommitNoError covers the second
-// exception: opts.SkipGit still produces no weft commit and no trailer
-// regardless of tags — it is an explicit "touch no git at all" opt-out for
-// the weft side — while the warp commit proceeds regardless, since SkipGit
-// is weft-scoped for Fabric.Commit specifically.
+// TestCommit_SkipGit_WithTags_NoWeftCommitNoError covers the second exception: opts.SkipGit still
+// produces no weft commit and no trailer regardless of tags — it is an explicit "touch no git at
+// all" opt-out for the weft side — while the warp commit proceeds regardless, since SkipGit is
+// weft-scoped for Fabric.Commit specifically.
 func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -757,9 +743,9 @@ func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
 	}
 }
 
-// TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire guards against the
-// uniform empty-commit rule firing when it should not: unchanged content and
-// zero tags must still be a clean no-op, with the weft HEAD left untouched.
+// TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire guards against the uniform empty-commit rule
+// firing when it should not: unchanged content and zero tags must still be a clean no-op, with the
+// weft HEAD left untouched.
 func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -791,11 +777,10 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 	}
 }
 
-// TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce pins the CommitResult
-// and push-seam shape on a warp-only tagged commit: WeftCommitted=true with
-// a populated WeftSHA (the empty commit), and exactly one push-seam
-// invocation — the async-push gate is WarpCommitted || WeftCommitted, and
-// the snapshot trailer must reach the remote for cross-clone sharing.
+// TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce pins the CommitResult and push-seam shape on a
+// warp-only tagged commit: WeftCommitted=true with a populated WeftSHA (the empty commit),
+// and exactly one push-seam invocation — the async-push gate is WarpCommitted || WeftCommitted,
+// and the snapshot trailer must reach the remote for cross-clone sharing.
 func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	calls := swapPushRecorder(t)
@@ -814,10 +799,9 @@ func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
 	}
 }
 
-// TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted pins that
-// appendSnapshotTrailers' validate-all-before-appending-any property
-// survives the empty-commit path: an invalid tag on an otherwise-fully-empty
-// call fails before anything is staged or committed, on either side.
+// TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted pins that appendSnapshotTrailers'
+// validate-all-before-appending-any property survives the empty-commit path: an invalid tag on an
+// otherwise-fully-empty call fails before anything is staged or committed, on either side.
 func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -847,16 +831,16 @@ func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
 	}
 }
 
-// TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError
-// covers the accepted no-op-becomes-error transition: an aborted earlier run
-// leaves unrelated content staged in the weft index (something the combined
-// write lock serializes fabric's own callers against, but does not itself
-// clean up); a tagged commit whose own pathspec content is unchanged reaches
-// the `!committed` fall-through, calls CommitEmpty, and CommitEmpty's own
-// dirty-index pre-check refuses with gitrepo.ErrIndexNotEmpty. That refusal
-// must surface as a *PartialCommitError with WeftCommitted=false — the same
-// unlanded-weft outcome the mapping already models — while the warp commit
-// that already landed stands and is still pushed.
+// TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError covers the accepted
+// no-op-becomes-error transition: an aborted earlier run leaves unrelated content staged in the
+// weft index (something the combined write lock serializes fabric's own callers against, but does
+// not itself clean up);
+// a tagged commit whose own pathspec content is unchanged reaches the `!committed` fall-through,
+// calls CommitEmpty, and CommitEmpty's own dirty-index pre-check refuses with
+// gitrepo.ErrIndexNotEmpty.
+// That refusal must surface as a *PartialCommitError with WeftCommitted=false — the same
+// unlanded-weft outcome the mapping already models — while the warp commit that already landed
+// stands and is still pushed.
 func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	calls := swapPushRecorder(t)
@@ -902,11 +886,10 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 	}
 }
 
-// TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit pins that
-// CommitWeft — an exported entry point, not just an internal dispatch
-// target — inherits commitWeftLocked's empty-commit rule as its own
-// contract: called directly (not via Fabric.Commit) with a pathspec matching
-// nothing and one snapshot tag, it lands the empty commit.
+// TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit pins that CommitWeft — an
+// exported entry point, not just an internal dispatch target — inherits commitWeftLocked's
+// empty-commit rule as its own contract: called directly (not via Fabric.Commit) with a pathspec
+// matching nothing and one snapshot tag, it lands the empty commit.
 func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)

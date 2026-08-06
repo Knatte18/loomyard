@@ -1,8 +1,8 @@
-// keyvalidation_test.go covers validSHA — pure string-matching logic with no
-// git spawn, no filesystem I/O, and no lyxtest fixture. It is deliberately
-// untagged (no //go:build constraint) and in the internal package so it
-// reaches the unexported validator directly, keeping it in Tier 1 alongside
-// plain `go test` per the Test Tier Purity Invariant.
+// keyvalidation_test.go covers validSHA — pure string-matching logic with no git spawn, no
+// filesystem I/O, and no lyxtest fixture.
+// It is deliberately untagged (no //go:build constraint) and in the internal package so it reaches
+// the unexported validator directly, keeping it in Tier 1 alongside plain `go test` per the Test
+// Tier Purity Invariant.
 
 package gitrepo
 

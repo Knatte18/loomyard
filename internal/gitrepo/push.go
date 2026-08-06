@@ -1,9 +1,8 @@
-// push.go implements the push surface: Push (a single synchronous push with
-// rebase-retry resilience), PushCoalesced (a single-pusher lock plus one
-// guarded push, coalescing across processes via the lock queue rather than
-// an internal retry loop), and PushRebaseFree (a single plain push that never
-// rebases, for callers that supply their own serialization). All three are
-// push-only; committing is always the caller's separate StageAndCommit or
+// push.go implements the push surface: Push (a single synchronous push with rebase-retry
+// resilience), PushCoalesced (a single-pusher lock plus one guarded push, coalescing across
+// processes via the lock queue rather than an internal retry loop), and PushRebaseFree (a single
+// plain push that never rebases, for callers that supply their own serialization).
+// All three are push-only; committing is always the caller's separate StageAndCommit or
 // StageAllAndCommit call.
 
 package gitrepo
@@ -17,21 +16,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// ErrPushRejected is returned by PushRebaseFree when push is rejected due to
-// remote divergence. It is a distinguishable error, not a failure.
+// ErrPushRejected is returned by PushRebaseFree when push is rejected due to remote divergence.
+// It is a distinguishable error, not a failure.
 var ErrPushRejected = errors.New("gitrepo: push rejected (remote diverged)")
 
-// PushLockFileName is the name of the single-pusher lock file PushCoalesced
-// acquires in the repo's worktree root.
+// PushLockFileName is the name of the single-pusher lock file PushCoalesced acquires in the repo's
+// worktree root.
 const PushLockFileName = ".gitrepo-push.lock"
 
 // rebaseRetryTriggers are the git-push stderr substrings indicating the
 // remote has commits this checkout lacks.
 var rebaseRetryTriggers = []string{"non-fast-forward", "rejected", "fetch first"}
 
-// Push runs git push, recovering from one non-fast-forward rejection via
-// pull --rebase before retrying. The worktree must be clean. Callers must
-// re-read CurrentSHA after Push if SHAs were captured beforehand.
+// Push runs git push, recovering from one non-fast-forward rejection via pull --rebase before
+// retrying.
+// The worktree must be clean.
+// Callers must re-read CurrentSHA after Push if SHAs were captured beforehand.
 func (r *Repo) Push() error {
 	return r.pushWithRebaseRetry()
 }
@@ -78,7 +78,9 @@ func (r *Repo) pushWithRebaseRetry() error {
 }
 
 // PushRebaseFree runs git push without rebasing, establishing upstream via
-// push.autoSetupRemote=true. Returns ErrPushRejected on divergence. Lock-free.
+// push.autoSetupRemote=true.
+// Returns ErrPushRejected on divergence.
+// Lock-free.
 func (r *Repo) PushRebaseFree() error {
 	_, stderr, code, err := r.run("-c", "push.autoSetupRemote=true", "push")
 	if err != nil {
@@ -103,9 +105,9 @@ func containsAny(s string, substrs []string) bool {
 	return false
 }
 
-// PushCoalesced pushes under a single-pusher lock, giving cross-process
-// coalescing. Returns immediately if nothing is unpushed once the lock is
-// acquired. Shares Push's rebase-retry and SHA invalidation caveat.
+// PushCoalesced pushes under a single-pusher lock, giving cross-process coalescing.
+// Returns immediately if nothing is unpushed once the lock is acquired.
+// Shares Push's rebase-retry and SHA invalidation caveat.
 func (r *Repo) PushCoalesced() error {
 	l, err := lock.AcquireWriteLock(filepath.Join(r.path, PushLockFileName))
 	if err != nil {
@@ -123,9 +125,10 @@ func (r *Repo) PushCoalesced() error {
 	return r.pushWithRebaseRetry()
 }
 
-// HasUnpushed reports whether HEAD is ahead of its upstream. No upstream
-// configured is treated as unpushed (true), so the first push still happens.
-// A spawn failure returns (false, err); rev-list errors fold into (true, nil).
+// HasUnpushed reports whether HEAD is ahead of its upstream.
+// No upstream configured is treated as unpushed (true), so the first push still happens.
+// A spawn failure returns (false, err);
+// rev-list errors fold into (true, nil).
 func (r *Repo) HasUnpushed() (bool, error) {
 	stdout, _, code, err := r.run("rev-list", "--count", "@{u}..HEAD")
 	if err != nil {

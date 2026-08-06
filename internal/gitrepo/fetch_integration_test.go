@@ -15,10 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD asserts
-// Fetch's whole point: after a second clone pushes a commit the first clone
-// lacks, calling Fetch() on the first clone advances its remote-tracking ref
-// (`@{u}`) to the new tip while leaving local HEAD completely untouched —
+// TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD asserts Fetch's whole point: after a
+// second clone pushes a commit the first clone lacks, calling Fetch() on the first clone advances
+// its remote-tracking ref (`@{u}`) to the new tip while leaving local HEAD completely untouched —
 // unlike Pull, which would fast-forward HEAD itself.
 func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) {
 	container := t.TempDir()
@@ -75,14 +74,13 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 }
 
 // TestFetch_NoRemoteConfigured_ErrorNamesRepoPath mirrors
-// TestPull_NoRemoteConfigured_ErrorNamesRepoPath. Measured directly against
-// git 2.53 (see this task's implementation notes): bare `git fetch` with
-// zero remotes configured enumerates the repo's configured remotes and,
-// finding none, exits 0 having done nothing — it never needs a merge target
-// the way `git pull --ff-only` does, so it cannot fail this way at all.
-// Fetch()'s error path is instead exercised below against a remote whose
-// URL cannot be reached, the closest real analogue to Pull's no-remote
-// error-path test.
+// TestPull_NoRemoteConfigured_ErrorNamesRepoPath.
+// Measured directly against git 2.53 (see this task's implementation notes): bare `git fetch` with
+// zero remotes configured enumerates the repo's configured remotes and, finding none, exits 0
+// having done nothing — it never needs a merge target the way `git pull --ff-only` does, so it
+// cannot fail this way at all.
+// Fetch()'s error path is instead exercised below against a remote whose URL cannot be reached, the
+// closest real analogue to Pull's no-remote error-path test.
 func TestFetch_NoRemoteConfigured_Succeeds(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "content")
@@ -93,10 +91,9 @@ func TestFetch_NoRemoteConfigured_Succeeds(t *testing.T) {
 	}
 }
 
-// TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak asserts
-// Fetch's error-path style — mirroring Pull's no-stderr-leak error-path
-// test — against a remote git genuinely cannot reach: the error must name
-// the repo path and must never leak git's raw "fatal:"-prefixed stderr.
+// TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak asserts Fetch's error-path style
+// — mirroring Pull's no-stderr-leak error-path test — against a remote git genuinely cannot reach:
+// the error must name the repo path and must never leak git's raw "fatal:"-prefixed stderr.
 func TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "content")

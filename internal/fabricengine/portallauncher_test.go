@@ -1,10 +1,8 @@
-// portallauncher_test.go covers the portal and launcher path accessors
-// relocated from internal/lyxcwd in this batch — PortalsDir, PortalLink,
-// portalTarget, launchersDir, LauncherDir, menuLauncherPath,
-// launcherSpawnRel and menuLauncherRel — pinning the _portals/_launchers
-// layout and the launcher relative-path math across root and subpath
-// AnchorRel cases, the reason a wrong HubPath base or a broken filepath.Rel
-// would be caught here rather than in a live hub.
+// portallauncher_test.go covers the portal and launcher path accessors relocated from
+// internal/lyxcwd in this batch — PortalsDir, PortalLink, portalTarget, launchersDir, LauncherDir,
+// menuLauncherPath, launcherSpawnRel and menuLauncherRel — pinning the _portals/_launchers layout
+// and the launcher relative-path math across root and subpath AnchorRel cases, the reason a wrong
+// HubPath base or a broken filepath.Rel would be caught here rather than in a live hub.
 
 package fabricengine
 
@@ -37,9 +35,9 @@ func wantMenuLauncherName() string {
 	return "ide-menu.sh"
 }
 
-// TestPortalsDirAndLaunchersDir verifies that PortalsDir and launchersDir
-// join the hub with their respective directory names, and that
-// portalTarget joins the hub, slug, AnchorRel and _lyx.
+// TestPortalsDirAndLaunchersDir verifies that PortalsDir and launchersDir join the hub with their
+// respective directory names,
+// and that portalTarget joins the hub, slug, AnchorRel and _lyx.
 func TestPortalsDirAndLaunchersDir(t *testing.T) {
 	t.Parallel()
 
@@ -64,10 +62,9 @@ func TestPortalsDirAndLaunchersDir(t *testing.T) {
 	}
 }
 
-// TestMirroredPortalLauncherMethods tests the AnchorRel-mirrored geometry
-// accessors: PortalLink, LauncherDir, menuLauncherPath, launcherSpawnRel and
-// menuLauncherRel, both at the anchor root and at a nested subpath, plus a
-// no-collision check between two distinct subpaths.
+// TestMirroredPortalLauncherMethods tests the AnchorRel-mirrored geometry accessors: PortalLink,
+// LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel, both at the anchor root and
+// at a nested subpath, plus a no-collision check between two distinct subpaths.
 func TestMirroredPortalLauncherMethods(t *testing.T) {
 	t.Parallel()
 

@@ -1,11 +1,11 @@
 // cli.go exposes the cobra command tree for the board module.
 //
-// Command() returns the root "board" command with 13 subcommands (including
-// the notes group and promote-note). Configuration resolution happens once
-// in a PersistentPreRunE: the config file (readme, design_prefix) is loaded
-// from _lyx/config/board.yaml, and the board data dir is resolved as
-// fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve. The hidden
-// --board-path persistent flag overrides the data dir for the detached sync child
+// Command() returns the root "board" command with 13 subcommands (including the notes group and
+// promote-note).
+// Configuration resolution happens once in a PersistentPreRunE: the config file (readme,
+// design_prefix) is loaded from _lyx/config/board.yaml, and the board data dir is resolved as
+// fabricengine.BoardDir(layout.HubPath) via lyxcwd.Resolve.
+// The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
 
 package boardcli

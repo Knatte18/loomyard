@@ -1,6 +1,5 @@
-// doc.go carries the package godoc for pattern: the active check, why it is
-// pure existence, why the three roles are what they are, and why the
-// injected pointer stays a relative path.
+// doc.go carries the package godoc for pattern: the active check, why it is pure existence, why the
+// three roles are what they are, and why the injected pointer stays a relative path.
 
 // Package pattern answers one question for every code-touching lyx agent —
 // is PATTERN active in this worktree, and what should the agent be told? —

@@ -1,6 +1,6 @@
-// discussion_test.go — untagged Tier-1 unit tests for DiscussionSpec. Pure
-// Go over an in-memory Config and a temp-dir modelspec registry; no live
-// hub, reed, or network involved.
+// discussion_test.go — untagged Tier-1 unit tests for DiscussionSpec.
+// Pure Go over an in-memory Config and a temp-dir modelspec registry;
+// no live hub, reed, or network involved.
 
 package loomengine
 

@@ -1,12 +1,10 @@
-// cli.go builds the cobra command tree for the burler module and the
-// RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "burler" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> burler config -> reed config -> reed
-// engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine
-// exactly once per invocation, into a receiver the run verb closes over, so
-// the debug CLI wires the real substrate exactly like shuttlecli — burlercli
-// is the module's claudeengine wiring point, mirroring the Provider-Seam
-// Invariant.
+// cli.go builds the cobra command tree for the burler module and the RunCLI seam that wires it into
+// the standard io.Writer-based call contract.
+// The parent "burler" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
+// config -> burler config -> reed config -> reed engine -> claude engine -> shuttleengine.Runner ->
+// burlerengine.Engine exactly once per invocation, into a receiver the run verb closes over, so the
+// debug CLI wires the real substrate exactly like shuttlecli — burlercli is the module's
+// claudeengine wiring point, mirroring the Provider-Seam Invariant.
 
 package burlercli
 

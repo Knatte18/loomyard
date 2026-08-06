@@ -1,7 +1,7 @@
-// focus.go resolves which pane receives tmux input focus, and detects
-// whether a strand has a descendant present in the ordered stack — the
-// isAncestor test the height policy (height.go) uses to decide whether a
-// shrink:true strand collapses to a compact strip.
+// focus.go resolves which pane receives tmux input focus,
+// and detects whether a strand has a descendant present in the ordered stack — the isAncestor test
+// the height policy (height.go) uses to decide whether a shrink:true strand collapses to a compact
+// strip.
 
 package render
 

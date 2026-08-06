@@ -1,14 +1,13 @@
-// io.go implements the pane-transport engine ops shuttle drives directly:
-// SendText/SendKey write into a strand's live pane, and CapturePane reads its
-// current screen contents back. None of these three reconciles, re-renders,
-// or persists — they are pure transport/query wrapped around the same
-// resolveLivePaneID lookup every one of them shares, matching the
-// dumb-carrier contract the rest of the package follows: reed moves bytes in
-// and out of a pane, it never interprets them.
+// io.go implements the pane-transport engine ops shuttle drives directly: SendText/SendKey write
+// into a strand's live pane,
+// and CapturePane reads its current screen contents back.
+// None of these three reconciles, re-renders, or persists — they are pure transport/query wrapped
+// around the same resolveLivePaneID lookup every one of them shares, matching the dumb-carrier
+// contract the rest of the package follows: reed moves bytes in and out of a pane, it never
+// interprets them.
 //
-// CapturePane in particular follows Status's read-only discipline: a query
-// must never move input focus or mutate persisted state as a side effect of
-// being asked a question.
+// CapturePane in particular follows Status's read-only discipline: a query must never move input
+// focus or mutate persisted state as a side effect of being asked a question.
 
 package reedengine
 

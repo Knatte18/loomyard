@@ -46,10 +46,10 @@ func containsPath(paths []string, want string) bool {
 	return false
 }
 
-// TestDiff_MergesWarpAndWeftSides covers the exact-correspondence path: two
-// Commit rounds record correspondence for both warp SHAs, and diffing
-// since the first must report both sides' changes made in the second round,
-// correctly side-labelled.
+// TestDiff_MergesWarpAndWeftSides covers the exact-correspondence path: two Commit rounds record
+// correspondence for both warp SHAs,
+// and diffing since the first must report both sides' changes made in the second round, correctly
+// side-labelled.
 func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
@@ -88,13 +88,11 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	}
 }
 
-// TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline
-// covers the nearest-older bridge: a warp SHA advanced past the last synced
-// round has no correspondence of its own, so Diff must anchor the weft side to
-// the nearest older synced weft SHA — proven by a manual, unrecorded weft
-// commit made ahead of that baseline showing up in the weft-side result,
-// rather than the weft side coming back empty (which is what a strictly
-// exact-only anchor would produce).
+// TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline covers the nearest-older
+// bridge: a warp SHA advanced past the last synced round has no correspondence of its own, so Diff
+// must anchor the weft side to the nearest older synced weft SHA — proven by a manual, unrecorded
+// weft commit made ahead of that baseline showing up in the weft-side result, rather than the weft
+// side coming back empty (which is what a strictly exact-only anchor would produce).
 func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)
@@ -136,10 +134,9 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	}
 }
 
-// TestDiff_NoWeftCorrespondence_BeforeFirstSync covers the no-correspondence
-// case: a sinceWarpSHA older than the first weft commit — no entry exists
-// at or before it — must not be an error; it must report warp entries,
-// empty weft entries, and NoWeftCorrespondence = true.
+// TestDiff_NoWeftCorrespondence_BeforeFirstSync covers the no-correspondence case: a sinceWarpSHA
+// older than the first weft commit — no entry exists at or before it — must not be an error;
+// it must report warp entries, empty weft entries, and NoWeftCorrespondence = true.
 func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	initialWarpSHA := currentSHA(t, warpPath)
@@ -173,15 +170,13 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	}
 }
 
-// TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts covers
-// Fabric.Status's live worktree merge: uncommitted changes on both sides
-// must be reported with correct side labels, and the weft side must never
-// surface fabric's own git-excluded artifacts (the .weft/ lock dir and the
-// gitrepo push lock file) — a regression guard over the verified go-git
-// exclude behavior WorktreeChangedFiles' doc comment documents, not an
-// unexercised assumption. The push lock file is created explicitly here
-// because CommitWeft never writes it — only PushCoalesced does — so leaving
-// it out would make the exclude assertion vacuous.
+// TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts covers Fabric.Status's live
+// worktree merge: uncommitted changes on both sides must be reported with correct side labels,
+// and the weft side must never surface fabric's own git-excluded artifacts (the .weft/ lock dir and
+// the gitrepo push lock file) — a regression guard over the verified go-git exclude behavior
+// WorktreeChangedFiles' doc comment documents, not an unexercised assumption.
+// The push lock file is created explicitly here because CommitWeft never writes it — only
+// PushCoalesced does — so leaving it out would make the exclude assertion vacuous.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	weftFixture := lyxtest.CopyWeft(t)

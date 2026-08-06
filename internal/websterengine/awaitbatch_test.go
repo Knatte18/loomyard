@@ -1,9 +1,8 @@
-// awaitbatch_test.go covers AwaitBatch's bounded report-file watch: an
-// already-present report returns immediately, a report appearing mid-wait
-// returns the moment a tick sees it (never sleeping out the rest of the
-// window), an absent report returns ReportPresent: false only once the wait
-// window elapses, and an unknown batch number is refused — all against a
-// scriptable clock, so no test ever blocks for real.
+// awaitbatch_test.go covers AwaitBatch's bounded report-file watch: an already-present report
+// returns immediately, a report appearing mid-wait returns the moment a tick sees it (never
+// sleeping out the rest of the window), an absent report returns ReportPresent: false only once the
+// wait window elapses, and an unknown batch number is refused — all against a scriptable clock, so
+// no test ever blocks for real.
 
 package websterengine_test
 

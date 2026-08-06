@@ -26,7 +26,8 @@ func HideWindow(cmd *exec.Cmd) {
 	}
 }
 
-// Detach configures the command to run detached in a new process group and without a console window.
+// Detach configures the command to run detached in a new process group and without a console
+// window.
 func Detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
@@ -34,7 +35,8 @@ func Detach(cmd *exec.Cmd) {
 	}
 }
 
-// DetachBreakaway configures the command like Detach, additionally setting CREATE_BREAKAWAY_FROM_JOB.
+// DetachBreakaway configures the command like Detach, additionally setting
+// CREATE_BREAKAWAY_FROM_JOB.
 func DetachBreakaway(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,

@@ -1,8 +1,7 @@
-// audit_test.go covers AuditForks end to end against a fake ~/.claude/projects
-// layout built under t.TempDir(): the parent-transcript spawn tally, one ForkReport
-// per fork transcript with every field asserted, the missing-subagents-dir
-// zero-fork finding, the missing-parent-transcript error, and the path-encoding
-// derivation claudeProjectDirFor implements.
+// audit_test.go covers AuditForks end to end against a fake ~/.claude/projects layout built under
+// t.TempDir(): the parent-transcript spawn tally, one ForkReport per fork transcript with every
+// field asserted, the missing-subagents-dir zero-fork finding, the missing-parent-transcript error,
+// and the path-encoding derivation claudeProjectDirFor implements.
 
 package claudeengine
 
@@ -30,9 +29,9 @@ func copyFixture(t *testing.T, name, dest string) {
 	}
 }
 
-// TestAuditForks_FullLayout builds a complete fake project dir — a parent
-// transcript plus three fork transcripts under subagents/ — and asserts every
-// ForkAudit/ForkReport field the audit populates.
+// TestAuditForks_FullLayout builds a complete fake project dir — a parent transcript plus three
+// fork transcripts under subagents/ — and asserts every ForkAudit/ForkReport field the audit
+// populates.
 func TestAuditForks_FullLayout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -111,10 +110,10 @@ func TestAuditForks_FullLayout(t *testing.T) {
 	}
 }
 
-// TestAuditForks_MissingSubagentsDirYieldsZeroForks proves a fork-authorized
-// session that never actually spawned a fork (no subagents/ directory at all)
-// is a legitimate zero-fork finding, not an error — the parent transcript's own
-// SpawnCalls/NamedSpawns are still populated from what it attempted.
+// TestAuditForks_MissingSubagentsDirYieldsZeroForks proves a fork-authorized session that never
+// actually spawned a fork (no subagents/ directory at all) is a legitimate zero-fork finding, not
+// an error — the parent transcript's own SpawnCalls/NamedSpawns are still populated from what it
+// attempted.
 func TestAuditForks_MissingSubagentsDirYieldsZeroForks(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -138,9 +137,9 @@ func TestAuditForks_MissingSubagentsDirYieldsZeroForks(t *testing.T) {
 	}
 }
 
-// TestAuditForks_MissingParentTranscriptErrors proves a missing parent
-// transcript IS an error — unlike the missing-subagents-dir case, there is no
-// way to know what the session spawned without it.
+// TestAuditForks_MissingParentTranscriptErrors proves a missing parent transcript IS an error —
+// unlike the missing-subagents-dir case, there is no way to know what the session spawned without
+// it.
 func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -152,9 +151,8 @@ func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 	}
 }
 
-// TestClaudeProjectDirFor_EncodesNonAlnumBytes pins the exact cwd-encoding
-// derivation: every non-alphanumeric byte becomes '-', mirroring
-// claudeProjectDir in internal/reedcli/smoke_test.go.
+// TestClaudeProjectDirFor_EncodesNonAlnumBytes pins the exact cwd-encoding derivation: every
+// non-alphanumeric byte becomes '-', mirroring claudeProjectDir in internal/reedcli/smoke_test.go.
 func TestClaudeProjectDirFor_EncodesNonAlnumBytes(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

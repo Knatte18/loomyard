@@ -30,11 +30,10 @@ func treeSHA(t *testing.T, dir, rev string) string {
 	return strings.TrimSpace(stdout)
 }
 
-// TestCommitEmpty_BornHEAD_CleanIndex_MatchesParentTree asserts the case
-// batch 4's empty-commits-take-over-the-correspondence-entry decision rests
-// on: an empty commit's tree must be byte-identical to its parent's, never
-// merely similar, or resolving a revert target to it would silently restore
-// a different weft tree.
+// TestCommitEmpty_BornHEAD_CleanIndex_MatchesParentTree asserts the case batch 4's
+// empty-commits-take-over-the-correspondence-entry decision rests on: an empty commit's tree must
+// be byte-identical to its parent's, never merely similar, or resolving a revert target to it would
+// silently restore a different weft tree.
 func TestCommitEmpty_BornHEAD_CleanIndex_MatchesParentTree(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -61,10 +60,9 @@ func TestCommitEmpty_BornHEAD_CleanIndex_MatchesParentTree(t *testing.T) {
 	}
 }
 
-// TestCommitEmpty_TwoSuccessiveCalls_ProduceDistinctSHAs pins that an empty
-// commit is never deduplicated into a no-op: CommitEmpty always commits when
-// it commits at all, unlike StageAndCommit's no-op signal on unchanged
-// content.
+// TestCommitEmpty_TwoSuccessiveCalls_ProduceDistinctSHAs pins that an empty commit is never
+// deduplicated into a no-op: CommitEmpty always commits when it commits at all, unlike
+// StageAndCommit's no-op signal on unchanged content.
 func TestCommitEmpty_TwoSuccessiveCalls_ProduceDistinctSHAs(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -85,9 +83,8 @@ func TestCommitEmpty_TwoSuccessiveCalls_ProduceDistinctSHAs(t *testing.T) {
 	}
 }
 
-// TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit asserts a
-// specified contract, not incidental behaviour: fabricengine reaches this
-// path whenever weft has no commits yet.
+// TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit asserts a specified contract, not
+// incidental behaviour: fabricengine reaches this path whenever weft has no commits yet.
 func TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit(t *testing.T) {
 	dir, repo := newRepo(t)
 
@@ -120,11 +117,10 @@ func TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit(t *testing.T) 
 	}
 }
 
-// TestCommitEmpty_UnbornHEAD_StagedFile_ReturnsErrIndexNotEmpty is the only
-// exercise of the git ls-files --cached branch: on an unborn HEAD there is
-// no HEAD tree for diff --cached to compare against, so this is the case
-// that proves the pre-check was specified for both states, not only the
-// born one.
+// TestCommitEmpty_UnbornHEAD_StagedFile_ReturnsErrIndexNotEmpty is the only exercise of the git
+// ls-files --cached branch: on an unborn HEAD there is no HEAD tree for diff --cached to compare
+// against, so this is the case that proves the pre-check was specified for both states, not only
+// the born one.
 func TestCommitEmpty_UnbornHEAD_StagedFile_ReturnsErrIndexNotEmpty(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "wip.txt", "half-staged WIP")
@@ -143,9 +139,8 @@ func TestCommitEmpty_UnbornHEAD_StagedFile_ReturnsErrIndexNotEmpty(t *testing.T)
 	}
 }
 
-// TestCommitEmpty_BornHEAD_StagedFile_ReturnsErrIndexNotEmpty asserts the
-// never-sweep intent holds on the ordinary (born-HEAD) path too, not only
-// the unborn one.
+// TestCommitEmpty_BornHEAD_StagedFile_ReturnsErrIndexNotEmpty asserts the never-sweep intent holds
+// on the ordinary (born-HEAD) path too, not only the unborn one.
 func TestCommitEmpty_BornHEAD_StagedFile_ReturnsErrIndexNotEmpty(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")

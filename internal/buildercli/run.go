@@ -1,12 +1,11 @@
-// run.go implements the `run` builder verb: it maps builderengine.Run's
-// outcome onto the run-level backstop weft commit and the CLI envelope.
-// ErrRunBusy skips the weft sync entirely (perchcli's ErrBlockBusy
-// exemption applies verbatim: the losing call touched nothing, so syncing
-// would commit the winner's in-flight partial state under a misleading
-// label); every other exit -- success OR error, including
-// ErrFingerprintMismatch and the distinct asking/died/timeout orchestrator
-// errors -- runs the backstop weft commit before its envelope, since
-// completed batches' artifacts must not strand uncommitted.
+// run.go implements the `run` builder verb: it maps builderengine.Run's outcome onto the run-level
+// backstop weft commit and the CLI envelope.
+// ErrRunBusy skips the weft sync entirely (perchcli's ErrBlockBusy exemption applies verbatim: the
+// losing call touched nothing, so syncing would commit the winner's in-flight partial state under a
+// misleading label);
+// every other exit -- success OR error, including ErrFingerprintMismatch and the distinct
+// asking/died/timeout orchestrator errors -- runs the backstop weft commit before its envelope,
+// since completed batches' artifacts must not strand uncommitted.
 
 package buildercli
 

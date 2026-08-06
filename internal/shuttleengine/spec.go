@@ -1,7 +1,6 @@
-// spec.go defines Spec, the caller-supplied description of one shuttle run,
-// and its validate method: the single place that enforces the file
-// contract (a run's output files ARE its return value) and fills in the
-// defaults a caller is allowed to omit (timeout, display anchor).
+// spec.go defines Spec, the caller-supplied description of one shuttle run, and its validate
+// method: the single place that enforces the file contract (a run's output files ARE its return
+// value) and fills in the defaults a caller is allowed to omit (timeout, display anchor).
 
 package shuttleengine
 
@@ -14,11 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
-// Spec describes one shuttle run: the prompt handed to the provider as the
-// launch argument, the output files that constitute the run's return value,
-// and the display/lifecycle knobs the run loop and reed need. Spec is a
-// plain value the caller (review, loom) constructs; it carries no methods
-// beyond validate, which normalizes and checks it in place.
+// Spec describes one shuttle run: the prompt handed to the provider as the launch argument, the
+// output files that constitute the run's return value, and the display/lifecycle knobs the run loop
+// and reed need.
+// Spec is a plain value the caller (review, loom) constructs;
+// it carries no methods beyond validate, which normalizes and checks it in place.
 type Spec struct {
 	// Prompt is the task text handed to the provider as the launch
 	// argument. shuttle never templates prompt content — the caller

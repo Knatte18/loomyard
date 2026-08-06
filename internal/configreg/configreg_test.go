@@ -8,10 +8,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestNames pins both the membership and the ORDER of the registry: the list
-// is alphabetical, and every `lyx config` surface (help text, unknown-module
-// error, --print sections, reconcile output, menu numbering) renders it in
-// exactly this order, so an out-of-sort entry is user-visible.
+// TestNames pins both the membership and the ORDER of the registry: the list is alphabetical,
+// and every `lyx config` surface (help text, unknown-module error, --print sections, reconcile
+// output, menu numbering) renders it in exactly this order, so an out-of-sort entry is
+// user-visible.
 func TestNames(t *testing.T) {
 	got := Names()
 	want := []string{"board", "builder", "burler", "fabric", "loom", "models", "perch", "reed", "shuttle", "webster"}
@@ -26,10 +26,9 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestModules_SeedOnly pins the seed-only flag: "models" and "burler" are the
-// two modules carrying an open-ended, operator-owned key set (model aliases;
-// lenses/fans respectively), so they are the only entries with
-// SeedOnly == true.
+// TestModules_SeedOnly pins the seed-only flag: "models" and "burler" are the two modules carrying
+// an open-ended, operator-owned key set (model aliases; lenses/fans respectively), so they are the
+// only entries with SeedOnly == true.
 func TestModules_SeedOnly(t *testing.T) {
 	for _, m := range Modules() {
 		want := m.Name == "models" || m.Name == "burler"

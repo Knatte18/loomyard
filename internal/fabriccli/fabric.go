@@ -1,16 +1,16 @@
-// fabric.go is the cobra Command() entry point and the RunCLI seam for the fabric
-// module. It builds the "fabric" parent command and its hub-scoped topology verbs
-// (add, list, remove, checkout, pairs, reconcile, prune, cleanup), each driving
-// fabricengine.Topology for the host↔weft worktree pairing. The weft-git
-// content-sync verbs (status, commit, push, pull, sync, diff) are wired in by
-// weft_verbs.go, which also extends this file's Command() build with the
-// --weft-path bypass flag and its PersistentPreRunE.
+// fabric.go is the cobra Command() entry point and the RunCLI seam for the fabric module.
+// It builds the "fabric" parent command and its hub-scoped topology verbs (add, list, remove,
+// checkout, pairs, reconcile, prune, cleanup), each driving fabricengine.Topology for the host↔weft
+// worktree pairing.
+// The weft-git content-sync verbs (status, commit, push, pull, sync, diff) are wired in by
+// weft_verbs.go, which also extends this file's Command() build with the --weft-path bypass flag
+// and its PersistentPreRunE.
 
-// Package fabriccli owns the unified host↔weft cobra surface for lyx: the flat
-// 16-verb "lyx fabric" tree combining host↔weft topology verbs and weft
-// content-sync verbs over the fabricengine package. fabric is the sole
-// host↔weft git-coordination module (see docs/overview.md). Every fabric weft
-// branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).
+// Package fabriccli owns the unified host↔weft cobra surface for lyx: the flat 16-verb "lyx fabric"
+// tree combining host↔weft topology verbs and weft content-sync verbs over the fabricengine
+// package.
+// fabric is the sole host↔weft git-coordination module (see docs/overview.md).
+// Every fabric weft branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).
 package fabriccli
 
 import (
@@ -26,10 +26,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Command builds the cobra command tree for the fabric module. The parent
-// command carries no persistent flags for topology verbs; each resolves its own
-// layout and config. weft_verbs.go extends the command with weft-git verbs and
-// their scoped PersistentPreRunE.
+// Command builds the cobra command tree for the fabric module.
+// The parent command carries no persistent flags for topology verbs;
+// each resolves its own layout and config.
+// weft_verbs.go extends the command with weft-git verbs and their scoped PersistentPreRunE.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fabric",
@@ -279,9 +279,9 @@ Example:
 	return cmd
 }
 
-// RunCLI is the public seam for the fabric module. It delegates to
-// clihelp.Execute, allowing in-process tests to capture output. Returns the
-// exit code (0 on success, 1 on error).
+// RunCLI is the public seam for the fabric module.
+// It delegates to clihelp.Execute, allowing in-process tests to capture output.
+// Returns the exit code (0 on success, 1 on error).
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

@@ -1,5 +1,5 @@
-// server_test.go verifies ServerName/socketName determinism, socket-safety,
-// and per-hub uniqueness, plus SessionName's worktree-slug derivation.
+// server_test.go verifies ServerName/socketName determinism, socket-safety, and per-hub uniqueness,
+// plus SessionName's worktree-slug derivation.
 
 package reedengine
 

@@ -1,11 +1,10 @@
-// status.go implements the `status` builder verb: an instant, side-effect-
-// free snapshot of _lyx/builder/state.json plus the reports dir -- the
-// discussion's navigation refresher, human- and loom-facing. It never
-// spawns an agent, never weft-commits, and never mutates state.json; a
-// batch whose report has already landed on disk is reported terminal even
-// if state.json has not yet been updated by poll's own next tick, so a
-// crash between the report landing and the next poll call never shows a
-// stale "running" snapshot here.
+// status.go implements the `status` builder verb: an instant, side-effect- free snapshot of
+// _lyx/builder/state.json plus the reports dir -- the discussion's navigation refresher, human- and
+// loom-facing.
+// It never spawns an agent, never weft-commits, and never mutates state.json;
+// a batch whose report has already landed on disk is reported terminal even if state.json has not
+// yet been updated by poll's own next tick, so a crash between the report landing and the next poll
+// call never shows a stale "running" snapshot here.
 
 package buildercli
 

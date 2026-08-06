@@ -1,10 +1,9 @@
 // config.go — configuration for the builder module.
 //
-// Defines the Config type mirroring builder.yaml's keys and LoadConfig,
-// which uses internal/configengine.Load with ConfigTemplate() to strictly
-// validate and resolve builder's config file, then validates each role
-// model-spec's grammar via modelspec.Parse so a typo'd spec fails loud at
-// load time rather than hours into a run when that role first spawns.
+// Defines the Config type mirroring builder.yaml's keys and LoadConfig, which uses
+// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve builder's
+// config file, then validates each role model-spec's grammar via modelspec.Parse so a typo'd spec
+// fails loud at load time rather than hours into a run when that role first spawns.
 
 package builderengine
 
@@ -17,10 +16,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the resolved builder.yaml configuration: the four
-// role model-specs (see docs/reference/model-spec.md's "Roles that use this
-// notation" section) and the numeric knobs the batch loop and its
-// validation gate consult.
+// Config represents the resolved builder.yaml configuration: the four role model-specs (see
+// docs/reference/model-spec.md's "Roles that use this notation" section) and the numeric knobs the
+// batch loop and its validation gate consult.
 type Config struct {
 	// Orchestrator is the model-spec for the long-lived orchestrator
 	// session that drives the batch loop.
@@ -57,8 +55,8 @@ type Config struct {
 	BatchCardCap int `yaml:"batch_card_cap"`
 }
 
-// LoadConfig loads and unmarshals builder configuration, validating role
-// model-spec grammar and wrapping errors with the offending config key.
+// LoadConfig loads and unmarshals builder configuration, validating role model-spec grammar and
+// wrapping errors with the offending config key.
 // Returns an error if _lyx is not initialized.
 func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))

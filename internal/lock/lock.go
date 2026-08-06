@@ -1,7 +1,7 @@
 // lock.go — file-based advisory locks (gofrs/flock).
 //
-// FileLock backs both an exclusive write lock and a shared read lock. Being a
-// real OS file lock it coordinates across processes — the way Loomyard is used, one
+// FileLock backs both an exclusive write lock and a shared read lock.
+// Being a real OS file lock it coordinates across processes — the way Loomyard is used, one
 // short-lived process per command.
 
 package lock

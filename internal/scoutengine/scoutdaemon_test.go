@@ -1,6 +1,5 @@
-// scoutdaemon_test.go tests the worktree-anchored DaemonStateFile/DaemonLock
-// path constructors over a plain worktree path — pure path arithmetic, no
-// spawning, untagged (Tier 1).
+// scoutdaemon_test.go tests the worktree-anchored DaemonStateFile/DaemonLock path constructors over
+// a plain worktree path — pure path arithmetic, no spawning, untagged (Tier 1).
 
 package scoutengine
 

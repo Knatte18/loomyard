@@ -29,8 +29,9 @@ import (
 	"path/filepath"
 )
 
-// Remove idempotently deletes a link, returning nil if absent. Wraps errors
-// with context; removes only the link entry, never the target.
+// Remove idempotently deletes a link, returning nil if absent.
+// Wraps errors with context;
+// removes only the link entry, never the target.
 func Remove(link string) error {
 	err := os.Remove(link)
 	if err == nil {
@@ -42,8 +43,8 @@ func Remove(link string) error {
 	return fmt.Errorf("remove link %s: %w", link, err)
 }
 
-// RemoveLinksIn scans dir's immediate children, removes links found, and
-// returns the count. Regular files and directories are left untouched.
+// RemoveLinksIn scans dir's immediate children, removes links found, and returns the count.
+// Regular files and directories are left untouched.
 func RemoveLinksIn(dir string) (int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

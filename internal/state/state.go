@@ -1,8 +1,8 @@
 // state.go implements generic locked typed JSON I/O for persistent state.
 //
-// This package provides WriteJSON and ReadJSON to atomically read and write
-// JSON-serialized values to disk with advisory file locking, ensuring concurrent
-// readers and writers are properly synchronized.
+// This package provides WriteJSON and ReadJSON to atomically read and write JSON-serialized values
+// to disk with advisory file locking, ensuring concurrent readers and writers are properly
+// synchronized.
 
 package state
 
@@ -45,8 +45,9 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 	return fsx.AtomicWriteBytes(path, data)
 }
 
-// ReadJSON reads a JSON value from the given path. Returns (zero, false, nil)
-// if the file does not exist. Returns (value, true, nil) on success.
+// ReadJSON reads a JSON value from the given path.
+// Returns (zero, false, nil) if the file does not exist.
+// Returns (value, true, nil) on success.
 func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 	dir := filepath.Dir(path)
@@ -77,8 +78,8 @@ func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 }
 
 // ReadJSONStrict reads a JSON value from path, rejecting unknown fields.
-// Returns (zero, false, nil) if the file does not exist. Unlike ReadJSON,
-// does not create missing parent directories.
+// Returns (zero, false, nil) if the file does not exist.
+// Unlike ReadJSON, does not create missing parent directories.
 func ReadJSONStrict[T any](path, lockPath string) (T, bool, error) {
 	var zero T
 

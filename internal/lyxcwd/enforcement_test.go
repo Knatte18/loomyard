@@ -1,6 +1,6 @@
-// enforcement_test.go is a repo-wide guard: it walks every package and fails
-// the build if any file outside internal/lyxcwd reaches for raw cwd or top-level
-// git geometry, keeping internal/lyxcwd the sole geometry owner.
+// enforcement_test.go is a repo-wide guard: it walks every package and fails the build if any file
+// outside internal/lyxcwd reaches for raw cwd or top-level git geometry, keeping internal/lyxcwd
+// the sole geometry owner.
 
 package lyxcwd
 
@@ -51,9 +51,9 @@ func stripGoComments(data []byte) []byte {
 	return out
 }
 
-// TestStripGoComments locks in the comment-stripping guard: banned tokens that
-// appear only in comments must be removed, while identical tokens in real code
-// (including string literals) must survive untouched.
+// TestStripGoComments locks in the comment-stripping guard: banned tokens that appear only in
+// comments must be removed, while identical tokens in real code (including string literals) must
+// survive untouched.
 func TestStripGoComments(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -86,9 +86,9 @@ func TestStripGoComments(t *testing.T) {
 	}
 }
 
-// TestEnforcement walks the repo source tree and verifies that no source file
-// outside internal/lyxcwd and cmd/lyx contains the raw cwd/root primitives
-// os.Getwd or git rev-parse --show-toplevel.
+// TestEnforcement walks the repo source tree and verifies that no source file outside
+// internal/lyxcwd and cmd/lyx contains the raw cwd/root primitives os.Getwd or git rev-parse
+// --show-toplevel.
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
 		// Resolve repo root relative to this test file.
@@ -209,14 +209,14 @@ func TestEnforcement(t *testing.T) {
 	})
 }
 
-// TestEnforcement_GeometryLiterals walks the repo source tree and verifies that no
-// production file outside each token's registered owner directory (or directories,
-// during a transitional co-ownership window) constructs a geometry path token as a
-// string literal in a path-construction context: a filepath.Join argument, a binary +
-// operand, or a string const declaration value. Whole-token matching (exact equality,
-// not substring) avoids false positives on compound names such as "_boardroom" or
-// "-weft-bare". Test files (*_test.go) are excluded because test geometry is a review
-// rule, not a machine-enforced invariant.
+// TestEnforcement_GeometryLiterals walks the repo source tree and verifies that no production file
+// outside each token's registered owner directory (or directories, during a transitional
+// co-ownership window) constructs a geometry path token as a string literal in a path-construction
+// context: a filepath.Join argument, a binary + operand, or a string const declaration value.
+// Whole-token matching (exact equality, not substring) avoids false positives on compound names
+// such as "_boardroom" or "-weft-bare".
+// Test files (*_test.go) are excluded because test geometry is a review rule, not a
+// machine-enforced invariant.
 func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryToken reports whether s is exactly one of the policed geometry path
 	// tokens. Only a token's registered owner directory (below) may use it in

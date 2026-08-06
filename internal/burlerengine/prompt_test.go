@@ -1,9 +1,8 @@
-// prompt_test.go covers composePrompt's marker composition: the happy path
-// fills every marker across all four rendered assets, each switched block
-// (fix-scope, tool-use, prior-rounds, cluster-rules) renders the branch its
-// Profile field selects and not the other branch's exclusive phrasing, and
-// each block helper's content lands in its intended instruction file
-// rather than leaking into the orchestrator or a sibling instruction file.
+// prompt_test.go covers composePrompt's marker composition: the happy path fills every marker
+// across all four rendered assets, each switched block (fix-scope, tool-use, prior-rounds,
+// cluster-rules) renders the branch its Profile field selects and not the other branch's exclusive
+// phrasing, and each block helper's content lands in its intended instruction file rather than
+// leaking into the orchestrator or a sibling instruction file.
 
 package burlerengine
 
@@ -71,10 +70,9 @@ func combinedPrompt(orchestrator string, files []instructionFile) string {
 	return strings.Join(parts, "\n")
 }
 
-// TestComposePrompt_FillsAllMarkers proves a minimal valid profile composes
-// cleanly through stencil (no unfilled-marker error) and that the combined
-// rendered prompt actually carries the profile's content — both output
-// paths and the verbatim rubric text.
+// TestComposePrompt_FillsAllMarkers proves a minimal valid profile composes cleanly through stencil
+// (no unfilled-marker error) and that the combined rendered prompt actually carries the profile's
+// content — both output paths and the verbatim rubric text.
 func TestComposePrompt_FillsAllMarkers(t *testing.T) {
 	p := newComposableProfile(t)
 
@@ -89,10 +87,9 @@ func TestComposePrompt_FillsAllMarkers(t *testing.T) {
 	requireContains(t, got, p.Rubric)
 }
 
-// TestComposePrompt_FixScope proves the fix-scope block switches on
-// p.FixScope: FixScopeSource's output carries the commit-per-fix phrasing
-// and not the overlay-exclusive "no git" phrasing, and vice versa for
-// FixScopeOverlay.
+// TestComposePrompt_FixScope proves the fix-scope block switches on p.FixScope: FixScopeSource's
+// output carries the commit-per-fix phrasing and not the overlay-exclusive "no git" phrasing,
+// and vice versa for FixScopeOverlay.
 func TestComposePrompt_FixScope(t *testing.T) {
 	t.Run("source", func(t *testing.T) {
 		p := newComposableProfile(t)
@@ -121,8 +118,8 @@ func TestComposePrompt_FixScope(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_ToolUse proves the tool-use block switches on
-// p.ToolUse, each value's phrase present and the other's absent.
+// TestComposePrompt_ToolUse proves the tool-use block switches on p.ToolUse, each value's phrase
+// present and the other's absent.
 func TestComposePrompt_ToolUse(t *testing.T) {
 	t.Run("true drives the substrate", func(t *testing.T) {
 		p := newComposableProfile(t)
@@ -151,9 +148,8 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_PriorRounds proves the prior-rounds block distinguishes
-// a first round (no prior files) from a round hydrated with prior review /
-// fixer-report paths.
+// TestComposePrompt_PriorRounds proves the prior-rounds block distinguishes a first round (no prior
+// files) from a round hydrated with prior review / fixer-report paths.
 func TestComposePrompt_PriorRounds(t *testing.T) {
 	t.Run("first round", func(t *testing.T) {
 		p := newComposableProfile(t)
@@ -183,8 +179,8 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_DirectoryAnnotation proves a Target.Paths entry that is
-// a directory is annotated as one, while a file entry is not.
+// TestComposePrompt_DirectoryAnnotation proves a Target.Paths entry that is a directory is
+// annotated as one, while a file entry is not.
 func TestComposePrompt_DirectoryAnnotation(t *testing.T) {
 	p := newComposableProfile(t)
 
@@ -207,13 +203,12 @@ func TestComposePrompt_DirectoryAnnotation(t *testing.T) {
 	requireNotContains(t, fileLine, "a directory")
 }
 
-// TestComposePrompt_ClusterRules proves the cluster-rules block switches on
-// p.ClusterFan: empty renders the explicit single-reviewer prose with none
-// of the fork machinery language, while a resolved fan renders every lens
-// name plus both load-bearing fork-discipline ban phrases (no Agent tool,
-// no git). composePrompt reads p.clusterLenses directly (as
-// (*Profile).validate would have left it) rather than calling ResolveFan
-// itself.
+// TestComposePrompt_ClusterRules proves the cluster-rules block switches on p.ClusterFan: empty
+// renders the explicit single-reviewer prose with none of the fork machinery language, while a
+// resolved fan renders every lens name plus both load-bearing fork-discipline ban phrases (no Agent
+// tool, no git).
+// composePrompt reads p.clusterLenses directly (as (*Profile).validate would have left it) rather
+// than calling ResolveFan itself.
 func TestComposePrompt_ClusterRules(t *testing.T) {
 	t.Run("non-cluster", func(t *testing.T) {
 		p := newComposableProfile(t)
@@ -247,11 +242,10 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 	})
 }
 
-// TestComposePrompt_ReturnsThreeInstructionFiles proves the happy path
-// returns a non-empty orchestrator and exactly three instructionFile
-// entries whose Path values equal the three path parameters, in order —
-// the contract Engine.Run relies on to write each rendered file to the
-// path it names in the orchestrator.
+// TestComposePrompt_ReturnsThreeInstructionFiles proves the happy path returns a non-empty
+// orchestrator and exactly three instructionFile entries whose Path values equal the three path
+// parameters, in order — the contract Engine.Run relies on to write each rendered file to the path
+// it names in the orchestrator.
 func TestComposePrompt_ReturnsThreeInstructionFiles(t *testing.T) {
 	p := newComposableProfile(t)
 
@@ -274,13 +268,12 @@ func TestComposePrompt_ReturnsThreeInstructionFiles(t *testing.T) {
 	}
 }
 
-// TestComposePrompt_BlockHelpersLandInIntendedAsset proves each block
-// helper's rendered content lands in its intended instruction file and
-// nowhere else: fix_scope_rules content is instruction 3's alone,
-// cluster_rules content is instruction 2's alone, and
-// pattern_directive/target content is instruction 1's alone. This is the
-// per-asset counterpart to the marker-value composition tests above, which
-// only prove presence in the combined text.
+// TestComposePrompt_BlockHelpersLandInIntendedAsset proves each block helper's rendered content
+// lands in its intended instruction file and nowhere else: fix_scope_rules content is instruction
+// 3's alone, cluster_rules content is instruction 2's alone, and pattern_directive/target content
+// is instruction 1's alone.
+// This is the per-asset counterpart to the marker-value composition tests above, which only prove
+// presence in the combined text.
 func TestComposePrompt_BlockHelpersLandInIntendedAsset(t *testing.T) {
 	p := newComposableProfile(t)
 	p.ClusterFan = "standard"

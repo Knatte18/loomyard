@@ -1,8 +1,9 @@
 // cluster.go implements the fail-loud policy Engine.Run enforces over a cluster round's
-// shuttleengine.ForkAudit: the fork-count contract and the per-fork violation classes a
-// disobedient fork reviewer can trigger. auditClusterRound is the single place that
-// turns the raw audit facts (shuttleengine's own knowledge — never this package's) into
-// burler's hard-error/warning split, per the fail-loud-posture Shared Decision.
+// shuttleengine.ForkAudit: the fork-count contract and the per-fork violation classes a disobedient
+// fork reviewer can trigger.
+// auditClusterRound is the single place that turns the raw audit facts (shuttleengine's own
+// knowledge — never this package's) into burler's hard-error/warning split, per the
+// fail-loud-posture Shared Decision.
 
 package burlerengine
 
@@ -14,8 +15,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrClusterForksMissing is the sentinel for when a cluster round's ForkAudit
-// does not carry exactly the requested number of fork reviewers.
+// ErrClusterForksMissing is the sentinel for when a cluster round's ForkAudit does not carry
+// exactly the requested number of fork reviewers.
 var ErrClusterForksMissing = errors.New("the cluster round did not produce exactly the requested number of fork reviewers")
 
 // mutatingGitPattern matches a Bash command string that invokes git with a

@@ -1,10 +1,9 @@
-// outcome.go implements the orchestrator's outcome.yaml contract: Outcome,
-// the in-memory schema; ParseOutcome, the fail-loud parser (the burler
-// verdict-parse discipline applied here — an unrecognized outcome value or a
-// stuck report with no stuck_reason is a loud error, never a guessed
-// digest); and ArchiveStaleOutcome, the archive-never-refuse act `run`
-// performs before spawning a fresh orchestrator, per the discussion's
-// "Orchestrator outcome contract" decision.
+// outcome.go implements the orchestrator's outcome.yaml contract: Outcome, the in-memory schema;
+// ParseOutcome, the fail-loud parser (the burler verdict-parse discipline applied here — an
+// unrecognized outcome value or a stuck report with no stuck_reason is a loud error, never a
+// guessed digest);
+// and ArchiveStaleOutcome, the archive-never-refuse act `run` performs before spawning a fresh
+// orchestrator, per the discussion's "Orchestrator outcome contract" decision.
 
 package builderengine
 
@@ -29,8 +28,8 @@ const (
 // outcomeFileName is outcome.yaml's fixed filename inside a builder dir.
 const outcomeFileName = "outcome.yaml"
 
-// Outcome is the orchestrator's final-action file's in-memory form: the
-// terminal judgment it reached over one whole plan run.
+// Outcome is the orchestrator's final-action file's in-memory form: the terminal judgment it
+// reached over one whole plan run.
 type Outcome struct {
 	// Outcome is one of OutcomeDone, OutcomeStuck, or OutcomePaused.
 	Outcome string `yaml:"outcome"`
@@ -43,9 +42,8 @@ type Outcome struct {
 	BatchesDone int `yaml:"batches_done"`
 }
 
-// ParseOutcome reads and strictly decodes outcome.yaml, enforcing the
-// schema vocabulary: outcome must be Done/Stuck/Paused, and Stuck requires
-// a non-empty stuck_reason.
+// ParseOutcome reads and strictly decodes outcome.yaml, enforcing the schema vocabulary: outcome
+// must be Done/Stuck/Paused, and Stuck requires a non-empty stuck_reason.
 func ParseOutcome(path string) (*Outcome, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -72,10 +70,11 @@ func ParseOutcome(path string) (*Outcome, error) {
 	return &o, nil
 }
 
-// ArchiveStaleOutcome renames builderDir's outcome.yaml to
-// outcome-<UTC timestamp>.yaml so resume never blocks on leftover files.
-// Absent file returns ("", nil). Collisions in the same second append
-// numeric suffixes ("-1", "-2", ...) to avoid overwriting prior runs.
+// ArchiveStaleOutcome renames builderDir's outcome.yaml to outcome-<UTC timestamp>.yaml so resume
+// never blocks on leftover files.
+// Absent file returns ("", nil).
+// Collisions in the same second append numeric suffixes ("-1", "-2", ...)
+// to avoid overwriting prior runs.
 func ArchiveStaleOutcome(builderDir string, now func() time.Time) (archivedTo string, err error) {
 	path := filepath.Join(builderDir, outcomeFileName)
 

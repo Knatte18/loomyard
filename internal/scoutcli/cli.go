@@ -1,8 +1,8 @@
-// cli.go exposes the cobra command tree for the scout module. It is the sole
-// consumer of internal/output within the scout surface: internal/scoutengine
-// returns typed Go errors and results with no io.Writer/exit-code machinery (per the
-// plan's engine/CLI layering Shared Decision), so this file is where every engine
-// result and typed error gets mapped to the internal/output JSON envelope.
+// cli.go exposes the cobra command tree for the scout module.
+// It is the sole consumer of internal/output within the scout surface: internal/scoutengine returns
+// typed Go errors and results with no io.Writer/exit-code machinery (per the plan's engine/CLI
+// layering Shared Decision), so this file is where every engine result and typed error gets mapped
+// to the internal/output JSON envelope.
 
 // Package scoutcli wires internal/scoutengine into the lyx cobra tree as the
 // "scout" module, exposing four verbs — "refs" (every reference to a symbol or

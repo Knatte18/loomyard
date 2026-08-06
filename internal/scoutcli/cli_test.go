@@ -1,11 +1,10 @@
-// cli_test.go drives RunCLI through its seam: the bare/--help subcommand listing,
-// every command's Short, and the ErrNoLanguage error-envelope path. It is
-// deliberately untagged, offline, and spawn-free: it never shells out to a
-// subprocess, never touches git, and never copies a fixture tree, so it never
-// launches a language server or requires a git repo. A real "refs" query against a
-// live language server belongs to the //go:build integration tier
-// (internal/scoutengine's own integration test) and batch 4's measurement, not
-// here.
+// cli_test.go drives RunCLI through its seam: the bare/--help subcommand listing, every command's
+// Short, and the ErrNoLanguage error-envelope path.
+// It is deliberately untagged, offline, and spawn-free: it never shells out to a subprocess, never
+// touches git, and never copies a fixture tree, so it never launches a language server or requires
+// a git repo.
+// A real "refs" query against a live language server belongs to the //go:build integration tier
+// (internal/scoutengine's own integration test) and batch 4's measurement, not here.
 
 package scoutcli
 
@@ -117,7 +116,8 @@ func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Definition_NoLanguageError verifies "definition" fails with ErrNoLanguage in an empty directory.
+// TestRunCLI_Definition_NoLanguageError verifies "definition" fails with ErrNoLanguage in an empty
+// directory.
 func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
 	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
@@ -156,7 +156,8 @@ func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Symbol_NoLanguageError verifies "symbol" fails with ErrNoLanguage in an empty directory.
+// TestRunCLI_Symbol_NoLanguageError verifies "symbol" fails with ErrNoLanguage in an empty
+// directory.
 func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
 	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
@@ -195,8 +196,8 @@ func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves symbolCommand
-// never position-parses "file:line:col" arguments, treating them as literal search strings.
+// TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString proves symbolCommand never
+// position-parses "file:line:col" arguments, treating them as literal search strings.
 func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing.T) {
 	const arg = "foo.go:1:1"
 
@@ -242,7 +243,8 @@ func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing
 	}
 }
 
-// TestEmitLookupResult_AmbiguousSymbolExitsTwo tests emitLookupResult's handling of ambiguous and not-found cases.
+// TestEmitLookupResult_AmbiguousSymbolExitsTwo tests emitLookupResult's handling of ambiguous and
+// not-found cases.
 func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -389,7 +391,8 @@ func TestRunCLI_Refs_TwoArgsIsBatchMode(t *testing.T) {
 	}
 }
 
-// TestBatchRunner_WorstOutcomeWinsExitCode verifies runBatch sets exit code to the worst status present.
+// TestBatchRunner_WorstOutcomeWinsExitCode verifies runBatch sets exit code to the worst status
+// present.
 func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
 	t.Parallel()
 
@@ -455,7 +458,8 @@ func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
 	}
 }
 
-// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker verifies success includes "resolution":"complete".
+// TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker verifies success includes
+// "resolution":"complete".
 func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
 	t.Parallel()
 
@@ -478,7 +482,8 @@ func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
 	}
 }
 
-// TestClassifyLookupError_FoundCarriesResolutionCompleteMarker verifies statusFound includes "resolution":"complete".
+// TestClassifyLookupError_FoundCarriesResolutionCompleteMarker verifies statusFound includes
+// "resolution":"complete".
 func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) {
 	t.Parallel()
 
@@ -500,7 +505,8 @@ func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) 
 	}
 }
 
-// TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir verifies the fallback outside a lyx hub.
+// TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir verifies the fallback outside a
+// lyx hub.
 func TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir(t *testing.T) {
 	cwd := t.TempDir()
 	targetDir := t.TempDir()
@@ -519,7 +525,8 @@ func TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir(t *testing.T
 	}
 }
 
-// TestBuildOptions_ThreadsEveryFieldFromItsArguments verifies buildOptions threads all fields correctly.
+// TestBuildOptions_ThreadsEveryFieldFromItsArguments verifies buildOptions threads all fields
+// correctly.
 func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	t.Parallel()
 
@@ -545,7 +552,8 @@ func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	}
 }
 
-// TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName proves inFileQuery never position-parses.
+// TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName proves inFileQuery never
+// position-parses.
 func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testing.T) {
 	t.Parallel()
 
@@ -586,7 +594,8 @@ func TestInFileQuery_ResolvesRelativePathToAbsolute(t *testing.T) {
 	}
 }
 
-// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol verifies --in-file is on refs/definition but not symbol.
+// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol verifies --in-file is on
+// refs/definition but not symbol.
 func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
 	t.Parallel()
 
@@ -610,7 +619,8 @@ func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
 	}
 }
 
-// TestFilterWithin tests the --within filtering logic, which mitigates interface-method reference conflation.
+// TestFilterWithin tests the --within filtering logic, which mitigates interface-method reference
+// conflation.
 func TestFilterWithin(t *testing.T) {
 	t.Parallel()
 
@@ -671,7 +681,8 @@ func TestFilterWithin(t *testing.T) {
 	}
 }
 
-// TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous verifies symbol never produces ambiguous status.
+// TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous verifies symbol never produces
+// ambiguous status.
 func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 	t.Parallel()
 
@@ -696,7 +707,8 @@ func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AssertNoCallers_NoLanguageError verifies "assert-no-callers" fails with ErrNoLanguage in an empty directory.
+// TestRunCLI_AssertNoCallers_NoLanguageError verifies "assert-no-callers" fails with ErrNoLanguage
+// in an empty directory.
 func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
 	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
 	// scoutengine.BuiltinRegistry() deterministically, independent of
@@ -735,7 +747,8 @@ func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AssertNoCallers_RequiresExactlyOneArg verifies "assert-no-callers" requires exactly one argument.
+// TestRunCLI_AssertNoCallers_RequiresExactlyOneArg verifies "assert-no-callers" requires exactly
+// one argument.
 func TestRunCLI_AssertNoCallers_RequiresExactlyOneArg(t *testing.T) {
 	t.Parallel()
 

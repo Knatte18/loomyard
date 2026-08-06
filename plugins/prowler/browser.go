@@ -1,6 +1,6 @@
-// browser.go drives a headless Chrome instance via chromedp as the fetch
-// cascade's last-resort fallback, for pages whose content only exists after
-// client-side JavaScript runs (which no static HTTP fetch can ever see).
+// browser.go drives a headless Chrome instance via chromedp as the fetch cascade's last-resort
+// fallback, for pages whose content only exists after client-side JavaScript runs (which no static
+// HTTP fetch can ever see).
 
 package main
 

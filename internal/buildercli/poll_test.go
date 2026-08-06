@@ -202,14 +202,15 @@ func TestPollCmd_ReportPresentClassifiesDoneAndCommits(t *testing.T) {
 	}
 }
 
-// TestPollCmd_TerminalCleanupMatrix proves poll's terminal branch releases
-// the batch's substrate exactly per the doc's discipline: done removes the
-// strand AND the run dir (shuttle-finalize parity); stuck removes the
-// strand but keeps the run dir (the raw session output is the stuck trail a
-// human may still inspect); dead keeps both for diagnosis. Without the
-// done/stuck cleanup every finished batch leaks a live pane hosting an idle
-// agent process forever, since nobody else ever holds the shuttle Run
-// handle (found live in round fable-r2: four leaked panes after two runs).
+// TestPollCmd_TerminalCleanupMatrix proves poll's terminal branch releases the batch's substrate
+// exactly per the doc's discipline: done removes the strand AND the run dir (shuttle-finalize
+// parity);
+// stuck removes the strand but keeps the run dir (the raw session output is the stuck trail a human
+// may still inspect);
+// dead keeps both for diagnosis.
+// Without the done/stuck cleanup every finished batch leaks a live pane hosting an idle agent
+// process forever, since nobody else ever holds the shuttle Run handle (found live in round
+// fable-r2: four leaked panes after two runs).
 func TestPollCmd_TerminalCleanupMatrix(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -308,13 +309,12 @@ func (e *pollRaceEngine) ParseEvents(data []byte) ([]shuttleengine.Event, error)
 	return []shuttleengine.Event{{Kind: shuttleengine.EventStop, Message: "final"}}, nil
 }
 
-// TestPollCmd_ReportLandingDuringGatherBeatsStopEvent proves the
-// report-present branch wins FOR REAL, not just in decision order: a report
-// written after gather's first stat but before its Stop-event read must
-// still classify done — never dead/asking, which would wedge the
-// orchestrator's next respawn on "batch report already exists" (found in
-// round fable-r2; the implementer always writes its report before its turn
-// ends, so this interleave is reachable on every stuck/done batch).
+// TestPollCmd_ReportLandingDuringGatherBeatsStopEvent proves the report-present branch wins FOR
+// REAL, not just in decision order: a report written after gather's first stat but before its
+// Stop-event read must still classify done — never dead/asking, which would wedge the
+// orchestrator's next respawn on "batch report already exists" (found in round fable-r2; the
+// implementer always writes its report before its turn ends, so this interleave is reachable on
+// every stuck/done batch).
 func TestPollCmd_ReportLandingDuringGatherBeatsStopEvent(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 
@@ -355,13 +355,12 @@ func TestPollCmd_ReportLandingDuringGatherBeatsStopEvent(t *testing.T) {
 	}
 }
 
-// TestPollCmd_DeadRecheckStatErrorPropagates proves the dead-classification
-// re-check's report-existence stat gets the same fail-loud treatment as
-// gather's primary stat (round opus-r3's R2): the primary stat already
-// propagated a non-ENOENT error as a poll-tick failure, but the re-check
-// silently ignored one and let a dead classification stand -- exactly the
-// false positive this re-check exists to prevent. A real filesystem race
-// between the two stat calls cannot be scripted deterministically, so this
+// TestPollCmd_DeadRecheckStatErrorPropagates proves the dead-classification re-check's
+// report-existence stat gets the same fail-loud treatment as gather's primary stat (round opus-r3's
+// R2): the primary stat already propagated a non-ENOENT error as a poll-tick failure,
+// but the re-check silently ignored one and let a dead classification stand -- exactly the false
+// positive this re-check exists to prevent.
+// A real filesystem race between the two stat calls cannot be scripted deterministically, so this
 // test drives it via statReportPath, the package seam both calls go through.
 func TestPollCmd_DeadRecheckStatErrorPropagates(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
@@ -447,15 +446,14 @@ func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 	}
 }
 
-// TestPollCmd_TerminalPersistMergesConcurrentSpawn proves the terminal
-// persist writes onto a FRESH state loaded under the state-mutation lease,
-// never the copy loaded at poll entry: a spawn-batch landing inside the
-// long-poll's window (here scripted via the statReportPath seam, firing
-// between poll's entry-time LoadState and its terminal write) records a new
-// batch and moves CurrentBatch, and saving poll's stale entry-time copy
-// would erase both — a live implementer with no state record. The
-// classified batch must still be marked terminal, and the concurrently
-// spawned batch's record and cursor must survive.
+// TestPollCmd_TerminalPersistMergesConcurrentSpawn proves the terminal persist writes onto a FRESH
+// state loaded under the state-mutation lease, never the copy loaded at poll entry: a spawn-batch
+// landing inside the long-poll's window (here scripted via the statReportPath seam, firing between
+// poll's entry-time LoadState and its terminal write) records a new batch and moves CurrentBatch,
+// and saving poll's stale entry-time copy would erase both — a live implementer with no state
+// record.
+// The classified batch must still be marked terminal,
+// and the concurrently spawned batch's record and cursor must survive.
 func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
@@ -523,12 +521,11 @@ func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 	}
 }
 
-// TestPollCmd_ReportBatchFieldMismatchFailsLoud proves a report whose
-// batch: field names a different batch than the one being polled is a
-// fail-loud error, never a silently mislabeled digest: Distill passes the
-// field verbatim into the digest's batch identifier — the one field the
-// orchestrator navigates by — so a typo'd or copy-pasted stem must surface
-// as the same malformed-report error class every other field gets.
+// TestPollCmd_ReportBatchFieldMismatchFailsLoud proves a report whose batch: field names a
+// different batch than the one being polled is a fail-loud error, never a silently mislabeled
+// digest: Distill passes the field verbatim into the digest's batch identifier — the one field the
+// orchestrator navigates by — so a typo'd or copy-pasted stem must surface as the same
+// malformed-report error class every other field gets.
 func TestPollCmd_ReportBatchFieldMismatchFailsLoud(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
@@ -568,13 +565,13 @@ func TestPollCmd_ReportBatchFieldMismatchFailsLoud(t *testing.T) {
 	}
 }
 
-// TestPollCmd_HalfWrittenReportGetsOneTickGrace proves the half-write
-// grace: the implementer's report write is not atomic, so poll's 1s tick
-// can catch the file created-but-unfinished; the first failed parse of a
-// just-seen report must be treated as inconclusive (keep polling), and the
-// next tick's successful parse classifies normally — never a hard error for
-// a report one flush away from done. Scripted via the statReportPath seam:
-// the first stat sees a truncated report, the second sees it completed.
+// TestPollCmd_HalfWrittenReportGetsOneTickGrace proves the half-write grace: the implementer's
+// report write is not atomic, so poll's 1s tick can catch the file created-but-unfinished;
+// the first failed parse of a just-seen report must be treated as inconclusive (keep polling),
+// and the next tick's successful parse classifies normally — never a hard error for a report one
+// flush away from done.
+// Scripted via the statReportPath seam: the first stat sees a truncated report, the second sees it
+// completed.
 func TestPollCmd_HalfWrittenReportGetsOneTickGrace(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})
@@ -617,10 +614,9 @@ func TestPollCmd_HalfWrittenReportGetsOneTickGrace(t *testing.T) {
 	}
 }
 
-// TestPollCmd_PersistentlyMalformedReportFailsAfterGrace proves the grace
-// is exactly one tick: a report that is still unparseable on the second
-// consecutive tick is a genuinely malformed report and fails loud — the
-// grace must never let a broken report wedge the poll into polling forever.
+// TestPollCmd_PersistentlyMalformedReportFailsAfterGrace proves the grace is exactly one tick: a
+// report that is still unparseable on the second consecutive tick is a genuinely malformed report
+// and fails loud — the grace must never let a broken report wedge the poll into polling forever.
 func TestPollCmd_PersistentlyMalformedReportFailsAfterGrace(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{})

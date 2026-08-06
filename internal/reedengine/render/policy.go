@@ -1,9 +1,8 @@
-// policy.go implements the anchor-to-placement dispatch: filtering strands
-// down to the below-parent stack (or excluding them entirely), ordering the
-// stack deterministically by parent-chain depth, and repairing a corrupt
-// cyclic parent table so ordering always terminates. This is the legible
-// half of the policy layer — adding a new anchor means adding a case here,
-// not touching the mechanics layer in layout.go/checksum.go.
+// policy.go implements the anchor-to-placement dispatch: filtering strands down to the below-parent
+// stack (or excluding them entirely), ordering the stack deterministically by parent-chain depth,
+// and repairing a corrupt cyclic parent table so ordering always terminates.
+// This is the legible half of the policy layer — adding a new anchor means adding a case here, not
+// touching the mechanics layer in layout.go/checksum.go.
 
 package render
 

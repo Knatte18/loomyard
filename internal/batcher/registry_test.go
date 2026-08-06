@@ -1,9 +1,8 @@
-// registry_test.go covers the unexported register/lookup pair in isolation from
-// package-level init() state: each subtest builds its own registry map so a
-// probe batcher's registration can never leak into — or be masked by — the real
-// identity registration identity.go's init() performs on package load. Tier-1
-// (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git
-// Shared Decision.
+// registry_test.go covers the unexported register/lookup pair in isolation from package-level
+// init() state: each subtest builds its own registry map so a probe batcher's registration can
+// never leak into — or be masked by — the real identity registration identity.go's init() performs
+// on package load.
+// Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
 
 package batcher
 

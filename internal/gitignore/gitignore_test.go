@@ -1,8 +1,8 @@
 // gitignore_test.go — table-driven tests for the gitignore package.
 //
-// Covers: new-file creation, set-merge across modules, idempotency,
-// outside-block preservation, delimiter correctness, and Remove's mirror
-// behavior (block deletion, partial removal, and no-op cases).
+// Covers: new-file creation, set-merge across modules, idempotency, outside-block preservation,
+// delimiter correctness, and Remove's mirror behavior (block deletion, partial removal, and no-op
+// cases).
 
 package gitignore_test
 
@@ -278,9 +278,9 @@ func TestEnsureDelimiterExactness(t *testing.T) {
 	}
 }
 
-// TestRemoveDeletesBlockWhenOnlyRemovedEntryPresent tests that Remove drops
-// the entire managed block (both markers) when the only entry it contains
-// is the one being removed, while preserving surrounding content.
+// TestRemoveDeletesBlockWhenOnlyRemovedEntryPresent tests that Remove drops the entire managed
+// block (both markers) when the only entry it contains is the one being removed, while preserving
+// surrounding content.
 func TestRemoveDeletesBlockWhenOnlyRemovedEntryPresent(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -321,8 +321,8 @@ func TestRemoveDeletesBlockWhenOnlyRemovedEntryPresent(t *testing.T) {
 	}
 }
 
-// TestRemoveKeepsBlockWhenOtherEntriesRemain tests that Remove drops only
-// the targeted entry when other modules' entries remain in the block.
+// TestRemoveKeepsBlockWhenOtherEntriesRemain tests that Remove drops only the targeted entry when
+// other modules' entries remain in the block.
 func TestRemoveKeepsBlockWhenOtherEntriesRemain(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -359,8 +359,8 @@ func TestRemoveKeepsBlockWhenOtherEntriesRemain(t *testing.T) {
 	}
 }
 
-// TestRemoveNoOpWhenEntryNotPresent tests that Remove leaves the file
-// byte-for-byte unchanged when the requested entry was never in the block.
+// TestRemoveNoOpWhenEntryNotPresent tests that Remove leaves the file byte-for-byte unchanged when
+// the requested entry was never in the block.
 func TestRemoveNoOpWhenEntryNotPresent(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -391,8 +391,8 @@ func TestRemoveNoOpWhenEntryNotPresent(t *testing.T) {
 	}
 }
 
-// TestRemoveNoOpWhenFileMissing tests that Remove no-ops without creating a
-// .gitignore file when none exists.
+// TestRemoveNoOpWhenFileMissing tests that Remove no-ops without creating a .gitignore file when
+// none exists.
 func TestRemoveNoOpWhenFileMissing(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -451,7 +451,8 @@ func TestEnsureMultipleEntriesAtOnce(t *testing.T) {
 	}
 }
 
-// TestEnsureBlankLineBeforeBlock tests that a blank line is added before the block when preceding content exists.
+// TestEnsureBlankLineBeforeBlock tests that a blank line is added before the block when preceding
+// content exists.
 func TestEnsureBlankLineBeforeBlock(t *testing.T) {
 	tmpDir := t.TempDir()
 

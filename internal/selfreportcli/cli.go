@@ -1,13 +1,12 @@
-// cli.go assembles the Cobra command tree for the selfreport module and wires the
-// RunCLI seam. The "create" subcommand's RunE closure reads flag state via the
-// named createCmd variable to distinguish "flag not set" from "flag set to empty
-// string" using Changed("body"), following the warp module pattern for local-flag
-// access inside a cobra RunE.
+// cli.go assembles the Cobra command tree for the selfreport module and wires the RunCLI seam.
+// The "create" subcommand's RunE closure reads flag state via the named createCmd variable to
+// distinguish "flag not set" from "flag set to empty string" using Changed("body"), following the
+// warp module pattern for local-flag access inside a cobra RunE.
 
-// Package selfreportcli provides the cobra command tree for filing LoomYard bugs
-// and enhancements as GitHub issues directly from lyx.exe. The module is
-// reachable as `lyx selfreport create` and delegates the actual GitHub API call
-// to the selfreportengine domain package.
+// Package selfreportcli provides the cobra command tree for filing LoomYard bugs and enhancements
+// as GitHub issues directly from lyx.exe.
+// The module is reachable as `lyx selfreport create` and delegates the actual GitHub API call to
+// the selfreportengine domain package.
 package selfreportcli
 
 import (
@@ -70,8 +69,8 @@ Examples:
 	return cmd
 }
 
-// RunCLI is the public seam for the selfreport module,
-// delegating to clihelp.Execute for in-process test capture.
+// RunCLI is the public seam for the selfreport module, delegating to clihelp.Execute for in-process
+// test capture.
 func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }

@@ -1,7 +1,9 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task a dependency depth (its render bucket), and
-// RenderOrder orders tasks for output. All computed at read time; never stored.
+// ComputeLayers assigns each task a dependency depth (its render bucket),
+// and RenderOrder orders tasks for output.
+// All computed at read time;
+// never stored.
 
 package boardengine
 

@@ -1,12 +1,10 @@
-// daemonstate_test.go covers daemonstate.go's state-file round-trip,
-// two-part staleness check, and its concurrent-readers-never-see-a-partial-
-// write property, plus probe.go's readiness gate. It is untagged and
-// offline: every sub-test uses t.TempDir() and in-memory fakes, except
-// sub-test (3) below (TestDaemonStale_DeadPIDIsStale), which spawns a
-// short-lived exec.Command child to obtain a confirmed-dead PID fixture,
-// mirroring internal/proc/isalive_test.go's own technique. Its spawn trips
-// the Test Tier Purity Invariant guard and is allowlisted at the file level
-// in cmd/lyx/tierpurity_test.go's allowedSpawners map.
+// daemonstate_test.go covers daemonstate.go's state-file round-trip, two-part staleness check, and
+// its concurrent-readers-never-see-a-partial- write property, plus probe.go's readiness gate.
+// It is untagged and offline: every sub-test uses t.TempDir() and in-memory fakes, except sub-test
+// (3) below (TestDaemonStale_DeadPIDIsStale), which spawns a short-lived exec.Command child to
+// obtain a confirmed-dead PID fixture, mirroring internal/proc/isalive_test.go's own technique.
+// Its spawn trips the Test Tier Purity Invariant guard and is allowlisted at the file level in
+// cmd/lyx/tierpurity_test.go's allowedSpawners map.
 
 package scoutengine
 
@@ -22,7 +20,8 @@ import (
 	"time"
 )
 
-// TestDaemonState_WriteReadRoundTrip verifies writeDaemonState/readDaemonState preserves all fields.
+// TestDaemonState_WriteReadRoundTrip verifies writeDaemonState/readDaemonState preserves all
+// fields.
 func TestDaemonState_WriteReadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "daemon.json")
 	want := daemonState{
@@ -48,7 +47,8 @@ func TestDaemonState_WriteReadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestReadDaemonState_MissingFileIsNotAnError verifies missing files return zero values, not an error.
+// TestReadDaemonState_MissingFileIsNotAnError verifies missing files return zero values, not an
+// error.
 func TestReadDaemonState_MissingFileIsNotAnError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.json")
 
@@ -105,7 +105,8 @@ func TestDaemonStale_MismatchedProtocolVersionIsStale(t *testing.T) {
 	}
 }
 
-// TestDaemonStale_LivePIDAndCurrentVersionIsNotStale verifies a live PID with matching version is not stale.
+// TestDaemonStale_LivePIDAndCurrentVersionIsNotStale verifies a live PID with matching version is
+// not stale.
 func TestDaemonStale_LivePIDAndCurrentVersionIsNotStale(t *testing.T) {
 	s := daemonState{
 		PID:             os.Getpid(),
@@ -116,7 +117,8 @@ func TestDaemonStale_LivePIDAndCurrentVersionIsNotStale(t *testing.T) {
 	}
 }
 
-// TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite verifies concurrent reads never see partial writes.
+// TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite verifies concurrent reads never see
+// partial writes.
 func TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "daemon.json")
 
@@ -168,8 +170,8 @@ func TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite(t *testing.T) {
 	readerWG.Wait()
 }
 
-// TestProbe_EmptyWorkspaceSymbolResultReturnsNil asserts probe returns nil
-// when the fake server answers workspace/symbol with an empty array.
+// TestProbe_EmptyWorkspaceSymbolResultReturnsNil asserts probe returns nil when the fake server
+// answers workspace/symbol with an empty array.
 func TestProbe_EmptyWorkspaceSymbolResultReturnsNil(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
@@ -200,9 +202,8 @@ func TestProbe_EmptyWorkspaceSymbolResultReturnsNil(t *testing.T) {
 	<-done
 }
 
-// TestProbe_NoResponseReturnsErrServerTimeout asserts probe returns an
-// ErrServerTimeout-satisfying error once its own short timeout expires,
-// when the fake server never responds.
+// TestProbe_NoResponseReturnsErrServerTimeout asserts probe returns an ErrServerTimeout-satisfying
+// error once its own short timeout expires, when the fake server never responds.
 func TestProbe_NoResponseReturnsErrServerTimeout(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()

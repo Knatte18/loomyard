@@ -1,22 +1,19 @@
-// weftwiring.go implements weft worktree spawn and teardown helpers for paired
-// topology operations (add/remove, a later batch).
+// weftwiring.go implements weft worktree spawn and teardown helpers for paired topology operations
+// (add/remove, a later batch).
 //
-// These unexported helpers handle the weft-side lifecycle: creating weft
-// worktrees, pushing to the weft remote, and tearing down both the weft
-// worktree and branch. All git operations use gitexec.RunGit with explicit cwd
-// (WeftRepoRoot or WeftWorktreePath). Every branch argument here is ALWAYS a
-// concrete, already-suffixed weft branch name produced by WeftBranchName — this
-// file never derives a branch name itself, so the "-weft" literal never appears
-// in this file's Go source (see branchname.go for the single derivation point).
+// These unexported helpers handle the weft-side lifecycle: creating weft worktrees, pushing to the
+// weft remote, and tearing down both the weft worktree and branch.
+// All git operations use gitexec.RunGit with explicit cwd (WeftRepoRoot or WeftWorktreePath).
+// Every branch argument here is ALWAYS a concrete, already-suffixed weft branch name produced by
+// WeftBranchName — this file never derives a branch name itself, so the "-weft" literal never
+// appears in this file's Go source (see branchname.go for the single derivation point).
 //
-// Weft branch model: each weft branch forks from its parent's weft branch
-// (non-orphan, shared merge-base), preserving history for future _raddle
-// squash-merge-back. _lyx is isolated by pathspec (never merges back), not by
-// orphan topology. A detached or unborn host HEAD aborts the spawn before any
-// creation, ensuring no partial state.
+// Weft branch model: each weft branch forks from its parent's weft branch (non-orphan, shared
+// merge-base), preserving history for future _raddle squash-merge-back. _lyx is isolated by
+// pathspec (never merges back), not by orphan topology.
+// A detached or unborn host HEAD aborts the spawn before any creation, ensuring no partial state.
 //
-// Push honors SkipGit/SkipPush via fabricengine.SyncOptions, fabric's own
-// options type.
+// Push honors SkipGit/SkipPush via fabricengine.SyncOptions, fabric's own options type.
 
 package fabricengine
 

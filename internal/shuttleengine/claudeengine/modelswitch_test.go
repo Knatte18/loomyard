@@ -1,9 +1,8 @@
-// modelswitch_test.go pins ModelSwitchSequence's exact choreography shape:
-// the `/model <name>` command typed and submitted, with the model name passed
-// through verbatim and — load-bearing — NO leading Escape key, since the
-// sequence is injected while a foreground tool call runs in the target pane
-// and Escape there is claude's interrupt-running-tool key (it killed the
-// injecting begin-batch subprocess live on 2.1.205).
+// modelswitch_test.go pins ModelSwitchSequence's exact choreography shape: the `/model <name>`
+// command typed and submitted, with the model name passed through verbatim and — load-bearing — NO
+// leading Escape key, since the sequence is injected while a foreground tool call runs in the
+// target pane and Escape there is claude's interrupt-running-tool key (it killed the injecting
+// begin-batch subprocess live on 2.1.205).
 
 package claudeengine
 
@@ -13,9 +12,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestModelSwitchSequence_ShapeAndVerbatimModel proves the returned sequence
-// is exactly ["/model <name>"+submit], for several model name shapes
-// (including ones containing characters that must NOT be escaped or altered).
+// TestModelSwitchSequence_ShapeAndVerbatimModel proves the returned sequence is exactly ["/model
+// <name>"+submit], for several model name shapes (including ones containing characters that must
+// NOT be escaped or altered).
 func TestModelSwitchSequence_ShapeAndVerbatimModel(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -45,10 +44,10 @@ func TestModelSwitchSequence_ShapeAndVerbatimModel(t *testing.T) {
 	}
 }
 
-// TestModelSwitchSequence_NoKeyPresses proves no step in the sequence sends a
-// bare key press (Escape included): the sequence is injected mid-tool-call,
-// where Escape interrupts the running tool and aborts the target session's
-// turn — the W2b corruption mode webster's hardening round confirmed live.
+// TestModelSwitchSequence_NoKeyPresses proves no step in the sequence sends a bare key press
+// (Escape included): the sequence is injected mid-tool-call, where Escape interrupts the running
+// tool and aborts the target session's turn — the W2b corruption mode webster's hardening round
+// confirmed live.
 func TestModelSwitchSequence_NoKeyPresses(t *testing.T) {
 	c := New()
 	got := c.ModelSwitchSequence("opus")

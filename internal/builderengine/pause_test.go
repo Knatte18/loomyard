@@ -1,7 +1,6 @@
-// pause_test.go covers the pause flag's request/observe/clear cycle
-// (PauseFlagPath, RequestPause, PauseRequested, ClearPause) end-to-end
-// against a temp builder dir, plus the idempotent-clear case a resumed
-// run's entry-clear relies on.
+// pause_test.go covers the pause flag's request/observe/clear cycle (PauseFlagPath, RequestPause,
+// PauseRequested, ClearPause) end-to-end against a temp builder dir, plus the idempotent-clear case
+// a resumed run's entry-clear relies on.
 
 package builderengine_test
 

@@ -1,7 +1,6 @@
-// headerpane_test.go covers headerLaunchCmd's pure command-string
-// composition against both real Shell implementations (posix, pwsh) with a
-// fake exe path, and headerLaunchLine's underTest suppression branch —
-// hermetic, no live tmux required.
+// headerpane_test.go covers headerLaunchCmd's pure command-string composition against both real
+// Shell implementations (posix, pwsh) with a fake exe path, and headerLaunchLine's underTest
+// suppression branch — hermetic, no live tmux required.
 
 package reedengine
 

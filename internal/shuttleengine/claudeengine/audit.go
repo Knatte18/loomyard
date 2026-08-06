@@ -1,13 +1,12 @@
-// audit.go implements Claude's AuditForks/AuditForksIncremental: reading the
-// on-disk session transcript layout Claude Code itself maintains under
-// ~/.claude/projects/<encoded-cwd>/ to recover mechanical facts about a
-// fork-authorized run's fork subagents, optionally filtered to only the fork
-// transcripts a long-lived caller has not yet seen. All of this file's
-// knowledge — the project directory's cwd-encoding scheme, the parent/fork
-// transcript paths, and the JSONL message shape — is Claude-specific and stays
-// contained here, per the Shuttle Provider-Seam Invariant; shuttleengine itself only
-// ever sees the provider-invariant ForkAudit/ForkReport value types this file
-// populates.
+// audit.go implements Claude's AuditForks/AuditForksIncremental: reading the on-disk session
+// transcript layout Claude Code itself maintains under ~/.claude/projects/<encoded-cwd>/ to recover
+// mechanical facts about a fork-authorized run's fork subagents, optionally filtered to only the
+// fork transcripts a long-lived caller has not yet seen.
+// All of this file's knowledge — the project directory's cwd-encoding scheme, the parent/fork
+// transcript paths, and the JSONL message shape — is Claude-specific and stays contained here, per
+// the Shuttle Provider-Seam Invariant;
+// shuttleengine itself only ever sees the provider-invariant ForkAudit/ForkReport value types this
+// file populates.
 
 package claudeengine
 
@@ -21,15 +20,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// AuditForks implements shuttleengine.Engine.AuditForks for Claude,
-// reporting every fork transcript by calling AuditForksIncremental with nil seenTranscripts.
+// AuditForks implements shuttleengine.Engine.AuditForks for Claude, reporting every fork transcript
+// by calling AuditForksIncremental with nil seenTranscripts.
 func (c *Claude) AuditForks(sessionID, workdir string) (shuttleengine.ForkAudit, error) {
 	return c.AuditForksIncremental(sessionID, workdir, nil)
 }
 
-// AuditForksIncremental implements shuttleengine.Engine.AuditForksIncremental for Claude,
-// deriving the session's project directory from workdir and reading transcripts.
-// A nil seenTranscripts reports every fork transcript; missing subagents/ is not an error (zero forks).
+// AuditForksIncremental implements shuttleengine.Engine.AuditForksIncremental for Claude, deriving
+// the session's project directory from workdir and reading transcripts.
+// A nil seenTranscripts reports every fork transcript; missing subagents/ is not an error (zero
+// forks).
 // A missing parent transcript or unreadable fork transcript is an error (audit incomplete).
 func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (shuttleengine.ForkAudit, error) {
 	projectDir, err := claudeProjectDirFor(workdir)

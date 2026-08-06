@@ -1,9 +1,9 @@
 // main_test.go — tests for the module dispatcher (main.go).
 //
-// Drives run() directly: argument routing, unknown-module handling, and that a
-// dispatched module's exit code and output propagate unchanged. The three
-// tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live
-// in main_integration_test.go per the Test Tier Purity Invariant.
+// Drives run() directly: argument routing, unknown-module handling, and that a dispatched module's
+// exit code and output propagate unchanged.
+// The three tests that spawn gitexec's RunGit(["init"], …) to seed a real git repo live in
+// main_integration_test.go per the Test Tier Purity Invariant.
 
 package main
 
@@ -72,7 +72,8 @@ func TestRunDispatchesToIDE(t *testing.T) {
 	}
 }
 
-// TestRootHookSuppressedUnderTest verifies the root hook mints/exports nothing under testing.Testing().
+// TestRootHookSuppressedUnderTest verifies the root hook mints/exports nothing under
+// testing.Testing().
 func TestRootHookSuppressedUnderTest(t *testing.T) {
 	t.Setenv("LYX_TRACE_ID", "")
 	before := os.Getenv("LYX_TRACE_ID")

@@ -21,8 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestMain runs lyxtest.HermeticGitEnv() before any test in this package spawns
-// git, then delegates to the normal test run.
+// TestMain runs lyxtest.HermeticGitEnv() before any test in this package spawns git, then delegates
+// to the normal test run.
 func TestMain(m *testing.M) {
 	lyxtest.HermeticGitEnv()
 	os.Exit(m.Run())

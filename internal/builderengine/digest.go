@@ -1,11 +1,10 @@
-// digest.go implements Digest and Distill, the pinned terse contract
-// poll's terminal classification returns to the orchestrator (the
-// discussion's "Digest contract" decision): exactly the decision fields
-// plus what Go cannot cheaply compute itself — no prose, no file lists
-// beyond the drift paths — the mill-go-bloat lesson made structural.
-// Distill handles the report-present (done/stuck) branch; the
-// running/dead branches poll's own terminal-classification logic builds
-// separately are out of this batch's scope.
+// digest.go implements Digest and Distill, the pinned terse contract poll's terminal classification
+// returns to the orchestrator (the discussion's "Digest contract" decision): exactly the decision
+// fields plus what Go cannot cheaply compute itself — no prose, no file lists beyond the drift
+// paths — the mill-go-bloat lesson made structural.
+// Distill handles the report-present (done/stuck) branch;
+// the running/dead branches poll's own terminal-classification logic builds separately are out of
+// this batch's scope.
 
 package builderengine
 
@@ -22,18 +21,16 @@ const (
 	DigestStatusDead    = "dead"
 )
 
-// The three legal Digest.DeadReason values, set only when Status is
-// DigestStatusDead.
+// The three legal Digest.DeadReason values, set only when Status is DigestStatusDead.
 const (
 	DeadReasonAsking  = "asking"
 	DeadReasonTimeout = "timeout"
 	DeadReasonDied    = "died"
 )
 
-// Digest is poll's terminal-state output to the orchestrator: the pinned
-// terse field set. A "running" snapshot carries only {batch, status,
-// elapsed_s}; the remaining fields are populated only once a batch reaches
-// a terminal classification.
+// Digest is poll's terminal-state output to the orchestrator: the pinned terse field set.
+// A "running" snapshot carries only {batch, status, elapsed_s};
+// the remaining fields are populated only once a batch reaches a terminal classification.
 type Digest struct {
 	// Batch is the batch's NN-<batch-slug> identifier.
 	Batch string `json:"batch"`
@@ -68,8 +65,8 @@ type Digest struct {
 	ElapsedS int `json:"elapsed_s,omitempty"`
 }
 
-// Distill computes the terminal digest for a batch report, classifying
-// changed files against scope and OutOfScope to identify unreported drift.
+// Distill computes the terminal digest for a batch report, classifying changed files against scope
+// and OutOfScope to identify unreported drift.
 func Distill(report *Report, changed []string, scope []string, dirty bool) Digest {
 	justified := make(map[string]bool, len(report.OutOfScope))
 	for _, e := range report.OutOfScope {

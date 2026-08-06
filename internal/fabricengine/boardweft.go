@@ -1,12 +1,11 @@
-// boardweft.go materializes <Hub>/_board as a second worktree of the weft
-// repo on the weft primary's unsuffixed default branch — the same name the
-// host repo uses in the common case, and never the WeftBranchName-suffixed
-// pairing every other weft worktree uses. It never derives a branch name
-// itself (hostBranch always arrives pre-computed from suffixWeftPrimaryBranch,
-// which read it from the weft primary's freshly-cloned checkout before
-// renaming that primary onto its -weft pairing), mirroring weftwiring.go's own
-// stated rule for pre-suffixed branch names — _board's deliberately-unsuffixed
-// branch is exactly the case that rule exists to keep out of that file.
+// boardweft.go materializes <Hub>/_board as a second worktree of the weft repo on the weft
+// primary's unsuffixed default branch — the same name the host repo uses in the common case,
+// and never the WeftBranchName-suffixed pairing every other weft worktree uses.
+// It never derives a branch name itself (hostBranch always arrives pre-computed from
+// suffixWeftPrimaryBranch, which read it from the weft primary's freshly-cloned checkout before
+// renaming that primary onto its -weft pairing), mirroring weftwiring.go's own stated rule for
+// pre-suffixed branch names — _board's deliberately-unsuffixed branch is exactly the case that rule
+// exists to keep out of that file.
 
 package fabricengine
 

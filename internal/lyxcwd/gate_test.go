@@ -1,9 +1,9 @@
-// gate_test.go covers the strict cwd anchor gate (checkCwdAnchorGate) and its
-// path comparator (samePath) as pure path-math tables — no git spawning, no
-// fixture trees — so this file stays untagged. It also pins ResolveWithAnchor
-// and ResolveWorktree as permanently ungated at each of the gate's own
-// rejection triples, so a later "consistency" change cannot quietly gate
-// either bypass and break clone/lyxtest.
+// gate_test.go covers the strict cwd anchor gate (checkCwdAnchorGate) and its path comparator
+// (samePath) as pure path-math tables — no git spawning, no fixture trees — so this file stays
+// untagged.
+// It also pins ResolveWithAnchor and ResolveWorktree as permanently ungated at each of the gate's
+// own rejection triples, so a later "consistency" change cannot quietly gate either bypass and
+// break clone/lyxtest.
 
 package lyxcwd
 
@@ -15,9 +15,8 @@ import (
 	"testing"
 )
 
-// TestCheckCwdAnchorGate covers the (cwd, anchorRel, worktreePath) triple
-// space: exact match resolves, a subdirectory errors, a parent errors, and a
-// sibling errors.
+// TestCheckCwdAnchorGate covers the (cwd, anchorRel, worktreePath) triple space: exact match
+// resolves, a subdirectory errors, a parent errors, and a sibling errors.
 func TestCheckCwdAnchorGate(t *testing.T) {
 	worktreePath := filepath.Join("home", "user", "repo")
 
@@ -72,10 +71,9 @@ func TestCheckCwdAnchorGate(t *testing.T) {
 	}
 }
 
-// TestSamePath covers path-normalization edge cases: trailing separator,
-// "."/".." segments, mixed separators, a symlinked path resolving to its
-// target, and a case-differing path that must match on Windows and must not
-// on Linux.
+// TestSamePath covers path-normalization edge cases: trailing separator, "."/".."
+// segments, mixed separators, a symlinked path resolving to its target, and a case-differing path
+// that must match on Windows and must not on Linux.
 func TestSamePath(t *testing.T) {
 	t.Run("trailing separator", func(t *testing.T) {
 		a := filepath.Join("home", "user", "repo")
@@ -129,16 +127,16 @@ func TestSamePath(t *testing.T) {
 	})
 }
 
-// TestUngatedEntryPoints_AtGateRejectionTriples pins ResolveWithAnchor and
-// ResolveWorktree as permanently ungated: at a (cwd, anchorRel, worktreePath)
-// triple that makes checkCwdAnchorGate return ErrCwdOutsideAnchor,
-// buildLocation with applyGate=false — the shared body both entry points
-// route through with git-spawning already done — must still succeed with no
-// error. This guards clone, whose freshly-cloned worktree root sits above a
-// non-"." subpath anchor, and lyxtest's synthetic-hub anchor injection. This
-// test exercises buildLocation directly rather than the two exported entry
-// points, so the file stays untagged with no git spawned; ResolveWithAnchor
-// and ResolveWorktree are themselves one-line wrappers over this same
+// TestUngatedEntryPoints_AtGateRejectionTriples pins ResolveWithAnchor and ResolveWorktree as
+// permanently ungated: at a (cwd, anchorRel, worktreePath) triple that makes checkCwdAnchorGate
+// return ErrCwdOutsideAnchor, buildLocation with applyGate=false — the shared body both entry
+// points route through with git-spawning already done — must still succeed with no error.
+// This guards clone, whose freshly-cloned worktree root sits above a non-"."
+// subpath anchor,
+// and lyxtest's synthetic-hub anchor injection.
+// This test exercises buildLocation directly rather than the two exported entry points, so the file
+// stays untagged with no git spawned;
+// ResolveWithAnchor and ResolveWorktree are themselves one-line wrappers over this same
 // applyGate=false path (see lyxcwd.go), so pinning it here pins both.
 func TestUngatedEntryPoints_AtGateRejectionTriples(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")

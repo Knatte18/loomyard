@@ -47,8 +47,8 @@ func seedWikiRepo(tb testing.TB, n int) string {
 	return dir
 }
 
-// BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint:
-// JSON parse → dispatch → lock → load → mutate → render all tasks → write files.
+// BenchmarkUpsert measures a full "upsert" command through the CLI entrypoint: JSON parse →
+// dispatch → lock → load → mutate → render all tasks → write files.
 // It updates an existing task so the per-op work is stable across iterations.
 // CLI-bench numbers include the os.Getwd() + LoadConfig cost from cwd-based config.
 func BenchmarkUpsert(b *testing.B) {
@@ -70,8 +70,8 @@ func BenchmarkUpsert(b *testing.B) {
 	}
 }
 
-// BenchmarkGet measures a "get" command: the read path (load tasks.json, look up
-// one task by slug). No render, no write.
+// BenchmarkGet measures a "get" command: the read path (load tasks.json, look up one task by slug).
+// No render, no write.
 func BenchmarkGet(b *testing.B) {
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
@@ -91,8 +91,8 @@ func BenchmarkGet(b *testing.B) {
 	}
 }
 
-// BenchmarkList measures a "list" command: load all tasks, compute layers and
-// has_proposal, and serialise the brief view.
+// BenchmarkList measures a "list" command: load all tasks, compute layers and has_proposal, and
+// serialise the brief view.
 func BenchmarkList(b *testing.B) {
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {

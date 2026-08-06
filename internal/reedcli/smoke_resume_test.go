@@ -121,15 +121,15 @@ func TestSmokeCrashRecovery(t *testing.T) {
 	}
 }
 
-// TestSmokeClaudeResumeRecallsCodeword is the end-to-end proof of reed's one
-// Claude-adjacent responsibility: env hygiene on the server spawn (without
-// it, a claude launched from inside a Claude Code session treats itself as
-// a nested child and silently stops persisting its transcript) plus the
-// opaque resumeCmd replay. It launches a real claude in a strand with a
-// codeword prompt, kills the whole tmux server out from under it, resumes
-// via the stored `claude --continue`, and asserts the codeword comes back —
+// TestSmokeClaudeResumeRecallsCodeword is the end-to-end proof of reed's one Claude-adjacent
+// responsibility: env hygiene on the server spawn (without it, a claude launched from inside a
+// Claude Code session treats itself as a nested child and silently stops persisting its transcript)
+// plus the opaque resumeCmd replay.
+// It launches a real claude in a strand with a codeword prompt, kills the whole tmux server out
+// from under it, resumes via the stored `claude --continue`, and asserts the codeword comes back —
 // which is only possible if the transcript was persisted and found again.
-// Needs a logged-in claude CLI; runs a real subscription session (~1-3 min).
+// Needs a logged-in claude CLI;
+// runs a real subscription session (~1-3 min).
 func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	claudePath := claudeBinaryPath(t)

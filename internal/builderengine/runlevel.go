@@ -1,13 +1,11 @@
-// runlevel.go implements Run, the `run` verb's engine core: the run-lock,
-// the automatic validation gate, the plan-fingerprint crash/resume guard
-// (with its --fresh archive/re-init escape), the never-instantly-re-pause
-// clear (performed only once those refusal gates pass, so a refused run
-// leaves a pending pause intact), the always-fresh orchestrator spawn
-// (stencil-filled prompt,
-// rendered batch index + progress), and the shuttle-outcome-to-RunResult
-// mapping the discussion's distinct-envelope decision pins. Named runlevel.go
-// (not run.go) to avoid colliding with the poll/spawn files' own naming, per
-// this batch's own file-naming note.
+// runlevel.go implements Run, the `run` verb's engine core: the run-lock, the automatic validation
+// gate, the plan-fingerprint crash/resume guard (with its --fresh archive/re-init escape), the
+// never-instantly-re-pause clear (performed only once those refusal gates pass, so a refused run
+// leaves a pending pause intact), the always-fresh orchestrator spawn (stencil-filled prompt,
+// rendered batch index + progress), and the shuttle-outcome-to-RunResult mapping the discussion's
+// distinct-envelope decision pins.
+// Named runlevel.go (not run.go) to avoid colliding with the poll/spawn files' own naming, per this
+// batch's own file-naming note.
 
 package builderengine
 
@@ -35,27 +33,27 @@ import (
 // then both drive the batch loop at once.
 const runLockName = "run.lock"
 
-// ErrRunBusy marks Run's fail-fast refusal when another invocation already
-// holds the run.lock. A caller must treat this refusal specially: the losing
-// call touched nothing on disk, so it must skip exit-time bookkeeping.
+// ErrRunBusy marks Run's fail-fast refusal when another invocation already holds the run.lock.
+// A caller must treat this refusal specially: the losing call touched nothing on disk, so it must
+// skip exit-time bookkeeping.
 var ErrRunBusy = errors.New("builder: run is already in progress")
 
-// ErrFingerprintMismatch marks Run's fail-loud refusal when the on-disk
-// plan's fingerprint no longer matches the fingerprint recorded in
-// state.json at first init — the discussion's plan-fingerprint decision:
-// stale reports from a superseded plan must never be misread as progress.
-// The refusal is unconditional UNLESS the caller passed RunOptions.Fresh,
-// which instead archives the stale state and reports and re-inits (see Run).
+// ErrFingerprintMismatch marks Run's fail-loud refusal when the on-disk plan's fingerprint no
+// longer matches the fingerprint recorded in state.json at first init — the discussion's
+// plan-fingerprint decision: stale reports from a superseded plan must never be misread as
+// progress.
+// The refusal is unconditional UNLESS the caller passed RunOptions.Fresh, which instead archives
+// the stale state and reports and re-inits (see Run).
 var ErrFingerprintMismatch = errors.New("builder: on-disk plan fingerprint does not match this run's recorded state")
 
-// OrchestratorAskingError marks Run's mapping of a shuttle OutcomeAsking
-// result for the orchestrator's own spawn: the orchestrator ended its turn
-// asking a question instead of ever reaching its own outcome-file final
-// action. Unwrap returns ErrOrchestratorAsking so a caller can classify via
-// errors.Is without needing the concrete type; the concrete type itself
-// carries the per-call SessionID, RunDir, and LastAssistantMessage a caller
-// needs to log or resume from — the discussion's "each carrying SessionID
-// and the kept RunDir, and for asking the LastAssistantMessage" requirement.
+// OrchestratorAskingError marks Run's mapping of a shuttle OutcomeAsking result for the
+// orchestrator's own spawn: the orchestrator ended its turn asking a question instead of ever
+// reaching its own outcome-file final action.
+// Unwrap returns ErrOrchestratorAsking so a caller can classify via errors.Is without needing the
+// concrete type;
+// the concrete type itself carries the per-call SessionID, RunDir, and LastAssistantMessage a
+// caller needs to log or resume from — the discussion's "each carrying SessionID and the kept
+// RunDir, and for asking the LastAssistantMessage" requirement.
 type OrchestratorAskingError struct {
 	SessionID string
 	RunDir    string
@@ -71,9 +69,9 @@ func (e *OrchestratorAskingError) Unwrap() error { return ErrOrchestratorAsking 
 // ErrOrchestratorAsking is the sentinel OrchestratorAskingError wraps.
 var ErrOrchestratorAsking = errors.New("builder: orchestrator asking")
 
-// OrchestratorDiedError marks Run's mapping of a shuttle OutcomeDied result
-// for the orchestrator's own spawn: its pane died (or it never became
-// ready) before it ever reached its own outcome-file final action.
+// OrchestratorDiedError marks Run's mapping of a shuttle OutcomeDied result for the orchestrator's
+// own spawn: its pane died (or it never became ready) before it ever reached its own outcome-file
+// final action.
 type OrchestratorDiedError struct {
 	SessionID string
 	RunDir    string
@@ -88,9 +86,9 @@ func (e *OrchestratorDiedError) Unwrap() error { return ErrOrchestratorDied }
 // ErrOrchestratorDied is the sentinel OrchestratorDiedError wraps.
 var ErrOrchestratorDied = errors.New("builder: orchestrator died")
 
-// OrchestratorTimeoutError marks Run's mapping of a shuttle OutcomeTimeout
-// result for the orchestrator's own spawn: its wall-clock Timeout elapsed
-// before it ever reached its own outcome-file final action.
+// OrchestratorTimeoutError marks Run's mapping of a shuttle OutcomeTimeout result for the
+// orchestrator's own spawn: its wall-clock Timeout elapsed before it ever reached its own
+// outcome-file final action.
 type OrchestratorTimeoutError struct {
 	SessionID string
 	RunDir    string
@@ -105,17 +103,17 @@ func (e *OrchestratorTimeoutError) Unwrap() error { return ErrOrchestratorTimeou
 // ErrOrchestratorTimeout is the sentinel OrchestratorTimeoutError wraps.
 var ErrOrchestratorTimeout = errors.New("builder: orchestrator timed out")
 
-// OrchestratorHandle is the started-but-not-yet-finished orchestrator spawn
-// Run blocks on. *shuttleengine.Run satisfies this structurally.
+// OrchestratorHandle is the started-but-not-yet-finished orchestrator spawn Run blocks on.
+// *shuttleengine.Run satisfies this structurally.
 type OrchestratorHandle interface {
 	StrandGUID() string
 	Wait() (shuttleengine.Result, error)
 }
 
-// OrchestratorStarter is the seam Run spawns the orchestrator through. It is
-// deliberately two-phase: Run must persist the orchestrator's strand identity
-// to state.json BEFORE blocking on it, or a process crash mid-wait orphans
-// the pane.
+// OrchestratorStarter is the seam Run spawns the orchestrator through.
+// It is deliberately two-phase: Run must persist the orchestrator's strand identity to state.json
+// BEFORE blocking on it,
+// or a process crash mid-wait orphans the pane.
 type OrchestratorStarter interface {
 	StartOrchestrator(shuttleengine.Spec) (OrchestratorHandle, error)
 }
@@ -132,17 +130,16 @@ type RunDeps struct {
 	Roles        map[Role]modelspec.Resolved
 }
 
-// RunOptions carries one `run` invocation's caller-supplied choices. Fresh
-// requests the fingerprint-mismatch escape: archive the stale state.json and
-// reports dir and re-init, rather than refusing with ErrFingerprintMismatch.
+// RunOptions carries one `run` invocation's caller-supplied choices.
+// Fresh requests the fingerprint-mismatch escape: archive the stale state.json and reports dir and
+// re-init, rather than refusing with ErrFingerprintMismatch.
 type RunOptions struct {
 	Fresh bool
 }
 
-// RunResult is what one successful Run call hands back to its caller
-// (internal/buildercli's `run` verb): the orchestrator's own outcome-file
-// judgment (Outcome/StuckReason/BatchesDone) plus the SessionID and RunDir
-// the CLI envelope surfaces alongside it.
+// RunResult is what one successful Run call hands back to its caller (internal/buildercli's `run`
+// verb): the orchestrator's own outcome-file judgment (Outcome/StuckReason/BatchesDone) plus the
+// SessionID and RunDir the CLI envelope surfaces alongside it.
 type RunResult struct {
 	// Outcome is one of OutcomeDone, OutcomeStuck, or OutcomePaused, taken
 	// verbatim from the parsed outcome.yaml.
@@ -172,8 +169,9 @@ func newRunGUID() (string, error) {
 // identically regardless of which one archived it.
 const archiveTimestampFormat = "20060102T150405Z"
 
-// FirstFreeArchivePath returns the first path in the sequence candidate(""),
-// candidate("-1"), candidate("-2"), ... that does not currently exist on disk.
+// FirstFreeArchivePath returns the first path in the sequence candidate(""), candidate("-1"),
+// candidate("-2"), ...
+// that does not currently exist on disk.
 func FirstFreeArchivePath(candidate func(suffix string) string) (string, error) {
 	for n := 0; ; n++ {
 		suffix := ""
@@ -190,8 +188,8 @@ func FirstFreeArchivePath(candidate func(suffix string) string) (string, error) 
 	}
 }
 
-// ArchiveStateFile renames builderDir's state.json to
-// state-<UTC-compact-timestamp>.json in place. Absent file: ("", nil).
+// ArchiveStateFile renames builderDir's state.json to state-<UTC-compact-timestamp>.json in place.
+// Absent file: ("", nil).
 func ArchiveStateFile(builderDir string, now func() time.Time) (string, error) {
 	path := filepath.Join(builderDir, stateFileName)
 	if _, err := os.Stat(path); err != nil {
@@ -215,8 +213,8 @@ func ArchiveStateFile(builderDir string, now func() time.Time) (string, error) {
 	return target, nil
 }
 
-// ArchiveReportsDir renames reportsDir to <reportsDir>-<UTC-compact-timestamp>
-// if present, then recreates an empty reportsDir.
+// ArchiveReportsDir renames reportsDir to <reportsDir>-<UTC-compact-timestamp> if present, then
+// recreates an empty reportsDir.
 func ArchiveReportsDir(reportsDir string, now func() time.Time) error {
 	if _, err := os.Stat(reportsDir); err != nil {
 		if !os.IsNotExist(err) {
@@ -293,12 +291,11 @@ func renderProgress(plan *Plan, reportsDir string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-// Run drives one `lyx builder run` invocation to completion: acquires the
-// run-level mutex, validates the plan, guards against stale plans, clears any
-// pending pause, archives stale outcomes, spawns the orchestrator, and maps
-// the shuttle outcome to RunResult. ErrRunBusy and ErrFingerprintMismatch
-// are sentinel errors a caller matches via errors.Is. All errors are
-// "builder: "-prefixed.
+// Run drives one `lyx builder run` invocation to completion: acquires the run-level mutex,
+// validates the plan, guards against stale plans, clears any pending pause, archives stale
+// outcomes, spawns the orchestrator, and maps the shuttle outcome to RunResult.
+// ErrRunBusy and ErrFingerprintMismatch are sentinel errors a caller matches via errors.Is.
+// All errors are "builder: "-prefixed.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.BuilderDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("builder: create builder dir %s: %w", deps.BuilderDir, err)

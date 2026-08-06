@@ -1,10 +1,9 @@
-// profile_test.go table-drives Profile.validate over the happy path and
-// every fail-loud rule documented on validate: default resolution for
-// RoundCaps/JudgeModel/JudgeEffort/Gate.Timeout, RoundCaps shape, Gate.Mode
-// legality and its Command-emptiness pairing, and the two negative-duration
-// rejections. It also separately exercises the three-level default
-// resolution chain (profile > Config > built-in) for RoundCaps and
-// JudgeModel.
+// profile_test.go table-drives Profile.validate over the happy path and every fail-loud rule
+// documented on validate: default resolution for RoundCaps/JudgeModel/JudgeEffort/Gate.Timeout,
+// RoundCaps shape, Gate.Mode legality and its Command-emptiness pairing, and the two
+// negative-duration rejections.
+// It also separately exercises the three-level default resolution chain (profile > Config >
+// built-in) for RoundCaps and JudgeModel.
 
 package perchengine
 
@@ -170,10 +169,9 @@ func TestProfile_Validate(t *testing.T) {
 	}
 }
 
-// TestProfile_Validate_RoundCapsDefaultChain exercises the three-level
-// default resolution chain (profile > Config > built-in) in isolation: a
-// profile value always wins, a Config value is used only when the profile
-// is empty, and the built-in default is used only when both are empty.
+// TestProfile_Validate_RoundCapsDefaultChain exercises the three-level default resolution chain
+// (profile > Config > built-in) in isolation: a profile value always wins, a Config value is used
+// only when the profile is empty, and the built-in default is used only when both are empty.
 func TestProfile_Validate_RoundCapsDefaultChain(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -216,8 +214,8 @@ func TestProfile_Validate_RoundCapsDefaultChain(t *testing.T) {
 	}
 }
 
-// TestProfile_Validate_JudgeModelDefaultChain exercises the three-level
-// default resolution chain (profile > Config > built-in) for JudgeModel.
+// TestProfile_Validate_JudgeModelDefaultChain exercises the three-level default resolution chain
+// (profile > Config > built-in) for JudgeModel.
 func TestProfile_Validate_JudgeModelDefaultChain(t *testing.T) {
 	tests := []struct {
 		name    string

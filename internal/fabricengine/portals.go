@@ -1,5 +1,5 @@
-// portals.go creates and removes the per-worktree portal junction
-// (<container>/_portals/<slug> -> the worktree's _lyx/), with idempotent removal.
+// portals.go creates and removes the per-worktree portal junction (<container>/_portals/<slug> ->
+// the worktree's _lyx/), with idempotent removal.
 
 package fabricengine
 
@@ -18,18 +18,16 @@ import (
 // resolution primitive lyxcwd needs to expose.
 const portalsDirName = "_portals"
 
-// PortalsDir returns the path to the _portals directory in the hub. Exported
-// because its live test caller (add_rollback_adopt_test.go) sits in the
-// external package fabricengine_test, where an unexported identifier does
-// not compile.
+// PortalsDir returns the path to the _portals directory in the hub.
+// Exported because its live test caller (add_rollback_adopt_test.go) sits in the external package
+// fabricengine_test, where an unexported identifier does not compile.
 func PortalsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.HubPath, portalsDirName)
 }
 
-// PortalLink returns the path to the mirrored portal junction link for the
-// given slug. It is mirrored into the repo subpath structure, including
-// AnchorRel segments. Exported for the same external-test-package reason as
-// PortalsDir.
+// PortalLink returns the path to the mirrored portal junction link for the given slug.
+// It is mirrored into the repo subpath structure, including AnchorRel segments.
+// Exported for the same external-test-package reason as PortalsDir.
 func PortalLink(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(l.HubPath, portalsDirName, l.AnchorRel, slug)
 }

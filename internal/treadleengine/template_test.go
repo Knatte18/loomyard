@@ -1,8 +1,8 @@
-// template_test.go pins the four embedded judge/triage/targeting prompt
-// templates' load-bearing statements as substring assertions, and separately
-// proves each template actually fills through stencil with its required
-// markers — mirroring burlerengine's TestTemplate_StatesRoundDiscipline /
-// TestTemplate_FillsWithAllMarkers style.
+// template_test.go pins the four embedded judge/triage/targeting prompt templates' load-bearing
+// statements as substring assertions,
+// and separately proves each template actually fills through stencil with its required markers —
+// mirroring burlerengine's TestTemplate_StatesRoundDiscipline / TestTemplate_FillsWithAllMarkers
+// style.
 
 package treadleengine
 
@@ -13,8 +13,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// TestJudgeCirclingTemplate_StatesLoadBearingRules asserts the template's
-// load-bearing phrases are present.
+// TestJudgeCirclingTemplate_StatesLoadBearingRules asserts the template's load-bearing phrases are
+// present.
 func TestJudgeCirclingTemplate_StatesLoadBearingRules(t *testing.T) {
 	text := string(judgeCirclingTemplate)
 
@@ -29,8 +29,8 @@ func TestJudgeCirclingTemplate_StatesLoadBearingRules(t *testing.T) {
 	requireHandoffMaintenanceRules(t, text)
 }
 
-// TestJudgeMilestoneTemplate_StatesLoadBearingRules is the milestone
-// continuation gate's analogue of the circling-check test above.
+// TestJudgeMilestoneTemplate_StatesLoadBearingRules is the milestone continuation gate's analogue
+// of the circling-check test above.
 func TestJudgeMilestoneTemplate_StatesLoadBearingRules(t *testing.T) {
 	text := string(judgeMilestoneTemplate)
 
@@ -69,9 +69,8 @@ func requireHandoffMaintenanceRules(t *testing.T, text string) {
 	requireContains(t, text, "{{.handoff_path}}")
 }
 
-// TestTriageTemplate_StatesLoadBearingRules is the asking-triage template's
-// analogue: its vocabulary, the one-line-restate-the-blocker rule, and the
-// single-output-file instruction.
+// TestTriageTemplate_StatesLoadBearingRules is the asking-triage template's analogue: its
+// vocabulary, the one-line-restate-the-blocker rule, and the single-output-file instruction.
 func TestTriageTemplate_StatesLoadBearingRules(t *testing.T) {
 	text := string(triageTemplate)
 
@@ -82,12 +81,11 @@ func TestTriageTemplate_StatesLoadBearingRules(t *testing.T) {
 	requireQuotedRationaleRule(t, text)
 }
 
-// TestTargetingTemplate_StatesLoadBearingRules is the pre-round targeting
-// judge template's analogue of the other templates' load-bearing-statement
-// pins: the read-the-handoff instruction, the exactly-one-output-file rule,
-// and the free-form (no frontmatter) output rule — unlike every other
-// template in this package, targeting produces no verdict and so has no
-// rationale-quoting rule to pin.
+// TestTargetingTemplate_StatesLoadBearingRules is the pre-round targeting judge template's analogue
+// of the other templates' load-bearing-statement pins: the read-the-handoff instruction, the
+// exactly-one-output-file rule, and the free-form (no frontmatter) output rule — unlike every other
+// template in this package, targeting produces no verdict and so has no rationale-quoting rule to
+// pin.
 func TestTargetingTemplate_StatesLoadBearingRules(t *testing.T) {
 	text := string(targetingTemplate)
 
@@ -163,9 +161,9 @@ func targetingMarkerValues() map[string]string {
 	}
 }
 
-// TestJudgeCirclingTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds
-// when every required marker is supplied, and fails — naming the marker —
-// when any single one is absent.
+// TestJudgeCirclingTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when every required
+// marker is supplied,
+// and fails — naming the marker — when any single one is absent.
 func TestJudgeCirclingTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.Fill(judgeCirclingTemplate, judgeCirclingMarkerValues()); err != nil {
@@ -188,8 +186,8 @@ func TestJudgeCirclingTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestJudgeMilestoneTemplate_FillsWithAllMarkers is the milestone template's
-// analogue of the circling-check fill test above.
+// TestJudgeMilestoneTemplate_FillsWithAllMarkers is the milestone template's analogue of the
+// circling-check fill test above.
 func TestJudgeMilestoneTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.Fill(judgeMilestoneTemplate, judgeMilestoneMarkerValues()); err != nil {
@@ -212,8 +210,8 @@ func TestJudgeMilestoneTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTriageTemplate_FillsWithAllMarkers is the triage template's analogue of
-// the two judge fill tests above.
+// TestTriageTemplate_FillsWithAllMarkers is the triage template's analogue of the two judge fill
+// tests above.
 func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.Fill(triageTemplate, triageMarkerValues()); err != nil {
@@ -236,8 +234,8 @@ func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestTargetingTemplate_FillsWithAllMarkers is the pre-round targeting
-// template's analogue of the three fill tests above.
+// TestTargetingTemplate_FillsWithAllMarkers is the pre-round targeting template's analogue of the
+// three fill tests above.
 func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.Fill(targetingTemplate, targetingMarkerValues()); err != nil {

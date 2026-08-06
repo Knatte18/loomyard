@@ -1,7 +1,6 @@
-// header.go implements Engine.HeaderText and Engine.ValidateHeader: the
-// header pane's text-rendering pipeline over internal/tokenvocab, and the
-// eager, loud validation hook the boot path (batch 4) runs before the
-// session comes up.
+// header.go implements Engine.HeaderText and Engine.ValidateHeader: the header pane's
+// text-rendering pipeline over internal/tokenvocab,
+// and the eager, loud validation hook the boot path (batch 4) runs before the session comes up.
 
 package reedengine
 

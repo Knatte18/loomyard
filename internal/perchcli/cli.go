@@ -1,16 +1,13 @@
-// cli.go builds the cobra command tree for the perch module and the
-// RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "perch" command carries a PersistentPreRunE that resolves
-// cwd -> layout -> shuttle config -> reed config -> models registry -> perch
-// config -> burler config -> reed engine -> claude engine ->
-// shuttleengine.Runner -> burlerengine.Engine
-// exactly once per invocation, storing the resolved ingredients on perchCLI
-// rather than a constructed *perchengine.Engine: the pause seam
-// (perchengine.Options.
-// PauseRequested) closes over a per-run runDir that is only known once the
-// run verb has resolved --profile and --run-id, so the run verb calls
-// perchengine.New itself, per invocation. perchcli is the
-// module's claudeengine wiring point, mirroring the Provider-Seam Invariant.
+// cli.go builds the cobra command tree for the perch module and the RunCLI seam that wires it into
+// the standard io.Writer-based call contract.
+// The parent "perch" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
+// config -> reed config -> models registry -> perch config -> burler config -> reed engine ->
+// claude engine -> shuttleengine.Runner -> burlerengine.Engine exactly once per invocation, storing
+// the resolved ingredients on perchCLI rather than a constructed *perchengine.Engine: the pause
+// seam (perchengine.Options.
+// PauseRequested) closes over a per-run runDir that is only known once the run verb has resolved
+// --profile and --run-id, so the run verb calls perchengine.New itself, per invocation.
+// perchcli is the module's claudeengine wiring point, mirroring the Provider-Seam Invariant.
 
 package perchcli
 

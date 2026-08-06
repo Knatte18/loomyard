@@ -1,9 +1,8 @@
-// headerpane.go implements headerLaunchCmd/headerLaunchLine, the pure
-// helpers that compose the shell command line the always-present header pane
-// runs. They are kept separate from the boot site (lifecycle.go) that
-// actually creates the pane so the command-string assembly stays
-// host-testable with a fake exe: the real os.Executable() lookup happens
-// only at the boot site, never here.
+// headerpane.go implements headerLaunchCmd/headerLaunchLine, the pure helpers that compose the
+// shell command line the always-present header pane runs.
+// They are kept separate from the boot site (lifecycle.go) that actually creates the pane so the
+// command-string assembly stays host-testable with a fake exe: the real os.Executable() lookup
+// happens only at the boot site, never here.
 
 package reedengine
 

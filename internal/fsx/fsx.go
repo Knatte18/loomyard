@@ -1,8 +1,8 @@
 // fsx.go implements filesystem-safety primitives for atomic writes and path validation.
 //
-// This package provides path guards to prevent escapes (empty, absolute, parent
-// directory references) and atomic file writes via temp-file + rename, ensuring
-// that concurrent readers are not caught mid-write.
+// This package provides path guards to prevent escapes (empty, absolute, parent directory
+// references) and atomic file writes via temp-file + rename, ensuring that concurrent readers are
+// not caught mid-write.
 
 package fsx
 
@@ -21,8 +21,8 @@ func (e PathError) Error() string {
 	return string(e)
 }
 
-// PathGuard validates a relative path, rejecting empty, absolute, and
-// parent-directory-reference paths.
+// PathGuard validates a relative path, rejecting empty, absolute, and parent-directory-reference
+// paths.
 func PathGuard(relPath string) error {
 	if relPath == "" {
 		return PathError("empty path")
@@ -48,8 +48,8 @@ func PathGuard(relPath string) error {
 	return nil
 }
 
-// AtomicWriteBytes writes data to an absolute file path atomically via a temp
-// file and rename, ensuring concurrent readers never see partial writes.
+// AtomicWriteBytes writes data to an absolute file path atomically via a temp file and rename,
+// ensuring concurrent readers never see partial writes.
 func AtomicWriteBytes(absPath string, data []byte) error {
 	dir := filepath.Dir(absPath)
 
@@ -78,8 +78,8 @@ func AtomicWriteBytes(absPath string, data []byte) error {
 	return nil
 }
 
-// AtomicWrite writes content to dir/relPath atomically after validating the
-// relative path via PathGuard.
+// AtomicWrite writes content to dir/relPath atomically after validating the relative path via
+// PathGuard.
 func AtomicWrite(dir, relPath, content string) error {
 	if err := PathGuard(relPath); err != nil {
 		return err

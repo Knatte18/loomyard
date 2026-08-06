@@ -1,7 +1,6 @@
-// hostclean.go implements a standalone worktree-pair cleanliness check, a
-// package-level Clean used by loomengine.Preflight to determine whether both
-// sides of a host/weft pair have any dirty (uncommitted or untracked) paths
-// before a loom phase transition proceeds.
+// hostclean.go implements a standalone worktree-pair cleanliness check, a package-level Clean used
+// by loomengine.Preflight to determine whether both sides of a host/weft pair have any dirty
+// (uncommitted or untracked) paths before a loom phase transition proceeds.
 
 package fabricengine
 
@@ -14,8 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// Clean reports whether both the host and weft worktrees have no dirty paths,
-// including untracked files. It is package-level for use by loomengine.Preflight.
+// Clean reports whether both the host and weft worktrees have no dirty paths, including untracked
+// files.
+// It is package-level for use by loomengine.Preflight.
 // The weft-side check is skipped when the weft worktree does not exist.
 // Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
 func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {

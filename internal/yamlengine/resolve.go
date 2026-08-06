@@ -1,6 +1,6 @@
 // resolve.go implements environment variable expansion in YAML content.
-// It walks YAML node trees and replaces ${env:...} markers with values from
-// a supplied environment map.
+// It walks YAML node trees and replaces ${env:...} markers with values from a supplied environment
+// map.
 
 package yamlengine
 
@@ -18,9 +18,10 @@ import (
 // Group 3: the default value (captured only if group 2 matched)
 var envMarkerRe = regexp.MustCompile(`\$\{env:([A-Za-z_][A-Za-z0-9_]*)(:-((?s).*?))?\}`)
 
-// Resolve expands ${env:...} markers in YAML content using the supplied
-// environment map. An empty or whitespace-only src resolves to itself. The
-// caller is responsible for populating env; Resolve performs no I/O.
+// Resolve expands ${env:...} markers in YAML content using the supplied environment map.
+// An empty or whitespace-only src resolves to itself.
+// The caller is responsible for populating env;
+// Resolve performs no I/O.
 func Resolve(src []byte, env map[string]string) ([]byte, error) {
 	// Handle empty/whitespace-only input
 	if len(strings.TrimSpace(string(src))) == 0 {

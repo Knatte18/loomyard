@@ -38,8 +38,8 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// TestMissingFile reads a never-written path and verifies found=false, err=nil,
-// and that the parent dir and lock file now exist.
+// TestMissingFile reads a never-written path and verifies found=false, err=nil, and that the parent
+// dir and lock file now exist.
 func TestMissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "subdir", "missing.json")
@@ -84,8 +84,8 @@ func TestCorruptFile(t *testing.T) {
 	}
 }
 
-// TestNoTempLeak verifies that after WriteJSON, the directory contains only
-// the data file and <path>.lock, with no .tmp- entries.
+// TestNoTempLeak verifies that after WriteJSON, the directory contains only the data file and
+// <path>.lock, with no .tmp- entries.
 func TestNoTempLeak(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "state.json")
@@ -124,8 +124,8 @@ func TestNoTempLeak(t *testing.T) {
 	}
 }
 
-// TestOverwrite writes a value, then writes a different value, and verifies
-// ReadJSON returns the new value.
+// TestOverwrite writes a value, then writes a different value, and verifies ReadJSON returns the
+// new value.
 func TestOverwrite(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "state.json")

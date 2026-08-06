@@ -1,6 +1,7 @@
-// identity.go implements identityBatcher, the library's baseline Batcher: one card
-// per Batch, in input order. It self-registers into the package registry at
-// package init so webster's call sites never construct it directly.
+// identity.go implements identityBatcher, the library's baseline Batcher: one card per Batch, in
+// input order.
+// It self-registers into the package registry at package init so webster's call sites never
+// construct it directly.
 
 package batcher
 

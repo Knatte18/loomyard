@@ -147,11 +147,11 @@ func assertCheckSet(t *testing.T, got Report, want ...CheckID) {
 	}
 }
 
-// TestPreflight_HealthyPairAndSeed is the anchor case: a fully healthy paired
-// host+weft worktree with a valid fresh seed reports OK. Since CopyPaired's
-// host hub is a single-worktree repo, its Layout.Prime already equals
-// Layout.WorktreeRoot — this test doubles as the "Prime worktree with a
-// healthy pair+seed" scenario (run-in-existing-or-prime-worktree).
+// TestPreflight_HealthyPairAndSeed is the anchor case: a fully healthy paired host+weft worktree
+// with a valid fresh seed reports OK.
+// Since CopyPaired's host hub is a single-worktree repo, its Layout.Prime already equals
+// Layout.WorktreeRoot — this test doubles as the "Prime worktree with a healthy pair+seed" scenario
+// (run-in-existing-or-prime-worktree).
 func TestPreflight_HealthyPairAndSeed(t *testing.T) {
 	t.Parallel()
 
@@ -164,10 +164,10 @@ func TestPreflight_HealthyPairAndSeed(t *testing.T) {
 	assertCheckSet(t, report)
 }
 
-// TestPreflight_NotAGitRepo asserts that Preflight() invoked outside any git
-// repository reports a single geometry failure with no error. This exercises
-// the public Preflight() (not checkResolved) because it needs
-// lyxcwd.Getwd() to observe a non-repo cwd.
+// TestPreflight_NotAGitRepo asserts that Preflight() invoked outside any git repository reports a
+// single geometry failure with no error.
+// This exercises the public Preflight() (not checkResolved) because it needs lyxcwd.Getwd() to
+// observe a non-repo cwd.
 func TestPreflight_NotAGitRepo(t *testing.T) {
 	// t.TempDir() must be created before restoreCwd registers its cleanup —
 	// see restoreCwd's doc comment: on Windows, cleanup must chdir back out of
@@ -186,10 +186,10 @@ func TestPreflight_NotAGitRepo(t *testing.T) {
 	assertCheckSet(t, report, CheckGeometry)
 }
 
-// TestPreflight_SubdirectoryInvocation asserts that Preflight() invoked from
-// a subdirectory of the worktree (RelPath != ".") short-circuits with a
-// single worktree-root failure. Exercises the public Preflight() for the
-// same reason as TestPreflight_NotAGitRepo.
+// TestPreflight_SubdirectoryInvocation asserts that Preflight() invoked from a subdirectory of the
+// worktree (RelPath != ".")
+// short-circuits with a single worktree-root failure.
+// Exercises the public Preflight() for the same reason as TestPreflight_NotAGitRepo.
 func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	// setupPreflightFixture's t.TempDir()-backed fixture must be created before
 	// restoreCwd registers its cleanup — see restoreCwd's doc comment: on
@@ -223,10 +223,9 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	assertCheckSet(t, report, CheckWorktreeRoot)
 }
 
-// TestPreflight_HostDirty covers all three ways Clean can observe a dirty
-// host worktree (a tracked-and-modified file, a staged file, and an
-// untracked-only file), plus the genuinely-new weft-dirty-only and
-// both-dirty shapes now that Clean also checks the weft side.
+// TestPreflight_HostDirty covers all three ways Clean can observe a dirty host worktree (a
+// tracked-and-modified file, a staged file, and an untracked-only file), plus the genuinely-new
+// weft-dirty-only and both-dirty shapes now that Clean also checks the weft side.
 func TestPreflight_HostDirty(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -300,10 +299,9 @@ func TestPreflight_HostDirty(t *testing.T) {
 	}
 }
 
-// TestPreflight_WeftWorktreeRemoved asserts that a removed weft worktree
-// reports weft-pairing, and that the now-dangling host junction makes the
-// seed stat fail too — classified seed-unreadable (never seed-missing)
-// because check 3 already failed.
+// TestPreflight_WeftWorktreeRemoved asserts that a removed weft worktree reports weft-pairing,
+// and that the now-dangling host junction makes the seed stat fail too — classified seed-unreadable
+// (never seed-missing) because check 3 already failed.
 func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 	t.Parallel()
 
@@ -320,9 +318,9 @@ func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 	assertCheckSet(t, report, CheckWeftPairing, CheckSeedUnreadable)
 }
 
-// TestPreflight_HostWeftDifferentBranches asserts that host and weft
-// worktrees on different branches report weft-sync, and that weft-sync alone
-// does NOT block the seed check (the junction and weft directory are both
+// TestPreflight_HostWeftDifferentBranches asserts that host and weft worktrees on different
+// branches report weft-sync,
+// and that weft-sync alone does NOT block the seed check (the junction and weft directory are both
 // still healthy).
 func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 	t.Parallel()
@@ -338,25 +336,23 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 	assertCheckSet(t, report, CheckWeftSync)
 }
 
-// TestPreflight_JunctionBroken asserts that all three of Healthy's
-// junction-drift shapes — missing, not-a-link, and points-elsewhere —
-// classify as junction (card 12's substring-match fix: a prefix match only
-// ever caught the missing shape). Each drift shape is exercised against BOTH
-// junctions (_lyx and _pattern, from card 15 onward) so the classification is
-// proven to hold for the second, non-_lyx junction too — not just the one
+// TestPreflight_JunctionBroken asserts that all three of Healthy's junction-drift shapes — missing,
+// not-a-link, and points-elsewhere — classify as junction (card 12's substring-match fix: a prefix
+// match only ever caught the missing shape).
+// Each drift shape is exercised against BOTH junctions (_lyx and _pattern, from card 15 onward) so
+// the classification is proven to hold for the second, non-_lyx junction too — not just the one
 // Healthy's underlying loop was originally written and tested against.
 //
-// The seed-check expectation differs by junction, and deliberately so:
-// status.json lives under _lyx (LoomStatusFile(l) is _lyx-anchored), so a
-// broken _lyx junction also makes the seed stat fail — classified
-// seed-unreadable (never seed-missing) because check 3 already failed. A
-// broken _pattern junction, by contrast, leaves the seed fully readable
-// through the still-healthy _lyx junction: check 3 still fails and still
-// classifies as CheckJunction (never CheckWeftSync), but no seed failure is
-// added at all, since check 4's stat of LoomStatusFile(l) succeeds either
-// way. This asymmetry is exactly what "check3BlocksSeed" is named for: it
-// only changes check 4's classification of a stat failure that already
-// happened, it does not itself cause one.
+// The seed-check expectation differs by junction,
+// and deliberately so: status.json lives under _lyx (LoomStatusFile(l) is _lyx-anchored), so a
+// broken _lyx junction also makes the seed stat fail — classified seed-unreadable (never
+// seed-missing) because check 3 already failed.
+// A broken _pattern junction, by contrast, leaves the seed fully readable through the still-healthy
+// _lyx junction: check 3 still fails and still classifies as CheckJunction (never CheckWeftSync),
+// but no seed failure is added at all, since check 4's stat of LoomStatusFile(l) succeeds either
+// way.
+// This asymmetry is exactly what "check3BlocksSeed" is named for: it only changes check 4's
+// classification of a stat failure that already happened, it does not itself cause one.
 func TestPreflight_JunctionBroken(t *testing.T) {
 	shapes := []struct {
 		name    string
@@ -437,18 +433,18 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 	}
 }
 
-// TestPreflight_LegacyWorktreeUpgrade covers the upgrade consequence every
-// worktree wired before card 15 meets: _lyx is fully healthy, but _pattern was
-// never wired at all (simulated here by removing it from an otherwise-healthy
+// TestPreflight_LegacyWorktreeUpgrade covers the upgrade consequence every worktree wired before
+// card 15 meets: _lyx is fully healthy,
+// but _pattern was never wired at all (simulated here by removing it from an otherwise-healthy
 // fixture, rather than corrupting it — the fixture never had it, full stop).
-// Preflight must classify this as CheckJunction, never CheckWeftSync, and
-// blocks the run (report.OK == false) — but does NOT also fail the seed
-// check, since status.json lives under the still-healthy _lyx junction (see
-// TestPreflight_JunctionBroken's doc comment for the same asymmetry). A
-// single Reconcile repairs it (adds the missing junction and materialises its
-// weft-side target) rather than reporting already-healthy; and a fresh
-// Preflight afterward reports OK — the "one lyx init or one lyx fabric
-// reconcile" remedy this batch documents.
+// Preflight must classify this as CheckJunction, never CheckWeftSync, and blocks the run (report.OK
+// == false) — but does NOT also fail the seed check, since status.json lives under the
+// still-healthy _lyx junction (see TestPreflight_JunctionBroken's doc comment for the same
+// asymmetry).
+// A single Reconcile repairs it (adds the missing junction and materialises its weft-side target)
+// rather than reporting already-healthy;
+// and a fresh Preflight afterward reports OK — the "one lyx init or one lyx fabric reconcile"
+// remedy this batch documents.
 func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	t.Parallel()
 
@@ -505,8 +501,8 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	assertCheckSet(t, report)
 }
 
-// TestPreflight_SeedMissing asserts that a genuinely absent seed — junction
-// and weft pairing both healthy — reports seed-missing, not seed-unreadable.
+// TestPreflight_SeedMissing asserts that a genuinely absent seed — junction and weft pairing both
+// healthy — reports seed-missing, not seed-unreadable.
 func TestPreflight_SeedMissing(t *testing.T) {
 	t.Parallel()
 
@@ -524,8 +520,8 @@ func TestPreflight_SeedMissing(t *testing.T) {
 	assertCheckSet(t, report, CheckSeedMissing)
 }
 
-// TestPreflight_SeedUnknownField asserts that a seed containing an unknown
-// field fails strict decode and reports seed-incoherent.
+// TestPreflight_SeedUnknownField asserts that a seed containing an unknown field fails strict
+// decode and reports seed-incoherent.
 func TestPreflight_SeedUnknownField(t *testing.T) {
 	t.Parallel()
 
@@ -555,9 +551,9 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
 	assertCheckSet(t, report, CheckSeedIncoherent)
 }
 
-// TestPreflight_SeedHalfFinished asserts that a coherent-but-advanced seed
-// (non-empty history, or a stamped start_sha) reports half-finished — the
-// task has already run past the point Preflight is meant to gate.
+// TestPreflight_SeedHalfFinished asserts that a coherent-but-advanced seed (non-empty history, or a
+// stamped start_sha) reports half-finished — the task has already run past the point Preflight is
+// meant to gate.
 func TestPreflight_SeedHalfFinished(t *testing.T) {
 	tests := []struct {
 		name string
@@ -606,9 +602,9 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 	}
 }
 
-// TestPreflight_MultipleSimultaneousFailures asserts that independently
-// tripped checks (a dirty host and a branch-diverged weft) are both
-// collected into one Report rather than the first short-circuiting the rest.
+// TestPreflight_MultipleSimultaneousFailures asserts that independently tripped checks (a dirty
+// host and a branch-diverged weft) are both collected into one Report rather than the first
+// short-circuiting the rest.
 func TestPreflight_MultipleSimultaneousFailures(t *testing.T) {
 	t.Parallel()
 

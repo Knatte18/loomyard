@@ -19,9 +19,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestAdd_ExistingBranchErrorNamesRemedy creates the host branch a slug would
-// claim, calls Add with that slug, and asserts the rejection names both
-// remedies (checkout onto it, or delete the leftover).
+// TestAdd_ExistingBranchErrorNamesRemedy creates the host branch a slug would claim, calls Add with
+// that slug, and asserts the rejection names both remedies (checkout onto it, or delete the
+// leftover).
 func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	t.Parallel()
 

@@ -1,10 +1,9 @@
-// pause.go implements the `pause` webster verb: it writes the pause flag
-// file begin-batch's batch-boundary check refuses against once set, mirroring
-// buildercli's own pause.go byte-for-byte except for the target dir and the
-// resume verb it names. webster owns its own pause-flag mechanics
-// (websterengine.RequestPause, a webster-local copy of builder's
-// pause.go -- builder's own version has an in-tree builder caller and
-// cannot be moved, per the builder-is-frozen-copy-not-move decision).
+// pause.go implements the `pause` webster verb: it writes the pause flag file begin-batch's
+// batch-boundary check refuses against once set, mirroring buildercli's own pause.go byte-for-byte
+// except for the target dir and the resume verb it names.
+// webster owns its own pause-flag mechanics (websterengine.RequestPause, a webster-local copy of
+// builder's pause.go -- builder's own version has an in-tree builder caller and cannot be moved,
+// per the builder-is-frozen-copy-not-move decision).
 package webstercli
 
 import (

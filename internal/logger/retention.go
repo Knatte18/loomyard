@@ -1,9 +1,9 @@
-// retention.go implements the durable trace-file retention sweep: a
-// standalone function over a directory path that enforces the age and count
-// bounds discussion.md's `retention` decision describes. It is deliberately
-// independent of the durable sink (batch 4), lyxcwd (batch 1), and
-// trace identity (batch 2) — Sweep takes a directory path from its caller
-// and needs only internal/proc's liveness probe plus the standard library.
+// retention.go implements the durable trace-file retention sweep: a standalone function over a
+// directory path that enforces the age and count bounds discussion.md's `retention` decision
+// describes.
+// It is deliberately independent of the durable sink (batch 4), lyxcwd (batch 1), and trace
+// identity (batch 2) — Sweep takes a directory path from its caller and needs only internal/proc's
+// liveness probe plus the standard library.
 
 package logger
 
@@ -29,9 +29,13 @@ type retentionCandidate struct {
 	timestamp time.Time
 }
 
-// Sweep enforces the trace-file directory's retention policy by removing old files and keeping only the newest files.
-// Files are ranked by filename timestamp, never mtime. Live processes are never deleted. Non-matching files are untouched.
-// Delete failures are silently tolerated. Empty or absent directories return nil.
+// Sweep enforces the trace-file directory's retention policy by removing old files and keeping only
+// the newest files.
+// Files are ranked by filename timestamp, never mtime.
+// Live processes are never deleted.
+// Non-matching files are untouched.
+// Delete failures are silently tolerated.
+// Empty or absent directories return nil.
 func Sweep(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

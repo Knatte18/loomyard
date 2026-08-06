@@ -57,8 +57,8 @@ func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 	return path
 }
 
-// TestBolt_DirtyRepo_CommitsAndPushes asserts that Commit followed by Push
-// lands a real commit and advances the bare origin to that same SHA.
+// TestBolt_DirtyRepo_CommitsAndPushes asserts that Commit followed by Push lands a real commit and
+// advances the bare origin to that same SHA.
 func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)
@@ -88,9 +88,9 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 	}
 }
 
-// TestBolt_CleanRepo_CommitAndPushAreNoOps asserts that Commit reports
-// committed=false on a repo with nothing new to stage, and a subsequent Push
-// is a true no-op (never touches the network, never errors) once nothing is
+// TestBolt_CleanRepo_CommitAndPushAreNoOps asserts that Commit reports committed=false on a repo
+// with nothing new to stage,
+// and a subsequent Push is a true no-op (never touches the network, never errors) once nothing is
 // ahead of upstream.
 func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 	container := t.TempDir()
@@ -137,8 +137,8 @@ func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 	}
 }
 
-// TestBolt_SkipGit_ShortCircuits asserts that opts.SkipGit stops Commit
-// before any git is spawned, leaving a dirty untracked file untouched.
+// TestBolt_SkipGit_ShortCircuits asserts that opts.SkipGit stops Commit before any git is spawned,
+// leaving a dirty untracked file untouched.
 func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)
@@ -165,10 +165,9 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 	}
 }
 
-// TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst asserts that Sync
-// acquires its absorbing lock at the same board.push.lock path Bolt.Sync
-// documents, held once for the whole loop: an externally-held lock at that
-// exact path blocks a concurrent Sync call until released.
+// TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst asserts that Sync acquires its absorbing lock
+// at the same board.push.lock path Bolt.Sync documents, held once for the whole loop: an
+// externally-held lock at that exact path blocks a concurrent Sync call until released.
 func TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst(t *testing.T) {
 	container := t.TempDir()
 	bareRemote := newBoltBareRemote(t, container)

@@ -1,8 +1,8 @@
 // spawn.go — detached board sync process launching.
 //
 // spawnSync launches `lyx board sync` as a detached, windowless process.
-// It has its own process group (so the parent's Ctrl-C does not reach it)
-// and survives the parent's exit.
+// It has its own process group (so the parent's Ctrl-C does not reach it) and survives the parent's
+// exit.
 
 package boardengine
 

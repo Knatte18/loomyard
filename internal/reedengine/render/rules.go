@@ -1,7 +1,6 @@
-// rules.go composes the policy layer (policy.go, height.go, focus.go) and
-// the mechanics layer (layout.go, checksum.go) into Rules, the package's
-// single public entry point: a pure, total function from a strand set and a
-// window Box to a tmux window_layout string and a focus target.
+// rules.go composes the policy layer (policy.go, height.go, focus.go) and the mechanics layer
+// (layout.go, checksum.go) into Rules, the package's single public entry point: a pure, total
+// function from a strand set and a window Box to a tmux window_layout string and a focus target.
 
 package render
 
@@ -10,11 +9,11 @@ import (
 	"strings"
 )
 
-// Rules computes the tmux window_layout string and focus pane id for
-// strands laid out within box. It rejects any strand declaring AnchorOwnWindow
-// and repairs corrupt cyclic parent chains. When p.Header.PaneID is non-empty,
-// Rules carves a fixed-height top band for the header before laying out the
-// stack below. paneOrder resequences cells to match physical pane position;
+// Rules computes the tmux window_layout string and focus pane id for strands laid out within box.
+// It rejects any strand declaring AnchorOwnWindow and repairs corrupt cyclic parent chains.
+// When p.Header.PaneID is non-empty, Rules carves a fixed-height top band for the header before
+// laying out the stack below.
+// paneOrder resequences cells to match physical pane position;
 // a nil paneOrder keeps the intended (parent above child) order.
 func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout string, focus string, err error) {
 	for _, s := range strands {

@@ -1,7 +1,7 @@
-// header.go implements the `header` reed verb: it renders the header pane's
-// text via the engine's tokenvocab-backed pipeline. The default mode returns
-// the rendered text through the normal JSON envelope; --blocking prints the
-// text then blocks forever, the one envelope-exempt tail this command has —
+// header.go implements the `header` reed verb: it renders the header pane's text via the engine's
+// tokenvocab-backed pipeline.
+// The default mode returns the rendered text through the normal JSON envelope;
+// --blocking prints the text then blocks forever, the one envelope-exempt tail this command has —
 // the header pane boots "lyx reed header --blocking" as its keepalive.
 
 package reedcli

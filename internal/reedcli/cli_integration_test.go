@@ -18,7 +18,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// TestRunCLI_ResolvesLayoutAndConfig seeds a real reed.yaml into a fixture hub and verifies config resolution succeeds.
+// TestRunCLI_ResolvesLayoutAndConfig seeds a real reed.yaml into a fixture hub and verifies config
+// resolution succeeds.
 func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -48,7 +49,8 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 	}
 }
 
-// TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up` surfaces the friendly "no reed session" error.
+// TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up` surfaces the friendly
+// "no reed session" error.
 func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -73,7 +75,8 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the friendly "no reed session" error.
+// TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the
+// friendly "no reed session" error.
 func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
@@ -98,7 +101,8 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 	}
 }
 
-// TestRunCLI_StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with persisted strands surfaces the enriched "lyx reed resume" message.
+// TestRunCLI_StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with
+// persisted strands surfaces the enriched "lyx reed resume" message.
 func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{

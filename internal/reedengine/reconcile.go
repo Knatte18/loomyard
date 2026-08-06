@@ -1,9 +1,8 @@
-// reconcile.go implements the reconcile-against-live-panes engine op: the
-// pure planning function planReconcile decides which strand pane bindings
-// to clear and which dead panes to kill, and reconcileLocked composes that
-// plan with the tmux kill I/O. Every public engine op runs reconcile
-// first, under the op lock, so the persisted table never drifts from what
-// tmux's list-panes actually reports.
+// reconcile.go implements the reconcile-against-live-panes engine op: the pure planning function
+// planReconcile decides which strand pane bindings to clear and which dead panes to kill,
+// and reconcileLocked composes that plan with the tmux kill I/O.
+// Every public engine op runs reconcile first, under the op lock, so the persisted table never
+// drifts from what tmux's list-panes actually reports.
 
 package reedengine
 

@@ -1,7 +1,6 @@
-// planpath_test.go tests the AnchorPath-anchored PlanDir/PlanOverview
-// accessors on a hand-built lyxcwd.Location — pure path arithmetic, no
-// spawning, untagged (Tier 1). It mirrors discussionpath_test.go's
-// construction and AnchorPath-vs-WorktreePath assertion shape.
+// planpath_test.go tests the AnchorPath-anchored PlanDir/PlanOverview accessors on a hand-built
+// lyxcwd.Location — pure path arithmetic, no spawning, untagged (Tier 1).
+// It mirrors discussionpath_test.go's construction and AnchorPath-vs-WorktreePath assertion shape.
 
 package loomengine
 

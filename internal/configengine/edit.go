@@ -1,9 +1,10 @@
 // edit.go — interactive config editing with scaffold, validate, and abort contract.
 //
-// Provides the Edit function to load a config file, open it in an injected editor,
-// validate the YAML syntax, and loop on validation failure. Scaffolds missing files
-// from a template and removes them on abort to leave the filesystem in its pre-call
-// state. Injected EditorFunc allows tests to drive the editor without a real process.
+// Provides the Edit function to load a config file, open it in an injected editor, validate the
+// YAML syntax, and loop on validation failure.
+// Scaffolds missing files from a template and removes them on abort to leave the filesystem in its
+// pre-call state.
+// Injected EditorFunc allows tests to drive the editor without a real process.
 
 package configengine
 
@@ -22,13 +23,13 @@ import (
 type EditorFunc func(path string) error
 
 // ErrAborted is the sentinel error returned when an edit is aborted.
-// On abort, Edit leaves the filesystem in its pre-call state (removes scaffolded
-// files, leaves pre-existing files unchanged).
+// On abort, Edit leaves the filesystem in its pre-call state (removes scaffolded files, leaves
+// pre-existing files unchanged).
 var ErrAborted = errors.New("config edit aborted")
 
-// DefaultEditor resolves the editor from $VISUAL, then $EDITOR, falling back to
-// notepad on Windows and vi elsewhere. It runs the editor via os/exec with
-// Stdin/Stdout/Stderr wired to the process std streams.
+// DefaultEditor resolves the editor from $VISUAL, then $EDITOR, falling back to notepad on Windows
+// and vi elsewhere.
+// It runs the editor via os/exec with Stdin/Stdout/Stderr wired to the process std streams.
 // Returns a non-nil error if the editor exits non-zero.
 func DefaultEditor(path string) error {
 	// Resolve editor command from environment or fallback.
@@ -79,9 +80,11 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 	return true, nil
 }
 
-// Edit opens a config file in an editor, validates the YAML syntax, and loops
-// on validation failure. On abort, removes any scaffolded file and returns
-// ErrAborted. Validation is syntactic only; known keys are not enforced.
+// Edit opens a config file in an editor, validates the YAML syntax, and loops on validation
+// failure.
+// On abort, removes any scaffolded file and returns ErrAborted.
+// Validation is syntactic only;
+// known keys are not enforced.
 func Edit(baseDir, module, template string, edit EditorFunc) error {
 	_, err := FindBaseDir(baseDir)
 	if err != nil {

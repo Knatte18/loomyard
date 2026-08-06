@@ -1,8 +1,8 @@
-// fingerprint_test.go covers fingerprint's identity properties: identical
-// directories fingerprint identically, and a rename, a one-byte content
-// edit, or an added batch file each change the result, while non-.md
-// entries and subdirectories are ignored entirely. Tier 1: no git, only
-// t.TempDir().
+// fingerprint_test.go covers fingerprint's identity properties: identical directories fingerprint
+// identically,
+// and a rename, a one-byte content edit, or an added batch file each change the result, while
+// non-.md entries and subdirectories are ignored entirely.
+// Tier 1: no git, only t.TempDir().
 
 package websterengine
 

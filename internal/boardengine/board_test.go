@@ -14,9 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
-// TestUpsertTask tests the facade persistence wiring: creating a task writes
-// both tasks.json and Home.md. Drop: store-layer assertion "update preserves
-// fields" (owned by store_test.go:TestUpsertTaskPreservesFields).
+// TestUpsertTask tests the facade persistence wiring: creating a task writes both tasks.json and
+// Home.md.
+// Drop: store-layer assertion "update preserves fields" (owned by
+// store_test.go:TestUpsertTaskPreservesFields).
 func TestUpsertTask(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
@@ -48,10 +49,9 @@ func TestUpsertTask(t *testing.T) {
 	}
 }
 
-// TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting locks in writeOp's
-// fail-fast guard: a Board built without output filenames (the --board-path
-// shape) must reject a write before touching disk, never save tasks.json and
-// then fail the render on an empty filename.
+// TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting locks in writeOp's fail-fast guard: a Board
+// built without output filenames (the --board-path shape) must reject a write before touching disk,
+// never save tasks.json and then fail the render on an empty filename.
 func TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, SkipGit: true}
@@ -152,12 +152,10 @@ func TestHealthCheckPassesCorruptFile(t *testing.T) {
 	}
 }
 
-// TestGlobalSlugUniqueness locks in the cross-store slug check wired into
-// UpsertTask/UpsertNote: tasks.json and notes.json share one global slug
-// namespace, so introducing a slug in one store that already exists in the
-// other must fail, in both directions, while an in-place update of a slug
-// already present in its own store must succeed regardless of what the other
-// store holds.
+// TestGlobalSlugUniqueness locks in the cross-store slug check wired into UpsertTask/UpsertNote:
+// tasks.json and notes.json share one global slug namespace, so introducing a slug in one store
+// that already exists in the other must fail, in both directions, while an in-place update of a
+// slug already present in its own store must succeed regardless of what the other store holds.
 func TestGlobalSlugUniqueness(t *testing.T) {
 	t.Run("task then note with the same slug", func(t *testing.T) {
 		boardPath := t.TempDir()
@@ -212,11 +210,10 @@ func TestGlobalSlugUniqueness(t *testing.T) {
 	})
 }
 
-// TestPromoteNoteDanglingDependencyFails covers PromoteNote's validation-failure
-// path: promoting a note whose depends_on names a second, not-yet-promoted
-// note-only slug must error with a dangling-dependency message and leave both
-// stores' on-disk files byte-identical to their pre-call state — the failure
-// happens inside tasksStore.UpsertTask, before either store's Save is reached.
+// TestPromoteNoteDanglingDependencyFails covers PromoteNote's validation-failure path: promoting a
+// note whose depends_on names a second, not-yet-promoted note-only slug must error with a
+// dangling-dependency message and leave both stores' on-disk files byte-identical to their pre-call
+// state — the failure happens inside tasksStore.UpsertTask, before either store's Save is reached.
 func TestPromoteNoteDanglingDependencyFails(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}
@@ -269,14 +266,13 @@ func TestPromoteNoteDanglingDependencyFails(t *testing.T) {
 	}
 }
 
-// TestPromoteNoteCrashBetweenSavesConvergesOnRetry covers PromoteNote's
-// documented crash-safety story: a crash between the tasksStore.Save and
-// notesStore.Save leaves the entry in BOTH files; a retry must converge
-// idempotently, with no duplicate id in tasks.json and the note actually gone
-// from notes.json. The crash midpoint is simulated by writing directly to
-// tasks.json via a raw Store (not Board.UpsertTask, which the cross-store
-// slug check would reject once the slug exists in notesStore) — mirroring
-// PromoteNote's own documented bypass pattern.
+// TestPromoteNoteCrashBetweenSavesConvergesOnRetry covers PromoteNote's documented crash-safety
+// story: a crash between the tasksStore.Save and notesStore.Save leaves the entry in BOTH files;
+// a retry must converge idempotently, with no duplicate id in tasks.json and the note actually gone
+// from notes.json.
+// The crash midpoint is simulated by writing directly to tasks.json via a raw Store (not
+// Board.UpsertTask, which the cross-store slug check would reject once the slug exists in
+// notesStore) — mirroring PromoteNote's own documented bypass pattern.
 func TestPromoteNoteCrashBetweenSavesConvergesOnRetry(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", SkipGit: true}

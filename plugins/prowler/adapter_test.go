@@ -1,6 +1,6 @@
-// adapter_test.go exercises fetchPage's site-adapter routing loop directly,
-// independent of the concrete Reddit/Hacker News adapters, using a local
-// configurable stub implementation of siteAdapter.
+// adapter_test.go exercises fetchPage's site-adapter routing loop directly, independent of the
+// concrete Reddit/Hacker News adapters, using a local configurable stub implementation of
+// siteAdapter.
 
 package main
 
@@ -23,8 +23,7 @@ type stubAdapter struct {
 // Matches implements siteAdapter by returning the configured matches value.
 func (s stubAdapter) Matches(string) bool { return s.matches }
 
-// Fetch implements siteAdapter by recording the call and returning the
-// configured canned result.
+// Fetch implements siteAdapter by recording the call and returning the configured canned result.
 func (s stubAdapter) Fetch(context.Context, fetcher, string) (string, bool) {
 	if s.fetchCalled != nil {
 		*s.fetchCalled = true
