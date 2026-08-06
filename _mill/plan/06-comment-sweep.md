@@ -1,0 +1,172 @@
+# Batch: comment and test vocabulary sweep
+
+```yaml
+task: 'fabric: close the weft-visibility leak (slice 8)'
+batch: 'comment and test vocabulary sweep'
+number: 6
+cards: 5
+verify: go vet -tags integration ./... && go test ./cmd/lyx/
+depends-on: [3]
+```
+
+## Batch Scope
+
+Rewords every remaining production `weft`/`warp`/fabric-sense-`host` mention outside the owner set — the files no code batch touches — plus the test-file hand-clean.
+Owner set (vocabulary stays): `fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync` (string literals), `tools/`, `sandbox/`.
+Files already edited by batches 02/03/05 were reworded there;
+this batch covers the remainder, so batch 07's enforcement test can be enabled against a clean tree.
+Classification per decision `comment-fidelity`: sync-semantics comments substitute mechanically ("weft-synced" → "fabric-synced");
+two-repo-mechanics comments reword case by case so the physical location information survives.
+Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-var names, the PowerShell cmdlet `Write-Host`, `internal/lyxtest` owner-API references (`WeftPrime`, `WeftBare`, `WeftPath`, `CopyWeft`, `CopyPaired`, …), and the `tools/sandbox` GitHub URLs/identifiers.
+
+## Cards
+
+### Card 20: websterengine, builderengine, batcher prose
+
+- **Context:**
+  - `_mill/discussion.md`
+- **Edits:**
+  - `internal/websterengine/doc.go`
+  - `internal/websterengine/state.go`
+  - `internal/websterengine/integration.go`
+  - `internal/websterengine/beginbatch.go`
+  - `internal/websterengine/recoverbatch.go`
+  - `internal/websterengine/pause.go`
+  - `internal/websterengine/awaitbatch.go`
+  - `internal/builderengine/doc.go`
+  - `internal/builderengine/state.go`
+  - `internal/batcher/doc.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Reword every `weft`/`warp` comment mention and fabric-sense `host` phrase in the listed files: `websterengine/beginbatch.go:62` ("the host repo checkout" → "the repo checkout"), `:89` ("the host HEAD" → "the repo HEAD" or "HEAD"), `:222` ("fresh fork on the host repo" → "fresh fork on the repo");
+  `websterengine/state.go:132` and `builderengine/state.go:95,104` ("the host HEAD" likewise);
+  `websterengine/doc.go` (~7), `integration.go` (~5, minus what card 12 already reworded — grep, don't assume), `recoverbatch.go`, `pause.go`, `awaitbatch.go`;
+  `builderengine/doc.go` (~9);
+  `batcher/doc.go:9` ("host-side logic" → "orchestrator-side logic").
+  Comments-only card: zero behavioural or identifier changes;
+  `go build ./...` must be a no-op diff at the object level.
+- **Commit:** `docs(websterengine,builderengine): fabric-vocabulary comment sweep`
+
+### Card 21: cli-package prose
+
+- **Context:**
+  - `_mill/discussion.md`
+- **Edits:**
+  - `internal/webstercli/recoverbatch.go`
+  - `internal/webstercli/beginbatch.go`
+  - `internal/webstercli/recordbatch.go`
+  - `internal/webstercli/status.go`
+  - `internal/webstercli/awaitbatch.go`
+  - `internal/webstercli/cli.go`
+  - `internal/buildercli/poll.go`
+  - `internal/buildercli/spawnbatch.go`
+  - `internal/buildercli/cli.go`
+  - `internal/buildercli/status.go`
+  - `internal/perchcli/cli.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Reword every `weft`/`warp` mention and fabric-sense `host` phrase in the listed files.
+  Two are operator-visible strings, not comments: `buildercli/spawnbatch.go:48`'s command help prose ("--restart-chain resets the host repo to the batch's…" → "resets the repo to the batch's…") and `:183`'s flag usage string ("reset the host repo to this batch's deferred-verify chain start SHA…" → "reset the repo to…") — both fall under the CLI/Cobra Invariant's help-accuracy obligation, so re-read each surrounding `Short`/`Long` after editing.
+  Everything else in these files is comments.
+- **Commit:** `docs(webstercli,buildercli,perchcli): fabric-vocabulary sweep`
+
+### Card 22: low-level package prose
+
+- **Context:**
+  - `_mill/discussion.md`
+- **Edits:**
+  - `internal/lyxcwd/anchor.go`
+  - `internal/lyxcwd/lyxcwd.go`
+  - `internal/gitrepo/doc.go`
+  - `internal/configengine/config.go`
+  - `internal/scoutengine/daemonstate.go`
+  - `internal/logger/sink.go`
+  - `internal/reedengine/lifecycle.go`
+  - `internal/reedcli/cli.go`
+  - `internal/selfreportcli/cli.go`
+  - `internal/shuttlecli/cli.go`
+  - `internal/burlercli/cli.go`
+  - `internal/treadleengine/doc.go`
+  - `internal/treadleengine/run.go`
+  - `internal/treadleengine/engine.go`
+  - `internal/perchengine/doc.go`
+  - `internal/perchengine/identity.go`
+  - `internal/perchengine/engine.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Comment-only reword per decision `comment-fidelity`.
+  Sync-semantics mentions substitute mechanically ("the durable, weft-synced `_lyx`" → "the durable, fabric-synced `_lyx`").
+  Named two-repo-mechanics cases handled individually: `lyxcwd/anchor.go:2,4,32,39` — "the weft:main root" → "the board root" (lossless: the marker lives at `<boardDir(hub)>/.lyx-anchor`, and `_board` is a geometry token `lyxcwd` co-owns);
+  `gitrepo/doc.go:132,252` and `configengine/config.go:5` — reword case by case so the reader keeps the pointer to which physical location holds what, without the weft/warp words;
+  `treadleengine/run.go:213`'s "the host repo's own build/test surface" → "the repo's own build/test surface".
+  OS-sense `host` (e.g. `reedengine/lifecycle.go`'s "cannot host a strand") stays untouched — only the one weft/warp mention in that file rewords.
+  `lyxcwd`'s import cap and code are untouched: comments only (Cwd Resolution Invariant).
+- **Commit:** `docs(internal): fabric-vocabulary comment sweep in low-level packages`
+
+### Card 23: test-file hand-clean
+
+- **Context:**
+  - `_mill/discussion.md`
+  - `CONSTRAINTS.md`
+- **Edits:**
+  - `cmd/lyx/boardguard_test.go`
+  - `cmd/lyx/tierpurity_test.go`
+  - `internal/webstercli/cli_test.go`
+  - `internal/buildercli/poll_test.go`
+  - `internal/buildercli/spawnbatch_test.go`
+  - `internal/buildercli/validate_test.go`
+  - `internal/buildercli/smoke_test.go`
+  - `internal/buildercli/pause_spawnbatch_test.go`
+  - `internal/buildercli/gitfixture_test.go`
+  - `internal/builderengine/config_test.go`
+  - `internal/builderengine/spawn_test.go`
+  - `internal/builderengine/gitquery_test.go`
+  - `internal/websterengine/recordbatch_test.go`
+  - `internal/websterengine/beginbatch_test.go`
+  - `internal/websterengine/recoverbatch_test.go`
+  - `internal/websterengine/config_test.go`
+  - `internal/loomengine/config_test.go`
+  - `internal/perchengine/run_test.go`
+  - `internal/perchcli/cli_integration_test.go`
+  - `internal/perchcli/run_test.go`
+  - `internal/perchcli/run_integration_test.go`
+  - `internal/configcli/configcli_integration_test.go`
+  - `internal/gitrepo/commitempty_integration_test.go`
+  - `internal/pattern/patternpath_test.go`
+  - `internal/lyxcwd/geometry_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Hand-clean each listed test file of `weft`/`warp`/fabric-sense-`host` vocabulary that is NOT a reference to owner-package API.
+  Specifically pinned by the discussion: `cmd/lyx/boardguard_test.go` calls the invariant "Weft Git Invariant" where `CONSTRAINTS.md` says "Fabric Git Invariant (warp + weft)" — align the name.
+  KEEP verbatim: every `lyxtest` owner-API reference (`WeftPrime`, `WeftBare`, `WeftPath`, `CopyWeft`, `CopyPaired`, fixture struct fields), every `fabricengine`/`fabriccli` owner-API selector a test legitimately calls, `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-var names wherever set (they are the literal names of variables this task deliberately does not rename), the PowerShell `Write-Host` cmdlet in `reedcli` `--cmd` strings (not in this card's list, but do not "fix" it if encountered), and `cmd/lyx/tierpurity_test.go`'s banned-token test data (its mentions are `lyxtest.Copy*` tokens carried as data — reword only genuine prose, if any).
+  `perchcli/run_integration_test.go` (~50 mentions) and `configcli/configcli_integration_test.go` (~24, including its "host worktree" comment cluster and the `hostLayout`/`hostWorktreePath` locals — rename locals only where they do not shadow a `lyxtest` fixture field name) are the two big files;
+  fixture-construction code that genuinely builds paired worktrees via `lyxtest` keeps honest owner vocabulary, surrounding narrative prose rewords.
+  Comments and test-local identifiers only — no assertion or behaviour changes;
+  the full `-tags integration` suite runs unchanged at the done gate.
+- **Commit:** `test: fabric-vocabulary hand-clean of non-owner test files`
+
+### Card 24: sweep verification gate
+
+- **Context:**
+  - `_mill/discussion.md`
+- **Edits:** none
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Verification-only card, no diff.
+  Run `grep -rniE '\bweft|\bwarp' internal cmd --include='*.go' --include='*.md'` and filter out the owner set (`fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync`'s two string literals) and `*_test.go` carve-out references;
+  then grep the fabric-sense `host` phrase list (`host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD`, and `hostBranch`-style identifiers) the same way.
+  Every surviving non-owner production hit must be fixed before this card completes (fold the fix into a follow-up commit amending the responsible card's file);
+  every surviving test hit must be an owner-API reference or a named carve-out.
+  This is the precondition gate for batch 07 — the enforcement test must go green on first activation, not flush out stragglers.
+- **Commit:** none
+
+## Batch Tests
+
+`verify:` runs `go vet -tags integration ./... && go test ./cmd/lyx/` — the sweep is comments/prose/test-text only, so a whole-tree vet (which also compiles every test file, integration-tagged included) plus the `cmd/lyx` guard suite (board guard, tier purity, raw-git-mutation, help tree) is the right-sized check;
+the edited integration tests run at the done gate.
+Card 24's grep gate is the batch's real exit criterion.
