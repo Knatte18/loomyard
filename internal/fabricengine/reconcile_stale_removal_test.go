@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // findReconcilePair returns the ReconcilePairResult for weftPath, failing the
@@ -111,7 +112,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 
 	// Add-missing: _pattern was absent on disk and present in the desired
 	// set, so it is wired.
-	patternLink := hostLayout.HostPatternLinkHere()
+	patternLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, pattern.DirName)
 	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
 		t.Errorf("missing _pattern junction not added by Reconcile: isLink=%v err=%v", isLink, err)
 	}
@@ -271,7 +272,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	if isLink, err := fslink.IsLink(lyxLink); err != nil || !isLink {
 		t.Errorf("_lyx junction removed despite fail-closed guard: isLink=%v err=%v", isLink, err)
 	}
-	patternLink := hostLayout.HostPatternLinkHere()
+	patternLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, pattern.DirName)
 	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
 		t.Errorf("_pattern junction removed despite fail-closed guard: isLink=%v err=%v", isLink, err)
 	}
@@ -378,7 +379,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 		t.Fatalf("WireJunctions(%s): %v", removeSlug, err)
 	}
 	lyxLink := fabricengine.HostLyxLinkHere(removeHostLayout)
-	patternLink := removeHostLayout.HostPatternLinkHere()
+	patternLink := filepath.Join(removeHostLayout.WorktreePath(), removeHostLayout.AnchorRel, pattern.DirName)
 
 	if _, err := topology.Remove(l, removeSlug, true); err != nil {
 		t.Fatalf("Remove(%s): %v", removeSlug, err)

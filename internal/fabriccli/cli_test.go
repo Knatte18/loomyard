@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -415,7 +416,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// The prime host worktree's _lyx/_pattern junctions must be wired.
 	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
-	for _, name := range []string{configengine.LyxDirName, lyxcwd.PatternDirName} {
+	for _, name := range []string{configengine.LyxDirName, pattern.DirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {

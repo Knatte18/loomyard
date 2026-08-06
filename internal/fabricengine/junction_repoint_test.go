@@ -32,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestWireJunctions_RepointsWrongTargetJunction points the host _lyx junction
@@ -101,8 +102,8 @@ func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := l.HostPatternLink(slug)
-	correctTarget := l.WeftPatternDirFor(slug)
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
+	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, pattern.DirName)
 
 	// Point the junction at an unrelated real directory instead.
 	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-pattern-dir")
@@ -200,8 +201,8 @@ func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := l.HostPatternLink(slug)
-	correctTarget := l.WeftPatternDirFor(slug)
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
+	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, pattern.DirName)
 
 	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist-pattern")
 	if err := os.RemoveAll(link); err != nil {

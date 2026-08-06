@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -408,8 +409,10 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 			wantChecks: []CheckID{CheckSeedUnreadable},
 		},
 		{
-			name:       "Pattern",
-			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return f.Layout.HostPatternLink(slug) },
+			name: "Pattern",
+			linkFor: func(f lyxtest.PairedFixture, slug string) string {
+				return filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, pattern.DirName)
+			},
 			wantChecks: nil,
 		},
 	}
@@ -454,7 +457,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	// Simulate the pre-upgrade state: this worktree's _pattern junction was
 	// never wired, even though _lyx is fully healthy — the "existing worktree,
 	// new lyx binary" shape, not a corruption.
-	patternLink := f.Layout.HostPatternLink(slug)
+	patternLink := filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, pattern.DirName)
 	if err := fslink.Remove(patternLink); err != nil {
 		t.Fatalf("remove _pattern junction to simulate a legacy (pre-upgrade) worktree: %v", err)
 	}

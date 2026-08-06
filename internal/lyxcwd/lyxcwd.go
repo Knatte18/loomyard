@@ -15,32 +15,17 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // Location and geometry constants define directory and file names used by lyx
 // configuration and weft/board/hub geometry. All path construction must use these
 // constants, never inline string literals.
 const (
-	// lyxDirName is the directory name for the lyx system directory within a worktree.
-	// internal/configengine.LyxDirName is the single exported declarer of this token now;
-	// this private const is a transitional second declarer for lyxcwd's own
-	// remaining _lyx-anchored method (PortalTarget), removed once that method relocates.
-	lyxDirName = "_lyx"
-
 	// hubSuffix is the suffix appended to a repo name to form the hub container directory
 	// (e.g. "loomyard" → "loomyard-HUB"). It stays private to lyxcwd: RepoName derives
 	// from it below, but the exported HubPath(parent, name) constructor moved to
 	// internal/fabricengine, which declares its own copy of this literal.
 	hubSuffix = "-HUB"
-
-	// PatternDirName is the directory name for the PATTERN constraint-injection surface
-	// within a worktree (i.e. <worktree>/_pattern). It is a transitional second
-	// declarer of that token, read as a git pathspec by internal/fabricengine and
-	// its tests until batch 6's card 35 cuts them over to that package's own
-	// const; internal/pattern is the new owner for everything else. Use
-	// internal/pattern's Dir/File/FileHere to obtain the paths built from it.
-	PatternDirName = "_pattern"
 )
 
 // ErrNotAGitRepo is returned when a directory is not within a git repository.
@@ -184,32 +169,4 @@ func buildLocation(cwd, workTreeRoot, hubPath, anchorRel string, applyGate bool)
 		WorktreeName: filepath.Base(workTreeRoot),
 		AnchorRel:    anchorRel,
 	}, nil
-}
-
-// WeftPatternDir returns the path to the _pattern directory in the current worktree's weft sibling.
-// It mirrors fabricengine.WeftLyxDir exactly and is the junction target for pattern weft.
-// Its own weft-sibling base is inlined via weftname.SiblingPath rather than a Location
-// method: WeftWorktree relocated to fabricengine in this same batch, and this accessor's
-// own relocation (card 35) is a deletion, not a move, so it does not adopt the accessor.
-func (l *Location) WeftPatternDir() string {
-	return filepath.Join(weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath())), l.AnchorRel, PatternDirName)
-}
-
-// WeftPatternDirFor returns the path to the _pattern directory within a named slug's weft worktree.
-// It mirrors fabricengine.WeftLyxDirFor exactly and pairs with HostPatternLink(slug) as junction endpoints.
-func (l *Location) WeftPatternDirFor(slug string) string {
-	return filepath.Join(weftname.SiblingPath(l.HubPath, slug), l.AnchorRel, PatternDirName)
-}
-
-// HostPatternLink returns the path to the _pattern junction link in a named slug's host worktree.
-// It mirrors fabricengine.HostLyxLink exactly and points into the paired weft worktree via WeftPatternDirFor(slug).
-func (l *Location) HostPatternLink(slug string) string {
-	return filepath.Join(l.HubPath, slug, l.AnchorRel, PatternDirName)
-}
-
-// HostPatternLinkHere returns the path to the _pattern junction link in the current host worktree.
-// Derived from WorktreePath()+AnchorRel. It mirrors fabricengine.HostLyxLinkHere exactly and serves
-// as the host-side junction endpoint paired with WeftPatternDir().
-func (l *Location) HostPatternLinkHere() string {
-	return filepath.Join(l.WorktreePath(), l.AnchorRel, PatternDirName)
 }

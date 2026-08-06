@@ -250,12 +250,13 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		// the private, unexported lyxDirName const for its own remaining
 		// _lyx-anchored methods, removed once those methods relocate.
 		"_lyx": {"internal/configengine", "internal/lyxcwd"},
-		// "_pattern" is transitionally co-owned: internal/pattern is the new
-		// declarer of DirName, but internal/lyxcwd still declares the
-		// exported PatternDirName const, read as a git pathspec by
-		// internal/fabricengine and its tests until batch 6's card 35 cuts
-		// them over and removes this transitional entry.
-		"_pattern": {"internal/pattern", "internal/lyxcwd"},
+		// "_pattern" is dual-owned: internal/pattern declares DirName for
+		// resolution-path use, and internal/fabricengine declares its own
+		// private patternDirName copy for the one caller that needs the bare
+		// name as a git pathspec argument (pull.go's patternResidueCommits).
+		// internal/lyxcwd's transitional PatternDirName const is gone as of
+		// this card; card 36 leaves this row untouched.
+		"_pattern": {"internal/pattern", "internal/fabricengine"},
 	}
 
 	// tokenOwnedByDir reports whether dir is one of tok's registered owners.

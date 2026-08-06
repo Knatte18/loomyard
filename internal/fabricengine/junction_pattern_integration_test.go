@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // readExcludeLines resolves and reads the host worktree's .git/info/exclude
@@ -187,8 +188,8 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if lines := readExcludeLines(t, l, slug); !containsLine(lines, configengine.LyxDirName) {
 		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", configengine.LyxDirName, lines)
 	}
-	if lines := readExcludeLines(t, l, slug); !containsLine(lines, lyxcwd.PatternDirName) {
-		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", lyxcwd.PatternDirName, lines)
+	if lines := readExcludeLines(t, l, slug); !containsLine(lines, pattern.DirName) {
+		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", pattern.DirName, lines)
 	}
 
 	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_pattern"})
@@ -196,7 +197,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 		t.Fatalf("UnwireJunctions: %v", err)
 	}
 
-	if want := []string{configengine.LyxDirName, lyxcwd.PatternDirName}; !slices.Equal(result.JunctionsRemoved, want) {
+	if want := []string{configengine.LyxDirName, pattern.DirName}; !slices.Equal(result.JunctionsRemoved, want) {
 		t.Errorf("JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 	}
 	if !result.ExcludeChanged {
@@ -207,15 +208,15 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if _, statErr := os.Lstat(lyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("junction %s still exists after UnwireJunctions", lyxLink)
 	}
-	patternLink := l.HostPatternLink(slug)
+	patternLink := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
 	if _, statErr := os.Lstat(patternLink); !os.IsNotExist(statErr) {
 		t.Errorf("junction %s still exists after UnwireJunctions", patternLink)
 	}
 	if lines := readExcludeLines(t, l, slug); containsLine(lines, configengine.LyxDirName) {
 		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", configengine.LyxDirName, lines)
 	}
-	if lines := readExcludeLines(t, l, slug); containsLine(lines, lyxcwd.PatternDirName) {
-		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", lyxcwd.PatternDirName, lines)
+	if lines := readExcludeLines(t, l, slug); containsLine(lines, pattern.DirName) {
+		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", pattern.DirName, lines)
 	}
 }
 
@@ -272,7 +273,7 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	// Track a file under _pattern directly in the host worktree's index —
 	// the "hand-authored _pattern content accidentally committed to host"
 	// mistake this scan exists to catch.
-	hostPatternDir := filepath.Join(l.WorktreePath(), lyxcwd.PatternDirName)
+	hostPatternDir := filepath.Join(l.WorktreePath(), pattern.DirName)
 	if err := os.MkdirAll(hostPatternDir, 0o755); err != nil {
 		t.Fatalf("mkdir host _pattern dir: %v", err)
 	}
@@ -280,7 +281,7 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", lyxcwd.PatternDirName)
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", pattern.DirName)
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _pattern")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
@@ -387,10 +388,14 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 			targetFor: func(l *lyxcwd.Location) string { return fabricengine.WeftLyxDir(l) },
 		},
 		{
-			name:      "Pattern",
-			dirName:   lyxcwd.PatternDirName,
-			linkFor:   func(l *lyxcwd.Location) string { return l.HostPatternLinkHere() },
-			targetFor: func(l *lyxcwd.Location) string { return l.WeftPatternDir() },
+			name:    "Pattern",
+			dirName: pattern.DirName,
+			linkFor: func(l *lyxcwd.Location) string {
+				return filepath.Join(l.WorktreePath(), l.AnchorRel, pattern.DirName)
+			},
+			targetFor: func(l *lyxcwd.Location) string {
+				return filepath.Join(fabricengine.WeftWorktree(l), l.AnchorRel, pattern.DirName)
+			},
 		},
 	}
 
@@ -458,7 +463,7 @@ func TestReconcile_RepairsPatternOnlyDrift(t *testing.T) {
 	}
 
 	// _lyx stays healthy; only _pattern goes missing.
-	patternLink := hostLayout.HostPatternLinkHere()
+	patternLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, pattern.DirName)
 	if err := fslink.Remove(patternLink); err != nil {
 		t.Fatalf("remove _pattern junction: %v", err)
 	}
@@ -517,7 +522,7 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 	}
 
 	// _lyx stays healthy; only _pattern is re-pointed at an unrelated directory.
-	patternLink := hostLayout.HostPatternLinkHere()
+	patternLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, pattern.DirName)
 	if err := fslink.Remove(patternLink); err != nil {
 		t.Fatalf("remove _pattern junction: %v", err)
 	}
@@ -544,8 +549,8 @@ func TestStatus_ReportsPatternJunctionUnhealthy(t *testing.T) {
 		if pair.JunctionHealthy {
 			t.Error("JunctionHealthy = true; want false")
 		}
-		if !strings.Contains(pair.JunctionReason, lyxcwd.PatternDirName) {
-			t.Errorf("JunctionReason = %q; want it to name %q", pair.JunctionReason, lyxcwd.PatternDirName)
+		if !strings.Contains(pair.JunctionReason, pattern.DirName) {
+			t.Errorf("JunctionReason = %q; want it to name %q", pair.JunctionReason, pattern.DirName)
 		}
 		if pair.InSync {
 			t.Error("InSync = true; want false")
@@ -579,7 +584,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions (initial): %v", err)
 	}
-	patternLink := l.HostPatternLink(slug)
+	patternLink := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
 	if err := fslink.Remove(patternLink); err != nil {
 		t.Fatalf("remove _pattern junction to simulate legacy worktree: %v", err)
 	}

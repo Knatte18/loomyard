@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan
@@ -63,13 +64,13 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 
 	got := slices.Clone(res.JunctionsRemoved)
 	sort.Strings(got)
-	want := []string{"_extra", configengine.LyxDirName, lyxcwd.PatternDirName}
+	want := []string{"_extra", configengine.LyxDirName, pattern.DirName}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("res.JunctionsRemoved (sorted) = %v; want %v", got, want)
 	}
 
-	for _, name := range []string{"_extra", configengine.LyxDirName, lyxcwd.PatternDirName} {
+	for _, name := range []string{"_extra", configengine.LyxDirName, pattern.DirName} {
 		link := filepath.Join(hostLayout.WorktreePath(), name)
 		if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
 			t.Errorf("junction %s still exists after Unwire (stat err: %v)", link, statErr)
@@ -106,7 +107,7 @@ func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(weftLyxDir, "marker.txt"), []byte("lyx state"), 0o644); err != nil {
 		t.Fatalf("seed weft _lyx content: %v", err)
 	}
-	weftPatternDir := hostLayout.WeftPatternDirFor(slug)
+	weftPatternDir := filepath.Join(fabricengine.WeftWorktreePath(hostLayout, slug), hostLayout.AnchorRel, pattern.DirName)
 	patternFile := filepath.Join(weftPatternDir, "PATTERN.md")
 	if err := os.WriteFile(patternFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("seed weft _pattern content: %v", err)

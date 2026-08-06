@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below
@@ -75,7 +76,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
 	}
-	nestedPatternLink := nestedLayout.HostPatternLink(slug)
+	nestedPatternLink := filepath.Join(fabricengine.WorktreePath(nestedLayout, slug), nestedLayout.AnchorRel, pattern.DirName)
 	if isLink, err := fslink.IsLink(nestedPatternLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _pattern junction %s not wired: isLink=%v err=%v", nestedPatternLink, isLink, err)
 	}
