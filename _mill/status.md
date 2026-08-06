@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: planned
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -24,4 +24,5 @@ plan-review-r2  '2026-08-06T19:24:07Z'
 plan-fix-r2  '2026-08-06T19:24:07Z'
 plan-review-r3  '2026-08-06T19:38:04Z'
 plan-fix-r3  '2026-08-06T19:38:04Z'
+planned  '2026-08-06T19:39:17Z'
 ```
