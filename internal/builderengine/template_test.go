@@ -24,9 +24,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestConfigTemplate_ParsesAsYAML asserts the embedded template is
-// well-formed YAML on its own, independent of LoadConfig's strict-decode
-// path.
+// TestConfigTemplate_ParsesAsYAML asserts the embedded template is well-formed YAML on its own, independent of LoadConfig's strict-decode path.
 func TestConfigTemplate_ParsesAsYAML(t *testing.T) {
 	var out map[string]any
 	if err := yaml.Unmarshal([]byte(builderengine.ConfigTemplate()), &out); err != nil {
@@ -34,13 +32,8 @@ func TestConfigTemplate_ParsesAsYAML(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_RoundTripsThroughLoadConfig seeds the template
-// verbatim and asserts LoadConfig resolves it into the documented defaults
-// — the same expectation config_test.go's
-// TestLoadConfig_TemplateDefaultsResolve already exercises via LoadConfig
-// directly; this test instead pins the template's raw content against the
-// same defaults so a template edit that silently changes a default value
-// is caught here too.
+// TestConfigTemplate_RoundTripsThroughLoadConfig seeds the template verbatim and asserts LoadConfig resolves it into the documented defaults — the same expectation config_test.go's TestLoadConfig_TemplateDefaultsResolve already exercises via LoadConfig directly;
+// this test instead pins the template's raw content against the same defaults so a template edit that silently changes a default value is caught here too.
 func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 	fixture := lyxtest.CopyWeft(t)
 	lyxtest.SeedConfig(t, fixture.WeftPath, map[string]string{
@@ -69,10 +62,7 @@ func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via
-// reflection and asserts every yaml tag appears in the template text — so a
-// struct field added without a matching template line is caught
-// mechanically rather than relying on review to notice the gap.
+// TestConfigTemplate_ContainsEveryConfigYAMLTag walks Config's fields via reflection and asserts every yaml tag appears in the template text — so a struct field added without a matching template line is caught mechanically rather than relying on review to notice the gap.
 func TestConfigTemplate_ContainsEveryConfigYAMLTag(t *testing.T) {
 	text := builderengine.ConfigTemplate()
 
@@ -117,13 +107,7 @@ func implementerTemplateMarkerValues() map[string]string {
 	}
 }
 
-// TestImplementerTemplate_StatesBatchDiscipline asserts the embedded
-// implementer template's bytes carry the load-bearing batch-discipline
-// phrases in prose — the burler TestTemplate_StatesRoundDiscipline pattern
-// applied to builder's implementer prompt — so an edit that silently waters
-// down the commit-per-card shape, the bounded self-fix cap, the
-// report-as-final-action rule, or the never-touch-the-weft rule fails this
-// test rather than only a human review.
+// TestImplementerTemplate_StatesBatchDiscipline asserts the embedded implementer template's bytes carry the load-bearing batch-discipline phrases in prose — the burler TestTemplate_StatesRoundDiscipline pattern applied to builder's implementer prompt — so an edit that silently waters down the commit-per-card shape, the bounded self-fix cap, the report-as-final-action rule, or the never-touch-the-weft rule fails this test rather than only a human review.
 func TestImplementerTemplate_StatesBatchDiscipline(t *testing.T) {
 	text := string(builderengine.ImplementerTemplate())
 
@@ -200,9 +184,8 @@ func orchestratorTemplateMarkerValues() map[string]string {
 	}
 }
 
-// TestOrchestratorTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds
-// when every one of OrchestratorTemplate's five required markers is
-// supplied, and fails — naming the marker — when any single one is absent.
+// TestOrchestratorTemplate_FillsWithAllMarkers asserts stencil.Fill succeeds when every one of OrchestratorTemplate's five required markers is supplied,
+// and fails — naming the marker — when any single one is absent.
 func TestOrchestratorTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.Fill(builderengine.OrchestratorTemplate(), orchestratorTemplateMarkerValues()); err != nil {
@@ -225,11 +208,8 @@ func TestOrchestratorTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestOrchestratorTemplate_NamesTheThreeVerbsItDrives asserts the embedded
-// orchestrator template names every one of the three `lyx builder` verbs its
-// loop touches: spawn-batch and poll drive the blocking loop itself, and
-// status is named even though the template explicitly forbids using it as a
-// substitute for that loop.
+// TestOrchestratorTemplate_NamesTheThreeVerbsItDrives asserts the embedded orchestrator template names every one of the three `lyx builder` verbs its loop touches: spawn-batch and poll drive the blocking loop itself,
+// and status is named even though the template explicitly forbids using it as a substitute for that loop.
 func TestOrchestratorTemplate_NamesTheThreeVerbsItDrives(t *testing.T) {
 	text := string(builderengine.OrchestratorTemplate())
 
@@ -283,11 +263,7 @@ func extractBacktickBullets(text, heading string) []string {
 	return tokens
 }
 
-// TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers asserts the
-// template's digest-field bullet list names exactly the ten pinned digest
-// field names (docs/reference/plan-format.md's poll digest contract) — no
-// fewer, no extras — the mechanical half of the discussion's "the
-// orchestrator reads only distilled digests" decision.
+// TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers asserts the template's digest-field bullet list names exactly the ten pinned digest field names (docs/reference/plan-format.md's poll digest contract) — no fewer, no extras — the mechanical half of the discussion's "the orchestrator reads only distilled digests" decision.
 func TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	text := string(builderengine.OrchestratorTemplate())
 
@@ -307,10 +283,7 @@ func TestOrchestratorTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 	}
 }
 
-// TestOrchestratorTemplate_QuotesOutcomeSchemaKeys asserts the template's
-// outcome-file bullet list names exactly the three outcome.yaml schema keys
-// the discussion's outcome-contract decision pins, immediately followed by
-// the literal yaml block spelling out their values.
+// TestOrchestratorTemplate_QuotesOutcomeSchemaKeys asserts the template's outcome-file bullet list names exactly the three outcome.yaml schema keys the discussion's outcome-contract decision pins, immediately followed by the literal yaml block spelling out their values.
 func TestOrchestratorTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	text := string(builderengine.OrchestratorTemplate())
 
@@ -332,11 +305,7 @@ func TestOrchestratorTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	requireContains(t, text, "batches_done: <int>")
 }
 
-// TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing asserts the embedded
-// template's bytes carry the load-bearing never-touch-the-weft and
-// never-edit-code-yourself statements in prose, so an edit that silently
-// waters down either rule fails this test rather than only a human review —
-// the Weft Git Invariant's prompt-template half.
+// TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing asserts the embedded template's bytes carry the load-bearing never-touch-the-weft and never-edit-code-yourself statements in prose, so an edit that silently waters down either rule fails this test rather than only a human review — the Weft Git Invariant's prompt-template half.
 func TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing(t *testing.T) {
 	text := string(builderengine.OrchestratorTemplate())
 
@@ -345,10 +314,7 @@ func TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing(t *testing.T) {
 	requireContains(t, text, "NEVER use a `/model` switch")
 }
 
-// TestOrchestratorTemplate_StatesBatchOrderAndRecoveryLadder asserts the
-// embedded template's bytes carry the strict-ordering rule and every rung of
-// the discussion's recovery ladder (dead -> fresh respawn; stuck -> recovery
-// role; stuck chain member -> whole-chain restart) in prose.
+// TestOrchestratorTemplate_StatesBatchOrderAndRecoveryLadder asserts the embedded template's bytes carry the strict-ordering rule and every rung of the discussion's recovery ladder (dead -> fresh respawn; stuck -> recovery role; stuck chain member -> whole-chain restart) in prose.
 func TestOrchestratorTemplate_StatesBatchOrderAndRecoveryLadder(t *testing.T) {
 	text := string(builderengine.OrchestratorTemplate())
 
@@ -362,13 +328,9 @@ func TestOrchestratorTemplate_StatesBatchOrderAndRecoveryLadder(t *testing.T) {
 	requireContains(t, text, "already in flight")
 }
 
-// TestImplementerTemplate_FillsWithAllMarkers asserts stencil.FillOptional
-// succeeds when every one of ImplementerTemplate's five required markers
-// plus the optional pattern_directive marker is supplied, and fails —
-// naming the marker — when any single REQUIRED one is absent.
-// pattern_directive is deliberately excluded from this deletion sweep: it
-// is the one optional marker (see the template's own banner comment), so
-// deleting it must not error.
+// TestImplementerTemplate_FillsWithAllMarkers asserts stencil.FillOptional succeeds when every one of ImplementerTemplate's five required markers plus the optional pattern_directive marker is supplied,
+// and fails — naming the marker — when any single REQUIRED one is absent.
+// pattern_directive is deliberately excluded from this deletion sweep: it is the one optional marker (see the template's own banner comment), so deleting it must not error.
 func TestImplementerTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
 		if _, err := stencil.FillOptional(builderengine.ImplementerTemplate(), implementerTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
@@ -391,12 +353,7 @@ func TestImplementerTemplate_FillsWithAllMarkers(t *testing.T) {
 	}
 }
 
-// TestImplementerTemplate_PatternDirectiveOptional asserts pattern_directive
-// behaves as an optional marker: an empty value renders cleanly with no
-// leftover `{{`, no orphan `## Constraints` heading, and no stray
-// blank-line block where the directive would have sat, and a non-empty
-// value places the directive block ahead of the first work instruction
-// ("## Your batch and the overview").
+// TestImplementerTemplate_PatternDirectiveOptional asserts pattern_directive behaves as an optional marker: an empty value renders cleanly with no leftover `{{`, no orphan `## Constraints` heading, and no stray blank-line block where the directive would have sat, and a non-empty value places the directive block ahead of the first work instruction ("## Your batch and the overview").
 func TestImplementerTemplate_PatternDirectiveOptional(t *testing.T) {
 	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
 		values := implementerTemplateMarkerValues()

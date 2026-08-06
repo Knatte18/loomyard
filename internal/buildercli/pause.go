@@ -1,7 +1,5 @@
-// pause.go implements the `pause` builder verb: it writes the pause flag
-// file spawn-batch's batch-boundary check refuses against once set, and
-// documents the batch-boundary (not mid-batch) semantics the discussion
-// pins.
+// pause.go implements the `pause` builder verb: it writes the pause flag file spawn-batch's batch-boundary check refuses against once set,
+// and documents the batch-boundary (not mid-batch) semantics the discussion pins.
 
 package buildercli
 

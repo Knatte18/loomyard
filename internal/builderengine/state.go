@@ -1,12 +1,7 @@
-// state.go implements the durable run state builder keeps at
-// _lyx/builder/state.json: the run identity, the plan-fingerprint anchor
-// crash/resume compares against, the current-batch cursor, every batch's
-// own persisted record, and each deferred-verify chain's rollback anchor
-// SHA. LoadState/SaveState are state.json's only readers/writers; every
-// other builderengine file mutates the in-memory *State the caller loaded
-// and calls SaveState to persist it back. Callers resolve builderDir via
-// builderengine.Dir — this file also declares Dir/ReportsDir themselves,
-// the module's own _lyx/builder constructors (Cwd Resolution Invariant).
+// state.go implements the durable run state builder keeps at _lyx/builder/state.json: the run identity, the plan-fingerprint anchor crash/resume compares against, the current-batch cursor, every batch's own persisted record, and each deferred-verify chain's rollback anchor SHA.
+// LoadState/SaveState are state.json's only readers/writers;
+// every other builderengine file mutates the in-memory *State the caller loaded and calls SaveState to persist it back.
+// Callers resolve builderDir via builderengine.Dir — this file also declares Dir/ReportsDir themselves, the module's own _lyx/builder constructors (Cwd Resolution Invariant).
 
 package builderengine
 
@@ -26,17 +21,16 @@ import (
 // directory. builderengine is this segment's sole declarer.
 const builderDirName = "builder"
 
-// Dir returns the path to the builder's durable run state directory
-// (state.json, pause flag, outcome.yaml). It lives under _lyx so it is
-// weft-synced. Per the Cwd Resolution Invariant, no other package may
-// construct this path.
+// Dir returns the path to the builder's durable run state directory (state.json, pause flag, outcome.yaml).
+// It lives under _lyx so it is weft-synced.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, builderDirName)
 }
 
-// ReportsDir returns the path to the directory holding builder's per-batch
-// report files. It lives under _lyx so reports are weft-synced. Per the Hub
-// Geometry Invariant, no other package may construct this path.
+// ReportsDir returns the path to the directory holding builder's per-batch report files.
+// It lives under _lyx so reports are weft-synced.
+// Per the Hub Geometry Invariant, no other package may construct this path.
 func ReportsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "reports")
 }
@@ -55,8 +49,8 @@ const stateFileName = "state.json"
 // other *.lock (see buildercli's builderWeftPathspec).
 const stateMutateLockName = "mutate.lock"
 
-// AcquireStateMutation acquires builderDir's exclusive state-mutation lease,
-// blocking until free. Callers hold it across the load-mutate-save sequence.
+// AcquireStateMutation acquires builderDir's exclusive state-mutation lease, blocking until free.
+// Callers hold it across the load-mutate-save sequence.
 func AcquireStateMutation(builderDir string) (*lock.FileLock, error) {
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		return nil, fmt.Errorf("builder: create builder dir %s: %w", builderDir, err)
@@ -128,7 +122,8 @@ type BatchState struct {
 	Status string `json:"status"`
 }
 
-// LoadState reads <builderDir>/state.json. A missing file returns (nil, nil).
+// LoadState reads <builderDir>/state.json.
+// A missing file returns (nil, nil).
 // An unreadable or malformed file is a wrapped error.
 func LoadState(builderDir string) (*State, error) {
 	path := filepath.Join(builderDir, stateFileName)

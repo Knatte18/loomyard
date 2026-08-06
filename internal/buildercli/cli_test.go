@@ -1,9 +1,5 @@
-// cli_test.go covers the buildercli cobra seam through RunCLI: bare-group
-// listing, the unknown-subcommand JSON envelope, the PersistentPreRunE
-// group-command guard, and the help-tree Short completeness check --
-// mirroring perchcli's own cli_test.go (internal/perchcli/cli_test.go).
-// Individual verb behavior is covered by each verb's own _test.go file as
-// later cards land it.
+// cli_test.go covers the buildercli cobra seam through RunCLI: bare-group listing, the unknown-subcommand JSON envelope, the PersistentPreRunE group-command guard, and the help-tree Short completeness check -- mirroring perchcli's own cli_test.go (internal/perchcli/cli_test.go).
+// Individual verb behavior is covered by each verb's own _test.go file as later cards land it.
 
 package buildercli
 
@@ -47,10 +43,7 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard:
-// bare "lyx builder" works outside a git repository, mirroring perchcli's
-// guard rationale (neither the bare listing nor the unknown-subcommand path
-// should require layout/config resolution).
+// TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard: bare "lyx builder" works outside a git repository, mirroring perchcli's guard rationale (neither the bare listing nor the unknown-subcommand path should require layout/config resolution).
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -62,9 +55,7 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 	}
 }
 
-// TestCommand_EveryCommandHasShort walks the full builder command tree and
-// asserts that every command -- the parent group and every subcommand --
-// carries a non-empty Short, per the CLI/Cobra Invariant.
+// TestCommand_EveryCommandHasShort walks the full builder command tree and asserts that every command -- the parent group and every subcommand -- carries a non-empty Short, per the CLI/Cobra Invariant.
 func TestCommand_EveryCommandHasShort(t *testing.T) {
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {

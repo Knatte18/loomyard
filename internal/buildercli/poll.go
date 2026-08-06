@@ -1,15 +1,6 @@
-// poll.go implements the `poll` builder verb: assembles Classify's inputs
-// for the current in-flight batch (report parse; whether the implementer's
-// turn has ended, via the run dir's events.jsonl and the claude engine
-// PersistentPreRunE already constructed; whether its reed strand is still
-// live, via the reed engine's own live Status() query; and elapsed time
-// since spawn), computing diff/dirty via the gitquery helpers LAZILY --
-// only inside the report-present branch, since a running tick must never
-// run git -- and blocks on builderengine.PollUntilTerminal. A terminal
-// digest marks the batch terminal in state, persists it, and weft-commits
-// the report plus state.json (the second of the loop's three weft-commit
-// points); a deadline "running" snapshot is returned as-is, with no weft
-// commit and no git diff.
+// poll.go implements the `poll` builder verb: assembles Classify's inputs for the current in-flight batch (report parse; whether the implementer's turn has ended, via the run dir's events.jsonl and the claude engine PersistentPreRunE already constructed; whether its reed strand is still live, via the reed engine's own live Status() query; and elapsed time since spawn), computing diff/dirty via the gitquery helpers LAZILY -- only inside the report-present branch, since a running tick must never run git -- and blocks on builderengine.PollUntilTerminal.
+// A terminal digest marks the batch terminal in state, persists it, and weft-commits the report plus state.json (the second of the loop's three weft-commit points);
+// a deadline "running" snapshot is returned as-is, with no weft commit and no git diff.
 
 package buildercli
 
