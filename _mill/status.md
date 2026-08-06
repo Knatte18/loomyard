@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-owns-the-illusion
+phase: approved-board-junction
 slug: fabric-illusion-core
 branch: fabric-illusion-core
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-production-sweep  '2026-08-05T19:51:19Z'
 approved-test-sweep  '2026-08-06T05:13:21Z'
 approved-module-owned-constructors  '2026-08-06T06:12:07Z'
 approved-fabric-owns-the-illusion  '2026-08-06T07:13:04Z'
+approved-board-junction  '2026-08-06T07:26:08Z'
 ```
 
 ## Batches
@@ -75,9 +76,10 @@ batches:
     start_sha: 9cf2e32e6bdbad8577c2404673f69a87ff61352c
     commit_sha: 9013f16658bbae81431f80311770e2d09bbdfbff
   - name: board-junction
-    state: running
+    state: approved
     implementer_session: 4789b2c7-c7a7-453c-8f2a-13c3dd9612aa
     start_sha: 14048653e9ce389ca6467827c0f465d0fd2de7ff
+    commit_sha: b3fecb851e7bd8d83bc322ed3dc3f97af83ae4b3
   - name: guard-and-docs
     state: pending
 ```
