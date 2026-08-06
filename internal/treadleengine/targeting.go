@@ -1,11 +1,6 @@
-// targeting.go implements treadle's third ephemeral judge framing: optional
-// pre-round targeting, gated by Profile.PreRoundTargeting. Unlike
-// runCircling/runMilestone in judge.go, this call produces no verdict — it
-// reads the latest valid handoff and writes a free-form prose seed brief for
-// the upcoming round's runner. It follows the exact same fail-safe posture
-// as every other call in this package: any failure degrades to "no seed"
-// with a logger.Warn, never an error, since a missed targeting call only
-// costs the round the guidance it would have added, not correctness.
+// targeting.go implements treadle's third ephemeral judge framing: optional pre-round targeting, gated by Profile.PreRoundTargeting.
+// Unlike runCircling/runMilestone in judge.go, this call produces no verdict — it reads the latest valid handoff and writes a free-form prose seed brief for the upcoming round's runner.
+// It follows the exact same fail-safe posture as every other call in this package: any failure degrades to "no seed" with a logger.Warn, never an error, since a missed targeting call only costs the round the guidance it would have added, not correctness.
 
 package treadleengine
 

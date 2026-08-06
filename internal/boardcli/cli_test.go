@@ -61,12 +61,10 @@ func seedCwd(t *testing.T) string {
 	return cwd
 }
 
-// TestCLIContract tests the JSON envelope shape and exit code behavior for each
-// happy-path verb: upsert, list, get, set-status, rerender. Each case asserts
-// exit 0 + ok=true + the verb's distinctive field.
+// TestCLIContract tests the JSON envelope shape and exit code behavior for each happy-path verb: upsert, list, get, set-status, rerender.
+// Each case asserts exit 0 + ok=true + the verb's distinctive field.
 //
-// Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase,
-// TestCLIRerender (as subtests preserving original names)
+// Folds: TestCLIUpsertTask, TestCLIListTasks, TestCLIGetTask, TestCLISetPhase, TestCLIRerender (as subtests preserving original names)
 func TestCLIContract(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -206,11 +204,9 @@ func TestCLIContract(t *testing.T) {
 	}
 }
 
-// TestCLIErrorAndEdgeCases tests error paths and edge cases: null task for
-// nonexistent get, error for nonexistent remove, and not-initialized error.
+// TestCLIErrorAndEdgeCases tests error paths and edge cases: null task for nonexistent get, error for nonexistent remove, and not-initialized error.
 //
-// Folds: TestCLIGetNonexistentTask (null task case),
-// TestCLIRemoveNonexistentTask (exit 1 + error), TestCLINotInitialized
+// Folds: TestCLIGetNonexistentTask (null task case), TestCLIRemoveNonexistentTask (exit 1 + error), TestCLINotInitialized
 func TestCLIErrorAndEdgeCases(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -306,8 +302,7 @@ func TestCLIErrorAndEdgeCases(t *testing.T) {
 	}
 }
 
-// TestCLIStrictPayloadShapes verifies the strict key/shape validation added in Card 5
-// for set-deps, upsert-batch, and merge (top-level and inner set_status object).
+// TestCLIStrictPayloadShapes verifies the strict key/shape validation added in Card 5 for set-deps, upsert-batch, and merge (top-level and inner set_status object).
 func TestCLIStrictPayloadShapes(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -530,9 +525,11 @@ func TestCLIStrictPayloadShapes(t *testing.T) {
 	}
 }
 
-// TestCLILookupContract covers the slug-or-id lookup contract on get, set-status,
-// and remove: both key forms succeed; id=0 resolves the first-created task; neither
-// key and both keys error; unknown keys (e.g. old id_or_slug) error.
+// TestCLILookupContract covers the slug-or-id lookup contract on get, set-status, and remove: both key forms succeed;
+// id=0 resolves the first-created task;
+// neither key and both keys error;
+// unknown keys (e.g.
+// old id_or_slug) error.
 func TestCLILookupContract(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
@@ -780,9 +777,8 @@ func TestCLILookupContract(t *testing.T) {
 	}
 }
 
-// TestCLIBoardPathResolution verifies the two board data dir resolution paths in
-// PersistentPreRunE: without --board-path the CLI uses fabricengine.BoardDir(hub) derived
-// from lyxcwd.Resolve; with --board-path the supplied path takes precedence.
+// TestCLIBoardPathResolution verifies the two board data dir resolution paths in PersistentPreRunE: without --board-path the CLI uses fabricengine.BoardDir(hub) derived from lyxcwd.Resolve;
+// with --board-path the supplied path takes precedence.
 // This test initialises a real git repo so that lyxcwd.Resolve succeeds.
 func TestCLIBoardPathResolution(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")

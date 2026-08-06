@@ -1,11 +1,5 @@
-// gate_test.go tables converged across all three GateMode values and their
-// verdict/gatePassed combinations, exercises execGateCommand against real
-// trivial commands (go's own toolchain — the one binary guaranteed present
-// in this repo's test environment) for the pass, fail, timeout, and
-// not-found paths, and checks writeGateOutput's file shape. The one
-// real-time execGateCommand case (a lingering child holding the output pipe
-// past gateWaitDelay) lives in gate_lingering_test.go under the integration
-// build tag instead — see the Test Tier Purity Invariant in CONSTRAINTS.md.
+// gate_test.go tables converged across all three GateMode values and their verdict/gatePassed combinations, exercises execGateCommand against real trivial commands (go's own toolchain — the one binary guaranteed present in this repo's test environment) for the pass, fail, timeout, and not-found paths, and checks writeGateOutput's file shape.
+// The one real-time execGateCommand case (a lingering child holding the output pipe past gateWaitDelay) lives in gate_lingering_test.go under the integration build tag instead — see the Test Tier Purity Invariant in CONSTRAINTS.md.
 
 package treadleengine
 

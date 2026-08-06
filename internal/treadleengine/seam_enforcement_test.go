@@ -1,13 +1,5 @@
-// seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant:
-// production code in internal/treadleengine imports ONLY the standard
-// library, internal/lock, internal/logger, internal/state, internal/stencil,
-// internal/shuttleengine, and gopkg.in/yaml.v3 — never internal/burlerengine,
-// never internal/lyxcwd as a direct import, and never any
-// internal/*cli package. Like internal/modelspec's leaf_enforcement_test.go,
-// this check is an ALLOWLIST: any import outside the allowed set fails the
-// test, so a future stray dependency (a round-runner's own type leaking
-// upward, a convenience lyxcwd import) is caught with no list
-// maintenance required.
+// seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant: production code in internal/treadleengine imports ONLY the standard library, internal/lock, internal/logger, internal/state, internal/stencil, internal/shuttleengine, and gopkg.in/yaml.v3 — never internal/burlerengine, never internal/lyxcwd as a direct import, and never any internal/*cli package.
+// Like internal/modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray dependency (a round-runner's own type leaking upward, a convenience lyxcwd import) is caught with no list maintenance required.
 
 package treadleengine
 
@@ -32,8 +24,7 @@ var allowedImports = map[string]bool{
 	"gopkg.in/yaml.v3": true,
 }
 
-// TestRunnerSeamInvariant_AllowlistOnly verifies that every non-test .go file
-// imports only stdlib or an entry in allowedImports.
+// TestRunnerSeamInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in allowedImports.
 func TestRunnerSeamInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
