@@ -1,8 +1,8 @@
 // raddle_guard_test.go is a guard to ensure that internal/lyxcwd never
 // discovers or enumerates the _raddle directory. This documents that lyxcwd
 // never scans the worktree to mirror dirs — a future nested/ignored _raddle
-// can never be treated as a sibling. Geometry methods like WeftRaddleDir() are
-// exceptions: they compute paths purely via filepath.Join with no discovery logic.
+// can never be treated as a sibling. The guard scans every non-test .go file
+// in the package; no file is exempted.
 
 package lyxcwd
 
@@ -42,12 +42,6 @@ func TestRaddleGuard(t *testing.T) {
 
 			// Only check .go files that are not _test.go files.
 			if !d.IsDir() && strings.HasSuffix(d.Name(), ".go") && !strings.HasSuffix(d.Name(), "_test.go") {
-				// Skip lyxcwd.go: it contains geometry methods like WeftRaddleDir() that compute
-				// paths purely via filepath.Join, which is allowed. The guard applies only to
-				// discovery/enumeration logic, not to geometry computation.
-				if d.Name() == "lyxcwd.go" {
-					return nil
-				}
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return err
