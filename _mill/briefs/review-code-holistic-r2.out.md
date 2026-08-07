@@ -1,0 +1,29 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: close the weft-visibility leak (slice 8) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-07
+```
+
+## Findings
+
+### [BLOCKING] docs/benchmarks/test-suite-timing.md not reworded per card 29 / Shared Decision
+**Location:** `docs/benchmarks/test-suite-timing.md` (whole file)
+**Issue:** Both the overview's `repo-prose sweep boundary` Shared Decision and card 29's own Requirements explicitly list this file as a reword target ("Card 29 rewords four of them... plus `docs/benchmarks/test-suite-timing.md`'s weft mentions"), but the file shows zero diff evidence — it still contains dozens of `weft`/`warp` mentions (`internal/warpengine`, `TestWeftSpawnPushesWeftBranch`, `TestReconcile_MissingWeftWorktreeRecreated`, etc.) throughout, including in its top "Current best times" section (line 42).
+**Fix:** Either reword the file's non-frozen/current-facing prose (the file itself documents an "append-only discipline" for its dated historical blocks, which is a legitimate reason to leave those specific blocks alone), or record an explicit deviation/rationale for leaving it untouched — as the plan did for the `repo-prose sweep boundary`'s other deliberately-skipped files — so this isn't a silent, undocumented gap against a named batch requirement.
+
+## Nits
+
+### [NIT] Stray unreworded "warp add" in a file card 29 otherwise edited
+**Location:** `docs/reference/status-schema.md:29`
+**Issue:** Card 29 pins reword targets at `status-schema.md:11` and `:33` only; line 29 ("`warp add` vs a dedicated `lyx loom init`/`spawn`") still carries a bare `warp` mention in the same file the batch touched, and it sits outside the machine check's scope (doc is outside `internal/`/`cmd/`).
+**Fix:** Reword or explicitly carve out this line alongside the two already-pinned ones so the file is internally consistent.
+
+## Verdict
+
+REQUEST_CHANGES
+One named batch-08 doc target (`test-suite-timing.md`) shows no evidence of the required reword or a recorded rationale for skipping it.
+MILL_REVIEW_END

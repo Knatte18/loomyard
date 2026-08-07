@@ -1,0 +1,1 @@
+- Stray unreworded "warp add" in a file card 29 otherwise edited: **Location:** `docs/reference/status-schema.md:29`
