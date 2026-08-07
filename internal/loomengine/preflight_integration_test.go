@@ -299,7 +299,7 @@ func TestPreflight_HostDirty(t *testing.T) {
 	}
 }
 
-// TestPreflight_WeftWorktreeRemoved asserts that a removed weft worktree reports weft-pairing,
+// TestPreflight_WeftWorktreeRemoved asserts that a removed weft worktree reports fabric-ready,
 // and that the now-dangling host junction makes the seed stat fail too — classified seed-unreadable
 // (never seed-missing) because check 3 already failed.
 func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
@@ -307,7 +307,11 @@ func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 
 	f, _ := setupPreflightFixture(t)
 
-	if err := os.RemoveAll(fabricengine.WeftWorktree(f.Layout)); err != nil {
+	// Drive the not-present branch via the lyxtest fixture's own WeftPrime
+	// field rather than fabricengine.WeftWorktree(f.Layout): check 3 now
+	// goes through fabricengine.Ready(l), and the fixture field is the
+	// independent source of the same path.
+	if err := os.RemoveAll(f.WeftPrime); err != nil {
 		t.Fatalf("remove weft worktree: %v", err)
 	}
 
@@ -315,12 +319,13 @@ func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckWeftPairing, CheckSeedUnreadable)
+	assertCheckSet(t, report, CheckFabricReady, CheckSeedUnreadable)
 }
 
 // TestPreflight_HostWeftDifferentBranches asserts that host and weft worktrees on different
-// branches report weft-sync,
-// and that weft-sync alone does NOT block the seed check (the junction and weft directory are both
+// branches report fabric-sync — the CauseBranchMismatch/CheckFabricSync equivalence pinned by
+// healthy-typed-reason,
+// and that fabric-sync alone does NOT block the seed check (the junction and weft directory are both
 // still healthy).
 func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 	t.Parallel()
@@ -333,12 +338,35 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckWeftSync)
+	assertCheckSet(t, report, CheckFabricSync)
+}
+
+// TestPreflight_ConfigLoadFailed asserts the CauseConfigLoadFailed/CheckJunction equivalence pinned
+// by healthy-typed-reason: a repo-wide fabric.yaml that fails to load classifies as CheckJunction
+// (not a distinct CheckID of its own), same as the three junction-drift shapes TestPreflight_JunctionBroken
+// covers.
+// Unlike those shapes, the _lyx junction itself is still physically intact here — only the config
+// read fails — so the seed check is unaffected: no CheckSeedUnreadable/CheckSeedMissing is added.
+func TestPreflight_ConfigLoadFailed(t *testing.T) {
+	t.Parallel()
+
+	f, _ := setupPreflightFixture(t)
+
+	configPath := configengine.ConfigFile(fabricengine.BoardDir(f.Layout.HubPath), "fabric")
+	if err := os.WriteFile(configPath, []byte("not: [valid: yaml"), 0o644); err != nil {
+		t.Fatalf("corrupt repo-wide fabric config: %v", err)
+	}
+
+	report, err := checkResolved(f.Layout)
+	if err != nil {
+		t.Fatalf("checkResolved: %v", err)
+	}
+	assertCheckSet(t, report, CheckJunction)
 }
 
 // TestPreflight_JunctionBroken asserts that all three of Healthy's junction-drift shapes — missing,
-// not-a-link, and points-elsewhere — classify as junction (card 12's substring-match fix: a prefix
-// match only ever caught the missing shape).
+// not-a-link, and points-elsewhere — classify as junction, via Healthy's typed Cause rather than a
+// substring match.
 // Each drift shape is exercised against BOTH junctions (_lyx and _pattern, from card 15 onward) so
 // the classification is proven to hold for the second, non-_lyx junction too — not just the one
 // Healthy's underlying loop was originally written and tested against.
@@ -348,7 +376,7 @@ func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
 // broken _lyx junction also makes the seed stat fail — classified seed-unreadable (never
 // seed-missing) because check 3 already failed.
 // A broken _pattern junction, by contrast, leaves the seed fully readable through the still-healthy
-// _lyx junction: check 3 still fails and still classifies as CheckJunction (never CheckWeftSync),
+// _lyx junction: check 3 still fails and still classifies as CheckJunction (never CheckFabricSync),
 // but no seed failure is added at all, since check 4's stat of LoomStatusFile(l) succeeds either
 // way.
 // This asymmetry is exactly what "check3BlocksSeed" is named for: it only changes check 4's
@@ -437,7 +465,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 // card 15 meets: _lyx is fully healthy,
 // but _pattern was never wired at all (simulated here by removing it from an otherwise-healthy
 // fixture, rather than corrupting it — the fixture never had it, full stop).
-// Preflight must classify this as CheckJunction, never CheckWeftSync, and blocks the run (report.OK
+// Preflight must classify this as CheckJunction, never CheckFabricSync, and blocks the run (report.OK
 // == false) — but does NOT also fail the seed check, since status.json lives under the
 // still-healthy _lyx junction (see TestPreflight_JunctionBroken's doc comment for the same
 // asymmetry).
@@ -620,5 +648,5 @@ func TestPreflight_MultipleSimultaneousFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckWorktreeClean, CheckWeftSync)
+	assertCheckSet(t, report, CheckWorktreeClean, CheckFabricSync)
 }

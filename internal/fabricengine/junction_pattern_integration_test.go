@@ -321,7 +321,8 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	shapes := []struct {
 		name       string
 		corrupt    func(t *testing.T, link, target string)
-		wantReason func(dirName string) string
+		wantCause  fabricengine.HealthCause
+		wantDetail func(dirName string) string
 	}{
 		{
 			name: "Missing",
@@ -330,8 +331,9 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 					t.Fatalf("remove junction: %v", err)
 				}
 			},
-			wantReason: func(dirName string) string {
-				return fmt.Sprintf("host %s junction missing", dirName)
+			wantCause: fabricengine.CauseJunctionMissing,
+			wantDetail: func(dirName string) string {
+				return fmt.Sprintf("%s junction missing", dirName)
 			},
 		},
 		{
@@ -344,8 +346,9 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 					t.Fatalf("mkdir real dir in junction's place: %v", err)
 				}
 			},
-			wantReason: func(dirName string) string {
-				return fmt.Sprintf("host %s is not a junction", dirName)
+			wantCause: fabricengine.CauseNotAJunction,
+			wantDetail: func(dirName string) string {
+				return fmt.Sprintf("%s is not a junction", dirName)
 			},
 		},
 		{
@@ -362,8 +365,9 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 					t.Fatalf("seed wrong-target junction: %v", err)
 				}
 			},
-			wantReason: func(dirName string) string {
-				return fmt.Sprintf("host %s junction points elsewhere", dirName)
+			wantCause: fabricengine.CauseJunctionPointsElsewhere,
+			wantDetail: func(dirName string) string {
+				return fmt.Sprintf("%s junction points elsewhere", dirName)
 			},
 		},
 	}
@@ -421,9 +425,9 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 				if ok {
 					t.Errorf("Healthy = true; want false (%s)", tt.name)
 				}
-				wantReason := tt.wantReason(j.dirName)
-				if reason != wantReason {
-					t.Errorf("Healthy reason = %q; want %q", reason, wantReason)
+				wantDetail := tt.wantDetail(j.dirName)
+				if reason.Cause != tt.wantCause || reason.Detail != wantDetail {
+					t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, tt.wantCause, wantDetail)
 				}
 			})
 		}

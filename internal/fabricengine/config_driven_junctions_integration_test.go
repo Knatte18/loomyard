@@ -122,6 +122,9 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 		t.Fatalf("Healthy: %v", err)
 	}
 	if !ok {
-		t.Errorf("Healthy ok = false (reason %q); want true with only _lyx wired (narrow-pathspec reality)", reason)
+		t.Errorf("Healthy ok = false (reason %+v); want true with only _lyx wired (narrow-pathspec reality)", reason)
+	}
+	if reason.Cause == fabricengine.CauseConfigLoadFailed {
+		t.Errorf("Healthy reason = %+v; want a real verdict, not CauseConfigLoadFailed", reason)
 	}
 }
