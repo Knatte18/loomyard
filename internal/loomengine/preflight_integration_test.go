@@ -1,7 +1,7 @@
 //go:build integration
 
 // preflight_integration_test.go drives Preflight/checkResolved end-to-end
-// against real git fixtures — a paired host+weft worktree with a wired _lyx
+// against real git fixtures — a paired host+fabric worktree with a wired _lyx
 // junction and a seeded status.json — covering every pass/fail scenario
 // across all four preconditions. It is integration-tagged because it spawns
 // git via lyxtest fixtures (Test Tier Purity Invariant).
@@ -22,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// setupPreflightFixture builds a fully-configured CopyPaired fixture with weft
+// setupPreflightFixture builds a fully-configured CopyPaired fixture with fabric
 // and junction setup, returning the fixture and the slug for WireJunctions.
 func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	t.Helper()
@@ -43,9 +43,9 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	seedValidStatus(t, f.Layout)
 
 	// The seeded status.json (and its .lock sidecar) materialize through the
-	// _lyx junction into the weft worktree's own git repo, where they start
+	// _lyx junction into the fabric worktree's own git repo, where they start
 	// out untracked. Commit them so a freshly-built fixture is genuinely
-	// clean on both sides — required now that Clean checks the weft worktree
+	// clean on both sides — required now that Clean checks the fabric worktree
 	// too, not just the host.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "add", "-A")
 	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
@@ -84,9 +84,9 @@ func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 	}
 }
 
-// commitWeftStatus commits the current state of status.json in the weft worktree,
+// commitFabricStatus commits the current state of status.json in the fabric worktree,
 // isolating test scenarios from CheckWorktreeClean failures.
-func commitWeftStatus(t *testing.T, f lyxtest.PairedFixture) {
+func commitFabricStatus(t *testing.T, f lyxtest.PairedFixture) {
 	t.Helper()
 
 	lyxtest.MustRun(t, f.WeftPrime, "git", "add", "-A")
@@ -147,7 +147,7 @@ func assertCheckSet(t *testing.T, got Report, want ...CheckID) {
 	}
 }
 
-// TestPreflight_HealthyPairAndSeed is the anchor case: a fully healthy paired host+weft worktree
+// TestPreflight_HealthyPairAndSeed is the anchor case: a fully healthy paired host+fabric worktree
 // with a valid fresh seed reports OK.
 // Since CopyPaired's host hub is a single-worktree repo, its Layout.Prime already equals
 // Layout.WorktreeRoot — this test doubles as the "Prime worktree with a healthy pair+seed" scenario
@@ -223,9 +223,9 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	assertCheckSet(t, report, CheckWorktreeRoot)
 }
 
-// TestPreflight_HostDirty covers all three ways Clean can observe a dirty host worktree (a
+// TestPreflight_HostDirty covers all three ways Clean can observe a dirty repo (a
 // tracked-and-modified file, a staged file, and an untracked-only file), plus the genuinely-new
-// weft-dirty-only and both-dirty shapes now that Clean also checks the weft side.
+// fabric-dirty-only and both-dirty shapes now that Clean also checks the fabric side.
 func TestPreflight_HostDirty(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -260,11 +260,11 @@ func TestPreflight_HostDirty(t *testing.T) {
 			},
 		},
 		{
-			name: "DirtyWeftOnly",
+			name: "DirtyFabricOnly",
 			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
 				untracked := filepath.Join(f.WeftPrime, "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked weft file: %v", err)
+					t.Fatalf("write untracked fabric file: %v", err)
 				}
 			},
 		},
@@ -275,9 +275,9 @@ func TestPreflight_HostDirty(t *testing.T) {
 				if err := os.WriteFile(hostUntracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked host file: %v", err)
 				}
-				weftUntracked := filepath.Join(f.WeftPrime, "untracked.txt")
-				if err := os.WriteFile(weftUntracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked weft file: %v", err)
+				fabricUntracked := filepath.Join(f.WeftPrime, "untracked.txt")
+				if err := os.WriteFile(fabricUntracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked fabric file: %v", err)
 				}
 			},
 		},
@@ -299,10 +299,10 @@ func TestPreflight_HostDirty(t *testing.T) {
 	}
 }
 
-// TestPreflight_WeftWorktreeRemoved asserts that a removed weft worktree reports fabric-ready,
-// and that the now-dangling host junction makes the seed stat fail too — classified seed-unreadable
+// TestPreflight_FabricNotReady asserts that a removed fabric worktree reports fabric-ready,
+// and that the now-dangling junction makes the seed stat fail too — classified seed-unreadable
 // (never seed-missing) because check 3 already failed.
-func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
+func TestPreflight_FabricNotReady(t *testing.T) {
 	t.Parallel()
 
 	f, _ := setupPreflightFixture(t)
@@ -312,7 +312,7 @@ func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 	// goes through fabricengine.Ready(l), and the fixture field is the
 	// independent source of the same path.
 	if err := os.RemoveAll(f.WeftPrime); err != nil {
-		t.Fatalf("remove weft worktree: %v", err)
+		t.Fatalf("remove fabric worktree: %v", err)
 	}
 
 	report, err := checkResolved(f.Layout)
@@ -322,12 +322,12 @@ func TestPreflight_WeftWorktreeRemoved(t *testing.T) {
 	assertCheckSet(t, report, CheckFabricReady, CheckSeedUnreadable)
 }
 
-// TestPreflight_HostWeftDifferentBranches asserts that host and weft worktrees on different
+// TestPreflight_HostFabricDifferentBranches asserts that host and fabric worktrees on different
 // branches report fabric-sync — the CauseBranchMismatch/CheckFabricSync equivalence pinned by
 // healthy-typed-reason,
-// and that fabric-sync alone does NOT block the seed check (the junction and weft directory are both
+// and that fabric-sync alone does NOT block the seed check (the junction and fabric directory are both
 // still healthy).
-func TestPreflight_HostWeftDifferentBranches(t *testing.T) {
+func TestPreflight_HostFabricDifferentBranches(t *testing.T) {
 	t.Parallel()
 
 	f, _ := setupPreflightFixture(t)
@@ -390,7 +390,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 			name: "Missing",
 			corrupt: func(t *testing.T, hostLink string) {
 				if err := fslink.Remove(hostLink); err != nil {
-					t.Fatalf("remove host junction %s: %v", hostLink, err)
+					t.Fatalf("remove junction %s: %v", hostLink, err)
 				}
 			},
 		},
@@ -398,7 +398,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 			name: "NotALink",
 			corrupt: func(t *testing.T, hostLink string) {
 				if err := fslink.Remove(hostLink); err != nil {
-					t.Fatalf("remove host junction %s: %v", hostLink, err)
+					t.Fatalf("remove junction %s: %v", hostLink, err)
 				}
 				if err := os.Mkdir(hostLink, 0o755); err != nil {
 					t.Fatalf("mkdir real dir in junction's place %s: %v", hostLink, err)
@@ -409,9 +409,9 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 			name: "PointsElsewhere",
 			corrupt: func(t *testing.T, hostLink string) {
 				if err := fslink.Remove(hostLink); err != nil {
-					t.Fatalf("remove host junction %s: %v", hostLink, err)
+					t.Fatalf("remove junction %s: %v", hostLink, err)
 				}
-				wrongTarget := filepath.Join(filepath.Dir(hostLink), "not-the-weft-junction-dir")
+				wrongTarget := filepath.Join(filepath.Dir(hostLink), "not-the-fabric-junction-dir")
 				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 					t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
 				}
@@ -469,7 +469,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 // == false) — but does NOT also fail the seed check, since status.json lives under the
 // still-healthy _lyx junction (see TestPreflight_JunctionBroken's doc comment for the same
 // asymmetry).
-// A single Reconcile repairs it (adds the missing junction and materialises its weft-side target)
+// A single Reconcile repairs it (adds the missing junction and materialises its fabric-side target)
 // rather than reporting already-healthy;
 // and a fresh Preflight afterward reports OK — the "one lyx init or one lyx fabric reconcile"
 // remedy this batch documents.
@@ -513,7 +513,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("Reconcile result has no pair for host worktree %s: %+v", f.Layout.WorktreePath(), result.Pairs)
+		t.Fatalf("Reconcile result has no pair for the worktree %s: %+v", f.Layout.WorktreePath(), result.Pairs)
 	}
 
 	// The junction now resolves.
@@ -529,7 +529,7 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	assertCheckSet(t, report)
 }
 
-// TestPreflight_SeedMissing asserts that a genuinely absent seed — junction and weft pairing both
+// TestPreflight_SeedMissing asserts that a genuinely absent seed — junction and fabric pairing both
 // healthy — reports seed-missing, not seed-unreadable.
 func TestPreflight_SeedMissing(t *testing.T) {
 	t.Parallel()
@@ -539,7 +539,7 @@ func TestPreflight_SeedMissing(t *testing.T) {
 	if err := os.Remove(LoomStatusFile(f.Layout)); err != nil {
 		t.Fatalf("remove seed: %v", err)
 	}
-	commitWeftStatus(t, f)
+	commitFabricStatus(t, f)
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {
@@ -570,7 +570,7 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
 	if err := os.WriteFile(LoomStatusFile(f.Layout), []byte(raw), 0o644); err != nil {
 		t.Fatalf("write malformed seed: %v", err)
 	}
-	commitWeftStatus(t, f)
+	commitFabricStatus(t, f)
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {
@@ -619,7 +619,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 			if err := state.WriteJSON(LoomStatusFile(f.Layout), LoomStatusLock(f.Layout), tt.seed()); err != nil {
 				t.Fatalf("overwrite seed: %v", err)
 			}
-			commitWeftStatus(t, f)
+			commitFabricStatus(t, f)
 
 			report, err := checkResolved(f.Layout)
 			if err != nil {
@@ -631,7 +631,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 }
 
 // TestPreflight_MultipleSimultaneousFailures asserts that independently tripped checks (a dirty
-// host and a branch-diverged weft) are both collected into one Report rather than the first
+// host and a branch-diverged fabric) are both collected into one Report rather than the first
 // short-circuiting the rest.
 func TestPreflight_MultipleSimultaneousFailures(t *testing.T) {
 	t.Parallel()

@@ -327,7 +327,7 @@ func TestSpawnBatch_RecoveryArchivesStaleReport(t *testing.T) {
 	fx := newSpawnFixture(t)
 
 	// The state a stuck non-chain batch leaves behind: its report is on disk
-	// (poll classified it stuck and weft-committed it), and CurrentBatch has
+	// (poll classified it stuck and fabric-committed it), and CurrentBatch has
 	// reset. Batch 1 is a plain, chainless batch, so recovery is --role
 	// recovery, never --restart-chain.
 	stalePath := filepath.Join(fx.ReportsDir, "01-json-flag.yaml")
@@ -644,7 +644,7 @@ func TestSpawnBatch_ChainAnchorRecordedOnce(t *testing.T) {
 		t.Fatalf("ChainStartSHAs[4] not recorded after spawning chain member batch 3")
 	}
 
-	// Advance the host repo's HEAD before spawning the chain's other member,
+	// Advance the repo's HEAD before spawning the chain's other member,
 	// so a wrongly-overwritten anchor would visibly differ from the first
 	// one recorded above.
 	commitFile(t, fx.Worktree, "extra.txt", "extra", "extra commit")

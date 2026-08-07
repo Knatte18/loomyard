@@ -1,11 +1,11 @@
-// boardguard_test.go enforces the Weft Git Invariant's board carve-out: internal/boardengine's
+// boardguard_test.go enforces the Fabric Git Invariant's board carve-out: internal/boardengine's
 // non-test production code never imports internal/gitrepo or internal/gitexec directly,
 // and never shells out to `git` itself.
-// boardengine routes every weft-repo git operation through internal/fabricengine's
+// boardengine routes every fabric-repo git operation through internal/fabricengine's
 // CommitWeftAt/PushWeftAt instead (see the plan's "no import cycle from boardengine into
 // fabricengine" Shared Decision) — this guard is the mechanical enforcement that keeps a future
 // change from regressing that routing back into a raw git call.
-// See CONSTRAINTS.md's Weft Git Invariant.
+// See CONSTRAINTS.md's Fabric Git Invariant.
 
 package main
 
@@ -23,7 +23,7 @@ import (
 
 // boardGuardBannedImports are the import paths internal/boardengine's production
 // code may never reference directly: the two packages that own raw git access.
-// boardengine must instead route weft-repo git operations through
+// boardengine must instead route fabric-repo git operations through
 // internal/fabricengine's CommitWeftAt/PushWeftAt.
 var boardGuardBannedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/gitrepo": true,
@@ -100,14 +100,14 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 
 		if imp, bad := firstBannedBoardImport(path); bad {
 			failures = append(failures, fmt.Sprintf(
-				"%s: imports banned package %q -- route weft-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Weft Git Invariant)",
+				"%s: imports banned package %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Fabric Git Invariant)",
 				relPath, imp,
 			))
 		}
 
 		if token, bad := firstBannedGitSpawn(string(data)); bad {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned git shell-out token %q -- route weft-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Weft Git Invariant)",
+				"%s: contains banned git shell-out token %q -- route fabric-repo git operations through internal/fabricengine's CommitWeftAt/PushWeftAt instead (see CONSTRAINTS.md's Fabric Git Invariant)",
 				relPath, token,
 			))
 		}
@@ -124,7 +124,7 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("Weft Git Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
+		t.Errorf("Fabric Git Invariant violated (see CONSTRAINTS.md):\n%s", strings.Join(failures, "\n"))
 	}
 }
 

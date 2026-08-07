@@ -91,14 +91,14 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 // root.
 // lyx init is user-driven from any directory, so a repo may be initialized in a subdirectory of its
 // git worktree (RelPath != "."); anchoring at WorktreeRoot there would resolve run dirs into an
-// un-junctioned <gitroot>/_lyx that the weft commit's RelPath-scoped pathspec never includes,
-// silently stranding every block artifact outside the weft.
+// un-junctioned <gitroot>/_lyx that the fabric commit's RelPath-scoped pathspec never includes,
+// silently stranding every block artifact outside fabric.
 // The pause verb's run-dir lookup exposes the resolved base: a run dir created under
 // <cwd>/_lyx/perch must be found.
 func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 
-	// Initialize a NESTED directory of the host repo, exactly as lyx init
+	// Initialize a NESTED directory of the repo, exactly as lyx init
 	// run from <hub>/nested would: configs and _lyx live under nested/.
 	nested := filepath.Join(fixture.Hub, "nested")
 	if err := os.MkdirAll(nested, 0o755); err != nil {

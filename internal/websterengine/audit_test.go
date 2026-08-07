@@ -26,12 +26,12 @@ func fakeLayout() *lyxcwd.Location {
 }
 
 // TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape
-// CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Weft Git
-// Invariant bans), the pre-cutover `lyx weft`/`lyx warp` spellings, a command referencing the weft
-// worktree path directly (e.g. `git -C <weft-worktree> add`), and a set of weft-free commands that
+// CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Fabric Git
+// Invariant bans), the pre-cutover `lyx weft`/`lyx warp` spellings, a command referencing the fabric
+// worktree path directly (e.g. `git -C <fabric-worktree> add`), and a set of fabric-free commands that
 // must never match.
 // The `lyx fabric` rows are the regression guard: the fabric cutover deleted `lyx weft`/`lyx warp`
-// and renamed every weft-touching verb under `lyx fabric`, so a matcher that knows only the old
+// and renamed every fabric-touching verb under `lyx fabric`, so a matcher that knows only the old
 // spellings bans nothing an agent can actually run today.
 // The `lyx.exe` rows are the same guard for the Windows spelling — lyx's primary platform, where an
 // agent writing the extension out would otherwise slip the whole audit — paired with a `lyx.exe
@@ -39,7 +39,7 @@ func fakeLayout() *lyxcwd.Location {
 func TestRefScannerMatches(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
-	weftWorktree := fabricengine.WeftWorktree(layout)
+	fabricWorktree := fabricengine.WeftWorktree(layout)
 
 	tests := []struct {
 		name string
@@ -56,15 +56,15 @@ func TestRefScannerMatches(t *testing.T) {
 		{"lyx.exe fabric sync", "lyx.exe fabric sync", true},
 		{"lyx.exe weft push", "lyx.exe weft push", true},
 		{"absolute lyx.exe fabric push", `C:\bin\lyx.exe fabric push`, true},
-		{"git -C weft-worktree add", "git -C " + weftWorktree + " add -A", true},
-		{"cd into weft worktree", "cd " + weftWorktree + " && git status", true},
-		{"host git commit is not a weft reference", "git commit -am wip", false},
+		{"git -C fabric-worktree add", "git -C " + fabricWorktree + " add -A", true},
+		{"cd into fabric worktree", "cd " + fabricWorktree + " && git status", true},
+		{"host git commit is not a fabric reference", "git commit -am wip", false},
 		{"plain read", "cat notes.txt", false},
 		{"host status", "git status", false},
 		{"unrelated path", "cat /hub/other-repo/README.md", false},
 		{"a fabric-named file is not a lyx fabric invocation", "cat fabric-notes.md", false},
-		{"lyx board is not a weft reference", "lyx board list", false},
-		{"lyx.exe board is not a weft reference either", "lyx.exe board list", false},
+		{"lyx board is not a fabric reference", "lyx board list", false},
+		{"lyx.exe board is not a fabric reference either", "lyx.exe board list", false},
 	}
 
 	for _, tt := range tests {
@@ -83,12 +83,12 @@ func cleanForkReport(path string) shuttleengine.ForkReport {
 }
 
 // TestCheckFork covers every violation CheckFork enforces plus the two cases the requirements pin
-// as explicitly ALLOWED for a fork (Write/Edit and host-repo git), which is the opposite of
+// as explicitly ALLOWED for a fork (Write/Edit and repo git), which is the opposite of
 // burlerengine's read-only cluster-reviewer policy.
 func TestCheckFork(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
-	weftWorktree := fabricengine.WeftWorktree(layout)
+	fabricWorktree := fabricengine.WeftWorktree(layout)
 
 	tests := []struct {
 		name        string
@@ -132,10 +132,10 @@ func TestCheckFork(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
-			name: "git -C <weft-worktree> add is a hard error",
+			name: "git -C <fabric-worktree> add is a hard error",
 			fork: shuttleengine.ForkReport{
 				TranscriptPath: "e", ReportReturned: true,
-				BashCommands: []string{"git -C " + weftWorktree + " add -A"},
+				BashCommands: []string{"git -C " + fabricWorktree + " add -A"},
 			},
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
@@ -197,7 +197,7 @@ func TestCheckFork(t *testing.T) {
 func TestCheckParent(t *testing.T) {
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
-	weftWorktree := fabricengine.WeftWorktree(layout)
+	fabricWorktree := fabricengine.WeftWorktree(layout)
 
 	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
 	const summaryPath = "/hub/master-builder/_lyx/webster/summary.md"
@@ -266,9 +266,9 @@ func TestCheckParent(t *testing.T) {
 			wantClasses: []AuditViolationClass{ClassParentWrite},
 		},
 		{
-			name: "parent weft bash is a hard error",
+			name: "parent fabric bash is a hard error",
 			audit: shuttleengine.ForkAudit{
-				ParentBashCommands: []string{"git -C " + weftWorktree + " commit -am wip"},
+				ParentBashCommands: []string{"git -C " + fabricWorktree + " commit -am wip"},
 			},
 			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},

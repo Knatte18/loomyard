@@ -797,7 +797,7 @@ func TestRun_PersistsOrchestratorStrandBeforeWait(t *testing.T) {
 
 // TestRun_FreshStopsSupersededRunsLiveStrands proves --fresh's reclaim half: archiving a superseded
 // run's state must first stop every recorded batch strand the reed still reports live,
-// or the orphaned implementer keeps working against the same host repo and its late report lands on
+// or the orphaned implementer keeps working against the same repo and its late report lands on
 // the FRESH run's report path (the recreated reports dir), where it is distilled as the fresh
 // batch's success — found live in round fable-r4 as a --fresh run returning done on the superseded
 // plan's work.

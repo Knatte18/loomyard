@@ -125,9 +125,9 @@ func containsString(haystack []string, needle string) bool {
 	return false
 }
 
-// TestFabricSync_SkipGitBypassNeedsNoWeftWorktree verifies the WEFT_SKIP_GIT bypass short-circuits
+// TestFabricSync_SkipGitBypassNeedsNoFabricWorktree verifies the WEFT_SKIP_GIT bypass short-circuits
 // before path validation.
-func TestFabricSync_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
+func TestFabricSync_SkipGitBypassNeedsNoFabricWorktree(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
