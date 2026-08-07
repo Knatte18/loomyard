@@ -131,6 +131,10 @@ batches:
   `docs/research/` and `manifest/designs/` are historical records, which `doc-vocabulary-split` keeps on the mechanism side alongside README's architecture section.
   The discussion's Scope scopes doc work to "the repo-prose docs named in `doc-vocabulary-split`", so widening past this line is a scope decision for a later task.
   Recorded here so a future reader knows these files were examined and classified, not missed — none of them is covered by the machine check.
+- **`docs/benchmarks/test-suite-timing.md` deviation:** card 29 names this file as a reword target, but every `weft`/`warp` mention in it (`internal/warpengine`, `internal/weft`, `TestWeftSpawnPushesWeftBranch`, `TestReconcile_MissingWeftWorktreeRecreated`, etc.) lives inside one of the file's dated, append-only historical blocks — including the "Current best times" section itself, which the file's own text says "always reflects the latest block" (i.e. it is a promoted copy of the newest frozen block, not separate current-facing prose).
+  The file's own append-only discipline note ("The frozen blocks below are left unedited per append-only discipline; only this new block corrects the record") already forbids editing those blocks for any reason short of a new dated measurement — the identifiers they record are the literal package/test names that existed at the time each measurement was taken (`internal/warpengine` predates this task's `fabricengine` rename), and rewording them retroactively would misstate what was actually measured, the same class of harm the `doc-vocabulary-split` decision's historical-record carve-out (`docs/research/`, `manifest/designs/`) already protects against.
+  The file's non-historical prose (the intro through "Reading the tables", before "## Current best times") carries zero `weft`/`warp` mentions, so there is nothing left to reword outside the frozen blocks.
+  Card 29 therefore lands no diff against this file — recorded here, per code review r2, so the gap is a documented deviation rather than a silent one.
 - **Applies to:** batch 08
 
 ## All Files Touched
