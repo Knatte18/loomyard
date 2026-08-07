@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-constructor contract (unexport)
+phase: approved-templates describe one repo
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-fabric API expand  '2026-08-07T13:18:26Z'
 approved-typed Healthy reason and Clean reword  '2026-08-07T13:33:57Z'
 approved-consumer call-site migration  '2026-08-07T13:58:05Z'
 approved-constructor contract (unexport)  '2026-08-07T14:47:31Z'
+approved-templates describe one repo  '2026-08-07T14:59:26Z'
 ```
 
 ## Batches
@@ -106,9 +107,10 @@ batches:
     commit_sha: d2e4755dde39297a7b4ddc3965ac995d371e4df6
     verify_baseline_failures: []
   - name: templates describe one repo
-    state: running
+    state: approved
     implementer_session: a2b563cb-d831-4ca1-b18e-c8b6d6f91b6e
     start_sha: 4d53436264dcf4d4977406ffb3757afb955899ef
+    commit_sha: fc82958d53aa3ba1512d81275045e3909028348e
     verify_baseline_failures: ['--- FAIL: TestRun_ValidationRefusal (0.00s)', '--- FAIL: TestRun_FreshInitPersistsState
     (0.00s)', '--- FAIL: TestRun_FingerprintMismatchThenFreshArchivesAndReinits (0.00s)',
   '--- FAIL: TestRun_OutcomeMapping (0.00s)', '--- FAIL: TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused
