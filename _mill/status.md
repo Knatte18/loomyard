@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -19,4 +19,6 @@ discussed  '2026-08-06T19:03:29Z'
 planning  '2026-08-06T19:32:13Z'
 plan-review-r1  '2026-08-06T19:45:13Z'
 plan-fix-r1  '2026-08-06T19:45:13Z'
+plan-review-r2  '2026-08-07T13:28:44Z'
+plan-fix-r2  '2026-08-07T13:28:44Z'
 ```

@@ -53,6 +53,9 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
 
 - **Context:**
   - `internal/lyxdirs/dirs.go`
+  - `internal/fabricengine/config.go`
+  - `internal/loomengine/config.go`
+  - `internal/perchengine/config.go`
 - **Edits:**
   - `internal/configengine/config.go`
 - **Creates:** none
@@ -61,6 +64,11 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
 - **Requirements:** delete `const LyxDirName = "_lyx"` and its godoc from `internal/configengine/config.go`.
   Add the import `"github.com/Knatte18/loomyard/internal/lyxdirs"` and replace the two in-package uses — the `filepath.Join(cwd, LyxDirName)` at `config.go`'s `lyxDir` local and the `filepath.Join(baseDir, LyxDirName, configDirName)` in `ConfigDir` — with `lyxdirs.LyxDirName`.
   Update `configDirName`'s godoc, which currently says "subdirectory name within LyxDirName", to name `lyxdirs.LyxDirName`.
+  Also retarget the two `_lyx` substrings in `FindBaseDir`'s error strings — `"not initialized: _lyx/ directory not found"` and `"stat _lyx: %w"` — onto the const, e.g. `fmt.Errorf("not initialized: %s/ directory not found", lyxdirs.LyxDirName)` and `fmt.Errorf("stat %s: %w", lyxdirs.LyxDirName, err)`.
+  These are not caught by `TestEnforcement_GeometryLiterals` (a format-string operand is not a path-construction context), so they would otherwise be the one place in this file still hard-coding the name after the move.
+  Do NOT change the observable message text — three packages substring-match on `"not initialized"` in their own `LoadConfig` (`internal/fabricengine/config.go`, `internal/loomengine/config.go`, `internal/perchengine/config.go`), so keep that prefix byte-identical.
+  Doc-comment prose mentioning `_lyx` may stay as prose;
+  only the const and these two format strings are retargeted.
   No alias const is left behind (see the batch-local decision).
 - **Commit:** `refactor(configengine): move LyxDirName to internal/lyxdirs`
 

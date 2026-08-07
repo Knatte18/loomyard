@@ -65,8 +65,9 @@ _Cross-cutting decisions every batch inherits._
 
 ### Decision: lyxdirs-is-the-only-declarer
 
-- **Decision:** after batch 1, the string literals `"_lyx"` and `".lyx"` exist in exactly one production file, `internal/lyxdirs/dirs.go`, as `LyxDirName` and `DotLyxDirName`.
+- **Decision:** after batch 1, the string literals `"_lyx"` and `".lyx"` are **declared** in exactly one production file, `internal/lyxdirs/dirs.go`, as `LyxDirName` and `DotLyxDirName`, and appear in no other production file in a path-construction or message-formatting context.
   Every other production reference is `lyxdirs.LyxDirName` / `lyxdirs.DotLyxDirName`.
+  Doc-comment prose naming either directory is out of scope and stays as prose — that is what `TestEnforcement_GeometryLiterals` polices too (it matches only `filepath.Join` arguments, `+` operands and string-const declaration values), so the machine check and this decision agree on scope rather than the decision overclaiming.
   `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_GeometryLiterals` polices both tokens with `internal/lyxdirs` as their sole owner from batch 1 onward, so any later batch that reintroduces a literal fails the build.
 - **Rationale:** the two names are one structural pair (tracked vs never-tracked);
   splitting their ownership is what let five private `dotLyxDirName` copies drift.

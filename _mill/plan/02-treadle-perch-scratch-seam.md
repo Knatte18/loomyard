@@ -18,8 +18,9 @@ It is one batch because treadle's engine, perch's re-export shims, and perchcli'
 
 **Batch-local decision — the scratch dir is an `Options` field, defaulted at `Run`'s entry.**
 `treadleengine.Options` gains `ScratchDir string`;
-`New` stores it verbatim (nils and empties included, matching how it already stores `PauseRequested`/`RunCommand`), and `Run` resolves `scratchDir := e.scratchDir; if scratchDir == "" { scratchDir = runDir }` in the same block that already defaults the `pause` and `runCommand` seams.
-This keeps the back-compat default ("unset means runDir") in the one place `engine.go`'s doc already says owns fallback behaviour, and it does not widen `Run`'s own signature, whose second parameter stays the durable `runDir`.
+`New` stores it verbatim (nils and empties included, matching how it already stores `PauseRequested`/`RunCommand`), and `Run` resolves `scratchDir := e.scratchDir; if scratchDir == "" { scratchDir = runDir }` as its **first statement**, not inside the later block that defaults the `pause` and `runCommand` seams.
+`Run` still owns the fallback, as `engine.go`'s doc says it does, but it has to own it earlier than those two seams do: the deferred terminal `clearPauseFlag`, the `runDir` MkdirAll, the run-lock acquisition and the entry-time `clearPauseFlag` all precede that block and all need the value.
+The fallback does not widen `Run`'s own signature, whose second parameter stays the durable `runDir`.
 
 **Batch-local decision — `perchcli` derives the per-block scratch dir the same way it derives the run dir.**
 `resolveRunTarget` returns a fourth path, `scratchDir = filepath.Join(c.scratchDirBase, id)`, from the same already-derived `id`, so the two directories can never disagree about which block they belong to.
@@ -39,7 +40,12 @@ This keeps the back-compat default ("unset means runDir") in the one place `engi
 - **Moves:** none
 - **Requirements:** add `ScratchDir string` to `treadleengine.Options` with a godoc stating it is the directory this block's never-tracked artifacts (`run.lock`, `state.json.lock`, the `pause` flag) are written to, that an empty value defaults to `runDir` for back-compat, and that the engine never derives it — the caller is told, never the engine (Cwd Resolution Invariant).
   Add a matching `scratchDir string` field to `Engine` and store `opts.ScratchDir` verbatim in `New`.
-  In `Run`, inside the existing "Seam defaulting happens here, once, at Run's entry" block that defaults `pause` and `runCommand`, resolve `scratchDir` from `e.scratchDir` falling back to `runDir`, then `os.MkdirAll(scratchDir, 0o755)` right after the existing `os.MkdirAll(runDir, ...)` — the run lock is taken inside it, so it must exist first.
+  In `Run`, resolve `scratchDir` at the **very top of the function body**, as its first statement — before the deferred terminal-clear closure, before `p.validate`, before `os.MkdirAll(runDir, ...)`, and before the run-lock acquisition: `scratchDir := e.scratchDir; if scratchDir == "" { scratchDir = runDir }`.
+  This placement is load-bearing and must not be folded into the existing "Seam defaulting happens here, once, at Run's entry" block that defaults `pause` and `runCommand`: that block sits *after* the deferred closure, the `runDir` MkdirAll, the run-lock acquisition and the entry-time `clearPauseFlag` call, all four of which this card retargets onto `scratchDir`, so resolving it there would either forward-reference an undeclared local from the deferred closure or silently demand hoisting that whole block.
+  Leave `pause`/`runCommand` defaulting exactly where it is;
+  only `scratchDir` moves to the top.
+  Add `os.MkdirAll(scratchDir, 0o755)` right after the existing `os.MkdirAll(runDir, ...)` — the run lock is taken inside the scratch dir, so it must exist first — and note in a comment that the `runDir` MkdirAll stays because `state.json` and round artifacts still live there.
+  When `e.scratchDir` is empty the two MkdirAll calls name the same directory, which is a harmless no-op on the second.
   Retarget `Run`'s three transient sites onto `scratchDir`: the `lock.TryAcquireWriteLock(filepath.Join(runDir, runLockName))` call, and both `clearPauseFlag(e.name, runDir)` calls (the deferred terminal clear and the entry-time clear).
   Pass `scratchDir` through to `loadOrInitState` and to every `saveState` call in `Run` and `runRound`'s callers (card 10 changes those signatures).
   Update `Run`'s and `runLockName`'s godoc to say the lock lives in the scratch dir, still held for the whole call, and note that `state.json` itself stays in `runDir`.

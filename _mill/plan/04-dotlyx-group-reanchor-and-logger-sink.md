@@ -152,9 +152,9 @@ Only reed's *worktree-level* state sites (`reed.json`, `reed.lock`) re-anchor.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** reed repeats `filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName)` at nine sites.
+- **Requirements:** reed repeats `filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName)` at ten sites.
   Add one private method on `*Engine` — `func (e *Engine) stateDir() string { return filepath.Join(e.layout.AnchorPath(), lyxdirs.DotLyxDirName) }` — in `lifecycle.go`, documented as the worktree-level ephemeral tree holding `reed.json` and `reed.lock`, `AnchorPath`-anchored so it is a sibling of `_lyx`, and distinct from `HubLogsDir`'s hub anchor.
-  Replace all nine joins with `e.stateDir()`: `lifecycle.go`'s two `SaveState` calls, its `reedStateFileName` path join and its `LoadState` call;
+  Replace all ten joins with `e.stateDir()`: `lifecycle.go`'s two `SaveState` calls, its `reedStateFileName` path join and its `LoadState` call;
   `lock.go`'s `withOpLock` (keep the existing `MkdirAll`-before-lock and its comment);
   `spawn.go`'s `LoadState` and `SaveState`;
   `strand.go`'s three `SaveState` calls.
