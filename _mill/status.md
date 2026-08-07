@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-typed Healthy reason and Clean reword
+phase: approved-consumer call-site migration
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -28,6 +28,7 @@ planned  '2026-08-06T19:39:17Z'
 implementing  '2026-08-06T19:40:29Z'
 approved-fabric API expand  '2026-08-07T13:18:26Z'
 approved-typed Healthy reason and Clean reword  '2026-08-07T13:33:57Z'
+approved-consumer call-site migration  '2026-08-07T13:58:05Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     commit_sha: 4354279da03c3ad57ffbb9addbcbf84de4f28e7a
     verify_baseline_failures: []
   - name: consumer call-site migration
-    state: running
+    state: approved
     implementer_session: 15d5f3c4-b068-4ce4-903d-3cee9642f3a2
     start_sha: 992ac095eef94976bdf66ed1e181b107b25de787
+    commit_sha: a435d05d3e0863a514341ac793b052514184bc4e
     verify_baseline_failures: ['--- FAIL: TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd (0.02s)', '--- FAIL:
     TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit (0.01s)', '--- FAIL: TestPollCmd_ReportPresentClassifiesDoneAndCommits
     (0.02s)', '--- FAIL: TestPollCmd_TerminalCleanupMatrix (0.05s)', '--- FAIL: TestPollCmd_ReportLandingDuringGatherBeatsStopEvent
