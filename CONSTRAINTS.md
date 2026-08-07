@@ -24,6 +24,7 @@ Fuller design/how-to lives in godoc and `docs/`.
 - `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — this is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic.
 - Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths,
   and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `lyxcwd` never mentions weft.
+  See the Fabric Vocabulary Invariant below for the vocabulary rule this bullet is one instance of.
 - Geometry is structural, never config/env-overridable.
 - The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`, read at `<Hub>/_board/_lyx/config/fabric.yaml`) — `fabricengine`'s concern, not `lyxcwd`'s.
 - `AnchorRel` resolves from the recorded `.fabric-anchor` marker, not positionally from cwd;
@@ -123,6 +124,22 @@ Pane-shell command strings — argument quoting, the call operator, and the prom
 - `internal/shuttleengine/claudeengine` (and any future provider engine) never emits raw pwsh/posix shell syntax directly — only via `internal/shell`.
 - **Enforced by** review obligation today (candidate future grep guard).
 
+## Fabric Vocabulary Invariant
+
+In production code, the tokens `weft` and `warp` may appear only in the owner set below, policed as bare tokens — they have no meaning in this repo other than fabric's.
+`host` is policed only via a fabric-sense phrase predicate, never as a bare word: `host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD` (any case, hyphenated or spaced), plus a component of a policed identifier in fabric-geometry naming (`hostBranch`, `hostLayoutFor`, `hostReason`, `HostJunction`, `hostClean`).
+The bare word `host` — the verb sense, the machine/OS sense, and the PowerShell cmdlet `Write-Host` — passes untouched;
+a whole-word ban would rewrite ordinary English in modules with no connection to fabric.
+
+- **Owner set** (vocabulary stays): `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals only), `tools/`, `sandbox/`.
+- **Prose-doc split — review obligation, not machine-checked:** a doc explaining fabric's own mechanism keeps the vocabulary;
+  a doc describing a consumer module's behaviour rewords, because that module does not know weft exists.
+  A token scan cannot express this distinction, so it is not covered by the enforcement test.
+- This invariant binds every module, template, and doc that talks about fabric — `internal/lyxcwd` is merely one of the packages it binds, not its owner.
+  The enforcement test's placement in `internal/lyxcwd/enforcement_test.go` is a file-layout convenience — it reuses that file's `filepath.WalkDir` helper — not an ownership claim.
+- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`), covering identifiers, string literals, and comments in production `.go` files under `internal/` and `cmd/`, plus the embedded agent prompt templates.
+  The prose-doc split above is a review obligation the machine check does not cover.
+
 ## Fabric Git Invariant (warp + weft)
 
 Every git operation that LYX/LoomYard's own code performs — on **either** the weft repo or the warp/host repo — goes through `internal/fabricengine` in Go, in-process, never raw git and never an LLM agent.
@@ -145,10 +162,10 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   The `_lyx` tree is shared by every round-loop module, so every weft-commit caller passes a **positive-only** file list — no `:(exclude)` pathspec magic — built via `fabricengine.ScopedPathspec`.
   Machine-local artifacts (pause flags, rendered fork prompts, every module's `*.lock` files) are excluded **solely at the git-exclude layer** (`fabricengine.seedWeftArtifactExcludes`), never per-call.
   **Known limitation:** this stops new pollution but does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
-- **Enforced by** review obligation: agent prompt templates never instruct a weft git op.
+- **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
   Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine`/`internal/builderengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterBuilderProductionSource`);
   every other `fabricengine` caller remains a review obligation.
-  The agent half is partly machine-checked for webster runs by `websterengine`'s `weftReferencePattern` (a fork or Master Bash command matching `lyx fabric` is a hard, round-failing violation).
+  The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
 
 ## Review Round Invariant
 
