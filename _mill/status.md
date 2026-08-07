@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -38,6 +38,7 @@ holistic-reviewing  '2026-08-07T19:01:27Z'
 holistic-fixing  '2026-08-07T19:08:04Z'
 holistic-reviewing  '2026-08-07T19:20:14Z'
 holistic-fixing  '2026-08-07T19:27:09Z'
+holistic-reviewing  '2026-08-07T19:31:24Z'
 ```
 
 ## Batches
