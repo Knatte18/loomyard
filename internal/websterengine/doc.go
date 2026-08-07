@@ -160,18 +160,18 @@
 // {{.progress}}. Nothing downstream ever re-Distills a report to
 // reconstruct it, since the report's originating HEAD may have since moved.
 //
-// # engine/cli split: webster is weft-blind
+// # engine/cli split: webster is fabric-blind
 //
-// websterengine is _lyx- and weft-blind: every function here takes an
+// websterengine is _lyx- and fabric-blind: every function here takes an
 // already-resolved directory string, and all `_lyx/webster` path
 // construction lives in internal/lyxcwd (WebsterDir/
 // WebsterReportsDir/WebsterPromptsDir), per the Cwd Resolution Invariant.
-// Every weft commit of a webster artifact (state.json, a batch report,
+// Every fabric commit of a webster artifact (state.json, a batch report,
 // outcome.yaml, summary.md) happens in internal/webstercli, never here, at
 // the same deterministic boundary points: begin-batch, record-batch,
 // recover-batch (spawn and terminal), and run's exit backstop. Neither
-// Master nor its forks ever touch weft or git for webster's own
-// bookkeeping — the Weft Git Invariant's ban is on agents driving weft git,
+// Master nor its forks ever touch fabric or git for webster's own
+// bookkeeping — the Fabric Git Invariant's ban is on agents driving fabric git,
 // not on the Go verbs the agent happens to invoke.
 //
 // # crash/resume: fresh Master re-drives the first unreported batch
@@ -186,7 +186,7 @@
 // state.json rendered into the run's progress context — and re-drives the
 // first batch that has no terminal record. Every card an implementer
 // commits survives independently of Master's fate; only reports and state
-// are weft-committed per batch, so nothing already recorded is ever lost.
+// are fabric-committed per batch, so nothing already recorded is ever lost.
 // One crash window needs a distinct resume move: a crash landing between a
 // fork's report and record-batch leaves the re-driven batch with a report
 // already on disk, which begin-batch refuses to overwrite — the resumed
@@ -198,7 +198,7 @@
 // round fable-r3, where auditing the current session instead wedged that
 // resume across all three verbs). This crash window resumes on the SAME
 // machine only: fork transcripts live under the machine-local ~/.claude
-// projects directory, while state.json and the reports are weft-synced —
+// projects directory, while state.json and the reports are fabric-synced —
 // a different machine sees the report with no transcript behind it, which
 // record-batch refuses exactly as it refuses a forged report
 // (ErrNoForkTranscripts names the operator recourse: move the orphan
