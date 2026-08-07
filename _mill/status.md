@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric API expand
+phase: approved-typed Healthy reason and Clean reword
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r3  '2026-08-06T19:38:04Z'
 planned  '2026-08-06T19:39:17Z'
 implementing  '2026-08-06T19:40:29Z'
 approved-fabric API expand  '2026-08-07T13:18:26Z'
+approved-typed Healthy reason and Clean reword  '2026-08-07T13:33:57Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: 14cc70cbc5d50dd65eb22ebae9bf6ab917be96f7
     verify_baseline_failures: []
   - name: typed Healthy reason and Clean reword
-    state: running
+    state: approved
     implementer_session: eb654fde-e391-4386-9284-99ed5470c499
     start_sha: 5a7b9e1f4926f7f09d348b277074119472a349db
+    commit_sha: 4354279da03c3ad57ffbb9addbcbf84de4f28e7a
     verify_baseline_failures: []
   - name: consumer call-site migration
     state: pending
