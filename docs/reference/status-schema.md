@@ -26,7 +26,7 @@ The **seed** is the t=0 contents of `_lyx/status.json` at the instant a task is 
 
 It is written by a **lyx Go command** at spawn time — the mill-spawn analogue, but Go, never an agent.
 This doc names the *role* ("the spawn-time lyx command"), not the exact subcommand;
-which one it binds to (`warp add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands.
+which one it binds to (`fabric add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands.
 An optional thin `ly-spawn` skill may wrap it later,
 but the Go command is always the writer.
 
