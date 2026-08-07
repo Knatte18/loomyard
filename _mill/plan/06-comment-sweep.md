@@ -162,11 +162,14 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
 
 - **Context:**
   - `_mill/discussion.md`
-- **Edits:** none
+- **Edits:**
+  - `internal/fabricengine/fabric_test.go` (only if the batch's own `verify:` surfaces the Test Tier Purity Invariant hit below; not a vocabulary edit)
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Verification-only card, no diff.
+- **Requirements:** Verification-only card, no diff, with one documented exception: the batch's own `verify:` runs `go test ./cmd/lyx/`, whose `TestTierPurity_UntaggedTestsSpawnNothing` guard raw-substring-matches `lyxtest.Copy` even inside a comment.
+  `internal/fabricengine/fabric_test.go:7` (added by batch 01, outside this batch's file scope) carries `a real lyxtest.CopyPaired fixture` in prose, tripping the guard though the file spawns no git.
+  Since a same-task commit (batch 01) touches this file, the failure is in-scope for this batch's verify gate to fix, not pre-existing: reword the comment (e.g. "a real paired lyxtest fixture (CopyPaired)") so the literal `lyxtest.Copy` substring no longer appears, per tierpurity_test.go's own documented resolution ("rename the mention or tag the file") — no identifier, behavior, or vocabulary change.
   Run `grep -rniE '\bweft|\bwarp' internal cmd --include='*.go' --include='*.md'` and filter out the owner set (`fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync`'s two string literals) and `*_test.go` carve-out references;
   then grep the fabric-sense `host` phrase list (`host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD`, and `hostBranch`-style identifiers) the same way.
   Every surviving non-owner production hit must be fixed before this card completes (fold the fix into a follow-up commit amending the responsible card's file);
