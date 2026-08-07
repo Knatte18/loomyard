@@ -5,17 +5,17 @@
 // pins), the non-blocking spawn itself, and the cross-process run-identity resolution (FindRun)
 // that lets a caller record durable state without ever holding an in-process shuttle Run handle.
 //
-// SpawnBatch itself never touches weft (see doc.go's package-level weft section): it only mutates
-// and SaveState's the CALLER-owned deps.State on the plain host filesystem.
-// The discussion pins three distinct weft-commit points across the whole builder loop,
-// and this is the first of them: internal/buildercli's spawn-batch verb weft-commits state.json
+// SpawnBatch itself never touches the fabric repo (see doc.go's package-level weft section): it only
+// mutates and SaveState's the CALLER-owned deps.State on the plain host filesystem.
+// The discussion pins three distinct fabric-commit points across the whole builder loop,
+// and this is the first of them: internal/buildercli's spawn-batch verb fabric-commits state.json
 // immediately after a successful SpawnBatch call (the just-recorded start-SHA and BatchState
 // entry);
-// the poll verb weft-commits the batch report + state.json once a batch reaches a terminal
+// the poll verb fabric-commits the batch report + state.json once a batch reaches a terminal
 // classification;
-// and the run verb performs one backstop weft-commit at its own exit.
+// and the run verb performs one backstop fabric-commit at its own exit.
 // Every one of those three commits belongs to buildercli, never to this function or this package —
-// the perchcli precedent (block-exit weft Commit+Push, engine stays weft-blind) applied to
+// the perchcli precedent (block-exit fabric Commit+Push, engine stays fabric-blind) applied to
 // builder's own batch boundary.
 
 package builderengine
@@ -73,7 +73,7 @@ type SpawnDeps struct {
 	// Reed is the live reed query surface for in-flight guard and dead-respawn cleanup.
 	Reed shuttleengine.ReedOps
 	// Resetter is the chain-restart reset seam; nil uses the production default.
-	Resetter WarpResetter
+	Resetter FabricResetter
 }
 
 // SpawnBatchOptions carries one `spawn-batch` invocation's caller-supplied choices: BatchNumber
@@ -89,10 +89,10 @@ type SpawnBatchOptions struct {
 }
 
 // SpawnResult is what one successful SpawnBatch call hands back to its caller
-// (internal/buildercli's spawn-batch verb): exactly what that caller needs to weft-commit
+// (internal/buildercli's spawn-batch verb): exactly what that caller needs to fabric-commit
 // state.json at the batch boundary without re-deriving any of it from deps.State itself.
-// Per the discussion's weft-commit decision, SpawnBatch's own caller performs that commit —
-// builderengine stays weft-blind — immediately after SpawnBatch returns successfully, mirroring the
+// Per the discussion's fabric-commit decision, SpawnBatch's own caller performs that commit —
+// builderengine stays fabric-blind — immediately after SpawnBatch returns successfully, mirroring the
 // commit boundary poll's own terminal classification and run's own exit-time backstop use elsewhere
 // in the loop.
 type SpawnResult struct {
@@ -100,7 +100,7 @@ type SpawnResult struct {
 	BatchName string
 	// Role is the shuttle role the implementer spawned under.
 	Role Role
-	// StartSHA is the host HEAD captured immediately before this spawn —
+	// StartSHA is the repo HEAD captured immediately before this spawn —
 	// the same value now recorded as this batch's BatchState.StartSHA.
 	StartSHA string
 	// StrandGUID identifies the reed strand the implementer spawned into.
@@ -129,7 +129,7 @@ func BatchReportFileName(number int, slug string) string {
 // re-uses the batch's own report path as its sole shuttle OutputFiles entry,
 // which both SpawnBatch's pre-existing-report guard AND shuttle's own
 // Spec.validate refuse when a file is already there; the prior stuck report is
-// still on disk (poll weft-committed it when it classified the batch stuck), so
+// still on disk (poll fabric-committed it when it classified the batch stuck), so
 // without this the orchestrator's documented stuck -> --role recovery
 // escalation could never spawn. Archiving frees the path while keeping the
 // stuck report auditable rather than deleting it. now is a seam so tests can
@@ -169,7 +169,7 @@ func archiveStaleReport(reportsDir string, number int, slug string, now func() t
 // and is a no-op otherwise.
 // It exists for the respawn paths that re-claim a dead-classified batch's deliberately-kept pane: a
 // timed-out implementer may still be WORKING, not hung, and left alive it races the fresh session
-// (late commits to the host repo, a late report landing on the very path the new spawn names as its
+// (late commits to the repo, a late report landing on the very path the new spawn names as its
 // output file).
 // A StrandLive error is treated as not-live — a downed reed session hosts no live strand.
 // A failed removal of a genuinely live strand propagates: spawning while the orphan cannot be
@@ -230,16 +230,16 @@ func selectRole(oversized bool, override Role) (Role, error) {
 // BatchState without ever holding an in-process shuttle Run handle (spawn-batch exits right after
 // Start; poll re-derives everything else later).
 // On success it persists deps.State via SaveState — to the plain host filesystem only, never
-// through weft — and returns a SpawnResult;
+// through the fabric repo — and returns a SpawnResult;
 // on any failure deps.State is left exactly as SpawnBatch found it except where a step's own doc
 // says otherwise (RestartChain mutates deps.State in place before SpawnBatch's own SaveState call,
 // per its own contract).
 //
-// Weft commit boundary: SpawnBatch performs NO weft commit itself.
-// Its caller (internal/buildercli's spawn-batch verb) is responsible for weft-committing the
+// Fabric commit boundary: SpawnBatch performs NO fabric commit itself.
+// Its caller (internal/buildercli's spawn-batch verb) is responsible for fabric-committing the
 // state.json SpawnBatch just wrote — using SpawnResult's fields plus deps.BuilderDir, with no need
 // to re-derive anything — as soon as SpawnBatch returns successfully.
-// That is the first of the loop's three weft-commit points (see this file's package doc above for
+// That is the first of the loop's three fabric-commit points (see this file's package doc above for
 // the other two: poll at terminal classification, run as an exit-time backstop).
 func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	if PauseRequested(deps.BuilderDir) {
@@ -265,7 +265,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	// The in-flight guard: the loop is strictly sequential, so a recorded
 	// non-terminal batch whose strand the reed still reports live means an
 	// implementer is mid-flight RIGHT NOW — spawning anything on top of it
-	// double-drives the host repo and clobbers its BatchState (an orphaned
+	// double-drives the repo and clobbers its BatchState (an orphaned
 	// live implementer after an orchestrator crash, or a stray manual
 	// spawn-batch during a run). The intended respawn ladders never trip
 	// this: they always pass through a terminal poll first (Terminal set,
@@ -285,7 +285,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		return nil, err
 	}
 
-	// --restart-chain rolls the host repo back to the chain's recorded start
+	// --restart-chain rolls the repo back to the chain's recorded start
 	// SHA and re-runs the WHOLE chain from the bottom, so the batch that must
 	// spawn next is always the chain's lowest-numbered member — never
 	// necessarily the member the caller named. The chain-END batch runs the
@@ -357,14 +357,14 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 			}
 		}
 		// deps.Resetter is nil in production: construct the real paired-repo
-		// Fabric handle inline, the same way buildercli's weftCommit does from
+		// Fabric handle inline, the same way buildercli's fabricSync does from
 		// a *lyxcwd.Location. A test instead injects a warp-only
-		// *gitrepo.Repo over its own scratch worktree (the WarpResetter
+		// *gitrepo.Repo over its own scratch worktree (the FabricResetter
 		// seam), so the restart-chain path never requires a paired weft
 		// fixture.
 		resetter := deps.Resetter
 		if resetter == nil {
-			f, err := fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout))
+			f, err := fabricengine.Open(deps.Layout)
 			if err != nil {
 				return nil, err
 			}
@@ -373,7 +373,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		if err := RestartChain(resetter, deps.State, deps.Plan, chainEnd, deps.ReportsDir); err != nil {
 			return nil, err
 		}
-		// The reset just hard-reset the host repo and deleted member reports
+		// The reset just hard-reset the repo and deleted member reports
 		// on disk; persist the matching state NOW rather than only at the
 		// spawn's own SaveState below — if any later step fails (role spawn,
 		// FindRun), a state.json still recording the rolled-back members'
@@ -389,7 +389,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	// but a timed-out implementer may still be WORKING — its late report
 	// would refuse this very spawn (found live in round fable-r2: the report
 	// landed a minute after the dead/timeout classification), and left alive
-	// it races the fresh session on the host repo and the report path.
+	// it races the fresh session on the repo and the report path.
 	priorState := deps.State.Batches[batch.Number]
 	respawnOfDead := priorState != nil && priorState.Terminal && priorState.Status == DigestStatusDead
 	if respawnOfDead {
@@ -400,7 +400,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 
 	// A --role recovery respawn re-uses the stuck batch's own report path as
 	// its sole shuttle OutputFiles entry, but that stuck report is still on
-	// disk (poll weft-committed it), so both the pre-existing-report check
+	// disk (poll fabric-committed it), so both the pre-existing-report check
 	// below and shuttle's own Spec.validate would refuse the spawn. Archive it
 	// here — archive-never-refuse, like ArchiveStaleOutcome — so the
 	// orchestrator's documented stuck -> --role recovery escalation actually
