@@ -50,7 +50,7 @@ No separate ordering metadata.
 **On-disk locations.**
 The plan lives at `_lyx/plan/`;
 batch-reports at `_lyx/builder/reports/NN-<batch-slug>.yaml`.
-Both are weft overlay, like the status file: agents write them via the junction, Go reads and commits them (Weft Git Invariant — see `CONSTRAINTS.md`). `internal/planparser` owns the `_lyx/plan` relative token (`PlanDirName`/`PlanDirRel()`);
+Both are weft overlay, like the status file: agents write them via the junction, Go reads and commits them (Fabric Git Invariant — see `CONSTRAINTS.md`). `internal/planparser` owns the `_lyx/plan` relative token (`PlanDirName`/`PlanDirRel()`);
 `internal/loomengine.PlanDir` joins onto it.
 Each module constructs its own `_lyx` subpath this way — never through a shared geometry helper (Cwd Resolution Invariant);
 `internal/lyxcwd` resolves only the worktree coordinates every module joins its own token onto.
@@ -308,7 +308,7 @@ The Planner splits the refactor into consecutive **small** batches where the int
 - An intermediate declares `verify: deferred` + `chain-end: NN` in frontmatter, where `NN` is the batch that runs the real `verify:` for the whole chain.
   Chains are **explicit** — an implicit "consecutive deferred flags" chain was rejected as fragile.
 - **Chain membership** = every batch whose `chain-end` names the same `NN`, plus batch `NN` itself.
-  **Chain-start SHA** = the host commit immediately before the lowest-numbered member's first card commit.
+  **Chain-start SHA** = the repo commit immediately before the lowest-numbered member's first card commit.
 - Renumbering batches MUST update `chain-end` in the same edit;
   validation fails loudly on a dangling `chain-end` (target missing, or itself declaring `verify: deferred`).
   Explicitness makes renumbering breakage *detectable*, not impossible.
@@ -317,7 +317,7 @@ The Planner splits the refactor into consecutive **small** batches where the int
 
 **The chain is the recovery unit.**
 Intermediates commit non-green (possibly non-compiling) code, so normal one-batch recovery does not apply.
-If any chain batch goes `stuck`, the orchestrator rolls the host repo back to the chain-start SHA and re-runs the whole chain, possibly escalated.
+If any chain batch goes `stuck`, the orchestrator rolls the repo back to the chain-start SHA and re-runs the whole chain, possibly escalated.
 No recovery session ever operates inside a deliberately broken intermediate state without a green anchor.
 
 ## Red tests, recovery, and the review cadence

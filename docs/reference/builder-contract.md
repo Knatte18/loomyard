@@ -20,9 +20,9 @@ This is the ADVANCE half of a pair whose CONVERGE half is `internal/perchengine`
 |------|-----|
 | `validate` | Lints the plan at `_lyx/plan` against the plan-format machine checks without running anything — the standalone pre-flight for a Planner or human. |
 | `run [--fresh]` | The product verb: takes the run-level lock, runs the automatic validation gate, reclaims a prior run's orphaned orchestrator (stops the recorded strand if the reed still reports it live — see [Crash/resume](#crashresume-semantics--re-drive-the-first-unreported-batch)), checks the plan fingerprint against `state.json` (`--fresh` archives stale state/reports and re-inits on a mismatch), clears any leftover pause flag (only once those refusal gates pass — a refused run leaves a pending pause intact), archives any stale `outcome.yaml`, spawns a fresh orchestrator session via shuttle — recording its strand in `state.json` *before* blocking — and blocks until the run reaches a terminal outcome (`done`/`stuck`/`paused`) or the orchestrator spawn itself ends asking/died/timed-out. Performs the loop's exit-time backstop fabric commit. Requires a live reed session (`lyx reed up` first). |
-| `spawn-batch <NN> [--role recovery] [--restart-chain]` | Runs the same automatic validation gate, checks the pause flag, recomputes the plan fingerprint against `state.json`'s recorded one (a mid-run plan edit refuses loud, pointing at `run --fresh` — no `--fresh` escape exists here, re-initializing is `run`'s job), resolves the batch's role (oversized-driven, or `--role recovery` for the escalation path), optionally performs the `--restart-chain` reset, records the batch's start-SHA in `state.json`, and spawns one implementer via shuttle (non-blocking — returns as soon as the strand is registered). Weft-commits `state.json` on success. |
+| `spawn-batch <NN> [--role recovery] [--restart-chain]` | Runs the same automatic validation gate, checks the pause flag, recomputes the plan fingerprint against `state.json`'s recorded one (a mid-run plan edit refuses loud, pointing at `run --fresh` — no `--fresh` escape exists here, re-initializing is `run`'s job), resolves the batch's role (oversized-driven, or `--role recovery` for the escalation path), optionally performs the `--restart-chain` reset, records the batch's start-SHA in `state.json`, and spawns one implementer via shuttle (non-blocking — returns as soon as the strand is registered). Fabric-commits `state.json` on success. |
 | `poll [--wait DURATION]` | Long-polls the in-flight batch for its terminal digest (see [poll's four-branch terminal classification](#polls-four-branch-terminal-classification)) and distills a terminal batch-report into the pinned [digest contract](#digest-contract). Fabric-commits the batch report plus `state.json` on a terminal classification; a running snapshot touches neither git nor fabric. |
-| `status` | An instant, side-effect-free snapshot of `state.json` plus the reports dir — human- and loom-facing navigation. Never spawns, never weft-commits, never mutates `state.json`. A run that has never started prints `{"initialized": false}`. |
+| `status` | An instant, side-effect-free snapshot of `state.json` plus the reports dir — human- and loom-facing navigation. Never spawns, never fabric-commits, never mutates `state.json`. A run that has never started prints `{"initialized": false}`. |
 | `pause` | Writes the pause flag file `spawn-batch`'s batch-boundary check refuses against. Never interrupts a batch already in flight; resume with `run`, which clears the flag at its own entry. |
 
 ## Digest contract
@@ -64,7 +64,7 @@ On any `dead` classification the pane/run dir is kept for diagnosis (shuttle's o
 On the report-backed terminals poll itself releases the substrate, so without this every finished batch would leak a live pane hosting an idle agent process: `done` removes the strand and the run dir (shuttle-finalize parity);
 `stuck` removes the strand but keeps the run dir (the raw session output is the stuck trail a human may still inspect).
 Cleanup failures are logged, never fatal — the classification already stands.
-A later **respawn of a dead-classified batch re-claims that kept substrate**: `spawn-batch` stops the kept strand if the reed still reports it live (a timed-out implementer may still be *working*, and left alive it races the fresh session on the host repo and the report path) and archives — never deletes, never refuses on — any late report the orphan managed to write after the classification.
+A later **respawn of a dead-classified batch re-claims that kept substrate**: `spawn-batch` stops the kept strand if the reed still reports it live (a timed-out implementer may still be *working*, and left alive it races the fresh session on the repo and the report path) and archives — never deletes, never refuses on — any late report the orphan managed to write after the classification.
 A `done` batch's report keeps the loud pre-existing-report refusal: an accidental respawn of finished work must never silently archive it away. `poll --wait DURATION` blocks inside Go on this loop — **the long-poll IS the notification**: a true push cannot reach a Claude session (mid-turn only tool results arrive;
 turn-end without the outcome file is `asking` under the file contract), so file-watching inside Go costs no orchestrator tokens and returns the instant a batch terminates.
 
@@ -78,7 +78,7 @@ turn-end without the outcome file is `asking` under the file contract), so file-
   any other `--role` value is rejected loud before any spawn.
 
 Recovery is an exception path, entered only after a batch reports `stuck`: the orchestrator's own judgment call (never a Go branch, never a `/model` switch inside the polluted session) to spawn a **fresh**, higher-capability `recovery`-role session that reconstructs from the durable trail (batch file, code, the card-commit git log) instead of continuing the stuck session's context.
-Because the stuck batch's own report is the recovery spawn's sole shuttle output file, `spawn-batch --role recovery` **archives that stale report** (renaming it `NN-<slug>-<UTC-compact-timestamp>.yaml`, with the same `-1`/`-2` same-second collision suffix the other archivers use) before spawning — archive-never-refuse, so the prior stuck report stays auditable in the weft while its path is freed for the recovery session's own fresh report.
+Because the stuck batch's own report is the recovery spawn's sole shuttle output file, `spawn-batch --role recovery` **archives that stale report** (renaming it `NN-<slug>-<UTC-compact-timestamp>.yaml`, with the same `-1`/`-2` same-second collision suffix the other archivers use) before spawning — archive-never-refuse, so the prior stuck report stays auditable in fabric while its path is freed for the recovery session's own fresh report.
 Without this the respawn would be refused outright (both builder's own pre-existing-report guard and shuttle's `Spec.validate` reject a pre-existing output file), which would leave the whole stuck→recovery ladder unreachable for a non-chain batch.
 
 All four of builder.yaml's roles (`orchestrator`, `implementer`, `implementer_oversized`, `recovery`) are resolved against the model-spec registry as a pre-flight at both `run` and `spawn-batch` entry (`ResolveRoles`) — a well-formed but unknown alias fails loud before any agent spawns, never hours into a run when that role first spawns.
@@ -90,13 +90,13 @@ A deferred-verify chain's intermediates commit non-green (possibly non-compiling
 1. Resolves `NN`'s chain-end batch (`ChainEndFor`) and every chain member (`ChainMembers`) — the recorded `verify: deferred` + `chain-end:` group — and stops every member's recorded strand the reed still reports live (a kept-alive member left running would commit on top of the rolled-back tree).
 2. Requires a **recorded** chain-start SHA in `state.json`'s `ChainStartSHAs` map — there is no caller-supplied SHA anywhere in this path;
    an unrecorded chain can never be rolled back to a hallucinated one.
-3. Resets the host repo hard to that SHA (`ResetHard`).
+3. Resets the repo hard to that SHA (`ResetHard`).
 4. Deletes every chain member's stale batch-report file and clears their in-memory `BatchState` entries, then resets `state.CurrentBatch` to `0`.
 5. **Re-points the spawn to the chain's lowest-numbered member**, regardless of which member `NN` named.
    The chain always restarts from its lowest member — the reset just rolled the tree back to before that member's first card commit — so Go spawns the lowest member itself rather than trusting the caller to name it.
    Naming the chain's **end** (the batch that runs the chain's real `verify:`, and thus the member most likely to go `stuck` and trigger a restart) therefore re-runs the chain from the bottom instead of spawning the end on a tree missing every earlier member's just-discarded work.
 
-The chain-start SHA itself is recorded once, at whichever member spawns first — the host `HEAD` immediately before that member's first card commit — and is never overwritten by a later member's own spawn.
+The chain-start SHA itself is recorded once, at whichever member spawns first — the repo `HEAD` immediately before that member's first card commit — and is never overwritten by a later member's own spawn.
 The orchestrator decides **when** to restart a chain (its pinned recovery judgment);
 Go performs the destructive act only against the one SHA it recorded itself, and always re-runs from the chain's lowest member — the orchestrator never has to identify that member, and can name any member of the chain it wants restarted.
 
@@ -141,13 +141,13 @@ Every later `run` entry recomputes it and compares:
 - **Match** → resume as normal;
   `state.json` and the reports dir are trusted progress.
 - **Mismatch, no `--fresh`** → hard refusal (`ErrFingerprintMismatch`) naming both fingerprints and pointing at `run --fresh` — stale reports from a superseded plan must never be misread as progress.
-- **Mismatch, `--fresh`** → first stops every batch strand the superseded state records that the reed still reports live (the archived run can never be resumed, so its substrate has no legitimate owner — left alive, a superseded implementer keeps working against the same host repo and its late report lands on the fresh run's own report path in the recreated reports dir, where it would be distilled as the fresh batch's success), then archives `state.json` (to `state-<timestamp>.json`) and the whole reports dir (to `<reports-dir>-<timestamp>`, then recreates an empty reports dir), mints a fresh `RunGUID`, and re-inits `state.json` with the new fingerprint.
+- **Mismatch, `--fresh`** → first stops every batch strand the superseded state records that the reed still reports live (the archived run can never be resumed, so its substrate has no legitimate owner — left alive, a superseded implementer keeps working against the same repo and its late report lands on the fresh run's own report path in the recreated reports dir, where it would be distilled as the fresh batch's success), then archives `state.json` (to `state-<timestamp>.json`) and the whole reports dir (to `<reports-dir>-<timestamp>`, then recreates an empty reports dir), mints a fresh `RunGUID`, and re-inits `state.json` with the new fingerprint.
   Never a silent wipe — the prior run's artifacts are always archived, never deleted.
 
 ## `run.lock`
 
 `run` holds an exclusive, non-blocking OS file lock (`run.lock` inside the builder dir, `lock.TryAcquireWriteLock`) for its **entire** duration — perchengine's `ErrBlockBusy` pattern applied to builder's own run-level mutex.
-A resume attempted while a prior `run` is still genuinely alive fails fast with `ErrRunBusy` instead of two orchestrators driving the same `state.json` at once. `ErrRunBusy` is special-cased at the CLI layer: the losing call touched **nothing** on disk, so `run` skips its own exit-time weft-commit backstop entirely rather than committing the winner's in-flight partial state under a misleading label.
+A resume attempted while a prior `run` is still genuinely alive fails fast with `ErrRunBusy` instead of two orchestrators driving the same `state.json` at once. `ErrRunBusy` is special-cased at the CLI layer: the losing call touched **nothing** on disk, so `run` skips its own exit-time fabric-commit backstop entirely rather than committing the winner's in-flight partial state under a misleading label.
 
 ## The state-mutation lease (`mutate.lock`)
 
@@ -157,13 +157,13 @@ and the post-start orchestrator-strand record — released before the orchestrat
 Without the lease, two concurrent verb invocations each save their own stale copy and the last write silently erases the other's mutation — a live implementer with no state record,
 or a lost terminal classification.
 Acquisition blocks (never fail-fast): every holder's section is bounded, unlike `run.lock`'s whole-run tenure.
-Like every `*.lock`, it is excluded from weft commits.
+Like every `*.lock`, it is excluded from fabric commits.
 
-## The three weft-commit points
+## The three fabric-commit points
 
-`internal/builderengine` is weft-BLIND: every weft commit of a builder artifact happens in `internal/buildercli`, mirroring `perchcli`'s block-exit `weftengine.Commit` + `Push`.
+`internal/builderengine` is fabric-blind: every fabric commit of a builder artifact happens in `internal/buildercli`, mirroring `perchcli`'s block-exit `fabricengine.Fabric.Commit` + `Push`.
 The commit passes a **positive-only** file list (via `fabricengine.ScopedPathspec` — no `:(exclude)` pathspec magic);
-machine-local runtime artifacts — `*.lock` (advisory OS locks) and the `*/builder/pause` flag (present on disk during `poll`'s terminal commit whenever a pause raced the last in-flight batch) — are kept out solely at the git-exclude layer (`fabricengine.seedWeftArtifactExcludes`), so neither leaks into durable weft history nor materializes on another machine's weft pull (a committed pause flag could read as a spurious pause request elsewhere).
+machine-local runtime artifacts — `*.lock` (advisory OS locks) and the `*/builder/pause` flag (present on disk during `poll`'s terminal commit whenever a pause raced the last in-flight batch) — are kept out solely at the git-exclude layer (`fabricengine.seedWeftArtifactExcludes`), so neither leaks into durable fabric history nor materializes on another machine's fabric pull (a committed pause flag could read as a spurious pause request elsewhere).
 "When it makes sense" (the discussion's own phrasing) resolved to exactly three batch-boundary points across the loop, never a single end-of-run commit (which would lose every fabric-synced batch on a crash mid-run):
 
 1. **`spawn-batch`** commits `state.json` immediately after a successful spawn — the just-recorded start-SHA and `BatchState` entry.
@@ -174,7 +174,7 @@ machine-local runtime artifacts — `*.lock` (advisory OS locks) and the `*/buil
 
 Resume is just re-running `lyx builder run`: it always spawns a **fresh** orchestrator (never `claude --resume`), hydrated from on-disk state.
 That orchestrator's `{{.progress}}` lists only the batches whose reports already landed (each by its own `done`/`stuck` status — see [poll](#polls-four-branch-terminal-classification) and the progress rule), so it re-drives the **first unreported batch** from scratch: a fresh `spawn-batch` that captures a new start-SHA and overwrites that batch's `BatchState`, not a resume of the recorded in-flight strand.
-No progress is lost — every completed card is a host commit, so a re-driven batch continues on top of its own prior card commits, and the per-batch weft commits above keep `state.json`/reports durable across the crash.
+No progress is lost — every completed card is a repo commit, so a re-driven batch continues on top of its own prior card commits, and the per-batch fabric commits above keep `state.json`/reports durable across the crash.
 
 The orphaned-live-ORCHESTRATOR edge is closed by the **entry-time reclaim**: `run` records the orchestrator's strand GUID in `state.json` (`OrchestratorStrand`) immediately after the spawn starts, *before* blocking on it — so a `run` process that dies mid-wait (a killed process, a closed terminal) or an orchestrator that outlives its own `orchestrator_timeout_min` while still working leaves a durable record of the pane that may still be live and driving.
 The next `run`'s entry stops that strand if the reed still reports it live (liveness-gated, never cleared — a cleanly-finished orchestrator's strand was already removed by shuttle and reports not-live), so "always spawns a fresh orchestrator" is true by construction rather than an assumption that the old one died.
@@ -190,7 +190,7 @@ the spawn's own `Start` surfaces real substrate failures), so resume on a cold m
 
 `builder run` terminates `done` when the last batch is green (or `stuck`/`paused`) — **batches-built, full stop.**
 The terminal holistic review some earlier design drafts described as part of Builder's own loop is not: it is the separate **Builder-review gate**, driven by `loom` (or the operator running `lyx perch run` directly) *after* `builder run` returns `done`.
-Keeping the two split lets an LLM orchestrator drive the batch loop without ever touching perch's own block-exit weft-committing discipline — an agent-run perch loop would reintroduce exactly the non-deterministic orchestration the Weft Git Invariant exists to keep out of agent hands.
+Keeping the two split lets an LLM orchestrator drive the batch loop without ever touching perch's own block-exit fabric-committing discipline — an agent-run perch loop would reintroduce exactly the non-deterministic orchestration the Fabric Git Invariant exists to keep out of agent hands.
 
 ## Co-versioning rule: templates ↔ parsers move together
 
