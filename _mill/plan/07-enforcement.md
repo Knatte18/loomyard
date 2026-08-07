@@ -41,6 +41,10 @@ Placing the test in `lyxcwd`'s file is a convenience (it reuses the walk helper)
   - `_mill/discussion.md`
 - **Edits:**
   - `internal/lyxcwd/enforcement_test.go`
+  - `internal/buildercli/sync.go`
+  - `internal/webstercli/sync.go`
+  - `internal/gitrepo/doc.go`
+  - `internal/websterengine/audit.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -63,6 +67,8 @@ Placing the test in `lyxcwd`'s file is a convenience (it reuses the walk helper)
   `host` cases in both directions — `"the host repo"` and `hostBranch` fail;
   `"cannot host a strand"`, `"a non-Windows test host"`, and `Write-Host` pass.
   Also hand-clean any of this file's own pre-existing prose that the new rules would flag if it were production code, purely for consistency (test files are outside the machine check).
+  Rule (2)'s "same files" scoping shares rule (1)'s owner-set exclusion (`fabricVocabularyOwners`), not a separate no-exceptions rule -- `internal/fabricengine`'s own untouched files (`add.go`, `junction.go`, `reconcile.go`, etc., none of which are in this plan's "All Files Touched" list) use `host` pervasively as owner-internal vocabulary with zero production callers outside fabric, so a literal no-owner-exception reading of the discussion's `host` prose would fail the tree-scan against files no batch was ever asked to touch.
+  On first activation the tree-scan additionally caught four straggler bare-token comments earlier batches missed inside files they did edit (`internal/buildercli/sync.go`, `internal/webstercli/sync.go`, `internal/gitrepo/doc.go`, `internal/websterengine/audit.go` -- each naming an internal `fabricengine` identifier like `seedWeftArtifactExcludes`/`commitWeftAt`, or a historical CLI spelling, in prose); this card hand-cleans those four straggler lines rather than weakening the predicate, since they are genuine leftover leaks in files this task already edits.
 - **Commit:** `test(lyxcwd): add TestEnforcement_FabricVocabulary`
 
 ## Batch Tests
