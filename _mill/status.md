@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-templates describe one repo
+phase: approved-comment and test vocabulary sweep
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-typed Healthy reason and Clean reword  '2026-08-07T13:33:57Z'
 approved-consumer call-site migration  '2026-08-07T13:58:05Z'
 approved-constructor contract (unexport)  '2026-08-07T14:47:31Z'
 approved-templates describe one repo  '2026-08-07T14:59:26Z'
+approved-comment and test vocabulary sweep  '2026-08-07T15:33:56Z'
 ```
 
 ## Batches
@@ -138,9 +139,10 @@ batches:
     (0.00s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/builderengine\t0.146s",
   "FAIL\tgithub.com/Knatte18/loomyard/internal/builderengine\t0.142s"]
   - name: comment and test vocabulary sweep
-    state: running
+    state: approved
     implementer_session: 7fab287c-8f7b-4be5-9ebf-4e8d3a592bed
     start_sha: addab6c907e33f46890a0bdca4794b423c7ea81d
+    commit_sha: 27252f398dd2b2cc3119b2cc4f31d83a7f6abf1e
     verify_baseline_failures: []
   - name: vocabulary enforcement test
     state: pending
