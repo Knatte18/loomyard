@@ -87,10 +87,12 @@ No external interface changes for later batches: from outside fabric, `Open` is 
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/commit_partial_integration_test.go`
   - `internal/fabricengine/commit_integration_test.go`
+  - `internal/fabricengine/doc.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Per decision `partial-commit-error-fields-private`: the `PartialCommitError` struct fields (`commit.go:31`) `WarpSHA` → `warpSHA`, `WeftSHA` → `weftSHA`, `WeftCommitted` → `weftCommitted` go private;
+  `doc.go:300`'s prose also names the `PartialCommitError` struct-literal field `WeftCommitted: false` and rewords to `weftCommitted: false` for the same reason — comments ride with code edits.
   its `Error()` string is byte-identical before and after.
   Grep verified zero readers *outside the package*;
   two in-package (`package fabricengine`) test files read the fields and rename with them: `commit_partial_integration_test.go:54,57,58,150` and `commit_integration_test.go:870`, plus the comment mentions at `commit_partial_integration_test.go:27,120` that name `WeftCommitted`.
