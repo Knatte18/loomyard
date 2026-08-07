@@ -145,7 +145,9 @@ batches:
     commit_sha: 27252f398dd2b2cc3119b2cc4f31d83a7f6abf1e
     verify_baseline_failures: []
   - name: vocabulary enforcement test
-    state: pending
+    state: running
+    implementer_session: 95bc3b04-b1bd-456b-9230-9c5e856fd444
+    start_sha: 59ed004c378e0e570174333ee544a39f73e11bec
     verify_baseline_failures: []
   - name: documentation
     state: pending
