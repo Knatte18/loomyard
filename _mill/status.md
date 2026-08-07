@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-fabric API expand
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-review-r3  '2026-08-06T19:38:04Z'
 plan-fix-r3  '2026-08-06T19:38:04Z'
 planned  '2026-08-06T19:39:17Z'
 implementing  '2026-08-06T19:40:29Z'
+approved-fabric API expand  '2026-08-07T13:18:26Z'
 ```
 
 ## Batches
@@ -33,9 +34,10 @@ implementing  '2026-08-06T19:40:29Z'
 ```yaml
 batches:
   - name: fabric API expand
-    state: running
+    state: approved
     implementer_session: 871e7dd3-7358-43a8-92ac-058ce435f28f
     start_sha: 1935d82b456a1c81d62c840ba987bc0025d99aa4
+    commit_sha: 14cc70cbc5d50dd65eb22ebae9bf6ab917be96f7
     verify_baseline_failures: []
   - name: typed Healthy reason and Clean reword
     state: pending
