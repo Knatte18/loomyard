@@ -47,7 +47,9 @@ batches:
     commit_sha: 4354279da03c3ad57ffbb9addbcbf84de4f28e7a
     verify_baseline_failures: []
   - name: consumer call-site migration
-    state: pending
+    state: running
+    implementer_session: 15d5f3c4-b068-4ce4-903d-3cee9642f3a2
+    start_sha: 992ac095eef94976bdf66ed1e181b107b25de787
     verify_baseline_failures: ['--- FAIL: TestSpawnBatchCmd_ObservesPauseFlagWrittenByPauseCmd (0.02s)', '--- FAIL:
     TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit (0.01s)', '--- FAIL: TestPollCmd_ReportPresentClassifiesDoneAndCommits
     (0.02s)', '--- FAIL: TestPollCmd_TerminalCleanupMatrix (0.05s)', '--- FAIL: TestPollCmd_ReportLandingDuringGatherBeatsStopEvent
