@@ -106,7 +106,9 @@ batches:
     commit_sha: d2e4755dde39297a7b4ddc3965ac995d371e4df6
     verify_baseline_failures: []
   - name: templates describe one repo
-    state: pending
+    state: running
+    implementer_session: a2b563cb-d831-4ca1-b18e-c8b6d6f91b6e
+    start_sha: 4d53436264dcf4d4977406ffb3757afb955899ef
     verify_baseline_failures: ['--- FAIL: TestRun_ValidationRefusal (0.00s)', '--- FAIL: TestRun_FreshInitPersistsState
     (0.00s)', '--- FAIL: TestRun_FingerprintMismatchThenFreshArchivesAndReinits (0.00s)',
   '--- FAIL: TestRun_OutcomeMapping (0.00s)', '--- FAIL: TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused
