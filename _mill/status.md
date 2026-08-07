@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-documentation
+phase: holistic-reviewing
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-templates describe one repo  '2026-08-07T14:59:26Z'
 approved-comment and test vocabulary sweep  '2026-08-07T15:33:56Z'
 approved-vocabulary enforcement test  '2026-08-07T18:53:14Z'
 approved-documentation  '2026-08-07T19:01:07Z'
+holistic-reviewing  '2026-08-07T19:01:27Z'
 ```
 
 ## Batches
