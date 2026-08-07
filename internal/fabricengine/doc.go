@@ -365,4 +365,46 @@
 // pathspec names), clears the weft-side `_lyx` content, and reverts the managed `.gitignore` block,
 // but never touches the repo-wide `weft:main` records — those survive so a later `lyx fabric
 // reconcile` re-wires the worktree from the same anchor and pathspec.
+//
+// # The one-repo illusion at the public API boundary
+//
+// fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx
+// module see one repository, called fabric,
+// never the warp/weft split underneath it.
+// `Open(l *lyxcwd.Location) (*Fabric, error)` is the only constructor any other package calls — it
+// derives both paths from l and stat-validates them, performing no wiring of its own (wiring is
+// Topology's job: Add/Checkout/Reconcile/Remove/Prune/Cleanup).
+// `Fabric.Commit`'s `CommitResult.Committed() bool` is the one commit result a consumer outside the
+// owner set should read;
+// the four raw `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted` fields stay exported only because
+// `internal/fabriccli`'s own `lyx fabric weft …` verb prints them by design.
+// `RefScanner` (refscanner.go), constructed via `NewRefScanner(l)`, is how a consumer like
+// `websterengine`'s audit asks "does this command reference fabric's two-checkout mechanism" without
+// ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the
+// answer.
+// `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
+// substring-match, so a caller like `loomengine.Preflight` switches on `HealthReason.Cause` instead
+// of parsing prose.
+//
+// # The fabric vocabulary rule
+//
+// In production code, the tokens `weft`, `warp`, and the fabric-sense phrase form of `host` (`host
+// repo`, `host worktree`, `hostBranch`, …
+// — never the bare word, which is ordinary English elsewhere in the repo) may appear only in the
+// owner set: `internal/fabricengine` (this package, which implements the illusion),
+// `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
+// `internal/weftname` (the `-weft` suffix leaf), `internal/lyxtest` (the test-fixture leaf that
+// builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
+// board lives at `weft:main`), `internal/configsync` (string literals only, for the on-disk legacy
+// config filenames `warp.yaml`/`weft.yaml`), and `tools/`/`sandbox/` (the black-box harness naming
+// the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos).
+// `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
+// identifiers, string literals, and comments in every production `.go` file plus the embedded agent
+// prompt templates;
+// `CONSTRAINTS.md`'s Fabric Vocabulary Invariant records the rule in full, including the phrase-based
+// `host` predicate and the review-only prose-doc split between a doc explaining fabric's own
+// mechanism (which keeps the vocabulary) and a doc describing a consumer module's behaviour (which
+// rewords).
+// As an owner file, this doc comment — and every other file in this package — keeps `warp`/`weft`
+// vocabulary freely when explaining the mechanism the illusion sits on.
 package fabricengine
