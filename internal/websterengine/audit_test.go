@@ -1,5 +1,5 @@
 // audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy
-// CheckFork/CheckParent enforce, the warning-only ForkWarnings case, the weftReferencePattern
+// CheckFork/CheckParent enforce, the warning-only ForkWarnings case, the fabricengine.RefScanner
 // matcher (built from a fake lyxcwd.Location, never a hardcoded geometry token), and the
 // attribution pipeline (NewTranscripts, SettleRetry with a recording fake Sleeper, and
 // ClassifyAttribution's pinned check order).
@@ -25,7 +25,7 @@ func fakeLayout() *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: "/hub", WorktreeName: filepath.Base("/hub/master-builder")}
 }
 
-// TestWeftReferencePattern matrixes weftReferencePattern against every Bash command shape
+// TestRefScannerMatches matrixes fabricengine.NewRefScanner against every Bash command shape
 // CheckFork/CheckParent must classify: `lyx fabric` invocations (the live spelling the Weft Git
 // Invariant bans), the pre-cutover `lyx weft`/`lyx warp` spellings, a command referencing the weft
 // worktree path directly (e.g. `git -C <weft-worktree> add`), and a set of weft-free commands that
@@ -36,9 +36,9 @@ func fakeLayout() *lyxcwd.Location {
 // The `lyx.exe` rows are the same guard for the Windows spelling — lyx's primary platform, where an
 // agent writing the extension out would otherwise slip the whole audit — paired with a `lyx.exe
 // board` row proving the extension did not widen the match to every lyx invocation.
-func TestWeftReferencePattern(t *testing.T) {
+func TestRefScannerMatches(t *testing.T) {
 	layout := fakeLayout()
-	weftRef := weftReferencePattern(layout)
+	fabricRef := fabricengine.NewRefScanner(layout)
 	weftWorktree := fabricengine.WeftWorktree(layout)
 
 	tests := []struct {
@@ -69,8 +69,8 @@ func TestWeftReferencePattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := weftRef.MatchString(tt.cmd); got != tt.want {
-				t.Errorf("weftRef.MatchString(%q) = %v; want %v", tt.cmd, got, tt.want)
+			if got := fabricRef.Matches(tt.cmd); got != tt.want {
+				t.Errorf("fabricRef.Matches(%q) = %v; want %v", tt.cmd, got, tt.want)
 			}
 		})
 	}
@@ -87,7 +87,7 @@ func cleanForkReport(path string) shuttleengine.ForkReport {
 // burlerengine's read-only cluster-reviewer policy.
 func TestCheckFork(t *testing.T) {
 	layout := fakeLayout()
-	weftRef := weftReferencePattern(layout)
+	fabricRef := fabricengine.NewRefScanner(layout)
 	weftWorktree := fabricengine.WeftWorktree(layout)
 
 	tests := []struct {
@@ -121,7 +121,7 @@ func TestCheckFork(t *testing.T) {
 				TranscriptPath: "d-fabric", ReportReturned: true,
 				BashCommands: []string{"lyx fabric sync"},
 			},
-			wantClasses: []AuditViolationClass{ClassWeftReference},
+			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
 			name: "lyx weft sync is a hard error",
@@ -129,7 +129,7 @@ func TestCheckFork(t *testing.T) {
 				TranscriptPath: "d", ReportReturned: true,
 				BashCommands: []string{"lyx weft sync"},
 			},
-			wantClasses: []AuditViolationClass{ClassWeftReference},
+			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
 			name: "git -C <weft-worktree> add is a hard error",
@@ -137,7 +137,7 @@ func TestCheckFork(t *testing.T) {
 				TranscriptPath: "e", ReportReturned: true,
 				BashCommands: []string{"git -C " + weftWorktree + " add -A"},
 			},
-			wantClasses: []AuditViolationClass{ClassWeftReference},
+			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
 			// A fork writing Master's own contract files forges the run's
@@ -173,7 +173,7 @@ func TestCheckFork(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", weftRef)
+			got := CheckFork(tt.fork, outcomePath, summaryPath, "/hub/master-builder", fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckFork() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}
@@ -196,7 +196,7 @@ func TestCheckFork(t *testing.T) {
 // pinned as explicitly ALLOWED for Master.
 func TestCheckParent(t *testing.T) {
 	layout := fakeLayout()
-	weftRef := weftReferencePattern(layout)
+	fabricRef := fabricengine.NewRefScanner(layout)
 	weftWorktree := fabricengine.WeftWorktree(layout)
 
 	const outcomePath = "/hub/master-builder/_lyx/webster/outcome.yaml"
@@ -270,20 +270,20 @@ func TestCheckParent(t *testing.T) {
 			audit: shuttleengine.ForkAudit{
 				ParentBashCommands: []string{"git -C " + weftWorktree + " commit -am wip"},
 			},
-			wantClasses: []AuditViolationClass{ClassWeftReference},
+			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 		{
 			name: "parent lyx fabric sync is a hard error",
 			audit: shuttleengine.ForkAudit{
 				ParentBashCommands: []string{"lyx fabric sync"},
 			},
-			wantClasses: []AuditViolationClass{ClassWeftReference},
+			wantClasses: []AuditViolationClass{ClassFabricReference},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CheckParent(tt.audit, outcomePath, summaryPath, "/hub/master-builder", weftRef)
+			got := CheckParent(tt.audit, outcomePath, summaryPath, "/hub/master-builder", fabricRef)
 			if len(got) != len(tt.wantClasses) {
 				t.Fatalf("CheckParent() = %v; want %d violation(s) of class %v", got, len(tt.wantClasses), tt.wantClasses)
 			}

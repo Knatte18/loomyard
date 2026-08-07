@@ -1,10 +1,10 @@
 // audit.go implements webster's own fail-loud policy over the provider-invariant
 // shuttleengine.ForkAudit/ForkReport fact shapes: the violation classes a forked implementer or
 // Master's own parent session can trigger,
-// and the weft-reference matcher both checks share.
+// and the fabric-reference matcher both checks share.
 // Unlike burlerengine's read-only cluster-round policy (a fork reviewer must never mutate
-// anything), webster's forks are implementers — Write/Edit and host-repo git are the whole point of
-// a batch, so CheckFork bans only nesting (Agent calls), weft references, and writes to the run's
+// anything), webster's forks are implementers — Write/Edit and repo-native git are the whole point of
+// a batch, so CheckFork bans only nesting (Agent calls), fabric references, and writes to the run's
 // two contract files (outcome.yaml/summary.md — Master's alone), never batch writes.
 // Master's own parent transcript is the mirror image: writes are banned everywhere EXCEPT the run's
 // two contract files, since a Master that "helpfully" implements a batch itself or hand-writes a
@@ -18,14 +18,11 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // AuditViolationClass discriminates the fail-loud violation classes CheckFork and CheckParent can
@@ -41,10 +38,10 @@ const (
 	// ClassNestedAgent means a fork's own transcript attempted an Agent tool call — forks cannot nest,
 	// even when Claude Code denied the attempt.
 	ClassNestedAgent AuditViolationClass = "nested-agent"
-	// ClassWeftReference means a Bash command (fork or parent) invoked lyx fabric (or its pre-cutover
+	// ClassFabricReference means a Bash command (fork or parent) invoked lyx fabric (or its pre-cutover
 	// spellings lyx weft/lyx warp),
-	// or referenced the weft worktree path — agents never touch weft directly.
-	ClassWeftReference AuditViolationClass = "weft-reference"
+	// or referenced the weft worktree path — agents never touch the fabric repo directly.
+	ClassFabricReference AuditViolationClass = "fabric-reference"
 	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a
 	// name parameter — named forks silently lose inherited context.
 	ClassNamedSpawn AuditViolationClass = "named-spawn"
@@ -82,26 +79,11 @@ func (v AuditViolation) Error() string {
 	return fmt.Sprintf("webster: %s violation in %q: %s", v.Class, v.TranscriptPath, v.Detail)
 }
 
-// weftReferencePattern builds the regexp CheckFork and CheckParent use to detect
-// a Bash command that touches weft (lyx fabric, old `lyx weft`/`lyx warp` spellings,
-// or commands referencing the weft worktree path). Built at runtime from
-// fabricengine.WeftWorktree(layout) and weftname.Suffix, never from string literals in
-// this package, to pass TestEnforcement_GeometryLiterals.
-func weftReferencePattern(layout *lyxcwd.Location) *regexp.Regexp {
-	weftPath := regexp.QuoteMeta(fabricengine.WeftWorktree(layout))
-	weftSuffix := regexp.QuoteMeta(weftname.Suffix)
-	pattern := fmt.Sprintf(
-		`lyx(?:\.exe)?\s+(fabric|weft|warp)\b|%s|\S*%s\b`,
-		weftPath, weftSuffix,
-	)
-	return regexp.MustCompile(pattern)
-}
-
 // CheckFork evaluates one fork's transcript facts against webster's implementer policy: Write/Edit
-// and host-repo git are explicitly allowed.
+// and repo-native git are explicitly allowed.
 // It bans three hard violations: any attempted Agent call, any write to the two contract files
-// (outcomePath or summaryPath), and any Bash command touching weft.
-func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
+// (outcomePath or summaryPath), and any Bash command referencing the fabric repo.
+func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, fabricRef *fabricengine.RefScanner) []AuditViolation {
 	var violations []AuditViolation
 
 	if f.AgentCalls > 0 {
@@ -129,11 +111,11 @@ func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir str
 	}
 
 	for _, cmd := range f.BashCommands {
-		if weftRef.MatchString(cmd) {
+		if fabricRef.Matches(cmd) {
 			violations = append(violations, AuditViolation{
-				Class:          ClassWeftReference,
+				Class:          ClassFabricReference,
 				TranscriptPath: f.TranscriptPath,
-				Detail:         fmt.Sprintf("ran a weft-referencing command (%q) — an implementer fork must never touch weft directly", cmd),
+				Detail:         fmt.Sprintf("ran a fabric-referencing command (%q) — an implementer fork must never touch the fabric repo directly", cmd),
 			})
 		}
 	}
@@ -153,11 +135,11 @@ func resolveWritePath(workdir, path string) string {
 }
 
 // isTranscriptPathAbsolute reports whether a transcript-recorded write path is
-// already absolute — in either the host OS's native sense (stdlib
+// already absolute — in either the running OS's native sense (stdlib
 // filepath.IsAbs: a drive letter or UNC prefix on Windows) or POSIX-style (a
 // leading "/"). Transcript-recorded write paths and this package's own
-// workdir/contract-path arguments are always POSIX-style, regardless of host
-// OS (they come from the pane's own working-directory convention, not a raw
+// workdir/contract-path arguments are always POSIX-style, regardless of the workdir's platform
+// (they come from the pane's own working-directory convention, not a raw
 // OS path) — so on Windows, stdlib filepath.IsAbs alone reports false for a
 // path like "/hub/master-builder/_lyx/webster/outcome.yaml" (Windows requires
 // a drive letter or UNC prefix to consider a path absolute), and
@@ -171,8 +153,8 @@ func isTranscriptPathAbsolute(path string) bool {
 // CheckParent evaluates Master's own parent-session facts: the mirror image of CheckFork's policy.
 // Master must NOT write except to the two contract files (outcomePath and summaryPath).
 // It bans three hard violations: any named spawn, any parent write outside contract files, and any
-// Bash command touching weft.
-func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, weftRef *regexp.Regexp) []AuditViolation {
+// Bash command referencing the fabric repo.
+func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef *fabricengine.RefScanner) []AuditViolation {
 	var violations []AuditViolation
 
 	if a.NamedSpawns > 0 {
@@ -198,10 +180,10 @@ func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir st
 	}
 
 	for _, cmd := range a.ParentBashCommands {
-		if weftRef.MatchString(cmd) {
+		if fabricRef.Matches(cmd) {
 			violations = append(violations, AuditViolation{
-				Class:  ClassWeftReference,
-				Detail: fmt.Sprintf("ran a weft-referencing command (%q) — Master must never touch weft directly; weft sync is webstercli's own in-process job", cmd),
+				Class:  ClassFabricReference,
+				Detail: fmt.Sprintf("ran a fabric-referencing command (%q) — Master must never touch the fabric repo directly; the fabric sync is webstercli's own in-process job", cmd),
 			})
 		}
 	}
@@ -234,7 +216,7 @@ func ForkWarnings(f shuttleengine.ForkReport) []string {
 // (report exists), record-batch errors here, and recover-batch refuses an OK report — a state a
 // forged report produces, but ALSO a legitimate cross-machine resume of the
 // report-landed-before-record-batch crash window, since fork transcripts live under the
-// machine-local ~/.claude projects dir while state.json and reports are weft-synced (found live in
+// machine-local ~/.claude projects dir while state.json and reports are fabric-synced (found live in
 // crucible round fable-r1).
 var ErrNoForkTranscripts = errors.New("zero new fork transcripts since the previous batch boundary — the batch was never forked (or its transcript is not on this machine: fork transcripts are machine-local, so a crash window resumed on a different machine cannot re-attribute its report; an operator resolves that by moving the batch's report file out of the reports dir and re-driving the batch)")
 

@@ -42,7 +42,7 @@ const runLockName = "run.lock"
 // It is webster's own sentinel (independent of builderengine.ErrRunBusy, per the
 // webster-owns-its-own-domain-types decision) because the caller must treat this refusal
 // differently from every other hard error: the losing call touched NOTHING on disk — the winner is
-// mid-run and owns the state — so webstercli must not run its own exit-time weft backstop for it.
+// mid-run and owns the state — so webstercli must not run its own exit-time fabric backstop for it.
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
 // RunActive reports whether a live `lyx webster run` currently holds websterDir's run.lock.
@@ -119,10 +119,10 @@ type RunDeps struct {
 	// Bisector is the integration stage's bisect-repo seam: nil (the
 	// production default) makes runIntegrationStage construct a real
 	// *fabricengine.Fabric inline via
-	// fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout)),
+	// fabricengine.Open(deps.Layout),
 	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
 	// so the bisect path never requires a paired weft fixture.
-	Bisector WarpBisector
+	Bisector FabricBisector
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices.
@@ -703,14 +703,14 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		return err
 	}
 
-	weftRef := weftReferencePattern(deps.Layout)
+	fabricRef := fabricengine.NewRefScanner(deps.Layout)
 
 	var violations []error
-	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Layout.AnchorPath(), weftRef) {
+	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Layout.AnchorPath(), fabricRef) {
 		violations = append(violations, v)
 	}
 	for _, f := range result.ForkAudit.Forks {
-		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Layout.AnchorPath(), weftRef) {
+		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Layout.AnchorPath(), fabricRef) {
 			violations = append(violations, v)
 		}
 	}
@@ -808,13 +808,13 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	shas, labels := accumulatedCardSHAs(batches, st)
 
 	// deps.Bisector is nil in production: construct the real paired-repo
-	// Fabric handle inline, the same way webstercli's weftCommit does from a
+	// Fabric handle inline, the same way webstercli's fabricSync does from a
 	// *lyxcwd.Location. A test instead injects a warp-only *gitrepo.Repo
-	// over its own scratch worktree (the WarpBisector seam), so the bisect
+	// over its own scratch worktree (the FabricBisector seam), so the bisect
 	// path never requires a paired weft fixture.
 	bisector := deps.Bisector
 	if bisector == nil {
-		f, err := fabricengine.New(deps.Layout.WorktreePath(), fabricengine.WeftWorktree(deps.Layout))
+		f, err := fabricengine.Open(deps.Layout)
 		if err != nil {
 			return err
 		}
@@ -836,7 +836,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	// leaving the CLI envelope's outcome: done contradicting summary.md's own
 	// "integration suite failed" section. The escalation above (the reserved
 	// -1 record and summary.md's localized card) is already persisted and is
-	// weft-committed by webstercli's run backstop, so a resume or a human still
+	// fabric-committed by webstercli's run backstop, so a resume or a human still
 	// sees the offending card despite this loud return. A non-done master
 	// outcome (the template-correct stuck) keeps its own judgment: the
 	// escalation merely sharpened its summary, so it returns nil below.
