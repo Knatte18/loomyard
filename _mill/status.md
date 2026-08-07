@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-vocabulary enforcement test
+phase: approved-documentation
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-constructor contract (unexport)  '2026-08-07T14:47:31Z'
 approved-templates describe one repo  '2026-08-07T14:59:26Z'
 approved-comment and test vocabulary sweep  '2026-08-07T15:33:56Z'
 approved-vocabulary enforcement test  '2026-08-07T18:53:14Z'
+approved-documentation  '2026-08-07T19:01:07Z'
 ```
 
 ## Batches
@@ -152,8 +153,9 @@ batches:
     commit_sha: c40a1de6717e86a96ee42b36869126e43678b150
     verify_baseline_failures: []
   - name: documentation
-    state: running
+    state: approved
     implementer_session: 4d8538d6-26f6-4c61-a72b-4061358b3ccb
     start_sha: 7e7dbe75683caad11432a1156dceafdfcedbcdba
+    commit_sha: 3808f3b064dfed40a7fd1289fb76b3511c7824fd
     verify_baseline_failures: []
 ```
