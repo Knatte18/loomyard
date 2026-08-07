@@ -138,7 +138,9 @@ batches:
     (0.00s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/builderengine\t0.146s",
   "FAIL\tgithub.com/Knatte18/loomyard/internal/builderengine\t0.142s"]
   - name: comment and test vocabulary sweep
-    state: pending
+    state: running
+    implementer_session: 7fab287c-8f7b-4be5-9ebf-4e8d3a592bed
+    start_sha: addab6c907e33f46890a0bdca4794b423c7ea81d
     verify_baseline_failures: []
   - name: vocabulary enforcement test
     state: pending
