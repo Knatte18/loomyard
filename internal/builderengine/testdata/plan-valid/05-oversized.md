@@ -18,8 +18,12 @@ this batch is flagged `oversized: true` so the orchestrator spawns the large-con
 ### Card 05.1 — rewrite the pipeline
 
 **What:** Replace the row pipeline's data model and every consumer in one pass.
-**Context:** none **Edits:**
-- `05-oversized.md` **Creates:** none **Deletes:** none **Moves:** none
+**Context:** none
+**Edits:**
+- `05-oversized.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 

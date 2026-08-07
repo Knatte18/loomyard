@@ -142,16 +142,16 @@
 // treadle and a runner, it gets extracted out of burler into shared ground —
 // never imported downward.
 //
-// # Geometry-blindness and weft-blindness
+// # Geometry-blindness and fabric-blindness
 //
 // treadleengine never imports internal/lyxcwd and never constructs a
 // _lyx path itself: Engine.Run operates on a caller-supplied absolute
 // runDir, and a block's Profile carries GateDir — the absolute cwd the gate
 // command runs in — supplied by the caller (perchengine resolves it from its
 // own *lyxcwd.Location) rather than resolved by this package. Likewise
-// treadleengine never touches weft git; committing a block's run-dir
-// artifacts to the weft remains the loop OWNER's job (perchcli today), exactly
-// as CONSTRAINTS.md's Weft Git Invariant already requires one layer up.
+// treadleengine never touches fabric git; committing a block's run-dir
+// artifacts to fabric remains the loop OWNER's job (perchcli today), exactly
+// as CONSTRAINTS.md's Fabric Git Invariant already requires one layer up.
 //
 // # Everything else carried over unchanged from perch
 //

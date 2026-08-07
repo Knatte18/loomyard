@@ -6,7 +6,7 @@
 // seam (a type alias of treadleengine.Shuttle) for the two ephemeral judge/triage utility calls —
 // burler reaches shuttle itself for its own round;
 // perch never routes a round through its own Shuttle.
-// Engine is weft-blind and geometry-blind: it never imports fabricengine and never constructs a
+// Engine is fabric-blind and geometry-blind: it never imports fabricengine and never constructs a
 // _lyx path itself;
 // it operates on a caller-supplied absolute runDir (the *lyxcwd.Location it holds is used only to
 // resolve the gate command's working directory, layout.WorktreePath(), which becomes

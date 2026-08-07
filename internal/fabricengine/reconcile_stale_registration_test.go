@@ -491,7 +491,7 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	if ok {
 		t.Errorf("Healthy = true with a real _lyx directory; want false")
 	}
-	if reason != "host _lyx is not a junction" {
-		t.Errorf("Healthy reason = %q; want %q", reason, "host _lyx is not a junction")
+	if reason.Cause != fabricengine.CauseNotAJunction || reason.Detail != "_lyx is not a junction" {
+		t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, "_lyx is not a junction")
 	}
 }

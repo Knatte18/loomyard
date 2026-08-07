@@ -99,7 +99,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 
 		pathspec = fabricengine.ScopedPathspec(l.AnchorRel, cfg.Dirs())
 
-		resolvedFabric, err := fabricengine.New(l.WorktreePath(), fabricengine.WeftWorktree(l))
+		resolvedFabric, err := fabricengine.Open(l)
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)

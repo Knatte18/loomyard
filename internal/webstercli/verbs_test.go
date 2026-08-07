@@ -13,10 +13,10 @@
 // PersistentPreRunE) and drive one verb's cobra.Command through
 // clihelp.Execute, the package-local injection point buildercli's own
 // tests establish. WEFT_SKIP_GIT=1 is set on every test that reaches a
-// weftCommit call, so no real weft sibling worktree is needed; the one test
-// that must PROVE weftCommit was never reached (ErrRunBusy) instead leaves
-// WEFT_SKIP_GIT unset and asserts the envelope carries no weft-sync or
-// fabricengine error text -- the failure a reached weftCommit would stamp
+// fabricSync call, so no real weft sibling worktree is needed; the one test
+// that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves
+// WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or
+// fabricengine error text -- the failure a reached fabricSync would stamp
 // in this weft-less geometry.
 
 package webstercli
@@ -593,12 +593,12 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 }
 
 // TestRunCmd_ErrRunBusySkipsWeftBackstop proves the ErrRunBusy refusal never reaches Master's own
-// spawn and never runs the exit-time weft backstop -- WEFT_SKIP_GIT is deliberately left UNSET here
-// so that an accidental weftCommit call would fail loudly: with no weft sibling on disk,
-// fabricengine.New's stat validation errors and run's envelope would carry "weft sync failed" plus
+// spawn and never runs the exit-time fabric backstop -- WEFT_SKIP_GIT is deliberately left UNSET here
+// so that an accidental fabricSync call would fail loudly: with no weft sibling on disk,
+// fabricengine.Open's stat validation errors and run's envelope would carry "fabric sync failed" plus
 // fabricengine's missing-path text, both asserted absent below. (The pre-cutover evidence --
 // weftengine creating the weft lock dir on disk -- no longer exists: fabric creates nothing before
-// validation, so output text is the reachable-weftCommit signal now.)
+// validation, so output text is the reachable-fabricSync signal now.)
 func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	fx := newVerbsFixture(t)
 	starter := &verbsFakeMasterStarter{}
@@ -625,13 +625,13 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	if starter.called {
 		t.Error("MasterStarter.StartMaster was reached while run.lock was held; want zero calls")
 	}
-	// A reached weftCommit in this weft-less geometry fails at
-	// fabricengine.New and stamps both strings below into the envelope --
+	// A reached fabricSync in this weft-less geometry fails at
+	// fabricengine.Open and stamps both strings below into the envelope --
 	// their absence is the post-cutover proof the backstop never ran. (The
 	// old proof, weftengine's on-disk lock-dir creation, no longer exists:
 	// fabric creates nothing before its path validation.)
-	if strings.Contains(out.String(), "weft sync failed") {
-		t.Errorf("output mentions a weft sync failure; ErrRunBusy must skip the weft backstop entirely: %q", out.String())
+	if strings.Contains(out.String(), "fabric sync failed") {
+		t.Errorf("output mentions a fabric sync failure; ErrRunBusy must skip the fabric backstop entirely: %q", out.String())
 	}
 	if strings.Contains(out.String(), "fabricengine:") {
 		t.Errorf("output carries a fabricengine error; ErrRunBusy must return before any fabric call: %q", out.String())

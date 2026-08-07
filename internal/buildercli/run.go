@@ -1,10 +1,10 @@
 // run.go implements the `run` builder verb: it maps builderengine.Run's outcome onto the run-level
-// backstop weft commit and the CLI envelope.
-// ErrRunBusy skips the weft sync entirely (perchcli's ErrBlockBusy exemption applies verbatim: the
+// backstop fabric commit and the CLI envelope.
+// ErrRunBusy skips the fabric sync entirely (perchcli's ErrBlockBusy exemption applies verbatim: the
 // losing call touched nothing, so syncing would commit the winner's in-flight partial state under a
 // misleading label);
 // every other exit -- success OR error, including ErrFingerprintMismatch and the distinct
-// asking/died/timeout orchestrator errors -- runs the backstop weft commit before its envelope,
+// asking/died/timeout orchestrator errors -- runs the backstop fabric commit before its envelope,
 // since completed batches' artifacts must not strand uncommitted.
 
 package buildercli
@@ -37,7 +37,7 @@ orchestrator is always spawned fresh, hydrated from on-disk state), and
 blocks until the orchestrator writes its own outcome.yaml (done/stuck) or
 the shuttle spawn itself ends asking/died/timed-out. Every exit except a
 "run is already in progress" refusal (another "lyx builder run" already
-owns the run -- this call touched nothing) runs a backstop weft commit
+owns the run -- this call touched nothing) runs a backstop fabric commit
 before printing its envelope, so a run that ends in error still leaves its
 completed batches' artifacts committed.
 
@@ -73,29 +73,29 @@ Example:
 			if runErr == nil {
 				outcomeLabel = result.Outcome
 			}
-			committed, weftErr := weftCommit(c.layout, fmt.Sprintf("run %s", outcomeLabel))
+			committed, syncErr := fabricSync(c.layout, fmt.Sprintf("run %s", outcomeLabel))
 
 			if runErr != nil {
 				msg := runErr.Error()
-				if weftErr != nil {
-					msg = fmt.Sprintf("%s (additionally, the weft sync failed: %v)", msg, weftErr)
+				if syncErr != nil {
+					msg = fmt.Sprintf("%s (additionally, the fabric sync failed: %v)", msg, syncErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
 
-			if weftErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("builder: run finished (%s) but the weft sync failed: %v", result.Outcome, weftErr)))
+			if syncErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("builder: run finished (%s) but the fabric sync failed: %v", result.Outcome, syncErr)))
 				return nil
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
-				"outcome":       result.Outcome,
-				"stuck_reason":  result.StuckReason,
-				"batches_done":  result.BatchesDone,
-				"run_dir":       result.RunDir,
-				"session_id":    result.SessionID,
-				"weftCommitted": committed,
+				"outcome":         result.Outcome,
+				"stuck_reason":    result.StuckReason,
+				"batches_done":    result.BatchesDone,
+				"run_dir":         result.RunDir,
+				"session_id":      result.SessionID,
+				"fabricCommitted": committed,
 			}))
 			return nil
 		},

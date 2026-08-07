@@ -27,7 +27,7 @@ import (
 const perchDirName = "perch"
 
 // RunsDir returns the path to the base directory for perch run artifacts.
-// It lives under _lyx so artifacts are weft-synced.
+// It lives under _lyx so artifacts are fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func RunsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, perchDirName)

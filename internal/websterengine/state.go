@@ -36,21 +36,21 @@ const websterDirName = "webster"
 
 // Dir returns the path to the webster's durable run state directory (state.json, pause flag,
 // outcome.yaml).
-// It lives under _lyx so it is weft-synced.
+// It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)
 }
 
 // ReportsDir returns the path to the directory holding webster's per-batch report files.
-// It lives under _lyx so reports are weft-synced.
+// It lives under _lyx so reports are fabric-synced.
 // Per the Hub Geometry Invariant, no other package may construct this path.
 func ReportsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "reports")
 }
 
 // PromptsDir returns the path to the directory holding webster's rendered fork prompts.
-// Prompts are machine-local, re-renderable artifacts excluded from weft commits.
+// Prompts are machine-local, re-renderable artifacts excluded from fabric commits.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func PromptsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "prompts")
@@ -65,8 +65,8 @@ const stateFileName = "state.json"
 // concurrent verb invocations (a begin-batch racing a record-batch, or two
 // recover-batch calls landing in the same instant) each load, mutate, and
 // save their own copy, and the last save silently erases the other's
-// mutation. Excluded from weft commits like every other *.lock (see
-// webstercli's websterWeftPathspec).
+// mutation. Excluded from fabric commits like every other *.lock (see
+// webstercli's sync pathspec).
 const stateMutateLockName = "mutate.lock"
 
 // AcquireStateMutation acquires websterDir's exclusive state-mutation lease, blocking until it is
@@ -129,7 +129,7 @@ type State struct {
 type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
 	Slug string `json:"slug"`
-	// StartSHA is the host HEAD immediately before this batch's implementer
+	// StartSHA is the repo HEAD immediately before this batch's implementer
 	// first forked (or, for a recovery batch, first spawned) — the durable
 	// base-commit record a resume or an operator diagnosis reads.
 	StartSHA string `json:"startSha"`

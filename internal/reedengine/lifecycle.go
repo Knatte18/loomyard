@@ -33,7 +33,7 @@ const dotLyxDirName = ".lyx"
 // writes its runtime log.
 // It is hub-anchored so one server per hub resolves to one deterministic place.
 // It lives under the ephemeral .lyx directory;
-// server logs are runtime artifacts, never weft-synced.
+// server logs are runtime artifacts, never fabric-synced.
 func HubLogsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.HubPath, dotLyxDirName, "logs")
 }

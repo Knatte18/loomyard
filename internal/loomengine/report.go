@@ -9,7 +9,7 @@ type CheckID string
 
 // The closed set of checks Preflight can report a failure against, per report-shape.
 // Each corresponds to one of the four checks described in Preflight's godoc (geometry/worktree-root
-// fold into check 1, worktree-clean is check 2, weft-pairing/weft-sync/junction are check 3, and
+// fold into check 1, worktree-clean is check 2, fabric-ready/fabric-sync/junction are check 3, and
 // seed-missing/seed-unreadable/seed-incoherent/half-finished are check 4).
 const (
 	// CheckGeometry fails when the cwd is not inside a git repository,
@@ -18,22 +18,22 @@ const (
 	// CheckWorktreeRoot fails when Preflight is invoked from a subdirectory of the worktree rather
 	// than its root.
 	CheckWorktreeRoot CheckID = "worktree-root"
-	// CheckWorktreeClean fails when the host worktree has any dirty (tracked or untracked) paths.
+	// CheckWorktreeClean fails when the worktree has any dirty (tracked or untracked) paths.
 	CheckWorktreeClean CheckID = "worktree-clean"
-	// CheckWeftPairing fails when the paired weft worktree does not exist.
-	CheckWeftPairing CheckID = "weft-pairing"
-	// CheckWeftSync fails when the host and weft worktrees are on different branches.
-	CheckWeftSync CheckID = "weft-sync"
-	// CheckJunction fails when the host _lyx junction is missing or points somewhere other than the
-	// paired weft's _lyx directory.
+	// CheckFabricReady fails when fabric is not usable in this worktree.
+	CheckFabricReady CheckID = "fabric-ready"
+	// CheckFabricSync fails when fabric is out of sync with its expected branch.
+	CheckFabricSync CheckID = "fabric-sync"
+	// CheckJunction fails when the _lyx junction is missing or points somewhere other than its
+	// correct target.
 	CheckJunction CheckID = "junction"
-	// CheckSeedMissing fails when _lyx/status.json does not exist and the weft pairing/junction are
-	// otherwise healthy.
+	// CheckSeedMissing fails when _lyx/status.json does not exist and fabric is otherwise ready and
+	// healthy.
 	CheckSeedMissing CheckID = "seed-missing"
 	// CheckSeedUnreadable fails when _lyx/status.json cannot be stat'd or read for a reason other than
 	// not-existing,
-	// or when a stat failure (including not-exist) is attributable to an unhealthy weft
-	// pairing/junction rather than a genuinely missing seed.
+	// or when a stat failure (including not-exist) is attributable to fabric not being ready or
+	// healthy rather than a genuinely missing seed.
 	CheckSeedUnreadable CheckID = "seed-unreadable"
 	// CheckSeedIncoherent fails when _lyx/status.json exists and decodes but violates the coherence
 	// validator's rules (see checkCoherence).

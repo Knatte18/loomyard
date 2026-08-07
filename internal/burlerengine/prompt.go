@@ -113,7 +113,7 @@ func formatFileSet(fs FileSet) string {
 }
 
 // fixScopeRules returns the write-surface and git-discipline prose for p's
-// FixScope: FixScopeSource gets the commit-per-fix rules (host working
+// FixScope: FixScopeSource gets the commit-per-fix rules (working
 // tree, commit each fix individually, never push); FixScopeOverlay gets the
 // overlay rules (write surface is exactly the target paths plus the two
 // output files, no git at all — the loop owner commits). p.FixScope is
@@ -121,7 +121,7 @@ func formatFileSet(fs FileSet) string {
 func fixScopeRules(p *Profile) string {
 	switch p.FixScope {
 	case FixScopeSource:
-		return "Write surface: the host working tree in this task worktree — the files the " +
+		return "Write surface: the working tree in this task worktree — the files the " +
 			"findings point at, plus whatever the discipline requires in the same change (a " +
 			"test that would have caught the bug, the module doc).\n\n" +
 			"You commit each fix individually, once green, before starting the next finding. " +

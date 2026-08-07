@@ -122,10 +122,10 @@ func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 	// The rebased-away commit's object still exists — fetch never prunes —
 	// yet it is not an ancestor of the new tip. Detection must key off the
 	// latter, never the former.
-	if !f.Warp.SHAExists(warpSHAs[1]) {
+	if !f.warp.SHAExists(warpSHAs[1]) {
 		t.Errorf("SHAExists(%q) = false after fetch; want true (fetch never prunes)", warpSHAs[1])
 	}
-	isAncestor, err := f.Warp.IsAncestor(warpSHAs[1], newTip)
+	isAncestor, err := f.warp.IsAncestor(warpSHAs[1], newTip)
 	if err != nil {
 		t.Fatalf("IsAncestor(%q, %q) error = %v", warpSHAs[1], newTip, err)
 	}

@@ -3,7 +3,7 @@
 // review/fixer files its scripted done-results imply) and a scripted queuedShuttle (a queue of
 // judge/triage verdict-file contents or errors, recording every Spec it received) — the full
 // fake-seam surface the discussion's Testing section pins for perch's strong deterministic test
-// suite: no LLM, no tmux, no weft.
+// suite: no LLM, no tmux, no fabric.
 
 package perchengine
 
@@ -1643,7 +1643,7 @@ func TestRun_ConcurrentSameRunDir(t *testing.T) {
 		t.Errorf("second Run() error = %q; want it to name the block as already running", err.Error())
 	}
 	// The refusal must be errors.Is-matchable: perchcli branches on
-	// ErrBlockBusy to skip the block-exit weft sync for the losing
+	// ErrBlockBusy to skip the block-exit fabric sync for the losing
 	// invocation (which changed nothing; the winner owns the block).
 	if !errors.Is(err, ErrBlockBusy) {
 		t.Errorf("second Run() error = %v; want errors.Is(err, ErrBlockBusy)", err)

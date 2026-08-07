@@ -345,10 +345,10 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 		t.Fatalf("Healthy: %v", err)
 	}
 	if !ok {
-		t.Errorf("Healthy ok = false (reason %q); want true (repo-wide-only config)", reason)
+		t.Errorf("Healthy ok = false (reason %+v); want true (repo-wide-only config)", reason)
 	}
-	if strings.Contains(reason, "unavailable") {
-		t.Errorf("Healthy reason = %q; want a real verdict, not junction-check-unavailable", reason)
+	if reason.Cause == fabricengine.CauseConfigLoadFailed {
+		t.Errorf("Healthy reason = %+v; want a real verdict, not CauseConfigLoadFailed", reason)
 	}
 
 	// Topology.Checkout must not hard-fail/rollback re-pointing junctions

@@ -66,9 +66,9 @@ func TestFile_Free(t *testing.T) {
 
 // TestLocation_PatternAccessors asserts FileHere(l)'s join for both AnchorRel == "."
 // and a nested AnchorRel of at least two segments.
-// The WeftPatternDir/WeftPatternDirFor/HostPatternLink/HostPatternLinkHere sub-tests that used to
-// live here were dropped along with those four lyxcwd.Location accessors, which are deleted in
-// batch 6;
+// The four fabric-specific pattern/junction-link sub-tests that used to
+// live here were dropped along with those four lyxcwd.Location accessors, which were deleted in
+// an earlier batch;
 // their coverage is re-asserted there against the generic junction path.
 func TestLocation_PatternAccessors(t *testing.T) {
 	hub := filepath.Join("C:", "hub")

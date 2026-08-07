@@ -19,5 +19,9 @@ This intermediate state does not compile cleanly on its own, so verify is deferr
 ### Card 03.1 — extract mapper skeleton
 
 **What:** Move the row-to-envelope mapping function into its own file, leaving call sites pointing at the old location temporarily.
-**Context:** none **Edits:**
-- `03-refactor-a.md` **Creates:** none **Deletes:** none **Moves:** none
+**Context:** none
+**Edits:**
+- `03-refactor-a.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none

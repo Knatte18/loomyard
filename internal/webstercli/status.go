@@ -1,7 +1,7 @@
 // status.go implements the `status` webster verb: an instant, side-effect- free snapshot of
 // _lyx/webster/state.json -- the same navigation refresher buildercli's own status.go documents
 // (human- and loom-facing).
-// It never spawns an agent, never weft-commits, and never mutates state.json;
+// It never spawns an agent, never fabric-commits, and never mutates state.json;
 // unlike builder (which only learns a batch's terminal status from poll's own next tick or a live
 // report-file scan), webster's own record-batch/recover-batch persist
 // BatchState.Status/Terminal/Digest directly onto state.json the moment the batch reaches a
@@ -28,7 +28,7 @@ func (c *websterCLI) statusCmd() *cobra.Command {
 in-flight batch cursor, the plan fingerprint, every batch's own persisted
 record (number, slug, kind, status, terminal, whether a digest is
 persisted), and whether a pause has been requested. It is a plain read --
-no weft commit, no engine spawn, no state.json write -- so it is safe to
+no fabric commit, no engine spawn, no state.json write -- so it is safe to
 run at any time, including mid-batch, as a navigation refresher for a human
 or Master resuming after a crash.
 

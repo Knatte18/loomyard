@@ -71,7 +71,7 @@ strands, plus rendering their layout on every mutation.`,
 			}
 
 			// The _lyx/config/ root is anchored at layout.AnchorPath(), not WorktreeRoot or
-			// any weft sibling — reed config lives with the worktree the operator is
+			// any fabric sibling — reed config lives with the worktree the operator is
 			// actually standing in.
 			cfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
 			if err != nil {

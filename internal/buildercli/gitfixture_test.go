@@ -2,7 +2,7 @@
 
 // gitfixture_test.go holds the scratch-git-repo helpers shared by the
 // integration tier (poll_test.go, spawnbatch_test.go,
-// weft_integration_test.go) and the smoke tier (smoke_test.go): both tiers
+// sync_integration_test.go) and the smoke tier (smoke_test.go): both tiers
 // spawn real git, so the helpers carry a dual build tag rather than living
 // in a single-tier file -- smoke_test.go referencing them inside an
 // integration-only file is exactly the mismatch that once made

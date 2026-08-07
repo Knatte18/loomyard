@@ -184,7 +184,7 @@ func TestEditOneSyncFails(t *testing.T) {
 		t.Errorf("editOne() = %d; want 1", code)
 	}
 	output := out.String()
-	if !strings.Contains(output, "weft sync failed") {
+	if !strings.Contains(output, "fabric sync failed") {
 		t.Errorf("editOne output missing sync-failed message; got %q", output)
 	}
 	if !strings.Contains(output, "sync error: something went wrong") {

@@ -15,25 +15,53 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// HealthCause names the specific condition a failed Healthy check found, letting a caller like
+// loomengine.Preflight classify the failure without parsing a display string.
+type HealthCause string
+
+// The closed set of causes Healthy can report, one per drift shape drift.go detects.
+const (
+	// CauseBranchMismatch reports that the weft worktree is not on the paired weft branch.
+	CauseBranchMismatch HealthCause = "branch-mismatch"
+	// CauseConfigLoadFailed reports that the wired name-set could not be loaded from fabric.yaml.
+	CauseConfigLoadFailed HealthCause = "config-load-failed"
+	// CauseJunctionMissing reports that a host junction entry does not exist on disk.
+	CauseJunctionMissing HealthCause = "junction-missing"
+	// CauseNotAJunction reports that a host junction entry exists but is not a link.
+	CauseNotAJunction HealthCause = "not-a-junction"
+	// CauseJunctionPointsElsewhere reports that a host junction link resolves to the wrong target.
+	CauseJunctionPointsElsewhere HealthCause = "junction-points-elsewhere"
+)
+
+// HealthReason is the typed verdict Healthy returns for a failed check: Cause is the drift shape a
+// caller switches on, and Detail is an already-fabric-worded display string a caller may print
+// verbatim.
+// The zero HealthReason (Cause == "") is what Healthy returns alongside ok == true;
+// a caller that checks ok first never reads it.
+type HealthReason struct {
+	Cause  HealthCause
+	Detail string
+}
+
 // Healthy reports whether the host worktree and its paired weft worktree are in sync: the weft
 // worktree is on the paired weft branch and every host junction exists and points to its correct
 // weft directory.
 // The weft sibling is determined deterministically and no external state is consulted, so Healthy
 // is stateless.
-// Returns (true, "", nil) if in sync;
+// Returns (true, HealthReason{}, nil) if in sync;
 // (false, reason, nil) if out of sync;
-// (false, "", err) if a system error occurs.
-func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
+// (false, HealthReason{}, err) if a system error occurs.
+func Healthy(l *lyxcwd.Location) (ok bool, reason HealthReason, err error) {
 	// Verify the host worktree's current branch via rev-parse --abbrev-ref HEAD.
 	hostOut, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		l.WorktreePath(),
 	)
 	if err != nil {
-		return false, "", fmt.Errorf("get host branch: %w", err)
+		return false, HealthReason{}, fmt.Errorf("get host branch: %w", err)
 	}
 	if exitCode != 0 {
-		return false, "", fmt.Errorf("get host branch failed with exit code %d", exitCode)
+		return false, HealthReason{}, fmt.Errorf("get host branch failed with exit code %d", exitCode)
 	}
 	hostBranch := strings.TrimSpace(hostOut)
 
@@ -44,10 +72,10 @@ func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
 		weftWorktree,
 	)
 	if err != nil {
-		return false, "", fmt.Errorf("get weft branch: %w", err)
+		return false, HealthReason{}, fmt.Errorf("get weft branch: %w", err)
 	}
 	if exitCode != 0 {
-		return false, "", fmt.Errorf("get weft branch failed with exit code %d", exitCode)
+		return false, HealthReason{}, fmt.Errorf("get weft branch failed with exit code %d", exitCode)
 	}
 	weftBranch := strings.TrimSpace(weftOut)
 
@@ -55,18 +83,24 @@ func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	// host branch, not merely an equal name (fabric's uniform <host>/<host>-weft scheme).
 	expectedWeftBranch := WeftBranchName(hostBranch)
 	if weftBranch != expectedWeftBranch {
-		return false, fmt.Sprintf("host on %s, weft on %s (want %s)", hostBranch, weftBranch, expectedWeftBranch), nil
+		return false, HealthReason{
+			Cause:  CauseBranchMismatch,
+			Detail: fmt.Sprintf("fabric out of sync: on %s (want %s)", hostBranch, expectedWeftBranch),
+		}, nil
 	}
 
 	// Load the wired name-set from the repo-wide BoardDir base — durable and
 	// independent of the host junction whose health this function checks, and
 	// the same repo-wide base checkJunctionHealth in reconcile.go uses. A load
 	// failure is reported as a determinable "unhealthy: bad config" verdict
-	// reason, not a hard Go error — see the doc comment above for why the
-	// reason string must keep the substring "junction".
+	// via CauseConfigLoadFailed, not a hard Go error — the caller keeps
+	// treating it as a check failure rather than an aborted preflight.
 	names, err := RepoWiredNames(l)
 	if err != nil {
-		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err), nil
+		return false, HealthReason{
+			Cause:  CauseConfigLoadFailed,
+			Detail: fmt.Sprintf("junction check unavailable: cannot load fabric.yaml: %v", err),
+		}, nil
 	}
 
 	// Verify every host junction is valid and points to its correct weft
@@ -75,41 +109,50 @@ func Healthy(l *lyxcwd.Location) (ok bool, reason string, err error) {
 	for _, j := range HostJunctionsHere(l, names) {
 		// Distinguish a missing junction entry from an existing one that is not
 		// a link: fslink.IsLink reports (false, nil) for both shapes, and the
-		// loom preflight consumes these reason strings — a real directory
+		// loom preflight consumes these typed reasons — a real directory
 		// sitting where the junction belongs must not masquerade as merely
 		// missing.
 		if _, lstatErr := os.Lstat(j.Link); lstatErr != nil {
 			if os.IsNotExist(lstatErr) {
-				return false, fmt.Sprintf("host %s junction missing", j.Name), nil
+				return false, HealthReason{
+					Cause:  CauseJunctionMissing,
+					Detail: fmt.Sprintf("%s junction missing", j.Name),
+				}, nil
 			}
-			return false, "", fmt.Errorf("check host junction: %w", lstatErr)
+			return false, HealthReason{}, fmt.Errorf("check host junction: %w", lstatErr)
 		}
 		isLink, err := fslink.IsLink(j.Link)
 		if err != nil {
-			return false, "", fmt.Errorf("check host junction: %w", err)
+			return false, HealthReason{}, fmt.Errorf("check host junction: %w", err)
 		}
 		if !isLink {
 			// Same wording as checkJunctionHealth for this drift shape, so
 			// status/reconcile and Healthy describe it identically.
-			return false, fmt.Sprintf("host %s is not a junction", j.Name), nil
+			return false, HealthReason{
+				Cause:  CauseNotAJunction,
+				Detail: fmt.Sprintf("%s is not a junction", j.Name),
+			}, nil
 		}
 
 		// Resolve the junction and verify it points to the correct target.
 		linkTarget, err := fslink.PointsTo(j.Link)
 		if err != nil {
-			return false, "", fmt.Errorf("resolve host junction: %w", err)
+			return false, HealthReason{}, fmt.Errorf("resolve host junction: %w", err)
 		}
 
 		// Resolve weft target for comparison.
 		weftTargetResolved, err := filepath.EvalSymlinks(j.Target)
 		if err != nil {
-			return false, "", fmt.Errorf("resolve weft target: %w", err)
+			return false, HealthReason{}, fmt.Errorf("resolve weft target: %w", err)
 		}
 
 		if linkTarget != weftTargetResolved {
-			return false, fmt.Sprintf("host %s junction points elsewhere", j.Name), nil
+			return false, HealthReason{
+				Cause:  CauseJunctionPointsElsewhere,
+				Detail: fmt.Sprintf("%s junction points elsewhere", j.Name),
+			}, nil
 		}
 	}
 
-	return true, "", nil
+	return true, HealthReason{}, nil
 }

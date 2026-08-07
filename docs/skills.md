@@ -11,7 +11,7 @@ In lyx, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `
 |---|---|
 | One `lyx` verb / deterministic | **`lyx` verb** (no skill) |
 | Low value even in mill | **Discard** |
-| Git mechanics at commit time | **loom commit path** — Go-deterministic (weft) + builder/fixer prompt template (host code). *Not* CLAUDE.md: always-on text gets forgotten |
+| Git mechanics at commit time | **loom commit path** — Go-deterministic (fabric state) + builder/fixer prompt template (worktree code). *Not* CLAUDE.md: always-on text gets forgotten |
 | Session-coloring fact, unenforceable at a point-of-use | **CLAUDE.md** (loads every session; no mill skill lands here) |
 | Judgment, operator-invoked | **skill** |
 | Judgment, lyx-spawned / autonomous | **prompt template** (stencil + shuttle) — Go can't call a skill |
@@ -164,7 +164,7 @@ shares the burler round discipline).
 | mill:mill-cleanup | `lyx fabric cleanup` |
 | mill:mill-abandon | `lyx loom abandon` |
 | mill:mill-pause | `lyx loom pause` |
-| mill:mill-resume | loom resume + weft-sync + session-sync |
+| mill:mill-resume | loom resume + fabric-sync + session-sync |
 | mill:mill-status | `lyx loom status` |
 | mill:mill-inspect | `lyx board` / `lyx loom status` |
 | mill:mill-add | `lyx board upsert` |
@@ -181,7 +181,7 @@ The rules live where commits actually happen.
 
 | mill skill | Why |
 |---|---|
-| mill:git-commit | Mechanics (stage-by-name, no `-A`, no force-push, no `--no-verify`, set upstream) enforced **in Go** where lyx commits weft; message format + commit-per-fix ride the **builder/fixer prompt template** for host code. Lint / raddle-sync / main-gate are loom's job, not per-commit |
+| mill:git-commit | Mechanics (stage-by-name, no `-A`, no force-push, no `--no-verify`, set upstream) enforced **in Go** where lyx commits fabric state; message format + commit-per-fix ride the **builder/fixer prompt template** for worktree code. Lint / raddle-sync / main-gate are loom's job, not per-commit |
 | mill:git-workflow | Branch / PR / rebase / main-gate are **loom-enforced** (breaking them is clumsiness, not a rule to restate); message + staging discipline ride the builder/fixer prompt template |
 
 ### → burler's prompt template (lyx-spawned judgment)

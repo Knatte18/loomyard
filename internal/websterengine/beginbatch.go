@@ -3,10 +3,10 @@
 // per-batch model assertion (the ONLY model-injection site in webster — see doc.go's package
 // comment), the previous batch's persisted digest rendered into the fork prompt, and the prompt
 // file write itself.
-// BeginBatch never touches weft (webster is weft-blind throughout) and never persists deps.State
+// BeginBatch never touches fabric (webster is fabric-blind throughout) and never persists deps.State
 // itself — the caller holds the state-mutation lease (AcquireStateMutation) across its whole
 // begin-batch call and saves state via SaveState once BeginBatch returns successfully, mirroring
-// builder's own weft-commit-boundary discipline.
+// builder's own fabric-commit-boundary discipline.
 // Under the flat card-list model there is no deferred-verify chain and no oversized-batch
 // escalation: BeginBatch always asserts the single RoleMaster model,
 // and there is no --restart-chain surface.
@@ -59,7 +59,7 @@ type Injector interface {
 // Injector is what actually types that choreography into Master's pane; Reed is the live reed query
 // surface the prior-recovery-strand reclaim consults (a dead-but-live recovery record a fork batch
 // is about to overwrite);
-// WorktreeRoot is the host repo checkout BeginBatch captures HeadSHA from;
+// WorktreeRoot is the repo checkout BeginBatch captures HeadSHA from;
 // Layout is the resolved Location RenderForkPrompt uses for {{.worktree_root}} (filled from
 // Layout.AnchorPath());
 // WebsterDir, ReportsDir, and PromptsDir are the lyxcwd-resolved _lyx/webster,
@@ -86,7 +86,7 @@ type BeginResult struct {
 	BatchName string
 	// PromptPath is the absolute path of the fork prompt file BeginBatch just wrote.
 	PromptPath string
-	// StartSHA is the host HEAD captured before this call returns.
+	// StartSHA is the repo HEAD captured before this call returns.
 	StartSHA string
 	// AssertedModel is the model BeginBatch asserted Master's pane onto for this batch.
 	AssertedModel string
@@ -122,7 +122,7 @@ func digestSummaryLine(d *Digest) string {
 // per-batch model assertion.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
-// never calls SaveState and never touches weft.
+// never calls SaveState and never touches fabric.
 func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if PauseRequested(deps.WebsterDir) {
 		return nil, ErrPaused
@@ -219,7 +219,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// dead classification keeps its substrate alive by design, and it may
 	// still be genuinely working), stop it before the record below erases
 	// its StrandGUID: an unreclaimed recovery strand would race this batch's
-	// fresh fork on the host repo — the same kept-strand reclaim builder's
+	// fresh fork on the repo — the same kept-strand reclaim builder's
 	// respawn path performs. A plain fork batch's record has an empty
 	// StrandGUID and removeStrandIfLive no-ops on it.
 	if prior, ok := deps.State.Batches[number]; ok && prior != nil && prior.StrandGUID != "" {

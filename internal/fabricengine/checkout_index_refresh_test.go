@@ -48,16 +48,16 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	f, err := fabricengine.New(l.WorktreePath(), fabricengine.WeftWorktree(l))
+	f, err := fabricengine.NewPairedForTest(l.WorktreePath(), fabricengine.WeftWorktree(l))
 	if err != nil {
-		t.Fatalf("fabricengine.New: %v", err)
+		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
 	}
 
 	// Record one correspondence on the original branch via a real scoped commit.
 	if err := os.WriteFile(filepath.Join(fabricengine.WeftWorktree(l), "_lyx", "config.yaml"), []byte("index refresh probe"), 0o644); err != nil {
 		t.Fatalf("write weft config: %v", err)
 	}
-	warpSHA, err := f.Warp.CurrentSHA()
+	warpSHA, err := fabricengine.WarpForTest(f).CurrentSHA()
 	if err != nil {
 		t.Fatalf("warp CurrentSHA: %v", err)
 	}

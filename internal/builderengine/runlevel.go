@@ -396,7 +396,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// archiving the only state that records them: the archived run can
 		// never be resumed, so its substrate has no legitimate owner, and a
 		// superseded implementer left alive keeps working against the same
-		// host repo while holding an absolute report path inside the
+		// repo while holding an absolute report path inside the
 		// recreated reports dir — its late report then lands on the FRESH
 		// run's report path and is distilled as the fresh batch's success
 		// (found live in round fable-r4: a --fresh run returned done on the

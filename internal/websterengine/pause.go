@@ -10,7 +10,7 @@
 // fingerprint mismatch leaves a pending pause intact) and again at every terminal outcome (a pause
 // requested while the last batch was still in flight must not linger in a finished run's webster
 // dir).
-// Exported because internal/webstercli calls these directly (pause.go/status.go/weft.go retarget in
+// Exported because internal/webstercli calls these directly (pause.go/status.go/sync.go retarget in
 // batch 9).
 
 package websterengine

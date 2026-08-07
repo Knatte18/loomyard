@@ -20,7 +20,7 @@ Never read another batch's own file: your batch file plus the overview is the wh
 
 ## Your worktree
 
-You work inside `{{.worktree_root}}`, the host repo checkout for this task.
+You work inside `{{.worktree_root}}`, the repo checkout for this task.
 Every file edit you make,
 and every git command you run, stays inside this worktree.
 
@@ -34,7 +34,7 @@ A file-op path is worktree-root-relative when "//"-prefixed, otherwise resolved 
 When a card's "**Moves:**" field carries a `` `old/path` -> `new/path` `` pair, run `git mv <old> <new>` FIRST, before any other change to that file, then make ONLY surgical edits (package declaration, imports, identifier retargeting) — never rewrite the relocated file from scratch and delete the original;
 the batch's own "## Rename mechanic" section pins this convention and is binding whenever it is present.
 
-Commit the card to the HOST repo — never the weft repo, never any `_lyx` path.
+Commit the card to the repo — never any `_lyx` path.
 When the card carries a "**Commit:**" field, use its value verbatim as the commit subject;
 otherwise derive the subject yourself, in the exact shape:
 
@@ -61,10 +61,10 @@ If implementing a card honestly requires touching a file your batch's "## Scope"
 An edit outside scope with no matching `out_of_scope` entry is unreported drift — the exact rot signal the orchestrator's digest exists to catch.
 Never make an out-of-scope edit you cannot honestly justify in one line.
 
-## Never touch the weft
+## Never touch `_lyx`
 
-You never run git against the weft repo or any `_lyx` path, and you never write outside `{{.worktree_root}}`.
-The one asymmetry: you DO commit your own code to the HOST repo, once per card, as instructed above — but committing or pushing anything under `_lyx` is never your job.
+You never run git against any `_lyx` path, and you never write outside `{{.worktree_root}}`.
+The one asymmetry: you DO commit your own code to the repo, once per card, as instructed above — but committing or pushing anything under `_lyx` is never your job.
 That belongs to Go, at the batch boundary, never to you.
 
 ## Your final action: the batch-report

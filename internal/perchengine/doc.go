@@ -233,20 +233,20 @@
 // rounds into the same state.json and artifact paths. That refusal wraps the
 // ErrBlockBusy sentinel so a loop owner can errors.Is-match it and skip its
 // block-exit bookkeeping — the losing call touched nothing on disk, and e.g.
-// perchcli's weft sync must not commit the winner's in-flight state under
+// perchcli's fabric sync must not commit the winner's in-flight state under
 // the loser's name. The lock is an OS
 // advisory lock, released automatically if the holding process dies, so a
 // crashed run never bricks the run dir for a later resume.
 //
-// # Weft-blindness and geometry-blindness
+// # Fabric-blindness and geometry-blindness
 //
 // perchengine never imports fabricengine and never constructs a
 // _lyx/... path itself — Engine operates on a caller-supplied absolute
 // runDir; layout is held only to resolve the gate command's working
 // directory (layout.WorktreePath()). Committing the run dir's artifacts to
-// the weft is the loop OWNER's job — perchcli's standalone CLI today, loom
+// fabric is the loop OWNER's job — perchcli's standalone CLI today, loom
 // once it exists — exactly once per block, at block exit (APPROVED, STUCK,
-// or PAUSED), via fabricengine directly; see the Weft Git Invariant in
+// or PAUSED), via fabricengine directly; see the Fabric Git Invariant in
 // CONSTRAINTS.md. This is the identical split burlerengine already enforces
 // one layer down.
 //

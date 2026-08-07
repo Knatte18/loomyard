@@ -20,16 +20,26 @@ tests land in batch 02.
 
 **What:** Add a `--json` bool flag to the list command;
 define `RowJSON` with the existing table's columns as fields.
-**Context:** none **Edits:**
-- `01-json-flag.md` **Creates:** none **Deletes:** none **Moves:** none **Commit:** `01.1: add the --json flag and row struct` **verify:** go build ./...
+**Context:** none
+**Edits:**
+- `01-json-flag.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
+**Commit:** `01.1: add the --json flag and row struct`
+**verify:** go build ./...
 
 ### Card 01.2 — emission path
 
 **What:** When `--json` is set, marshal each row through `output.Ok` instead of the table writer;
 keep the table path unchanged.
 **Context:**
-- `//02-list-tests.md` **Edits:**
-- `01-json-flag.md` **Creates:** none **Deletes:** none **Moves:** none
+- `//02-list-tests.md`
+**Edits:**
+- `01-json-flag.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 

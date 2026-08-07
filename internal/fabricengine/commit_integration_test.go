@@ -750,7 +750,7 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
 
-	preWeftSHA, err := f.Weft.CurrentSHA()
+	preWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -768,7 +768,7 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 		t.Fatalf("Commit() = %+v; want a full no-op (unchanged content, no tags)", result)
 	}
 
-	postWeftSHA, err := f.Weft.CurrentSHA()
+	postWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -807,7 +807,7 @@ func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
 	swapPushRecorder(t)
 
 	preWarpSHA := currentSHA(t, warpPath)
-	preWeftSHA, err := f.Weft.CurrentSHA()
+	preWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -819,7 +819,7 @@ func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
 	}
 
 	postWarpSHA := currentSHA(t, warpPath)
-	postWeftSHA, err := f.Weft.CurrentSHA()
+	postWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -867,8 +867,8 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 	if !errors.As(err, &partialErr) {
 		t.Fatalf("Commit() error = %v; want *PartialCommitError via errors.As", err)
 	}
-	if partialErr.WeftCommitted {
-		t.Errorf("PartialCommitError.WeftCommitted = true; want false (CommitEmpty refused, nothing landed)")
+	if partialErr.weftCommitted {
+		t.Errorf("PartialCommitError.weftCommitted = true; want false (CommitEmpty refused, nothing landed)")
 	}
 	if !errors.Is(err, gitrepo.ErrIndexNotEmpty) {
 		t.Errorf("Commit() error = %v; want errors.Is(err, gitrepo.ErrIndexNotEmpty)", err)

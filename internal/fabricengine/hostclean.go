@@ -36,10 +36,10 @@ func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
 
 	var reasons []string
 	if hostReason != "" {
-		reasons = append(reasons, fmt.Sprintf("host: %s", hostReason))
+		reasons = append(reasons, fmt.Sprintf("uncommitted code changes: %s", hostReason))
 	}
 	if weftReason != "" {
-		reasons = append(reasons, fmt.Sprintf("weft: %s", weftReason))
+		reasons = append(reasons, fmt.Sprintf("uncommitted state changes under `_lyx`: %s", weftReason))
 	}
 	if len(reasons) == 0 {
 		return true, "", nil

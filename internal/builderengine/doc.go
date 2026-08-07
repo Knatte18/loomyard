@@ -38,9 +38,9 @@
 // is a separate perch gate, driven by loom or the operator running
 // `lyx perch run` after `builder run` finishes. Keeping the two split lets an
 // LLM orchestrator drive the batch loop without ever touching perch's
-// block-exit weft-committing discipline.
+// block-exit fabric-committing discipline.
 //
-// # engine/cli split, and the weft-ownership asymmetry
+// # engine/cli split, and the fabric-ownership asymmetry
 //
 // builderengine is geometry-AWARE: its data model treats the plan and
 // builder directories as first-class parameters whose paths are part of
@@ -52,22 +52,22 @@
 // once in its PersistentPreRunE, per the Cwd Resolution Invariant. This is
 // the one documented difference from perchengine's pattern (which treats
 // its working directory as fully incidental). builderengine is nonetheless
-// weft-BLIND: every weft commit of a builder artifact (a batch report,
+// fabric-BLIND: every fabric commit of a builder artifact (a batch report,
 // state.json, outcome.yaml) happens in internal/buildercli, never here —
 // mirroring perchcli's
-// block-exit weft Commit+Push discipline. The orchestrator and implementer
-// agents never run weft git themselves (the Weft Git Invariant); an
-// implementer DOES commit its own code to the host repo, once per card — the
+// block-exit fabric Commit+Push discipline. The orchestrator and implementer
+// agents never run fabric git themselves (the Fabric Git Invariant); an
+// implementer DOES commit its own code to the repo, once per card — the
 // documented asymmetry.
 //
 // The commit boundary itself lands at three distinct points across the
 // batch loop, each owned by its own buildercli verb, never by builderengine:
-// spawn-batch weft-commits state.json immediately after a successful
+// spawn-batch fabric-commits state.json immediately after a successful
 // SpawnBatch call (see spawn.go's SpawnBatch doc), recording the just-
-// started batch's start-SHA; poll weft-commits the batch report plus
+// started batch's start-SHA; poll fabric-commits the batch report plus
 // state.json once a batch reaches a terminal classification; and run
-// performs one backstop weft-commit at its own exit, regardless of outcome.
+// performs one backstop fabric-commit at its own exit, regardless of outcome.
 // "When it makes sense" (the discussion's own phrasing) resolved to exactly
 // these three batch-boundary points — never a single end-of-run commit,
-// which would lose every weft-synced batch on a crash mid-run.
+// which would lose every fabric-synced batch on a crash mid-run.
 package builderengine

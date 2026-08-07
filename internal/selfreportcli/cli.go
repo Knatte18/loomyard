@@ -1,7 +1,7 @@
 // cli.go assembles the Cobra command tree for the selfreport module and wires the RunCLI seam.
 // The "create" subcommand's RunE closure reads flag state via the named createCmd variable to
 // distinguish "flag not set" from "flag set to empty string" using Changed("body"), following the
-// warp module pattern for local-flag access inside a cobra RunE.
+// fabric module pattern for local-flag access inside a cobra RunE.
 
 // Package selfreportcli provides the cobra command tree for filing LoomYard bugs and enhancements
 // as GitHub issues directly from lyx.exe.
@@ -35,7 +35,7 @@ func Command() *cobra.Command {
 
 	// createCmd is declared as a named variable so that its RunE closure can
 	// call createCmd.Flags().Changed("body") to detect whether --body was
-	// explicitly provided. This follows the warp module pattern for reading
+	// explicitly provided. This follows the fabric module pattern for reading
 	// local flags from within a cobra RunE.
 	var createCmd *cobra.Command
 	createCmd = &cobra.Command{

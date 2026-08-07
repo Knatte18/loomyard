@@ -5,7 +5,7 @@
 // claude engine -> shuttleengine.Runner exactly once per invocation, storing the resolved
 // ingredients on builderCLI, mirroring perchcli's Cwd-anchoring rationale
 // (internal/perchcli/cli.go): every _lyx/plan and _lyx/builder path this module touches is anchored
-// at layout.AnchorPath() -- the directory lyx init ran in, never WorktreeRoot or a weft sibling.
+// at layout.AnchorPath() -- the directory lyx init ran in, never WorktreeRoot or a fabric sibling.
 //
 // Unlike perchcli (which stores only the resolved config ingredients and constructs a fresh
 // *perchengine.Engine per invocation), builderCLI keeps the constructed shuttle Runner AND its two
@@ -136,7 +136,7 @@ Verbs:
 
 			// Every config is anchored at layout.AnchorPath(), matching perchcli's
 			// own resolution: the worktree the operator is actually
-			// standing in, never WorktreeRoot or any weft sibling.
+			// standing in, never WorktreeRoot or any fabric sibling.
 			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
@@ -189,12 +189,12 @@ Verbs:
 			c.roles = roles
 			// Anchored at layout.AnchorPath(), like every config load above and
 			// like perchcli's own runDirBase: the initialized _lyx (the
-			// weft junction) lives at the directory lyx init ran in, which
+			// fabric junction) lives at the directory lyx init ran in, which
 			// is Cwd -- not necessarily the git worktree root. Anchoring at
 			// WorktreeRoot would, in a nested-initialized repo, resolve
-			// these dirs outside the junctioned _lyx the weft commit's
+			// these dirs outside the junctioned _lyx the fabric commit's
 			// RelPath-scoped pathspec never includes, silently stranding
-			// every builder artifact outside the weft.
+			// every builder artifact outside fabric.
 			c.planDir = loomengine.PlanDir(layout)
 			c.builderDir = builderengine.Dir(layout)
 			c.reportsDir = builderengine.ReportsDir(layout)

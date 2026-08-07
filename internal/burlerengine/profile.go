@@ -26,7 +26,7 @@ type FixScope string
 // The two legal FixScope values.
 const (
 	FixScopeOverlay FixScope = "overlay" // lyx state, no git
-	FixScopeSource  FixScope = "source"  // host repo, with git commits
+	FixScopeSource  FixScope = "source"  // the repo, with git commits
 )
 
 // Profile is the content contract for one burler round.

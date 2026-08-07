@@ -163,8 +163,8 @@ func TestBoardJunction_ReconcileRepairsOutsideHealthCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Healthy: %v", err)
 	}
-	if !ok {
-		t.Errorf("Healthy() = (%v, %q); want (true, \"\") — a broken _board link must never report unhealthy", ok, reason)
+	if !ok || reason != (fabricengine.HealthReason{}) {
+		t.Errorf("Healthy() = (%v, %+v); want (true, HealthReason{}) — a broken _board link must never report unhealthy", ok, reason)
 	}
 
 	result, err := topology.Reconcile(l)

@@ -34,12 +34,12 @@
 // round reaches that step. Engine.Run renders the three instruction files
 // per round and writes them to a fresh directory under .lyx
 // (this package's own dotLyxDirName join, machine-local, never committed —
-// distinct from the weft-synced _lyx), then hands the shuttle only the orchestrator, which
+// distinct from the committed _lyx), then hands the shuttle only the orchestrator, which
 // names their absolute paths so the agent reads each step's rules when it
 // reaches that step. Run never prunes these per-round directories itself —
 // they accumulate under .lyx/burler across rounds in a long-lived worktree.
 // This is accepted machine-local litter, not a leak: .lyx is never
-// weft-synced, so it carries no cross-machine cost, and whatever clears a
+// committed, so it carries no cross-machine cost, and whatever clears a
 // worktree's .lyx tree wholesale (a future perch cleanup step, or manual
 // deletion) removes it along with everything else machine-local there.
 //
@@ -84,31 +84,31 @@
 // (a burler improves code, text, or any artifact; the split is never about
 // file type):
 //
-//   - FixScopeSource: the target is the host repo's own files. B's write
-//     surface is the host working tree; it commits each fix individually
+//   - FixScopeSource: the target is the repo's own files. B's write
+//     surface is the working tree; it commits each fix individually
 //     once green (message format
 //     "<module-or-target>: fix <finding-id> — <one-line what/why>") and
 //     never pushes. If the round dies mid-fix, git log shows exactly which
 //     findings landed.
 //   - FixScopeOverlay: the target is lyx system/orchestration state (plan,
-//     discussion, review artifacts — typically weft-side, reached through
-//     the _lyx junction). B's write surface is EXACTLY Target.Paths plus
+//     discussion, review artifacts), reached through
+//     the _lyx junction. B's write surface is EXACTLY Target.Paths plus
 //     the two output files, nothing else, and the round runs NO git
-//     commands at all — the Weft Git Invariant reserves committing that
+//     commands at all — the Fabric Git Invariant reserves committing that
 //     class of file to the loop owner, never an agent.
 //
 // Any other FixScope value, including empty, is a validate error: the
 // field selects safety-critical behavior and gets no silent default.
 //
-// # Weft-blindness
+// # Fabric-blindness
 //
-// burlerengine never imports the weft module and never constructs a
+// burlerengine never imports the fabric module and never constructs a
 // _lyx/... path — Result returns the review/fixer-report paths the
-// caller supplied (resolved absolute), and committing them to the weft
+// caller supplied (resolved absolute), and committing them
 // is the loop owner's job (perch's CLI standalone, or loom once it
-// exists), via the weft engine in-process. See the Weft Git Invariant in
+// exists), via the fabric engine in-process. See the Fabric Git Invariant in
 // CONSTRAINTS.md. The one exception an agent DOES commit is its own code
-// under FixScopeSource — that is an ordinary host-repo commit, not a weft
+// under FixScopeSource — that is an ordinary repo commit, not a fabric
 // operation.
 //
 // # Cluster fan-out (fork subagents)
@@ -141,7 +141,7 @@
 //
 // Fork discipline is fixed boilerplate the handler composes into every
 // fork's prompt, never per-lens: read-only evidence gathering only (no
-// Write/Edit/delete of any file, host or weft), no git commands of any
+// Write/Edit/delete of any file, repo or `_lyx`), no git commands of any
 // kind, no touching the round's ReviewPath/FixerReportPath, and no nested
 // Agent calls (forks cannot spawn forks). Two enforcement layers back this
 // discipline mechanically rather than trusting the prompt alone: a
@@ -190,10 +190,10 @@
 // wall-time grows — so a slow host surfaces as shuttleengine.OutcomeTimeout,
 // never as a fork-shortfall error.
 //
-// Cluster rounds weaken nothing about weft-blindness: forks write no
+// Cluster rounds weaken nothing about fabric-blindness: forks write no
 // files at all — read-only evidence gathering, findings returned only as
 // their final message — so the write-surface story above (this package
-// never imports weft, never constructs a _lyx/... path) is exactly as
+// never imports fabric, never constructs a _lyx/... path) is exactly as
 // true for a cluster round as for a solo one.
 //
 // # What a round returns

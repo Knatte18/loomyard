@@ -28,7 +28,7 @@ For EACH card file listed above, in the order listed:
 3. Run `go build ./...` and this card's package's unit tests from `{{.worktree_root}}`.
    A failure here is the card's own build+unit gate — fix it before moving on;
    this gate is implicit in every card, never optional.
-4. Commit the card to the HOST repo — normal dev git, run from `{{.worktree_root}}` — never the weft, never any `_lyx` path.
+4. Commit the card to the repo — normal dev git, run from `{{.worktree_root}}` — never any `_lyx` path.
    One commit per card is the norm.
    The commit subject is `N: <name>` — the card's own number and heading name (e.g. `1: alpha`) — unless the card FILE carries a `**Commit:**` line, which pins the exact subject to use verbatim.
    This subject shape is the plan's resume trail: a fresh session reads from `git log` exactly which card was reached.

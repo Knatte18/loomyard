@@ -235,28 +235,27 @@ func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	requireContains(t, text, "first line `# <title>`")
 }
 
-// TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents asserts the embedded master template's
-// bytes carry the load-bearing never-touch-the- weft, never-self-edit, never-/model, and
+// TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents asserts the embedded master template's
+// bytes carry the load-bearing never-touch-`_lyx`, never-self-edit, never-/model, and
 // never-named-subagent statements in prose, so an edit that silently waters down any one of these
-// fails this test rather than only a human review — the Weft Git Invariant's prompt-template half
-// plus webster's own fork-discipline bans.
-func TestMasterTemplate_ForbidsWeftGitModelAndNamedSubagents(t *testing.T) {
+// fails this test rather than only a human review — the Cwd Resolution Invariant's prompt-template
+// half plus webster's own fork-discipline bans.
+func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
 	text := string(websterengine.MasterTemplate())
 
-	requireContains(t, text, "NEVER run any git command against the weft")
+	requireContains(t, text, "NEVER run any git command against `_lyx`")
 	requireContains(t, text, "NEVER edit, create, or delete any file other than")
 	requireContains(t, text, "NEVER use a `/model` switch")
 	requireContains(t, text, "NEVER spawn a non-fork or named subagent")
 
-	// The weft ban must cover read-only references too — a Master's
-	// orientation `find` on the physical weft path permanently wedged
-	// record-batch's whole-session audit in round fable-r1 (F3): the ban the
-	// audit enforces and the ban the template states must be the same ban,
-	// and the template must tell Master what a violation MEANS (terminal
-	// stuck, never worked around).
-	requireContains(t, text, "NEVER reference that physical weft path in ANY command")
-	requireContains(t, text, "not even a read-only `ls`, `find`, `cat`, or `readlink`")
-	requireContains(t, text, "The `_lyx` path is your one sanctioned window")
+	// `_lyx` is read and written as ordinary files — one repo, one worktree —
+	// so the positive rule states what Master DOES (read/write `_lyx/...`
+	// paths as ordinary files) rather than warning it off a second physical
+	// path, and the template must still tell Master what a policy violation
+	// MEANS (terminal stuck, never worked around).
+	requireContains(t, text, "`_lyx` holds plan and state files")
+	requireContains(t, text, "read and write them as ordinary files through `_lyx/...` paths")
+	requireContains(t, text, "You never run git against `_lyx`; it is committed for you.")
 	requireContains(t, text, "## A policy violation ends your run as stuck")
 	requireContains(t, text, "NEVER work around a violation")
 	requireContains(t, text, "The audit is")
@@ -315,7 +314,8 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 
 	requireContains(t, text, "OR `status: dead`")
 
-	requireContains(t, text, "weft sync")
+	requireContains(t, text, "## A fabric-sync error ends your run as stuck")
+	requireContains(t, text, "fabric sync")
 	requireContains(t, text, "do not retry the verb")
 
 	requireContains(t, text, "already has a report")
@@ -399,7 +399,7 @@ func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 // TestForkTemplate_PinsReportSchemaKeys asserts the embedded, composed fork template's bytes carry
 // the minimal fork-return contract's field names verbatim (status, head_sha, deviations — never the
 // v2 report's tests/stuck_reason/out_of_scope grammar) plus the fresh-read rule statement and the
-// host-commit-per-card statement, so a silent edit to any of these fails here rather than only a
+// commit-per-card statement, so a silent edit to any of these fails here rather than only a
 // human review.
 func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	text := string(websterengine.ForkTemplate())
@@ -409,7 +409,7 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	requireContains(t, text, "deviations:")
 
 	requireContains(t, text, "## The FRESH-READ rule")
-	requireContains(t, text, "Commit the card to the HOST repo")
+	requireContains(t, text, "Commit the card to the repo")
 	requireContains(t, text, "One commit per card is the norm")
 
 	// The fork inherits Master's loop instructions; it must be told forcefully

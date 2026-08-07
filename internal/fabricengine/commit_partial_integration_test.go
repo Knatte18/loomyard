@@ -24,7 +24,7 @@ import (
 // but the weft commit itself fails (forced here by pre-creating the weft gitdir's index.lock, the
 // same way a `git reset --hard` can be forced to fail).
 // The warp commit must stay, the returned error must be a *PartialCommitError naming the warp SHA
-// with WeftCommitted=false, and the durable warp commit must still be pushed.
+// with weftCommitted=false, and the durable warp commit must still be pushed.
 func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
 	calls := swapPushRecorder(t)
@@ -51,11 +51,11 @@ func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 	if !errors.As(err, &partialErr) {
 		t.Fatalf("Commit() error = %v; want *PartialCommitError via errors.As", err)
 	}
-	if partialErr.WeftCommitted {
-		t.Errorf("PartialCommitError.WeftCommitted = true; want false (the weft commit itself failed)")
+	if partialErr.weftCommitted {
+		t.Errorf("PartialCommitError.weftCommitted = true; want false (the weft commit itself failed)")
 	}
-	if partialErr.WarpSHA != result.WarpSHA {
-		t.Errorf("PartialCommitError.WarpSHA = %q; want %q", partialErr.WarpSHA, result.WarpSHA)
+	if partialErr.warpSHA != result.WarpSHA {
+		t.Errorf("PartialCommitError.warpSHA = %q; want %q", partialErr.warpSHA, result.WarpSHA)
 	}
 
 	if !result.WarpCommitted || result.WarpSHA == "" {
@@ -81,7 +81,7 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 	writeWarpFile(t, warpPath, "README", "warp change")
 	writeWeftConfigContent(t, weftPath, "weft change")
 
-	preWeftSHA, err := f.Weft.CurrentSHA()
+	preWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -100,7 +100,7 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 		t.Errorf("Commit() = %+v; want a zero CommitResult (nothing should have landed)", result)
 	}
 
-	postWeftSHA, err := f.Weft.CurrentSHA()
+	postWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -117,7 +117,7 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 // but RecordCorrespondence fails to persist an index entry (forced here by pre-creating a directory
 // at f.corrIndexPath() so its JSON write fails).
 // CommitResult.WeftCommitted must be true with WeftSHA set, the error must be a *PartialCommitError
-// with WeftCommitted=true, the push recorder must still be called, and — after clearing the block —
+// with weftCommitted=true, the push recorder must still be called, and — after clearing the block —
 // an explicit RebuildIndex followed by WeftSHAForWarpSHA must resolve to the landed weft SHA (no
 // data lost).
 // This does NOT rely on WeftSHAForWarpSHA's own self-heal: a never-recorded entry is an index MISS
@@ -147,8 +147,8 @@ func TestCommit_PartialFailure_CommittedButUnrecorded(t *testing.T) {
 	if !errors.As(err, &partialErr) {
 		t.Fatalf("Commit() error = %v; want *PartialCommitError via errors.As", err)
 	}
-	if !partialErr.WeftCommitted {
-		t.Errorf("PartialCommitError.WeftCommitted = false; want true (the weft commit landed; only recording failed)")
+	if !partialErr.weftCommitted {
+		t.Errorf("PartialCommitError.weftCommitted = false; want true (the weft commit landed; only recording failed)")
 	}
 
 	if !result.WeftCommitted || result.WeftSHA == "" {

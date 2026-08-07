@@ -8,7 +8,7 @@
 and the human-readable narration `lyx loom status --watch` prints. `lyx loom run` rewrites it on every step;
 its t=0 "seed" — the handoff instant a task is spawned and given to loom, before any `lyx loom run` has executed — is written once at spawn time (see [The seed / handover](#the-seed--handover) below).
 
-It is durable **weft-overlay state**: it lives under `_lyx/` (git-synced via weft, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
+It is durable **fabric-overlay state**: it lives under `_lyx/` (git-synced via fabric, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
 Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `internal/lyxcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
 
 ## Format decision (defended)
@@ -26,11 +26,11 @@ The **seed** is the t=0 contents of `_lyx/status.json` at the instant a task is 
 
 It is written by a **lyx Go command** at spawn time — the mill-spawn analogue, but Go, never an agent.
 This doc names the *role* ("the spawn-time lyx command"), not the exact subcommand;
-which one it binds to (`warp add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands.
+which one it binds to (`fabric add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands.
 An optional thin `ly-spawn` skill may wrap it later,
 but the Go command is always the writer.
 
-loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, weft pairing in sync, no half-finished prior run).
+loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, fabric ready, no half-finished prior run).
 
 **One schema, a superset — not two.**
 The seed is the same schema as the ongoing status file, with only the handoff fields populated (`slug`, `parent`, `phase: "discussion"`, an initial `narration`) and everything else at its zero/null value (`history: []`, `start_sha: null`, `pause_requested: false`, `next_action: null`). loom fills the rest as it runs;
@@ -49,7 +49,7 @@ there is no seed→full conversion step.
     { "phase": "discussion", "outcome": "approved", "ts": "2026-07-17T10:01:30Z" },
     { "phase": "plan", "outcome": "stuck", "bounced_to": "discussion", "ts": "2026-07-17T11:14:02Z" }
   ],
-  "start_sha": null,               // host HEAD stamped when Builder begins (Raddle diff base)
+  "start_sha": null,               // repo HEAD stamped when Builder begins (Raddle diff base)
   "pause_requested": false,        // pause flag kept IN-status (diverges from builder, which uses a separate flag file)
   "next_action": null              // when loom yields at a human gate: what the human must do next
 }
@@ -64,7 +64,7 @@ Per-field notes:
 - **`narration`** — one composed human string with `now:`/`last:`/`wait:` segments. loom writes it, the `lyx loom status --watch` strand prints it;
   reed never parses it.
 - **`history`** — a **per-phase outcome trail**: one entry per phase attempt (`{phase, outcome: approved | stuck, bounced_to?, ts}`), including stuck-handler bounce-backs. Per-*round* verdicts are **not** duplicated here — those live in perch's block files, since the progress-judge that needs them lives inside perch and reads perch's own files directly. `bounced_to` is present only on a `stuck` entry that routes back to an earlier phase.
-- **`start_sha`** — the host `HEAD` stamped when Builder begins, so Raddle can diff `start_sha..HEAD`. `null` until Builder starts.
+- **`start_sha`** — the repo `HEAD` stamped when Builder begins, so Raddle can diff `start_sha..HEAD`. `null` until Builder starts.
 - **`pause_requested`** — the pause flag, kept **in-status**.
   This diverges from `builder`, which uses a separate pause *flag file* — called out here deliberately so the divergence reads as a decision, not an inconsistency.
 - **`next_action`** — a dedicated, machine-checkable field for "is this blocked on a human, and on what?", set whenever loom yields at a human gate.

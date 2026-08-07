@@ -117,7 +117,7 @@ func implementerTemplateMarkerValues() map[string]string {
 // carry the load-bearing batch-discipline phrases in prose — the burler
 // TestTemplate_StatesRoundDiscipline pattern applied to builder's implementer prompt — so an edit
 // that silently waters down the commit-per-card shape, the bounded self-fix cap, the
-// report-as-final-action rule, or the never-touch-the-weft rule fails this test rather than only a
+// report-as-final-action rule, or the never-touch-`_lyx` rule fails this test rather than only a
 // human review.
 func TestImplementerTemplate_StatesBatchDiscipline(t *testing.T) {
 	text := string(builderengine.ImplementerTemplate())
@@ -142,9 +142,9 @@ func TestImplementerTemplate_StatesBatchDiscipline(t *testing.T) {
 	requireContains(t, text, "stuck_reason:")
 	requireContains(t, text, "out_of_scope:")
 
-	// Never touch the weft.
-	requireContains(t, text, "Never touch the weft")
-	requireContains(t, text, "You never run git against the weft repo")
+	// Never touch `_lyx`.
+	requireContains(t, text, "Never touch `_lyx`")
+	requireContains(t, text, "You never run git against any `_lyx` path")
 
 	// plan-format v2: the implementer now reads its batch file AND the
 	// overview (framing, Batch Index, Shared Decisions), but still never
@@ -325,14 +325,14 @@ func TestOrchestratorTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 	requireContains(t, text, "batches_done: <int>")
 }
 
-// TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing asserts the embedded template's bytes carry
-// the load-bearing never-touch-the-weft and never-edit-code-yourself statements in prose, so an
+// TestOrchestratorTemplate_ForbidsLyxGitAndSelfEditing asserts the embedded template's bytes carry
+// the load-bearing never-touch-`_lyx` and never-edit-code-yourself statements in prose, so an
 // edit that silently waters down either rule fails this test rather than only a human review — the
-// Weft Git Invariant's prompt-template half.
-func TestOrchestratorTemplate_ForbidsWeftGitAndSelfEditing(t *testing.T) {
+// Cwd Resolution Invariant's prompt-template half.
+func TestOrchestratorTemplate_ForbidsLyxGitAndSelfEditing(t *testing.T) {
 	text := string(builderengine.OrchestratorTemplate())
 
-	requireContains(t, text, "NEVER run any git command against the weft")
+	requireContains(t, text, "NEVER run any git command against any `_lyx` path")
 	requireContains(t, text, "NEVER edit, create, or delete a target file yourself")
 	requireContains(t, text, "NEVER use a `/model` switch")
 }

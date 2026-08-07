@@ -25,57 +25,57 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestE2ESyncIntegration is an e2e test using CopyPaired: creates a host worktree with dispatch,
-// edits a config, and verifies the file is tracked in the weft repo while the host stays pristine.
+// TestE2ESyncIntegration is an e2e test using CopyPaired: creates a new worktree with dispatch,
+// edits a config, and verifies the file is tracked in the fabric repo while the host stays pristine.
 func TestE2ESyncIntegration(t *testing.T) {
 	const slug = "config-e2e-test"
 
-	// Build paired fixture (host + weft).
+	// Build paired fixture (host + fabric).
 	f := lyxtest.CopyPaired(t)
 
-	// Seed the weft-prime fixture with real config templates that fabriccli.RunCLI will need.
+	// Seed the fabric-prime fixture with real config templates that fabriccli.RunCLI will need.
 	seeds := make(map[string]string)
 	for _, m := range configreg.Modules() {
 		seeds[m.Name] = m.Template()
 	}
 	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
 
-	// Mirror CloneHub's post-clone state: fabric's weft primary sits on the suffixed
+	// Mirror CloneHub's post-clone state: fabric's primary sits on the suffixed
 	// sibling of the host's branch ("main-weft"), not the mirrored "main" this
-	// warp/weft-oriented fixture starts on. Without this, Add's fork-from-parent
-	// step has no "main-weft" ref to fork the new pair's weft branch from.
+	// fixture starts on. Without this, Add's fork-from-parent
+	// step has no "main-weft" ref to fork the new pair's fabric branch from.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	// Seed the repo-wide fabric config at fabricengine.BoardDir(f.Layout.HubPath):
 	// batch 5's eager wiring makes Topology.Add read the wired junction
 	// name-set via fabricengine.RepoWiredNames, which loads fabric.yaml from
-	// the repo-wide board dir, not this fixture's per-worktree weft config
+	// the repo-wide board dir, not this fixture's per-worktree fabric config
 	// seeded above. Without this, Add below fails with "load fabric config:
 	// not initialized here" before it ever wires a junction.
 	seedRepoWideFabricConfig(t, f.Layout.HubPath)
 
-	// FIRST: Create the host worktree via fabricengine.NewTopology().Add() (which is dormant).
-	// Then wire the host _lyx junction via WireJunctions.
-	// Without this the host worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
+	// FIRST: Create the worktree via fabricengine.NewTopology().Add() (which is dormant).
+	// Then wire its _lyx junction via WireJunctions.
+	// Without this the worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
 	top := fabricengine.NewTopology(fabricengine.Config{})
 	_, err := top.Add(f.Layout, slug, fabricengine.AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Topology.Add(%q): %v", slug, err)
 	}
 
-	// Wire junctions for the new host worktree.
+	// Wire junctions for the new worktree.
 	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
-	// Resolve layout for the new host worktree.
+	// Resolve layout for the new worktree.
 	hostWorktreePath := fabricengine.WorktreePath(f.Layout, slug)
 	hostLayout, err := lyxcwd.Resolve(hostWorktreePath)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", hostWorktreePath, err)
 	}
 
-	// Chdir into the host worktree so fabriccli.RunCLI's cwd resolution lands on the fixture.
+	// Chdir into the worktree so fabriccli.RunCLI's cwd resolution lands on the fixture.
 	// NOTE: This test must NOT call t.Parallel() due to t.Chdir.
 	t.Chdir(hostWorktreePath)
 
@@ -83,9 +83,9 @@ func TestE2ESyncIntegration(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
-	// Create a fake editor that writes valid YAML. Unlike warp's single-field
-	// branch_prefix.yaml, fabric's Config carries both branch_prefix (from warp)
-	// and pathspec (from weft) in one file, so both keys must be present for
+	// Create a fake editor that writes valid YAML. Unlike a single-field
+	// branch_prefix.yaml, fabric's Config carries both branch_prefix and pathspec
+	// in one file, so both keys must be present for
 	// strict schema validation to pass.
 	validYAML := "branch_prefix: test-prefix\npathspec: _lyx\n"
 	fakeEdit := func(path string) error {
@@ -107,36 +107,36 @@ func TestE2ESyncIntegration(t *testing.T) {
 		t.Errorf("dispatch() = %d; want 0; output: %s", code, out.String())
 	}
 
-	// Assert _lyx/config/fabric.yaml is tracked/committed in the weft worktree.
-	weftWorktreePath := fabricengine.WeftWorktreePath(f.Layout, slug)
+	// Assert _lyx/config/fabric.yaml is tracked/committed in the fabric worktree.
+	fabricWorktreePath := fabricengine.WeftWorktreePath(f.Layout, slug)
 	configRelPath := configengine.ConfigFile(".", "fabric")
-	configPath := filepath.Join(weftWorktreePath, configRelPath)
+	configPath := filepath.Join(fabricWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
 	configRelPathForGit := strings.ReplaceAll(configRelPath, "\\", "/")
 
-	// Verify the file exists in the weft worktree filesystem.
+	// Verify the file exists in the fabric worktree filesystem.
 	configContent, err := os.ReadFile(configPath)
 	if err != nil {
-		t.Fatalf("failed to read config file from weft worktree at %s: %v", configPath, err)
+		t.Fatalf("failed to read config file from fabric worktree at %s: %v", configPath, err)
 	}
 
 	// Verify the content matches what we wrote.
 	if string(configContent) != validYAML {
-		t.Errorf("weft config content mismatch; got %q, want %q", string(configContent), validYAML)
+		t.Errorf("fabric config content mismatch; got %q, want %q", string(configContent), validYAML)
 	}
 
 	// Verify it's tracked in git (git ls-files should list it).
 	cmd := exec.Command("git", "ls-files", configRelPathForGit)
-	cmd.Dir = weftWorktreePath
+	cmd.Dir = fabricWorktreePath
 	lsFilesOut, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git ls-files failed: %v", err)
 	}
 	if !strings.Contains(string(lsFilesOut), configRelPathForGit) {
-		t.Errorf("config file not tracked in weft worktree; git ls-files output: %q", string(lsFilesOut))
+		t.Errorf("config file not tracked in fabric worktree; git ls-files output: %q", string(lsFilesOut))
 	}
 
-	// Verify the host worktree's git does NOT list the config file (it should be excluded).
+	// Verify the host's git does NOT list the config file (it should be excluded).
 	cmd = exec.Command("git", "ls-files")
 	cmd.Dir = hostWorktreePath
 	allFilesOut, err := cmd.Output()

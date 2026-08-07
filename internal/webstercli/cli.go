@@ -6,7 +6,7 @@
 // ingredients on websterCLI -- buildercli's own cli.go (internal/buildercli/cli.go) is the proven
 // shape this file mirrors file for file, per the discussion's cli-shape decision: every _lyx/plan
 // and _lyx/webster path this module touches is anchored at layout.AnchorPath() -- the directory lyx
-// init ran in, never WorktreeRoot or a weft sibling.
+// init ran in, never WorktreeRoot or a fabric sibling.
 //
 // Unlike buildercli (which stores only a builderengine.Starter and a
 // builderengine.OrchestratorStarter adapter over the same Runner), websterCLI stores THREE adapted

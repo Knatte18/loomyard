@@ -7,7 +7,7 @@
 //
 // The guard bans the two CONSTRUCTION/CALL tokens (gitrepo.New(, gitexec.RunGit() — not per-verb
 // method names: a verb-name ban would both flag the correctly-migrated consumer code (which
-// legitimately calls .CheckoutDetached(/.ResetHard( on the new WarpBisector/WarpResetter
+// legitimately calls .CheckoutDetached(/.ResetHard( on the new FabricBisector/FabricResetter
 // interfaces) and miss the raw gitexec.RunGit( bypass that carries no method token at all.
 
 package main

@@ -1,7 +1,7 @@
 //go:build integration
 
-// weft_integration_test.go covers weftCommit's composed behavior against real
-// git repositories -- the seams weft_test.go's guard-ordering assertions
+// sync_integration_test.go covers fabricSync's composed behavior against real
+// git repositories -- the seams sync_test.go's guard-ordering assertions
 // cannot reach. Two scenarios: Fabric.Commit's error-branch contract (a
 // commit that lands but fails its correspondence record must still be
 // reported as committed=true alongside the error, never swallowed into a
@@ -34,7 +34,7 @@ func newHostWeftPair(t *testing.T) (*lyxcwd.Location, string) {
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml
 // Fabric.Commit's classify step reads via RepoWiredNames (the `weft:main`
-// base at fabricengine.BoardDir(hub)) -- required since weftCommit moved onto
+// base at fabricengine.BoardDir(hub)) -- required since fabricSync moved onto
 // Fabric.Commit, which resolves the wired name-set itself rather than
 // trusting a caller-built pathspec. Mirrors
 // commit_integration_test.go's seedFabricConfig in package fabricengine,
@@ -128,10 +128,10 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 	}, weft
 }
 
-// TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves that when
-// RecordCorrespondence fails after the commit lands, weftCommit reports (true, err), not (false,
+// TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails proves that when
+// RecordCorrespondence fails after the commit lands, fabricSync reports (true, err), not (false,
 // err).
-func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
+func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
 	layout, weft := newHostWeftPair(t)
@@ -142,13 +142,13 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 		t.Fatalf("squat corrindex path: %v", err)
 	}
 
-	committed, err := weftCommit(layout, "corr-fail probe")
+	committed, err := fabricSync(layout, "corr-fail probe")
 
 	if err == nil {
-		t.Fatal("weftCommit() error = nil; want the RecordCorrespondence failure propagated")
+		t.Fatal("fabricSync() error = nil; want the RecordCorrespondence failure propagated")
 	}
 	if !committed {
-		t.Error("weftCommit() committed = false; want true, the commit landed before the record step failed")
+		t.Error("fabricSync() committed = false; want true, the commit landed before the record step failed")
 	}
 
 	// The commit must genuinely exist with the builder message stem -- the
@@ -159,10 +159,10 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	}
 }
 
-// TestWeftCommit_CommitsAtEveryRelPathDepth proves that machine-local transients (locks, pause
+// TestFabricSync_CommitsAtEveryRelPathDepth proves that machine-local transients (locks, pause
 // flags, rendered prompts) stay excluded from REAL git commits at every AnchorRel depth via
 // .git/info/exclude exclusion.
-func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
+func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
 		name    string
 		relPath string
@@ -179,12 +179,12 @@ func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 			t.Setenv("WEFT_SKIP_PUSH", "1")
 			layout, weft := newHostWeftPairAt(t, tt.relPath)
 
-			committed, err := weftCommit(layout, "depth probe")
+			committed, err := fabricSync(layout, "depth probe")
 			if err != nil {
-				t.Fatalf("weftCommit() error = %v; want nil", err)
+				t.Fatalf("fabricSync() error = %v; want nil", err)
 			}
 			if !committed {
-				t.Fatalf("weftCommit() committed = false; want true -- the pathspec staged nothing at RelPath %q, so the weft commit was a silent no-op", tt.relPath)
+				t.Fatalf("fabricSync() committed = false; want true -- the pathspec staged nothing at RelPath %q, so the fabric sync was a silent no-op", tt.relPath)
 			}
 
 			// git reports paths with forward slashes regardless of OS.

@@ -16,8 +16,8 @@
 // spawn-or-attach and across the terminal persist,
 // but NEVER across the bounded wait between them (see AcquireStateMutation's
 // never-across-a-long-block contract).
-// Nothing here touches weft: the caller weft-commits state.json after the spawn record and again at
-// terminal persistence, mirroring builder's own weft-commit-boundary discipline.
+// Nothing here touches fabric: the caller fabric-commits state.json after the spawn record and again at
+// terminal persistence, mirroring builder's own fabric-commit-boundary discipline.
 
 package websterengine
 
