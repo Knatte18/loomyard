@@ -209,7 +209,7 @@ When absent, the implementer derives the subject from the `NN.C: <short what>` c
 A *present* `Commit:` value must start with the card's own `NN.C: ` prefix — the `commit-subject-mismatch` check enforces this, because a pinned message that breaks the `NN.C` shape would corrupt the git-log resume trail the whole numbering scheme exists to give.
 
 **"One coherent commit" is the planning rule for card sizing, not a runtime invariant.**
-The implementer commits per card to the **host** repo (the agent commits its own code — Weft Git Invariant asymmetry), with the commit subject referencing batch + card exactly as the card's own heading numbers it:
+The implementer commits per card to the repo (the agent commits its own code — Fabric Git Invariant asymmetry), with the commit subject referencing batch + card exactly as the card's own heading numbers it:
 
 ```
 02.3: <short what>        # batch 02, card 3

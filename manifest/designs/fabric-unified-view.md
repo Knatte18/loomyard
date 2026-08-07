@@ -108,21 +108,15 @@ the "Junction model" section's description of the config-driven pathspec is alre
 The reason is a compile-time cycle: `internal/lyxtest`, which builds test fixtures for roughly 30 of `fabricengine`'s ~50 test files, cannot import `fabricengine` to construct those fixtures with real `fabric clone`/`fabric add` calls, because `lyxtest` → `fabricengine` would be a cycle (`fabricengine`'s own tests import `lyxtest`).
 Those ~30 files are in-package (`package fabricengine`, not `fabricengine_test`) and need unexported access, so they cannot simply be converted to the external test-package form to break the cycle — doing that properly needs an export-for-test shim across `fabricengine` first, which is a slice of its own, not a side effect of this one. `weftname.Suffix` (`"-weft"`) is therefore a stdlib-only leaf both `lyxtest` and `fabricengine` import, letting fixtures compute a weft sibling name without either side reaching into the other.
 
-### Slice 8 — close the weft-visibility leak
+### Slice 8 — close the weft-visibility leak (shipped)
 
-Two concrete leaks found by grepping actual call sites, not by inspection alone:
-
-- **Seven files outside `fabricengine`/`fabriccli` call `Layout`'s `Weft*`/`Host*Link` methods directly**: `internal/websterengine/audit.go`, `internal/buildercli/weft.go`, `internal/perchcli/run.go`, `internal/webstercli/weft.go`, `internal/builderengine/spawn.go`, `internal/loomengine/preflight.go`, `internal/lyxtest`.
-  All read-only (reporting/audit, not independent weft git operations) — `buildercli`/`perchcli` build "committed to weft" output text;
-  `websterengine/audit.go` builds a regex to scrub the weft path *out* of logs.
-  Fix: route these through Fabric's own operation return values (e.g. a commit result's own fact about which side was touched) instead of an independent `Layout` query — none of them need `WeftWorktree()` itself once Fabric's return values are complete enough.
-- **Open decision, not yet made**: should `buildercli`/`perchcli`/`webstercli`'s CLI output ever say "weft" to the end user at all?
-  The illusion (per this doc's own framing) says no;
-  today's shipped code says yes.
-  Resolve explicitly in this slice's discussion phase, not silently.
-
-Depends on slice 7 (routes through Fabric's new, narrower return-value contract).
-File-disjoint from slices 9 and 10 — can run in parallel with either.
+Made fabric's public surface incapable of telling anyone that warp and weft exist: `Open(l)` replaced `New(warpPath, weftPath)` as the sole constructor outside the package;
+`CommitResult.Committed()` replaced direct `WeftCommitted` reads;
+`Ready(l)` replaced loom preflight's raw weft `os.Stat`;
+`NewRefScanner(l)`/`RefScanner.Matches` replaced webster audit's own weft-reference regex;
+`Healthy` gained a typed `HealthReason` so `loomengine` classifies drift without substring-matching a display string.
+Every non-owner identifier, string literal, comment, and agent prompt template mentioning `weft`/`warp`/a fabric-sense `host` was reworded or renamed, and `TestEnforcement_FabricVocabulary` now machine-checks the boundary going forward — see CONSTRAINTS.md's Fabric Vocabulary Invariant and `internal/fabricengine`'s package doc for the durable contract.
+The CLI-wording question below was resolved: consumer-emitted prose says "fabric," never "weft," while the wrapped error detail — which fabric itself produces — keeps naming the weft repo and path freely.
 
 ### Slice 9 — `.lyx` hygiene (relocate transients, fix `.lyx`'s own junction geometry)
 
@@ -182,7 +176,6 @@ Read-only verbs the caller can run directly.
   either require it pre-created, or have clone provision it.
 - **Slice 6's orchestration-layer half** — still open. `Fabric.Pull` (fabric-layer detection + re-anchor + `PullResult` residue) is shipped;
   which layer drives pull → conflict-resolve → raddle-regen, and how `PullResult`/`PATTERN` re-alignment is presented to an LLM resolving agent, stays open until `loom`/`Shed` exist to consume it.
-- **Slice 8's CLI-wording question** — new, see slice 8 above: should "weft" ever appear in user-facing CLI output?
 - **`worktreePath` naming** — new, see slice 7 above: `worktreePath` was this discussion's working label for hubgeometry's public root field;
   not pinned as the final Go identifier.
 

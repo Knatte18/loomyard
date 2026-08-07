@@ -8,7 +8,7 @@
 and the human-readable narration `lyx loom status --watch` prints. `lyx loom run` rewrites it on every step;
 its t=0 "seed" — the handoff instant a task is spawned and given to loom, before any `lyx loom run` has executed — is written once at spawn time (see [The seed / handover](#the-seed--handover) below).
 
-It is durable **weft-overlay state**: it lives under `_lyx/` (git-synced via weft, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
+It is durable **fabric-overlay state**: it lives under `_lyx/` (git-synced via fabric, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
 Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `internal/lyxcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
 
 ## Format decision (defended)
@@ -30,7 +30,7 @@ which one it binds to (`warp add` vs a dedicated `lyx loom init`/`spawn`) is pin
 An optional thin `ly-spawn` skill may wrap it later,
 but the Go command is always the writer.
 
-loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, weft pairing in sync, no half-finished prior run).
+loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, fabric ready, no half-finished prior run).
 
 **One schema, a superset — not two.**
 The seed is the same schema as the ongoing status file, with only the handoff fields populated (`slug`, `parent`, `phase: "discussion"`, an initial `narration`) and everything else at its zero/null value (`history: []`, `start_sha: null`, `pause_requested: false`, `next_action: null`). loom fills the rest as it runs;
