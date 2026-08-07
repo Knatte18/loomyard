@@ -99,7 +99,9 @@ batches:
     (0.01s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/buildercli\t0.590s", "FAIL\t\
     github.com/Knatte18/loomyard/internal/builderengine\t0.118s"]
   - name: constructor contract (unexport)
-    state: pending
+    state: running
+    implementer_session: 1eab8d47-76dd-41f6-aa9d-994249893fcf
+    start_sha: d34c072cfb2ab0a58e11f36127bf5f2801fd265b
     verify_baseline_failures: []
   - name: templates describe one repo
     state: pending
