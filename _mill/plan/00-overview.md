@@ -36,7 +36,7 @@ batches:
     name: dotlyx-group-reanchor-and-logger-sink
     file: 04-dotlyx-group-reanchor-and-logger-sink.md
     depends-on: [3]
-    verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go test -tags integration ./internal/reedengine/...
+    verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go vet -tags scout ./internal/scoutengine/... && go test -tags integration ./internal/reedengine/...
   - number: 5
     name: no-transients-under-lyx-guard
     file: 05-no-transients-under-lyx-guard.md
@@ -67,8 +67,9 @@ _Cross-cutting decisions every batch inherits._
 
 - **Decision:** after batch 1, the string literals `"_lyx"` and `".lyx"` are **declared** in exactly one production file, `internal/lyxdirs/dirs.go`, as `LyxDirName` and `DotLyxDirName`, and appear in no other production file in a path-construction or message-formatting context.
   Every other production reference is `lyxdirs.LyxDirName` / `lyxdirs.DotLyxDirName`.
-  Doc-comment prose naming either directory is out of scope and stays as prose — that is what `TestEnforcement_GeometryLiterals` polices too (it matches only `filepath.Join` arguments, `+` operands and string-const declaration values), so the machine check and this decision agree on scope rather than the decision overclaiming.
-  `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_GeometryLiterals` polices both tokens with `internal/lyxdirs` as their sole owner from batch 1 onward, so any later batch that reintroduces a literal fails the build.
+  Doc-comment prose naming either directory is out of scope and stays as prose.
+  That scoping matches the machine check exactly rather than overclaiming past it: `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_GeometryLiterals` polices both tokens with `internal/lyxdirs` as their sole owner from batch 1 onward, and it matches only `filepath.Join` arguments, `+` operands and string-const declaration values — so any later batch that reintroduces a literal in one of those contexts fails the build, while a comment mentioning `_lyx` never trips it.
+  Message-formatting operands (a `fmt.Errorf` argument naming the directory) are invisible to that check, so batch 1 retargets the two in `configengine.FindBaseDir` by hand and this decision covers them by wording.
 - **Rationale:** the two names are one structural pair (tracked vs never-tracked);
   splitting their ownership is what let five private `dotLyxDirName` copies drift.
   `internal/lyxdirs` is stdlib-only, so every package that needs either token — `configengine`, `logger`, `lyxtest`, `fabricengine`, the module engines — can import it with no cycle risk.
@@ -252,8 +253,13 @@ _Cross-cutting decisions every batch inherits._
 - `internal/scoutcli/cli.go`
 - `internal/scoutengine/daemonstate.go`
 - `internal/scoutengine/ensureserver.go`
+- `internal/scoutengine/ensureserver_integration_test.go`
+- `internal/scoutengine/ensureserver_test.go`
 - `internal/scoutengine/leaf_enforcement_test.go`
 - `internal/scoutengine/refs.go`
+- `internal/scoutengine/supervised_integration_test.go`
+- `internal/scoutengine/supervised_scout_test.go`
+- `internal/scoutengine/supervised_test.go`
 - `internal/shuttleengine/config_test.go`
 - `internal/shuttleengine/run.go`
 - `internal/shuttleengine/run_test.go`
