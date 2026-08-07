@@ -164,6 +164,7 @@ Carve-outs that stay verbatim everywhere: `WEFT_SKIP_GIT`/`WEFT_SKIP_PUSH` env-v
   - `_mill/discussion.md`
 - **Edits:**
   - `internal/fabricengine/fabric_test.go` (only if the batch's own `verify:` surfaces the Test Tier Purity Invariant hit below; not a vocabulary edit)
+  - `internal/websterengine/audit.go`, `internal/websterengine/runlevel.go`, `internal/webstercli/beginbatch.go`, `internal/webstercli/recordbatch.go`, `internal/webstercli/run.go`, `internal/buildercli/sync.go`, `internal/builderengine/spawn.go`, `internal/builderengine/chain.go`, `internal/perchcli/run.go` — production comment stragglers the grep gate below found in files nominally owned by an earlier, already-landed batch (02/03/05); this card is the documented fix point per its own Requirements.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
