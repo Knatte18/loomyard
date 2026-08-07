@@ -40,7 +40,9 @@ batches:
     commit_sha: 14cc70cbc5d50dd65eb22ebae9bf6ab917be96f7
     verify_baseline_failures: []
   - name: typed Healthy reason and Clean reword
-    state: pending
+    state: running
+    implementer_session: eb654fde-e391-4386-9284-99ed5470c499
+    start_sha: 5a7b9e1f4926f7f09d348b277074119472a349db
     verify_baseline_failures: []
   - name: consumer call-site migration
     state: pending
