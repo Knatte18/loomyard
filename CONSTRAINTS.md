@@ -131,7 +131,7 @@ In production code, the tokens `weft` and `warp` may appear only in the owner se
 The bare word `host` — the verb sense, the machine/OS sense, and the PowerShell cmdlet `Write-Host` — passes untouched;
 a whole-word ban would rewrite ordinary English in modules with no connection to fabric.
 
-- **Owner set** (vocabulary stays): `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals only), `tools/`, `sandbox/`.
+- **Owner set** (vocabulary stays): `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers), `tools/`, `sandbox/`.
 - **Prose-doc split — review obligation, not machine-checked:** a doc explaining fabric's own mechanism keeps the vocabulary;
   a doc describing a consumer module's behaviour rewords, because that module does not know weft exists.
   A token scan cannot express this distinction, so it is not covered by the enforcement test.

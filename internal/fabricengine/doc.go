@@ -395,8 +395,9 @@
 // `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
 // `internal/weftname` (the `-weft` suffix leaf), `internal/lyxtest` (the test-fixture leaf that
 // builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
-// board lives at `weft:main`), `internal/configsync` (string literals only, for the on-disk legacy
-// config filenames `warp.yaml`/`weft.yaml`), and `tools/`/`sandbox/` (the black-box harness naming
+// board lives at `weft:main`), `internal/configsync` (string literals and comments, never
+// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`), and
+// `tools/`/`sandbox/` (the black-box harness naming
 // the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos).
 // `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
