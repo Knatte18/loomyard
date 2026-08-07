@@ -33,7 +33,7 @@ func treeSHA(t *testing.T, dir, rev string) string {
 // TestCommitEmpty_BornHEAD_CleanIndex_MatchesParentTree asserts the case batch 4's
 // empty-commits-take-over-the-correspondence-entry decision rests on: an empty commit's tree must
 // be byte-identical to its parent's, never merely similar, or resolving a revert target to it would
-// silently restore a different weft tree.
+// silently restore a different fabric tree.
 func TestCommitEmpty_BornHEAD_CleanIndex_MatchesParentTree(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "initial")
@@ -84,7 +84,7 @@ func TestCommitEmpty_TwoSuccessiveCalls_ProduceDistinctSHAs(t *testing.T) {
 }
 
 // TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit asserts a specified contract, not
-// incidental behaviour: fabricengine reaches this path whenever weft has no commits yet.
+// incidental behaviour: fabricengine reaches this path whenever fabric has no commits yet.
 func TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit(t *testing.T) {
 	dir, repo := newRepo(t)
 

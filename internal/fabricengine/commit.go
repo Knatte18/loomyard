@@ -24,26 +24,36 @@ type CommitResult struct {
 	WeftCommitted bool
 }
 
+// Committed reports whether Fabric.Commit landed a commit on either side.
+// This is the one result a consumer outside the owner set should read — the four raw fields stay
+// exported for fabriccli, which prints them by design.
+func (r CommitResult) Committed() bool {
+	return r.WarpCommitted || r.WeftCommitted
+}
+
 // PartialCommitError reports Fabric.Commit's weft-side failure, distinguishing whether the weft
-// commit itself landed (WeftCommitted=true, index recording failed) or failed entirely.
-// WarpSHA/WeftSHA report whatever did land;
+// commit itself landed (weftCommitted=true, index recording failed) or failed entirely.
+// warpSHA/weftSHA report whatever did land;
 // does not imply a warp commit (tags-only case).
+// The fields are private — the type is still returned to external callers and matched with
+// errors.As, but only Error()'s rendered message is part of the public contract, not direct field
+// access.
 type PartialCommitError struct {
-	WarpSHA       string
-	WeftSHA       string
-	WeftCommitted bool
+	warpSHA       string
+	weftSHA       string
+	weftCommitted bool
 	Err           error
 }
 
-// Error implements the error interface, including the warp clause only when WarpSHA is populated
+// Error implements the error interface, including the warp clause only when warpSHA is populated
 // (tags-only calls can hit weft-side failures with no warp commit).
 func (e *PartialCommitError) Error() string {
 	warpClause := "no warp commit"
-	if e.WarpSHA != "" {
-		warpClause = fmt.Sprintf("warp commit %s landed", e.WarpSHA)
+	if e.warpSHA != "" {
+		warpClause = fmt.Sprintf("warp commit %s landed", e.warpSHA)
 	}
-	if e.WeftCommitted {
-		return fmt.Sprintf("fabricengine: %s, weft commit %s landed but was not recorded in the correspondence index: %v", warpClause, e.WeftSHA, e.Err)
+	if e.weftCommitted {
+		return fmt.Sprintf("fabricengine: %s, weft commit %s landed but was not recorded in the correspondence index: %v", warpClause, e.weftSHA, e.Err)
 	}
 	return fmt.Sprintf("fabricengine: %s, weft commit failed: %v", warpClause, e.Err)
 }
@@ -149,7 +159,7 @@ func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, m
 	var result CommitResult
 
 	if len(warpFiles) > 0 {
-		warpSHA, warpCommitted, err := f.Warp.StageAndCommit(msg, warpFiles)
+		warpSHA, warpCommitted, err := f.warp.StageAndCommit(msg, warpFiles)
 		if err != nil {
 			return CommitResult{}, nil, fmt.Errorf("fabricengine: warp commit: %w", err)
 		}
@@ -164,9 +174,9 @@ func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, m
 		case err != nil && weftCommitted:
 			result.WeftSHA = weftSHA
 			result.WeftCommitted = true
-			partialErr = &PartialCommitError{WarpSHA: result.WarpSHA, WeftSHA: weftSHA, WeftCommitted: true, Err: err}
+			partialErr = &PartialCommitError{warpSHA: result.WarpSHA, weftSHA: weftSHA, weftCommitted: true, Err: err}
 		case err != nil && !weftCommitted:
-			partialErr = &PartialCommitError{WarpSHA: result.WarpSHA, WeftCommitted: false, Err: err}
+			partialErr = &PartialCommitError{warpSHA: result.WarpSHA, weftCommitted: false, Err: err}
 		case err == nil && weftCommitted:
 			result.WeftSHA = weftSHA
 			result.WeftCommitted = true

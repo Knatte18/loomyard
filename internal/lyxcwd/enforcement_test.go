@@ -1,6 +1,9 @@
 // enforcement_test.go is a repo-wide guard: it walks every package and fails the build if any file
-// outside internal/lyxcwd reaches for raw cwd or top-level git geometry, keeping internal/lyxcwd
-// the sole geometry owner.
+// outside internal/lyxcwd reaches for raw cwd or top-level git geometry, keeps internal/lyxcwd
+// the sole geometry owner, and (via TestEnforcement_FabricVocabulary) keeps the fabric-vocabulary
+// leak fabric-weft-visibility-cleanup closed. All three enforcement tests share one
+// filepath.WalkDir-based helper, walkEnforcementRoots, so the walk semantics (skip .git/testdata,
+// suffix-filter files, hand each match to a per-file callback) live in exactly one place.
 
 package lyxcwd
 
@@ -86,18 +89,72 @@ func TestStripGoComments(t *testing.T) {
 	}
 }
 
+// repoRootForEnforcement resolves the repository root relative to this test file's own location,
+// so every enforcement walk shares one runtime.Caller(0) resolution instead of repeating it.
+func repoRootForEnforcement(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not determine test file location")
+	}
+	// Two levels up from internal/lyxcwd/enforcement_test.go -> repo root.
+	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
+}
+
+// walkEnforcementRoots walks every root in roots (each a repoRoot-relative path, "." for the
+// whole tree) and invokes fn once per file whose name ends with one of suffixes, passing the
+// file's repoRoot-relative, slash-normalized path and its raw bytes. Directories named ".git" or
+// containing "testdata" are skipped entirely; any further filtering (e.g. excluding *_test.go, or
+// applying an owner allowlist) is the caller's responsibility, since that rule differs across
+// TestEnforcement, TestEnforcement_GeometryLiterals, and TestEnforcement_FabricVocabulary.
+func walkEnforcementRoots(t *testing.T, repoRoot string, roots []string, suffixes []string, fn func(relPath string, data []byte)) {
+	t.Helper()
+
+	hasSuffix := func(name string) bool {
+		for _, suffix := range suffixes {
+			if strings.HasSuffix(name, suffix) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, root := range roots {
+		walkRoot := filepath.Join(repoRoot, filepath.FromSlash(root))
+		err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() && (d.Name() == ".git" || strings.Contains(d.Name(), "testdata")) {
+				return filepath.SkipDir
+			}
+			if d.IsDir() || !hasSuffix(d.Name()) {
+				return nil
+			}
+
+			relPath, relErr := filepath.Rel(repoRoot, path)
+			if relErr != nil {
+				return relErr
+			}
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			fn(filepath.ToSlash(relPath), data)
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("failed to walk %s: %v", root, err)
+		}
+	}
+}
+
 // TestEnforcement walks the repo source tree and verifies that no source file outside
 // internal/lyxcwd and cmd/lyx contains the raw cwd/root primitives os.Getwd or git rev-parse
 // --show-toplevel.
 func TestEnforcement(t *testing.T) {
 	t.Run("tree-scan", func(t *testing.T) {
-		// Resolve repo root relative to this test file.
-		_, file, _, ok := runtime.Caller(0)
-		if !ok {
-			t.Fatal("could not determine test file location")
-		}
-		// Two levels up from internal/lyxcwd/enforcement_test.go → repo root
-		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(file)))
+		repoRoot := repoRootForEnforcement(t)
 
 		// Predicate: returns true if the bytes contain a banned token.
 		isBanned := func(data []byte) bool {
@@ -108,61 +165,32 @@ func TestEnforcement(t *testing.T) {
 
 		var failures []string
 
-		// Walk the entire tree.
-		err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
+		walkEnforcementRoots(t, repoRoot, []string{"."}, []string{".go"}, func(relPath string, data []byte) {
+			// Skip _test.go files.
+			if strings.HasSuffix(relPath, "_test.go") {
+				return
 			}
 
-			// Skip .git, testdata, and _test.go files.
-			if d.IsDir() && (d.Name() == ".git" || strings.Contains(d.Name(), "testdata")) {
-				return filepath.SkipDir
-			}
-			if strings.HasSuffix(d.Name(), "_test.go") {
-				return nil
-			}
+			pkgDir := filepath.ToSlash(filepath.Dir(relPath))
 
-			// Only check .go files.
-			if !d.IsDir() && strings.HasSuffix(d.Name(), ".go") {
-				// Determine the package-relative directory.
-				relPath, err := filepath.Rel(repoRoot, path)
-				if err != nil {
-					return err
-				}
-				pkgDir := filepath.Dir(relPath)
+			// Check allowlist: internal/lyxcwd, cmd/lyx/main.go
+			isAllowed := pkgDir == "internal/lyxcwd" ||
+				(pkgDir == "cmd/lyx" && filepath.Base(relPath) == "main.go")
 
-				// Normalize path separators to forward slashes for comparison.
-				pkgDir = filepath.ToSlash(pkgDir)
-
-				// Check allowlist: internal/lyxcwd, cmd/lyx/main.go
-				isAllowed := pkgDir == "internal/lyxcwd" ||
-					(pkgDir == "cmd/lyx" && d.Name() == "main.go")
-
-				// Skip files in the allowlist (they are allowed to contain banned tokens).
-				if isAllowed {
-					return nil
-				}
-
-				// Check the file for banned tokens. Comments are stripped first so
-				// that a file which merely *names* a banned token in an explanatory
-				// comment (e.g. scoutcli/cli.go documenting why lyxcwd.Getwd
-				// is the only permitted os.Getwd caller) is not falsely flagged; the
-				// guard is about real code usage, not prose.
-				data, err := os.ReadFile(path)
-				if err != nil {
-					return err
-				}
-				if isBanned(stripGoComments(data)) {
-					failures = append(failures, relPath)
-				}
+			// Skip files in the allowlist (they are allowed to contain banned tokens).
+			if isAllowed {
+				return
 			}
 
-			return nil
+			// Check the file for banned tokens. Comments are stripped first so
+			// that a file which merely *names* a banned token in an explanatory
+			// comment (e.g. scoutcli/cli.go documenting why lyxcwd.Getwd
+			// is the only permitted os.Getwd caller) is not falsely flagged; the
+			// guard is about real code usage, not prose.
+			if isBanned(stripGoComments(data)) {
+				failures = append(failures, relPath)
+			}
 		})
-
-		if err != nil {
-			t.Fatalf("failed to walk repo tree: %v", err)
-		}
 
 		if len(failures) > 0 {
 			t.Errorf("found banned tokens in files: %v", failures)
@@ -512,54 +540,34 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// any file constructs a geometry token in a path context outside that
 	// token's registered owner directory (or directories, per geometryTokenOwners).
 	t.Run("tree-scan", func(t *testing.T) {
-		_, thisFile, _, ok := runtime.Caller(0)
-		if !ok {
-			t.Fatal("could not determine test file location via runtime.Caller")
-		}
-		// Two filepath.Dir calls walk from internal/lyxcwd/enforcement_test.go → repo root.
-		repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+		repoRoot := repoRootForEnforcement(t)
 
 		var scanned int
 		var failures []string
 
-		err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			// Skip .git and testdata directories to avoid noise.
-			if d.IsDir() && (d.Name() == ".git" || strings.Contains(d.Name(), "testdata")) {
-				return filepath.SkipDir
-			}
+		walkEnforcementRoots(t, repoRoot, []string{"."}, []string{".go"}, func(relPath string, data []byte) {
 			// Only scan production Go files; test files (*_test.go) are excluded because
 			// test geometry is a review-only rule, not a machine-enforced invariant.
-			if d.IsDir() || strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
-				return nil
+			if strings.HasSuffix(relPath, "_test.go") {
+				return
 			}
 
-			relPath, relErr := filepath.Rel(repoRoot, path)
-			if relErr != nil {
-				return relErr
-			}
 			relDir := filepath.ToSlash(filepath.Dir(relPath))
 
 			fset := token.NewFileSet()
-			f, parseErr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+			f, parseErr := parser.ParseFile(fset, relPath, data, parser.SkipObjectResolution)
 			if parseErr != nil {
 				// Skip files that cannot be parsed (e.g. build-tag-guarded platform files).
-				return nil
+				return
 			}
 			scanned++
 			for _, tok := range geometryLiteralTokensInConstructionContext(f) {
 				if !tokenOwnedByDir(tok, relDir) {
-					failures = append(failures, filepath.ToSlash(relPath))
+					failures = append(failures, relPath)
 					break
 				}
 			}
-			return nil
 		})
-		if err != nil {
-			t.Fatalf("failed to walk repo tree: %v", err)
-		}
 
 		// Sanity check: at least one production file outside internal/lyxcwd must have
 		// been scanned so a misconfigured walk (wrong root, all files skipped) cannot
@@ -572,6 +580,334 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 
 		if len(failures) > 0 {
 			t.Errorf("geometry-literal construction found outside its registered owner directory in:\n%v", failures)
+		}
+	})
+}
+
+// configsyncOwnerDir is fabricVocabularyOwners' one narrow row: internal/configsync may name
+// "warp"/"weft" in string literals and comments (the on-disk legacy config filenames the
+// migration must read by name), but not in identifiers.
+const configsyncOwnerDir = "internal/configsync"
+
+// fabricVocabularyOwners is the set of directories permitted to use the fabric-sense tokens
+// weft/warp/host at all, in the same idiom as TestEnforcement_GeometryLiterals's
+// geometryTokenOwners. Card 26 scopes the host-phrase rule to "the same files" as the bare-token
+// rule, so both rules share this one owner set; configsyncOwnerDir's narrower literal-and-comment
+// carve-out (weft/warp only, not host) is applied separately by failsBareVocabularyCheck.
+var fabricVocabularyOwners = map[string]bool{
+	"internal/fabricengine": true,
+	"internal/fabriccli":    true,
+	"internal/weftname":     true,
+	"internal/lyxtest":      true,
+	"internal/boardengine":  true,
+	configsyncOwnerDir:      true,
+}
+
+// weftnameImportOwners is the set of directories permitted to import internal/weftname: the
+// narrower owner set fabric-vocabulary-rule's rule (3) grants, excluding boardengine and
+// configsync (owners for the bare-token rule but not for this import rule).
+var weftnameImportOwners = map[string]bool{
+	"internal/fabricengine": true,
+	"internal/fabriccli":    true,
+	"internal/lyxtest":      true,
+}
+
+// weftnameImportPath is the fully-qualified import path TestEnforcement_FabricVocabulary's
+// import rule polices.
+const weftnameImportPath = "github.com/Knatte18/loomyard/internal/weftname"
+
+// hostGeometryIdentifiers are the fabric-geometry identifiers fabric-vocabulary-rule names as the
+// identifier form of the host phrase predicate: host is never policed as a bare word, but these
+// identifiers compound it with a repo/geometry noun exactly as the phrase form does. Matched
+// case-insensitively against an *ast.Ident's Name.
+var hostGeometryIdentifiers = map[string]bool{
+	"hostbranch":    true,
+	"hostlayoutfor": true,
+	"hostreason":    true,
+	"hostjunction":  true,
+	"hostclean":     true,
+}
+
+// hostPhrases are the fabric-sense "host X" phrases fabric-vocabulary-rule polices, checked
+// case-insensitively in both spaced and hyphenated form. host itself is never policed as a bare
+// word -- see fabricSenseHostPhrase.
+var hostPhrases = []string{
+	"host repo", "host repository", "host worktree", "host working tree",
+	"host checkout", "host branch", "host junction", "host path", "host side", "host head",
+}
+
+// bareVocabularyToken reports whether s contains, case-insensitively, the bare token "weft" or
+// "warp" anywhere as a substring. Unlike host, weft/warp are banned wherever they occur -- fabric
+// has no other meaning for them in this repo -- so substring matching (not whole-word matching)
+// is deliberate: it is what catches the token inside a camelCase identifier such as
+// WeftWorktree, not just a standalone word.
+func bareVocabularyToken(s string) bool {
+	lower := strings.ToLower(s)
+	return strings.Contains(lower, "weft") || strings.Contains(lower, "warp")
+}
+
+// fabricSenseHostPhrase reports whether s contains a fabric-sense "host" phrase, case-
+// insensitively, in either spaced or hyphenated form. The verb sense ("cannot host a strand"),
+// the machine/OS sense ("a non-Windows test host"), and the PowerShell Write-Host cmdlet must all
+// return false here -- that is the entire reason host is policed as a phrase and not a bare word.
+func fabricSenseHostPhrase(s string) bool {
+	lower := strings.ToLower(s)
+	for _, phrase := range hostPhrases {
+		if strings.Contains(lower, phrase) || strings.Contains(lower, strings.ReplaceAll(phrase, " ", "-")) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldSkipBareVocabularyCheck reports whether dir is exempt from the bare weft/warp check
+// entirely: every fabricVocabularyOwners row except configsyncOwnerDir, whose narrower carve-out
+// is applied by failsBareVocabularyCheck instead of a blanket skip.
+func shouldSkipBareVocabularyCheck(dir string) bool {
+	return fabricVocabularyOwners[dir] && dir != configsyncOwnerDir
+}
+
+// failsBareVocabularyCheck applies fabric-vocabulary-rule's owner-set carve-outs to a file's bare
+// weft/warp hits. configsyncOwnerDir's row is narrower than a full skip: it passes on a
+// literal-or-comment-only hit (the on-disk legacy config filenames it must name verbatim) but
+// still fails on an identifier hit, since identifiers are never carved out there. Every other
+// directory reaching this function is already known non-owner (shouldSkipBareVocabularyCheck
+// exempts every other owner row before this is called), so it fails on either kind of hit.
+func failsBareVocabularyCheck(dir string, bareIdent, bareLiteralOrComment bool) bool {
+	if dir == configsyncOwnerDir {
+		return bareIdent
+	}
+	return bareIdent || bareLiteralOrComment
+}
+
+// fabricVocabularyHits inspects a parsed, comment-carrying Go AST file and reports three
+// independent hits: a bare weft/warp token inside an identifier, a bare weft/warp token inside a
+// string literal or a comment, and a fabric-sense host phrase anywhere (identifiers, literals, or
+// comments alike -- host's owner-set carve-out does not distinguish by kind, so the split does
+// not matter for it). f must have been parsed with parser.ParseComments so f.Comments is
+// populated.
+func fabricVocabularyHits(f *ast.File) (bareIdent, bareLiteralOrComment, hostHit bool) {
+	for _, cg := range f.Comments {
+		text := cg.Text()
+		if bareVocabularyToken(text) {
+			bareLiteralOrComment = true
+		}
+		if fabricSenseHostPhrase(text) {
+			hostHit = true
+		}
+	}
+
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.Ident:
+			if bareVocabularyToken(node.Name) {
+				bareIdent = true
+			}
+			if hostGeometryIdentifiers[strings.ToLower(node.Name)] {
+				hostHit = true
+			}
+		case *ast.BasicLit:
+			if node.Kind == token.STRING {
+				if bareVocabularyToken(node.Value) {
+					bareLiteralOrComment = true
+				}
+				if fabricSenseHostPhrase(node.Value) {
+					hostHit = true
+				}
+			}
+		}
+		return true
+	})
+	return bareIdent, bareLiteralOrComment, hostHit
+}
+
+// importsWeftname reports whether f imports internal/weftname.
+func importsWeftname(f *ast.File) bool {
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err == nil && path == weftnameImportPath {
+			return true
+		}
+	}
+	return false
+}
+
+// TestEnforcement_FabricVocabulary is the machine check that keeps the fabric-weft-visibility
+// leak this task closes from reopening. Per decisions enforcement-test and
+// fabric-vocabulary-rule, it fails any production .go file under internal/ or cmd/, outside the
+// owner set, that contains the bare token "weft" or "warp" (in an identifier, a string literal,
+// or a comment) or a fabric-sense "host" phrase in that same file set; it also fails any such
+// file outside {fabricengine, fabriccli, lyxtest} that imports internal/weftname. It additionally
+// walks every internal/**/*.md file (a plain walk, not a //go:embed parse, so a future
+// non-embedded template is policed rather than silently skipped) for the same bare-token and
+// host-phrase rules. *_test.go files are excluded from all three rules -- rule (3) included,
+// since internal/lyxcwd/geometry_test.go legitimately imports internal/weftname to test
+// weftname.SiblingPath.
+func TestEnforcement_FabricVocabulary(t *testing.T) {
+	parseWithComments := func(t *testing.T, src string) *ast.File {
+		t.Helper()
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, "<fixture>", src, parser.ParseComments|parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parse fixture: %v", err)
+		}
+		return f
+	}
+
+	t.Run("predicate", func(t *testing.T) {
+		t.Run("weft_in_identifier_fails", func(t *testing.T) {
+			f := parseWithComments(t, "package p\n\nvar weftPath string\n")
+			bareIdent, _, _ := fabricVocabularyHits(f)
+			if !bareIdent {
+				t.Error("expected a bare weft identifier to be detected")
+			}
+		})
+
+		t.Run("warp_in_string_literal_fails", func(t *testing.T) {
+			f := parseWithComments(t, `package p; var _ = "warp"`)
+			_, bareLiteralOrComment, _ := fabricVocabularyHits(f)
+			if !bareLiteralOrComment {
+				t.Error("expected a bare warp string literal to be detected")
+			}
+		})
+
+		t.Run("weft_in_comment_fails", func(t *testing.T) {
+			f := parseWithComments(t, "package p\n\n// discusses weft here\nvar _ = 1\n")
+			_, bareLiteralOrComment, _ := fabricVocabularyHits(f)
+			if !bareLiteralOrComment {
+				t.Error("expected a bare weft comment to be detected")
+			}
+		})
+
+		t.Run("embedded_md_style_body_with_weft_fails", func(t *testing.T) {
+			if !bareVocabularyToken("This template mentions the weft sibling directory.") {
+				t.Error("expected weft in a markdown-style body to be detected")
+			}
+		})
+
+		t.Run("owner_set_file_with_all_of_the_above_passes", func(t *testing.T) {
+			// An owner-set file never reaches fabricVocabularyHits in the tree-scan: it is
+			// skipped outright, for both the bare-token rule and the host-phrase rule (card
+			// 26 scopes host to "the same files" as the bare-token rule). Exercise both skip
+			// decisions directly.
+			if !shouldSkipBareVocabularyCheck("internal/fabricengine") {
+				t.Error("expected internal/fabricengine to skip the bare-token check entirely")
+			}
+			if !fabricVocabularyOwners["internal/fabricengine"] {
+				t.Error("expected internal/fabricengine to skip the host-phrase check entirely")
+			}
+		})
+
+		t.Run("configsync_row_passes_on_literal_and_comment_but_fails_on_identifier", func(t *testing.T) {
+			f := parseWithComments(t, "package configsync\n\n"+
+				"// legacyFabricConfigModules names the pre-cutover warp.yaml/weft.yaml files.\n"+
+				"var legacyFabricConfigModules = []string{\"warp\", \"weft\"}\n")
+			bareIdent, bareLiteralOrComment, _ := fabricVocabularyHits(f)
+			if bareIdent {
+				t.Error("literal-and-comment-only fixture unexpectedly produced an identifier hit")
+			}
+			if !bareLiteralOrComment {
+				t.Fatal("expected the literal/comment hit to be detected")
+			}
+			if failsBareVocabularyCheck(configsyncOwnerDir, bareIdent, bareLiteralOrComment) {
+				t.Error("configsync row must pass on a literal/comment-only hit")
+			}
+
+			identFixture := parseWithComments(t, "package configsync\n\nvar weftModule = \"m\"\n")
+			identHit, _, _ := fabricVocabularyHits(identFixture)
+			if !identHit {
+				t.Fatal("expected the identifier hit to be detected")
+			}
+			if !failsBareVocabularyCheck(configsyncOwnerDir, identHit, true) {
+				t.Error("configsync row must still fail on an identifier hit")
+			}
+		})
+
+		t.Run("host_repo_phrase_fails", func(t *testing.T) {
+			if !fabricSenseHostPhrase("commit the card to the host repo") {
+				t.Error(`expected "the host repo" to be detected as a fabric-sense host phrase`)
+			}
+		})
+
+		t.Run("hostBranch_identifier_fails", func(t *testing.T) {
+			f := parseWithComments(t, "package p\n\nvar hostBranch string\n")
+			_, _, hostHit := fabricVocabularyHits(f)
+			if !hostHit {
+				t.Error("expected the hostBranch identifier to be detected")
+			}
+		})
+
+		t.Run("host_verb_sense_passes", func(t *testing.T) {
+			if fabricSenseHostPhrase("a downed reed session cannot host a strand") {
+				t.Error("the verb sense of host must not be flagged")
+			}
+		})
+
+		t.Run("host_machine_sense_passes", func(t *testing.T) {
+			if fabricSenseHostPhrase("a non-Windows test host") {
+				t.Error("the machine/OS sense of host must not be flagged")
+			}
+		})
+
+		t.Run("write_host_cmdlet_passes", func(t *testing.T) {
+			if fabricSenseHostPhrase(`Write-Host "done"`) {
+				t.Error("the PowerShell Write-Host cmdlet must not be flagged")
+			}
+		})
+	})
+
+	t.Run("tree-scan", func(t *testing.T) {
+		repoRoot := repoRootForEnforcement(t)
+
+		var failures []string
+		fail := func(relPath, reason string) {
+			failures = append(failures, relPath+": "+reason)
+		}
+
+		// Rules (1)-(3): production .go files under internal/ and cmd/.
+		walkEnforcementRoots(t, repoRoot, []string{"internal", "cmd"}, []string{".go"}, func(relPath string, data []byte) {
+			if strings.HasSuffix(relPath, "_test.go") {
+				return
+			}
+
+			dir := filepath.ToSlash(filepath.Dir(relPath))
+
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, relPath, data, parser.ParseComments|parser.SkipObjectResolution)
+			if err != nil {
+				// Build-tag-guarded platform files may not fully parse; skip rather than
+				// falsely flag or crash, matching the sibling enforcement tests' stance.
+				return
+			}
+
+			bareIdent, bareLiteralOrComment, hostHit := fabricVocabularyHits(f)
+			if !shouldSkipBareVocabularyCheck(dir) && failsBareVocabularyCheck(dir, bareIdent, bareLiteralOrComment) {
+				fail(relPath, "bare weft/warp token outside the owner set")
+			}
+			if !fabricVocabularyOwners[dir] && hostHit {
+				fail(relPath, "fabric-sense host phrase")
+			}
+			if !weftnameImportOwners[dir] && importsWeftname(f) {
+				fail(relPath, "imports internal/weftname outside its owner set")
+			}
+		})
+
+		// Coverage additionally includes a plain internal/**/*.md walk -- not a //go:embed
+		// parse, so a future non-embedded template is policed rather than silently skipped.
+		walkEnforcementRoots(t, repoRoot, []string{"internal"}, []string{".md"}, func(relPath string, data []byte) {
+			dir := filepath.ToSlash(filepath.Dir(relPath))
+			text := string(data)
+
+			if !fabricVocabularyOwners[dir] && bareVocabularyToken(text) {
+				fail(relPath, "bare weft/warp token outside the owner set")
+			}
+			if !fabricVocabularyOwners[dir] && fabricSenseHostPhrase(text) {
+				fail(relPath, "fabric-sense host phrase")
+			}
+		})
+
+		if len(failures) > 0 {
+			t.Errorf("fabric-vocabulary leak found:\n%s", strings.Join(failures, "\n"))
 		}
 	})
 }

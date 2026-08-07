@@ -23,7 +23,7 @@ import (
 // from every other hard error: the losing invocation touched NOTHING on disk — the winner is
 // mid-round and owns the block's state — so a loop owner must not run its block-exit bookkeeping
 // (e.g.
-// perchcli's weft sync) for it.
+// perchcli's fabric sync) for it.
 // The sentinel's own message is deliberately un-prefixed — the calling engine's name is applied at
 // wrap time below, by errf, so the composed text still reads "<name>: block is already running:
 // ..."
@@ -67,7 +67,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	// observe a terminal, non-PAUSED outcome once that round settles on its
 	// own (the pause flag is checked only at the NEXT round boundary, which
 	// never arrives). The stale flag must not linger in the run dir (and get
-	// weft-committed alongside a finished block) once the block is done
+	// fabric-committed alongside a finished block) once the block is done
 	// judging — clearing it centrally here, once, covers every terminal
 	// return site without duplicating the call at each one.
 	defer func() {
@@ -210,7 +210,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		// still requires the runner verdict too, so it does not "ignore" it);
 		// its cwd is always p.GateDir (the caller-supplied absolute path —
 		// see Profile.GateDir), never the run dir, since the command
-		// exercises the host repo's own build/test surface.
+		// exercises the repo's own build/test surface.
 		if p.Gate.Mode == GateCommand || p.Gate.Mode == GateBoth {
 			output, exitZero, err := runCommand(p.Gate.Command, p.GateDir, p.Gate.Timeout)
 			if err != nil {

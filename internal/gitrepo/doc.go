@@ -128,8 +128,8 @@
 // reset, and the CurrentBranch/CheckoutDetached/RestoreBranch
 // trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
 // opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
-// scout keep using explicit-list StageAndCommit (called via
-// fabricengine.commitWeftAt on board's behalf, not boardengine calling
+// scout keep using explicit-list StageAndCommit (called via fabricengine's own
+// board-facing commit wrapper on board's behalf, not boardengine calling
 // gitrepo directly). Rebase, interactive
 // staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are
 // explicitly not supported — a human can always use plain git directly in
@@ -249,7 +249,7 @@
 //
 // From the second probe (measuring the linked-worktree topology every real
 // checkout in this codebase uses — this checkout's own .git is a file,
-// fabricengine creates host and weft as linked worktrees, and
+// fabricengine creates the repo checkout and its fabric mirror as linked worktrees, and
 // internal/fslink reaches them through junctions):
 //
 //   - git.PlainOpenWithOptions with EnableDotGitCommonDir: true is mandatory.

@@ -1,9 +1,9 @@
 // beginbatch.go implements the `begin-batch` webster verb: Master's own bracket call immediately
 // before forking a batch's implementer.
 // It runs websterengine.BeginBatch under the state-mutation lease (load, mutate, save, release),
-// then performs the first of webster's four weft-commit points (see the discussion's weft-ownership
+// then performs the first of webster's four fabric-commit points (see the discussion's fabric-ownership
 // decision) -- state.json (the batch's start-SHA and record) durable before Master ever forks.
-// The freshly-written fork prompt is deliberately NOT part of that commit: websterWeftPathspec
+// The freshly-written fork prompt is deliberately NOT part of that commit: the sync pathspec
 // excludes prompts/* as machine-local re-renderable artifacts (BeginBatch rewrites a batch's own
 // prompt on every begin).
 // ErrPaused is an operational refusal, not a hard error: Master reads the {"paused": true} envelope
@@ -108,7 +108,7 @@ Example:
 			if err != nil {
 				// Nothing to persist: BeginBatch mutates deps.State only on
 				// its success path, so the lease is released with no
-				// SaveState and no weft commit on every error branch below.
+				// SaveState and no fabric commit on every error branch below.
 				_ = mutateLock.Release()
 				mutateHeld = false
 
@@ -126,14 +126,14 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			// The state phase is over; release the lease before the weft
+			// The state phase is over; release the lease before the fabric
 			// push below so a network-slow push never serializes another
 			// verb's state mutation behind it.
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if _, weftErr := weftCommit(c.layout, fmt.Sprintf("begin-batch %s", result.BatchName)); weftErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the weft sync failed: %v", result.BatchName, weftErr)))
+			if _, syncErr := fabricSync(c.layout, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v", result.BatchName, syncErr)))
 				return nil
 			}
 

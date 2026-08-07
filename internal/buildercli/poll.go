@@ -4,9 +4,9 @@
 // via the reed engine's own live Status() query; and elapsed time since spawn), computing
 // diff/dirty via the gitquery helpers LAZILY -- only inside the report-present branch, since a
 // running tick must never run git -- and blocks on builderengine.PollUntilTerminal.
-// A terminal digest marks the batch terminal in state, persists it, and weft-commits the report
-// plus state.json (the second of the loop's three weft-commit points);
-// a deadline "running" snapshot is returned as-is, with no weft commit and no git diff.
+// A terminal digest marks the batch terminal in state, persists it, and fabric-syncs the report
+// plus state.json (the second of the loop's three fabric-sync points);
+// a deadline "running" snapshot is returned as-is, with no fabric commit and no git diff.
 
 package buildercli
 
@@ -65,9 +65,9 @@ turn ended without ever writing a report (dead: asking), elapsed since
 spawn past batch_timeout_min (dead: timeout), or its reed strand gone
 (dead: died) -- returning the instant one is reached. If --wait elapses
 first it returns a running snapshot {batch, status, elapsed_s} instead; the
-orchestrator's next poll call re-polls from there. A terminal poll weft-
-commits the batch report and state.json; a running snapshot never touches
-git or weft.
+orchestrator's next poll call re-polls from there. A terminal poll fabric-
+syncs the batch report and state.json; a running snapshot never touches
+git or fabric.
 
 Example:
   lyx builder poll --wait 8m`,
@@ -336,8 +336,8 @@ Example:
 				}
 			}
 
-			if _, weftErr := weftCommit(c.layout, fmt.Sprintf("poll %02d-%s %s", batchNumber, bs.Slug, digest.Status)); weftErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("builder: batch %02d-%s classified %s but the weft sync failed: %v", batchNumber, bs.Slug, digest.Status, weftErr)))
+			if _, syncErr := fabricSync(c.layout, fmt.Sprintf("poll %02d-%s %s", batchNumber, bs.Slug, digest.Status)); syncErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("builder: batch %02d-%s classified %s but the fabric sync failed: %v", batchNumber, bs.Slug, digest.Status, syncErr)))
 				return nil
 			}
 

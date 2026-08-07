@@ -1,7 +1,7 @@
 // status.go implements the `status` builder verb: an instant, side-effect- free snapshot of
 // _lyx/builder/state.json plus the reports dir -- the discussion's navigation refresher, human- and
 // loom-facing.
-// It never spawns an agent, never weft-commits, and never mutates state.json;
+// It never spawns an agent, never fabric-commits, and never mutates state.json;
 // a batch whose report has already landed on disk is reported terminal even if state.json has not
 // yet been updated by poll's own next tick, so a crash between the report landing and the next poll
 // call never shows a stale "running" snapshot here.
@@ -28,7 +28,7 @@ func (c *builderCLI) statusCmd() *cobra.Command {
 		Long: `status reads _lyx/builder/state.json and reports the run's identity, the
 in-flight batch cursor, the plan fingerprint, every batch's own persisted
 record (number, slug, status, role, start_sha, terminal), and whether a
-pause has been requested. It is a plain read -- no weft commit, no engine
+pause has been requested. It is a plain read -- no fabric commit, no engine
 spawn, no state.json write -- so it is safe to run at any time, including
 mid-batch, as a navigation refresher for a human or an orchestrator
 resuming after a crash.

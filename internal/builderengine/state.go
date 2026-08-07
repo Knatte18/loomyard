@@ -27,14 +27,14 @@ const builderDirName = "builder"
 
 // Dir returns the path to the builder's durable run state directory (state.json, pause flag,
 // outcome.yaml).
-// It lives under _lyx so it is weft-synced.
+// It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, builderDirName)
 }
 
 // ReportsDir returns the path to the directory holding builder's per-batch report files.
-// It lives under _lyx so reports are weft-synced.
+// It lives under _lyx so reports are fabric-synced.
 // Per the Hub Geometry Invariant, no other package may construct this path.
 func ReportsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "reports")
@@ -50,8 +50,8 @@ const stateFileName = "state.json"
 // spawn-batch landing inside poll's classify-then-persist window) each
 // load, mutate, and save their own copy, and the last save silently erases
 // the other's mutation — a live implementer with no state record, or a
-// terminal classification lost. Excluded from weft commits like every
-// other *.lock (see buildercli's builderWeftPathspec).
+// terminal classification lost. Excluded from fabric commits like every
+// other *.lock (see buildercli's sync pathspec).
 const stateMutateLockName = "mutate.lock"
 
 // AcquireStateMutation acquires builderDir's exclusive state-mutation lease, blocking until free.
@@ -92,7 +92,7 @@ type State struct {
 	// number.
 	Batches map[int]*BatchState `json:"batches"`
 	// ChainStartSHAs records each deferred-verify chain's rollback anchor —
-	// the host HEAD immediately before the chain's lowest-numbered
+	// the repo HEAD immediately before the chain's lowest-numbered
 	// member's first spawn — keyed by the chain-end batch number.
 	ChainStartSHAs map[int]string `json:"chainStartShas"`
 }
@@ -101,7 +101,7 @@ type State struct {
 type BatchState struct {
 	// Slug is the batch's <batch-slug> segment.
 	Slug string `json:"slug"`
-	// StartSHA is the host HEAD immediately before this batch's
+	// StartSHA is the repo HEAD immediately before this batch's
 	// implementer first spawned — the base commit poll's drift computation
 	// diffs against.
 	StartSHA string `json:"startSha"`

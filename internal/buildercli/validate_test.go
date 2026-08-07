@@ -24,7 +24,7 @@ import (
 // seedBuilderFixture returns a host-hub git fixture with shuttle/reed/
 // builder config seeded, chdir'd into the host hub, ready for a builder CLI
 // invocation. No weft-prime sibling is created: neither validate nor status
-// ever weft-commits.
+// ever fabric-commits.
 func seedBuilderFixture(t *testing.T) lyxtest.HostFixture {
 	t.Helper()
 

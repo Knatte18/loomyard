@@ -39,7 +39,7 @@ func classifyCorrespondence(ix *corrIndex, targetSeq int, targetSHA string) (rev
 // resolveRevertTarget resolves warpSHA to the weft SHA Fabric.Diff's
 // weftAnchorForWarpSHA should bridge to, mutating nothing: it loads the
 // correspondence index, classifies the target via classifyCorrespondence,
-// and validates the resolved weft SHA with f.Weft.SHAExists — retrying once
+// and validates the resolved weft SHA with f.weft.SHAExists — retrying once
 // via RebuildIndex on a stale hit, exactly like WeftSHAForWarpSHA's
 // self-correction. Returns wrapped ErrStaleSHA when the resolved weft SHA
 // still fails to exist after the rebuild retry.
@@ -57,7 +57,7 @@ func (f *Fabric) resolveRevertTarget(warpSHA string, targetSeq int) (revertResol
 	if err != nil {
 		return revertResolution{}, err
 	}
-	if f.Weft.SHAExists(res.Entry.WeftSHA) {
+	if f.weft.SHAExists(res.Entry.WeftSHA) {
 		return res, nil
 	}
 
@@ -69,7 +69,7 @@ func (f *Fabric) resolveRevertTarget(warpSHA string, targetSeq int) (revertResol
 	if err != nil {
 		return revertResolution{}, err
 	}
-	if res, err = classifyCorrespondence(ix, targetSeq, warpSHA); err == nil && f.Weft.SHAExists(res.Entry.WeftSHA) {
+	if res, err = classifyCorrespondence(ix, targetSeq, warpSHA); err == nil && f.weft.SHAExists(res.Entry.WeftSHA) {
 		return res, nil
 	}
 

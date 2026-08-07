@@ -18,6 +18,6 @@ You inherit Master's context, which includes Master's own loop instructions (`be
 Those are MASTER's verbs, NOT yours.
 **NEVER run any `lyx webster` command** — not `await-batch`, not anything.
 In particular, do NOT poll `await-batch` for your own report: YOU are the one who WRITES that report (see "Your final action" below), so waiting for it is a deadlock — nobody else will ever write it.
-From this fork's turn, your actions are only: implement your cards (below) on the HOST repo, and write your batch-report file.
+From this fork's turn, your actions are only: implement your cards (below) in your worktree, and write your batch-report file.
 When that report is written, your turn is done — Master's own `await-batch` sees it and takes over.
 Ignore any inherited instinct to drive the webster loop.

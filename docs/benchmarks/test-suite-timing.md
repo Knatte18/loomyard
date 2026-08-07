@@ -95,12 +95,12 @@ treat per-package numbers as attribution, not absolute cost.
 
 | Package | Tier 2 elapsed (median run) | Where the cost is |
 |---------|------------------------------|--------------------|
-| `internal/warpengine`            | **~96.0 s** | real `git worktree` add/remove, junctions, host↔weft topology — still the Tier 2 floor |
+| `internal/warpengine`            | **~96.0 s** | real `git worktree` add/remove, junctions, fabric topology — still the Tier 2 floor |
 | `internal/builderengine`         | ~75.9 s | new module (batch-implementation loop): facade-level git-spawning tests |
 | `internal/buildercli`            | ~73.0 s | same new module, CLI tests over real git scratch repos/host-hub fixtures |
 | `internal/boardcli`              | ~54.8 s | its own git-spawning CLI tests (`seedCwd` `git init`s + `RunCLI`'s `hubgeometry.Resolve` `git rev-parse`) |
 | `internal/initengine`            | ~54.6 s | paired-fixture copies per test |
-| `internal/perchcli`              | ~38.5 s | `lyxtest.CopyPaired[Local]` fixture copies + weft-sync git assertions |
+| `internal/perchcli`              | ~38.5 s | `lyxtest.CopyPaired[Local]` fixture copies + fabric-sync git assertions |
 | `internal/boardengine/boardtest` | ~30.7 s | real local git commit/push, parallelized |
 | `internal/configcli`             | ~28.4 s | `git init` tests, including `TestE2ESyncIntegration` |
 | `internal/warpcli`               | ~26.2 s | CLI wrapper over warpengine clone/teardown paths |
@@ -179,7 +179,7 @@ All 3 + 3 runs recorded `RESULT: all packages passed`.
 
 ### 2026-08-01 — githubclient + webstercli now the floor (was "Current Linux numbers")
 
-Both tiers grew well past noise since 2026-07-13 — not from any fabric/warp regression, but from two **new, deliberately real-time-wait tests** in packages that didn't exist on 2026-07-13 (`internal/githubclient`, `internal/webstercli`/`internal/websterengine` landed since).
+Both tiers grew well past noise since 2026-07-13 — not from any fabric regression, but from two **new, deliberately real-time-wait tests** in packages that didn't exist on 2026-07-13 (`internal/githubclient`, `internal/webstercli`/`internal/websterengine` landed since).
 Same machine as the 2026-07-13 block below, so this is a direct down-column comparison.
 
 - Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs
@@ -360,13 +360,13 @@ treat per-package numbers as attribution, not absolute cost.
 
 | Package | Tier 2 elapsed (median run) | Where the cost is |
 |---------|------------------------------|--------------------|
-| `internal/warpengine`            | **~84 s** | real `git worktree` add/remove, junctions, host↔weft topology — floor fell from ~152 s under the hermetic env, matching the ~87 s measured in isolation (see fixture-copy.md) |
+| `internal/warpengine`            | **~84 s** | real `git worktree` add/remove, junctions, fabric topology — floor fell from ~152 s under the hermetic env, matching the ~87 s measured in isolation (see fixture-copy.md) |
 | `internal/buildercli`            | ~76 s  | new module (batch-implementation loop): CLI tests over real git scratch repos/host-hub fixtures |
 | `internal/builderengine`         | ~75 s  | same new module, facade-level git-spawning tests |
 | `internal/boardcli`              | ~59 s  | its own git-spawning CLI tests (`seedCwd` `git init`s + `RunCLI`'s `hubgeometry.Resolve` `git rev-parse`) |
 | `internal/initengine`            | ~48 s  | paired-fixture copies per test |
 | `internal/boardengine/boardtest` | ~42 s  | real local git commit/push, parallelized |
-| `internal/perchcli`              | ~40 s  | `lyxtest.CopyPaired[Local]` fixture copies + weft-sync git assertions |
+| `internal/perchcli`              | ~40 s  | `lyxtest.CopyPaired[Local]` fixture copies + fabric-sync git assertions |
 | `cmd/lyx`                        | ~36 s  | cross-compile + registration/help-tree over the full binary, plus real `git init` in `main_test.go` |
 | `internal/perchengine`           | ~29 s  | same in-process run-loop suite as Tier 1 (the untagged tests run again under `-tags integration`; not additional fixture cost) |
 | `internal/reedcli`                | ~24 s  | real `tmux`/`tmux` contract-integration tests |
@@ -449,9 +449,9 @@ treat per-package numbers as attribution, not absolute cost.
 
 | Package | Tier 2 elapsed (median run) | Where the cost is |
 |---------|------------------------------|--------------------|
-| `internal/warpengine`            | **~152 s** | real `git worktree` add/remove, junctions, host↔weft topology — unchanged floor from the regression baseline |
+| `internal/warpengine`            | **~152 s** | real `git worktree` add/remove, junctions, fabric topology — unchanged floor from the regression baseline |
 | `internal/boardcli`              | ~63 s  | its own re-tiered git-spawning CLI tests (`seedCwd` `git init`s + `RunCLI`'s `hubgeometry.Resolve` `git rev-parse`), now fully in Tier 2 |
-| `internal/perchcli`              | ~63 s  | re-tiered `lyxtest.CopyPaired[Local]` fixture copies + weft-sync git assertions |
+| `internal/perchcli`              | ~63 s  | re-tiered `lyxtest.CopyPaired[Local]` fixture copies + fabric-sync git assertions |
 | `internal/initengine`            | ~50 s  | paired-fixture copies per test (fixed — no longer FAILs) |
 | `internal/boardengine/boardtest` | ~47 s  | real local git commit/push, parallelized |
 | `internal/perchengine`           | ~46 s  | same in-process run-loop suite as Tier 1 (the untagged tests run again under `-tags integration`; not additional fixture cost) |
@@ -533,10 +533,10 @@ In-memory tests (e.g. `internal/clihelp`'s `TestExecute_*`) showing 4–5 s each
 
 | Package | Tier 2 elapsed | Where the cost is |
 |---------|---------------|-------------------|
-| `internal/warpengine`          | **~127 s** | real `git worktree` add/remove, junctions, host↔weft topology (successor of `internal/worktree`, whose floor was ~61 s with far fewer tests) |
+| `internal/warpengine`          | **~127 s** | real `git worktree` add/remove, junctions, fabric topology (successor of `internal/worktree`, whose floor was ~61 s with far fewer tests) |
 | `internal/boardcli`            | ~56 s  | the same untagged git-spawn cost as Tier 1, plus tag-gated tests |
 | `internal/initengine`          | ~52 s  | paired-fixture copies per test (FAIL — see above) |
-| `internal/perchcli`            | ~50 s  | fixture copies + weft-sync git assertions |
+| `internal/perchcli`            | ~50 s  | fixture copies + fabric-sync git assertions |
 | `internal/boardengine/boardtest` | ~47 s | real local git commit/push, parallelized |
 | `internal/perchengine`         | ~41 s  | run-loop state machinery over fixtures |
 | `cmd/lyx`                      | ~36 s  | cross-compile + registration/help-tree over the full binary |

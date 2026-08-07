@@ -23,7 +23,7 @@ import (
 const supervisedProtocolVersion = "1"
 
 // dotLyxDirName is the directory name for ephemeral, machine-bound lyx
-// state, distinct from the durable, weft-synced _lyx configengine.LyxDirName
+// state, distinct from the durable, fabric-synced _lyx configengine.LyxDirName
 // declares. scoutengine is one of several private declarers of this
 // unpoliced token (per the module-owned-constructors per-segment join
 // rule); it stays unpoliced this slice — slice 9 is where .lyx gets a

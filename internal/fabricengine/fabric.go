@@ -2,14 +2,14 @@
 // internal/gitrepo.Repo instances, plus the sync-options/pathspec plumbing its cross-repo
 // operations need.
 // Fabric exposes Warp and Weft directly as exported fields rather than a forwarding method per
-// gitrepo operation — consumers call f.Warp.StageAndCommit(...) / f.Weft.ChangedFilesSince(...)
+// gitrepo operation — consumers call f.warp.StageAndCommit(...) / f.weft.ChangedFilesSince(...)
 // for anything repo-specific and uncoordinated;
 // only the genuinely cross-repo operations (Commit, Pull, Diff, Status) get their own method on
 // Fabric.
 // A single-sided, uncoordinated op also earns a named Fabric method — rather than staying direct
 // field access — precisely when it must be callable from OUTSIDE this package, so the one-repo
 // illusion holds at the public API boundary;
-// f.Warp/f.Weft field access remains correct for uncoordinated ops used only inside
+// f.warp/f.weft field access remains correct for uncoordinated ops used only inside
 // internal/fabricengine.
 // See warpforward.go's CheckoutDetached/RestoreBranch/CurrentBranch/ResetHard for the warp-only
 // examples of this carve-out.
@@ -31,8 +31,8 @@ import (
 // one.
 const DefaultCommitMessage = "weft sync"
 
-// ErrMissingPath is a typed error returned by New when either the warp or the weft path does not
-// exist or is not a directory.
+// ErrMissingPath is a typed error returned by newPaired when either the warp or the weft path does
+// not exist or is not a directory.
 // It names the specific missing path so a caller (or an operator reading the error) knows which of
 // the two repos is absent, rather than a generic "one of the two is missing".
 type ErrMissingPath struct {
@@ -45,22 +45,24 @@ func (e *ErrMissingPath) Error() string {
 }
 
 // Fabric is the cross-repo coordination handle over paired warp (host) and weft checkouts.
-// Warp and Weft are exported for uncoordinated, repo-specific operations;
-// cross-repo operations get their own Fabric methods.
-// A single-sided operation gets a named Fabric method only when out-of-package callers need it.
+// warp and weft are unexported for uncoordinated, repo-specific operations reached only from
+// inside this package;
+// cross-repo operations get their own Fabric methods, and a single-sided operation earns a named
+// Fabric method only when out-of-package callers need it.
 type Fabric struct {
-	Warp *gitrepo.Repo
-	Weft *gitrepo.Repo
+	warp *gitrepo.Repo
+	weft *gitrepo.Repo
 
 	warpPath string
 	weftPath string
 }
 
-// New returns a Fabric wrapping git checkouts at warpPath and weftPath.
+// newPaired returns a Fabric wrapping git checkouts at warpPath and weftPath.
 // Unlike gitrepo.New, it stat-checks that both paths exist as directories, returning an
 // *ErrMissingPath naming any missing path.
 // warpPath is checked first.
-func New(warpPath, weftPath string) (*Fabric, error) {
+// It is unexported — Open(l) is the only constructor any other package calls.
+func newPaired(warpPath, weftPath string) (*Fabric, error) {
 	if err := requireDir(warpPath); err != nil {
 		return nil, err
 	}
@@ -69,8 +71,8 @@ func New(warpPath, weftPath string) (*Fabric, error) {
 	}
 
 	return &Fabric{
-		Warp:     gitrepo.New(warpPath),
-		Weft:     gitrepo.New(weftPath),
+		warp:     gitrepo.New(warpPath),
+		weft:     gitrepo.New(weftPath),
 		warpPath: warpPath,
 		weftPath: weftPath,
 	}, nil

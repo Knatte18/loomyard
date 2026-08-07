@@ -25,10 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
-// WarpBisector is the git surface in-process bisect drives: capture branch, checkout SHA detached,
+// FabricBisector is the git surface in-process bisect drives: capture branch, checkout SHA detached,
 // restore branch.
 // Satisfied by *gitrepo.Repo and *fabricengine.Fabric.
-type WarpBisector interface {
+type FabricBisector interface {
 	CurrentBranch() (string, error)
 	CheckoutDetached(sha string) error
 	RestoreBranch(ref string) error
@@ -95,7 +95,7 @@ const integrationBatchKey = -1
 // first SHA at which verifyCmd fails. It restores HEAD to its original branch
 // even on error (via defer). Edge cases: empty shas returns -1 (no search);
 // single-element shas returns 0 (sole candidate).
-func bisect(repo WarpBisector, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
+func bisect(repo FabricBisector, shas []string, verifyCmd string, worktree string) (offendingIndex int, err error) {
 	if len(shas) == 0 {
 		return -1, nil
 	}
@@ -129,7 +129,7 @@ func bisect(repo WarpBisector, shas []string, verifyCmd string, worktree string)
 }
 
 // checkoutAndVerify checks out sha detached, then runs verifyCmd in-process, reporting pass/fail.
-func checkoutAndVerify(repo WarpBisector, sha, verifyCmd, worktree string) (bool, error) {
+func checkoutAndVerify(repo FabricBisector, sha, verifyCmd, worktree string) (bool, error) {
 	if err := repo.CheckoutDetached(sha); err != nil {
 		return false, fmt.Errorf("webster: bisect: checkout %s: %w", sha, err)
 	}
@@ -181,7 +181,7 @@ func RecordIntegrationFailure(st *State, offendingCard, offendingSHA string) {
 // summary.md naming the localized card.
 // When shas is empty, falls back to "unknown" for both SHA and card.
 // Caller persists via SaveState.
-func BisectAndEscalate(repo WarpBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
+func BisectAndEscalate(repo FabricBisector, shas, labels []string, verifyCmd, worktree, websterDir string, st *State) error {
 	idx, err := bisect(repo, shas, verifyCmd, worktree)
 	if err != nil {
 		return err

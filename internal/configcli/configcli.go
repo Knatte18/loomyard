@@ -1,6 +1,6 @@
 // configcli.go — configuration CLI command.
 //
-// Implements the lyx config command, which edits module configurations and triggers weft sync.
+// Implements the lyx config command, which edits module configurations and triggers a fabric sync.
 
 package configcli
 
@@ -122,7 +122,7 @@ func editOne(baseDir string, out io.Writer, module string, edit configengine.Edi
 	}
 
 	// Sync failed; include its output in the failure message for diagnosis.
-	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but weft sync failed: %s", module, buf.String()))
+	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
 // parseSetFlags parses a list of raw "key=value" strings (as collected from
@@ -178,7 +178,7 @@ func setModule(baseDir string, out io.Writer, module string, pairs []yamlengine.
 	}
 
 	// Sync failed; include its output in the failure message for diagnosis.
-	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but weft sync failed: %s", module, buf.String()))
+	return output.Err(out, fmt.Sprintf("edited _lyx/config/%s.yaml but fabric sync failed: %s", module, buf.String()))
 }
 
 // dispatch routes the config command to the print path (when printOnly is true),
@@ -230,7 +230,7 @@ func dispatch(l *lyxcwd.Location, in io.Reader, out io.Writer, args []string, ed
 // embedding the live list of known modules from the registry so the help text
 // stays in sync without requiring manual updates when modules are added or removed.
 func buildConfigLong() string {
-	return "config edits a module's configuration in _lyx/config/ and syncs weft on\n" +
+	return "config edits a module's configuration in _lyx/config/ and syncs fabric on\n" +
 		"success. With no argument it opens an interactive numbered menu of the known\n" +
 		"modules; with a module name it edits that module directly. The editor is\n" +
 		"resolved from $VISUAL or $EDITOR; with neither set it falls back to notepad\n" +

@@ -1,7 +1,7 @@
 // config_test.go — untagged Tier-1 unit tests for loomengine.LoadConfig.
 //
 // Seeds a bare t.TempDir() with just a _lyx/config/loom.yaml file (no CopyWeft, no SeedConfig, no
-// git spawn) since configengine.Load's env-source build tolerates a missing .env — a live weft
+// git spawn) since configengine.Load's env-source build tolerates a missing .env — a live fabric
 // fixture would be integration-tagged (like builderengine/config_test.go), which is out of scope
 // for this package's plain "go test ./internal/loomengine/" run.
 

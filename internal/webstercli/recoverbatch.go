@@ -1,12 +1,12 @@
 // recoverbatch.go implements the `recover-batch` webster verb: the re-entrant, bounded long-poll
 // escalation call Master's own prompt makes when a fork reports stuck or never reports at all.
 // It drives websterengine's three lease-scoped phases with a real, wall-clock Clock:
-// RecoverSpawnOrAttach under the state-mutation lease (saved and weft-committed "...
+// RecoverSpawnOrAttach under the state-mutation lease (saved and fabric-committed "...
 // spawn" when this call performed the spawn), RecoverAwait with the lease RELEASED (a single wait
 // blocks up to poll_wait_s -- holding the lease across it would stall every concurrent verb and run
 // entry for minutes, the exact hold AcquireStateMutation's contract forbids), and, on a terminal
 // digest, PersistRecoveryTerminal into a FRESHLY reloaded state under a re-acquired lease, followed
-// by the "... <status>" terminal weft commit -- webster's third and fourth weft-commit points, each
+// by the "... <status>" terminal fabric commit -- webster's third and fourth fabric-commit points, each
 // now carrying exactly the mutation its label names.
 package webstercli
 
@@ -52,11 +52,11 @@ func (c *websterCLI) recoverBatchCmd() *cobra.Command {
 reported stuck (or never reported at all) -- or, on a re-entrant call,
 attaches to the recovery strand a prior call already spawned -- then blocks
 for up to --wait watching it for a terminal classification. A terminal
-call weft-commits the batch report and state.json and returns the digest
+call fabric-commits the batch report and state.json and returns the digest
 envelope, exactly like record-batch's own terminal envelope. If --wait
 elapses first it returns {"batch": "NN-<slug>", "status": "running",
-"elapsed_s": N} instead, touching neither git nor weft -- Master re-calls
-recover-batch again. A call that performs the spawn itself weft-commits
+"elapsed_s": N} instead, touching neither git nor the repo -- Master re-calls
+recover-batch again. A call that performs the spawn itself fabric-commits
 state.json immediately, so a freshly-recorded recovery strand survives a
 crash even if the bounded wait that follows never reaches terminal.
 
@@ -152,8 +152,8 @@ Example:
 			mutateHeld = false
 
 			if spawned {
-				if _, weftErr := weftCommit(c.layout, fmt.Sprintf("recover-batch %s spawn", batchName)); weftErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the weft sync failed: %v", batchName, weftErr)))
+				if _, syncErr := fabricSync(c.layout, fmt.Sprintf("recover-batch %s spawn", batchName)); syncErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery spawned but the fabric sync failed: %v", batchName, syncErr)))
 					return nil
 				}
 			}
@@ -186,8 +186,8 @@ Example:
 					return nil
 				}
 
-				if _, weftErr := weftCommit(c.layout, fmt.Sprintf("recover-batch %s %s", batchName, result.Digest.Status)); weftErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the weft sync failed: %v", batchName, result.Digest.Status, weftErr)))
+				if _, syncErr := fabricSync(c.layout, fmt.Sprintf("recover-batch %s %s", batchName, result.Digest.Status)); syncErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recovery classified %s but the fabric sync failed: %v", batchName, result.Digest.Status, syncErr)))
 					return nil
 				}
 

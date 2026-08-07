@@ -97,7 +97,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 		}
 
 		opts := EnvSyncOptions()
-		f, err := New(l.WorktreePath(), weftWorktree)
+		f, err := newPaired(l.WorktreePath(), weftWorktree)
 		if err != nil {
 			return UnwireVerbResult{}, err
 		}

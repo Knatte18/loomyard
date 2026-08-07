@@ -1,10 +1,10 @@
 // Package fabricengine is lyx's sole host↔weft git-coordination module, built on two
 // `internal/gitrepo.Repo` instances covering host↔weft topology and commit/push/pull into the
 // paired weft repo.
-// fabric is the only module that knows both repos exist: the `Fabric` handle exposes `Warp
-// *gitrepo.Repo` and `Weft *gitrepo.Repo` directly for anything repo-specific and uncoordinated,
-// and adds a small set of genuinely cross-repo operations (`Commit`, `Pull`, `Diff`, `Status`) on
-// top of what gitrepo deliberately doesn't know about.
+// fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `warp
+// *gitrepo.Repo` and `weft *gitrepo.Repo` fields for anything repo-specific and uncoordinated,
+// reachable only from inside this package, and adds a small set of genuinely cross-repo operations
+// (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
 // `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded first via a plain
 // `PullWeft`, then warp is fetched and inspected against its upstream tracking ref.
@@ -20,8 +20,8 @@
 // AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
 // `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence
 // survives it at all (`ErrNoSurvivingAnchor`).
-// Every rewrite/anchor determination is ancestry-based — `f.Warp.IsAncestor`, via `git merge-base
-// --is-ancestor` — never `f.Warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
+// Every rewrite/anchor determination is ancestry-based — `f.warp.IsAncestor`, via `git merge-base
+// --is-ancestor` — never `f.warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
 // The call's result is `PullResult`, a PATTERN-residue report naming which post-anchor weft commits
@@ -238,7 +238,7 @@
 // and collapsing the answer to absent would conflate "never recorded" with "recorded, then
 // rewritten" for no benefit, since both drive the same consumer action.
 // The intended three-step consumer idiom is: read the SHA via `snapshotWarpSHA`, check
-// `f.Warp.SHAExists(sha)`, then call `f.Warp.ChangedFilesSince(sha)` only if it exists, treating a
+// `f.warp.SHAExists(sha)`, then call `f.warp.ChangedFilesSince(sha)` only if it exists, treating a
 // missing SHA as total staleness — not a burden invented here, since `ChangedFilesSince`'s own doc
 // comment already asks every caller to check `SHAExists` first.
 //
@@ -297,7 +297,7 @@
 // One propagation is a genuine behaviour change worth naming plainly: when
 // `gitrepo.Repo.CommitEmpty` refuses via `gitrepo.ErrIndexNotEmpty` — the weft index is carrying
 // staged content the combined write lock did not exclude, most likely left behind by an aborted
-// earlier run — that refusal now surfaces as a `*PartialCommitError` with `WeftCommitted: false`,
+// earlier run — that refusal now surfaces as a `*PartialCommitError` with `weftCommitted: false`,
 // through the exact mapping arm `Fabric.Commit` already uses for an unlanded weft commit.
 // The equivalent call before this mechanism existed was a documented silent no-op; failing loudly
 // here is deliberate, since silently folding somebody else's staged work into a snapshot commit is
@@ -365,4 +365,47 @@
 // pathspec names), clears the weft-side `_lyx` content, and reverts the managed `.gitignore` block,
 // but never touches the repo-wide `weft:main` records — those survive so a later `lyx fabric
 // reconcile` re-wires the worktree from the same anchor and pathspec.
+//
+// # The one-repo illusion at the public API boundary
+//
+// fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx
+// module see one repository, called fabric,
+// never the warp/weft split underneath it.
+// `Open(l *lyxcwd.Location) (*Fabric, error)` is the only constructor any other package calls — it
+// derives both paths from l and stat-validates them, performing no wiring of its own (wiring is
+// Topology's job: Add/Checkout/Reconcile/Remove/Prune/Cleanup).
+// `Fabric.Commit`'s `CommitResult.Committed() bool` is the one commit result a consumer outside the
+// owner set should read;
+// the four raw `WarpSHA`/`WarpCommitted`/`WeftSHA`/`WeftCommitted` fields stay exported only because
+// `internal/fabriccli`'s own `lyx fabric weft …` verb prints them by design.
+// `RefScanner` (refscanner.go), constructed via `NewRefScanner(l)`, is how a consumer like
+// `websterengine`'s audit asks "does this command reference fabric's two-checkout mechanism" without
+// ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the
+// answer.
+// `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
+// substring-match, so a caller like `loomengine.Preflight` switches on `HealthReason.Cause` instead
+// of parsing prose.
+//
+// # The fabric vocabulary rule
+//
+// In production code, the tokens `weft`, `warp`, and the fabric-sense phrase form of `host` (`host
+// repo`, `host worktree`, `hostBranch`, …
+// — never the bare word, which is ordinary English elsewhere in the repo) may appear only in the
+// owner set: `internal/fabricengine` (this package, which implements the illusion),
+// `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
+// `internal/weftname` (the `-weft` suffix leaf), `internal/lyxtest` (the test-fixture leaf that
+// builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
+// board lives at `weft:main`), `internal/configsync` (string literals and comments, never
+// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`), and
+// `tools/`/`sandbox/` (the black-box harness naming
+// the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos).
+// `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
+// identifiers, string literals, and comments in every production `.go` file plus the embedded agent
+// prompt templates;
+// `CONSTRAINTS.md`'s Fabric Vocabulary Invariant records the rule in full, including the phrase-based
+// `host` predicate and the review-only prose-doc split between a doc explaining fabric's own
+// mechanism (which keeps the vocabulary) and a doc describing a consumer module's behaviour (which
+// rewords).
+// As an owner file, this doc comment — and every other file in this package — keeps `warp`/`weft`
+// vocabulary freely when explaining the mechanism the illusion sits on.
 package fabricengine

@@ -1,5 +1,5 @@
 // chain.go implements deferred-verify chain membership (ChainMembers, ChainEndFor) and the Go-owned
-// rollback act RestartChain performs behind `spawn-batch --restart-chain`: reset the host repo to
+// rollback act RestartChain performs behind `spawn-batch --restart-chain`: reset the repo to
 // the chain's recorded start SHA, clear the chain members' stale reports, and reset their in-memory
 // run state.
 // Per the discussion's correctness-by-tool- design decision, the recorded state.json SHA is the
@@ -52,22 +52,22 @@ func ChainEndFor(plan *Plan, batch int) int {
 	return 0
 }
 
-// WarpResetter is the warp-only hard-reset surface RestartChain drives: a single ResetHard(sha)
-// verb, structurally satisfied by both *gitrepo.Repo (tests, driving their scratch worktree
-// directly) and *fabricengine.Fabric (production, which forwards to its warp repo).
+// FabricResetter is the hard-reset surface RestartChain drives on the fabric repo: a single
+// ResetHard(sha) verb, structurally satisfied by both *gitrepo.Repo (tests, driving their scratch
+// worktree directly) and *fabricengine.Fabric (production, which forwards to its fabric repo).
 // It exists so RestartChain never depends on a concrete git-handle type.
-type WarpResetter interface {
+type FabricResetter interface {
 	ResetHard(sha string) error
 }
 
 // RestartChain performs the chain-rollback act: it verifies st.ChainStartSHAs[chainEnd] is recorded
 // (error if absent — that recorded SHA is the only reset target, so an unrecorded chain can never
-// be rolled back to a hallucinated one), resets resetter's host repo to it via
-// WarpResetter.ResetHard, deletes every chain member's batch-report file from reportsDir (named
+// be rolled back to a hallucinated one), resets resetter's repo to it via
+// FabricResetter.ResetHard, deletes every chain member's batch-report file from reportsDir (named
 // NN-<slug>.yaml, per plan-format.md's batch-report filename contract), and resets each member's
 // BatchState entry plus st.CurrentBatch.
 // The caller is responsible for persisting st via SaveState afterward.
-func RestartChain(resetter WarpResetter, st *State, plan *Plan, chainEnd int, reportsDir string) error {
+func RestartChain(resetter FabricResetter, st *State, plan *Plan, chainEnd int, reportsDir string) error {
 	startSHA, ok := st.ChainStartSHAs[chainEnd]
 	if !ok || startSHA == "" {
 		return fmt.Errorf("builder: no chain-start SHA recorded for chain-end batch %d", chainEnd)

@@ -3,7 +3,7 @@
 // Engine drives a caller-supplied RoundRunner for every round's attempt(s) and its own Shuttle seam
 // (judge.go) for the two ephemeral judge/triage calls;
 // it never routes a round through Shuttle itself.
-// Engine is weft-blind and geometry-blind: it never imports weftengine/warpengine/lyxcwd and never
+// Engine is fabric-blind and geometry-blind: it never imports fabricengine/lyxcwd and never
 // constructs a _lyx path itself — it operates on a caller-supplied absolute runDir,
 // and GateDir (Profile) is what resolves the gate command's working directory.
 package treadleengine

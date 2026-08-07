@@ -84,14 +84,14 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 	return currentSHA(t, weftPath)
 }
 
-// newFabric wraps New, failing the test on error rather than returning it —
+// newFabric wraps newPaired, failing the test on error rather than returning it —
 // every test in this file expects a valid pair.
 func newFabric(t *testing.T, warpPath, weftPath string) *Fabric {
 	t.Helper()
 
-	f, err := New(warpPath, weftPath)
+	f, err := newPaired(warpPath, weftPath)
 	if err != nil {
-		t.Fatalf("New(%q, %q) error = %v", warpPath, weftPath, err)
+		t.Fatalf("newPaired(%q, %q) error = %v", warpPath, weftPath, err)
 	}
 	return f
 }

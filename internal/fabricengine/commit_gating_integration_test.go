@@ -32,7 +32,7 @@ func TestCommit_SkipGit_TwoSided(t *testing.T) {
 	writeWarpFile(t, warpPath, "README", "warp change")
 	writeWeftConfigContent(t, weftPath, "weft change")
 
-	preWeftSHA, err := f.Weft.CurrentSHA()
+	preWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -54,7 +54,7 @@ func TestCommit_SkipGit_TwoSided(t *testing.T) {
 		t.Errorf("Commit() = %+v; want the weft side to no-op entirely under SkipGit", result)
 	}
 
-	postWeftSHA, err := f.Weft.CurrentSHA()
+	postWeftSHA, err := f.weft.CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}

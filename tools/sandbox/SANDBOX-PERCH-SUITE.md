@@ -116,7 +116,7 @@ Create a small fixture file (e.g. `essay.txt`) with two or three sentences carry
 Write a profile YAML naming that file as `target`, an inline `fasit.instructions` stating the correctness rule, a short `rubric` mapping each flaw to a BLOCKING finding, `fix-scope: overlay`, `gate: {mode: llm-verdict}`, `round-caps: [2, 3]`.
 Run `lyx perch run --profile <file>`.
 The command blocks until the block reaches a terminal outcome;
-the printed JSON envelope reports `"outcome":"APPROVED"` within the 3-round cap, plus `roundsRun`, `runId`, `runDir`, and `weftCommitted`.
+the printed JSON envelope reports `"outcome":"APPROVED"` within the 3-round cap, plus `roundsRun`, `runId`, `runDir`, and `fabricCommitted`.
 Inspect `runDir` (the path from the envelope): it holds `state.json` and one `round-<N>-review.md` / `round-<N>-fixer-report.md` pair per round actually run, numbered from 1;
 the fixture file's content has actually changed and no longer carries the seeded flaws.
 Confirm the weft commit landed (`git -C <weft worktree> log -1` on the host's weft sibling shows a `perch: <runId> APPROVED` commit, or use `lyx fabric status`).

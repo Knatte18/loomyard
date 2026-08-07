@@ -18,7 +18,7 @@ import (
 )
 
 // Location and geometry constants define directory and file names used by lyx
-// configuration and weft/board/hub geometry. All path construction must use these
+// configuration and fabric/board/hub geometry. All path construction must use these
 // constants, never inline string literals.
 const (
 	// hubSuffix is the suffix appended to a repo name to form the hub container directory

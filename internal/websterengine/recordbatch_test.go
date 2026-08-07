@@ -446,7 +446,7 @@ func TestRecordBatch_ParentWriteOutsideContractFilesErrors(t *testing.T) {
 
 // TestRecordBatch_HeadSHAMismatchErrors proves a batch-report whose own self-reported head_sha
 // disagrees with the worktree's actual current HEAD is a hard error, naming both — the fork's
-// report and the host repo it left behind must never be trusted to agree silently.
+// report and the repo it left behind must never be trusted to agree silently.
 func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},

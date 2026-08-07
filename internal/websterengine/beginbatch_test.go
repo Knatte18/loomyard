@@ -544,7 +544,7 @@ func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
 // begun as a fork carries a prior recovery record whose strand the reed still reports live (a dead
 // recovery keeps its substrate alive by design), BeginBatch stops that strand before the record
 // overwrite erases its StrandGUID — otherwise the unreclaimed strand would race the fresh fork on
-// the host repo.
+// the repo.
 func TestBeginBatch_ReclaimsPriorRecoveryStrandBeforeOverwrite(t *testing.T) {
 	fx := newBeginFixture(t)
 	fx.Deps.State.AssertedModel = "master-model" // skip the injector

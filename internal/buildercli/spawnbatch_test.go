@@ -2,7 +2,7 @@
 
 // spawnbatch_test.go covers the spawn-batch verb's flag validation, the
 // plan-validation gate's shared findingsEnvelope, the ErrPaused envelope,
-// and the success envelope's field shape and weft commit -- stubbing the
+// and the success envelope's field shape and fabric commit -- stubbing the
 // Starter seam with a real *shuttleengine.Runner wired over local fake
 // ReedOps/Engine doubles, exactly mirroring how builderengine's own
 // spawn_test.go fakes the same seam (a fake struct alone cannot satisfy
@@ -252,7 +252,7 @@ func TestSpawnBatchCmd_PausedEnvelope(t *testing.T) {
 	}
 }
 
-func TestSpawnBatchCmd_SuccessEnvelopeAndWeftCommit(t *testing.T) {
+func TestSpawnBatchCmd_SuccessEnvelopeAndFabricCommit(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newSpawnBatchFixture(t)
 	fx.initState(t)

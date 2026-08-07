@@ -236,7 +236,7 @@ type recoverDriveResult struct {
 // driveRecoverBatch composes RecoverSpawnOrAttach -> RecoverAwait ->
 // PersistRecoveryTerminal against deps' in-memory state, exactly the
 // sequence webstercli's recover-batch verb drives (minus the lease and
-// SaveState/weft steps, which the CLI owns) — so every re-entrancy and
+// SaveState/fabric steps, which the CLI owns) — so every re-entrancy and
 // classification test below exercises the same composition production runs.
 func driveRecoverBatch(deps websterengine.RecoverDeps, batchNumber int, wait time.Duration, clk websterengine.Clock) (*recoverDriveResult, error) {
 	bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, clk)
