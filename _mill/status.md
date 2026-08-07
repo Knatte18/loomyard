@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-consumer call-site migration
+phase: approved-constructor contract (unexport)
 slug: fabric-weft-visibility-cleanup
 branch: fabric-weft-visibility-cleanup
 plan: _mill/plan
@@ -29,6 +29,7 @@ implementing  '2026-08-06T19:40:29Z'
 approved-fabric API expand  '2026-08-07T13:18:26Z'
 approved-typed Healthy reason and Clean reword  '2026-08-07T13:33:57Z'
 approved-consumer call-site migration  '2026-08-07T13:58:05Z'
+approved-constructor contract (unexport)  '2026-08-07T14:47:31Z'
 ```
 
 ## Batches
@@ -99,9 +100,10 @@ batches:
     (0.01s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/buildercli\t0.590s", "FAIL\t\
     github.com/Knatte18/loomyard/internal/builderengine\t0.118s"]
   - name: constructor contract (unexport)
-    state: running
+    state: approved
     implementer_session: 1eab8d47-76dd-41f6-aa9d-994249893fcf
     start_sha: d34c072cfb2ab0a58e11f36127bf5f2801fd265b
+    commit_sha: d2e4755dde39297a7b4ddc3965ac995d371e4df6
     verify_baseline_failures: []
   - name: templates describe one repo
     state: pending
