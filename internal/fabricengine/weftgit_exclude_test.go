@@ -59,9 +59,9 @@ func newFabricPair(t *testing.T) (*fabricengine.Fabric, lyxtest.WeftFixture) {
 	warpPath := newWarpFixture(t)
 	seedRepoWideFabricConfig(t, filepath.Dir(warpPath))
 	weftFixture := lyxtest.CopyWeft(t)
-	f, err := fabricengine.New(warpPath, weftFixture.WeftPath)
+	f, err := fabricengine.NewPairedForTest(warpPath, weftFixture.WeftPath)
 	if err != nil {
-		t.Fatalf("fabricengine.New(%q, %q): %v", warpPath, weftFixture.WeftPath, err)
+		t.Fatalf("fabricengine.NewPairedForTest(%q, %q): %v", warpPath, weftFixture.WeftPath, err)
 	}
 	return f, weftFixture
 }
@@ -85,9 +85,9 @@ func newFabricAtRelPath(t *testing.T, weftPath, rel string) *fabricengine.Fabric
 		t.Fatalf("write .lyx-anchor: %v", err)
 	}
 
-	f, err := fabricengine.New(warpPath, weftPath)
+	f, err := fabricengine.NewPairedForTest(warpPath, weftPath)
 	if err != nil {
-		t.Fatalf("fabricengine.New(%q, %q): %v", warpPath, weftPath, err)
+		t.Fatalf("fabricengine.NewPairedForTest(%q, %q): %v", warpPath, weftPath, err)
 	}
 	return f
 }

@@ -58,9 +58,9 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
-		t.Fatalf("fabricengine.New: %v", err)
+		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
 	}
 
 	originalBranch, err := f.CurrentBranch()
@@ -101,9 +101,9 @@ func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
-		t.Fatalf("fabricengine.New: %v", err)
+		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
 	}
 
 	if err := f.RestoreBranch("does-not-exist-anywhere"); err == nil {
@@ -118,9 +118,9 @@ func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
-		t.Fatalf("fabricengine.New: %v", err)
+		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
 	}
 
 	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
@@ -152,9 +152,9 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.New(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
 	if err != nil {
-		t.Fatalf("fabricengine.New: %v", err)
+		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
 	}
 
 	lyxtest.MustRun(t, fixture.Layout.WorktreePath(), "git", "checkout", "--detach")

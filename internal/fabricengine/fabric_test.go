@@ -1,5 +1,7 @@
 // fabric_test.go — unit tests for the Fabric handle, sync options, and ScopedPathspec.
-// No git spawn: New only stat-checks paths.
+// No git spawn: newPaired only stat-checks paths.
+// The missing-path/constructor cases here go through the export_test.go shim mechanically for now;
+// card 15 restates the missing-path contract through Open, this file's proper home.
 
 package fabricengine_test
 
@@ -22,12 +24,12 @@ func TestNew_MissingWarpPath(t *testing.T) {
 	}
 	missingWarpPath := filepath.Join(tmp, "warp")
 
-	_, err := fabricengine.New(missingWarpPath, weftPath)
+	_, err := fabricengine.NewPairedForTest(missingWarpPath, weftPath)
 	if err == nil {
-		t.Fatalf("New(%q, %q) error = nil; want error naming %q", missingWarpPath, weftPath, missingWarpPath)
+		t.Fatalf("NewPairedForTest(%q, %q) error = nil; want error naming %q", missingWarpPath, weftPath, missingWarpPath)
 	}
 	if !strings.Contains(err.Error(), missingWarpPath) {
-		t.Errorf("New() error = %v; want error naming %q", err, missingWarpPath)
+		t.Errorf("NewPairedForTest() error = %v; want error naming %q", err, missingWarpPath)
 	}
 }
 
@@ -41,16 +43,16 @@ func TestNew_MissingWeftPath(t *testing.T) {
 	}
 	missingWeftPath := filepath.Join(tmp, "weft")
 
-	_, err := fabricengine.New(warpPath, missingWeftPath)
+	_, err := fabricengine.NewPairedForTest(warpPath, missingWeftPath)
 	if err == nil {
-		t.Fatalf("New(%q, %q) error = nil; want error naming %q", warpPath, missingWeftPath, missingWeftPath)
+		t.Fatalf("NewPairedForTest(%q, %q) error = nil; want error naming %q", warpPath, missingWeftPath, missingWeftPath)
 	}
 	if !strings.Contains(err.Error(), missingWeftPath) {
-		t.Errorf("New() error = %v; want error naming %q", err, missingWeftPath)
+		t.Errorf("NewPairedForTest() error = %v; want error naming %q", err, missingWeftPath)
 	}
 }
 
-// TestNew_HappyPath asserts that New yields a non-nil Warp and Weft when both paths exist as
+// TestNew_HappyPath asserts that newPaired yields a non-nil warp and weft when both paths exist as
 // directories.
 func TestNew_HappyPath(t *testing.T) {
 	tmp := t.TempDir()
@@ -63,15 +65,15 @@ func TestNew_HappyPath(t *testing.T) {
 		t.Fatalf("mkdir weft: %v", err)
 	}
 
-	f, err := fabricengine.New(warpPath, weftPath)
+	f, err := fabricengine.NewPairedForTest(warpPath, weftPath)
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("NewPairedForTest() error = %v", err)
 	}
-	if f.Warp == nil {
-		t.Error("New().Warp = nil; want non-nil")
+	if fabricengine.WarpForTest(f) == nil {
+		t.Error("NewPairedForTest().warp = nil; want non-nil")
 	}
-	if f.Weft == nil {
-		t.Error("New().Weft = nil; want non-nil")
+	if fabricengine.WeftForTest(f) == nil {
+		t.Error("NewPairedForTest().weft = nil; want non-nil")
 	}
 }
 

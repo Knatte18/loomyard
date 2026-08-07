@@ -7,8 +7,8 @@ package fabricengine
 import "github.com/Knatte18/loomyard/internal/lyxcwd"
 
 // Open returns a handle on the fabric repo for this worktree.
-// It is the only constructor any other package should call — see New for the underlying stat
+// It is the only constructor any other package should call — see newPaired for the underlying stat
 // validation Open relies on.
 func Open(l *lyxcwd.Location) (*Fabric, error) {
-	return New(l.WorktreePath(), WeftWorktree(l))
+	return newPaired(l.WorktreePath(), WeftWorktree(l))
 }

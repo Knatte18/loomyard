@@ -1,10 +1,10 @@
 // Package fabricengine is lyx's sole host↔weft git-coordination module, built on two
 // `internal/gitrepo.Repo` instances covering host↔weft topology and commit/push/pull into the
 // paired weft repo.
-// fabric is the only module that knows both repos exist: the `Fabric` handle exposes `Warp
-// *gitrepo.Repo` and `Weft *gitrepo.Repo` directly for anything repo-specific and uncoordinated,
-// and adds a small set of genuinely cross-repo operations (`Commit`, `Pull`, `Diff`, `Status`) on
-// top of what gitrepo deliberately doesn't know about.
+// fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `warp
+// *gitrepo.Repo` and `weft *gitrepo.Repo` fields for anything repo-specific and uncoordinated,
+// reachable only from inside this package, and adds a small set of genuinely cross-repo operations
+// (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
 // `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded first via a plain
 // `PullWeft`, then warp is fetched and inspected against its upstream tracking ref.
@@ -20,8 +20,8 @@
 // AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
 // `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence
 // survives it at all (`ErrNoSurvivingAnchor`).
-// Every rewrite/anchor determination is ancestry-based — `f.Warp.IsAncestor`, via `git merge-base
-// --is-ancestor` — never `f.Warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
+// Every rewrite/anchor determination is ancestry-based — `f.warp.IsAncestor`, via `git merge-base
+// --is-ancestor` — never `f.warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
 // The call's result is `PullResult`, a PATTERN-residue report naming which post-anchor weft commits
@@ -238,7 +238,7 @@
 // and collapsing the answer to absent would conflate "never recorded" with "recorded, then
 // rewritten" for no benefit, since both drive the same consumer action.
 // The intended three-step consumer idiom is: read the SHA via `snapshotWarpSHA`, check
-// `f.Warp.SHAExists(sha)`, then call `f.Warp.ChangedFilesSince(sha)` only if it exists, treating a
+// `f.warp.SHAExists(sha)`, then call `f.warp.ChangedFilesSince(sha)` only if it exists, treating a
 // missing SHA as total staleness — not a burden invented here, since `ChangedFilesSince`'s own doc
 // comment already asks every caller to check `SHAExists` first.
 //

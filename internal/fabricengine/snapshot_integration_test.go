@@ -529,7 +529,7 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 // TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse pins the reader's
 // validate-at-use posture: a recorded Warp-SHA whose warp commit is later rewritten away
 // (rebase/amend/reset+prune) is returned RAW by snapshotWarpSHA, with a nil error — not collapsed
-// to absent and not resolved to an older baseline — and f.Warp.SHAExists on the returned SHA
+// to absent and not resolved to an older baseline — and f.warp.SHAExists on the returned SHA
 // reports false, demonstrating the "read, then check SHAExists" consumer idiom snapshotWarpSHA's
 // own doc comment describes, in executable form.
 func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
@@ -554,7 +554,7 @@ func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing
 	if got != danglingWarpSHA {
 		t.Errorf("snapshotWarpSHA() = %q; want the dangling SHA %q returned raw", got, danglingWarpSHA)
 	}
-	if f.Warp.SHAExists(got) {
+	if f.warp.SHAExists(got) {
 		t.Errorf("Warp.SHAExists(%q) = true; want false (the warp commit was rewritten away)", got)
 	}
 }

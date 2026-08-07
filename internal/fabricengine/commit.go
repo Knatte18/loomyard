@@ -156,7 +156,7 @@ func (f *Fabric) commitBothSides(warpFiles, weftFiles []string, weftSide bool, m
 	var result CommitResult
 
 	if len(warpFiles) > 0 {
-		warpSHA, warpCommitted, err := f.Warp.StageAndCommit(msg, warpFiles)
+		warpSHA, warpCommitted, err := f.warp.StageAndCommit(msg, warpFiles)
 		if err != nil {
 			return CommitResult{}, nil, fmt.Errorf("fabricengine: warp commit: %w", err)
 		}
