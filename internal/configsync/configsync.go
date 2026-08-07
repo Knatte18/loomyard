@@ -25,7 +25,7 @@ var legacyFabricConfigModules = []string{"warp", "weft"}
 
 // Result represents the reconciliation result for a single config module.
 type Result struct {
-	// Module is the name of the config module (e.g., "board", "worktree", "weft").
+	// Module is the name of the config module (e.g., "board", "worktree", "fabric").
 	Module string
 	// Added is the slice of key-paths newly discovered in the template.
 	Added []string

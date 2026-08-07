@@ -249,7 +249,7 @@
 //
 // From the second probe (measuring the linked-worktree topology every real
 // checkout in this codebase uses — this checkout's own .git is a file,
-// fabricengine creates host and weft as linked worktrees, and
+// fabricengine creates the repo checkout and its fabric mirror as linked worktrees, and
 // internal/fslink reaches them through junctions):
 //
 //   - git.PlainOpenWithOptions with EnableDotGitCommonDir: true is mandatory.

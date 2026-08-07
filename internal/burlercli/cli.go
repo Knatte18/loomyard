@@ -73,7 +73,7 @@ Example:
 
 			// Both configs are anchored at layout.AnchorPath(), matching shuttlecli's
 			// own resolution: the worktree the operator is actually standing
-			// in, never WorktreeRoot or any weft sibling.
+			// in, never WorktreeRoot or any fabric sibling.
 			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
