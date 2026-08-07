@@ -297,7 +297,7 @@
 // One propagation is a genuine behaviour change worth naming plainly: when
 // `gitrepo.Repo.CommitEmpty` refuses via `gitrepo.ErrIndexNotEmpty` — the weft index is carrying
 // staged content the combined write lock did not exclude, most likely left behind by an aborted
-// earlier run — that refusal now surfaces as a `*PartialCommitError` with `WeftCommitted: false`,
+// earlier run — that refusal now surfaces as a `*PartialCommitError` with `weftCommitted: false`,
 // through the exact mapping arm `Fabric.Commit` already uses for an unlanded weft commit.
 // The equivalent call before this mechanism existed was a documented silent no-op; failing loudly
 // here is deliberate, since silently folding somebody else's staged work into a snapshot commit is
