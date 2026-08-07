@@ -4,7 +4,7 @@
 // fabricengine.Fabric.Commit.
 // Machine-local runtime artifacts (run.lock, state.json.lock, both round-loop modules' pause flags,
 // webster's rendered fork prompts) are never staged in the first place: they are excluded solely by
-// the weft repo's .git/info/exclude, seeded by fabricengine's seedWeftArtifactExcludes -- this
+// the fabric repo's .git/info/exclude, seeded by fabricengine's seedWeftArtifactExcludes -- this
 // helper passes only a positive pathspec, with no ":(exclude)" magic of its own.
 
 package buildercli

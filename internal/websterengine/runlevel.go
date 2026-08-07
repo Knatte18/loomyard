@@ -121,7 +121,7 @@ type RunDeps struct {
 	// *fabricengine.Fabric inline via
 	// fabricengine.Open(deps.Layout),
 	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
-	// so the bisect path never requires a paired weft fixture.
+	// so the bisect path never requires a paired fabric fixture.
 	Bisector FabricBisector
 }
 
@@ -809,9 +809,9 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 
 	// deps.Bisector is nil in production: construct the real paired-repo
 	// Fabric handle inline, the same way webstercli's fabricSync does from a
-	// *lyxcwd.Location. A test instead injects a warp-only *gitrepo.Repo
+	// *lyxcwd.Location. A test instead injects a fabric-only *gitrepo.Repo
 	// over its own scratch worktree (the FabricBisector seam), so the bisect
-	// path never requires a paired weft fixture.
+	// path never requires a paired fabric fixture.
 	bisector := deps.Bisector
 	if bisector == nil {
 		f, err := fabricengine.Open(deps.Layout)

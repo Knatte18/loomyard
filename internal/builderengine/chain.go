@@ -54,7 +54,7 @@ func ChainEndFor(plan *Plan, batch int) int {
 
 // FabricResetter is the hard-reset surface RestartChain drives on the fabric repo: a single
 // ResetHard(sha) verb, structurally satisfied by both *gitrepo.Repo (tests, driving their scratch
-// worktree directly) and *fabricengine.Fabric (production, which forwards to its warp repo).
+// worktree directly) and *fabricengine.Fabric (production, which forwards to its fabric repo).
 // It exists so RestartChain never depends on a concrete git-handle type.
 type FabricResetter interface {
 	ResetHard(sha string) error

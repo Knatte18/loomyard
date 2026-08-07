@@ -5,7 +5,7 @@
 // pins), the non-blocking spawn itself, and the cross-process run-identity resolution (FindRun)
 // that lets a caller record durable state without ever holding an in-process shuttle Run handle.
 //
-// SpawnBatch itself never touches the fabric repo (see doc.go's package-level weft section): it only
+// SpawnBatch itself never touches the fabric repo (see doc.go's package-level fabric section): it only
 // mutates and SaveState's the CALLER-owned deps.State on the plain host filesystem.
 // The discussion pins three distinct fabric-commit points across the whole builder loop,
 // and this is the first of them: internal/buildercli's spawn-batch verb fabric-commits state.json
@@ -358,9 +358,9 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		}
 		// deps.Resetter is nil in production: construct the real paired-repo
 		// Fabric handle inline, the same way buildercli's fabricSync does from
-		// a *lyxcwd.Location. A test instead injects a warp-only
+		// a *lyxcwd.Location. A test instead injects a fabric-only
 		// *gitrepo.Repo over its own scratch worktree (the FabricResetter
-		// seam), so the restart-chain path never requires a paired weft
+		// seam), so the restart-chain path never requires a paired fabric
 		// fixture.
 		resetter := deps.Resetter
 		if resetter == nil {

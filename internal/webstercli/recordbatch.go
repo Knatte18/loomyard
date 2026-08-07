@@ -3,7 +3,7 @@
 // It runs websterengine.RecordBatch under the state-mutation lease (load, mutate, save, release)
 // with a real, time.Sleep-backed Sleeper for the incremental fork audit's bounded settle retry,
 // then performs the second of webster's four fabric-commit points (see the discussion's
-// weft-ownership decision): state.json and the batch report, once RecordBatch either lands a
+// fabric-ownership decision): state.json and the batch report, once RecordBatch either lands a
 // terminal digest or advances transcript attribution on a no_report retry -- both mutate
 // deps.State, so both are durable before Master's next tool call.
 package webstercli

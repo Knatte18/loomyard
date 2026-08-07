@@ -307,7 +307,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			}
 
 			// The fabric sync runs once at block exit regardless of outcome —
-			// including a hard engine error — per the Weft Git Invariant:
+			// including a hard engine error — per the Fabric Git Invariant:
 			// perchcli is the loop owner, perchengine itself is fabric-blind.
 			// A hard error can still follow a completed round or two (e.g. a
 			// could-not-start gate error, or a second-consecutive non-done
@@ -322,12 +322,12 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			opts := fabricengine.EnvSyncOptions()
 			// Lock files (run.lock, state.json.lock) are machine-local
 			// advisory-lock artifacts, not block state: committing them
-			// would leak runtime noise into durable weft history and
-			// materialize stale lock files on every other machine's weft
+			// would leak runtime noise into durable fabric history and
+			// materialize stale lock files on every other machine's fabric
 			// pull. reed and shuttle keep this class of file in the
 			// non-synced .lyx for exactly that reason; perch's locks must
 			// live beside state.json inside the run dir (the engine is
-			// geometry-blind), so they are excluded solely by the weft
+			// geometry-blind), so they are excluded solely by the fabric
 			// repo's .git/info/exclude (deepened to reach perch's
 			// two-deep locks) rather than a per-call pathspec.
 			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{configengine.LyxDirName})

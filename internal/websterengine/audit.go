@@ -40,7 +40,7 @@ const (
 	ClassNestedAgent AuditViolationClass = "nested-agent"
 	// ClassFabricReference means a Bash command (fork or parent) invoked lyx fabric (or its pre-cutover
 	// spellings lyx weft/lyx warp),
-	// or referenced the weft worktree path — agents never touch the fabric repo directly.
+	// or referenced the fabric worktree path — agents never touch the fabric repo directly.
 	ClassFabricReference AuditViolationClass = "fabric-reference"
 	// ClassNamedSpawn means Master's parent transcript recorded one or more Agent calls carrying a
 	// name parameter — named forks silently lose inherited context.

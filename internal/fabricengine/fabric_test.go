@@ -4,8 +4,8 @@
 // The missing-path contract (host checked first, *ErrMissingPath naming the absent side) is
 // restated here through Open(l), the constructor the contract now belongs to, using a hand-built
 // Location rather than a real git fixture — the fast Tier-1 home for this contract.
-// open_integration_test.go pins the identical contract end-to-end against a real lyxtest.CopyPaired
-// fixture (TestOpen_MissingHostWorktree / TestOpen_MissingSiblingWorktree); that is the Tier-2 home,
+// open_integration_test.go pins the identical contract end-to-end against a real paired lyxtest
+// fixture (CopyPaired; TestOpen_MissingHostWorktree / TestOpen_MissingSiblingWorktree); that is the Tier-2 home,
 // not a duplicate of these — these prove the pure stat-check logic without a git spawn.
 
 package fabricengine_test

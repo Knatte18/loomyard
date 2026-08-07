@@ -1,9 +1,9 @@
 // beginbatch.go implements the `begin-batch` webster verb: Master's own bracket call immediately
 // before forking a batch's implementer.
 // It runs websterengine.BeginBatch under the state-mutation lease (load, mutate, save, release),
-// then performs the first of webster's four fabric-commit points (see the discussion's weft-ownership
+// then performs the first of webster's four fabric-commit points (see the discussion's fabric-ownership
 // decision) -- state.json (the batch's start-SHA and record) durable before Master ever forks.
-// The freshly-written fork prompt is deliberately NOT part of that commit: websterWeftPathspec
+// The freshly-written fork prompt is deliberately NOT part of that commit: the sync pathspec
 // excludes prompts/* as machine-local re-renderable artifacts (BeginBatch rewrites a batch's own
 // prompt on every begin).
 // ErrPaused is an operational refusal, not a hard error: Master reads the {"paused": true} envelope
