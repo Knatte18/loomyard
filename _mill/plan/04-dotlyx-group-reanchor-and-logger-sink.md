@@ -202,7 +202,11 @@ Inside `ensureServer`/`ensureSupervised` the anchor **replaces** the `worktreeRo
   keep each call's intent, just drop to the single anchor-root argument.
   Give at least one untagged case an anchor root that differs from the worktree root, so the re-keying is observable rather than accidentally identical.
   In `internal/scoutcli/cli.go`, add `resolveAnchorRoot(cwd, targetDir string) string` beside `resolveWorktreeRoot`, returning `layout.AnchorPath()` on a successful `lyxcwd.Resolve` and `""` otherwise, and add an `anchorRoot` parameter to `buildOptions` so **every** `buildOptions` call site threads it — six in total, two per verb (the single-arg path and the batch-mode path) across the `references`, `definition` and `symbol` verbs — plus the one hand-built `scoutengine.Options` literal.
-  Each verb also needs `anchorRoot := resolveAnchorRoot(cwd, dir)` alongside its existing `worktreeRoot := resolveWorktreeRoot(cwd, dir)` line.
+  The three `buildOptions`-driven verbs each need `anchorRoot := resolveAnchorRoot(cwd, dir)` alongside their existing `worktreeRoot := resolveWorktreeRoot(cwd, dir)` line.
+  `assertNoCallersCommand` is the fourth, and it does **not** follow that shape: it resolves its root inline — `var worktreeRoot string; if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil { registry = loaded; worktreeRoot = layout.WorktreePath() }` — never calling the shared `resolveWorktreeRoot` helper, and leaving `worktreeRoot` empty outside a hub rather than falling back to `filepath.Abs(dir)`.
+  Thread the anchor there by adding `var anchorRoot string` beside it and setting `anchorRoot = layout.AnchorPath()` inside that same `if` block, reusing the `layout` already in scope rather than calling `resolveAnchorRoot` a second time, then pass `AnchorRoot: anchorRoot` in the hand-built `baseOpts` literal.
+  Do not "fix" this verb's divergent inline resolution or its missing out-of-hub fallback — that is pre-existing behaviour outside this task's scope;
+  just make sure the anchor is threaded, or `assert-no-callers` would keep resolving a pre-slice-9 daemon identity in a subpath-anchored repo while the other three verbs resolve the new one.
 - **Commit:** `refactor(scout): resolve daemon state from an explicit anchor root`
 
 ### Card 30: collapse the anchoring table and correct the anchoring docs

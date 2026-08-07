@@ -3,7 +3,7 @@
 ```yaml
 task: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometry (slice 9)
 slug: dotlyx-scratch-hygiene
-approved: false
+approved: true
 started: 20260806-191405
 parent: main
 root: ""
