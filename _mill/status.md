@@ -80,7 +80,9 @@ batches:
     commit_sha: a2f8d4989624fb098aa73773638ecd9a39bfa2f0
     verify_baseline_failures: []
   - name: structural-dirs-and-never-committed-routing
-    state: pending
+    state: running
+    implementer_session: 975036a7-2e98-42d1-85ba-15839e7e0db5
+    start_sha: 1f69ddf62238362e483cca3d10d6147e894a0bfc
     verify_baseline_failures: []
   - name: dotlyx-junction-wiring-and-unwire
     state: pending
