@@ -77,8 +77,8 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	// .lyx ephemeral group: WorktreePath-anchored, never git-tracked.
 	dotLyxBase := filepath.Join(worktree, ".lyx")
 	assertPath(t, "logger.WorktreeLogsDir", logger.WorktreeLogsDir(l), filepath.Join(dotLyxBase, "logs"))
-	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(worktree, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
-	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(worktree, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
+	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
+	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
 	// HubPath-anchored: HubLogsDir alone, so one reed server per hub
 	// resolves to one deterministic place.
@@ -124,8 +124,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// entirely -- byte-identical to the unanchored fixture's own dotLyxBase.
 	dotLyxBase := filepath.Join(worktree, ".lyx")
 	assertPath(t, "logger.WorktreeLogsDir", logger.WorktreeLogsDir(l), filepath.Join(dotLyxBase, "logs"))
-	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(worktree, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
-	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(worktree, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
+	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
+	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
 	// HubPath-anchored: stays byte-identical too, ignoring AnchorRel entirely.
 	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, ".lyx", "logs"))

@@ -21,8 +21,11 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // killRecordedDaemon kills the daemon PID recorded in the state file, ensuring cleanup.
@@ -48,16 +51,17 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 
 	const lang = "go"
 	root := repoRoot(t)
-	// A fresh temp worktreeRoot per test run keeps runs isolated from each
+	// A fresh temp worktree per test run keeps runs isolated from each
 	// other and from any real worktree's own supervised daemon.
 	worktreeRoot := t.TempDir()
-	statePath := DaemonStateFile(worktreeRoot, lang)
+	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
+	statePath := DaemonStateFile(l, lang)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// (1) First call: no daemon exists yet, so this call must spawn one.
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second)
+	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, l, 30*time.Second)
 	if err != nil {
 		t.Fatalf("ensureSupervised() first call returned unexpected error: %v", err)
 	}
@@ -86,9 +90,9 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 		t.Error("workspaceSymbol(\"Resolve\") returned zero results against this module's own source; want at least one match")
 	}
 
-	// (2) Second call, same worktreeRoot/lang: must reconnect to the
+	// (2) Second call, same layout/lang: must reconnect to the
 	// existing daemon rather than spawning a second one.
-	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second); err != nil {
+	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, l, 30*time.Second); err != nil {
 		t.Fatalf("ensureSupervised() second call returned unexpected error: %v", err)
 	}
 
@@ -111,7 +115,7 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 	// PID at the same deterministic socket address.
 	killRecordedDaemon(t, statePath)
 
-	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second); err != nil {
+	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, l, 30*time.Second); err != nil {
 		t.Fatalf("ensureSupervised() third call (after killing the daemon) returned unexpected error: %v", err)
 	}
 
