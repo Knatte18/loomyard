@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -43,6 +43,7 @@ holistic-reviewing  '2026-08-08T14:06:51Z'
 holistic-fixing  '2026-08-08T14:14:41Z'
 holistic-reviewing  '2026-08-08T14:30:48Z'
 holistic-approved  '2026-08-08T14:38:13Z'
+done  '2026-08-08T14:39:11Z'
 ```
 
 ## Batches
