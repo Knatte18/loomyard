@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-junction-test-retarget
+phase: approved-empty-pathspec-and-unreservation
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -34,6 +34,7 @@ implementing  '2026-08-08T17:23:30Z'
 approved-pattern-path-api  '2026-08-08T17:32:05Z'
 approved-residue-rescope  '2026-08-08T17:36:18Z'
 approved-junction-test-retarget  '2026-08-08T17:54:54Z'
+approved-empty-pathspec-and-unreservation  '2026-08-08T18:09:37Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     commit_sha: f04f7019e7e4ddba6ae00ff2db7b482989434835
     verify_baseline_failures: []
   - name: empty-pathspec-and-unreservation
-    state: running
+    state: approved
     implementer_session: ca339cd0-1dad-464d-99b2-c18114db8537
     start_sha: 471639a98a7d8bc1715e9aed605a2dda49edf5a6
+    commit_sha: f82b0777b7a31ddf21451d322fabf73b11f38f6f
     verify_baseline_failures: []
   - name: pollution-scan-and-reportonly
     state: pending
