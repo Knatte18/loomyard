@@ -74,8 +74,8 @@ func mustWriteFileWeft(t *testing.T, path, content string) {
 // rather than failing the whole `git add`, while the second entry ("newmodule") names a brand-new,
 // never-staged directory — untracked in the worktree, absent from the index — that must still count
 // as a match and get committed.
-// This is the exact shape a first-ever "_pattern/PATTERN.md" commit needs: a
-// tracked-only-in-the-index predicate would filter it out and drop the very first PATTERN commit.
+// This is the exact shape a first-ever new-directory commit needs: a tracked-only-in-the-index
+// predicate would filter it out and drop the very first commit under a brand-new optional junction.
 func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
@@ -225,9 +225,10 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 
 // resolvedDefaultRoutingNames resolves the fabric config template's REAL default pathspec and runs
 // it through pathspecNames -- not a hand-written literal, and not the raw, unfiltered Config.Dirs()
-// -- so the regression test below exercises whatever fabric's own commit routing actually builds
-// today: structuralCommittedDirs ("_lyx") unioned with the template's resolved "_pattern", catching
-// both a future template default change and a future structural-set change.
+// -- so TestResolvedDefaultRoutingNames_IsLyxAlone below exercises whatever fabric's own commit
+// routing actually builds today: structuralCommittedDirs ("_lyx") alone, the template's pathspec
+// default now being empty, catching both a future template default change and a future structural-set
+// change.
 func resolvedDefaultRoutingNames(t *testing.T) []string {
 	t.Helper()
 
@@ -242,40 +243,52 @@ func resolvedDefaultRoutingNames(t *testing.T) []string {
 	return pathspecNames(cfg)
 }
 
-// TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern is this batch's single
-// most important regression assertion, proving card 13 (the pathspec-tolerance filter) and card 14
-// (the widened default pathspec) belong together in one batch: with the real, resolved default
-// routing set — structuralCommittedDirs ("_lyx") unioned with the template's resolved "_pattern" —
-// and NO files under "_pattern" at all, a genuine "_lyx" change still commits.
-// The routing set, not the raw template pathspec, is what this test exercises since the
-// structural-directories batch (card 42) shrinks template.yaml's own pathspec default to "_pattern"
-// alone; "_lyx" now arrives from structuralCommittedDirs via pathspecNames, never from this key.
-// Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git
-// add -- _lyx _pattern` fails in its entirety the moment `_pattern` matches nothing, and
-// CommitWeft's own pre-existing "did not match any files" tolerance swallows that into ("", false,
-// nil) with no error — so the only way to catch it is asserting the commit actually happened, not
-// checking for an error.
-// Covers both shapes an empty "_pattern" can take — wholly absent and present-but-empty — since git
-// tracks files, not directories, and a materialised-but-empty "_pattern/" is the normal, expected
-// state for this whole task while content migration stays out of scope.
-func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t *testing.T) {
+// TestResolvedDefaultRoutingNames_IsLyxAlone asserts the real, resolved default routing set —
+// structuralCommittedDirs ("_lyx") alone, now that template.yaml's pathspec default is empty — still
+// guards against a future template change silently re-widening the default.
+// This is split out from the multi-entry tolerance regression below because an empty default leaves
+// resolvedDefaultRoutingNames with nothing to inject an "_extra" name through: the two properties this
+// file used to pin together (the real default's exact shape, and weftPathspecFilter's tolerance of a
+// wider pathspec with an empty optional entry) no longer share one subject.
+func TestResolvedDefaultRoutingNames_IsLyxAlone(t *testing.T) {
 	dirs := resolvedDefaultRoutingNames(t)
-	if len(dirs) != 2 || dirs[0] != "_lyx" || dirs[1] != "_pattern" {
-		t.Fatalf("resolvedDefaultRoutingNames() = %v; want [_lyx _pattern]", dirs)
+	if len(dirs) != 1 || dirs[0] != "_lyx" {
+		t.Fatalf("resolvedDefaultRoutingNames() = %v; want [_lyx]", dirs)
 	}
+}
 
-	t.Run("PatternDirWhollyAbsent", func(t *testing.T) {
+// TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptionalDir proves card 13's
+// pathspec-tolerance filter still holds for a genuinely widened, multi-entry pathspec, even though the
+// real template default no longer exercises that shape on its own (see
+// TestResolvedDefaultRoutingNames_IsLyxAlone above).
+// It deliberately does NOT ride the real template default: it hand-supplies a two-name routing set
+// ("_lyx", "_extra") instead, because weftPathspecFilter remains live production behaviour for any
+// repo whose fabric.yaml pathspec actually does widen beyond "_lyx" — and an empty default is exactly
+// what would let a regression in that filter go unnoticed if this coverage were dropped along with the
+// old widened-by-default shape.
+// With NO files under "_extra" at all, a genuine "_lyx" change still commits.
+// Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git
+// add -- _lyx _extra` fails in its entirety the moment `_extra` matches nothing, and CommitWeft's own
+// pre-existing "did not match any files" tolerance swallows that into ("", false, nil) with no error —
+// so the only way to catch it is asserting the commit actually happened, not checking for an error.
+// Covers both shapes an empty "_extra" can take — wholly absent and present-but-empty — since git
+// tracks files, not directories, and a materialised-but-empty "_extra/" is a normal, expected state
+// for any optional pathspec entry a repo has not yet populated.
+func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptionalDir(t *testing.T) {
+	dirs := []string{"_lyx", "_extra"}
+
+	t.Run("OptionalDirWhollyAbsent", func(t *testing.T) {
 		t.Parallel()
 
 		warpPath := newPlainWarpRepo(t)
 		weftFixture := lyxtest.CopyWeft(t)
 		f := newFabric(t, warpPath, weftFixture.WeftPath)
 
-		if _, err := os.Stat(filepath.Join(weftFixture.WeftPath, "_pattern")); !os.IsNotExist(err) {
-			t.Fatalf("precondition: _pattern must not exist in this fixture; Stat err = %v", err)
+		if _, err := os.Stat(filepath.Join(weftFixture.WeftPath, "_extra")); !os.IsNotExist(err) {
+			t.Fatalf("precondition: _extra must not exist in this fixture; Stat err = %v", err)
 		}
 
-		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _pattern wholly absent")
+		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _extra wholly absent")
 
 		sha, committed, err := f.commitWeft(dirs, DefaultCommitMessage, SyncOptions{})
 		if err != nil {
@@ -289,7 +302,7 @@ func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t 
 		}
 	})
 
-	t.Run("PatternDirExistsButEmpty", func(t *testing.T) {
+	t.Run("OptionalDirExistsButEmpty", func(t *testing.T) {
 		t.Parallel()
 
 		warpPath := newPlainWarpRepo(t)
@@ -297,12 +310,12 @@ func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t 
 		f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 		// git tracks files, not directories: a materialised-but-empty
-		// "_pattern/" still has nothing for a pathspec to match.
-		if err := os.MkdirAll(filepath.Join(weftFixture.WeftPath, "_pattern"), 0o755); err != nil {
-			t.Fatalf("MkdirAll _pattern: %v", err)
+		// "_extra/" still has nothing for a pathspec to match.
+		if err := os.MkdirAll(filepath.Join(weftFixture.WeftPath, "_extra"), 0o755); err != nil {
+			t.Fatalf("MkdirAll _extra: %v", err)
 		}
 
-		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _pattern present but empty")
+		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _extra present but empty")
 
 		sha, committed, err := f.commitWeft(dirs, DefaultCommitMessage, SyncOptions{})
 		if err != nil {

@@ -169,10 +169,10 @@ func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
 			}
 
 			// A real (non-link) directory predating weft; refuse to touch it for
-			// `_lyx` and `_pattern` — either may hold user content, which fabric
-			// never deletes: PATTERN content is described throughout as the
-			// host repo's hand-authored invariants, which makes "create
-			// _pattern/ in the repo and start writing" the natural operator
+			// `_lyx` — it may hold user content, which fabric never deletes:
+			// this now also protects `_lyx/PATTERN.md`, described throughout
+			// as the host repo's hand-authored invariants, which makes "create
+			// _lyx/ in the repo and start writing" the natural operator
 			// mistake this guard exists to catch.
 			// `.lyx` is the one exception: content under it is always lyx's own
 			// machine-local scratch (the logger, reed, shuttle, scout and

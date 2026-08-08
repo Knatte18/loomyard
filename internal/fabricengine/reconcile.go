@@ -345,7 +345,7 @@ func junctionRepointedDetail(hostLayout *lyxcwd.Location) string {
 
 // scanOnDiskJunctionNames lists the names of link entries directly under
 // filepath.Join(worktreeRoot, relPath), excluding hub-reserved names
-// (_board/_portals/_launchers/_raddle). Returns (nil, err) if the directory
+// (_board/_portals/_launchers). Returns (nil, err) if the directory
 // cannot be read; callers must treat a scan error as "skip removal", not
 // as "the on-disk set is empty".
 func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {

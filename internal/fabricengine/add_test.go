@@ -127,19 +127,23 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 		slug string
 	}{
 		{"LyxDir", "_lyx"},
-		{"RaddleDir", "_raddle"},
 		{"BoardDir", "_board"},
 		{"PortalsDir", "_portals"},
 		{"LaunchersDir", "_launchers"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Config{Pathspec: "_lyx _pattern"} injects the junction-name half
-			// of the reserved union: after card 1 removed _lyx/_pattern from
-			// fabricengine.HubReservedNames(), those two are rejected only via
-			// this injected pathspec, while _board/_portals/_launchers/_raddle
-			// stay rejected via HubReservedNames() regardless of pathspec.
-			topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern"})
+			// Config{Pathspec: "_lyx _extra"} injects the junction-name half of
+			// the reserved union, but neither of its rejections below actually
+			// depends on that injection: _lyx is reserved via IsReservedHubName's
+			// own structuralCommittedDirs union, never via the injected pathspec
+			// — that was true even before this task — and _board/_portals/
+			// _launchers are reserved via fabricengine.HubReservedNames()
+			// regardless of pathspec.
+			// _raddle dropped out of this table entirely: HubReservedNames() no
+			// longer reserves it, so it is now an accepted slug (see
+			// TestAdd_AcceptsRaddleSlug below).
+			topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _extra"})
 			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 			_, err := topology.Add(layout, tt.slug, fabricengine.AddOptions{})
@@ -156,6 +160,22 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 	}
 }
 
+// TestAdd_AcceptsRaddleSlug asserts that Add no longer refuses a "_raddle" slug on reserved-name
+// grounds: HubReservedNames() dropped "_raddle" (raddle has converged on an anchor-level
+// `_lyx/raddle/` design with no hub-level presence), so the slug-validation error this test's sibling
+// rejection tests assert on must not appear for "_raddle" — whatever error Add does return past
+// validation (the layout here points at a non-repo temp dir, so a later git-related failure is
+// expected) must not be the reserved-hub-name one.
+func TestAdd_AcceptsRaddleSlug(t *testing.T) {
+	topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _extra"})
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
+
+	_, err := topology.Add(layout, "_raddle", fabricengine.AddOptions{})
+	if err != nil && strings.Contains(err.Error(), "reserved for lyx hub geometry") {
+		t.Errorf("Add(%q) error = %v; want no reserved-hub-name rejection", "_raddle", err)
+	}
+}
+
 // TestAdd_RejectsPathspecJunctionNameSlug asserts that Add refuses a slug equal to a current
 // pathspec junction name that is NOT one of fabricengine.HubReservedNames()'s hub-structural tokens
 // — proving the config-driven arm of IsReservedHubName's union, not only the hub-structural arm
@@ -163,7 +183,7 @@ func TestAdd_RejectsReservedHubNameSlug(t *testing.T) {
 // in this Topology's configured pathspec.
 // Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsPathspecJunctionNameSlug(t *testing.T) {
-	topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _pattern _extra"})
+	topology := fabricengine.NewTopology(fabricengine.Config{Pathspec: "_lyx _extra _other"})
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
 
 	_, err := topology.Add(layout, "_extra", fabricengine.AddOptions{})

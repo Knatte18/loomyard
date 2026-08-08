@@ -80,7 +80,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
-	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, pattern.DirName, "PATTERN.md"))
+	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
 	// .lyx group, now collapsed into one AnchorPath-anchored base: every
 	// worktree-level .lyx entry, ephemeral and never git-tracked, joins onto
@@ -132,7 +132,7 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
-	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, pattern.DirName, "PATTERN.md"))
+	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
 	// .lyx group: AnchorPath-anchored in full as of this batch, so every
 	// entry moves down by AnchorRel here too, just like the _lyx-durable

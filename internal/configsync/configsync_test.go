@@ -477,8 +477,8 @@ func TestReconcileFabricAt_MigratesLegacyFabricConfig(t *testing.T) {
 		if !contains(string(got), "branch_prefix: hanf/") {
 			t.Errorf("fabric.yaml = %q; want migrated branch_prefix: hanf/", got)
 		}
-		if !contains(string(got), "pathspec: _pattern") {
-			t.Errorf("fabric.yaml = %q; want template-default pathspec: _pattern (weft.yaml was absent; _lyx is now structural, injected in code, never read from this key)", got)
+		if !contains(string(got), `pathspec: "" #`) {
+			t.Errorf("fabric.yaml = %q; want template-default empty pathspec (weft.yaml was absent; _lyx is now structural, injected in code, never read from this key)", got)
 		}
 
 		if _, err := os.Stat(warpPath); !os.IsNotExist(err) {

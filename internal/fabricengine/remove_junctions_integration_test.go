@@ -7,9 +7,9 @@
 // worktree root's immediate children) cannot see it. At RelPath == "." the
 // safety net masks the bug entirely, which is why this file drives the
 // nested case specifically. From card 15 onward HostJunctions returns two
-// entries (_lyx and _pattern), so this is now a true discriminator against
-// the old _lyx-hardcoded form: _pattern's nested removal has no _lyx-shaped
-// shortcut to fall back on.
+// entries (_lyx and a second, non-_lyx junction), so this is now a true
+// discriminator against the old _lyx-hardcoded form: the second junction's
+// nested removal has no _lyx-shaped shortcut to fall back on.
 //
 // Package fabricengine_test to reuse newFabricFixture from
 // reconcile_stale_registration_test.go; shares the single TestMain in
@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root
@@ -67,7 +66,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("nestedLayout.AnchorRel = %q; want %q", nestedLayout.AnchorRel, "sub")
 	}
 
-	if err := fabricengine.WireJunctions(nestedLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(nestedLayout, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions(nested): %v", err)
 	}
 
@@ -75,17 +74,17 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
 	}
-	nestedPatternLink := filepath.Join(fabricengine.WorktreePath(nestedLayout, slug), nestedLayout.AnchorRel, pattern.DirName)
+	nestedPatternLink := filepath.Join(fabricengine.WorktreePath(nestedLayout, slug), nestedLayout.AnchorRel, "_extra")
 	if isLink, err := fslink.IsLink(nestedPatternLink); err != nil || !isLink {
-		t.Fatalf("setup: nested _pattern junction %s not wired: isLink=%v err=%v", nestedPatternLink, isLink, err)
+		t.Fatalf("setup: nested _extra junction %s not wired: isLink=%v err=%v", nestedPatternLink, isLink, err)
 	}
 
 	// Remove loads the repo-wide config (best-effort) to know which nested
 	// junctions to tear down — newFabricFixture already materialized it at
 	// fabricengine.BoardDir(l.HubPath) via seedRepoWideFabricConfig, so Remove's
-	// name-load finds "_lyx _pattern" (the default pathspec) regardless of
-	// this pair's RelPath, and the happy-path nested teardown below is
-	// actually exercised, not just the degraded nothing-removed path.
+	// name-load finds the configured pathspec's junctions regardless of this
+	// pair's RelPath, and the happy-path nested teardown below is actually
+	// exercised, not just the degraded nothing-removed path.
 	if _, err := topology.Remove(nestedLayout, slug, true); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -94,6 +93,6 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Errorf("nested _lyx junction %s still exists after Remove", nestedLyxLink)
 	}
 	if _, statErr := os.Lstat(nestedPatternLink); !os.IsNotExist(statErr) {
-		t.Errorf("nested _pattern junction %s still exists after Remove", nestedPatternLink)
+		t.Errorf("nested _extra junction %s still exists after Remove", nestedPatternLink)
 	}
 }

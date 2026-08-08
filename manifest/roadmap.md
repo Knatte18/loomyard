@@ -38,11 +38,11 @@ Committed to, in this order, next.
 
 1. **`PATTERN.md` — loomyard's own invariants mechanism, wired into every agent** — a from-scratch equivalent of Millhouse's `CONSTRAINTS.md`, owned by loomyard (which has no such mechanism today;
    the root `CONSTRAINTS.md` is Millhouse's, present only because mill develops loomyard).
-   A weft-backed `_pattern/` folder whose invariants are injected as a pointer into every code-touching agent prompt.
+   A weft-backed `_lyx/PATTERN.md` file plus `_lyx/pattern/` folder whose invariants are injected as a pointer into every code-touching agent prompt.
    **The wiring has landed**: the `hubgeometry`/`fabricengine`/`initengine` junction plumbing, the `internal/pattern` active-check leaf, the `stencil` optional-marker extension, and the `{{.pattern_directive}}` marker in all five code-touching templates (builder implementer, burler round, webster fork, webster Master, loom plan) are built and merged.
-   **The content migration** out of `CONSTRAINTS.md` into `_pattern/PATTERN.md` + detail docs remains outstanding and still happens only at loomyard-init-via-lyx — `CONSTRAINTS.md` stays the single live invariants doc until that cutover.
+   **The content migration** out of `CONSTRAINTS.md` into `_lyx/PATTERN.md` + detail docs remains outstanding and still happens only at loomyard-init-via-lyx — `CONSTRAINTS.md` stays the single live invariants doc until that cutover.
    Also supersedes the constraints-hiding half of Someday's `host-visibility`.
-   See [designs/pattern.md](designs/pattern.md).
+   See [internal/pattern](../internal/pattern/doc.go).
 
 ## Someday
 

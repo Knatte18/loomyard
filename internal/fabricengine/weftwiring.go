@@ -9,7 +9,7 @@
 // appears in this file's Go source (see branchname.go for the single derivation point).
 //
 // Weft branch model: each weft branch forks from its parent's weft branch (non-orphan, shared
-// merge-base), preserving history for future _raddle squash-merge-back. _lyx is isolated by
+// merge-base), preserving history for future _lyx/raddle/ squash-merge-back. _lyx is isolated by
 // pathspec (never merges back), not by orphan topology.
 // A detached or unborn host HEAD aborts the spawn before any creation, ensuring no partial state.
 //

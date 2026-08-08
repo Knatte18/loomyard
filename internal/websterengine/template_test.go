@@ -44,14 +44,14 @@ func testLayout() *lyxcwd.Location {
 }
 
 // patternActiveLayout builds a *lyxcwd.Location rooted at a real
-// t.TempDir() that contains a real _pattern/PATTERN.md file, so
+// t.TempDir() that contains a real _lyx/PATTERN.md file, so
 // pattern.Directive returns non-empty — mirroring pattern.isActive's own
 // PatternFileHere() check (see internal/pattern/pattern_test.go's
 // writePatternFile/layoutAt fixtures).
 func patternActiveLayout(t *testing.T) *lyxcwd.Location {
 	t.Helper()
 	root := t.TempDir()
-	dir := filepath.Join(root, "_pattern")
+	dir := filepath.Join(root, "_lyx")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", dir, err)
 	}
@@ -143,7 +143,7 @@ func masterTemplateMarkerValues() map[string]string {
 		"integration_prompt_path": "/lyx/webster/prompts/integration.md",
 		"self_fix_cap":            "2",
 		"poll_wait_s":             "480",
-		"pattern_directive":       "## Constraints — do this before you fork anything\n\n- Read _pattern/PATTERN.md.",
+		"pattern_directive":       "## Constraints — do this before you fork anything\n\n- Read _lyx/PATTERN.md.",
 	}
 }
 
@@ -169,7 +169,7 @@ func forkTemplateMarkerValues() map[string]string {
 // pattern_directive — the recovery template's own one optional marker.
 func recoveryTemplateMarkerValues() map[string]string {
 	values := forkTemplateMarkerValues()
-	values["pattern_directive"] = "## Constraints — do this before you write any code\n\n- Read _pattern/PATTERN.md."
+	values["pattern_directive"] = "## Constraints — do this before you write any code\n\n- Read _lyx/PATTERN.md."
 	return values
 }
 
@@ -615,7 +615,7 @@ func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 // TestRenderRecoveryPrompt_InstructsColdOrientation asserts RenderRecoveryPrompt's rendered prompt
 // points the cold recovery strand at `00-overview.md` and `CONSTRAINTS.md`, carries the card's own
 // SourcePath pointer and the shared implementer-body text, and — for the PATTERN-active case — also
-// names `_pattern/PATTERN.md` via the injected pattern_directive.
+// names `_lyx/PATTERN.md` via the injected pattern_directive.
 // The PATTERN-inactive case renders cleanly: no leftover `{{`, no orphan `## Constraints` heading.
 func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	card := cardWithSourcePath(1, "alpha", "add the flag")
@@ -649,7 +649,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 		}
 		text := string(got)
 
-		requireContains(t, text, "_pattern/PATTERN.md")
+		requireContains(t, text, "_lyx/PATTERN.md")
 		requireContains(t, text, "## Constraints")
 	})
 }

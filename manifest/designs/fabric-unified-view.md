@@ -15,10 +15,14 @@ that is what makes the whole illusion feasible in the first place (see CONSTRAIN
 
 The original campaign restructured `fabricengine` in place (never a parallel `FabricV2` package) across six landed slices:
 
+> **Superseded:** `_pattern` no longer exists as a junction, and `_raddle` is anchor-level, never junction-reached — see `manifest/designs/raddle.md`.
+> Item 1's `_pattern` mention below is historical narrative describing the state as of when this slice landed;
+> its `HubReservedNames()` token set has since narrowed.
+
 1. **Config-driven junction list.**
    The weft-backed junction name-set (`_lyx`/`_pattern`) moved from a hardcoded list into `fabric.yaml`'s `pathspec` key. `hubgeometry` stayed config-blind and the sole owner of path *construction*;
    `fabricengine` injects the name-set as an explicit `[]string`.
-   Hub-structural entries (`_board`, `_portals`, `_launchers`, `_raddle`) stayed hardcoded via `hubgeometry.HubReservedNames()` — they are composed at the hub level, not per-worktree weft junctions.
+   Hub-structural entries (`_board`, `_portals`, `_launchers`) stay hardcoded via `hubgeometry.HubReservedNames()` — they are composed at the hub level, not per-worktree weft junctions.
    See `internal/fabricengine/junctionnames.go`.
 2. **`Fabric.Commit` (classify+dispatch) + unified `Fabric.Diff`/`Status`.**
    The single entry point every file-writing caller now uses;
@@ -123,6 +127,9 @@ The CLI-wording question below was resolved: consumer-emitted prose says "fabric
 Carried forward the parked `dotlyx-scratch-hygiene` task, narrowed by slice 7 landing first.
 What actually landed:
 
+> **Superseded:** `_pattern` no longer exists as a junction, and `_raddle` is anchor-level, never junction-reached — see `manifest/designs/raddle.md`.
+> The `_pattern`/`_raddle` mentions below are historical narrative describing the state as of when this slice landed.
+
 - **Relocated every misplaced never-tracked transient** `_lyx` → `.lyx`: perch's run/mutate locks, webster's pause flag + rendered fork prompts, builder's pause flag — the mirrored-subpath rule, mechanical and reviewable.
 - **Fixed `.lyx`'s own geometry — but not as one more `pathspec` entry.**
   The slice's own prediction ("no bespoke fix needed — `.lyx` becomes one more entry in the existing pathspec, not a special case") turned out to be wrong, deliberately: `.lyx` shipped as a **structural, code-injected junction** (`structuralNeverCommittedDirs`, alongside `_lyx`'s `structuralCommittedDirs`), never read from `fabric.yaml`'s `pathspec`.
@@ -185,13 +192,16 @@ Read-only verbs the caller can run directly.
 
 ## Related
 
+> **Superseded:** `_pattern` no longer exists as a junction, and `_raddle` is anchor-level, never junction-reached — see `manifest/designs/raddle.md`.
+> The `_pattern` mention below is historical narrative describing the state as of when slice 1 landed.
+
 - `internal/fabricengine` (doc.go), `internal/hubgeometry` (hubgeometry.go, anchor.go) — the shipped bases slices 7-10 restructure;
   durable parts fold here on landing.
 - [finalize.md](finalize.md) — the document-driven weft-conflict mechanism slice 6's orchestration half will reuse.
 - [raddle.md](raddle.md) — the regenerate-don't-merge property bounding rebase recovery;
   the snapshot-staleness consumer slice 4 serves.
 - [host-visibility.md](host-visibility.md) — the narrower sibling illusion (`CLAUDE.local.md`), same junction mechanism slice 1 generalized.
-- [pattern.md](pattern.md) — hand-authored weft content;
+- [internal/pattern](../../internal/pattern/doc.go) — hand-authored weft content;
   a `_pattern` junction consumer of the slice-1 config-driven list;
   also the residue of rebase re-alignment.
 - `fabric-v2-crucible` (wiki) — the final hardening slice, sequenced after every slice in this doc including 7-10, per project policy that it runs last.

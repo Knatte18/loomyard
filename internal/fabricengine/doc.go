@@ -25,9 +25,9 @@
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
 // would never fire (see the reachability-never-object-existence Shared Decision).
 // The call's result is `PullResult`, a PATTERN-residue report naming which post-anchor weft commits
-// touch `_pattern/...` paths and therefore need review, since they were written against a warp
-// baseline that no longer exists upstream — see pull.go's own doc comment for the full flow and the
-// `*PartialPullError` weft-succeeded/warp-failed contract.
+// touch the `_lyx/PATTERN.md`/`_lyx/pattern/` paths and therefore need review, since they were
+// written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
+// the full flow and the `*PartialPullError` weft-succeeded/warp-failed contract.
 //
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a host branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (host `main` ↔
@@ -50,27 +50,22 @@
 // The one exception is the package-level `commitWeftAt` function (not a `Fabric` method), which
 // wraps board's wildcard-stage commit on its behalf — see `commitWeftAt`'s own doc comment.
 //
-// The default weft-staging pathspec (template.yaml's `pathspec:` key) is `_lyx _pattern`, so a
-// `PATTERN.md` written through the `_pattern` junction is staged and committed alongside `_lyx` by
-// the same `commitWeft` call, rather than being inert content nothing ever pushes.
+// The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty, so no optional
+// directory is staged by default; `_lyx` itself arrives from `structuralCommittedDirs`, not from
+// `pathspec`, so PATTERN content (`_lyx/PATTERN.md`, `_lyx/pattern/`) is committed as ordinary `_lyx`
+// content rather than needing its own pathspec entry.
 //
-// Two consequences of that default living only in the config template, never enforced or reconciled
-// onto an existing worktree, are worth stating plainly rather than leaving an operator to discover
-// them by surprise.
-//
-// First, existing worktrees never pick this up: `configsync.ReconcileAll` -> `yamlengine.Reconcile`
-// keeps a `pathspec:` key that is already present in a worktree's `fabric.yaml` and adds no key
-// when one already exists, so every already-initialised worktree stays on `pathspec: _lyx` forever
-// and never persists `_pattern` content, no matter how many times `lyx fabric reconcile` is re-run
-// — an operator must widen an existing worktree's `fabric.yaml` by hand.
-//
-// Second, no detection or warning surface is in scope: nothing, neither `lyx fabric status` nor
-// `lyx fabric clone`/`lyx fabric add`, reports a narrow pathspec, so an existing worktree stays
-// silently inert until an operator notices and edits the file themselves.
-// That gap is accepted here rather than papered over — a "your pathspec predates PATTERN" warning
-// would be a new diagnostic class in `fabric status`,
-// and PATTERN has no content to persist in this repo yet — so this comment is what puts the gap in
-// writing instead.
+// The narrow-pathspec asymmetry below inverts, rather than disappears, once `pathspec` went empty:
+// `configsync.ReconcileAll` -> `yamlengine.Reconcile` never rewrites a `pathspec:` key already
+// present in a worktree's `fabric.yaml`, only adds one when the key is absent entirely.
+// A worktree deployed before this task's template change therefore stays on its own recorded
+// `pathspec: _pattern` forever — *wider* than the now-empty template default, not narrower — keeping
+// a junction the template no longer wires, until that worktree's repo is re-cloned.
+// `applyStaleRemoval` tears down a junction absent from `RepoWiredNames`, but only once that repo's
+// recorded `pathspec` is actually empty, which a pre-existing `pathspec: _pattern` worktree's is not
+// — so changing `template.yaml` governs newly cloned repos only.
+// This is accepted rather than a defect: the sole deployed repo, SANDBOX, is throwaway and re-cloned
+// rather than migrated, so no upgrade path is documented here because none exists.
 //
 // This is a deliberate asymmetry with the junction side (see fabricengine's own junction wiring): a
 // junction self-heals on the next `lyx fabric clone`/`add`/reconcile and reports loudly until it
@@ -81,15 +76,16 @@
 // operate over whatever name-set their caller passes them (see junctionnames.go's
 // `junctionNames`/`WiredNames`), and every one of those callers builds that name-set as
 // `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the pair's `pathspec` filtered against
-// `HubReservedNames()` — the four hub-structural tokens (`_board`, `_portals`, `_launchers`,
-// `_raddle`) that can never be a per-worktree junction.
+// `HubReservedNames()` — the three hub-structural tokens (`_board`, `_portals`, `_launchers`) that
+// can never be a per-worktree junction.
 // The two structural sets (`_lyx`, `.lyx`) are injected in code and never read from `pathspec` at
-// all; only the third piece — today just `_pattern` — comes from config.
+// all; only the third piece — empty today — comes from config.
 // A future weft-backed *optional* module is therefore wired with no `fabric` code change at all:
 // append its directory name to `template.yaml`'s `pathspec:` default,
 // and any worktree whose `fabric.yaml` picks up that wider default wires the new junction the next
 // time `WireJunctions` runs against it — subject to the same narrow-pathspec asymmetry above (an
 // already-initialised worktree's existing `pathspec:` key is never widened for it automatically).
+// This mechanism has no live instance today — the worked example above is purely hypothetical.
 // A structural directory has no such asymmetry to worry about: it is never sourced from `pathspec`,
 // so it cannot be left behind by a worktree's stale config.
 //
@@ -111,11 +107,12 @@
 // `.gitignore` block by hand.
 //
 // The junction side of that asymmetry has a concrete blast radius worth naming rather than leaving
-// an operator to meet as a surprise: every worktree wired before `HostJunctions` gained its
-// `_pattern` entry lacks the `_pattern` junction, full stop — including this repo's own live
-// worktrees, including whichever one lands this change.
-// Until re-run, `lyx fabric status` reports that pair not in sync, with `JunctionReason` naming
-// `_pattern`;
+// an operator to meet as a surprise: every worktree wired before a new name is added to
+// `HostJunctions` lacks that junction, full stop, until `lyx fabric reconcile` re-runs against it —
+// `_pattern`'s own now-superseded rollout was one such case, and any future optional-module addition
+// would hit the same gap.
+// Until re-run, `lyx fabric status` reports that pair not in sync, with `JunctionReason` naming the
+// missing junction;
 // `lyx fabric reconcile` reports `ReconcileActionJunctionRepointed` rather than
 // `ReconcileActionAlreadyHealthy` for it — and repairs it, so reconcile *is* the remedy, not merely
 // a report;
@@ -361,7 +358,7 @@
 // with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives host+weft
 // clone, `_board` worktree materialization, and lyx-anchor resolution in one call;
 // the CLI layer (`internal/fabriccli`) then records the anchor and the repo-wide `fabric.yaml` onto
-// `weft:main`, creates every host junction (`_lyx`, `.lyx`, `_pattern`), and runs
+// `weft:main`, creates every host junction (`_lyx`, `.lyx`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
 // every config materialized without a second command. Every junction is excluded through the warp's
 // own `.git/info/exclude`, never a committed `.gitignore` in the user's repo.
@@ -385,7 +382,7 @@
 // `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lyx init
 // --undo`: it removes every fabric junction actually present on disk (not just the ones the current
 // wired name-set names) and their warp `.git/info/exclude` entries, but never deletes weft-side
-// content — `_lyx`, `.lyx`, and `_pattern` are all preserved — and never touches the repo-wide
+// content — `_lyx` and `.lyx` are both preserved — and never touches the repo-wide
 // `weft:main` records, which survive so a later `lyx fabric reconcile` re-wires the worktree from the
 // same anchor and pathspec.
 //

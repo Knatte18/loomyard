@@ -79,12 +79,12 @@ Only call site is this one — narrow blast radius.
 fatal: pathspec '/tmp/.../hub/_lyx/accidental.txt' is beyond a symbolic link
 ```
 
-On Windows, `_lyx`/`_raddle` are **directory junctions** (mount-point reparse points) — git treats a junction as an ordinary directory, so `git add hub/_lyx/...` works.
+On Windows, `_lyx`/`.lyx` are **directory junctions** (mount-point reparse points) — git treats a junction as an ordinary directory, so `git add hub/_lyx/...` works.
 On Linux, `internal/fslink` creates a **symlink** (`fslink_linux.go`, `os.Symlink`), and git **refuses** any pathspec that traverses a symlink as a safety measure — a categorical git behaviour, *not* a `core.symlinks` toggle.
 This is the Hub Geometry / fslink contract meeting a semantic that does not translate: the junction model assumes the linked tree is addressable through the link, which holds on Windows and does not on Linux.
 
 **Direction (needs design, not a one-liner):** options include (a) addressing `_lyx` contents via the real target path rather than through the link when invoking git;
-(b) re-evaluating whether `_lyx`/`_raddle` should be links at all on Linux vs bind-style or real dirs;
+(b) re-evaluating whether `_lyx`/`.lyx` should be links at all on Linux vs bind-style or real dirs;
 (c) confining the affected operations.
 This is the one finding that touches a `CONSTRAINTS.md` invariant (Hub Geometry / fslink) and deserves its own task and discussion.
 It is **not** in scope for "record benchmark numbers."

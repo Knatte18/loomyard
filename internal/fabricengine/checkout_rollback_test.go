@@ -41,7 +41,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	// failure is isolated to step 5 (junction wiring).
 	// Checkout derives the slug the same way (filepath.Base of the worktree root).
 	slug := filepath.Base(l.WorktreePath())
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
@@ -97,7 +97,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	const targetBranch = "checkout-rollback-forked"
 
 	slug := filepath.Base(l.WorktreePath())
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	// Only the host branch exists: the weft side must be forked by Checkout.

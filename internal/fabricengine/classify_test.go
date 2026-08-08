@@ -24,23 +24,23 @@ func TestClassifyPaths(t *testing.T) {
 		{
 			name:         "under_lyx_is_weft",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_pattern"},
+			routingNames: []string{"_lyx", "_extra"},
 			files:        []string{"_lyx/module/state.json"},
 			wantWarp:     nil,
 			wantWeft:     []string{"_lyx/module/state.json"},
 		},
 		{
-			name:         "under_pattern_is_weft",
+			name:         "under_extra_is_weft",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_pattern"},
-			files:        []string{"_pattern/PATTERN.md"},
+			routingNames: []string{"_lyx", "_extra"},
+			files:        []string{"_extra/notes.md"},
 			wantWarp:     nil,
-			wantWeft:     []string{"_pattern/PATTERN.md"},
+			wantWeft:     []string{"_extra/notes.md"},
 		},
 		{
 			name:         "host_source_path_is_warp",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_pattern"},
+			routingNames: []string{"_lyx", "_extra"},
 			files:        []string{"cmd/lyx/main.go"},
 			wantWarp:     []string{"cmd/lyx/main.go"},
 			wantWeft:     nil,
@@ -90,23 +90,23 @@ func TestClassifyPaths(t *testing.T) {
 		{
 			name:         "all_weft_inputs",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_pattern"},
-			files:        []string{"_lyx/a.json", "_pattern/PATTERN.md"},
+			routingNames: []string{"_lyx", "_extra"},
+			files:        []string{"_lyx/a.json", "_extra/notes.md"},
 			wantWarp:     nil,
-			wantWeft:     []string{"_lyx/a.json", "_pattern/PATTERN.md"},
+			wantWeft:     []string{"_lyx/a.json", "_extra/notes.md"},
 		},
 		{
 			name:         "routingNames_with_more_than_two_entries",
 			relPath:      ".",
-			routingNames: []string{"_lyx", "_pattern", "_board", "_launchers"},
-			files:        []string{"_board/entry.md", "_launchers/run.sh", "cmd/lyx/main.go", "_pattern/PATTERN.md"},
+			routingNames: []string{"_lyx", "_extra", "_board", "_launchers"},
+			files:        []string{"_board/entry.md", "_launchers/run.sh", "cmd/lyx/main.go", "_extra/notes.md"},
 			wantWarp:     []string{"cmd/lyx/main.go"},
-			wantWeft:     []string{"_board/entry.md", "_launchers/run.sh", "_pattern/PATTERN.md"},
+			wantWeft:     []string{"_board/entry.md", "_launchers/run.sh", "_extra/notes.md"},
 		},
 		{
 			name:                "dotlyx_path_lands_in_neither_weft_nor_warp",
 			relPath:             ".",
-			routingNames:        []string{"_lyx", "_pattern"},
+			routingNames:        []string{"_lyx", "_extra"},
 			neverCommittedNames: []string{".lyx"},
 			files:               []string{".lyx/webster/state.json.lock"},
 			wantWarp:            nil,
@@ -136,7 +136,7 @@ func TestClassifyPaths(t *testing.T) {
 		{
 			name:                "mixed_bucket_with_relpath_not_dot",
 			relPath:             "sub",
-			routingNames:        []string{"_lyx", "_pattern"},
+			routingNames:        []string{"_lyx", "_extra"},
 			neverCommittedNames: []string{".lyx"},
 			files: []string{
 				"sub/_lyx/module/state.json",
@@ -169,13 +169,13 @@ func TestClassifyPaths(t *testing.T) {
 // path lost or duplicated.
 func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) {
 	relPath := "."
-	routingNames := []string{"_lyx", "_pattern"}
+	routingNames := []string{"_lyx", "_extra"}
 	neverCommittedNames := []string{".lyx"}
 	files := []string{
 		"cmd/lyx/main.go",
 		"_lyx/module/state.json",
 		"go.mod",
-		"_pattern/PATTERN.md",
+		"_extra/notes.md",
 		"_lyxfoo/notweft.json",
 		".lyx/webster/state.json.lock",
 		".lyxfoo/notnevercommitted.json",

@@ -142,7 +142,7 @@ use "lyx fabric pairs".`,
 		Use:   "remove [--force] <slug>",
 		Short: "destroy a dual host+weft worktree pair",
 		Long: `Remove a paired host and weft git worktree, plus every host junction
-(_lyx and _pattern), portal junctions, and launchers.
+(_lyx and .lyx), portal junctions, and launchers.
 
 By default the command refuses to remove a worktree with uncommitted changes
 on either the host or weft side. Use --force to remove anyway.
@@ -186,12 +186,11 @@ Example:
 host-pollution scan.
 
 junction_healthy and junction_reason cover BOTH host junctions (_lyx and
-_pattern): a pair is only healthy when every junction resolves to its own
+.lyx): a pair is only healthy when every junction resolves to its own
 weft directory, and junction_reason names the first unhealthy one by name
-when it is not. The pollution scan likewise covers _lyx, _pattern, and
-_raddle paths accidentally tracked in the host index; _lyx and _pattern
-matches carry an automated git rm --cached remedy, _raddle matches are
-report-only.`,
+when it is not. The pollution scan likewise covers _lyx paths accidentally
+tracked in the host index; every match carries an automated git rm --cached
+remedy.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runPairs(out, args) }),
 	})
 
@@ -204,12 +203,10 @@ action needed to restore a valid paired topology: recreate a missing weft
 worktree, re-point a broken junction, adopt a raw (non-lyx) host worktree, or
 report an unmanaged branch untouched.
 
-Junction repair covers BOTH host junctions (_lyx and _pattern): if either is
+Junction repair covers BOTH host junctions (_lyx and .lyx): if either is
 missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
-not reported already-healthy. This is also the upgrade path for a worktree
-wired before the _pattern junction existed: one reconcile call adds the
-missing junction and materialises its weft-side target.`,
+not reported already-healthy.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runReconcile(out, args) }),
 	})
 
@@ -259,7 +256,7 @@ reported but never deleted here, since they are not fabric-managed.`,
 		Use:   "unwire",
 		Short: "fully deactivate fabric wiring for this worktree",
 		Long: `unwire is a full per-host-worktree deactivation: it removes every host
-junction present (_lyx, .lyx, and _pattern) and their warp .git/info/exclude
+junction present (_lyx and .lyx) and their warp .git/info/exclude
 entries. It leaves every weft-side directory intact — weft-side content is
 never deleted by unwire.
 

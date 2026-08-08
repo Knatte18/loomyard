@@ -1,7 +1,7 @@
 // status.go implements the paired host↔weft status view and host-pollution detection for fabric.
 //
 // Status enumerates all host worktrees via List, pairs each with its weft sibling, reports branch,
-// in-sync verdict, junction health, and scans the host index for any _lyx, _pattern, or _raddle
+// in-sync verdict, junction health, and scans the host index for any _lyx
 // paths that have been accidentally git-tracked (host pollution).
 // A pair is InSync when weftBranch == WeftBranchName(hostBranch),
 // and DriftReason states the expected suffixed branch rather than a bare mismatch.
@@ -26,14 +26,12 @@ import (
 )
 
 // PollutionEntry describes a single tracked path in the host index that should never be committed
-// there (e.g. _lyx or _raddle, which belong exclusively in the weft).
+// there (e.g. _lyx, which belongs exclusively in the weft).
 type PollutionEntry struct {
 	// Path is the relative path reported by git ls-files.
 	Path string `json:"path"`
 	// Remedy is the suggested remediation command. Empty when the entry is report-only.
 	Remedy string `json:"remedy,omitempty"`
-	// ReportOnly is true when no automated remedy is available (e.g. _raddle).
-	ReportOnly bool `json:"report_only"`
 }
 
 // PairStatus describes the relationship between one host worktree and its paired weft sibling.
@@ -69,7 +67,7 @@ type StatusResult struct {
 // Status returns the paired host↔weft status view for all worktrees reachable from the given
 // layout, plus host-pollution detection on the host index.
 // For each host worktree, it reports branch status, in-sync verdict, junction health, and
-// host-tracked _lyx/_pattern/_raddle paths.
+// host-tracked _lyx paths.
 // Per-worktree errors are recorded inline in PairStatus.DriftReason / PairStatus.JunctionReason.
 func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 	entries, err := List(l.WorktreePath())
@@ -141,14 +139,13 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 			pair.InSync = true
 		}
 
-		// Scan the host index for _lyx, _pattern, and _raddle paths that must never
-		// be tracked there.
+		// Scan the host index for _lyx paths that must never be tracked there.
 		pollution, pollErr := detectHostPollution(hostPath)
 		if pollErr != nil {
-			// Non-fatal: record the error inline and continue.
+			// Non-fatal: record the error inline and continue. Remedy stays
+			// empty since no automated remedy applies to a scan failure.
 			pair.Pollution = append(pair.Pollution, PollutionEntry{
-				Path:       fmt.Sprintf("<scan error: %v>", pollErr),
-				ReportOnly: true,
+				Path: fmt.Sprintf("<scan error: %v>", pollErr),
 			})
 		} else {
 			pair.Pollution = pollution
@@ -160,28 +157,20 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 	return result, nil
 }
 
-// detectHostPollution scans the host worktree index for _lyx, _pattern, and _raddle
-// paths that should never be tracked in the host repo.
+// detectHostPollution scans the host worktree index for _lyx paths that should
+// never be tracked in the host repo.
 //
-// For each match under _lyx or _pattern, the remedy is the git rm --cached command
-// that removes the file from the index without deleting it from disk, plus a
-// reminder to restore the junction/exclude entry — both have a junction to restore
-// (from card 15 onward), so the same automated remedy applies to both. _raddle
-// matches are report-only: no junction is wired for _raddle in this release so no
-// automated restore step is offered.
-//
-// _lyx now routes through lyxdirs.LyxDirName rather than a bare literal here. The two
-// "_pattern" uses below (the ls-files pathspec entry and the strings.HasPrefix
-// comparison) stay literal and are legal under the Cwd Resolution Invariant despite
-// "_pattern" being an enforced token: the invariant's own carve-out excludes
-// comparisons and git-pathspec slice literals from "path construction," which is
-// what a filepath.Join argument, a "+" operand, or a string const value are. "_raddle"
-// likewise stays literal for the same reason.
+// Every match under _lyx has a junction wired to restore, so the remedy is
+// always the git rm --cached command that removes the file from the index
+// without deleting it from disk, plus a reminder to restore the
+// junction/exclude entry. No pollution class in this scan lacks an automated
+// remedy, which is why PollutionEntry has no report-only signal beyond an
+// empty Remedy.
 func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
 	out, _, exitCode, err := gitexec.RunGit(
-		[]string{"ls-files", "--", lyxdirs.LyxDirName, "_pattern", "_raddle"},
+		[]string{"ls-files", "--", lyxdirs.LyxDirName},
 		hostPath,
 	)
 	if err != nil {
@@ -205,10 +194,9 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 			continue
 		}
 
-		// Determine whether the path is under _lyx, _pattern, or _raddle.
+		// Determine whether the path is under _lyx.
 		switch {
-		case strings.HasPrefix(tracked, lyxdirs.LyxDirName) || tracked == lyxdirs.LyxDirName,
-			strings.HasPrefix(tracked, "_pattern") || tracked == "_pattern":
+		case strings.HasPrefix(tracked, lyxdirs.LyxDirName) || tracked == lyxdirs.LyxDirName:
 			// Offer git rm --cached as the remedy, plus a reminder to restore the
 			// junction and exclude entry so lyx topology is intact afterwards.
 			remedy := fmt.Sprintf(
@@ -218,12 +206,6 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 			entries = append(entries, PollutionEntry{
 				Path:   tracked,
 				Remedy: remedy,
-			})
-		case strings.HasPrefix(tracked, "_raddle") || tracked == "_raddle":
-			// _raddle pollution is report-only: no junction is wired for _raddle yet.
-			entries = append(entries, PollutionEntry{
-				Path:       tracked,
-				ReportOnly: true,
 			})
 		}
 	}

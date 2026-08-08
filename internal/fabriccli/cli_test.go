@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -158,6 +157,81 @@ func TestRunCLI_PairsReturnsPairsKey(t *testing.T) {
 	}
 }
 
+// TestRunCLI_PairsReportsPollutionEntryWithRemedy pins the pollution JSON shape at the CLI
+// boundary, not only at the fabricengine.Status engine boundary: with a file tracked directly
+// under _lyx in the host index, "fabric pairs" must still emit a pollution entry naming that
+// path with a non-empty "remedy" key. The removed report-only marker key is gone from
+// PollutionEntry as of this batch — Remedy == "" now carries the report-only signal on its own —
+// so this test does not assert its absence directly; it asserts the surviving "remedy" key is
+// present and non-empty instead, which is the shape that matters to a CLI consumer.
+func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
+	// A paired fixture (host + weft sibling), not the host-only setupCLIRepo
+	// fixture: Status bails out of the per-pair pollution scan early when the
+	// weft sibling is missing, so a paired fixture is required to reach it.
+	fixture := lyxtest.CopyPaired(t)
+
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("create board config dir: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+		t.Fatalf("write board fabric.yaml: %v", err)
+	}
+
+	t.Chdir(fixture.Hub)
+
+	hostLyxDir := filepath.Join(fixture.Hub, lyxdirs.LyxDirName)
+	if err := os.MkdirAll(hostLyxDir, 0o755); err != nil {
+		t.Fatalf("mkdir host _lyx dir: %v", err)
+	}
+	trackedFile := filepath.Join(hostLyxDir, "PATTERN.md")
+	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
+		t.Fatalf("write tracked file: %v", err)
+	}
+	lyxtest.MustRun(t, fixture.Hub, "git", "add", "--", lyxdirs.LyxDirName)
+	lyxtest.MustRun(t, fixture.Hub, "git", "commit", "-m", "accidentally track _lyx")
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
+	if exitCode != 0 {
+		t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	pairs, ok := result["pairs"].([]any)
+	if !ok || len(pairs) == 0 {
+		t.Fatalf("RunCLI(pairs) 'pairs' = %v; want a non-empty array", result["pairs"])
+	}
+
+	var found map[string]any
+	for _, p := range pairs {
+		pair, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		pollution, ok := pair["pollution"].([]any)
+		if !ok {
+			continue
+		}
+		for _, e := range pollution {
+			entry, ok := e.(map[string]any)
+			if !ok {
+				continue
+			}
+			if path, _ := entry["path"].(string); strings.Contains(path, "PATTERN.md") {
+				found = entry
+			}
+		}
+	}
+	if found == nil {
+		t.Fatalf("no pollution entry naming PATTERN.md found in %+v", result)
+	}
+	remedy, _ := found["remedy"].(string)
+	if remedy == "" {
+		t.Errorf("pollution entry %+v has empty/missing 'remedy'; want a non-empty git rm --cached remedy", found)
+	}
+}
+
 // TestRunCLI_CommitHelp asserts that "fabric commit --help" output documents the fixed commit
 // message and the Warp-SHA trailer,
 // and does not advertise a --message flag that does not exist.
@@ -280,22 +354,22 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 }
 
 // TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern is the card-40 regression
-// guard: with the repo-wide fabric.yaml's pathspec naming only "_pattern" (template.yaml's new
-// default, card 42), "lyx fabric sync" must still commit _lyx content, because weft_verbs.go now
+// guard: with the repo-wide fabric.yaml's pathspec naming only "_extra" (a single non-_lyx name),
+// "lyx fabric sync" must still commit _lyx content, because weft_verbs.go now
 // builds its sync pathspec from fabricengine.PathspecNames — the routing set, which always contains
 // "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
 // This is the single most breakage-prone edit in the whole task: a miss here is silent, not loud.
 func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 
-	// Repo-wide fabric.yaml names only "_pattern" -- the narrowed template
-	// default -- proving _lyx arrives from the routing set structurally, not
-	// from this config.
+	// Repo-wide fabric.yaml names only "_extra" -- a single non-_lyx name --
+	// proving _lyx arrives from the routing set structurally, not from this
+	// config.
 	boardDir := fabricengine.BoardDir(fixture.Container)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create board config dir: %v", err)
 	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _pattern\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
 		t.Fatalf("write board fabric.yaml: %v", err)
 	}
 
@@ -323,7 +397,7 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 
 	tracked := strings.TrimSpace(gitOutputCLI(t, fixture.WeftPrime, "log", "-1", "--name-only", "--pretty=format:"))
 	if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {
-		t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _pattern\nfiles: %s", fixture.WeftPrime, lyxdirs.LyxDirName, tracked)
+		t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", fixture.WeftPrime, lyxdirs.LyxDirName, tracked)
 	}
 }
 
@@ -459,9 +533,13 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, "backend")
 	}
 
-	// The prime host worktree's _lyx/_pattern junctions must be wired.
+	// The prime host worktree's structural junctions (_lyx and .lyx) must be
+	// wired: .lyx is structural (structuralNeverCommittedDirs) and is wired by
+	// every clone regardless of pathspec, so it is checked here rather than
+	// an optional config-driven name, which a genuinely empty bare weft
+	// clone (zero commits, no pre-existing weft:main fabric.yaml) never wires.
 	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
-	for _, name := range []string{lyxdirs.LyxDirName, pattern.DirName} {
+	for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {

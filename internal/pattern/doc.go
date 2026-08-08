@@ -8,13 +8,19 @@
 //
 // # The active check is pure existence
 //
-// PATTERN is active iff `_pattern/PATTERN.md` exists, resolved via this
+// PATTERN is active iff `_lyx/PATTERN.md` exists, resolved via this
 // package's own FileHere(l) and nothing else: FileHere is what constructs
-// the path (the Cwd Resolution Invariant's enforcement test polices which
-// package may declare the "_pattern" token). Existence alone is the check —
-// never a content inspection — because the `_pattern/` directory itself may
-// exist without PATTERN.md (the normal inactive state; `lyx init` always
-// creates the directory), and a content-inspecting check would turn a
+// the path, built from lyxdirs.LyxDirName rather than a literal of its own.
+// The Cwd Resolution Invariant's enforcement test polices the "_lyx" token
+// itself, which belongs to internal/lyxdirs, not to this package;
+// TestEnforcement_GeometryLiterals matches whole tokens by exact equality
+// and so cannot see "_lyx/PATTERN.md" at all. Keeping File and
+// PathspecFile/PathspecDir built from lyxdirs.LyxDirName is therefore a
+// review obligation this package accepts, not something any test
+// mechanically enforces. Existence alone is the check —
+// never a content inspection — because the `_lyx/` directory always exists
+// (every worktree has one), so its presence never implies PATTERN is
+// active, and a content-inspecting check would turn a
 // benign empty file into a runtime error in every one of the five agent
 // paths that call Directive. Three edge cases follow from that same
 // existence-only design and are each pinned by a test: an empty PATTERN.md
@@ -42,7 +48,7 @@
 //
 // # Why the pointer stays relative
 //
-// Each directive injects a pointer to `_pattern/PATTERN.md`, never the
+// Each directive injects a pointer to `_lyx/PATTERN.md`, never the
 // constraints inline, so prompt size stays constant however large PATTERN
 // grows. The pointer is a literal relative string baked into the directive
 // constant, never an interpolated absolute path built from a Location field:
@@ -50,4 +56,12 @@
 // directive strings unable to be compared for equality (or matched by
 // substring) across worktrees the way this package's own tests, and any
 // consumer's tests, need to.
+//
+// # PathspecFile and PathspecDir
+//
+// PathspecFile and PathspecDir are the git-pathspec spellings of the
+// PATTERN entry point and its detail-docs directory, respectively —
+// worktree-relative, forward-slashed strings for use in git plumbing
+// arguments, not filesystem paths built with filepath.Join.
+// internal/fabricengine is their consumer, for the PatternResidue pathspec.
 package pattern

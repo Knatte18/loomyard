@@ -130,7 +130,7 @@ func orchestratorMarkerValues() map[string]string {
 // one key at a time to prove stencil.FillOptional's per-marker error.
 func instruction1MarkerValues() map[string]string {
 	return map[string]string{
-		"pattern_directive": "## Constraints — do this before you judge or change anything\n\n- Read _pattern/PATTERN.md.",
+		"pattern_directive": "## Constraints — do this before you judge or change anything\n\n- Read _lyx/PATTERN.md.",
 		"target":            "target placeholder",
 		"fasit":             "fasit placeholder",
 		"rubric":            "rubric placeholder",

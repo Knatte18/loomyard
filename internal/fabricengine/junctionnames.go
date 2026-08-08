@@ -35,7 +35,7 @@ var structuralNeverCommittedDirs = []string{lyxdirs.DotLyxDirName}
 
 // dedupUnion concatenates every slice in groups, keeping only the first occurrence of each name and
 // preserving first-occurrence order across the whole call.
-// This is load-bearing, not tidy: a deployed `pathspec: _lyx _pattern` fabric.yaml means `_lyx`
+// This is load-bearing, not tidy: a deployed `pathspec: _lyx _extra` fabric.yaml means `_lyx`
 // arrives from both structuralCommittedDirs and cfg.Dirs() in the same call, and without dedup the
 // duplicate name would reach HostJunctions, ScopedPathspec, and status output.
 func dedupUnion(groups ...[]string) []string {
@@ -108,7 +108,7 @@ func HubPath(parent, name string) string {
 }
 
 // HubReservedNames returns the junction-wiring block set: the hub-structural names that must never
-// wire a per-worktree junction, _raddle, _board, _portals, _launchers.
+// wire a per-worktree junction, _board, _portals, _launchers.
 // It is consumed by filterHubReserved and by scanOnDiskJunctionNames, and its exact current value
 // and role are unchanged by this batch's structural-directory work — neither call site's behaviour
 // changes.
@@ -116,11 +116,12 @@ func HubPath(parent, name string) string {
 // the wired names so the per-worktree junction is never created, and would make
 // scanOnDiskJunctionNames skip it so Unwire's sweep and applyStaleRemoval could never see it — wired
 // forever, never torn down.
-// It deliberately excludes lyxdirs.LyxDirName and pattern.DirName, which are config-migrated
-// junction names folded into the reserved set by IsReservedHubName's junctionNames parameter
-// instead.
+// It deliberately excludes lyxdirs.LyxDirName, which is reserved via structuralCommittedDirs rather
+// than via this set.
+// The junctionNames parameter IsReservedHubName takes folds in whatever a repo's pathspec names —
+// which is nothing by default now that template.yaml's pathspec is empty.
 func HubReservedNames() []string {
-	return []string{BoardDirName, portalsDirName, launchersDirName, "_raddle"}
+	return []string{BoardDirName, portalsDirName, launchersDirName}
 }
 
 // hubSlugReservedNames returns the slug-reservation set: names a worktree slug may never claim.
@@ -170,7 +171,7 @@ func IsReservedHubName(name string, junctionNames []string) bool {
 // filterHubReserved drops every name in names that is also present in
 // HubReservedNames(), preserving the input order of the
 // remaining names. This is the wiring guard: a hub-structural name
-// (_board, _portals, _launchers, _raddle) mis-added to fabric.yaml's
+// (_board, _portals, _launchers) mis-added to fabric.yaml's
 // pathspec must never wire a per-worktree junction that would collide with
 // the hub-level path of the same name.
 func filterHubReserved(names []string) []string {

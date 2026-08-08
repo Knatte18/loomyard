@@ -251,7 +251,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
-		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_raddle", "_lyx", "_pattern", ".lyx":
+		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_lyx", ".lyx":
 			return true
 		}
 		return false
@@ -274,13 +274,11 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		"_board": {"internal/lyxcwd", "internal/fabricengine"},
 		"-weft":  {"internal/weftname"},
 		"-HUB":   {"internal/lyxcwd", "internal/fabricengine"},
-		// "_portals", "_launchers" and "_raddle" are fabric's own
-		// illusion-maintenance plumbing: the portal/launcher path surface
-		// relocated to internal/fabricengine in this batch, and "_raddle"
-		// has always been named only in HubReservedNames, which moved with it.
+		// "_portals" and "_launchers" are fabric's own illusion-maintenance
+		// plumbing: the portal/launcher path surface relocated to
+		// internal/fabricengine in this batch.
 		"_portals":   {"internal/fabricengine"},
 		"_launchers": {"internal/fabricengine"},
-		"_raddle":    {"internal/fabricengine"},
 		// "_lyx"'s declaration moved to internal/lyxdirs (lyxdirs.LyxDirName) in
 		// this slice, the single leaf every module now names both directory
 		// tokens through.
@@ -290,14 +288,16 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		// private dotLyxDirName declarers this slice retired never get a row
 		// here.
 		".lyx": {"internal/lyxdirs"},
-		// "_pattern" is dual-owned: internal/pattern declares DirName for
-		// resolution-path use, and internal/fabricengine declares its own
-		// private patternDirName copy for the one caller that needs the bare
-		// name as a git pathspec argument (pull.go's patternResidueCommits).
-		// internal/lyxcwd's transitional PatternDirName const is gone as of
-		// this card; card 36 leaves this row untouched.
-		"_pattern": {"internal/pattern", "internal/fabricengine"},
 	}
+
+	// "_pattern" and "_raddle" are retired geometry tokens, deliberately
+	// absent from both geometryToken and geometryTokenOwners above rather
+	// than left as unused rows: "_pattern" because the PATTERN surface now
+	// lives inside "_lyx" (internal/pattern builds its paths from
+	// lyxdirs.LyxDirName instead of declaring its own directory token), and
+	// "_raddle" because raddle converged on an anchor-level "_lyx/raddle/"
+	// design with no hub-level presence to police. Do not re-add either row
+	// on the assumption it was dropped by accident.
 
 	// tokenOwnedByDir reports whether dir is one of tok's registered owners.
 	tokenOwnedByDir := func(tok, dir string) bool {

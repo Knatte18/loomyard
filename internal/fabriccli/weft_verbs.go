@@ -89,10 +89,10 @@ func addWeftVerbs(cmd *cobra.Command) {
 		l = resolved
 
 		// Build from fabricengine's own routing set (PathspecNames), never a raw, unfiltered
-		// Config.Dirs(): with _lyx no longer in template.yaml's default, a freshly-initialised
-		// repo's pathspec names only _pattern, so a raw-Dirs() sync would silently stop syncing
-		// _lyx entirely. The routing set can never name .lyx either, since it excludes
-		// structuralNeverCommittedDirs by construction.
+		// Config.Dirs(): with _lyx no longer in template.yaml's default, a repo's pathspec
+		// names only whatever optional directory an operator has added, so a raw-Dirs()
+		// sync would silently stop syncing _lyx entirely. The routing set can never name
+		// .lyx either, since it excludes structuralNeverCommittedDirs by construction.
 		routingNames, err := fabricengine.PathspecNames(fabricengine.BoardDir(l.HubPath))
 		if err != nil {
 			output.Err(out, err.Error())
@@ -145,7 +145,7 @@ paired warp repo's current HEAD, recorded into the correspondence index immediat
 after the commit lands.
 
 Staging is scoped to the structural directories (_lyx, .lyx -- code-injected, never listed in
-the fabric config) plus whatever the fabric config's optional pathspec adds (default: _pattern).
+the fabric config) plus whatever the fabric config's optional pathspec adds (default: none).
 
 Related commands:
   lyx fabric push   — commit then push in the same process
@@ -210,8 +210,9 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
     when it is safe: weft's correspondence is re-anchored to the nearest
     surviving Warp-SHA, warp is reset to the new tip, and a new empty weft
     anchor commit records the fresh correspondence. The result reports which
-    post-anchor weft commits touch _pattern/ and need review, since they were
-    written against a warp baseline that no longer exists upstream.
+    post-anchor weft commits touch _lyx/PATTERN.md or _lyx/pattern/ and need
+    review, since they were written against a warp baseline that no longer
+    exists upstream.
   - Two cases abort loudly and make no change to either repo: local warp
     already carries unpushed commits of its own AND the remote diverged (the
     double-conflict case pull refuses to resolve unattended), or the warp

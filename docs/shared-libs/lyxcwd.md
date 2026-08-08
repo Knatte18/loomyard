@@ -11,7 +11,7 @@ The cap is an allowlist enforced by `internal/lyxcwd/leaf_enforcement_test.go` (
 
 The cwd-≠-worktree-root bug recurs because path math is scattered: each module re-derives the worktree root and cwd relationship ad hoc.
 A single, minimal resolver makes correctness structural, not a matter of discipline — but it stops there.
-Every per-module path (weft siblings, junctions, `_lyx/plan`, `_pattern`, portals, launchers, and so on) is constructed by the module that owns it, joined onto the coordinates `lyxcwd` hands back.
+Every per-module path (weft siblings, junctions, `_lyx/plan`, portals, launchers, and so on) is constructed by the module that owns it, joined onto the coordinates `lyxcwd` hands back.
 
 ## Exported API
 
@@ -77,7 +77,7 @@ No other accessor, weft path, junction path, or per-module subdirectory construc
 
 ## What moved out
 
-Every per-module durable-storage subdirectory (`_lyx/plan`, `_lyx/webster`, `_pattern`,
+Every per-module durable-storage subdirectory (`_lyx/plan`, `_lyx/webster`,
 and the rest) is now that module's own private relative-path constant, joined onto `AnchorPath()` directly by the module that owns it — never a `lyxcwd` function call.
 Weft-sibling paths and junction construction (`WeftWorktree`, `HostLyxLink`, `HostJunctions`, portal and launcher paths,
 and the `Prime`/sibling-worktree-list lookup they are built from) belong to `internal/fabricengine`.
@@ -107,7 +107,7 @@ That follow-up pulls `logger` initialization rework in with it and is out of sco
 **`TestEnforcement` (cwd/root primitives ban):** Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The scan uses a substring check on the raw file bytes (after blanking comments) and fails the build if either token appears in any non-test `.go` file outside the allowlist.
 
-**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_raddle`, `_lyx`, `_pattern`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
+**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_board`, `-weft`, `-HUB`, `_portals`, `_launchers`, `_lyx`, `.lyx`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
 Path-construction contexts are:
 
 - An argument to a `filepath.Join(...)` call.

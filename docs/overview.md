@@ -72,7 +72,7 @@ those are each owned by the module that constructs them.
 - `ResolveWithAnchor(cwd, anchor)` / `ResolveWorktree(root)` — the two ungated variants, for callers that hold something other than an acting cwd (see `docs/shared-libs/lyxcwd.md`).
 
 `Location` carries exactly four fields — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — plus two derived accessors, `WorktreePath()` and `AnchorPath()`.
-Every other geometry token (weft paths, junctions, `_lyx/<module>`, `_pattern`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see `CONSTRAINTS.md`'s Cwd Resolution Invariant for the full per-token ownership map.
+Every other geometry token (weft paths, junctions, `_lyx/<module>`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see `CONSTRAINTS.md`'s Cwd Resolution Invariant for the full per-token ownership map.
 
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
@@ -122,7 +122,7 @@ This separation keeps host commits focused on project code and delegates lyx inf
 |----------|----------|------|---------|
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
-| `_raddle/` | Weft worktree | Weft | Raddle documentation (the raddle nav-doc overlay) |
+| `_lyx/raddle/` | Weft worktree | Weft | Raddle documentation (the raddle nav-doc overlay), reached through the `_lyx` junction like every other `_lyx` subtree |
 | `_board/` | Hub | Board | A second weft worktree, checked out on the host's own unsuffixed default branch (`weft:main` in the common case) — never a separate clone, never `<branch>-weft` |
 | Host source | Host worktree | Host | Project source code |
 
@@ -151,27 +151,27 @@ Worktrees are wired eagerly at `lyx fabric clone`/`lyx fabric add` time — ther
 The wired junction set is not hardcoded,
 and it is not purely the repo-wide `pathspec` list either: it is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
 The two structural sets — `_lyx` and `.lyx` — are injected in code, never read from `fabric.yaml`;
-only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lyx/config/fabric.yaml` (read from `weft:main`, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers`, `_raddle` — that can never be a per-worktree junction).
+only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lyx/config/fabric.yaml` (read from `weft:main`, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers` — that can never be a per-worktree junction).
 Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
-This produces the three concrete junctions this repo ships with today:
+This produces the two concrete junctions this repo ships with today:
 - `<host>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction, structural)
 - `<host>/.lyx` → `<hub>/<slug>-weft/.lyx` (machine-local scratch junction, structural)
-- `<host>/_pattern` → `<hub>/<slug>-weft/_pattern` (PATTERN constraint-injection junction, from the optional `pathspec`, whose default is `_pattern` alone)
 
+The optional `pathspec` default is empty today.
 A future weft-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lyxcwd` code change needed — but that mechanism now applies to *optional* directories only;
 a structural directory is never sourced from `pathspec`.
 
-No `_raddle` junction is wired in this release — `internal/fabricengine/status.go`'s host-pollution scan is explicit that no junction exists for `_raddle` yet;
-it is reserved-only via `fabricengine.HubReservedNames()` rather than present in `pathspec`, and `fabricengine.HostJunctions` has never returned one.
+Raddle content is anchor-level by design — it lives at `_lyx/raddle/`, reached through the existing `_lyx` junction, with no `_raddle` junction of its own now or ever;
+see `manifest/designs/raddle.md`.
 
 Every junction is listed in the warp worktree's own `.git/info/exclude` and is never committed to a `.gitignore` in the user's repo — a tracked entry would advertise that LYX is in use.
 `.lyx` additionally seeds `.lyx/` into the **weft** repo's own `.git/info/exclude` at wiring time, so weft-side scratch never shows as untracked dirt either.
 From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
 A pre-existing real `.lyx` directory — every worktree that predates this junction, since the logger, reed, shuttle, scout, and burler all write `.lyx` unconditionally — is adopted rather than refused: its content is moved into the weft-side target and replaced with the junction, one time, on the first `lyx fabric reconcile` after upgrade.
-`_lyx` and `_pattern` keep the hard refusal (fabric never moves or deletes what might be the user's hand-authored content); `.lyx` is the one exception because its content is always lyx's own machine-local scratch.
+`_lyx` keeps the hard refusal (fabric never moves or deletes what might be the user's hand-authored content); `.lyx` is the one exception because its content is always lyx's own machine-local scratch.
 
 ### Branch model
 
@@ -192,7 +192,7 @@ Weft paths are computed on demand from geometry and do not require a registry.
 
 - **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view. Paired `lyx fabric add` hard-requires a weft repo built by the downstream hub-creator.
 - **`lyx config` command**: ✅ task 008 complete.
-  The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (`_raddle` junction activation and a raddle config schema are **raddle** nav-doc work, not part of this task — they were only historically mis-bundled here.)
+  The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (A raddle config schema is **raddle** nav-doc work, not part of this task — it was only historically mis-bundled here; there is no `_raddle` junction to activate.)
 - **Portals**: unimplemented;
   the weft junction model is the live mechanism. (Symlink-based overlay sharing is not on the critical path.)
 
@@ -289,7 +289,7 @@ The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) la
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
 both folded back into reed — see the `internal/reedengine` package documentation.)
 
-The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_pattern/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (builder implementer, webster fork/Master, burler review+fix, loom plan).
+The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (builder implementer, webster fork/Master, burler review+fix, loom plan).
 
 ## Execution stack (orchestration layers)
 

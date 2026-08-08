@@ -144,7 +144,7 @@ func TestScopedPathspec(t *testing.T) {
 	}{
 		{"root", ".", []string{"_lyx"}, []string{"_lyx"}},
 		{"nested", "sub", []string{"_lyx"}, []string{filepath.Join("sub", "_lyx")}},
-		{"nested_multiple_dirs", "sub", []string{"_lyx", "_raddle"}, []string{filepath.Join("sub", "_lyx"), filepath.Join("sub", "_raddle")}},
+		{"nested_multiple_dirs", "sub", []string{"_lyx", "_extra"}, []string{filepath.Join("sub", "_lyx"), filepath.Join("sub", "_extra")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -64,7 +65,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 
 	// Wire junctions for the new worktree.
-	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName}); err != nil {
 		t.Fatalf("WireJunctions(%q): %v", slug, err)
 	}
 
