@@ -56,10 +56,10 @@ Per point 6/point 5 of the 2026-08-05 discussion, most modules (the `WebsterDir`
 This is not pedantry: `internal/hubgeometry` exists in the first place because cwd/root confusion was a recurring, real defect source in this codebase (including in LLM-generated code) — shrinking hubgeometry removes the module that used to absorb that confusion in one place, so the naming discipline that prevented it has to move into every call site it used to be centralized in.
 Get this wrong here and the failure mode is the same one hubgeometry was built to prevent, just spread across the ~20 places it now happens instead of one.
 
-**Shipped correction (slice 7): "joins onto `cwd`" above is not what landed.**
-The as-built anchoring table — recorded in the plan's Shared Decisions and mirrored verbatim in `CONSTRAINTS.md`'s Cwd Resolution Invariant — is anchor-aware, not a single blanket base: the durable, weft-synced, git-tracked `_lyx` group (`PlanDir`, `DiscussionDir`, `LoomStatusFile`, `WebsterDir`, `PatternDir`,
+**Shipped correction (slice 7, updated slice 9): "joins onto `cwd`" above is not what landed.**
+The as-built anchoring table — recorded in the plan's Shared Decisions — is anchor-aware, not a single blanket base: the durable, weft-synced, git-tracked `_lyx` group (`PlanDir`, `DiscussionDir`, `LoomStatusFile`, `WebsterDir`, `PatternDir`,
 and the rest) joins onto `Location.AnchorPath()`, not `cwd` directly;
-the ephemeral, machine-bound, never-git-tracked `.lyx` group (`WorktreeLogsDir`, `ScoutDaemonStateFile`, `ScoutDaemonLock`) joins onto `Location.WorktreePath()`;
+the ephemeral, machine-bound, never-git-tracked `.lyx` group (`logger.LogsDir`, renamed from `WorktreeLogsDir`; `ScoutDaemonStateFile`, `ScoutDaemonLock`) also joins onto `Location.AnchorPath()` as of slice 9, no longer `Location.WorktreePath()` — the two groups now share one anchoring rule, so a subpath-anchored repo has exactly one `.lyx` root instead of two;
 and `HubLogsDir` alone joins onto `Location.HubPath`, deliberately hub-anchored so one reed server per hub resolves to one deterministic place.
 A blanket "join onto `cwd`" would have silently relocated the last three.
 The two docs must not be allowed to disagree — re-read both after editing either.
