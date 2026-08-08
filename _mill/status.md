@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-dotlyx-group-reanchor-and-logger-sink
+phase: approved-no-transients-under-lyx-guard
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-lyxdirs-single-declarer  '2026-08-08T10:49:19Z'
 approved-treadle-perch-scratch-seam  '2026-08-08T11:09:24Z'
 approved-webster-builder-loom-scratch-seam  '2026-08-08T12:47:22Z'
 approved-dotlyx-group-reanchor-and-logger-sink  '2026-08-08T13:05:36Z'
+approved-no-transients-under-lyx-guard  '2026-08-08T13:09:59Z'
 ```
 
 ## Batches
@@ -66,9 +67,10 @@ batches:
     commit_sha: 2c83906bab43d5fbea2ae8d128a6733d1836c527
     verify_baseline_failures: []
   - name: no-transients-under-lyx-guard
-    state: running
+    state: approved
     implementer_session: 8ec8392c-f5cb-487a-8cb1-65789c838a4a
     start_sha: 0f2c754939877caf1cd610f4c8b03811acf0d790
+    commit_sha: ecad655f34ab4487a03124009db5e290b810f488
     verify_baseline_failures: []
   - name: retire-cross-module-excludes
     state: pending
