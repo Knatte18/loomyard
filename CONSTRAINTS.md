@@ -63,14 +63,20 @@ round runners adapt onto treadle's `RoundRunner` vocabulary in their own package
 - Reverse import (`tokenvocab` → `reed`/`loom`/any feature package) is never allowed.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
-## Scoutengine Leaf Invariant
+## Scout Engine-Seam Invariant
 
-`internal/scoutengine` production code imports only stdlib, `internal/configengine`, `internal/lock`, `internal/proc`, `internal/logger`, and `gopkg.in/yaml.v3` — no `internal/output`, `cobra`, or `internal/*cli`.
-Returns typed `(T, error)`, never touches `io.Writer`/exit codes/the output envelope;
+`internal/scoutengine` never imports `internal/output`, `cobra`, or any `internal/*cli` package.
+It returns typed `(T, error)` and never touches `io.Writer`, exit codes, or the output envelope;
 `internal/scoutcli` maps engine results into that envelope.
 
 - `scoutcli` → `scoutengine` is the only allowed direction.
-- **Enforced by** `internal/scoutengine/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
+- No import allowlist.
+  Scout draws on the shared-infrastructure layer as freely as `websterengine`, `builderengine`, `perchengine`, and `loomengine` do.
+  Policed as a banned list on direct imports only, never the transitive closure — a banned package reached through a permitted one is not caught, by design. `internal/clihelp` is named explicitly because it carries cobra without matching the `*cli` suffix.
+- **Narrower file-scoped guard.** `internal/scoutengine/lspclient.go` imports stdlib plus `internal/logger` and nothing else, keeping the ported stdio LSP client liftable back out of lyx.
+  The rule is that allowed set exactly. `internal/logger` itself imports `internal/lyxcwd` and `internal/proc`, so the file must never be described as stdlib-only or hermetic — it is neither.
+- **Enforced by** `internal/scoutengine/seam_enforcement_test.go` (`TestEngineSeamInvariant_BannedImports`) for the banned list,
+  and `internal/scoutengine/lspclient_guard_test.go` (`TestLSPClientGuard_StdlibAndLoggerOnly`) for the file-scoped guard.
 
 ## Pattern Leaf Invariant
 
