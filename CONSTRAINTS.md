@@ -32,9 +32,17 @@ Fuller design/how-to lives in godoc and `docs/`.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
   and `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap.
 
+## Lyxdirs Single-Declarer Invariant
+
+`internal/lyxdirs` is the sole declarer of the two lyx directory-name tokens, `_lyx` (`LyxDirName`) and `.lyx` (`DotLyxDirName`).
+
+- `internal/lyxdirs` stays stdlib-only, a zero-import leaf, so every module that needs either token can import it without cycle risk.
+- No other production file may name either literal in path-construction context (a `filepath.Join` argument, a `+` operand, or a string const declaration value) — every caller uses `lyxdirs.LyxDirName` / `lyxdirs.DotLyxDirName` instead.
+- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`).
+
 ## lyxtest Leaf Invariant
 
-`internal/lyxtest` production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, and `internal/configengine`.
+`internal/lyxtest` production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, `internal/configengine`, and `internal/lyxdirs`.
 `internal/configreg` and every feature package (`boardengine`/`boardcli`, `ideengine`/`idecli`, `selfreportengine`/`selfreportcli`, `fabricengine`/`fabriccli`) are excluded by construction — feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle.
 
 - Tests needing real config call `lyxtest.SeedConfig(tb, dir, map[string]string{...})`.
