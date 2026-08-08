@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-seam-tests
+phase: approved-docs-alignment
 slug: scout-seam-conversion
 branch: scout-seam-conversion
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-08-08T06:35:53Z'
 planned  '2026-08-08T06:36:18Z'
 implementing  '2026-08-08T06:36:50Z'
 approved-seam-tests  '2026-08-08T06:42:31Z'
+approved-docs-alignment  '2026-08-08T06:45:26Z'
 ```
 
 ## Batches
@@ -39,8 +40,9 @@ batches:
     commit_sha: 3d1afe71e55d70e089323ef09a70185b45a18306
     verify_baseline_failures: []
   - name: docs-alignment
-    state: running
+    state: approved
     implementer_session: d108eb21-0f50-40b4-bb77-baf0079fcb3e
     start_sha: 6f2387e1c87f8704cca2dad113de12f8458a63e4
+    commit_sha: 7a34062629efaea2bbd9656cd222e0f5d3d0b68e
     verify_baseline_failures: []
 ```
