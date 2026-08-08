@@ -12,10 +12,7 @@ package reedengine
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
-
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // planPaneTarget decides how the next strand realization obtains its pane:
@@ -142,7 +139,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 // loadOrInitStateLocked loads or initializes a ReedState stamped with
 // the engine's server/socket/session identity for a fresh worktree.
 func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
-	st, err := LoadState(filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName))
+	st, err := LoadState(e.stateDir())
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
@@ -182,7 +179,7 @@ func (e *Engine) reconcileApplyPersistLocked(st *ReedState) ([]LivePane, error) 
 	if err := e.applyLayoutLocked(st, live); err != nil {
 		return nil, fmt.Errorf("apply layout: %w", err)
 	}
-	if err := SaveState(filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName), st); err != nil {
+	if err := SaveState(e.stateDir(), st); err != nil {
 		return nil, fmt.Errorf("save state: %w", err)
 	}
 
