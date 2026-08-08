@@ -3,8 +3,9 @@
 The **entry gate** that converts "the process started somewhere" into "these are the coordinates of a legal lyx worktree, or here is why this is not one".
 It is deliberately no longer a geometry owner — it does not construct any path from a structural token — it resolves the active `Location` from a working directory and exposes the handful of typed accessors every caller derives from that `Location`.
 
-**Dependency direction (Go enforces it):** `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — nothing else, ever.
+**Dependency direction (test-enforced):** `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — nothing else, ever.
 This ceiling is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic: any wider import set would risk a cycle back through one of the packages `lyxcwd` itself sits below.
+The cap is an allowlist enforced by `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`), not by the Go compiler — a same-cycle-free but out-of-allowlist import would compile fine and only this test catches it.
 
 ## The problem
 
@@ -116,5 +117,7 @@ Path-construction contexts are:
 Matching is **whole-token** (exact equality after `strconv.Unquote`, not substring), so compound names like `_boardroom` or `-weft-bare` are not flagged.
 Test files (`*_test.go`) are excluded from the scan — test geometry is a code-review obligation, not machine-enforced.
 A `scanned_non_empty` sub-test guards against a misconfigured walk that would silently produce a vacuous pass.
+
+A third, separately-filed test — `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) — enforces the import cap described above: it walks this package's own production `.go` files and fails on any import outside stdlib plus `internal/gitexec`.
 
 See [CONSTRAINTS.md](../../CONSTRAINTS.md) for the full invariant specification, the current per-token ownership map, and guidance for new code.

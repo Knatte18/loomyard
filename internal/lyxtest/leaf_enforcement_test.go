@@ -1,5 +1,6 @@
-// leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: internal/lyxtest must not import
-// internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli,
+// leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: production code in internal/lyxtest
+// imports ONLY the standard library and internal/configengine, internal/lyxcwd, internal/weftname —
+// never internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli,
 // selfreportengine/selfreportcli, fabricengine/fabriccli).
 // Tests that need real config seed it via SeedConfig with a configreg-free map[string]string (never
 // configreg types).
@@ -16,34 +17,28 @@ import (
 	"testing"
 )
 
-// TestLeafInvariant verifies that lyxtest imports only stdlib and internal/lyxcwd, never
-// internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli,
-// selfreportengine/selfreportcli, or fabricengine/fabriccli).
-// It uses go/parser to read actual import paths, avoiding false positives from string literals in
-// doc comments.
-func TestLeafInvariant(t *testing.T) {
+// allowedImports are the only non-stdlib import paths production code in
+// this package may use.
+var allowedImports = map[string]bool{
+	"github.com/Knatte18/loomyard/internal/configengine": true,
+	"github.com/Knatte18/loomyard/internal/lyxcwd":       true,
+	"github.com/Knatte18/loomyard/internal/weftname":     true,
+}
+
+// TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in this package directory
+// imports only stdlib (no '.'
+// in the first path segment) or an entry in allowedImports.
+// The allowlist must never be widened to admit a feature package: feature packages' own tests import
+// lyxtest, so a reverse import would close a test-build cycle.
+// It uses go/parser with ImportsOnly so only real import declarations are inspected, never string
+// literals in doc comments.
+func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	// Resolve the lyxtest source directory via runtime.Caller.
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("could not determine test file location")
+		t.Fatal("could not determine lyxtest source directory location")
 	}
 	lyxtestDir := filepath.Dir(file)
-
-	// List of banned import paths (canonical Go import paths). These are the
-	// feature packages and configreg that would close a test-build cycle if
-	// lyxtest imported them (feature tests import lyxtest; a reverse import
-	// would make the cycle: lyxtest → feature → lyxtest).
-	bannedImports := []string{
-		"github.com/Knatte18/loomyard/internal/configreg",
-		"github.com/Knatte18/loomyard/internal/boardengine",
-		"github.com/Knatte18/loomyard/internal/boardcli",
-		"github.com/Knatte18/loomyard/internal/ideengine",
-		"github.com/Knatte18/loomyard/internal/idecli",
-		"github.com/Knatte18/loomyard/internal/selfreportengine",
-		"github.com/Knatte18/loomyard/internal/selfreportcli",
-		"github.com/Knatte18/loomyard/internal/fabricengine",
-		"github.com/Knatte18/loomyard/internal/fabriccli",
-	}
 
 	var failures []string
 
@@ -52,46 +47,47 @@ func TestLeafInvariant(t *testing.T) {
 		if err != nil {
 			return err
 		}
-
 		if d.IsDir() {
 			return nil
 		}
-
-		// Skip test files and non-.go files.
 		if strings.HasSuffix(d.Name(), "_test.go") || !strings.HasSuffix(d.Name(), ".go") {
 			return nil
 		}
 
-		// Parse the file with ImportsOnly to extract import declarations.
 		fset := token.NewFileSet()
 		astFile, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if err != nil {
-			// Skip files that fail to parse (should not happen for valid Go).
 			t.Logf("warning: failed to parse %s: %v", path, err)
 			return nil
 		}
 
-		// Check each import in the file.
 		for _, imp := range astFile.Imports {
 			importPath := strings.Trim(imp.Path.Value, `"`)
 
-			// Check if the import is in the banned list.
-			for _, banned := range bannedImports {
-				if importPath == banned {
-					relPath, _ := filepath.Rel(lyxtestDir, path)
-					failures = append(failures, relPath+": "+importPath)
-				}
+			// A stdlib import path has no '.' in its first path segment
+			// (e.g. "fmt", "os", "go/parser") — a domain that would need a
+			// registered TLD (e.g. "github.com/...") always contains one.
+			firstSegment := importPath
+			if idx := strings.IndexByte(importPath, '/'); idx >= 0 {
+				firstSegment = importPath[:idx]
 			}
+			isStdlib := !strings.Contains(firstSegment, ".")
+
+			if isStdlib || allowedImports[importPath] {
+				continue
+			}
+
+			relPath, _ := filepath.Rel(lyxtestDir, path)
+			failures = append(failures, relPath+": "+importPath)
 		}
 
 		return nil
 	})
-
 	if err != nil {
 		t.Fatalf("failed to walk lyxtest directory: %v", err)
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("lyxtest Leaf Invariant violated; banned imports found: %v", failures)
+		t.Errorf("lyxtest Leaf Invariant violated; imports outside the allowlist (stdlib + configengine, lyxcwd, weftname) found: %v", failures)
 	}
 }
