@@ -4,9 +4,9 @@
 // fabricengine.Unwire, the new per-worktree teardown verb: full on-disk
 // junction removal (including a stale junction absent from the current
 // pathspec, proving on-disk-scan enumeration rather than a config
-// name-set), weft-side preservation for both _lyx and _pattern, idempotency
-// on a never-wired host, and preservation of the repo-wide weft:main records
-// for a later reconcile re-wire.
+// name-set), weft-side preservation for both _lyx and its optional junction,
+// idempotency on a never-wired host, and preservation of the repo-wide
+// weft:main records for a later reconcile re-wire.
 //
 // Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig
 // from reconcile_stale_registration_test.go; shares the single TestMain in
@@ -29,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan enumeration property:
@@ -52,11 +51,11 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
-	// Wire the desired trio (_lyx, .lyx, _pattern — topology.Add above already wired the
-	// repo-wide set, .lyx included) plus a stale name (_extra) that is present on disk but
+	// Wire the desired trio (_lyx, .lyx, _extra — topology.Add above already wired the
+	// repo-wide set, .lyx included) plus a stale name (_other) that is present on disk but
 	// absent from any pathspec — Unwire's on-disk scan must remove it too, unlike a
 	// config-name-set-driven teardown.
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", ".lyx", "_pattern", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", ".lyx", "_extra", "_other"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
@@ -67,13 +66,13 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 
 	got := slices.Clone(res.JunctionsRemoved)
 	sort.Strings(got)
-	want := []string{"_extra", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, pattern.DirName}
+	want := []string{"_other", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, "_extra"}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("res.JunctionsRemoved (sorted) = %v; want %v", got, want)
 	}
 
-	for _, name := range []string{"_extra", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, pattern.DirName} {
+	for _, name := range []string{"_other", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, "_extra"} {
 		link := filepath.Join(hostLayout.WorktreePath(), name)
 		if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
 			t.Errorf("junction %s still exists after Unwire (stat err: %v)", link, statErr)
@@ -81,15 +80,16 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	}
 }
 
-// TestUnwire_PreservesWeftLyxAndPattern rewrites the old _lyx-clearing coverage into a preservation
-// test: after Unwire, both weft-side `_lyx` and `.lyx` still exist with their content, WeftContent
-// reports "preserved", and the weft branch carries no "lyx fabric unwire: clear _lyx" commit — the
-// last is asserted by inspecting the weft log, not by counting commits, since an unrelated commit
-// landing on the weft branch during setup would otherwise make a bare commit-count assertion fragile.
-func TestUnwire_PreservesWeftLyxAndPattern(t *testing.T) {
+// TestUnwire_PreservesWeftLyxAndOptionalContent rewrites the old _lyx-clearing coverage into a
+// preservation test: after Unwire, both weft-side `_lyx` and `.lyx` still exist with their content,
+// WeftContent reports "preserved", and the weft branch carries no "lyx fabric unwire: clear _lyx"
+// commit — the last is asserted by inspecting the weft log, not by counting commits, since an
+// unrelated commit landing on the weft branch during setup would otherwise make a bare commit-count
+// assertion fragile.
+func TestUnwire_PreservesWeftLyxAndOptionalContent(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	const slug = "unwire-preserves-lyx-and-pattern"
+	const slug = "unwire-preserves-lyx-and-extra"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
 	topology := fabricengine.NewTopology(fabricengine.Config{})
@@ -101,7 +101,7 @@ func TestUnwire_PreservesWeftLyxAndPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", ".lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", ".lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
@@ -116,10 +116,10 @@ func TestUnwire_PreservesWeftLyxAndPattern(t *testing.T) {
 	if err := os.WriteFile(dotLyxFile, []byte("scratch state"), 0o644); err != nil {
 		t.Fatalf("seed weft .lyx content: %v", err)
 	}
-	weftPatternDir := filepath.Join(fabricengine.WeftWorktreePath(hostLayout, slug), hostLayout.AnchorRel, pattern.DirName)
-	patternFile := filepath.Join(weftPatternDir, "PATTERN.md")
-	if err := os.WriteFile(patternFile, []byte("# constraints\n"), 0o644); err != nil {
-		t.Fatalf("seed weft _pattern content: %v", err)
+	weftExtraDir := filepath.Join(fabricengine.WeftWorktreePath(hostLayout, slug), hostLayout.AnchorRel, "_extra")
+	extraFile := filepath.Join(weftExtraDir, "notes.md")
+	if err := os.WriteFile(extraFile, []byte("# constraints\n"), 0o644); err != nil {
+		t.Fatalf("seed weft _extra content: %v", err)
 	}
 
 	weftWorktree := fabricengine.WeftWorktreePath(hostLayout, slug)
@@ -155,13 +155,15 @@ func TestUnwire_PreservesWeftLyxAndPattern(t *testing.T) {
 		t.Errorf("weft .lyx scratch content changed after Unwire: %q", string(content))
 	}
 
-	// _pattern content is deliberately never touched by Unwire.
-	content, err = os.ReadFile(patternFile)
+	// _extra content is deliberately never touched by Unwire — this is the same load-bearing
+	// property the _lyx and .lyx assertions above pin, and after this task _lyx/PATTERN.md is
+	// exactly the kind of hand-authored content this preservation protects.
+	content, err = os.ReadFile(extraFile)
 	if err != nil {
-		t.Fatalf("read PATTERN.md after Unwire: %v", err)
+		t.Fatalf("read notes.md after Unwire: %v", err)
 	}
 	if string(content) != "# constraints\n" {
-		t.Errorf("PATTERN.md content changed after Unwire: %q", string(content))
+		t.Errorf("notes.md content changed after Unwire: %q", string(content))
 	}
 
 	logAfter, _, exitCode, err := gitexec.RunGit([]string{"log", "--format=%s"}, weftWorktree)
@@ -243,7 +245,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
