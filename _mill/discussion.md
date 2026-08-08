@@ -31,7 +31,7 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
   **Already applied in this branch during mill-start** (see the "CONSTRAINTS.md pre-staged" Decision below) — mill-plan must plan around the file as it now stands, not as the wiki task body describes it.
 - `internal/scoutengine/leaf_enforcement_test.go` → renamed to `internal/scoutengine/seam_enforcement_test.go`, converted from allowlist to banned list, test function renamed to `TestEngineSeamInvariant_BannedImports`.
 - New file `internal/scoutengine/lspclient_guard_test.go` with `TestLSPClientGuard_StdlibAndLoggerOnly` — a file-scoped guard asserting `lspclient.go` imports stdlib plus `internal/logger` and nothing else.
-- `internal/scoutengine/doc.go` — the "The engine/CLI split" paragraph (lines 24–34), which restates the allowlist and is already factually wrong (it omits `internal/logger`, which `ensureserver.go` and `lspclient.go` both import).
+- `internal/scoutengine/doc.go` — the whole "The engine/CLI split" paragraph (lines 22–34; the allowlist enumeration itself sits at 24–26), which restates the allowlist and is already factually wrong (it omits `internal/logger`, which `ensureserver.go` and `lspclient.go` both import).
   Per `docs/overview.md:362` this package doc **is** scout's module doc — the design doc was deleted on landing — so the repo's docs-land-in-the-same-commit rule binds it.
 - `docs/overview.md:252` — the phrase "`internal/scoutengine` is a cycle-free leaf" becomes "a cycle-free engine".
   One-word fix so the overview stops using a term with no invariant behind it.
@@ -53,8 +53,11 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 
 ### CONSTRAINTS.md pre-staged during mill-start
 
-- Decision: the `CONSTRAINTS.md` scout-section rewrite was applied to the working tree **during mill-start**, before the discussion-review rounds, rather than being left for mill-go.
-  The committed section now reads "## Scout Engine-Seam Invariant" with the banned-list framing, the no-allowlist bullet, the file-scoped-guard bullet, and an "Enforced by" line naming both new test paths.
+- Decision: the `CONSTRAINTS.md` scout-section rewrite was written **during mill-start**, before the discussion-review rounds, rather than being left for mill-go.
+  It is **already committed and pushed on this branch** — commit `5748a22f`, "mill-start: write discussion.md for scout-seam-conversion", alongside this discussion file.
+  The section now reads "## Scout Engine-Seam Invariant" with the banned-list framing, the no-allowlist bullet, the file-scoped-guard bullet, and an "Enforced by" line naming both new test paths.
+  **mill-go does not re-apply or re-commit that hunk** — no plan card owns it.
+  The plan's `CONSTRAINTS.md` obligation is limited to *verifying* the committed section still matches what the tests end up named, and amending only if a later decision changes a test path or function name.
 - Rationale: operator instruction. `CONSTRAINTS.md` is authoritative and is read by every reviewer at the start of every session (per the repo's own `CLAUDE.md`).
   If the discussion said "scout has no allowlist" while `CONSTRAINTS.md` still said "imports only stdlib, configengine, lock, proc, logger, yaml", every review round would spend its findings on that contradiction instead of on the actual design.
 - Consequence mill-plan must account for: `CONSTRAINTS.md`'s "Enforced by" line already names `seam_enforcement_test.go` (`TestEngineSeamInvariant_BannedImports`) and `lspclient_guard_test.go` (`TestLSPClientGuard_StdlibAndLoggerOnly`), **neither of which exists yet**.
@@ -68,8 +71,10 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 - Decision: `internal/scoutengine` gets no import allowlist.
   The only import rule is the negative one: never `internal/output`, never `cobra`, never any `internal/*cli` package.
 - Rationale: direct peer precedent.
-  Every other engine module in the repo — `websterengine`, `builderengine`, `loomengine`, `perchengine`, `burlerengine`, `reedengine`, `fabricengine`, `shuttleengine`, `boardengine` — has **no import guard of any kind** and draws freely on the shared-infrastructure layer.
-  Their non-stdlib import sets (surveyed during exploration) are:
+  No other engine module in the repo carries an import **allowlist**;
+  they draw freely on the shared-infrastructure layer.
+  (This is a claim about allowlists specifically, not about guards in general — `internal/shuttleengine` does have an import guard, a single-import **banned** check, and this task deliberately mirrors it. `internal/boardengine`, `internal/websterengine`, and `internal/builderengine` likewise carry call-site guards over in `cmd/lyx`. `internal/treadleengine` is the sole engine with an allowlist, and `leaf-invariant-audit` is separately examining it.)
+  The peer non-stdlib import sets, surveyed during exploration:
   - `websterengine`: batcher, configengine, fabricengine, gitexec, gitrepo, lock, lyxcwd, modelspec, pattern, planparser, shuttleengine, state, stencil, yaml
   - `builderengine`: configengine, fabricengine, gitexec, lock, lyxcwd, modelspec, pattern, shuttleengine, state, stencil, yaml
   - `loomengine`: configengine, fabricengine, lyxcwd, modelspec, pattern, planparser, shuttleengine, state, stencil, yaml
@@ -80,8 +85,6 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 
   The single property all of them share is the absence of `output`/`cobra`/`*cli`.
   That is what "a full lyx module" means structurally, and it is exactly the banned list.
-  `treadleengine` is the one engine that does carry an allowlist, and `leaf-invariant-audit` is separately examining it;
-  it is not a counter-precedent this task should mirror.
 - Rejected: keeping a trimmed allowlist that merely adds `internal/lyxcwd` — rejected because it leaves the same rent-charging structure in place for whatever the *next* legitimate dependency turns out to be, and the allowlist's isolation claim is already false via `logger`.
 
 ### Section renamed to "Scout Engine-Seam Invariant"
@@ -99,11 +102,32 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
   - exact match on `github.com/Knatte18/loomyard/internal/output`
   - `strings.Contains(importPath, "spf13/cobra")`
   - `strings.Contains(importPath, "/internal/") && strings.HasSuffix(importPath, "cli")`
+
+  Four further changes to the same file, each load-bearing:
+  - **The file's header comment (lines 1–7) is rewritten** to the seam/banned-list framing: it states the seam rule, names `CONSTRAINTS.md`'s "Scout Engine-Seam Invariant" as the recorded invariant, and drops both the enumerated allowlist and the false claim that this check "keeps the LSP subprocess client stdlib-only" (that property now belongs to `lspclient_guard_test.go`, and even there it is stdlib **plus `logger`**).
+    Leaving that sentence in a file this task is rewriting would be the same defect the task is fixing in `doc.go`.
+  - **The closing `t.Errorf` (line 101) is rewritten** — it currently prints "imports outside the allowlist (stdlib + configengine + lock + proc + logger + yaml.v3)".
+    The new message names the invariant and the banned imports found.
+    The failure message is what a future violator actually reads, so it must not describe a rule that no longer exists.
+  - **The trailing catch-all** at lines 90–91 (`failures = append(failures, relPath+": "+importPath)`, reached by any import that is neither stdlib nor allowlisted) **is deleted.**
+    Under a banned list it is not merely dead — it is wrong: it would flag `internal/logger` and `gopkg.in/yaml.v3` as violations.
+    Only the three predicates may append a failure.
+  - **The `isStdlib` heuristic** (lines 61–70) **is removed from this file and moved into `lspclient_guard_test.go`.** A banned list has no notion of stdlib — it asks only "is this import one of the three banned shapes?" — so the seam test needs the heuristic for nothing.
+    The guard test is its sole remaining consumer, so the helper lives there rather than becoming a package-scope helper parked in a file that does not use it.
 - Rationale: the file name must stop saying `leaf_`;
   `shuttleengine` and `treadleengine` both use `seam_enforcement_test.go` for this exact shape.
   The three predicates are already written, already produce violation-specific failure messages naming which of the three rules broke, and the `*cli` suffix predicate catches future `internal/*cli` packages with zero list maintenance — the one maintenance-free property worth keeping from the old file.
 - Rejected: a flat exact-match `bannedImports []string` in `lyxtest`'s shape — more uniform with the repo's other banned list, but every new `*cli` module would have to be added by hand or slip through silently.
-  Also rejected: banning the whole `github.com/spf13/...` tree (catches pflag/viper too, broader than the invariant claims).
+  Also rejected: banning the whole `github.com/spf13/...` tree (catches pflag/viper too, broader than the invariant claims);
+  keeping the catch-all as a "report anything unrecognised" safety net (that reintroduces the allowlist under another name, and would fail on `logger` today).
+
+### The converted test scans with `os.ReadDir`, not `filepath.WalkDir`
+
+- Decision: `seam_enforcement_test.go` locates its package directory with `runtime.Caller(0)` + `filepath.Dir` and enumerates it with `os.ReadDir`, skipping directory entries, `*_test.go`, and non-`.go` files — replacing the current file's `filepath.WalkDir`.
+- Rationale: the task body names `internal/shuttleengine/seam_enforcement_test.go` as the shape to mirror, and that file uses `os.ReadDir` specifically "so the scan matches the rule's scope: the seam package, not everything beneath it" (its own comment, lines 37–39).
+  Matching it removes a discrepancy that would otherwise sit between this discussion's two sections.
+  The two are behaviourally identical **today** — `internal/scoutengine` has no subdirectories — so this is a decision about the future, not a bug fix: under `WalkDir`, a hypothetical `internal/scoutengine/<sub>` package would silently inherit scout's seam rule without anyone having decided that.
+- Rejected: keeping `filepath.WalkDir` (smaller diff, but it silently extends the rule's scope to future subpackages, and it contradicts the named model).
 
 ### The `lspclient.go` guard allows `internal/logger`, and is never called "stdlib-only"
 
@@ -149,7 +173,7 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 
 - Decision: `doc.go`'s "The engine/CLI split" paragraph is rewritten to state the seam without enumerating imports — roughly "scoutengine returns typed Go results and typed errors and never imports `internal/output`, cobra, or any `internal/*cli` package; `internal/scoutcli` is the sole consumer that maps engine results/errors onto the JSON envelope".
   The words "leaf package" go with it. `docs/overview.md:252`'s "a cycle-free leaf" becomes "a cycle-free engine".
-- Rationale: `doc.go` lines 24–27 currently enumerate the allowlist and are **already wrong** — they omit `internal/logger`, which two production files import.
+- Rationale: `doc.go` lines 22–34 currently enumerate the allowlist (at 24–26) and are **already wrong** — they omit `internal/logger`, which two production files import.
   Leaving them ships a knowingly false module doc, and `docs/overview.md:362` designates this package doc as scout's module doc, so the repo's "docs land in the same commit" rule applies directly.
   `docs/overview.md` is not touched by `leaf-invariant-audit`, so the one-word edit carries no collision risk.
 - Rejected: leaving both files alone to keep the diff to the three files the task body names.
@@ -158,7 +182,7 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 
 - Decision: assertion-only tests, matching every existing guard in the repo (none of `lyxtest`, `shuttleengine`, `pattern`, `modelspec`, `githubclient` has a negative case).
   During implementation, each new test is proven red by temporarily adding a violating import, observing the failure, and reverting.
-- Rationale: consistency with nine existing guards;
+- Rationale: consistency with every existing guard in the repo;
   a table-driven negative case would require refactoring the matcher into a separately-testable predicate, a shape no other guard in the repo uses.
 - Rejected: the table-driven negative case (novel shape, extra surface);
   assertion-only with no red-check at all (how a guard silently rots into a no-op).
@@ -186,8 +210,8 @@ It uses `runtime.Caller(0)` + `filepath.Dir` to locate the package, `os.ReadDir`
 - `runtime.Caller(0)` + `filepath.Dir` is how every guard in the repo locates its own package directory;
   it makes the test independent of the working directory `go test` runs from.
   The new `lspclient_guard_test.go` should resolve `filepath.Join(dir, "lspclient.go")` the same way, and should `t.Fatal` if that file is missing rather than silently passing on zero files scanned — a guard that vacuously passes after a rename is worse than no guard.
-- The stdlib heuristic (`first path segment contains no '.'`) is already written and correct;
-  reuse it rather than inventing a second one. `go/parser` is used specifically to avoid false positives from import-path strings appearing in doc comments — both new tests must keep parsing rather than grepping.
+- The stdlib heuristic (`first path segment contains no '.'`) is already written and correct at `leaf_enforcement_test.go` lines 61–70;
+  **move** it into `lspclient_guard_test.go` rather than inventing a second one — and delete it from the converted seam test, which no longer has any use for it. `go/parser` is used specifically to avoid false positives from import-path strings appearing in doc comments — both new tests must keep parsing rather than grepping.
 - `scoutengine` has three test files behind `//go:build scout`, a tag no pipeline gate compiles (noted in the `scout-lyxcwd-accessors` body).
   Neither new test file should carry a build tag — both must run in the default untagged build.
 - Test Tier Purity Invariant: both test files are untagged, so neither may call `gitexec.RunGit`, `exec.Command`/`exec.CommandContext`, or `lyxtest.Copy*`, and neither may contain those tokens even in a comment or string literal (the check is a raw substring match).
@@ -254,8 +278,8 @@ The deliverable *is* two guard tests, and the testing work is proving they are n
 
 ## Q&A log
 
-- **Q:** Include `internal/scoutengine/doc.go` in scope, given its lines 24–27 restate the allowlist and already omit `internal/logger`? **A:** Yes — rewrite the paragraph as a seam statement, dropping the enumerated import list.
-- **Q:** What may `lspclient.go` import under the new guard, given it already imports `internal/logger` and a literal stdlib-only guard would fail immediately? **A:** Answered by peer-norm survey: no other engine module in the repo has any import guard at all, and the only property all nine share is the absence of `output`/`cobra`/`*cli`. The guard therefore has no peer precedent and survives only as a deliberate, accurately-named exception — stdlib plus `internal/logger`, described as "no lyx dependency except logging", never "stdlib-only".
+- **Q:** Include `internal/scoutengine/doc.go` in scope, given its lines 22–34 restate the allowlist and already omit `internal/logger`? **A:** Yes — rewrite the paragraph as a seam statement, dropping the enumerated import list.
+- **Q:** What may `lspclient.go` import under the new guard, given it already imports `internal/logger` and a literal stdlib-only guard would fail immediately? **A:** Answered by peer-norm survey: no other engine module in the repo carries an import *allowlist*, and the only property they all share is the absence of `output`/`cobra`/`*cli`. A single-file allowed-set guard therefore has no peer precedent and survives only as a deliberate, accurately-named exception — stdlib plus `internal/logger`, described as "no lyx dependency except logging", never "stdlib-only".
 - **Q:** Which files does the new guard cover — `lspclient.go` alone, or also `probe.go`? **A:** `lspclient.go` alone. `probe.go` is stdlib today but is glue that could legitimately grow a dependency.
 - **Q:** Guard file and function name? **A:** `lspclient_guard_test.go` / `TestLSPClientGuard_StdlibAndLoggerOnly`, matching the repo's `*_guard_test.go` convention for narrow guards.
 - **Q:** Rename the converted package test file, or keep `leaf_enforcement_test.go` and rename only the function? **A:** Rename the file to `seam_enforcement_test.go`, matching `shuttleengine` and `treadleengine`.
@@ -263,5 +287,10 @@ The deliverable *is* two guard tests, and the testing work is proving they are n
 - **Q:** Should `docs/overview.md:252`'s "cycle-free leaf" be reworded? **A:** Yes — one-word change to "cycle-free engine".
 - **Q:** New `CONSTRAINTS.md` section name? **A:** "Scout Engine-Seam Invariant", matching the `<Module> <What>-Seam Invariant` shape of the two existing seam sections.
 - **Q:** Where is the `lspclient.go` guard recorded in `CONSTRAINTS.md`? **A:** A bullet inside the new scout seam section, marked as a separate narrower rule, with "Enforced by" naming both tests.
-- **Q:** How are the new guards proven to actually fail? **A:** Assertion-only tests, matching all nine existing guards, each proven red during implementation by a temporary violating import that is then reverted.
+- **Q:** How are the new guards proven to actually fail? **A:** Assertion-only tests, matching every existing guard in the repo, each proven red during implementation by a temporary violating import that is then reverted.
+- **Q:** (review r1) The old test file's header comment and closing `t.Errorf` both restate the allowlist, including the false "keeps the LSP subprocess client stdlib-only" claim — are they in scope? **A:** Yes. Both are rewritten to the seam/banned-list framing; "stdlib-only" is removed from the file entirely. The `t.Errorf` is what a future violator reads, so it must not describe a deleted rule.
+- **Q:** (review r1) What happens to the `isStdlib` heuristic and the trailing catch-all once `allowedImports` is gone? **A:** The catch-all is deleted — under a banned list it would flag `logger` and `yaml.v3` as violations. The stdlib heuristic moves into `lspclient_guard_test.go`, its only remaining consumer, rather than becoming a package-scope helper in a file that no longer needs it.
+- **Q:** (review r1) Does the converted test scan with `filepath.WalkDir` or `os.ReadDir`? **A:** `os.ReadDir`, matching the `shuttleengine` model the task body names. Identical behaviour today (scoutengine has no subdirectories); the difference is that a future subpackage does not silently inherit the seam rule.
+- **Q:** (review r1, note) Is "no import guard of any kind" accurate for peer engines? **A:** No — `shuttleengine` has a banned-import guard, and `boardengine`/`websterengine`/`builderengine` have call-site guards in `cmd/lyx`. The claim is narrowed to "no import **allowlist**", which is what the decision actually rests on.
+- **Q:** (review r1, note) Is the pre-staged `CONSTRAINTS.md` hunk committed or only in the working tree? **A:** Committed and pushed, in `5748a22f`. No plan card owns re-applying it; the plan only verifies it still matches the final test names.
 - **Q:** When is `CONSTRAINTS.md` rewritten? **A:** Immediately, during mill-start, before the discussion-review rounds — so reviewers do not spend their findings on a contradiction between the discussion and a still-stale authoritative doc.
