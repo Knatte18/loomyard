@@ -86,8 +86,9 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 // structurally regardless of pathspec), so this uses a repo-wide config whose pathspec names neither
 // structural directory at all.
 // Healthy loads its junction name-set from the repo-wide fabricengine.BoardDir(l.HubPath) fabric.yaml
-// (card 7), unions it with structuralCommittedDirs, so a worktree with only "_lyx" wired is still
-// reported in sync even though the config on disk names nothing recognisable.
+// (card 7), unions it with both structural directory sets (structuralCommittedDirs,
+// structuralNeverCommittedDirs), so a worktree with only "_lyx" and ".lyx" wired is still reported in
+// sync even though the config on disk names nothing recognisable.
 // A pathspec naming neither structural directory is a legitimate, unenforced reality (doc.go's
 // narrow-pathspec asymmetry note), not a drift shape Healthy should flag.
 //
@@ -116,10 +117,11 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
 
-	// The wired name-set must match what WiredNames/Healthy compute: _lyx
-	// (structural) unioned with the hub-reserved-filtered pathspec ("_other"
-	// here) — neither structural directory is named by the config itself.
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_other"}); err != nil {
+	// The wired name-set must match what WiredNames/Healthy compute: both
+	// structural directories (_lyx, .lyx) unioned with the hub-reserved-filtered
+	// pathspec ("_other" here) — neither structural directory is named by the
+	// config itself.
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", ".lyx", "_other"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 

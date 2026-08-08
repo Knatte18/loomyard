@@ -410,7 +410,11 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 
 				l := fixture.Layout
 				slug := filepath.Base(fixture.Hub)
-				if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+				// Wire the full RepoWiredNames set, .lyx included: Healthy below reads
+				// RepoWiredNames(l) internally, and a .lyx junction absent on disk would report
+				// CauseJunctionMissing for .lyx before this subtest's own corruption is ever
+				// reached.
+				if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", ".lyx", "_pattern"}); err != nil {
 					t.Fatalf("WireJunctions: %v", err)
 				}
 

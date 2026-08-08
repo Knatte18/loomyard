@@ -10,11 +10,11 @@ package fabricengine
 import "testing"
 
 // wiredNamesFromConfig reproduces junctionNames' pure name-arithmetic (dedupUnion of
-// structuralCommittedDirs and the hub-reserved-filtered pathspec directories) without the file I/O
-// junctionNames itself performs, so this file can assert over a hand-built Config with no fixture on
-// disk.
+// structuralCommittedDirs, structuralNeverCommittedDirs, and the hub-reserved-filtered pathspec
+// directories) without the file I/O junctionNames itself performs, so this file can assert over a
+// hand-built Config with no fixture on disk.
 func wiredNamesFromConfig(cfg Config) []string {
-	return dedupUnion(structuralCommittedDirs, filterHubReserved(cfg.Dirs()))
+	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs()))
 }
 
 // TestWiredNames_ContainsLyxEvenForAConfigNamingNeitherStructuralDirectory asserts that the wired
@@ -64,6 +64,25 @@ func TestPathspecNames_ContainsLyxButNeverDotLyx(t *testing.T) {
 	}
 	if containsName(got, ".lyx") {
 		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, got, ".lyx")
+	}
+}
+
+// TestWiredNames_ContainsDotLyxWhilePathspecNamesNeverDoes asserts the deliberate asymmetry batch 8
+// introduces: the wired name-set now contains `.lyx` (structuralNeverCommittedDirs folded in), while
+// the pathspec/commit-routing set still never does — the one assertion that pins the difference
+// between the two sets is exactly structuralNeverCommittedDirs, for a Config naming neither
+// structural directory.
+func TestWiredNames_ContainsDotLyxWhilePathspecNamesNeverDoes(t *testing.T) {
+	cfg := Config{Pathspec: "_extra"}
+
+	wired := wiredNamesFromConfig(cfg)
+	if !containsName(wired, ".lyx") {
+		t.Errorf("wiredNamesFromConfig(%+v) = %v; want it to contain %q", cfg, wired, ".lyx")
+	}
+
+	routing := pathspecNames(cfg)
+	if containsName(routing, ".lyx") {
+		t.Errorf("pathspecNames(%+v) = %v; want it to NEVER contain %q", cfg, routing, ".lyx")
 	}
 }
 
