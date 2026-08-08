@@ -12,12 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// DirName is the directory name for the PATTERN constraint-injection surface within a worktree
-// (i.e. <worktree>/_pattern).
-// It is this package's own declaration of the "_pattern" geometry token;
-// use Dir/File/FileHere to obtain the paths built from it.
-const DirName = "_pattern"
-
 // patternFileName is the PATTERN entry-point filename. It is this package's
 // single declaration of the filename; File and PathspecFile both build from
 // it so the literal is written exactly once.
@@ -32,11 +26,6 @@ const PathspecFile = lyxdirs.LyxDirName + "/" + patternFileName
 // internal/pattern is its single declarer;
 // internal/fabricengine consumes it for the PatternResidue pathspec.
 const PathspecDir = lyxdirs.LyxDirName + "/pattern"
-
-// Dir returns the path to the _pattern directory within a baseDir.
-func Dir(baseDir string) string {
-	return filepath.Join(baseDir, DirName)
-}
 
 // File returns the path to the PATTERN.md file within a baseDir.
 func File(baseDir string) string {

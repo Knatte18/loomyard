@@ -61,8 +61,8 @@ func TestDirective_ActiveWithFile(t *testing.T) {
 	}
 }
 
-// TestDirective_InactiveWithoutFile covers the two ordinary inactive cases: the _pattern directory
-// present without PATTERN.md (the normal state lyx init leaves behind),
+// TestDirective_InactiveWithoutFile covers the two ordinary inactive cases: an unrelated stray
+// directory present without PATTERN.md,
 // and neither present at all.
 func TestDirective_InactiveWithoutFile(t *testing.T) {
 	tests := []struct {
@@ -73,7 +73,7 @@ func TestDirective_InactiveWithoutFile(t *testing.T) {
 			name: "DirPresentFileAbsent",
 			setup: func(t *testing.T, root string) {
 				t.Helper()
-				if err := os.MkdirAll(filepath.Join(root, "_pattern"), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Join(root, "stray_dir"), 0o755); err != nil {
 					t.Fatalf("MkdirAll = %v", err)
 				}
 			},

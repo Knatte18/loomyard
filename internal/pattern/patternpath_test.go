@@ -1,5 +1,5 @@
-// patternpath_test.go covers the _pattern geometry surface this package owns: the DirName constant
-// and the Dir/File/FileHere constructors.
+// patternpath_test.go covers the path-construction surface this package owns: the File/FileHere
+// constructors and the PathspecFile/PathspecDir pathspec constants.
 // Every case here is pure filepath.Join arithmetic — no subprocess is spawned and no fixture tree
 // is copied — so this file stays untagged.
 
@@ -23,26 +23,6 @@ func newTestLocation(hub, worktreeRoot, relPath string) *lyxcwd.Location {
 		HubPath:      hub,
 		WorktreeName: filepath.Base(worktreeRoot),
 		AnchorRel:    relPath,
-	}
-}
-
-// TestDir_Free asserts Dir(baseDir)'s join.
-func TestDir_Free(t *testing.T) {
-	tests := []struct {
-		name    string
-		baseDir string
-	}{
-		{"root base", filepath.Join("C:", "hub", "wt")},
-		{"nested base", filepath.Join("C:", "hub", "wt", "services", "api")},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := pattern.Dir(tt.baseDir)
-			want := filepath.Join(tt.baseDir, "_pattern")
-			if got != want {
-				t.Errorf("Dir(%q) = %q; want %q", tt.baseDir, got, want)
-			}
-		})
 	}
 }
 
