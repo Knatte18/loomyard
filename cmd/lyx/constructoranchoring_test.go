@@ -13,8 +13,16 @@
 // For the unanchored fixture every constructor in all three groups is byte-identical to a plain
 // filepath.Join computed independently in this file.
 // For the subpath-anchored fixture, the _lyx-durable group (AnchorPath-anchored) intentionally
-// moves down by AnchorRel, while the .lyx group and HubLogsDir (WorktreePath/HubPath-anchored) stay
-// byte-identical to their unanchored-fixture values.
+// moves down by AnchorRel, while the not-yet-migrated .lyx group and HubLogsDir
+// (WorktreePath/HubPath-anchored) stay byte-identical to their unanchored-fixture values.
+//
+// There are, as of this batch, three groups rather than two: the _lyx-durable group; the
+// already-migrated .lyx group (loomengine.LoomStatusLock, websterengine.PromptsDir/ScratchDir,
+// builderengine.ScratchDir, perchengine.ScratchDir), which this batch has moved onto
+// AnchorPath anchoring ahead of the rest of .lyx; and the not-yet-migrated .lyx group
+// (logger.WorktreeLogsDir, scoutengine.DaemonStateFile/DaemonLock), still WorktreePath-anchored
+// until batch 4 re-anchors it. Batch 4 collapses the already-migrated and not-yet-migrated .lyx
+// groups back into one.
 package main
 
 import (
@@ -65,16 +73,27 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "status.json"))
-	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(lyxBase, "status.json.lock"))
 	assertPath(t, "builderengine.Dir", builderengine.Dir(l), filepath.Join(lyxBase, "builder"))
 	assertPath(t, "builderengine.ReportsDir", builderengine.ReportsDir(l), filepath.Join(lyxBase, "builder", "reports"))
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
-	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(lyxBase, "webster", "prompts"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
 	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, pattern.DirName, "PATTERN.md"))
 
-	// .lyx ephemeral group: WorktreePath-anchored, never git-tracked.
+	// .lyx group, already-migrated subset: AnchorPath-anchored, per this
+	// batch's told-never-derived-scratch-dir and dotlyx-anchors-on-AnchorPath
+	// Shared Decisions. dotLyxAnchorBase is byte-identical to dotLyxBase below
+	// at AnchorRel "." -- batch 4 collapses the two locals back into one once
+	// the rest of .lyx moves onto AnchorPath too.
+	dotLyxAnchorBase := filepath.Join(anchor, ".lyx")
+	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxAnchorBase, "status.json.lock"))
+	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxAnchorBase, "webster", "prompts"))
+	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxAnchorBase, "webster"))
+	assertPath(t, "builderengine.ScratchDir", builderengine.ScratchDir(l), filepath.Join(dotLyxAnchorBase, "builder"))
+	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l), filepath.Join(dotLyxAnchorBase, "perch"))
+
+	// .lyx group, not-yet-migrated subset: still WorktreePath-anchored, never
+	// git-tracked.
 	dotLyxBase := filepath.Join(worktree, ".lyx")
 	assertPath(t, "logger.WorktreeLogsDir", logger.WorktreeLogsDir(l), filepath.Join(dotLyxBase, "logs"))
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
@@ -111,17 +130,28 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "status.json"))
-	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(lyxBase, "status.json.lock"))
 	assertPath(t, "builderengine.Dir", builderengine.Dir(l), filepath.Join(lyxBase, "builder"))
 	assertPath(t, "builderengine.ReportsDir", builderengine.ReportsDir(l), filepath.Join(lyxBase, "builder", "reports"))
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
-	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(lyxBase, "webster", "prompts"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
 	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, pattern.DirName, "PATTERN.md"))
 
-	// .lyx ephemeral group: stays WorktreePath-anchored, ignoring AnchorRel
-	// entirely -- byte-identical to the unanchored fixture's own dotLyxBase.
+	// .lyx group, already-migrated subset: AnchorPath-anchored, so it moves
+	// down by AnchorRel here just like the _lyx-durable group above -- unlike
+	// the not-yet-migrated subset below, which stays WorktreePath-anchored.
+	// Batch 4 re-anchors that subset too and collapses dotLyxAnchorBase and
+	// dotLyxBase back into one local.
+	dotLyxAnchorBase := filepath.Join(anchor, ".lyx")
+	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxAnchorBase, "status.json.lock"))
+	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxAnchorBase, "webster", "prompts"))
+	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxAnchorBase, "webster"))
+	assertPath(t, "builderengine.ScratchDir", builderengine.ScratchDir(l), filepath.Join(dotLyxAnchorBase, "builder"))
+	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l), filepath.Join(dotLyxAnchorBase, "perch"))
+
+	// .lyx group, not-yet-migrated subset: stays WorktreePath-anchored,
+	// ignoring AnchorRel entirely -- byte-identical to the unanchored
+	// fixture's own dotLyxBase.
 	dotLyxBase := filepath.Join(worktree, ".lyx")
 	assertPath(t, "logger.WorktreeLogsDir", logger.WorktreeLogsDir(l), filepath.Join(dotLyxBase, "logs"))
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
