@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-land-audit-corrections
 slug: leaf-invariant-audit
 branch: leaf-invariant-audit
 plan: _mill/plan
@@ -20,6 +20,7 @@ planning  '2026-08-08T06:28:16Z'
 plan-review-r1  '2026-08-08T06:33:30Z'
 planned  '2026-08-08T06:33:56Z'
 implementing  '2026-08-08T06:34:42Z'
+approved-land-audit-corrections  '2026-08-08T06:42:10Z'
 ```
 
 ## Batches
@@ -27,8 +28,9 @@ implementing  '2026-08-08T06:34:42Z'
 ```yaml
 batches:
   - name: land-audit-corrections
-    state: running
+    state: approved
     implementer_session: 886e4778-4bf7-402d-83a8-6e86927aae18
     start_sha: 47d47071e71102884181efbc42e1aa13e3db4050
+    commit_sha: c81bf0a5425b5c970115840948509066b80df2f1
     verify_baseline_failures: []
 ```
