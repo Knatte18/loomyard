@@ -52,7 +52,9 @@ batches:
     commit_sha: 463514772ae8a689f8a877a4e8b738f07d558f6f
     verify_baseline_failures: []
   - name: webster-builder-loom-scratch-seam
-    state: pending
+    state: running
+    implementer_session: 4482d91c-5d98-4f53-8d12-7c244e3c164e
+    start_sha: fbf7354001a1146b46b9a5308cd1eecbf3ca5cfd
     verify_baseline_failures: []
   - name: dotlyx-group-reanchor-and-logger-sink
     state: pending
