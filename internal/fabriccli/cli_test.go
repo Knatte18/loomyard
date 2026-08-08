@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -280,22 +279,22 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 }
 
 // TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern is the card-40 regression
-// guard: with the repo-wide fabric.yaml's pathspec naming only "_pattern" (template.yaml's new
-// default, card 42), "lyx fabric sync" must still commit _lyx content, because weft_verbs.go now
+// guard: with the repo-wide fabric.yaml's pathspec naming only "_extra" (a single non-_lyx name),
+// "lyx fabric sync" must still commit _lyx content, because weft_verbs.go now
 // builds its sync pathspec from fabricengine.PathspecNames — the routing set, which always contains
 // "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
 // This is the single most breakage-prone edit in the whole task: a miss here is silent, not loud.
 func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 
-	// Repo-wide fabric.yaml names only "_pattern" -- the narrowed template
-	// default -- proving _lyx arrives from the routing set structurally, not
-	// from this config.
+	// Repo-wide fabric.yaml names only "_extra" -- a single non-_lyx name --
+	// proving _lyx arrives from the routing set structurally, not from this
+	// config.
 	boardDir := fabricengine.BoardDir(fixture.Container)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("create board config dir: %v", err)
 	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _pattern\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
 		t.Fatalf("write board fabric.yaml: %v", err)
 	}
 
@@ -323,7 +322,7 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 
 	tracked := strings.TrimSpace(gitOutputCLI(t, fixture.WeftPrime, "log", "-1", "--name-only", "--pretty=format:"))
 	if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {
-		t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _pattern\nfiles: %s", fixture.WeftPrime, lyxdirs.LyxDirName, tracked)
+		t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", fixture.WeftPrime, lyxdirs.LyxDirName, tracked)
 	}
 }
 
@@ -459,9 +458,13 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, "backend")
 	}
 
-	// The prime host worktree's _lyx/_pattern junctions must be wired.
+	// The prime host worktree's structural junctions (_lyx and .lyx) must be
+	// wired: .lyx is structural (structuralNeverCommittedDirs) and is wired by
+	// every clone regardless of pathspec, so it is checked here rather than
+	// an optional config-driven name, which a genuinely empty bare weft
+	// clone (zero commits, no pre-existing weft:main fabric.yaml) never wires.
 	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
-	for _, name := range []string{lyxdirs.LyxDirName, pattern.DirName} {
+	for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {
