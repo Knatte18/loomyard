@@ -38,50 +38,62 @@ That independence is the real prize: it is also what makes resume, swapping, and
 The moment a phase needs "something from the conversation" that is not in its input file, the independence is gone and the prompts grow back.
 So the design effort moves from writing long skills to pinning the contracts (`discussion.md` → `plan/` → diff/report).
 
-## The phase machine
+## The phase machine — a flat producer list, no predefined slots
 
-```
-Preflight
-Discussion → [Discussion-review] ─ approved ↓   stuck ─┐
-Plan       → [Plan-review]       ─ approved ↓   stuck ─┤
-Builder    → [Builder-review]    ─ approved ↓   stuck ─┤
-Raddle     (git-diff-targeted docs)                    │
-Finalize                                               │
-                                       (stuck handler)─┘
-```
+`Shed` (see [shed.md](shed.md)) has no predefined slots — no Preflight-slot, no Producer-slot, no shared Finalize.
+It is a generic engine that walks one ordered, flat list of **producers**, each an atomic mechanical action or LLM session, honoring resume/crash-recovery/pause uniformly across the whole list.
+`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list, in what order:
 
-Preflight is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
+| # | Producer | Type | Input | Output |
+|---|---|---|---|---|
+| 1 | `Preflight` | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
+| 2 | `Discussion-Write` | LLM | — (starting point) | `discussion.md`, shape: `discussion-format.md` |
+| 3 | `Discussion-Review` | LLM/`perch` | `discussion.md` → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
+| 4 | `Plan-Sweep` | mechanical | `discussion.md` (approved) | scout inventory (internal artifact, not gated) |
+| 5 | `Plan-Write` | LLM | `discussion.md` + `Plan-Sweep`'s inventory | `plan.md`, shape: `plan-format-v3.md` |
+| 6 | `Plan-Review-Gate` | mechanical | `plan.md` → `plan-format-v3.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 7 | `Plan-Review` | LLM/`perch` | `plan.md` → `plan-format-v3.md` | verdict + review file |
+| 8 | `Batchifier` | mechanical | `plan.md` (approved) + `webster.yaml`'s `batcher:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 9 | `Webster` | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
+| 10 | `Webster-Review` | LLM/`perch` | full diff → plan-v3's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 11 | `Finalize` | mechanical (mostly) | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
+
+`Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the host worktree is clean, weft pairing is present **and in sync** — host branch == weft branch, via `warp`'s drift detection — and `_lyx/status.json` exists and is a coherent fresh seed (no half-finished prior run).
-Each producing phase emits a draft artifact and is followed by a review gate. `approved` advances to the next phase;
-`stuck` routes to the stuck handler (bounce back to an earlier phase, or escalate to a human) — never "keep fixing symptoms."
+On `stuck`, `Shed` bounces back to an earlier producer in the list (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`) or escalates to a human — never "keep fixing symptoms."
 
-**The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub phases well before Discussion/Plan/ Builder are real.
+**Raddle folds into `Finalize`'s own contract** — not a separate producer, and not a separate step after Webster the way earlier drafts of this doc had it.
+Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the Finalize merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
+`Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
-**Raddle** is a dedicated step after Builder — deliberately *not* the implementer's job.
-Experience (millhouse) is that implementers, busy with code, forget the docs;
-a dedicated always-run step removes the dependency on anyone remembering,
-and a fresh-context agent reading only the diff often writes better docs than the implementer who is "done in their head."
-Mechanism: loom stamps a **start-SHA** (host `HEAD`) into the status file when Builder begins;
-the Builder agent **commits its own work** (required anyway — for backtracking, and so there is a diff to read).
-The Raddle step then generates docs over `git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_raddle`) for a targeted update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx fabric sync` (never raw git — this is `fabric`'s responsibility boundary between host and weft).
-The `_raddle` merge-back at Finalize is exactly what `lyx fabric cleanup` gates on. (Whether the Raddle step is itself review-gated is an open choice;
-shown ungated above.)
+A producer's contract is exactly two parts — **Input** (a *pointer* to the format-contract file defining consumed artifact(s)' shape, never a restated copy of its content) and **Output** (same pointer discipline).
+**The pointer rule**: a producer's own instruction file (its prompt/skill) must never duplicate or paraphrase another producer's format-contract content, only point at it (e.g. "read `discussion-format.md`"), so editing that one file alone is sufficient to change what both its producer and its consumers do — the same discipline `mill-start` already applies by reading `task['body']` at runtime rather than embedding a copy of it.
+Review is never a property attached to the producer it reviews — it is always the next, separate producer in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
 
-**Finalize** is loom's last phase — merge-back after Builder-review approval, optional PR creation.
-Substantial enough to warrant its own doc: see [finalize.md](finalize.md) — Finalize is now designed as `Shed`'s shared step (see [shed.md](shed.md)), not loom-specific, though this doc hasn't itself been rewritten to reflect that split yet.
+**The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub producers well before Discussion/Plan/Webster are real.
+
+Open questions, not yet resolved: `Discussion` has no mechanical pre-gate the way `Plan-Review-Gate` mirrors `plan-format-v3.md`'s `depends-on-order` check — asymmetric, possibly by nature (no structural check exists for `Discussion` the way order-validation exists for a card list) rather than an oversight, but worth deciding rather than assuming; and whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition.
+Wiki task `shed-producer-model-scoping` is the dedicated survey pass that reconciles this table against `discussion-format.md`/`plan-format*.md` and `raddle.md`/`finalize.md`, and produces the actual buildable follow-up tasks — this table is settled on the model, not yet on every file-level detail.
 
 ## The gate
 
 Each producing phase is guarded by a **review gate**, and from loom's view that gate is a **black box with two exits — `APPROVED` or `stuck`.** loom calls it, advances on `APPROVED`, and on `stuck` routes to the same stuck handler described above. loom does not see the rounds, the handler/fixer, the cluster reviewers,
 or the progress-judge inside.
 
-That black box is its **own module — `perch`** (`lyx perch run|pause`), a generic profile-driven gate engine reused for every phase (discussion / plan / builder) and standalone. The whole point of the black-box boundary is that loom drives all phases **identically** because the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase. See the `internal/perchengine` package documentation for the round-loop and stuck detection, and the `internal/burlerengine` package documentation for the combined handler/fixer round and the profile schema.
+That black box is its **own module — `perch`** (`lyx perch run|pause`), a generic profile-driven gate engine reused for every phase (discussion / plan / webster) and standalone. The whole point of the black-box boundary is that loom drives all phases **identically** because the verdict contract is invariant; only the review *profile* (rubric + fasit) differs per phase. See the `internal/perchengine` package documentation for the round-loop and stuck detection, and the `internal/burlerengine` package documentation for the combined handler/fixer round and the profile schema.
 
-## Builder — a black box loom drives, the sibling of perch
+## Webster — a black box loom drives, the sibling of perch
 
-From loom's view, **Builder is a black box loom calls, exactly like perch**: `loom` runs `builder run` and, once it returns `done`, drives the terminal **Builder-review gate** — a full `perch` converge-loop over the whole diff. loom does not see Builder's batch loop, its verbs,
+From loom's view, **Webster is a black box loom calls, exactly like perch**: `loom` runs `webster` and, once it returns `done`, drives the terminal **Webster-Review gate** — a full `perch` converge-loop over the whole diff. loom does not see Webster's per-batch fork loop, its verbs,
 or its escalation mechanics, the same way it doesn't see perch's rounds.
-Builder's own internal design (builder's frozen batch loop, and webster, its landed card-level sibling) lives in `internal/websterengine`'s package documentation and [builder-contract.md](../../docs/reference/builder-contract.md), not here — pause stays uniform across loom/perch/Builder (see [pause](#graceful-pause)) because every loop checks the same `pause_requested` flag at its own step boundary, regardless of which module holds the loop.
+Webster's own internal design lives in the `internal/websterengine` package documentation, not here.
+
+**Naming note.** `internal/builderengine`/`internal/buildercli` and [builder-contract.md](../../docs/reference/builder-contract.md) are a real, separate, already-shipped sibling implementer loop — the older plan-format-v2, own-tmux-strand-per-batch design — not an old name for Webster.
+`websterengine`'s own package doc calls itself "a sibling of builderengine's batch-implementation loop."
+This doc's producer list above targets `internal/websterengine` (plan-format-v3, in-session forks) as `loom`'s own Webster producer;
+`builder-contract.md` documents the older Builder/plan-v2 pairing and does not yet have a Webster/plan-v3 equivalent — reconciling that gap is in scope for wiki task `shed-producer-model-scoping`, not resolved here.
+
+Pause stays uniform across loom/perch/Webster (see [pause](#graceful-pause)) because every loop checks the same `pause_requested` flag at its own step boundary, regardless of which module holds the loop.
 
 ## `loom` — the autonomous driver
 
@@ -146,7 +158,7 @@ A dead claude with a finished output file is, to loom, a **done step** — not a
 the running orchestration honours it at the next **step boundary**, never mid-operation — `mill-pause`'s natural-stopping-point property, made systematic.
 
 - **A property of the loop pattern, not loom alone.**
-  Every loop — loom (phases), `perch` (rounds), [Builder](#builder--a-black-box-loom-drives-the-sibling-of-perch) (batches;
+  Every loop — loom (phases), `perch` (rounds), [Webster](#webster--a-black-box-loom-drives-the-sibling-of-perch) (batches;
   its loop is LLM-held,
   but the batch-spawn verb checks the flag in Go before spawning) — checks a `pause_requested` flag in the [status file](#state--contracts) at its step boundary and stops before spawning the next unit.
   The **innermost active loop** honours it first, so pause lands at the finest active boundary (next batch / round / phase).
@@ -158,7 +170,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 - **In-agent interrupt is optional.**
   To pause *faster* than the current unit finishes, `shuttle` (see the `internal/shuttleengine` package documentation) can ESC-and-hold the live agent (session kept warm in the reed server — see [overview.md#modules](../../docs/overview.md#modules), not killed;
   resume continues it in place).
-  With Builder decomposed into batches/cards the boundary wait is short, so this is a latency nicety, not a correctness requirement.
+  With Webster decomposed into batches/cards the boundary wait is short, so this is a latency nicety, not a correctness requirement.
 - **Distinct from crash recovery.**
   Crash (involuntary death) respawns a fresh agent from the on-disk output files (loom never relies on `claude --resume` for correctness — see above).
   Pause deliberately stops at a boundary, so there is nothing to respawn — the cheaper path.
@@ -172,14 +184,14 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| builder | LLM orchestrator + Go verbs (`internal/builderengine`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [builder-contract.md](../../docs/reference/builder-contract.md) |
+| webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation; not `internal/builderengine`/[builder-contract.md](../../docs/reference/builder-contract.md), the older, separate plan-v2 sibling loop (see the [naming note above](#webster--a-black-box-loom-drives-the-sibling-of-perch)) |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `plan-template.md` prompt (carrying a compact plan-format-v3 spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`plan-template.md`, `plantemplate.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, host worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/lyxcwd`, `internal/fabricengine`, `internal/state` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
-The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the **builder module** (`internal/builderengine` — the fat verbs + distillation the Builder orchestrator drives) and the `lyx loom status` subcommand;
+The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the **webster module** (`internal/websterengine`/`internal/webstercli` — the fat verbs + distillation the Master orchestrator drives) and the `lyx loom status` subcommand;
 beneath them is the shared [execution stack](../../docs/overview.md#execution-stack-orchestration-layers) (`proc`, `reed`, `shuttle`);
 and everything else is prompt files, profiles,
 and the existing lyx modules.
