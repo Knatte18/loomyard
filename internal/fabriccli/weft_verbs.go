@@ -37,7 +37,6 @@ var weftVerbNames = map[string]bool{
 func addWeftVerbs(cmd *cobra.Command) {
 	var (
 		l        *lyxcwd.Location
-		cfg      fabricengine.Config
 		pathspec []string
 		fab      *fabricengine.Fabric
 		bypass   bool
@@ -89,15 +88,18 @@ func addWeftVerbs(cmd *cobra.Command) {
 		}
 		l = resolved
 
-		loadedCfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
+		// Build from fabricengine's own routing set (PathspecNames), never a raw, unfiltered
+		// Config.Dirs(): with _lyx no longer in template.yaml's default, a freshly-initialised
+		// repo's pathspec names only _pattern, so a raw-Dirs() sync would silently stop syncing
+		// _lyx entirely. The routing set can never name .lyx either, since it excludes
+		// structuralNeverCommittedDirs by construction.
+		routingNames, err := fabricengine.PathspecNames(fabricengine.BoardDir(l.HubPath))
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)
 			return nil
 		}
-		cfg = loadedCfg
-
-		pathspec = fabricengine.ScopedPathspec(l.AnchorRel, cfg.Dirs())
+		pathspec = fabricengine.ScopedPathspec(l.AnchorRel, routingNames)
 
 		resolvedFabric, err := fabricengine.Open(l)
 		if err != nil {
