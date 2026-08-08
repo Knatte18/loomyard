@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-design-sweep
+phase: holistic-reviewing
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-empty-pathspec-and-unreservation  '2026-08-08T18:09:37Z'
 approved-pollution-scan-and-reportonly  '2026-08-08T18:16:06Z'
 approved-geometry-token-retirement  '2026-08-08T18:23:25Z'
 approved-docs-and-design-sweep  '2026-08-08T18:36:15Z'
+holistic-reviewing  '2026-08-08T18:36:37Z'
 ```
 
 ## Batches
