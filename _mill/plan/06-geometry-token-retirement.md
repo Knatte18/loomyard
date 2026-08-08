@@ -40,6 +40,8 @@ Card 30's grep sweep is what covers them, and its expected-residue list is what 
   In `internal/pattern/patternpath_test.go`, delete the `pattern.Dir` table and its test function — the accessor is gone, so the table has no subject.
   Do not fold its cases into the `File` table; `File`'s own table already covers the same base-dir shapes.
   Keep every `File`, `FileHere`, `PathspecFile`, and `PathspecDir` case.
+  Note that inside its own package the constant is referenced unqualified as `DirName`, never `pattern.DirName`, so a qualified-identifier grep will not find these sites — locate them by the bare identifier.
+  `internal/pattern/patternpath_test.go`'s header comment at line 1 also describes "the `_pattern` geometry surface this package owns: the `DirName` constant ..." and must be rewritten for the surviving `File`/`FileHere`/`PathspecFile`/`PathspecDir` surface.
   After this card the token `_pattern` must not appear anywhere in `internal/pattern/`.
 - **Commit:** `refactor(pattern): delete the DirName const and Dir accessor`
 

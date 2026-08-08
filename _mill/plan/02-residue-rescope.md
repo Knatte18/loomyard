@@ -40,7 +40,13 @@ Widening it to `_lyx` would make every config and loom-status commit residue, dr
   Keep the "Separator placement" paragraph and the "RelPath-blind scope (documented limitation)" paragraph, adjusting only the path names inside them — both limitations survive the re-scope unchanged.
   Update the final paragraph's phrase "a real range with zero `_pattern`-touching commits" to name the new paths.
   Also update `PullResult`'s `AnchorWeftSHA` doc comment and the `PullResult` type comment where they describe PATTERN-residue content, if they name `_pattern`.
-  Do not change `parsePatternResidueRecords` — it is a pure function whose record-boundary parsing is unaffected.
+  Three further `_pattern/...` mentions in this file are doc comments that no other card in the plan reaches, and all three must be corrected here:
+  `PullResult.PatternResidue`'s field doc comment at line 67 ("`_pattern/...` paths — content a caller should treat as potentially ..."),
+  `PatternResidueEntry`'s type doc comment at line 73 ("names one post-anchor weft commit and the `_pattern/...` paths it touched"),
+  and `parsePatternResidueRecords`' doc comment at line 314 ("that commit's changed `_pattern/...` paths").
+  Retarget each to the new `_lyx/PATTERN.md` + `_lyx/pattern/...` wording.
+  The line-314 edit is **wording only**: do not change `parsePatternResidueRecords`' body, signature, or parsing logic — it is a pure function whose record-boundary handling is unaffected by the re-scope, and its tests are a deliberate regression anchor.
+  After this card, `grep -n '_pattern' internal/fabricengine/pull.go` must return nothing.
   Do not rename any exported identifier: `PatternResidue`, `PatternResidueEntry`, and the `fabriccli` JSON field all keep their names.
   Cycle check to state in the commit message: `fabricengine -> pattern -> {lyxcwd, lyxdirs}`, both of which `fabricengine` already imports directly, so this adds no new transitive dependency and leaves the Pattern Leaf Invariant untouched.
 - **Commit:** `refactor(fabricengine): scope PATTERN residue detection to the _lyx PATTERN paths`

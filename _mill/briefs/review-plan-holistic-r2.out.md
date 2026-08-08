@@ -1,0 +1,28 @@
+MILL_REVIEW_BEGIN
+# Review: Collapse _pattern into _lyx, and un-reserve _raddle as a hub-level name — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5
+reviewed_file: plan/
+date: 2026-08-08
+```
+
+## Findings
+
+### [BLOCKING] pull.go's PatternResidue/PatternResidueEntry doc comments never corrected
+**Location:** batch 2 (card 7), cross-checked against batch 6 card 30 and batch 7's closing invariant
+**Issue:** `internal/fabricengine/pull.go` has three more `_pattern/...` literal mentions besides the ones card 7 names: `PullResult.PatternResidue`'s field doc comment (line 67, "touch `_pattern/...` paths"), `PatternResidueEntry`'s type doc comment (line 73, "the `_pattern/...` paths it touched"), and `parsePatternResidueRecords`' doc comment (line 314, "that commit's changed `_pattern/...` paths") — the last is actively preserved by card 7's own "Do not change `parsePatternResidueRecords`" instruction. No card in batches 1-7 touches any of these three; card 7 only rewrites the const, `patternResidueCommits`' range/purpose paragraph, the "Separator placement"/"RelPath-blind scope" paragraphs, and the final paragraph. Batch 6 card 30's grep sweep (`grep -rn '_pattern\|_raddle' internal/ cmd/ ...`) and batch 7's closing invariant both assert only two deliberate survivors (`internal/lyxcwd/raddle_guard_test.go`, `internal/fabricengine/structuraldirs_test.go`) — pull.go is not among them, and no batch-7 card (38 covers `doc.go`; 39 covers `junction.go`/`unwire.go`/`reconcile.go`/`weftwiring.go`/`cleanup.go`, not `pull.go`) fixes it either.
+**Fix:** Add the `PatternResidue` field comment, the `PatternResidueEntry` type comment, and (wording-only, without touching parsing logic) the `parsePatternResidueRecords` doc comment to card 7's requirements, or add a `pull.go` card to batch 7.
+
+### [BLOCKING] Batch 4's closing grep-sweep claim is factually wrong and omits the real survivor
+**Location:** batch 4 (`04-empty-pathspec-and-unreservation.md`), closing paragraph after card 24
+**Issue:** The plan states "After this batch, `grep -rn 'pattern\.DirName' internal/ cmd/` must report only `internal/pattern/pattern.go` and `internal/pattern/patternpath_test.go`." Verified against source: neither file ever contains the literal qualified substring `pattern.DirName` — within `internal/pattern` itself the identifier is referenced unqualified (`DirName`), and grepping the current tree confirms zero hits in either file. Meanwhile the actual expected match at this point in the DAG, `internal/fabricengine/junction_pattern_integration_test.go` (its `TestDetectHostPollution_PatternTrackedAsRestorable` retains `pattern.DirName` by batch 3 card 15's explicit design, cleared only in batch 5 card 26), is never mentioned here. An implementer following this checkpoint literally would see an unexpected file in the grep output and a missing one, and could plausibly "fix" the batch-5-deferred test early — exactly the inconsistent-mid-batch-state batch 3's own scope note forbids.
+**Fix:** Correct the closing-check text to state the sole expected match is `internal/fabricengine/junction_pattern_integration_test.go` (held for batch 5), and drop the incorrect `internal/pattern/pattern.go`/`patternpath_test.go` claim.
+
+## Verdict
+
+REQUEST_CHANGES
+Two BLOCKING completeness gaps in the plan's own stated end-state invariants; verified against actual source line numbers.
+MILL_REVIEW_END

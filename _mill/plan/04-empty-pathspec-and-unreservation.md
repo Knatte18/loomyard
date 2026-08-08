@@ -223,4 +223,7 @@ Guessing the assertion string is the one way this card fails silently.
 
 Card 22's new empty-pathspec staleness case and card 24's two positive guards are the only new coverage this batch adds; everything else is convergence of existing assertions.
 
-After this batch, `grep -rn 'pattern\.DirName' internal/ cmd/` must report only `internal/pattern/pattern.go` and `internal/pattern/patternpath_test.go` — batch 6 clears those.
+After this batch, `grep -rn 'pattern\.DirName' internal/ cmd/` must report exactly one file: `internal/fabricengine/junction_pattern_integration_test.go`, whose `TestDetectHostPollution_PatternTrackedAsRestorable` retains its uses by batch 3 card 15's explicit design and is cleared in batch 5 card 26.
+Do **not** "fix" that test early — splitting its edit across batches is exactly the inconsistent mid-batch state batch 3's scope note forbids.
+Note that this grep matches the *qualified* identifier only, so it never reports `internal/pattern/` itself: inside its own package the constant is referenced unqualified as `DirName`.
+The declaration there is batch 6 card 28's subject.
