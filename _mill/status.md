@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: scout-lyxcwd-accessors
 branch: scout-lyxcwd-accessors
 plan: _mill/plan
@@ -23,4 +23,13 @@ plan-review-r2  '2026-08-08T09:07:32Z'
 plan-fix-r2  '2026-08-08T09:07:32Z'
 plan-fix-r3  '2026-08-08T09:15:38Z'
 planned  '2026-08-08T09:16:05Z'
+implementing  '2026-08-08T09:16:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: location-threading
+    state: pending
 ```
