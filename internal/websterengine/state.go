@@ -29,13 +29,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// websterDirName is the relative-path segment websterengine joins onto
-// lyxdirs.LyxDirName to form the webster's durable run-state
-// directory. websterengine is this segment's sole declarer.
+// websterDirName is the relative-path segment websterengine joins onto both
+// lyxdirs.LyxDirName (Dir) and lyxdirs.DotLyxDirName (ScratchDir) to form
+// webster's durable and scratch base directories, respectively. websterengine
+// is this segment's sole declarer.
 const websterDirName = "webster"
 
-// Dir returns the path to the webster's durable run state directory (state.json, pause flag,
-// outcome.yaml).
+// Dir returns the path to the webster's durable run state directory (state.json, outcome.yaml).
 // It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
@@ -49,11 +49,20 @@ func ReportsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "reports")
 }
 
+// ScratchDir returns the path to the base directory for webster's never-tracked artifacts —
+// Dir's never-tracked sibling holding the pause flag, the rendered fork prompts, and every
+// *.lock — at the mirrored subpath of the _lyx/webster content each relates to.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func ScratchDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, websterDirName)
+}
+
 // PromptsDir returns the path to the directory holding webster's rendered fork prompts.
-// Prompts are machine-local, re-renderable artifacts excluded from fabric commits.
+// Prompts are machine-local, re-renderable artifacts, and they live under .lyx rather than being
+// held out of weft commits by an exclude pattern.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func PromptsDir(l *lyxcwd.Location) string {
-	return filepath.Join(Dir(l), "prompts")
+	return filepath.Join(ScratchDir(l), "prompts")
 }
 
 // stateFileName is state.json's fixed filename inside a webster dir.
