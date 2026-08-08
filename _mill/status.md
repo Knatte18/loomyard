@@ -45,7 +45,9 @@ batches:
     commit_sha: 63e9bbd09e5f1cfa5e7ff361010885751518c80b
     verify_baseline_failures: []
   - name: treadle-perch-scratch-seam
-    state: pending
+    state: running
+    implementer_session: 842032db-b6ba-4992-8a61-8abae95b5b59
+    start_sha: a2bee0b167c168a5d3a5ca397f55d402bad6b062
     verify_baseline_failures: []
   - name: webster-builder-loom-scratch-seam
     state: pending
