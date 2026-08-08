@@ -26,13 +26,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // seedReedConfig writes the minimal on-disk config structure for LoadConfig.
 func seedReedConfig(t *testing.T, tmpDir string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0o755); err != nil {
 		t.Fatalf("mkdir _lyx: %v", err)
 	}

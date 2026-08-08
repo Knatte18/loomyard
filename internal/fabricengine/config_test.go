@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // TestLoadConfig_HappyPath tests that LoadConfig loads a valid config with all template keys
@@ -21,7 +22,7 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -64,7 +65,7 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 func TestLoadConfig_EmptyBranchPrefix(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestLoadConfig_EnvResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("TEST_FABRIC_BRANCH_PREFIX", "feature/")
 
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}

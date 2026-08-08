@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
@@ -64,13 +65,13 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 
 	got := slices.Clone(res.JunctionsRemoved)
 	sort.Strings(got)
-	want := []string{"_extra", configengine.LyxDirName, pattern.DirName}
+	want := []string{"_extra", lyxdirs.LyxDirName, pattern.DirName}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("res.JunctionsRemoved (sorted) = %v; want %v", got, want)
 	}
 
-	for _, name := range []string{"_extra", configengine.LyxDirName, pattern.DirName} {
+	for _, name := range []string{"_extra", lyxdirs.LyxDirName, pattern.DirName} {
 		link := filepath.Join(hostLayout.WorktreePath(), name)
 		if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
 			t.Errorf("junction %s still exists after Unwire (stat err: %v)", link, statErr)
@@ -238,7 +239,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	if _, statErr := os.Stat(fabricConfigPath); statErr != nil {
 		t.Errorf("repo-wide fabric.yaml missing after Unwire: %v", statErr)
 	}
-	hostLyxLink := filepath.Join(hostLayout.WorktreePath(), configengine.LyxDirName)
+	hostLyxLink := filepath.Join(hostLayout.WorktreePath(), lyxdirs.LyxDirName)
 	if _, statErr := os.Lstat(hostLyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("host _lyx junction %s still exists after Unwire (stat err: %v)", hostLyxLink, statErr)
 	}

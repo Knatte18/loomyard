@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // TestWebsterGeometryHelpers pins the three _lyx/webster path joins.
@@ -23,7 +23,7 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 		t.Parallel()
 
 		got := Dir(l)
-		want := filepath.Join(baseDir, configengine.LyxDirName, "webster")
+		want := filepath.Join(baseDir, lyxdirs.LyxDirName, "webster")
 
 		if got != want {
 			t.Errorf("Dir(l) = %q; want %q", got, want)
@@ -34,7 +34,7 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 		t.Parallel()
 
 		got := ReportsDir(l)
-		want := filepath.Join(baseDir, configengine.LyxDirName, "webster", "reports")
+		want := filepath.Join(baseDir, lyxdirs.LyxDirName, "webster", "reports")
 
 		if got != want {
 			t.Errorf("ReportsDir(l) = %q; want %q", got, want)
@@ -45,7 +45,7 @@ func TestWebsterGeometryHelpers(t *testing.T) {
 		t.Parallel()
 
 		got := PromptsDir(l)
-		want := filepath.Join(baseDir, configengine.LyxDirName, "webster", "prompts")
+		want := filepath.Join(baseDir, lyxdirs.LyxDirName, "webster", "prompts")
 
 		if got != want {
 			t.Errorf("PromptsDir(l) = %q; want %q", got, want)

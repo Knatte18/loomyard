@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -256,7 +257,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	t.Chdir(fixture.Hub)
 
 	// Modify a file in the weft config that would be committed.
-	weftConfigFile := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -412,7 +413,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// The prime host worktree's _lyx/_pattern junctions must be wired.
 	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
-	for _, name := range []string{configengine.LyxDirName, pattern.DirName} {
+	for _, name := range []string{lyxdirs.LyxDirName, pattern.DirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {
@@ -437,7 +438,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
 		lyxcwd.AnchorFileName,
-		filepath.Join(configengine.LyxDirName, "config", "fabric.yaml"),
+		filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"),
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
 		if tracked == "" {

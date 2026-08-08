@@ -22,10 +22,10 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/builderengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -56,7 +56,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 		t.Fatalf("AnchorPath() = %q; want it to equal WorktreePath() = %q at AnchorRel \".\"", anchor, worktree)
 	}
 
-	lyxBase := filepath.Join(anchor, configengine.LyxDirName)
+	lyxBase := filepath.Join(anchor, lyxdirs.LyxDirName)
 
 	// _lyx-durable group: AnchorPath-anchored.
 	assertPath(t, "loomengine.PlanDir", loomengine.PlanDir(l), filepath.Join(lyxBase, planparser.PlanDirName))
@@ -102,7 +102,7 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 		t.Fatalf("AnchorPath() = %q; want %q", anchor, filepath.Join(worktree, anchorRel))
 	}
 
-	lyxBase := filepath.Join(anchor, configengine.LyxDirName)
+	lyxBase := filepath.Join(anchor, lyxdirs.LyxDirName)
 
 	// _lyx-durable group: moves down by AnchorRel, unlike the other two groups.
 	assertPath(t, "loomengine.PlanDir", loomengine.PlanDir(l), filepath.Join(lyxBase, planparser.PlanDirName))

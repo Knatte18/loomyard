@@ -24,11 +24,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
@@ -182,8 +182,8 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
-	if lines := readExcludeLines(t, l, slug); !containsLine(lines, configengine.LyxDirName) {
-		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", configengine.LyxDirName, lines)
+	if lines := readExcludeLines(t, l, slug); !containsLine(lines, lyxdirs.LyxDirName) {
+		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", lyxdirs.LyxDirName, lines)
 	}
 	if lines := readExcludeLines(t, l, slug); !containsLine(lines, pattern.DirName) {
 		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", pattern.DirName, lines)
@@ -194,7 +194,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 		t.Fatalf("UnwireJunctions: %v", err)
 	}
 
-	if want := []string{configengine.LyxDirName, pattern.DirName}; !slices.Equal(result.JunctionsRemoved, want) {
+	if want := []string{lyxdirs.LyxDirName, pattern.DirName}; !slices.Equal(result.JunctionsRemoved, want) {
 		t.Errorf("JunctionsRemoved = %v; want %v", result.JunctionsRemoved, want)
 	}
 	if !result.ExcludeChanged {
@@ -209,8 +209,8 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if _, statErr := os.Lstat(patternLink); !os.IsNotExist(statErr) {
 		t.Errorf("junction %s still exists after UnwireJunctions", patternLink)
 	}
-	if lines := readExcludeLines(t, l, slug); containsLine(lines, configengine.LyxDirName) {
-		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", configengine.LyxDirName, lines)
+	if lines := readExcludeLines(t, l, slug); containsLine(lines, lyxdirs.LyxDirName) {
+		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", lyxdirs.LyxDirName, lines)
 	}
 	if lines := readExcludeLines(t, l, slug); containsLine(lines, pattern.DirName) {
 		t.Errorf(".git/info/exclude still contains %q after UnwireJunctions: %v", pattern.DirName, lines)
@@ -380,7 +380,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 	}{
 		{
 			name:      "Lyx",
-			dirName:   configengine.LyxDirName,
+			dirName:   lyxdirs.LyxDirName,
 			linkFor:   func(l *lyxcwd.Location) string { return fabricengine.HostLyxLinkHere(l) },
 			targetFor: func(l *lyxcwd.Location) string { return fabricengine.WeftLyxDir(l) },
 		},

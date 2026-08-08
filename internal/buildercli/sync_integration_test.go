@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -89,7 +90,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 	commitFile(t, weft, "base.txt", "base", "weft base commit")
 
 	// Uncommitted changes for CommitWeft to stage, plus exclusion artifacts.
-	builderDir := filepath.Join(weft, relPath, configengine.LyxDirName, "builder")
+	builderDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "builder")
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		t.Fatalf("mkdir weft _lyx: %v", err)
 	}
@@ -104,7 +105,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 	}
 
 	// Webster's tree: durable state rides a builder commit, not machine-local.
-	websterDir := filepath.Join(weft, relPath, configengine.LyxDirName, "webster")
+	websterDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "webster")
 	if err := os.MkdirAll(filepath.Join(websterDir, "prompts"), 0o755); err != nil {
 		t.Fatalf("mkdir weft webster dir: %v", err)
 	}
@@ -188,9 +189,9 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 
 			// git reports paths with forward slashes regardless of OS.
-			base := configengine.LyxDirName
+			base := lyxdirs.LyxDirName
 			if tt.relPath != "." {
-				base = filepath.ToSlash(tt.relPath) + "/" + configengine.LyxDirName
+				base = filepath.ToSlash(tt.relPath) + "/" + lyxdirs.LyxDirName
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 

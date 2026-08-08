@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // setupBoardConfig creates a minimal board.yaml in a temp directory and changes cwd.
@@ -20,7 +21,7 @@ func setupBoardConfig(t *testing.T) {
 	t.Helper()
 	cwd := t.TempDir()
 
-	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
+	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("setupBoardConfig: MkdirAll _lyx: %v", err)
 	}

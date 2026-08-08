@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -87,7 +88,7 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 	// so no junction exists yet — writing straight into WeftPrime is the
 	// established pattern other cli test suites use, e.g. fabriccli's
 	// TestRunCLI_EnvMapToOption).
-	placeholderDir := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "fabric-on-error")
+	placeholderDir := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "fabric-on-error")
 	if err := os.MkdirAll(placeholderDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -138,7 +139,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	// Stand in for a real block's run dir: state alongside the two lock
 	// files a real Engine.Run leaves behind (see the FabricSyncRunsOnEngineError
 	// test above for why this is planted straight into WeftPrime).
-	runDir := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "lock-exclusion")
+	runDir := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -207,7 +208,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 
 	// Stand in for a real block's run dir, nested under the recorded
 	// anchor's subpath exactly as the real fabric junction would mirror it.
-	runDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), configengine.LyxDirName, "perch", "nested-lock-exclusion")
+	runDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), lyxdirs.LyxDirName, "perch", "nested-lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -273,7 +274,7 @@ func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	if err := os.MkdirAll(hostRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir host run dir: %v", err)
 	}
-	fabricDirty := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "busyblock")
+	fabricDirty := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "busyblock")
 	if err := os.MkdirAll(fabricDirty, 0o755); err != nil {
 		t.Fatalf("mkdir fabric dirty dir: %v", err)
 	}

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 func TestLoomStatusFile(t *testing.T) {
@@ -20,7 +20,7 @@ func TestLoomStatusFile(t *testing.T) {
 		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), configengine.LyxDirName, "status.json")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "status.json")
 	if got := LoomStatusFile(l); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}
@@ -33,7 +33,7 @@ func TestLoomStatusLock(t *testing.T) {
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), configengine.LyxDirName, "status.json.lock")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "status.json.lock")
 	if got := LoomStatusLock(l); got != want {
 		t.Errorf("LoomStatusLock() = %q; want %q", got, want)
 	}
@@ -46,7 +46,7 @@ func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 		AnchorRel:    ".",
 	}
 
-	want := filepath.Join(l.WorktreePath(), configengine.LyxDirName, "status.json")
+	want := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName, "status.json")
 	if got := LoomStatusFile(l); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}

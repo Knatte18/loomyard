@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 func TestLocationPlanDir(t *testing.T) {
@@ -21,7 +21,7 @@ func TestLocationPlanDir(t *testing.T) {
 		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), configengine.LyxDirName, "plan")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "plan")
 	if got := PlanDir(l); got != want {
 		t.Errorf("PlanDir() = %q; want %q", got, want)
 	}
@@ -34,7 +34,7 @@ func TestLocationPlanOverview(t *testing.T) {
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), configengine.LyxDirName, "plan", "00-overview.md")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "plan", "00-overview.md")
 	if got := PlanOverview(l); got != want {
 		t.Errorf("PlanOverview() = %q; want %q", got, want)
 	}
@@ -47,7 +47,7 @@ func TestLocationPlanDir_UnanchoredEqualsWorktreePath(t *testing.T) {
 		AnchorRel:    ".",
 	}
 
-	want := filepath.Join(l.WorktreePath(), configengine.LyxDirName, "plan")
+	want := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName, "plan")
 	if got := PlanDir(l); got != want {
 		t.Errorf("PlanDir() = %q; want %q", got, want)
 	}
