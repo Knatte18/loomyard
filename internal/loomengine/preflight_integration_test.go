@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -36,18 +37,14 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	seedRepoWideFabricConfig(t, f.Layout.HubPath)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
-	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	// LoomStatusLock now lives under the host worktree's own .lyx tree, which
-	// no production gitignore/exclude machinery covers yet -- that lands in
-	// a later batch (dotlyx-junction-wiring-and-unwire), per the plan's
-	// every-commit-leaves-the-tree-green Shared Decision. Exclude it locally
-	// here so this fixture models the eventual steady state and this file's
-	// tests exercise Preflight's own checks, not the not-yet-shipped
-	// exclusion machinery.
-	excludeDotLyx(t, f.Hub)
+	// LoomStatusLock lives under the host worktree's own .lyx tree, wired above
+	// as a real junction (dotlyx-junction-wiring-and-unwire) -- WireJunctions'
+	// own seedGitExclude call already keeps the .lyx junction entry itself out
+	// of `git status`, so no test-local exclude is needed here.
 
 	seedValidStatus(t, f.Layout)
 
@@ -60,27 +57,6 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
 
 	return f, slug
-}
-
-// excludeDotLyx appends ".lyx/" to hostDir's local .git/info/exclude, so `git status`
-// never sees the never-tracked .lyx tree loomengine's LoomStatusLock (and any other .lyx
-// consumer) writes into. This test-local exclude stands in for the real gitignore/exclude
-// machinery a later batch adds.
-func excludeDotLyx(t *testing.T, hostDir string) {
-	t.Helper()
-
-	excludePath := filepath.Join(hostDir, ".git", "info", "exclude")
-	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", filepath.Dir(excludePath), err)
-	}
-	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		t.Fatalf("open %s: %v", excludePath, err)
-	}
-	defer f.Close()
-	if _, err := f.WriteString("\n.lyx/\n"); err != nil {
-		t.Fatalf("write %s: %v", excludePath, err)
-	}
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
