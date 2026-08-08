@@ -122,6 +122,16 @@ No build order is implied between these items.
    Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses.
    Generalizes `fabric.yaml`'s existing `_board` anchor to every module's config, not just fabric's. Not yet designed.
 
+1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on discussion- and plan-review findings, not just a severity marker,
+   and scope each review stage to what its downstream stage cannot catch better (e.g. complete call-site enumeration belongs to `go build`, not a discussion reviewer).
+   Motivated by an observed 6-round discussion-review loop on `pattern-into-lyx-consolidation` that never converged: design findings resolved by round 2, but hand-enumerated "missed call site" findings recurred through round 6 because the underlying method (grep-by-hand) was never the actual fix.
+   Not yet designed in implementation detail.
+   See [designs/review-finding-classification.md](designs/review-finding-classification.md).
+
+1. **scout: narrow the `"resolution":"complete"` trust-marker promise, or add a way to scope out cross-package interface-method noise** — `docs/benchmarks/scout-vs-grep.md` (Task 3) found a live case where `lyx scout refs` on an interface method returned `"resolution":"complete"` while the majority of returned hits were real but irrelevant call sites on structurally-similar, unrelated interfaces in other packages (`gopls` resolves interface methods structurally, workspace-wide) — the caller still had to manually re-verify results by hand, which is exactly what the marker promises is unnecessary.
+   The `--within <dir>` flag added after that benchmark narrows the practical exposure for a query that already knows its intended package, but does not itself change what the marker means.
+   Either narrow the marker's documented contract ("every result shown is genuine," not "no further filtering is ever needed") or make the tool live up to the stronger promise by default. Not yet designed.
+
 ## Done
 
 1. **fabric** — unified host↔weft git-coordination module replacing warp/weft;
