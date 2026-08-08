@@ -73,7 +73,9 @@ batches:
     commit_sha: a977f297851a1398a36a9d6f38cf23ed31009b87
     verify_baseline_failures: []
   - name: geometry-token-retirement
-    state: pending
+    state: running
+    implementer_session: d0852cf1-6d42-4b74-a99c-4238194c509a
+    start_sha: 83204159d719074545ee43098ee11f664d611639
     verify_baseline_failures: []
   - name: docs-and-design-sweep
     state: pending
