@@ -187,7 +187,8 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   only the *timing*-control half is scoped away.
 - **Cross-module exclusions.**
   The `_lyx` tree is shared by every round-loop module, so every weft-commit caller passes a **positive-only** file list — no `:(exclude)` pathspec magic — built via `fabricengine.ScopedPathspec`.
-  Machine-local artifacts (pause flags, rendered fork prompts, every module's `*.lock` files) are excluded **solely at the git-exclude layer** (`fabricengine.seedWeftArtifactExcludes`), never per-call.
+  Machine-local artifacts (pause flags, rendered fork prompts, every module's `*.lock` files) are not in the weft tree at all — they live under `.lyx` (see the Durable-vs-Ephemeral State Invariant above), never reaching a weft-commit pathspec in the first place.
+  `fabricengine.seedWeftArtifactExcludes` now covers only fabric's own `.weft/` lock directory and gitrepo's push-lock file, both weft-internal operational artifacts unrelated to any round-loop module.
   **Known limitation:** this stops new pollution but does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
   Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine`/`internal/builderengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterBuilderProductionSource`);
