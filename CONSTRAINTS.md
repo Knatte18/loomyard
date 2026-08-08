@@ -37,7 +37,7 @@ Fuller design/how-to lives in godoc and `docs/`.
 `internal/configreg` and every feature package (`boardengine`/`boardcli`, `ideengine`/`idecli`, `selfreportengine`/`selfreportcli`, `fabricengine`/`fabriccli`) are excluded by construction — feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle.
 
 - Tests needing real config call `lyxtest.SeedConfig(tb, dir, map[string]string{...})`.
-- **Enforced by** `internal/lyxtest/leaf_enforcement_test.go`.
+- **Enforced by** `internal/lyxtest/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
 ## Modelspec Leaf Invariant
 

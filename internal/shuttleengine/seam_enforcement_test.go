@@ -19,7 +19,7 @@ import (
 // TestProviderSeamImportRule verifies that no non-test file in internal/shuttleengine imports
 // internal/shuttleengine/claudeengine.
 // It uses go/parser to read actual import paths (avoiding false positives from string literals in
-// doc comments), in the style of internal/lyxtest/leaf_enforcement_test.go's TestLeafInvariant.
+// doc comments), in the style of internal/lyxtest/leaf_enforcement_test.go's TestLeafInvariant_AllowlistOnly.
 func TestProviderSeamImportRule(t *testing.T) {
 	// Resolve this package's source directory via runtime.Caller so the
 	// test walks the real package tree regardless of the working directory
