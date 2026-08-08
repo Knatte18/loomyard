@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: leaf-invariant-audit
 branch: leaf-invariant-audit
 plan: _mill/plan
@@ -22,6 +22,7 @@ planned  '2026-08-08T06:33:56Z'
 implementing  '2026-08-08T06:34:42Z'
 approved-land-audit-corrections  '2026-08-08T06:42:10Z'
 holistic-reviewing  '2026-08-08T06:42:54Z'
+holistic-approved  '2026-08-08T06:45:09Z'
 ```
 
 ## Batches
