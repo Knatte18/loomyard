@@ -48,6 +48,18 @@ Batch-local decisions live in each batch file._
   The rename also clears a Cwd Resolution Invariant violation: `root` is reserved for the git worktree root, which `WorktreeRoot` does not hold out-of-hub.
 - **Applies to:** all batches
 
+### Decision: out-of-hub-synthesized-location
+
+- **Decision:** when `lyxcwd.Resolve(cwd)` fails, `scoutcli` synthesizes the `Location` by hand from the absolute target directory as `&lyxcwd.Location{HubPath: filepath.Dir(abs), WorktreeName: filepath.Base(abs), AnchorRel: "."}`, where `abs` is `filepath.Abs(targetDir)`.
+  The synthesized value is a fiction outside `WorktreePath()`: `HubPath` is merely the parent of the target directory and names no real hub, `RepoName` is left zero, and `AnchorPath()` is meaningless because `AnchorRel` was assumed rather than read from a `.fabric-anchor` marker.
+  It is therefore contractually consumed by `DaemonStateFile`/`DaemonLock` alone and must never be widened to feed a caller that reads `AnchorPath()`, `HubPath`, or `RepoName`.
+- **Rationale:** `WorktreePath()` is `filepath.Join(HubPath, WorktreeName)`, so this yields exactly `abs` — byte-identical to today's `resolveWorktreeRoot` fallback, with no new failure modes and no new git spawns.
+  Hand-building a `Location` outside `internal/lyxcwd` has only two production precedents, both inside the geometry owner itself, so the limit must be stated in `resolveLocation`'s doc comment where the next person to reach for this branch will see it.
+  **Scope of the byte-identity claim:** asserted for non-root directories only.
+  A filesystem or volume root is a degenerate case where the `Dir`/`Base`-then-`Join` round trip is not obviously an identity, and it was not verified.
+  Do not add a special case for it and do not claim byte-identity there — `--target-dir /` names no buildable project, and the pre-existing fallback has the same shape.
+- **Applies to:** all batches
+
 ### Decision: no-nil-layout-check
 
 - **Decision:** `Options.Layout` is documented as required.
