@@ -52,7 +52,9 @@ batches:
     commit_sha: a5ce4b01e8448b2188b246a56011dc968afe7b36
     verify_baseline_failures: []
   - name: junction-test-retarget
-    state: pending
+    state: running
+    implementer_session: 7903ded9-6425-45c3-b1e6-d70f6181eeda
+    start_sha: f2c5f270d75cc001819118d33e69beb4433ae70f
     verify_baseline_failures: []
   - name: empty-pathspec-and-unreservation
     state: pending
