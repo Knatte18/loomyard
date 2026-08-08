@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: scout-seam-conversion
 branch: scout-seam-conversion
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Scoutengine: rewrite CONSTRAINTS.md as a seam rule, convert leaf test to banned-list, add LSP guard'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-08T05:30:19Z'
 discussion-fix-r3  '2026-08-08T06:10:03Z'
 discussed  '2026-08-08T06:10:03Z'
+planning  '2026-08-08T06:16:33Z'
 ```
