@@ -152,14 +152,27 @@ func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
 				continue
 			}
 
-			// A real (non-link) directory predating weft; refuse to touch it —
-			// it may hold user content, which fabric never deletes. The remedy
-			// clause names what the operator can actually do, since it must
-			// serve both _lyx (this batch's baseline) and _pattern (a later
-			// batch's second junction) alike: PATTERN content is described
-			// throughout as the host repo's hand-authored invariants, which
-			// makes "create _pattern/ in the repo and start writing" the
-			// natural operator mistake this guard exists to catch.
+			// A real (non-link) directory predating weft; refuse to touch it for
+			// `_lyx` and `_pattern` — either may hold user content, which fabric
+			// never deletes: PATTERN content is described throughout as the
+			// host repo's hand-authored invariants, which makes "create
+			// _pattern/ in the repo and start writing" the natural operator
+			// mistake this guard exists to catch.
+			// `.lyx` is the one exception: content under it is always lyx's own
+			// machine-local scratch (the logger, reed, shuttle, scout and
+			// burler all write it unconditionally), so "never touch what might
+			// be the user's hand-authored content" does not apply there.
+			// Every worktree in existence today has a real `.lyx` for exactly
+			// that reason, so without this adoption branch the first
+			// `reconcile` after `.lyx` joined the wired name-set would
+			// hard-error everywhere.
+			if j.Name == lyxdirs.DotLyxDirName {
+				if err := adoptDotLyxContent(link, target); err != nil {
+					return err
+				}
+				continue
+			}
+
 			return fmt.Errorf(
 				"host repo already contains a real %s at %s; it predates weft — move its content into the paired weft worktree's own %s, or remove this directory, then re-run `lyx fabric reconcile` to create the junction",
 				filepath.Base(link),
@@ -179,6 +192,60 @@ func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
 	}
 
 	return nil
+}
+
+// adoptDotLyxContent moves every entry from the host-side real directory at link into the weft-side
+// target, then removes the now-empty host directory and creates the junction in its place.
+// It is the only path seedLyxJunction takes for `.lyx`: every worktree in existence before this
+// change holds a real `.lyx` (the logger, reed, shuttle, scout and burler all write it
+// unconditionally), so without adoption the first `reconcile` after `.lyx` joined the wired name-set
+// would hard-error everywhere.
+//
+// Refuses before moving anything if any host-side entry name already exists in target, returning an
+// error naming the colliding path and leaving both sides untouched — a collision means an earlier
+// adoption already ran, and `.lyx` is disposable enough that the operator can delete the host-side
+// copy; fabric never overwrites or deletes content on its own.
+//
+// A rename failure is wrapped in an actionable error naming the entry and instructing the operator to
+// stop reed/scout and re-run `lyx fabric reconcile` — on Windows, moving a directory with an open
+// handle inside it fails, and that is the expected cause.
+// The error names whatever was already moved, so a partial move is never reported as success.
+//
+// Idempotent: a second call finds a link, not a real directory, so seedLyxJunction never reaches this
+// helper again for an already-adopted `.lyx`.
+func adoptDotLyxContent(link, target string) error {
+	entries, err := os.ReadDir(link)
+	if err != nil {
+		return fmt.Errorf("read %s for adoption: %w", link, err)
+	}
+
+	for _, entry := range entries {
+		if _, err := os.Lstat(filepath.Join(target, entry.Name())); err == nil {
+			return fmt.Errorf(
+				"adopt %s into %s: %s already exists at the weft target; an earlier adoption already ran — delete the host-side copy at %s and re-run `lyx fabric reconcile`",
+				link, target, entry.Name(), filepath.Join(link, entry.Name()),
+			)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("lstat %s: %w", filepath.Join(target, entry.Name()), err)
+		}
+	}
+
+	for _, entry := range entries {
+		src := filepath.Join(link, entry.Name())
+		dst := filepath.Join(target, entry.Name())
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf(
+				"adopt %s into %s: move %s failed: %w — stop reed/scout (an open handle inside %s is the expected cause on Windows) and re-run `lyx fabric reconcile`",
+				link, target, entry.Name(), err, link,
+			)
+		}
+	}
+
+	if err := os.Remove(link); err != nil {
+		return fmt.Errorf("remove now-empty %s after adoption: %w", link, err)
+	}
+
+	return fslink.CreateDirLink(link, target)
 }
 
 // wireBoardLink creates or repairs the operator-convenience `_board` junction
