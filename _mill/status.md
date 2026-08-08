@@ -31,5 +31,8 @@ implementing  '2026-08-08T09:16:53Z'
 ```yaml
 batches:
   - name: location-threading
-    state: pending
+    state: running
+    implementer_session: 15b5b614-8b41-41c3-834a-0883f8b9c52b
+    start_sha: cbf3efb79ab5c26a570d0e0f149c3e1326467702
+    verify_baseline_failures: []
 ```
