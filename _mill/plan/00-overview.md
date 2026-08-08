@@ -3,7 +3,7 @@
 ```yaml
 task: "Audit the remaining leaf and seam import invariants"
 slug: "leaf-invariant-audit"
-approved: false
+approved: true
 started: "20260808-062516"
 parent: "main"
 root: ""
