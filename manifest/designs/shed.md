@@ -1,52 +1,72 @@
 # Shed — a shared Go outer phase-FSM for `loom` and `Hardener`
 
-> **Status: Design sketch, Planned** (after `Treadle`, before the `perch` rewrite — see `manifest/roadmap.md`). Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic slot this engine opens for a swappable producer. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc does **not** re-derive [loom.md](loom.md)'s already-detailed phase machine — that content stays the authoritative design for now; extracting the generic engine out from under it is real, separate refactor work, not done in this pass.
+> **Status: Design sketch, Planned** (after `Treadle`, before the `perch` rewrite — see `manifest/roadmap.md`). Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic engine that opens a slot for whichever producer list a product configures it with. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc is the authoritative description of `Shed`'s own generic mechanism (the flat producer list, the contract/definition split, engine adapters); [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it, plus the engine-level detail (crash recovery, pause, session bootstrap) this doc doesn't restate.
 
 ## What it is
 
-`Shed` generalizes the outer phase-sequencing engine loom.md specifies in full — sequencing, resume, crash-recovery, pause, the status-file contract, session bootstrap — into a shared skeleton with two swappable slots, not one:
+**Revised model (2026-08-08), superseding "two swappable slots" below:** `Shed` has no predefined slots at all — no Preflight-slot, no Producer-slot, no shared Finalize.
+It is a generic engine that walks one ordered, flat list of **producers**, each an atomic mechanical action or LLM session, honoring resume/crash-recovery/pause uniformly across every entry.
+Everything that used to look "special" — Preflight, Finalize, review gates — is just a producer like any other in that list.
+What makes `loom` "loom" versus `Hardener` is purely which producers are in the list, in what order: pure configuration, not architecture.
+See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for `loom`'s concrete list — this doc stays about `Shed`'s own generic mechanism, not about enumerating `loom`'s specific producers.
 
-- **Preflight-slot** — validates preconditions before anything runs.
-  Producer-specific: `loom`'s Preflight checks loom's own preconditions (built, `internal/loomengine.Preflight` — see [loom.md](loom.md#the-phase-machine));
-  `Hardener` needs its own, different Preflight (sandbox provisioning, live-suite readiness — see [hardener.md](hardener.md)).
-  Not shared code.
-- **Producer-slot** — the phase(s) that actually do the work.
-  For `loom`, this is Discussion → Plan → Webster (each gated by a `perch` review — see [loom.md](loom.md#the-gate));
-  for `Hardener`, this is `Tenter` (see the `internal/treadleengine` package documentation).
-
-What **is** literally shared code (not swappable, identical either way): the sequencing skeleton itself (resume-on-files, crash recovery, graceful pause — all specified in [loom.md](loom.md#state--contracts)), the Raddle-regeneration trigger and merge-lock scope (see [raddle.md](raddle.md#when-it-runs-deferred-to-merge-time-not-mid-task) — open question there on whether Raddle collapses into Finalize/Merge or keeps a separate slot), and Finalize/Merge (see [finalize.md](finalize.md)) — including the warp-side real-git-conflict path and the weft-side document-driven (non-git) conflict path for `_lyx/raddle/` content.
-
-Two named products come from configuring the same engine differently:
-
-- **`loom`** = `Shed` + loom's own Preflight + Discussion/Plan/Webster producer — unchanged behavior/CLI from the outside, `lyx loom run`.
-- **`Hardener`** = `Shed` + Hardener's own Preflight + `Tenter` producer (`Treadle` + a live-substrate round-runner + behavior-review profile — see the `internal/treadleengine` package documentation) — `lyx hardener run`.
+- **`loom`** = `Shed` + `loom`'s own producer list (`Preflight`, `Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review-Gate`, `Plan-Review`, `Batchifier`, `Webster`, `Webster-Review`, `Finalize`) — unchanged behavior/CLI from the outside, `lyx loom run`.
+- **`Hardener`** = `Shed` + Hardener's own list (its own `Preflight`, `Tenter` — `Treadle` + a live-substrate round-runner + behavior-review profile, see the `internal/treadleengine` package documentation — and its own `Finalize`) — `lyx hardener run`.
   Someday, deprioritized;
   not part of this doc's Planned scope.
 
-## Testable cheaply — a throwaway producer proves the skeleton
+`Finalize` is not `Shed`'s own special code — it is an ordinary producer both `loom` and `Hardener` happen to reference (by *value* — the same producer definition named in both lists), not something `Shed` special-cases.
+**Raddle folds into `Finalize`'s own contract**, not a separate producer or a separate slot: updating Raddle before the Finalize merge is impractical given merge-conflict risk, so Raddle-regeneration is scoped as part of the merge itself (resolves the open question the pre-revision text below left open).
+`Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
-Building `Shed` (skeleton + Finalize together — see Process below) doesn't need a real producer to validate against.
-Plug something quick and disposable into the producer-slot — one step that just succeeds immediately — and the skeleton (sequencing, resume, crash-recovery, pause) plus Finalize (warp merge, weft merge, PR creation) can all be exercised end-to-end without Discussion/Plan/ Webster or the Someday `Tenter` needing to exist yet.
+### Producer contract vs. producer definition
+
+A producer's **contract** — the only thing any other producer or instruction file may reference — is exactly two parts: **Input** (a pointer to the format-contract file defining consumed artifact(s)' shape, never a restated copy) and **Output** (same pointer discipline).
+**The pointer rule**: an instruction file (a producer's own prompt/skill) must never duplicate or paraphrase another producer's format-contract content, only point at it — so editing that one format file alone is sufficient to change what both its producer and its consumers do.
+Review is never a property attached to the producer it reviews; it is always the next, separate producer in the list.
+
+A producer's **definition** — internal to how `Shed` actually runs it, invisible to the contract — additionally names an **engine** (which code drives it) and a **config** (how that engine is parameterized for this specific producer).
+Many producers share the same engine: every `*-Review` producer is `engine: perch`, differing only by which rubric/fasit `config` file is handed to it — the same generic, profile-driven mechanism `perch` already implements today ("reused for every phase... only the review profile differs").
+
+### Engine adapters — a thin, shared seam, not one per producer
+
+`Shed` needs a minimal common interface to drive any producer uniformly — call it, get back an outcome (done / approved / stuck / blocked) plus an output-artifact pointer, without needing to know what happened inside.
+This is not a new pattern: it mirrors two seams that already exist in this codebase —
+
+- `internal/treadleengine`'s `RoundRunner` seam (`internal/perchengine`'s burler adapter is its reference consumer).
+- `internal/batcher`'s `Batcher` interface (multiple batchifier implementations behind one interface, resolved by name via `Select`).
+
+Applied one level up, `Shed` needs a small `ProducerRunner`-shaped seam, and — critically — **not one adapter per producer, one per distinct engine type**:
+
+- **Mechanical Go-function producers** (`Preflight`, `Plan-Sweep`, `Plan-Review-Gate`, `Batchifier`, `Finalize`) need no translation adapter at all — a plain Go function can already satisfy the seam directly.
+- **Single LLM-spawn producers** (`Discussion-Write`, `Plan-Write`) are already unified today via the shared `shuttleengine.Spec` → `shuttle.Run` pattern (`DiscussionSpec`/`PlanSpec` in `internal/loomengine`) — effectively free.
+- **`perch`** needs one adapter, reused by every `*-Review` producer.
+- **`Webster`** needs one adapter (its own verb-driven black-box form differs from `perch`'s).
+
+So building this is **two new adapters**, not eleven, and not one-per-engine-type-times-producer-count.
+
+## Testable cheaply — a throwaway producer list proves the skeleton
+
+Building `Shed`'s skeleton doesn't need a real producer list to validate against.
+Plug in a short, disposable list — a couple of steps that just succeed immediately, including a stub `Finalize` — and sequencing, resume, crash-recovery, and pause can all be exercised end-to-end without any of `loom`'s or `Hardener`'s real producers needing to exist yet.
 This mirrors `loom.md`'s own stated approach ("testable against fake phases before real producers are wired in... the same fake-tested approach `perch` used against a fake `burler`") — reused here to validate the *extraction*, the same way `perch`'s existing behavior validates `Treadle`'s extraction.
 
-## Process — build together with Finalize, one task
+## Process — one task, not many
 
-`Shed`'s skeleton and its Finalize step (see [finalize.md](finalize.md)) are **one Planned task, not two** — Finalize is `Shed`'s own literally-shared code (not a per-instance slot), so splitting them into separate tasks would just mean building the same engine's two halves as if they were independent, with no reason to.
+`Shed`'s skeleton, its two adapters (`perch`, `Webster`), and the `Finalize` producer are **one Planned task** — `Finalize` is a producer definition like any other now, not a second, separately-scoped piece of shared code, so there is no reason to split it out.
 Same reasoning as the combined `Treadle` + `perch`-rewrite task.
 
-## Why this doc doesn't rewrite loom.md
+## Why this doc doesn't rewrite loom.md's full detail
 
-`loom.md` is a mature, ~320-line, detailed design (phase machine, crash recovery, pause semantics, session bootstrap, module decomposition) written before this generalization was conceived.
-Retrofitting it into "Shed does X, `loom` configures X" throughout is real work with real risk of quietly losing detail — the same discipline `Treadle`'s own extraction task applied when it pulled `perch`'s round loop out into `internal/treadleengine` without folding that work into `hardener`'s draft applies here too.
-Not folded into this pass.
-For now, `loom.md` remains the authoritative reference for what the engine actually does;
-this doc only records that the engine is being named `Shed` and is intended to be reused by `Hardener`.
+`loom.md` is a mature, ~320-line, detailed design (crash recovery, pause semantics, session bootstrap, module decomposition) — this doc's own core model section is now the authoritative description of `Shed`'s generic mechanism (producers, contracts, engine adapters), and `loom.md`'s own [phase-machine section](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it.
+What this doc does *not* redo is `loom.md`'s remaining detail sections (crash recovery mechanics, pause, session bootstrap, module decomposition) — those stay in `loom.md`, described in `loom`-specific terms, and apply to `Shed`-based products generically without needing restating here.
+Wiki task `shed-producer-model-scoping` is the dedicated pass that reconciles any remaining detail mismatch between the two docs.
 
 ## Related
 
-- [loom.md](loom.md) — the authoritative, detailed design this doc generalizes a name over, not yet rewritten to extract `Shed` explicitly.
-- [finalize.md](finalize.md) — the Finalize/Merge phase `Shed` shares as literal code.
-- [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope `Shed`'s Finalize/Merge step must honor.
-- `internal/treadleengine` package documentation — the sibling generic engine (inner round-loop, not outer phase-FSM);
-  as-built, its own module doc deleted per the documentation lifecycle.
-- [hardener.md](hardener.md) — `Hardener` (`Shed` + `Tenter`), Someday.
+- [loom.md](loom.md) — `loom`'s concrete producer list built on `Shed`, plus the remaining engine detail (crash recovery, pause, session bootstrap) this doc doesn't restate.
+- [finalize.md](finalize.md) — `Finalize`'s own contract in detail; here it is one producer definition among others, not special-cased.
+- [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope `Finalize`'s own contract must honor, now that Raddle folds into it rather than keeping a separate slot.
+- `internal/treadleengine` package documentation — the sibling generic engine (inner round-loop, not outer phase-FSM), and the precedent for `Shed`'s own engine-adapter seam (`RoundRunner`).
+- `internal/batcher` package documentation — the other existing precedent for the engine-adapter pattern (`Batcher` interface).
+- [hardener.md](hardener.md) — `Hardener` (`Shed` + Hardener's own producer list), Someday.
