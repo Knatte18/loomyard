@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // DirName is the directory name for the PATTERN constraint-injection surface within a worktree
@@ -17,6 +18,21 @@ import (
 // use Dir/File/FileHere to obtain the paths built from it.
 const DirName = "_pattern"
 
+// patternFileName is the PATTERN entry-point filename. It is this package's
+// single declaration of the filename; File and PathspecFile both build from
+// it so the literal is written exactly once.
+const patternFileName = "PATTERN.md"
+
+// PathspecFile is the worktree-relative git-pathspec spelling of the PATTERN entry point.
+// internal/pattern is its single declarer;
+// internal/fabricengine consumes it for the PatternResidue pathspec.
+const PathspecFile = lyxdirs.LyxDirName + "/" + patternFileName
+
+// PathspecDir is the worktree-relative git-pathspec spelling of the PATTERN detail-docs directory.
+// internal/pattern is its single declarer;
+// internal/fabricengine consumes it for the PatternResidue pathspec.
+const PathspecDir = lyxdirs.LyxDirName + "/pattern"
+
 // Dir returns the path to the _pattern directory within a baseDir.
 func Dir(baseDir string) string {
 	return filepath.Join(baseDir, DirName)
@@ -24,7 +40,7 @@ func Dir(baseDir string) string {
 
 // File returns the path to the PATTERN.md file within a baseDir.
 func File(baseDir string) string {
-	return filepath.Join(Dir(baseDir), "PATTERN.md")
+	return filepath.Join(baseDir, lyxdirs.LyxDirName, patternFileName)
 }
 
 // FileHere returns the path to the PATTERN.md file for the current worktree.
@@ -48,11 +64,18 @@ const (
 	RoleOrchestrator
 )
 
-// implementerDirective is RoleImplementer's directive text, phrased as an imperative checklist with "_pattern/PATTERN.md" as a literal relative pointer (not interpolated).
+// implementerDirective is RoleImplementer's directive text, phrased as an imperative checklist with "_lyx/PATTERN.md" as a literal relative pointer (not interpolated).
+//
+// The literal pointers in the three directive constants below are deliberately
+// not built from PathspecFile/PathspecDir or any lyxdirs.LyxDirName
+// concatenation: they are compared by fixed-string equality and substring
+// match in this package's own tests and in every consumer template test, so
+// keeping them as plain string literals is what makes those comparisons
+// meaningful.
 const implementerDirective = `## Constraints — do this before you write any code
 
-- **STOP.** Read _pattern/PATTERN.md in full before editing a single file.
-- Read every detail doc under _pattern/ that PATTERN.md points to and that touches what you are about to change.
+- **STOP.** Read _lyx/PATTERN.md in full before editing a single file.
+- Read every detail doc under _lyx/pattern/ that PATTERN.md points to and that touches what you are about to change.
 - These constraints are BINDING: a change that violates one is wrong even if the verify command passes.
 - If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.
 `
@@ -60,8 +83,8 @@ const implementerDirective = `## Constraints — do this before you write any co
 // reviewFixDirective is RoleReviewFix's directive text, covering both of the burler round's phases.
 const reviewFixDirective = `## Constraints — do this before you judge or change anything
 
-- Read _pattern/PATTERN.md in full before forming any judgment.
-- Read every detail doc under _pattern/ that PATTERN.md points to and that touches what you are about to judge or change.
+- Read _lyx/PATTERN.md in full before forming any judgment.
+- Read every detail doc under _lyx/pattern/ that PATTERN.md points to and that touches what you are about to judge or change.
 - In part A, every violation of a listed constraint is a BLOCKING finding: record it no matter how small it looks, and never wave it through because the code works or the tests pass.
 - In part B, the fix must not introduce a violation of its own: a fix that trades one finding for a constraint breach is not a fix.
 - If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.
@@ -70,8 +93,8 @@ const reviewFixDirective = `## Constraints — do this before you judge or chang
 // orchestratorDirective is RoleOrchestrator's directive text, worded for forking rather than editing.
 const orchestratorDirective = `## Constraints — do this before you fork anything
 
-- Read _pattern/PATTERN.md in full before forking a single implementer.
-- Read every detail doc under _pattern/ that PATTERN.md points to and that touches what the forks you are about to spawn will do.
+- Read _lyx/PATTERN.md in full before forking a single implementer.
+- Read every detail doc under _lyx/pattern/ that PATTERN.md points to and that touches what the forks you are about to spawn will do.
 - Every fork inherits its context, so reading this once here is what puts the constraints in front of all of them; it must not be skipped on the grounds of not editing code.
 - The constraints are BINDING on the forks it spawns: a batch report trading a constraint for a passing verify is a failed batch, not a success.
 `
