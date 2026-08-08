@@ -25,13 +25,14 @@ import (
 
 const sinkMaxBytes = 8 * 1024 * 1024
 
-// WorktreeLogsDir returns the path to the worktree-level directory where this package's durable
-// trace sink writes one file per process.
-// It is WorktreePath-anchored so a caller invoked from anywhere in the worktree resolves the same
-// logs directory.
+// LogsDir returns the path to the worktree-level directory where this package's durable trace sink
+// writes one file per process.
+// It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lyx tree —
+// the old WorktreePath-anchored name is gone because it would assert an anchor this function no
+// longer uses.
 // It lives under the ephemeral .lyx directory, never the durable, fabric-synced _lyx.
-func WorktreeLogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "logs")
+func LogsDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "logs")
 }
 
 type sinkHeader struct {
@@ -91,7 +92,10 @@ func ensureDurableSink() (io.Writer, bool) {
 				sinkOK = false
 				return
 			}
-			dir = WorktreeLogsDir(layout)
+			dir = LogsDir(layout)
+			// header.WorktreeRoot records the worktree root as trace metadata, a
+			// separate concern from where the trace file itself lands (LogsDir is
+			// AnchorPath-anchored), so the two lines below disagree by design.
 			header.WorktreeRoot = layout.WorktreePath()
 		}
 
