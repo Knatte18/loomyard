@@ -37,19 +37,23 @@ func newRunID() (string, error) {
 
 // runDirRoot resolves the directory under which every run's subdirectory is
 // created. cfg.RunDir wins when non-empty — a relative value is resolved
-// against layout.WorktreePath(), an already-absolute value is used verbatim.
+// against layout.AnchorPath(), an already-absolute value is used verbatim.
 // When cfg.RunDir is empty, the default is
-// filepath.Join(layout.WorktreePath(), lyxdirs.DotLyxDirName, "shuttle"): the
+// filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle"): the
 // ephemeral, machine-local .lyx tree, built from lyxdirs.DotLyxDirName, never
 // a literal ".lyx" inline.
+// Both branches share layout.AnchorPath() as their base deliberately: one
+// function must never resolve against two different bases when
+// AnchorRel != ".", or a subpath-anchored repo would end up with two
+// distinct run-dir roots depending on which branch a given cfg took.
 func runDirRoot(cfg Config, layout *lyxcwd.Location) string {
 	if cfg.RunDir == "" {
-		return filepath.Join(layout.WorktreePath(), lyxdirs.DotLyxDirName, "shuttle")
+		return filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle")
 	}
 	if filepath.IsAbs(cfg.RunDir) {
 		return cfg.RunDir
 	}
-	return filepath.Join(layout.WorktreePath(), cfg.RunDir)
+	return filepath.Join(layout.AnchorPath(), cfg.RunDir)
 }
 
 // RunState is the persisted record for one shuttle run, written as <runDir>/run.json.

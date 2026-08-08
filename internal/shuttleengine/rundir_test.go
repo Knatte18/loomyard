@@ -16,18 +16,20 @@ import (
 )
 
 func TestRunDirRoot_DefaultUsesDotLyxShuttle(t *testing.T) {
-	layout := &lyxcwd.Location{}
+	// AnchorRel is a real subpath here so the default branch's AnchorPath
+	// anchoring (as opposed to WorktreePath) is actually observable.
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(`C:\worktree`), WorktreeName: filepath.Base(`C:\worktree`), AnchorRel: filepath.Join("sub", "dir")}
 	got := runDirRoot(Config{}, layout)
-	want := filepath.Join(layout.WorktreePath(), lyxdirs.DotLyxDirName, "shuttle")
+	want := filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}
 }
 
-func TestRunDirRoot_RelativeResolvesAgainstWorktreeRoot(t *testing.T) {
+func TestRunDirRoot_RelativeResolvesAgainstAnchorRoot(t *testing.T) {
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(`C:\worktree`), WorktreeName: filepath.Base(`C:\worktree`)}
 	got := runDirRoot(Config{RunDir: "custom-runs"}, layout)
-	want := filepath.Join(layout.WorktreePath(), "custom-runs")
+	want := filepath.Join(layout.AnchorPath(), "custom-runs")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}
