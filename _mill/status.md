@@ -80,6 +80,8 @@ batches:
     commit_sha: b1af052bba8989414e3d8de9bcda001e4b6cf692
     verify_baseline_failures: []
   - name: docs-and-design-sweep
-    state: pending
+    state: running
+    implementer_session: 229c4a71-5e03-4719-bfd1-9cccc915ddef
+    start_sha: db5182f203f363170ed131bffee33b7c75057ba4
     verify_baseline_failures: []
 ```
