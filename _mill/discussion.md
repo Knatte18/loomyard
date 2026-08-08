@@ -60,6 +60,13 @@ Keeping this task to one batch and merging it quickly is the point.
 This is the audit itself, performed during discussion.
 It is recorded here (in a task-state file that dies with the task) rather than in a durable repo doc — that is a deliberate decision, see "No stored audit artifact".
 
+**Population criterion — what bounds the seven.**
+The audited set is: every `CONSTRAINTS.md` section that (a) constrains one package's whole import set and (b) names a dedicated per-package enforcement test file that checks it.
+That is what the task brief enumerated, and it is what makes the scout-shaped question askable — a stated import set plus a check to compare it against.
+Scoutengine meets the criterion and is excluded for the separate ownership reason.
+A rule that constrains imports but has **no** dedicated test does not meet (b);
+one such rule exists and is recorded below rather than left under the blanket "every other invariant".
+
 Method: for each package, `go list -deps ./internal/<pkg>` for the transitive internal closure and `go list -f '{{range .Imports}}...'` for direct imports, plus reading each enforcement test in full.
 
 | Invariant | Direct internal imports | `lyxcwd` in closure? | Check shape | Finding |
@@ -96,6 +103,24 @@ Separately, the test's own header comment claimed lyxtest "imports only stdlib a
 `modelspec` has no `path/filepath` import in any production file — it is a pure config/spec parser that never touches worktree geometry.
 `githubclient`'s `cacheDir()` (`cache.go:38-58`) resolves `%LOCALAPPDATA%\lyx` / `~/.config/lyx`, a machine-global location deliberately outside worktree/anchor geometry.
 Both are zero-cost keeps, no wording change needed.
+
+**Found outside the seven, audited and deliberately deferred: `internal/lyxcwd`'s own import cap.**
+`CONSTRAINTS.md:24` states "`internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec`".
+That statement is **true today** — `go list` confirms `gitexec` is lyxcwd's only non-stdlib import — but it is enforced by **nothing**.
+`internal/lyxcwd/enforcement_test.go` contains `TestStripGoComments`, `TestEnforcement`, `TestEnforcement_GeometryLiterals`, and `TestEnforcement_FabricVocabulary`;
+none checks lyxcwd's own import set.
+This is **exactly the lyxtest finding's shape** — a stated import set that no check enforces.
+
+`docs/shared-libs/lyxcwd.md:6` makes it worse, asserting "**Dependency direction (Go enforces it):** … capped at stdlib plus `internal/gitexec` — nothing else, ever."
+Go enforces *acyclicity*, not the cap.
+A stray non-cyclic import would pass silently while the doc claims the compiler prevents it.
+
+**Deferred, not fixed here**, for two reasons: the rule is a bullet inside the Cwd Resolution Invariant rather than a section meeting the population criterion above, and it sits in the same `CONSTRAINTS.md` region and subject matter that `scout-seam-conversion` is actively working — the precise collision this task's scoping was designed to avoid.
+It warrants its own follow-up task: add an allowlist enforcement test for `internal/lyxcwd` (stdlib + `gitexec`) and correct the "Go enforces it" claim in `docs/shared-libs/lyxcwd.md`.
+Recording it here so the omission reads as a decision rather than an oversight.
+
+**Sweep blind spot, so a re-run is not mistaken for exhaustive:** pass 3's pattern (`never imports|does not import|imports only`) does **not** match "capped at" or "Go enforces it" phrasings — the lyxcwd doc claim above was found by reading, not by the sweep.
+Extending the sweep means adding those phrasings to pass 3.
 
 **Sweep for other now-invalid claims** (requested during discussion): three further sites restate a corrected rule and go stale — `internal/lyxtest/doc.go:7-9`, `internal/treadleengine/engine.go:6`, and `internal/modelspec/leaf_enforcement_test.go:4`.
 All three are in scope above.
@@ -198,11 +223,23 @@ Closing that gap is scope item 5.
 - Rationale: the rename was originally deferred as a judgement call, which was wrong — leaving it open made the sweep's "verified untouched" list conditional on an undecided question, so the list could not be trusted.
   Deciding it here makes the dependent set closed and knowable before planning starts.
   On the merits: the `_AllowlistOnly` suffix is what every sibling uses, and after the conversion the bare `TestLeafInvariant` name would be the only one not saying which mechanism it applies.
+- Consequence for `internal/shuttleengine/seam_enforcement_test.go:22`: the citation **retargets to `internal/pattern/leaf_enforcement_test.go`**, it does not merely swap in the new function name.
+  The comment cites lyxtest as the *style origin* of the `go/parser` `ImportsOnly` idiom — but after this task lyxtest is itself a copy of `internal/pattern`'s shape, so citing it as the origin would be circular.
+  Point at the actual origin instead.
 - Consequence for `CONSTRAINTS.md`: the lyxtest section's "**Enforced by** `internal/lyxtest/leaf_enforcement_test.go`." gains `(`TestLeafInvariant_AllowlistOnly`)`, matching the six siblings that already name their test function.
   This is a **third** `CONSTRAINTS.md` edit and it belongs to mill-go, not to the mill-start commit — the mill-start commit deliberately covered only the two rule-*text* corrections that reviewers act on, and an enforced-by line naming a function that does not exist yet would be a forward reference.
 - Rejected: **skip the rename** — keeps `shuttleengine:22` and the enforced-by line untouched, at the cost of the one inconsistently-named enforcement test in the repo, in the file this task exists to correct.
   **Rename but leave the enforced-by line alone** — the line is already the only one of seven omitting its test name;
   renaming while leaving it is the worst of both.
+
+### The test-build-cycle rationale is kept locally, not delegated to CONSTRAINTS.md
+
+- Decision: the rewritten `internal/lyxtest/doc.go` block and the rewritten `leaf_enforcement_test.go` header each keep the cycle reason in **one clause** — that feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle.
+  The allowlist replaces the *mechanism* (`bannedImports` and its enumeration), never the *reason*.
+- Rationale: the conversion deletes both existing statements of the reason at once — the denylist framing in `doc.go:7-13` and the `bannedImports` block's comment at `leaf_enforcement_test.go:32-46` — which would leave `CONSTRAINTS.md` as the sole surviving explanation of why the allowlist must never be widened.
+  That is the wrong direction: an allowlist is *easier* to widen than a denylist (add one line, no thought required), so the reason to resist needs to be at the edit site, not one file away.
+  Sibling convention agrees — `internal/tokenvocab/doc.go:10-12` states its own rule, names its enforcing test, and cross-references `CONSTRAINTS.md`, all locally.
+- Rejected: **delegate the reason to `CONSTRAINTS.md` and keep both rewrites purely mechanical** — smaller diff, but it removes the reason from exactly where a future contributor will be standing when tempted to add an entry.
 
 ### CONSTRAINTS.md correction lands before the reviewers
 
@@ -266,7 +303,10 @@ Both need the isolation reading removed;
 neither needs the full two-sentence `CONSTRAINTS.md` treatment, since the surrounding prose already carries the mechanism.
 
 **`internal/modelspec/leaf_enforcement_test.go:4`** reads "Unlike lyxtest's leaf_enforcement_test.go (a banned-import denylist), this check is an ALLOWLIST".
-After the conversion both are allowlists, so the contrast is simply deleted or reworded — the sentence's remaining purpose (explaining *why* an allowlist: no list maintenance, future stray dependencies caught automatically) is worth keeping.
+After the conversion both are allowlists, so **the contrast clause is deleted outright** — not reworded into a comparison with some other file, since after this task every enforcement test in the repo is an allowlist and there is nothing left to contrast against.
+What stays is the sentence's actual payload: this check is an allowlist, so any import outside the allowed set fails and a future stray dependency is caught with no list maintenance required.
+Note the sibling files (`pattern`, `tokenvocab`, `githubclient`) open with "Like modelspec's … leaf_enforcement_test.go, this check is an ALLOWLIST" — those stay untouched and correct;
+modelspec's own file simply cannot use that construction about itself.
 
 **Markdown formatting.** `CLAUDE.md` mandates semantic line breaks in every `.md` file — one sentence per line, plus a break at internal independent-clause boundaries.
 Never hard-wrap at a fixed column.
@@ -369,6 +409,11 @@ The reviewer's check is that no remaining comment in the tree asserts an isolati
   Bare `fabric` is unpoliced so the existing "fabric-blind" wording is safe;
   the constraint is on not reaching for `weft`/`warp`/fabric-sense `host` while rewriting.
   Now listed under Constraints.
+- **Q:** (discussion review r3) What bounds the audited seven, and is anything same-shaped left outside? **A:** Criterion: a `CONSTRAINTS.md` section constraining one package's whole import set *and* naming a dedicated enforcement test.
+  One same-shaped rule falls outside it — `internal/lyxcwd`'s own import cap (`CONSTRAINTS.md:24`), true today but enforced by no test, and overclaimed as "Go enforces it" in `docs/shared-libs/lyxcwd.md:6`.
+  Deferred to a follow-up task, not fixed here: it fails the criterion, and it sits in the `CONSTRAINTS.md` region `scout-seam-conversion` is actively working.
+- **Q:** (discussion review r3) Does the test-build-cycle rationale survive the conversion? **A:** Yes, locally, in one clause in both `doc.go` and the test header.
+  The conversion would otherwise delete both existing statements of it at once, leaving only `CONSTRAINTS.md` — wrong direction, since an allowlist is *easier* to widen than a denylist, so the reason to resist belongs at the edit site.
 - **Q:** Is the treadle finding as the brief described it? **A:** Worse.
   The brief expected one transitive path via `logger`;
   the allowlist also permits `shuttleengine`, which imports `lyxcwd` directly.
