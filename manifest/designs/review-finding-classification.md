@@ -49,8 +49,11 @@ But then the right behaviour is to raise it **once, as a design finding about me
    On the observed task this exits at r6 by rule rather than by operator override, and correctly refuses to exit at r2-r4.
 4. **Per-class counts in whatever envelope lyx's review rounds emit** — so "same class, fourth round running" is visible.
    That is the signal to fix the approach, not patch the symptom again.
-5. **Each stage's reviewer prompt should say what NOT to look for**, naming the downstream stage that owns it.
-   For discussion review in a Go repo, that explicitly includes "complete call-site enumeration belongs to the compiler."
+5. **The "what NOT to look for" instruction must be written symmetrically, into both sides, not just the reviewer.**
+   Writing it into only the writer's own format doc (e.g. `discussion-format.md` telling the Discussion agent not to enumerate cross-references) without also writing the matching instruction into the reviewer's prompt/rubric recreates the same non-convergent loop: a reviewer still operating under a default "flag every gap" mandate will flag the writer's now-correct omission as a missing gap.
+   Conversely, instructing only the reviewer wastes the writer's own budget on enumeration nobody will use.
+   Both sides must state the same boundary, from their own side: the format doc says "do not enumerate X here, that belongs to <stage>"; the reviewer's rubric says "do not flag missing X here, that belongs to <stage>."
+   For discussion review in a Go repo, that explicitly includes "complete call-site enumeration belongs to the compiler / a mechanical sweep, not this stage, on both sides."
 
 ## `scope` splits into two mechanical halves, neither an LLM lens
 
