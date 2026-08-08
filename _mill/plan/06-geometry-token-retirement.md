@@ -31,6 +31,7 @@ Card 30's grep sweep is what covers them, and its expected-residue list is what 
 - **Edits:**
   - `internal/pattern/pattern.go`
   - `internal/pattern/patternpath_test.go`
+  - `internal/pattern/pattern_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -42,7 +43,9 @@ Card 30's grep sweep is what covers them, and its expected-residue list is what 
   Keep every `File`, `FileHere`, `PathspecFile`, and `PathspecDir` case.
   Note that inside its own package the constant is referenced unqualified as `DirName`, never `pattern.DirName`, so a qualified-identifier grep will not find these sites — locate them by the bare identifier.
   `internal/pattern/patternpath_test.go`'s header comment at line 1 also describes "the `_pattern` geometry surface this package owns: the `DirName` constant ..." and must be rewritten for the surviving `File`/`FileHere`/`PathspecFile`/`PathspecDir` surface.
-  After this card the token `_pattern` must not appear anywhere in `internal/pattern/`.
+  `internal/pattern/pattern_test.go`'s `TestDirective_InactiveWithoutFile` subtest `DirPresentFileAbsent` (header comment at line 64, fixture at line 76) plants a leftover `_pattern` directory to prove a stray old-style directory does not make PATTERN active; since `_pattern` no longer has any special meaning to this package after the `DirName` deletion, retarget that fixture to a neutral directory name (e.g. `stray_dir`) and reword the header comment accordingly, without weakening the assertion.
+  The negative assertions against the substring `_pattern/` at lines 179-180 of `pattern_test.go` are deliberate and stay as-is.
+  After this card the token `_pattern` must not appear anywhere in `internal/pattern/` except in that deliberate negative-assertion string literal.
 - **Commit:** `refactor(pattern): delete the DirName const and Dir accessor`
 
 ### Card 29: Drop the `_pattern` and `_raddle` rows from the geometry-literal enforcement
