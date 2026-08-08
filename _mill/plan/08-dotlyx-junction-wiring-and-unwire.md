@@ -185,6 +185,7 @@ Every card here is an edit or a create._
   - `internal/fabricengine/junction_pattern_integration_test.go`
   - `internal/fabricengine/structuraldirs_test.go`
   - `internal/fabricengine/clone_test.go`
+  - `internal/fabricengine/weftgit_exclude_test.go`
 - **Creates:**
   - `internal/fabricengine/dotlyxjunction_integration_test.go`
 - **Deletes:** none
