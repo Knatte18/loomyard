@@ -54,7 +54,10 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 ### CONSTRAINTS.md pre-staged during mill-start
 
 - Decision: the `CONSTRAINTS.md` scout-section rewrite was written **during mill-start**, before the discussion-review rounds, rather than being left for mill-go.
-  It is **already committed and pushed on this branch** — commit `5748a22f`, "mill-start: write discussion.md for scout-seam-conversion", alongside this discussion file.
+  It is **already committed and pushed on this branch** — first written in `5748a22f` ("mill-start: write discussion.md for scout-seam-conversion") alongside this discussion file, then amended during discussion-review round 2 to drop the word "hermeticity" and to name `internal/clihelp` in the banned-list bullet.
+  (A reviewer working from a session-start git snapshot will not see these commits;
+  `git log` on the branch is the authority, not the snapshot.
+  The section's *content* is verifiable directly in the working tree either way.)
   The section now reads "## Scout Engine-Seam Invariant" with the banned-list framing, the no-allowlist bullet, the file-scoped-guard bullet, and an "Enforced by" line naming both new test paths.
   **mill-go does not re-apply or re-commit that hunk** — no plan card owns it.
   The plan's `CONSTRAINTS.md` obligation is limited to *verifying* the committed section still matches what the tests end up named, and amending only if a later decision changes a test path or function name.
@@ -98,10 +101,16 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 ### Banned-list test: rename the file, reuse the three existing predicates
 
 - Decision: `leaf_enforcement_test.go` is **renamed** to `seam_enforcement_test.go` (git mv, not a new file plus a delete), the function becomes `TestEngineSeamInvariant_BannedImports`, and the `allowedImports` map is deleted.
-  The three violation predicates already present in the current file are kept verbatim as the whole check:
+  The three violation predicates already present in the current file are kept verbatim, plus one new exact match, as the whole check:
   - exact match on `github.com/Knatte18/loomyard/internal/output`
   - `strings.Contains(importPath, "spf13/cobra")`
   - `strings.Contains(importPath, "/internal/") && strings.HasSuffix(importPath, "cli")`
+  - **new:** exact match on `github.com/Knatte18/loomyard/internal/clihelp`
+
+  The fourth predicate closes a hole the conversion would otherwise open. `internal/clihelp` imports `spf13/cobra` directly (`exec.go`, `jsonhelp.go`) but does **not** end in `cli`, so the `*cli` suffix predicate misses it.
+  The old allowlist rejected a `scoutengine` → `clihelp` import simply because `clihelp` was not on the list;
+  a pure banned list would let it through.
+  Every peer engine shares this hole today, which is a reason to close it here rather than a reason to inherit it.
 
   Four further changes to the same file, each load-bearing:
   - **The file's header comment (lines 1–7) is rewritten** to the seam/banned-list framing: it states the seam rule, names `CONSTRAINTS.md`'s "Scout Engine-Seam Invariant" as the recorded invariant, and drops both the enumerated allowlist and the false claim that this check "keeps the LSP subprocess client stdlib-only" (that property now belongs to `lspclient_guard_test.go`, and even there it is stdlib **plus `logger`**).
@@ -132,7 +141,8 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 ### The `lspclient.go` guard allows `internal/logger`, and is never called "stdlib-only"
 
 - Decision: `TestLSPClientGuard_StdlibAndLoggerOnly` asserts `internal/scoutengine/lspclient.go` imports **stdlib plus `github.com/Knatte18/loomyard/internal/logger`, and nothing else**.
-  Every doc string, header comment, and failure message describes the property as *"no lyx dependency except logging"* — never *"stdlib-only"* or *"hermetic"*.
+  Every doc string, header comment, and failure message describes the property as *"no lyx dependency except logging"* — never *"stdlib-only"* or *"hermetic"* as an assertion about the file.
+  (Using either word in an explicit **denial** — "the file is neither stdlib-only nor hermetic" — is exactly the point and is what the committed `CONSTRAINTS.md` bullet now does.)
 - Rationale, and this is the load-bearing finding of the whole discussion: **`lspclient.go` already imports `internal/logger` today** (five `logger.Warn` calls at lines 564, 567, 572, 595, 598).
   The old allowlist's header comment claimed it was keeping the LSP subprocess client "stdlib-only";
   that claim was already false, because `logger` was on the allowlist alongside it.
@@ -257,7 +267,8 @@ The deliverable *is* two guard tests, and the testing work is proving they are n
 - Green on the tree as it stands: `configengine`, `lock`, `proc`, `logger`, `yaml.v3` must all pass, because none is banned.
   This is the conversion's whole point and is the first thing to verify.
 - Must go red when a production file imports `internal/output` — verify by temporary local edit, observe the `internal/output` violation message, revert.
-- Must go red on a `cobra` import, and on an `internal/*cli` import — same temporary-edit method, confirming each of the three predicates produces its own distinct message rather than a generic mismatch.
+- Must go red on a `cobra` import, on an `internal/*cli` import, and on an `internal/clihelp` import — same temporary-edit method, confirming each of the four predicates produces its own distinct message rather than a generic mismatch.
+  The `clihelp` case matters most: it is the one predicate with no counterpart in the old file, and it is the hole the conversion would otherwise open.
 - Must **not** flag a hypothetical `internal/lyxcwd` import — this is the specific regression the follow-up task depends on, and it is worth confirming explicitly by temporary edit before this task is called done.
 
 **`internal/scoutengine/lspclient_guard_test.go` — `TestLSPClientGuard_StdlibAndLoggerOnly`** (new, TDD candidate)
@@ -292,5 +303,8 @@ The deliverable *is* two guard tests, and the testing work is proving they are n
 - **Q:** (review r1) What happens to the `isStdlib` heuristic and the trailing catch-all once `allowedImports` is gone? **A:** The catch-all is deleted — under a banned list it would flag `logger` and `yaml.v3` as violations. The stdlib heuristic moves into `lspclient_guard_test.go`, its only remaining consumer, rather than becoming a package-scope helper in a file that no longer needs it.
 - **Q:** (review r1) Does the converted test scan with `filepath.WalkDir` or `os.ReadDir`? **A:** `os.ReadDir`, matching the `shuttleengine` model the task body names. Identical behaviour today (scoutengine has no subdirectories); the difference is that a future subpackage does not silently inherit the seam rule.
 - **Q:** (review r1, note) Is "no import guard of any kind" accurate for peer engines? **A:** No — `shuttleengine` has a banned-import guard, and `boardengine`/`websterengine`/`builderengine` have call-site guards in `cmd/lyx`. The claim is narrowed to "no import **allowlist**", which is what the decision actually rests on.
-- **Q:** (review r1, note) Is the pre-staged `CONSTRAINTS.md` hunk committed or only in the working tree? **A:** Committed and pushed, in `5748a22f`. No plan card owns re-applying it; the plan only verifies it still matches the final test names.
+- **Q:** (review r1, note) Is the pre-staged `CONSTRAINTS.md` hunk committed or only in the working tree? **A:** Committed and pushed, in `5748a22f`, and amended again in round 2. No plan card owns re-applying it; the plan only verifies it still matches the final test names.
+- **Q:** (review r2) The committed `CONSTRAINTS.md` bullet called the guard "a hermeticity rule" while this discussion forbids the word — who reconciles it? **A:** mill-start did, in this round. The pre-staged section is mill-start's to amend, not mill-go's; the bullet now reads "the file must never be described as stdlib-only or hermetic — it is neither", so the word survives only as a denial. No plan obligation is widened.
+- **Q:** (review r2, note) `internal/clihelp` imports cobra but does not end in `cli`, so the banned list would let `scoutengine` → `clihelp` through where the allowlist rejected it — is that acceptable? **A:** No. A fourth exact-match predicate on `internal/clihelp` is added, and the direct-imports-only scope is stated in `CONSTRAINTS.md`. Every peer engine has the same hole, which is a reason to close it here, not to inherit it.
+- **Q:** (review r2, note) The cited pre-staging commit hash was not visible in the reviewer's git snapshot — is it real? **A:** Yes; `git cat-file -t 5748a22f` resolves and it is the branch's second-newest commit. The reviewer's snapshot was taken at session start, before the commit existed.
 - **Q:** When is `CONSTRAINTS.md` rewritten? **A:** Immediately, during mill-start, before the discussion-review rounds — so reviewers do not spend their findings on a contradiction between the discussion and a still-stale authoritative doc.
