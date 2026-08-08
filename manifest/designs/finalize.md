@@ -13,12 +13,12 @@ worktree/branch/junction/portal teardown is explicitly **out of scope** — that
 
 ## Two merge targets, not one — warp and weft, handled differently
 
-Merge-back is not a single git-merge operation — it is two, with genuinely different conflict mechanics, because `_raddle`/`_pattern` content is reached through a **filesystem junction** (not git-aware) inside the warp worktree:
+Merge-back is not a single git-merge operation — it is two, with genuinely different conflict mechanics, because `_lyx/raddle/` content is reached through a **filesystem junction** (not git-aware) inside the warp worktree:
 
 - **Warp side** — an ordinary git merge conflict.
   The agent operates in its own worktree, where `git diff`/`git status` behave normally.
   No special handling.
-- **Weft side** — deliberately **not** represented as a git conflict at all, even though the files are reachable at what looks like an ordinary path inside warp (via the `_raddle` junction). `git diff` run from the warp worktree cannot see across a junction boundary into weft's own, separate `.git` history — it would silently report nothing, which is worse than an error, since nothing signals the agent it asked the wrong tool the wrong question.
+- **Weft side** — deliberately **not** represented as a git conflict at all, even though the files are reachable at what looks like an ordinary path inside warp (via the `_lyx` junction). `git diff` run from the warp worktree cannot see across a junction boundary into weft's own, separate `.git` history — it would silently report nothing, which is worse than an error, since nothing signals the agent it asked the wrong tool the wrong question.
   So weft-side conflicts are never given git conflict markers: Go precomputes the diff directly against the real weft worktree (both weft SHAs are already known via `fabric`'s `Warp-SHA` correspondence tracking) and hands the agent a plain **document** describing the discrepancy — the agent reads it, resolves, and writes the final content via the junction path (a transparent write-through to the real weft files) — never invoking git for the weft side at all.
 
 ## Only Raddle forwards from child weft to parent weft — not `_lyx`
@@ -26,8 +26,8 @@ Merge-back is not a single git-merge operation — it is two, with genuinely dif
 `_lyx` is committed into every task's own weft branch **by design** (see `internal/fabricengine`'s package documentation and CONSTRAINTS.md's Weft Git Invariant) — it is the per-task session/orchestration state,
 and it is correct for it to live there for the task's own lifetime.
 It was never meant to propagate to parent, though — merge-back only forwards **Raddle**'s regenerated output (see [raddle.md](raddle.md#when-it-runs-deferred-to-merge-time-not-mid-task) for when that regeneration actually runs) using a **narrowed pathspec**: `fabric.CommitWeft` already accepts an arbitrary pathspec (it is not hardwired to `_lyx` — `internal/fabricengine/weftgit.go`'s `CommitWeft` takes the pathspec as a parameter,
-and the fabric config's own `pathspec` key is whitespace-separated, so a hub can already name several directories at once), so the merge-back commit simply calls it with `["_raddle"]` (and, eventually, `["_pattern"]` for `PATTERN.md`), never `_lyx`.
-No new exclusion mechanism is needed — this is a call-site decision, not an architecture gap. `_lyx` simply stays in the child's own weft branch forever, unused by parent, exactly as intended.
+and the fabric config's own `pathspec` key is whitespace-separated, so a hub can already name several directories at once), so the merge-back commit simply calls it with `["_lyx"]` — raddle and PATTERN content are both inside `_lyx` now, which is precisely why the earlier per-directory scoping (`_raddle` vs. `_pattern`) is obsolete.
+No new exclusion mechanism is needed — this is a call-site decision, not an architecture gap.
 
 Note: since Raddle and (eventually) `scout`'s own index are both pure functions of the current source code, they **regenerate** at merge-time rather than being merged/diffed across branches at all (see [raddle.md](raddle.md) for the reasoning) — so in practice the weft-side document-driven conflict path above is expected to matter mainly for genuinely hand/LLM-authored weft content like `PATTERN.md`, not for Raddle's own output.
 

@@ -63,8 +63,8 @@ a dedicated always-run step removes the dependency on anyone remembering,
 and a fresh-context agent reading only the diff often writes better docs than the implementer who is "done in their head."
 Mechanism: loom stamps a **start-SHA** (host `HEAD`) into the status file when Builder begins;
 the Builder agent **commits its own work** (required anyway — for backtracking, and so there is a diff to read).
-The Raddle step then generates docs over `git diff <start-SHA>..HEAD` on the host (excluding `_lyx`/`_raddle`) for a targeted update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx fabric sync` (never raw git — this is `fabric`'s responsibility boundary between host and weft).
-The `_raddle` merge-back at Finalize is exactly what `lyx fabric cleanup` gates on. (Whether the Raddle step is itself review-gated is an open choice;
+The Raddle step then generates docs over `git diff <start-SHA>..HEAD` on the host (excluding `_lyx`) for a targeted update — **building heavily on millhouse's `codeguide-update`** — and commits the docs into the weft via `lyx fabric sync` (never raw git — this is `fabric`'s responsibility boundary between host and weft).
+The `_lyx/raddle/` merge-back at Finalize is exactly what `lyx fabric cleanup` gates on. (Whether the Raddle step is itself review-gated is an open choice;
 shown ungated above.)
 
 **Finalize** is loom's last phase — merge-back after Builder-review approval, optional PR creation.
