@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-location-threading
+phase: holistic-reviewing
 slug: scout-lyxcwd-accessors
 branch: scout-lyxcwd-accessors
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r3  '2026-08-08T09:15:38Z'
 planned  '2026-08-08T09:16:05Z'
 implementing  '2026-08-08T09:16:53Z'
 approved-location-threading  '2026-08-08T09:32:57Z'
+holistic-reviewing  '2026-08-08T09:33:18Z'
 ```
 
 ## Batches
