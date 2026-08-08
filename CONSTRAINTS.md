@@ -50,6 +50,9 @@ Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_ly
   Each module exposes a scratch accessor beside its durable one, and every consumer is handed the value, so a caller passing the wrong tree is a compile error rather than a silently-broken pause flag.
 - **Enforced by** `cmd/lyx/notransients_test.go` (`TestNoTransientsUnderLyx`) and `cmd/lyx/constructoranchoring_test.go`.
   The mirrored-subpath rule for a *newly added* transient is a review obligation on top of the machine check.
+- **Structural directories.** `_lyx` and `.lyx` are **structural** — injected by `internal/fabricengine` as `structuralCommittedDirs` and `structuralNeverCommittedDirs` — and are never read from `fabric.yaml`, whose `pathspec` key now names genuinely optional directories only (`_pattern` today).
+  Geometry is structural, never config/env-overridable, so a list an operator can edit is not where obligatory geometry may live: every lyx module fails without both directories existing, and a `fabric.yaml` dropping `_lyx` from `pathspec` would tear away the durable tree, while one omitting `.lyx` would leave machine-local scratch unwired.
+- **Enforced by** `internal/fabricengine/structuraldirs_test.go` and `internal/fabricengine/template_test.go`.
 
 ## lyxtest Leaf Invariant
 
@@ -190,7 +193,12 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   Machine-local artifacts (pause flags, rendered fork prompts, every module's `*.lock` files) are not in the weft tree at all — they live under `.lyx` (see the Durable-vs-Ephemeral State Invariant above), never reaching a weft-commit pathspec in the first place.
   `fabricengine.seedWeftArtifactExcludes` now covers only fabric's own `.weft/` lock directory and gitrepo's push-lock file, both weft-internal operational artifacts unrelated to any round-loop module.
   **Known limitation:** this stops new pollution but does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
+- **Never-committed routing.** Membership in `structuralNeverCommittedDirs` is what makes `.lyx` uncommittable;
+  the filtering lives where the pathspec is **constructed** (`ScopedPathspec`'s callers, via `pathspecNames`) and never inside `Config.Dirs()`, `WiredNames`, or the slug-reservation union, all three of which must keep seeing every name.
+  `classifyPaths` routes a never-committed path to a third bucket rather than letting it fall through to warp, and `Commit` turns a non-empty third bucket into a hard error naming the offending path — silent dropping is forbidden, because a caller passing a `.lyx` path is a bug and must be told.
+  The two halves both exist for the same underlying reason: `git add` on an ignored path fails the entire invocation with exit 1 and stages nothing, not even the legitimate `_lyx` files named in the same call, and `--exclude-standard` on `weftPathspecFilter`'s `git ls-files` probe closes the separate latent bug where an entry matching only ignored files was forwarded and toppled a whole commit.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
+  The never-committed routing clause above is machine-checked by `internal/fabricengine/classify_test.go`, `internal/fabricengine/structuraldirs_test.go`, and `internal/fabriccli/cli_test.go`.
   Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine`/`internal/builderengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterBuilderProductionSource`);
   every other `fabricengine` caller remains a review obligation.
   The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
