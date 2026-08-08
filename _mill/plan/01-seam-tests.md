@@ -156,16 +156,20 @@ Batch-local decisions beyond `## Shared Decisions`:
   Every edit it makes is temporary and must be reverted before the card ends;
   finish by confirming `git status --porcelain` reports a clean tree.
 
-  Prove the converted seam test red by temporarily adding one banned import at a time to `internal/scoutengine/probe.go`, running the package's tests, confirming the failure message names that specific predicate rather than a generic mismatch, then reverting.
+  **Every temporary import below must be a blank import** — `_ "github.com/Knatte18/loomyard/internal/output"` and so on.
+  A plain import of a package the file never references is an "imported and not used" compile error, which fails the whole package build before any test runs, so the seam test's own per-predicate message would never be printed and the non-regression proof below could never observe green.
+  Both tests read `astFile.Imports`, which records the import path regardless of the `_` alias, so a blank import trips the guard exactly as a real one would.
+
+  Prove the converted seam test red by temporarily adding one banned blank import at a time to `internal/scoutengine/probe.go`, running the package's tests, confirming the failure message names that specific predicate rather than a generic mismatch, then reverting.
   Cover all four: `github.com/Knatte18/loomyard/internal/output`, a cobra import, an `internal/*cli` import, and `github.com/Knatte18/loomyard/internal/clihelp`.
   The `internal/clihelp` case matters most — it is the predicate with no counterpart in the old file, and the hole a pure banned list would otherwise open.
 
-  Prove the specific non-regression the follow-up task depends on: temporarily add a `github.com/Knatte18/loomyard/internal/lyxcwd` import to `internal/scoutengine/probe.go`, confirm the seam test stays green, then revert.
+  Prove the specific non-regression the follow-up task depends on: temporarily add a blank `github.com/Knatte18/loomyard/internal/lyxcwd` import to `internal/scoutengine/probe.go`, confirm the seam test stays green, then revert.
   A red result here means a predicate is over-broad and the whole conversion is wrong.
 
   Prove the seam test's non-vacuity assertion fires — either by temporarily pointing its directory scan at an empty directory or by asserting the scanned-file count directly — then revert.
 
-  Prove the guard red by temporarily adding, one at a time, a second lyx import to `internal/scoutengine/lspclient.go` that the package-level banned list permits (for example `github.com/Knatte18/loomyard/internal/lock` or `github.com/Knatte18/loomyard/internal/configengine`) and a third-party import (for example `gopkg.in/yaml.v3`), confirming the guard fails in each case while the seam test stays green, then reverting.
+  Prove the guard red by temporarily adding, one at a time, a second lyx blank import to `internal/scoutengine/lspclient.go` that the package-level banned list permits (for example `github.com/Knatte18/loomyard/internal/lock` or `github.com/Knatte18/loomyard/internal/configengine`) and a third-party blank import (for example `gopkg.in/yaml.v3`), confirming the guard fails in each case while the seam test stays green, then reverting.
   That divergence between the two tests is the guard's entire reason to exist.
 
   Prove the guard's missing-target path by temporarily renaming `internal/scoutengine/lspclient.go`, confirming `internal/scoutengine/lspclient_guard_test.go` calls `t.Fatal` rather than passing, then restoring the name.

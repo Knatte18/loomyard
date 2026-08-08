@@ -88,8 +88,8 @@ Batch-local decisions beyond `## Shared Decisions`:
 
   That is the entire edit: one word, one occurrence.
   Do not reword the surrounding sentence, do not touch the parenthetical, and do not touch any other module's bullet.
-  Confirm afterwards that no other occurrence of the word "leaf" in this file refers to scout;
-  occurrences belonging to `internal/lyxtest`, `internal/modelspec`, `internal/tokenvocab`, or `internal/pattern` are correct and stay.
+  Confirm afterwards that no other occurrence of the word "leaf" in this file refers to scout.
+  The file's other occurrences belong to `internal/reedengine/render`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, and `internal/shell` — all correct, all staying.
 - **Commit:** `docs(overview): scoutengine is a cycle-free engine, not a leaf`
 
 ### Card 6: Verify the pre-staged invariant section matches what landed

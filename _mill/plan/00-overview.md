@@ -83,7 +83,8 @@ Batch-local decisions live in each batch file._
 ### Decision: guards are assertion-only and proven red by hand
 
 - **Decision:** neither test grows a table-driven negative case.
-  Both are assertion-only, matching every existing guard in the repo, and card 3 proves each one red by temporarily introducing a violation, observing the failure, and reverting.
+  Both are assertion-only, matching the repo's other import guards, and card 3 proves each one red by temporarily introducing a violation, observing the failure, and reverting.
+  The claim is scoped to import guards specifically: `internal/lyxcwd/raddle_guard_test.go` — cited in card 2 as the naming and directory-resolution precedent — does carry a table-driven `t.Run("predicate", ...)` negative case, because it guards a string predicate rather than an import set.
 - **Rationale:** consistency with `internal/lyxtest`, `internal/shuttleengine`, `internal/pattern`, and `internal/modelspec`, none of which has a negative case;
   a table-driven variant would require refactoring the matcher into a separately-testable predicate, a shape no other guard in the repo uses.
 - **Applies to:** all batches
