@@ -56,6 +56,7 @@ Card 30's grep sweep is what covers them, and its expected-residue list is what 
   - `internal/fabricengine/status.go`
 - **Edits:**
   - `internal/lyxcwd/enforcement_test.go`
+  - `internal/fabricengine/junctionnames.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -67,6 +68,7 @@ Card 30's grep sweep is what covers them, and its expected-residue list is what 
   Both edits must land in the same card: dropping a token from the switch but leaving its map row, or the reverse, leaves the two disagreeing.
   Add a short comment recording why the two tokens left — `_pattern` because the PATTERN surface now lives inside `_lyx`, `_raddle` because raddle converged on an anchor-level `_lyx/raddle/` design with no hub-level presence — so a future reader does not re-add them on the assumption they were dropped by accident.
   Do not change the `TestEnforcement_FabricVocabulary` owner set or any other test in this file.
+  `internal/fabricengine/junctionnames.go` line 38's `dedupUnion` doc comment illustrates its dedup rationale with a literal `pathspec: _lyx _pattern` example; it is not in the docs-and-comment-sites list batch 7 owns and reads as stale prose describing a token this batch retires, so reword it to name a plain non-structural example (e.g. `_lyx _extra`) rather than `_pattern`, without changing the rationale it explains.
 - **Commit:** `test(lyxcwd): retire the _pattern and _raddle geometry tokens from the enforcement map`
 
 ### Card 30: Repo-wide sweep and residue confirmation
