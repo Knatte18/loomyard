@@ -33,6 +33,15 @@ func TestWiredNames_ContainsLyxEvenForAConfigNamingNeitherStructuralDirectory(t 
 // Config — `_lyx` arriving from both the structural set and cfg.Dirs() in the same call — yields no
 // duplicate `_lyx` in the wired set, the routing set, or the slug-reservation set. Without dedup,
 // duplicate names would reach HostJunctions, ScopedPathspec, and status output.
+// The `"_lyx _pattern"` value is deliberate and is not retargeted to `_extra` like this batch's other
+// exemplar Config values: per the no-migration decision (see the plan's Shared Decisions), a deployed
+// repo's pathspec naming `_pattern` is exactly what an already-deployed fabric.yaml keeps indefinitely
+// — this task never migrates existing config values — so this is the only test in the package
+// exercising a real stale deployed config value rather than a synthetic one.
+// See internal/fabricengine/doc.go's narrow-pathspec-asymmetry discussion for the fresh-clone-only
+// limitation this models: reconcile keeps a `pathspec:` key already present in a worktree's
+// fabric.yaml and never widens it, so an already-deployed repo stays on its existing value forever
+// and only a fresh clone picks up the new empty template default.
 func TestDeployedLyxPathspec_YieldsNoDuplicateLyx(t *testing.T) {
 	cfg := Config{Pathspec: "_lyx _pattern"}
 
@@ -96,11 +105,11 @@ func TestIsReservedHubName_RefusesDotLyxAsAWorktreeSlug(t *testing.T) {
 	}
 }
 
-// TestHubReservedNames_StillReturnsExactlyTheFourHubStructuralTokens asserts that HubReservedNames()
+// TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens asserts that HubReservedNames()
 // — the junction-wiring block set scanOnDiskJunctionNames relies on to see `.lyx` at all — still
-// returns exactly the four hub-structural tokens, with `.lyx` absent.
-func TestHubReservedNames_StillReturnsExactlyTheFourHubStructuralTokens(t *testing.T) {
-	want := []string{BoardDirName, portalsDirName, launchersDirName, "_raddle"}
+// returns exactly the three hub-structural tokens, with `.lyx` absent.
+func TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens(t *testing.T) {
+	want := []string{BoardDirName, portalsDirName, launchersDirName}
 	got := HubReservedNames()
 	if !stringSlicesEqual(got, want) {
 		t.Errorf("HubReservedNames() = %v; want %v", got, want)

@@ -97,7 +97,8 @@ func TestHostLyxLinkMethods(t *testing.T) {
 // names, in names's own input order, with Link/Target correctly composed from l's
 // WorktreePath/weft-sibling path and AnchorRel, at AnchorRel == "."
 // and at a nested AnchorRel, for an empty names slice, a 3-name slice, and a reversed 2-name slice
-// — and that no entry's Name equals _raddle for the default two-name set.
+// — and that HostJunctions never augments the caller-supplied names with an unsupplied
+// hub-structural entry of its own.
 // HostJunctions itself takes names as a plain slice and does no sourcing of its own, so the two-name
 // set here is passed literally, exactly as callers pass it today;
 // the batch's actual change is upstream, in how junctionNames/WiredNames build that slice — `_lyx`
@@ -187,8 +188,15 @@ func TestHostJunctions(t *testing.T) {
 		})
 	}
 
-	// Sub-test: scope guard — verify no junction name is _raddle for the default pathspec.
-	t.Run("no_raddle_names", func(t *testing.T) {
+	// Sub-test: scope guard — HostJunctions takes names as a plain slice and returns one
+	// record per entry in that slice's own order, doing no HubReservedNames/filterHubReserved
+	// filtering of its own; TestFilterHubReserved and TestIsReservedHubName in
+	// junctionnames_test.go own the reservation property. This asserts the narrower, still-true
+	// claim: HostJunctions returns exactly the caller-supplied names and never augments them
+	// with a hub-structural entry of its own, using "_board" (still reserved via
+	// HubReservedNames() after this batch) as the name that must NOT appear unless the caller
+	// actually supplied it.
+	t.Run("no_unsupplied_hub_structural_names", func(t *testing.T) {
 		loc := &lyxcwd.Location{
 			HubPath:      "/h",
 			WorktreeName: "main",
@@ -197,8 +205,8 @@ func TestHostJunctions(t *testing.T) {
 
 		junctions := HostJunctions(loc, "slug", []string{"_lyx", "_extra"})
 		for _, j := range junctions {
-			if j.Name == "_raddle" {
-				t.Errorf("HostJunctions found _raddle entry (forbidden by design)")
+			if j.Name == "_board" {
+				t.Errorf("HostJunctions augmented the caller-supplied names with an unsupplied %q entry", "_board")
 			}
 		}
 	})
