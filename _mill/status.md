@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: leaf-invariant-audit
 branch: leaf-invariant-audit
 plan: _mill/plan
@@ -24,6 +24,7 @@ approved-land-audit-corrections  '2026-08-08T06:42:10Z'
 holistic-reviewing  '2026-08-08T06:42:54Z'
 holistic-approved  '2026-08-08T06:45:09Z'
 done  '2026-08-08T06:46:13Z'
+pr-pending  '2026-08-08T06:47:03Z'
 ```
 
 ## Batches
