@@ -75,9 +75,12 @@ func LoomStatusFile(l *lyxcwd.Location) string {
 
 // LoomStatusLock returns the path to the advisory lock file guarding concurrent access to
 // LoomStatusFile(l).
-// It shares LoomStatusFile's AnchorPath anchoring.
+// It is AnchorPath-anchored like LoomStatusFile, but lives under lyxdirs.DotLyxDirName rather than
+// LoomStatusFile's lyxdirs.LyxDirName: the lock is a never-tracked transient, not durable orchestration
+// status, so it is stated outright at its mirrored .lyx subpath rather than derived by analogy --
+// loomengine has no Dir(l) accessor for a ScratchDir(l) to mirror.
 func LoomStatusLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "status.json.lock")
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "status.json.lock")
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
