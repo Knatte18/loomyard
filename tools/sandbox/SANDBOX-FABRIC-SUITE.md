@@ -182,8 +182,8 @@ To confirm the guard holds, follow the rejected add with `lyx fabric list`/`lyx 
 
 **Watch:** Run `lyx fabric unwire` on a wired worktree (the fabric prime,
 or a pair added in F2).
-Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `_pattern`) — `ls`/`git -C <host> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
-Confirm it clears the weft-side `_lyx` content (`_lyx/` under the paired weft worktree should be empty or absent) while leaving `_pattern` content on the weft side untouched — `_pattern` is deliberately never touched by unwire.
+Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `.lyx`) — `ls`/`git -C <host> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
+Confirm it preserves the weft-side `_lyx` content, explicitly including `_lyx/PATTERN.md` — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
 Confirm it reverts the managed `.gitignore` block's `.lyx/` entry.
 Run `lyx fabric unwire` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
 Finally, confirm the repo-wide records survive unwire — `.fabric-anchor` and `<BoardDir>/_lyx/config/fabric.yaml` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
@@ -202,7 +202,7 @@ Discover the surface via `lyx fabric pull --help`.
 **Watch:** `pull` now touches **both** warp and weft, not weft-only -- confirm both sides move where expected.
 A clean local warp (no unpushed commits of its own) should auto-reconcile: warp resets to the new remote history, and weft's own correspondence re-anchors to it, with no operator intervention needed.
 A local warp carrying unpushed commits of its own, run against the same rewritten remote, should instead abort loudly and make no changes to either repo -- confirm neither warp nor weft moved after the abort.
-In the auto-reconciled case, inspect the JSON output: it should report which `_pattern/`-touching weft commits need review, since they were written against a warp baseline that no longer exists on the rewritten remote.
+In the auto-reconciled case, inspect the JSON output: it should report which `_lyx/PATTERN.md`/`_lyx/pattern/`-touching weft commits need review, since they were written against a warp baseline that no longer exists on the rewritten remote.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

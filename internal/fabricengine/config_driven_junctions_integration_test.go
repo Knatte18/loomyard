@@ -30,8 +30,8 @@ import (
 
 // TestWireJunctions_WiresEveryPassedName is the extensibility proof under the hybrid seam:
 // WireJunctions/UnwireJunctions wire and unwire exactly the name-set they are given — here a
-// three-name set including "_extra", a name that is neither part of the default pathspec nor
-// hub-reserved — with no SeedConfig, because WireJunctions no longer reads config at all.
+// three-name set including "_extra" and "_other", names that are neither part of the default
+// pathspec nor hub-reserved — with no SeedConfig, because WireJunctions no longer reads config at all.
 // This is the proof that a future raddle/board append (one extra pathspec token) is wired with no
 // fabric/lyxcwd code change: a caller sourcing an extended pathspec would pass its names exactly
 // this way.
@@ -42,7 +42,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	names := []string{"_lyx", "_pattern", "_extra"}
+	names := []string{"_lyx", "_other", "_extra"}
 
 	if err := fabricengine.WireJunctions(l, slug, names); err != nil {
 		t.Fatalf("WireJunctions: %v", err)

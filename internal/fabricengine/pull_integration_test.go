@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
@@ -243,19 +244,23 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	}
 }
 
-// TestPull_IdentifiesPatternResidue seeds a synthetic _pattern/PATTERN.md weft commit (plus a
-// non-_pattern weft commit) after the anchor point and asserts PatternResidue names exactly the
-// _pattern-touching commit, not the others (including the pre-existing, already-synced content
-// commit).
+// TestPull_IdentifiesPatternResidue seeds a synthetic _lyx/PATTERN.md weft commit (plus a
+// non-PATTERN-path weft commit) after the anchor point and asserts PatternResidue names exactly
+// the PATTERN-path-touching commit, not the others (including the pre-existing, already-synced
+// content commit).
+// It also pins the pathspec's narrow scope: a commit touching only
+// _lyx/config/fabric.yaml must never appear, while a commit touching
+// _lyx/pattern/<detail>.md must appear, proving both PathspecFile and
+// PathspecDir are wired.
 func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
 
-	patternDir := filepath.Join(weftFixture.WeftPath, pattern.DirName)
-	if err := os.MkdirAll(patternDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", patternDir, err)
+	lyxDir := filepath.Join(weftFixture.WeftPath, lyxdirs.LyxDirName)
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", lyxDir, err)
 	}
-	if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("pattern content"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(lyxDir, "PATTERN.md"), []byte("pattern content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
@@ -268,6 +273,27 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
 	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "unrelated residue commit")
 
+	configDir := filepath.Join(lyxDir, "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", configDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "fabric.yaml"), []byte("junctions: []\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "config residue commit")
+
+	patternDetailDir := filepath.Join(lyxDir, "pattern")
+	if err := os.MkdirAll(patternDetailDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", patternDetailDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(patternDetailDir, "detail.md"), []byte("detail content"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern detail residue commit")
+	patternDetailCommitSHA := currentSHA(t, weftFixture.WeftPath)
+
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
 	result, err := f.Pull(SyncOptions{})
@@ -277,23 +303,43 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	if !result.Reconciled {
 		t.Fatalf("Pull() Reconciled = false; want true")
 	}
-	if len(result.PatternResidue) != 1 {
-		t.Fatalf("Pull() PatternResidue = %+v; want exactly one entry", result.PatternResidue)
+	if len(result.PatternResidue) != 2 {
+		t.Fatalf("Pull() PatternResidue = %+v; want exactly two entries", result.PatternResidue)
 	}
 
-	entry := result.PatternResidue[0]
-	if entry.WeftSHA != patternCommitSHA {
-		t.Errorf("PatternResidue[0].WeftSHA = %q; want %q", entry.WeftSHA, patternCommitSHA)
+	residueSHAs := make(map[string]PatternResidueEntry, len(result.PatternResidue))
+	for _, entry := range result.PatternResidue {
+		residueSHAs[entry.WeftSHA] = entry
 	}
-	wantPath := pattern.DirName + "/PATTERN.md"
-	found := false
-	for _, p := range entry.Paths {
-		if p == wantPath {
-			found = true
+
+	if _, ok := residueSHAs[patternCommitSHA]; !ok {
+		t.Errorf("PatternResidue = %+v; want an entry for the PATTERN.md commit %q", result.PatternResidue, patternCommitSHA)
+	} else {
+		wantPath := pattern.PathspecFile
+		found := false
+		for _, p := range residueSHAs[patternCommitSHA].Paths {
+			if p == wantPath {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("PatternResidue entry for %q Paths = %v; want it to contain %q", patternCommitSHA, residueSHAs[patternCommitSHA].Paths, wantPath)
 		}
 	}
-	if !found {
-		t.Errorf("PatternResidue[0].Paths = %v; want it to contain %q", entry.Paths, wantPath)
+
+	if _, ok := residueSHAs[patternDetailCommitSHA]; !ok {
+		t.Errorf("PatternResidue = %+v; want an entry for the %s commit %q", result.PatternResidue, pattern.PathspecDir, patternDetailCommitSHA)
+	} else {
+		wantPath := pattern.PathspecDir + "/detail.md"
+		found := false
+		for _, p := range residueSHAs[patternDetailCommitSHA].Paths {
+			if p == wantPath {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("PatternResidue entry for %q Paths = %v; want it to contain %q", patternDetailCommitSHA, residueSHAs[patternDetailCommitSHA].Paths, wantPath)
+		}
 	}
 }
 

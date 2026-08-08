@@ -129,14 +129,30 @@ func TestResolve_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestIsReservedHubName_Pattern pins _pattern into the reserved-name set alongside _lyx, _raddle,
-// _board, _portals, and _launchers (see fabricengine/junctionnames_test.go's TestIsReservedHubName
-// for the full table): a worktree slug must never claim the PATTERN constraint-injection surface's
-// directory name.
-func TestIsReservedHubName_Pattern(t *testing.T) {
+// TestIsReservedHubName_PatternNoLongerReserved pins the inverse of the old truth: _pattern has
+// collapsed into _lyx (see fabricengine/junctionnames_test.go's TestIsReservedHubName for the full
+// current table of what remains reserved -- _lyx, _board, _portals, _launchers), so a worktree slug
+// named "_pattern" is no longer refused on reserved-name grounds.
+// nil is passed for junctionNames rather than a fixture naming "_pattern": with pathspec empty the
+// production call site supplies no junction names at all, and injecting "_pattern" through
+// junctionNames would make the assertion trivially reserved again and prove nothing.
+// IsReservedHubName only ranges over that parameter, so nil and an empty slice are interchangeable
+// here; nil is the simpler literal.
+func TestIsReservedHubName_PatternNoLongerReserved(t *testing.T) {
 	t.Parallel()
 
-	if got := fabricengine.IsReservedHubName("_pattern", []string{"_lyx", "_pattern"}); !got {
-		t.Errorf("IsReservedHubName(%q, %v) = %v; want true", "_pattern", []string{"_lyx", "_pattern"}, got)
+	if got := fabricengine.IsReservedHubName("_pattern", nil); got {
+		t.Errorf("IsReservedHubName(%q, nil) = %v; want false", "_pattern", got)
+	}
+}
+
+// TestIsReservedHubName_RaddleNoLongerReserved pins the same convergence for _raddle: raddle has
+// converged on an anchor-level `_lyx/raddle/` design with no hub-level presence, so the name is no
+// longer reserved and a worktree slug named "_raddle" is accepted.
+func TestIsReservedHubName_RaddleNoLongerReserved(t *testing.T) {
+	t.Parallel()
+
+	if got := fabricengine.IsReservedHubName("_raddle", nil); got {
+		t.Errorf("IsReservedHubName(%q, nil) = %v; want false", "_raddle", got)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 )
 
@@ -124,7 +125,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 
 	t.Run("non-empty pattern_directive (PATTERN active) precedes Step 1", func(t *testing.T) {
 		worktreeRoot := t.TempDir()
-		patternDir := filepath.Join(worktreeRoot, "_pattern")
+		patternDir := filepath.Join(worktreeRoot, lyxdirs.LyxDirName)
 		if err := os.MkdirAll(patternDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
 		}

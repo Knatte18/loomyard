@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -37,7 +36,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	seedRepoWideFabricConfig(t, f.Layout.HubPath)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
-	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -61,6 +60,10 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
 // <hub>/_board/_lyx/config/fabric.yaml (directly written, not committed).
+// The pathspec names "_extra" rather than reading fabricengine.ConfigTemplate()'s own default,
+// because setupPreflightFixture's explicit WireJunctions call wires "_extra" as this fixture's
+// second, non-_lyx junction (card 3's retarget) — RepoWiredNames must agree with what is actually
+// wired on disk for checkJunctionHealth/Healthy to classify each fixture as healthy where expected.
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
@@ -69,7 +72,7 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
@@ -86,7 +89,8 @@ func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 		Narration: "now: awaiting preflight / last: — / wait: —",
 	}
 	// LoomStatusLock now lives under .lyx, a sibling tree WireJunctions never
-	// creates (it only wires _lyx/_pattern) -- state.WriteJSON MkdirAlls the
+	// creates (it only wires _lyx and the caller's configured optional
+	// junctions) -- state.WriteJSON MkdirAlls the
 	// status.json's own parent but not the lock's, so this fixture must
 	// create the lock's parent itself, mirroring Preflight's own MkdirAll
 	// fix in preflight.go.
@@ -381,15 +385,15 @@ func TestPreflight_ConfigLoadFailed(t *testing.T) {
 // TestPreflight_JunctionBroken asserts that all three of Healthy's junction-drift shapes — missing,
 // not-a-link, and points-elsewhere — classify as junction, via Healthy's typed Cause rather than a
 // substring match.
-// Each drift shape is exercised against BOTH junctions (_lyx and _pattern, from card 15 onward) so
-// the classification is proven to hold for the second, non-_lyx junction too — not just the one
-// Healthy's underlying loop was originally written and tested against.
+// Each drift shape is exercised against BOTH junctions (_lyx and a second, non-_lyx junction, from
+// card 15 onward) so the classification is proven to hold for the second, non-_lyx junction too —
+// not just the one Healthy's underlying loop was originally written and tested against.
 //
 // The seed-check expectation differs by junction,
 // and deliberately so: status.json lives under _lyx (LoomStatusFile(l) is _lyx-anchored), so a
 // broken _lyx junction also makes the seed stat fail — classified seed-unreadable (never
 // seed-missing) because check 3 already failed.
-// A broken _pattern junction, by contrast, leaves the seed fully readable through the still-healthy
+// A broken second junction, by contrast, leaves the seed fully readable through the still-healthy
 // _lyx junction: check 3 still fails and still classifies as CheckJunction (never CheckFabricSync),
 // but no seed failure is added at all, since check 4's stat of LoomStatusFile(l) succeeds either
 // way.
@@ -447,9 +451,9 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 			wantChecks: []CheckID{CheckSeedUnreadable},
 		},
 		{
-			name: "Pattern",
+			name: "Extra",
 			linkFor: func(f lyxtest.PairedFixture, slug string) string {
-				return filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, pattern.DirName)
+				return filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, "_extra")
 			},
 			wantChecks: nil,
 		},
@@ -475,10 +479,10 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 	}
 }
 
-// TestPreflight_LegacyWorktreeUpgrade covers the upgrade consequence every worktree wired before
-// card 15 meets: _lyx is fully healthy,
-// but _pattern was never wired at all (simulated here by removing it from an otherwise-healthy
-// fixture, rather than corrupting it — the fixture never had it, full stop).
+// TestPreflight_MissingOptionalJunctionIsAJunctionFault covers a worktree whose optional junction was
+// never wired at all: _lyx is fully healthy,
+// but the second, non-_lyx junction is entirely absent (simulated here by removing it from an
+// otherwise-healthy fixture, rather than corrupting it — the fixture never had it, full stop).
 // Preflight must classify this as CheckJunction, never CheckFabricSync, and blocks the run (report.OK
 // == false) — but does NOT also fail the seed check, since status.json lives under the
 // still-healthy _lyx junction (see TestPreflight_JunctionBroken's doc comment for the same
@@ -487,17 +491,16 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 // rather than reporting already-healthy;
 // and a fresh Preflight afterward reports OK — the "one lyx init or one lyx fabric reconcile"
 // remedy this batch documents.
-func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
+func TestPreflight_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 	t.Parallel()
 
 	f, slug := setupPreflightFixture(t)
 
-	// Simulate the pre-upgrade state: this worktree's _pattern junction was
-	// never wired, even though _lyx is fully healthy — the "existing worktree,
-	// new lyx binary" shape, not a corruption.
-	patternLink := filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, pattern.DirName)
-	if err := fslink.Remove(patternLink); err != nil {
-		t.Fatalf("remove _pattern junction to simulate a legacy (pre-upgrade) worktree: %v", err)
+	// Simulate the missing-optional-junction state: this worktree's second,
+	// non-_lyx junction was never wired, even though _lyx is fully healthy.
+	extraLink := filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, "_extra")
+	if err := fslink.Remove(extraLink); err != nil {
+		t.Fatalf("remove the optional junction to simulate a worktree missing it: %v", err)
 	}
 
 	report, err := checkResolved(f.Layout)
@@ -531,8 +534,8 @@ func TestPreflight_LegacyWorktreeUpgrade(t *testing.T) {
 	}
 
 	// The junction now resolves.
-	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
-		t.Fatalf("_pattern junction %s not restored by Reconcile: isLink=%v err=%v", patternLink, isLink, err)
+	if isLink, err := fslink.IsLink(extraLink); err != nil || !isLink {
+		t.Fatalf("optional junction %s not restored by Reconcile: isLink=%v err=%v", extraLink, isLink, err)
 	}
 
 	// A fresh Preflight now reports OK: the remedy this batch documents.

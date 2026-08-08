@@ -6,6 +6,7 @@
 package fabricengine
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -63,13 +64,14 @@ func TestConfigTemplate_ResolvesToEmptyBranchPrefix(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_PathspecResolvesToPattern asserts that the template's pathspec default resolves
-// to exactly "_pattern", regardless of environment: _lyx and .lyx are structural and injected in
-// code by internal/fabricengine, so pathspec now names genuinely optional per-repo directories only.
+// TestConfigTemplate_PathspecResolvesToEmpty asserts that the template's pathspec default resolves to
+// an empty set, regardless of environment: _lyx and .lyx are structural and injected in code by
+// internal/fabricengine, and are never read from the pathspec key at all, so an empty default leaves
+// pathspec free to name only genuinely optional per-repo directories the operator adds explicitly.
 // The resolved value is whitespace-split (mirroring Config.Dirs, the consumer that actually splits
 // it) rather than compared as one whole string, since the value is whitespace-split at the consumer
 // -- a splitting bug there would otherwise be silent.
-func TestConfigTemplate_PathspecResolvesToPattern(t *testing.T) {
+func TestConfigTemplate_PathspecResolvesToEmpty(t *testing.T) {
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)
 	if err != nil {
@@ -90,14 +92,44 @@ func TestConfigTemplate_PathspecResolvesToPattern(t *testing.T) {
 		t.Fatalf("resolved[pathspec] = %#v; want a string", pathspec)
 	}
 	got2 := strings.Fields(pathspecStr)
-	want := []string{"_pattern"}
+	want := []string{}
 	if len(got2) != len(want) {
 		t.Fatalf("resolved[pathspec] whitespace-split = %v; want %v", got2, want)
 	}
-	for i := range want {
-		if got2[i] != want[i] {
-			t.Errorf("resolved[pathspec] whitespace-split = %v; want %v", got2, want)
-			break
-		}
+}
+
+// TestConfigTemplate_EmptyPathspecDegradesToStructuralSetsAlone asserts that an empty pathspec
+// yields an empty Config.Dirs() and that pathspecNames (the routing set) and the dedupUnion formula
+// junctionNames applies over cfg.Dirs() (the wired-name set) both degrade to their structural sets
+// alone over it, with no config-supplied name in either union.
+func TestConfigTemplate_EmptyPathspecDegradesToStructuralSetsAlone(t *testing.T) {
+	got := ConfigTemplate()
+	resolved, err := yamlengine.Resolve([]byte(got), nil)
+	if err != nil {
+		t.Fatalf("Resolve() failed: %v", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
+		t.Fatalf("resolved YAML does not unmarshal into Config: %v", err)
+	}
+
+	if len(cfg.Dirs()) != 0 {
+		t.Errorf("cfg.Dirs() = %v; want empty", cfg.Dirs())
+	}
+
+	gotPathspecNames := pathspecNames(cfg)
+	wantPathspecNames := structuralCommittedDirs
+	if !reflect.DeepEqual(gotPathspecNames, wantPathspecNames) {
+		t.Errorf("pathspecNames(cfg) = %v; want %v (structuralCommittedDirs alone)", gotPathspecNames, wantPathspecNames)
+	}
+
+	// junctionNames itself reads its config from disk, but its wired-name-set formula is
+	// dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs())):
+	// applying that same formula here proves it degrades to the two structural sets alone.
+	gotJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs()))
+	wantJunctionNames := dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs)
+	if !reflect.DeepEqual(gotJunctionNames, wantJunctionNames) {
+		t.Errorf("junctionNames formula over cfg.Dirs() = %v; want %v (both structural sets alone)", gotJunctionNames, wantJunctionNames)
 	}
 }

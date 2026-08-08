@@ -33,7 +33,7 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 
 	// Write a config file with both keys
 	configFile := configengine.ConfigFile(tmpDir, "fabric")
-	content := "branch_prefix: hanf/\npathspec: _lyx _raddle\n"
+	content := "branch_prefix: hanf/\npathspec: _lyx _extra\n"
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
@@ -46,10 +46,10 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 	if cfg.BranchPrefix != "hanf/" {
 		t.Errorf("BranchPrefix = %q; want %q", cfg.BranchPrefix, "hanf/")
 	}
-	if cfg.Pathspec != "_lyx _raddle" {
-		t.Errorf("Pathspec = %q; want %q", cfg.Pathspec, "_lyx _raddle")
+	if cfg.Pathspec != "_lyx _extra" {
+		t.Errorf("Pathspec = %q; want %q", cfg.Pathspec, "_lyx _extra")
 	}
-	wantDirs := []string{"_lyx", "_raddle"}
+	wantDirs := []string{"_lyx", "_extra"}
 	gotDirs := cfg.Dirs()
 	if len(gotDirs) != len(wantDirs) {
 		t.Fatalf("Dirs() = %v; want %v", gotDirs, wantDirs)

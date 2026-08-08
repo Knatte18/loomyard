@@ -58,7 +58,7 @@ func seedFabricConfig(t *testing.T, warpPath string) {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx _pattern\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx _extra\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }

@@ -78,15 +78,15 @@ type CleanupResult struct {
 	Entries []CleanupBranchEntry `json:"entries"`
 }
 
-// raddleFoldedBack reports whether the weft branch's _raddle has been squash-merged back.
+// raddleFoldedBack reports whether the weft branch's _lyx/raddle/ has been squash-merged back.
 // Currently returns false conservatively; branches are gate-protected unless --force is set.
 func raddleFoldedBack(_ string) bool {
 	return false
 }
 
 // Cleanup finds weft branches with no corresponding host worktree sibling and reports or deletes
-// them per the flag matrix: apply gates whether any deletion happens, force bypasses the _raddle
-// merge-back gate, checked-out branches are always protected.
+// them per the flag matrix: apply gates whether any deletion happens, force bypasses the
+// _lyx/raddle/ merge-back gate, checked-out branches are always protected.
 func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult, error) {
 	// Enumerate host worktrees using git-registered entries only.
 	entries, err := List(l.WorktreePath())

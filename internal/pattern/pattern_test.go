@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // layoutAt builds a minimal *lyxcwd.Location rooted at worktreeRoot, with
@@ -22,11 +23,11 @@ func layoutAt(worktreeRoot, relPath string) *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: relPath}
 }
 
-// writePatternFile creates root/_pattern/PATTERN.md (and the _pattern
+// writePatternFile creates root/_lyx/PATTERN.md (and the _lyx
 // directory) with the given content, failing the test on any error.
 func writePatternFile(t *testing.T, root, content string) {
 	t.Helper()
-	dir := filepath.Join(root, "_pattern")
+	dir := filepath.Join(root, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", dir, err)
 	}
@@ -60,8 +61,8 @@ func TestDirective_ActiveWithFile(t *testing.T) {
 	}
 }
 
-// TestDirective_InactiveWithoutFile covers the two ordinary inactive cases: the _pattern directory
-// present without PATTERN.md (the normal state lyx init leaves behind),
+// TestDirective_InactiveWithoutFile covers the two ordinary inactive cases: an unrelated stray
+// directory present without PATTERN.md,
 // and neither present at all.
 func TestDirective_InactiveWithoutFile(t *testing.T) {
 	tests := []struct {
@@ -72,7 +73,7 @@ func TestDirective_InactiveWithoutFile(t *testing.T) {
 			name: "DirPresentFileAbsent",
 			setup: func(t *testing.T, root string) {
 				t.Helper()
-				if err := os.MkdirAll(filepath.Join(root, "_pattern"), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Join(root, "stray_dir"), 0o755); err != nil {
 					t.Fatalf("MkdirAll = %v", err)
 				}
 			},
@@ -111,7 +112,7 @@ func TestDirective_EmptyPatternFileIsActive(t *testing.T) {
 // inactive" edge rule: a directory in that place is not a readable index.
 func TestDirective_PatternFileAsDirectoryIsInactive(t *testing.T) {
 	root := t.TempDir()
-	patternFileAsDir := filepath.Join(root, "_pattern", "PATTERN.md")
+	patternFileAsDir := filepath.Join(root, lyxdirs.LyxDirName, "PATTERN.md")
 	if err := os.MkdirAll(patternFileAsDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", patternFileAsDir, err)
 	}
@@ -156,7 +157,7 @@ func TestDirective_UnknownRole(t *testing.T) {
 
 // TestDirective_VariantsArePairwiseDistinct pins that the three role variants never collapse into
 // the same text,
-// and that each carries the literal relative pointer "_pattern/PATTERN.md" — never an interpolated
+// and that each carries the literal relative pointer "_lyx/PATTERN.md" — never an interpolated
 // absolute path, which would make the value vary per worktree.
 func TestDirective_VariantsArePairwiseDistinct(t *testing.T) {
 	root := t.TempDir()
@@ -169,8 +170,14 @@ func TestDirective_VariantsArePairwiseDistinct(t *testing.T) {
 		RoleOrchestrator: Directive(l, RoleOrchestrator),
 	}
 	for role, text := range variants {
-		if !strings.Contains(text, "_pattern/PATTERN.md") {
-			t.Errorf("Directive(%v) does not contain the literal pointer _pattern/PATTERN.md: %q", role, text)
+		if !strings.Contains(text, "_lyx/PATTERN.md") {
+			t.Errorf("Directive(%v) does not contain the literal pointer _lyx/PATTERN.md: %q", role, text)
+		}
+		if !strings.Contains(text, "_lyx/pattern/") {
+			t.Errorf("Directive(%v) does not contain the literal detail-doc pointer _lyx/pattern/: %q", role, text)
+		}
+		if strings.Contains(text, "_pattern/") {
+			t.Errorf("Directive(%v) still contains the old _pattern/ substring: %q", role, text)
 		}
 	}
 
@@ -212,7 +219,7 @@ func TestDirective_VariantsBeginWithOwnHeading(t *testing.T) {
 
 // TestDirective_RelPathNestedSubdirectory is the regression guard for the worst failure mode in
 // this task: a Layout whose RelPath is a nested subdirectory must resolve PATTERN.md at
-// <WorktreeRoot>/<RelPath>/_pattern/PATTERN.md and must NOT be satisfied by one planted at the
+// <WorktreeRoot>/<RelPath>/_lyx/PATTERN.md and must NOT be satisfied by one planted at the
 // worktree root instead.
 // Without this guard, a root-anchored resolution would render PATTERN silently inactive in every
 // agent invoked from a subdirectory, with no error anywhere.
@@ -233,7 +240,7 @@ func TestDirective_RelPathNestedSubdirectory(t *testing.T) {
 	nestedRoot := filepath.Join(root, relPath)
 	writePatternFile(t, nestedRoot, "content")
 	if got := Directive(l, RoleImplementer); got == "" {
-		t.Error("Directive() did not find PATTERN.md planted at <WorktreeRoot>/<RelPath>/_pattern/PATTERN.md")
+		t.Error("Directive() did not find PATTERN.md planted at <WorktreeRoot>/<RelPath>/_lyx/PATTERN.md")
 	}
 }
 

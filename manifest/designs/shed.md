@@ -14,7 +14,7 @@
   For `loom`, this is Discussion → Plan → Webster (each gated by a `perch` review — see [loom.md](loom.md#the-gate));
   for `Hardener`, this is `Tenter` (see the `internal/treadleengine` package documentation).
 
-What **is** literally shared code (not swappable, identical either way): the sequencing skeleton itself (resume-on-files, crash recovery, graceful pause — all specified in [loom.md](loom.md#state--contracts)), the Raddle-regeneration trigger and merge-lock scope (see [raddle.md](raddle.md#when-it-runs-deferred-to-merge-time-not-mid-task) — open question there on whether Raddle collapses into Finalize/Merge or keeps a separate slot), and Finalize/Merge (see [finalize.md](finalize.md)) — including the warp-side real-git-conflict path and the weft-side document-driven (non-git) conflict path for `_raddle`/`_pattern` content.
+What **is** literally shared code (not swappable, identical either way): the sequencing skeleton itself (resume-on-files, crash recovery, graceful pause — all specified in [loom.md](loom.md#state--contracts)), the Raddle-regeneration trigger and merge-lock scope (see [raddle.md](raddle.md#when-it-runs-deferred-to-merge-time-not-mid-task) — open question there on whether Raddle collapses into Finalize/Merge or keeps a separate slot), and Finalize/Merge (see [finalize.md](finalize.md)) — including the warp-side real-git-conflict path and the weft-side document-driven (non-git) conflict path for `_lyx/raddle/` content.
 
 Two named products come from configuring the same engine differently:
 

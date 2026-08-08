@@ -109,7 +109,7 @@ func implementerTemplateMarkerValues() map[string]string {
 		"report_path":       "/builder/reports/02-list-tests.yaml",
 		"self_fix_cap":      "2",
 		"worktree_root":     "/worktree",
-		"pattern_directive": "## Constraints — do this before you write any code\n\n- Read _pattern/PATTERN.md.",
+		"pattern_directive": "## Constraints — do this before you write any code\n\n- Read _lyx/PATTERN.md.",
 	}
 }
 

@@ -7,10 +7,10 @@
 // against every worktree that predates it.
 //
 // (a) lifecycle, (b) seeding order, (c) adoption, (d) adoption collision, and (e) adoption's refusal
-// to over-reach into _lyx/_pattern territory all live in this one file: (c), (d), and (e) especially
-// must be asserted together, because an adoption branch that over-reaches passes (c) while silently
-// breaking _lyx's and _pattern's refusal — the guard whose whole purpose is never touching what might
-// be the user's hand-authored content.
+// to over-reach into other real junction-named directories all live in this one file: (c), (d), and
+// (e) especially must be asserted together, because an adoption branch that over-reaches passes (c)
+// while silently breaking the hard refusal for _lyx and any other junction name — the guard whose
+// whole purpose is never touching what might be the user's hand-authored content.
 //
 // Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig from
 // reconcile_stale_registration_test.go and lyxtest.CopyPaired; shares the single TestMain in
@@ -31,7 +31,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // readWeftExcludeLines resolves and reads a weft worktree's .git/info/exclude file, mirroring the
@@ -289,16 +288,16 @@ func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 }
 
 // TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern covers (e): a pre-existing real _lyx or
-// _pattern directory still produces the hard refusal — the adoption branch must never generalise
-// beyond .lyx, since that guard's whole purpose is never touching what might be the user's
-// hand-authored content.
+// other config-driven junction directory still produces the hard refusal — the adoption branch must
+// never generalise beyond .lyx, since that guard's whole purpose is never touching what might be the
+// user's hand-authored content.
 func TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern(t *testing.T) {
 	cases := []struct {
 		name    string
 		dirName string
 	}{
 		{name: "Lyx", dirName: lyxdirs.LyxDirName},
-		{name: "Pattern", dirName: pattern.DirName},
+		{name: "Extra", dirName: "_extra"},
 	}
 
 	for _, tt := range cases {
@@ -311,7 +310,7 @@ func TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern(t *testing.T) {
 
 			l := fixture.Layout
 			slug := filepath.Base(fixture.Hub)
-			names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName, pattern.DirName}
+			names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName, "_extra"}
 
 			link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, tt.dirName)
 			if err := os.RemoveAll(link); err != nil {
