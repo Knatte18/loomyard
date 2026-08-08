@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-treadle-perch-scratch-seam
+phase: approved-webster-builder-loom-scratch-seam
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -33,6 +33,7 @@ planned  '2026-08-08T10:18:29Z'
 implementing  '2026-08-08T10:29:09Z'
 approved-lyxdirs-single-declarer  '2026-08-08T10:49:19Z'
 approved-treadle-perch-scratch-seam  '2026-08-08T11:09:24Z'
+approved-webster-builder-loom-scratch-seam  '2026-08-08T12:47:22Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     commit_sha: 463514772ae8a689f8a877a4e8b738f07d558f6f
     verify_baseline_failures: []
   - name: webster-builder-loom-scratch-seam
-    state: running
+    state: approved
     implementer_session: 4482d91c-5d98-4f53-8d12-7c244e3c164e
     start_sha: fbf7354001a1146b46b9a5308cd1eecbf3ca5cfd
+    commit_sha: d5d69f67424097e14b9d7a3198bf1d814382b073
     verify_baseline_failures: []
   - name: dotlyx-group-reanchor-and-logger-sink
     state: pending
