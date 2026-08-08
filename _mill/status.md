@@ -32,7 +32,11 @@ implementing  '2026-08-08T06:36:50Z'
 ```yaml
 batches:
   - name: seam-tests
-    state: pending
+    state: running
+    implementer_session: 560ac430-3aae-4410-9738-8824256d9783
+    start_sha: 42f95746e8e3daf111eb154f040130c45ea8fcfa
+    verify_baseline_failures: []
   - name: docs-alignment
     state: pending
+    verify_baseline_failures: []
 ```
