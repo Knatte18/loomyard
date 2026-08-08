@@ -230,6 +230,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   - `internal/builderengine/spawn_test.go`
   - `internal/buildercli/poll_test.go`
   - `internal/buildercli/pause_test.go`
+  - `internal/buildercli/run_test.go`
   - `internal/buildercli/spawnbatch_test.go`
   - `internal/buildercli/status_test.go`
   - `internal/buildercli/smoke_test.go`
@@ -249,6 +250,8 @@ Adding the field is what makes those internal calls re-keyable without the engin
   Where a test fixture builds a webster/builder dir by hand, give it a sibling scratch dir under a `.lyx` path rather than reusing the same temp dir, or the split is untested.
   Writing that fixture surfaced a real gap `LoadState`'s two-tree signature introduced: unlike `SaveState`, `LoadState` never `MkdirAll`s `scratchDir` before resolving the lock, so on a fresh worktree where `scratchDir` does not yet exist (no run has started), `AcquireReadLock` now hard-errors on the missing parent directory instead of returning `LoadState`'s documented `(nil, nil)` — a regression the pre-split code never had, since `scratchDir` and the durable dir used to be the same (already-created) directory.
   `internal/websterengine/state.go` and `internal/builderengine/state.go` each need one `os.MkdirAll(scratchDir, 0o755)` added to the top of `LoadState`, mirroring `SaveState`'s own, so the fresh-worktree `(nil, nil)` case still works once the two trees can differ.
+  Card 19 (already committed) added `ScratchDir: c.builderScratchDir` to `run.go`'s `RunDeps` literal but did not update `internal/buildercli/run_test.go`'s own hand-built `*builderCLI` literal (bypassing `PersistentPreRunE`) to set `builderScratchDir`, so its zero-value `""` now makes `builderengine.Run`'s `os.MkdirAll(deps.ScratchDir, ...)` fail with `mkdir : no such file or directory` on every one of that file's four tests.
+  Add `builderScratchDir: builderengine.ScratchDir(layout)` to `newRunFixture`'s literal and re-key `fx.CLI.builderDir`'s `run.lock` references in `TestRunCmd_LockBusySkipsWeftSync` to `fx.CLI.builderScratchDir`, mirroring `runlevel_test.go`'s own `TestRun_LockBusy` fix.
   `internal/buildercli/smoke_test.go` carries `//go:build smoke` and `internal/websterengine/runlevel_test.go`, `internal/websterengine/integration_test.go`, `internal/webstercli/sync_integration_test.go`, `internal/buildercli/sync_integration_test.go` and `internal/loomengine/preflight_integration_test.go` carry `//go:build integration` — keep each tag line first in its file.
 - **Commit:** `test: cover the webster, builder and loom scratch-dir split`
 
