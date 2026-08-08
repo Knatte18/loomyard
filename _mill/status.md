@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: planned
 slug: leaf-invariant-audit
 branch: leaf-invariant-audit
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-08-08T05:30:46Z'
 discussed  '2026-08-08T06:22:44Z'
 planning  '2026-08-08T06:28:16Z'
 plan-review-r1  '2026-08-08T06:33:30Z'
+planned  '2026-08-08T06:33:56Z'
 ```
