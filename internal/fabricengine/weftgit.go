@@ -139,6 +139,13 @@ func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
 // and whether at least one non-magic entry survived. It prevents stale
 // entries from reaching git add, which fails its entire invocation on a
 // non-matching entry.
+// entryMatchesWeft's probe excludes ignored files (--exclude-standard),
+// closing a latent bug where an entry matching only an ignored file was
+// forwarded as if it matched real content: git add on that doomed entry
+// then failed the whole invocation with exit 1, toppling a commit that had
+// legitimate content in the same call. With the flag, such an entry is
+// filtered out here, positive stays false for it, and the commit degrades
+// to a clean no-op instead.
 func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, positive bool, err error) {
 	for _, entry := range pathspec {
 		if strings.HasPrefix(entry, ":") {
@@ -160,13 +167,18 @@ func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, 
 // entryMatchesWeft reports whether pathspec entry matches a path in the
 // weft repo's index or worktree via git ls-files, the same anchor used by
 // git add.
+// --exclude-standard is load-bearing, not cosmetic: without it, `git
+// ls-files --cached --others` also matches ignored files, so a stray
+// ignored file matching entry would make this report a match that git add
+// then refuses, failing the whole staging invocation (see
+// weftPathspecFilter's doc comment for the full failure mode this closes).
 func entryMatchesWeft(weftPath, entry string) (bool, error) {
-	stdout, stderr, code, err := gitexec.RunGit([]string{"ls-files", "--cached", "--others", "--", entry}, weftPath)
+	stdout, stderr, code, err := gitexec.RunGit([]string{"ls-files", "--cached", "--others", "--exclude-standard", "--", entry}, weftPath)
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: git ls-files --cached --others -- %s: %w", entry, err)
+		return false, fmt.Errorf("fabricengine: git ls-files --cached --others --exclude-standard -- %s: %w", entry, err)
 	}
 	if code != 0 {
-		return false, fmt.Errorf("fabricengine: git ls-files --cached --others -- %s in %s: %s", entry, weftPath, stderr)
+		return false, fmt.Errorf("fabricengine: git ls-files --cached --others --exclude-standard -- %s in %s: %s", entry, weftPath, stderr)
 	}
 	return strings.TrimSpace(stdout) != "", nil
 }
