@@ -95,10 +95,11 @@ func newRunFixture(t *testing.T) *runFixture {
 			BatchContextCapTokens:  100000,
 			BatchCardCap:           10,
 		},
-		roles:      roles,
-		planDir:    loomengine.PlanDir(layout),
-		builderDir: builderengine.Dir(layout),
-		reportsDir: builderengine.ReportsDir(layout),
+		roles:             roles,
+		planDir:           loomengine.PlanDir(layout),
+		builderDir:        builderengine.Dir(layout),
+		builderScratchDir: builderengine.ScratchDir(layout),
+		reportsDir:        builderengine.ReportsDir(layout),
 	}
 
 	return &runFixture{CLI: c, Runner: runner, Hub: hub}
@@ -109,10 +110,10 @@ const doneOutcomeYAML = "outcome: done\nstuck_reason: null\nbatches_done: 3\n"
 func TestRunCmd_LockBusySkipsWeftSync(t *testing.T) {
 	fx := newRunFixture(t)
 
-	if err := os.MkdirAll(fx.CLI.builderDir, 0o755); err != nil {
-		t.Fatalf("mkdir builder dir: %v", err)
+	if err := os.MkdirAll(fx.CLI.builderScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir builder scratch dir: %v", err)
 	}
-	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(fx.CLI.builderDir, "run.lock"))
+	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(fx.CLI.builderScratchDir, "run.lock"))
 	if err != nil || !locked {
 		t.Fatalf("pre-acquire run.lock: locked=%v err=%v; want locked=true, err=nil", locked, err)
 	}

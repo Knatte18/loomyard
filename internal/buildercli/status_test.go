@@ -55,7 +55,8 @@ func TestRunCLI_Status_Initialized(t *testing.T) {
 		},
 	}
 	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
-	if err := builderengine.SaveState(builderDir, st); err != nil {
+	scratchDir := builderengine.ScratchDir(builderFixtureLocation(fixture.Hub))
+	if err := builderengine.SaveState(builderDir, scratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
@@ -84,7 +85,8 @@ func TestRunCLI_Status_ReportOverridesStaleState(t *testing.T) {
 		},
 	}
 	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
-	if err := builderengine.SaveState(builderDir, st); err != nil {
+	scratchDir := builderengine.ScratchDir(builderFixtureLocation(fixture.Hub))
+	if err := builderengine.SaveState(builderDir, scratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
@@ -121,7 +123,8 @@ func TestRunCLI_Status_MalformedReportSurfacesReportError(t *testing.T) {
 		},
 	}
 	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
-	if err := builderengine.SaveState(builderDir, st); err != nil {
+	scratchDir := builderengine.ScratchDir(builderFixtureLocation(fixture.Hub))
+	if err := builderengine.SaveState(builderDir, scratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
@@ -152,11 +155,12 @@ func TestRunCLI_Status_PausedTrue(t *testing.T) {
 	fixture := seedBuilderFixture(t)
 
 	builderDir := builderengine.Dir(builderFixtureLocation(fixture.Hub))
+	scratchDir := builderengine.ScratchDir(builderFixtureLocation(fixture.Hub))
 	st := &builderengine.State{RunGUID: "guid-2"}
-	if err := builderengine.SaveState(builderDir, st); err != nil {
+	if err := builderengine.SaveState(builderDir, scratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
-	if err := builderengine.RequestPause(builderDir); err != nil {
+	if err := builderengine.RequestPause(scratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 

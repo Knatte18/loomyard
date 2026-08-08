@@ -10,7 +10,6 @@
 package reedengine
 
 import (
-	"path/filepath"
 	"testing"
 )
 
@@ -156,7 +155,7 @@ func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
 		Session: "some-other-session",
 		Strands: []Strand{{GUID: "g1", PaneID: "%1"}},
 	}
-	if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), want); err != nil {
+	if err := SaveState(e.stateDir(), want); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 

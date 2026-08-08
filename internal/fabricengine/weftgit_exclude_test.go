@@ -4,8 +4,11 @@
 // Fabric.Commit's write lock, .gitrepo-push.lock from PushCoalesced) never
 // surface as untracked dirt in the weft worktree: ensureWeftLockDir seeds
 // them into the weft repo's info/exclude, so Remove's no-force dirty gate
-// (a raw `git status --porcelain`, untracked included) cannot dead-end on
-// artifacts a pathspec-scoped `fabric sync` can never clear.
+// (a raw `git status --porcelain`, untracked included) never dead-ends on
+// them. It also proves every module's machine-local artifact — locks, pause
+// flags, rendered prompts — is kept out of weft history structurally, by
+// living under .lyx and so never falling inside a weft-commit pathspec,
+// rather than by an exclude-layer pattern.
 //
 // Package fabricengine_test to construct a real *fabricengine.Fabric against
 // isolated warp/weft fixtures; shares the TestMain in testmain_test.go.
@@ -26,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -71,10 +75,9 @@ func newFabricPair(t *testing.T) (*fabricengine.Fabric, lyxtest.WeftFixture) {
 // as anchored at rel — with the given SHARED weftPath. This is what lets a
 // single test exercise multiple RelPath depths against one weft checkout,
 // mirroring the real "multiple hubs at different RelPath depths share one
-// weft checkout" shape crossModuleMachineLocalExcludes is designed for:
-// distinct warp repos (distinct Hubs, each recording its own anchor), all
-// paired to the same weft worktree, rather than one Fabric handle whose
-// RelPath is fixed at construction.
+// weft checkout" shape: distinct warp repos (distinct Hubs, each recording
+// its own anchor), all paired to the same weft worktree, rather than one
+// Fabric handle whose RelPath is fixed at construction.
 func newFabricAtRelPath(t *testing.T, weftPath, rel string) *fabricengine.Fabric {
 	t.Helper()
 
@@ -98,7 +101,7 @@ func newFabricAtRelPath(t *testing.T, weftPath, rel string) *fabricengine.Fabric
 func writeWeftConfig(t *testing.T, weftPath, content string) {
 	t.Helper()
 
-	if err := os.WriteFile(filepath.Join(weftPath, "_lyx", "config.yaml"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(weftPath, lyxdirs.LyxDirName, "config.yaml"), []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 }
@@ -124,7 +127,7 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	f, weftFixture := newFabricPair(t)
 	writeWeftConfig(t, weftFixture.WeftPath, "modified for exclude test")
 
-	if result, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+	if result, err := f.Commit([]string{lyxdirs.LyxDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("Commit: %v", err)
 	} else if !result.WeftCommitted {
 		t.Fatal("Commit WeftCommitted = false; want true")
@@ -149,6 +152,79 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	}
 	if strings.Contains(status, gitrepo.PushLockFileName) {
 		t.Errorf("git status --porcelain reports %s as dirt: %q; want it git-excluded", gitrepo.PushLockFileName, status)
+	}
+}
+
+// nonEmptyExcludeLines splits raw info/exclude content into its non-empty,
+// non-comment lines, in file order — the shape seedWeftArtifactExcludes'
+// entries take, with git's own boilerplate `#`-comment lines filtered out.
+func nonEmptyExcludeLines(content string) []string {
+	var lines []string
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		lines = append(lines, trimmed)
+	}
+	return lines
+}
+
+// TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent proves
+// seedWeftArtifactExcludes' shape: it seeds exactly fabric's own .weft/ lock
+// directory, gitrepo's push-lock filename, and lyxdirs.DotLyxDirName + "/"
+// into the weft repo's info/exclude, none of the retired cross-module
+// machine-local patterns, and re-seeding via a second commit leaves the file
+// byte-identical.
+func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
+	f, weftFixture := newFabricPair(t)
+	writeWeftConfig(t, weftFixture.WeftPath, "modified for exclude test")
+
+	if _, err := f.Commit([]string{lyxdirs.LyxDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	excludePath := filepath.Join(weftFixture.WeftPath, ".git", "info", "exclude")
+	first, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read info/exclude: %v", err)
+	}
+
+	wantLines := []string{".weft/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/"}
+	gotLines := nonEmptyExcludeLines(string(first))
+	if len(gotLines) != len(wantLines) {
+		t.Fatalf("info/exclude entries = %v; want exactly %v", gotLines, wantLines)
+	}
+	for i, want := range wantLines {
+		if gotLines[i] != want {
+			t.Errorf("info/exclude entry %d = %q; want %q (full: %v)", i, gotLines[i], want, gotLines)
+		}
+	}
+
+	retiredPatterns := []string{
+		"**/" + lyxdirs.LyxDirName + "/*/**/*.lock",
+		"**/" + lyxdirs.LyxDirName + "/*/pause",
+		"**/" + lyxdirs.LyxDirName + "/*/prompts/",
+	}
+	for _, retired := range retiredPatterns {
+		if strings.Contains(string(first), retired) {
+			t.Errorf("info/exclude seeds retired cross-module pattern %q; want it gone", retired)
+		}
+	}
+
+	// A second Commit re-runs ensureWeftLockDir/seedWeftArtifactExcludes;
+	// the exclude file must come out byte-identical, not merely
+	// equivalent, proving the re-seed is a true no-op.
+	writeWeftConfig(t, weftFixture.WeftPath, "modified again for exclude test")
+	if _, err := f.Commit([]string{lyxdirs.LyxDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("second Commit: %v", err)
+	}
+	second, err := os.ReadFile(excludePath)
+	if err != nil {
+		t.Fatalf("read info/exclude after second commit: %v", err)
+	}
+	if string(first) != string(second) {
+		t.Errorf("info/exclude changed on re-seed:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 }
 
@@ -180,30 +256,33 @@ func gitLsFiles(t *testing.T, repoPath string) string {
 	return string(out)
 }
 
-// TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth proves F-B's fix
-// (CONSTRAINTS.md's Weft Git Invariant, "Cross-module exclusions"): fabric's OWN sync pathspec —
-// fabricengine.ScopedPathspec(relPath, []string{"_lyx"}), positive entries only, no exclusions, the
-// exact shape internal/fabriccli/weft_verbs.go builds for `lyx fabric sync`/`lyx config <module>
-// --set ...` — never stages another module's lock file, pause flag, or rendered-prompt directory.
-// Before this fix, that exact pathspec permanently tracked all of them, because the caller had no
-// exclusion lever at all.
+// TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth proves the structural
+// replacement for F-B's fix (formerly CONSTRAINTS.md's Weft Git Invariant, "Cross-module
+// exclusions"): fabric's OWN sync pathspec — fabricengine.ScopedPathspec(relPath,
+// []string{lyxdirs.LyxDirName}), positive entries only, no exclusions, the exact shape
+// internal/fabriccli/weft_verbs.go builds for `lyx fabric sync`/`lyx config <module> --set ...` —
+// never stages another module's lock file, pause flag, or rendered-prompt directory, because those
+// now live under .lyx and so fall outside the _lyx-scoped pathspec entirely rather than being
+// caught by a git-exclude pattern.
 //
 // Exercised at the weft worktree root AND at two nested RelPath depths in the SAME weft checkout
-// (multiple host hubs share one weft worktree at different RelPath offsets) — proving
-// crossModuleMachineLocalExcludes' `**/` prefix actually reaches every depth, not just the root.
-// A durable per-module state file is written and committed alongside the excluded artifacts at
-// every depth, proving the exclusion is exact and does not over-match real state.
-func TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth(t *testing.T) {
+// (multiple host hubs share one weft worktree at different RelPath offsets) — proving the
+// exclusion holds at every depth, not just the root. A durable per-module state file is written
+// under _lyx and committed alongside the .lyx artifacts at every depth, proving the property is
+// exact and does not over-match real state.
+func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing.T) {
 	weftFixture := lyxtest.CopyWeft(t)
 
 	relPaths := []string{".", "sub", "wts/some-task"}
 	for _, rel := range relPaths {
-		lyxDir := filepath.Join(weftFixture.WeftPath, filepath.FromSlash(rel), "_lyx")
-		mustWriteFile(t, filepath.Join(lyxDir, "builder", "run.lock"), "lock")
-		mustWriteFile(t, filepath.Join(lyxDir, "builder", "pause"), "")
+		dotLyxDir := filepath.Join(weftFixture.WeftPath, filepath.FromSlash(rel), lyxdirs.DotLyxDirName)
+		mustWriteFile(t, filepath.Join(dotLyxDir, "builder", "run.lock"), "lock")
+		mustWriteFile(t, filepath.Join(dotLyxDir, "builder", "pause"), "")
+		mustWriteFile(t, filepath.Join(dotLyxDir, "webster", "pause"), "")
+		mustWriteFile(t, filepath.Join(dotLyxDir, "webster", "prompts", "01.md"), "prompt")
+
+		lyxDir := filepath.Join(weftFixture.WeftPath, filepath.FromSlash(rel), lyxdirs.LyxDirName)
 		mustWriteFile(t, filepath.Join(lyxDir, "builder", "state.json"), "{}")
-		mustWriteFile(t, filepath.Join(lyxDir, "webster", "pause"), "")
-		mustWriteFile(t, filepath.Join(lyxDir, "webster", "prompts", "01.md"), "prompt")
 	}
 
 	for _, rel := range relPaths {
@@ -211,7 +290,7 @@ func TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth(t *testin
 		// at rel) sharing this one weft worktree, since Fabric.Commit
 		// classifies a call's files against its own Fabric's fixed RelPath.
 		f := newFabricAtRelPath(t, weftFixture.WeftPath, rel)
-		pathspec := fabricengine.ScopedPathspec(rel, []string{"_lyx"})
+		pathspec := fabricengine.ScopedPathspec(rel, []string{lyxdirs.LyxDirName})
 		if _, err := f.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 			t.Fatalf("Commit(rel=%q, pathspec=%v): %v", rel, pathspec, err)
 		}
@@ -219,21 +298,48 @@ func TestCommitWeft_CrossModuleMachineLocalArtifactsExcludedAtAnyDepth(t *testin
 
 	tracked := gitLsFiles(t, weftFixture.WeftPath)
 	for _, rel := range relPaths {
-		lyxRel := filepath.ToSlash(filepath.Join(filepath.FromSlash(rel), "_lyx"))
-		for _, excluded := range []string{
-			lyxRel + "/builder/run.lock",
-			lyxRel + "/builder/pause",
-			lyxRel + "/webster/pause",
-			lyxRel + "/webster/prompts/01.md",
-		} {
-			if strings.Contains(tracked, excluded) {
-				t.Errorf("git ls-files at rel=%q tracks %q; want it excluded\nfull ls-files:\n%s", rel, excluded, tracked)
-			}
-		}
-
+		lyxRel := filepath.ToSlash(filepath.Join(filepath.FromSlash(rel), lyxdirs.LyxDirName))
 		durable := lyxRel + "/builder/state.json"
 		if !strings.Contains(tracked, durable) {
 			t.Errorf("git ls-files at rel=%q does not track durable %q; want it committed\nfull ls-files:\n%s", rel, durable, tracked)
 		}
+	}
+
+	for _, forbidden := range []string{".lock", "pause", "prompts"} {
+		if strings.Contains(tracked, forbidden) {
+			t.Errorf("git ls-files tracks a %q-named entry; want none\nfull ls-files:\n%s", forbidden, tracked)
+		}
+	}
+}
+
+// TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp is the --exclude-standard
+// regression: without it, entryMatchesWeft's `git ls-files --cached --others` probe matches a file
+// that exists only because it is untracked, INCLUDING one hidden by .gitignore/info-exclude, so
+// weftPathspecFilter forwards a doomed entry to `git add`, which then refuses an ignored path and
+// fails the whole StageAndCommit call with exit 1 — toppling a commit that had no other content in
+// this call. With --exclude-standard, the ignored-only entry is filtered out, positive stays false,
+// and the call degrades to a clean no-op (WeftCommitted=false, no error).
+// This test has a verified pre-fix failure: on the pre-card-41 code it fails with a
+// "gitrepo: git add:" error instead of landing a clean no-op.
+func TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp(t *testing.T) {
+	f, weftFixture := newFabricPair(t)
+
+	ignoredRel := filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "ignored.tmp"))
+	excludePath := filepath.Join(weftFixture.WeftPath, ".git", "info", "exclude")
+	existing, err := os.ReadFile(excludePath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read info/exclude: %v", err)
+	}
+	if err := os.WriteFile(excludePath, append(existing, []byte("ignored.tmp\n")...), 0o644); err != nil {
+		t.Fatalf("write info/exclude: %v", err)
+	}
+	mustWriteFile(t, filepath.Join(weftFixture.WeftPath, lyxdirs.LyxDirName, "ignored.tmp"), "ignored, never committed")
+
+	result, err := f.Commit([]string{ignoredRel}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit(%q) error = %v; want a clean no-op, not a git add failure on an ignored-only entry", ignoredRel, err)
+	}
+	if result.WeftCommitted {
+		t.Errorf("Commit(%q) = %+v; want WeftCommitted=false (nothing but an ignored file matched)", ignoredRel, result)
 	}
 }

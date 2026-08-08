@@ -28,7 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrPaused is the sentinel BeginBatch returns when deps.WebsterDir's pause flag is present at the
+// ErrPaused is the sentinel BeginBatch returns when deps.ScratchDir's pause flag is present at the
 // batch boundary (PauseRequested).
 // Exported so a caller can distinguish the operational "paused" refusal from every other
 // begin-batch failure via errors.Is(err, ErrPaused) — webster's own sentinel, independent of
@@ -62,8 +62,10 @@ type Injector interface {
 // WorktreeRoot is the repo checkout BeginBatch captures HeadSHA from;
 // Layout is the resolved Location RenderForkPrompt uses for {{.worktree_root}} (filled from
 // Layout.AnchorPath());
-// WebsterDir, ReportsDir, and PromptsDir are the lyxcwd-resolved _lyx/webster,
-// _lyx/webster/reports, and _lyx/webster/prompts directories.
+// WebsterDir and ReportsDir are the lyxcwd-resolved _lyx/webster and _lyx/webster/reports
+// directories;
+// PromptsDir and ScratchDir are the lyxcwd-resolved .lyx/webster/prompts and .lyx/webster
+// directories.
 type BeginDeps struct {
 	Plan         *planparser.Plan
 	Batches      []batcher.Batch
@@ -78,6 +80,7 @@ type BeginDeps struct {
 	WebsterDir   string
 	ReportsDir   string
 	PromptsDir   string
+	ScratchDir   string
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -124,7 +127,7 @@ func digestSummaryLine(d *Digest) string {
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
 func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
-	if PauseRequested(deps.WebsterDir) {
+	if PauseRequested(deps.ScratchDir) {
 		return nil, ErrPaused
 	}
 

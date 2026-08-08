@@ -36,11 +36,24 @@ func newTestEngine(t *testing.T) *Engine {
 }
 
 func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
-	e := newTestEngine(t)
+	// AnchorRel is a real subpath here so stateDir's AnchorPath anchoring (as
+	// opposed to WorktreePath) is actually observable.
+	root := t.TempDir()
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: filepath.Join("sub", "dir")}
+	cfg := Config{
+		Tmux:               filepath.Join(root, "does-not-exist-tmux.exe"),
+		Shell:              filepath.Join(root, "does-not-exist-shell.exe"),
+		Width:              100,
+		Height:             21,
+		CollapsedStripRows: 2,
+		MinFullRows:        3,
+		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",
+	}
+	e := New(cfg, layout)
 
 	var sawPath string
 	err := e.withOpLock(func() error {
-		sawPath = filepath.Join(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), reedLockFileName)
+		sawPath = filepath.Join(e.stateDir(), reedLockFileName)
 		if _, statErr := os.Stat(sawPath); statErr != nil {
 			t.Errorf("lock file not present while held: %v", statErr)
 		}
@@ -53,6 +66,9 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 	dotLyx := filepath.Join(e.layout.AnchorPath(), ".lyx")
 	if filepath.Dir(sawPath) != dotLyx {
 		t.Errorf("lock path = %q, want under %q (per-worktree, not shared across worktrees)", sawPath, dotLyx)
+	}
+	if filepath.Dir(sawPath) == filepath.Join(e.layout.WorktreePath(), ".lyx") {
+		t.Errorf("lock path = %q, want it to differ from the WorktreePath-based path for a subpath-anchored fixture", sawPath)
 	}
 }
 

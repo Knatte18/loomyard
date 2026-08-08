@@ -5,8 +5,10 @@
 // `<BoardDir>/_lyx/config/fabric.yaml`) — those are per-repo facts a later `lyx fabric reconcile`
 // re-wire still needs.
 // It is distinct from Reconcile: Reconcile converges wiring toward the repo-wide pathspec (may add,
-// re-point, or remove junctions), while Unwire always removes every fabric junction present on
-// disk, clears the weft-side _lyx content, and reverts the managed .gitignore block.
+// re-point, or remove junctions), while Unwire always removes every fabric junction present on disk
+// and reverses their warp `.git/info/exclude` entries — nothing more. It never deletes weft-side
+// content: weft-side `_lyx` and `.lyx` are preserved, and no committed `.gitignore` block exists to
+// revert since `.lyx` is excluded through the warp's `.git/info/exclude` alone.
 
 package fabricengine
 
@@ -15,9 +17,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -26,11 +26,16 @@ type UnwireVerbResult struct {
 	// JunctionsRemoved lists the Name of each host junction that was actually
 	// present and removed. Empty when no junction was wired.
 	JunctionsRemoved []string
-	// WeftContent describes _lyx only — "cleared" or "not_present" — and never
-	// _pattern: weft _pattern content is preserved by design.
+	// WeftContent describes _lyx only — "preserved" or "not_present" — and never
+	// _pattern: weft _pattern content was already preserved by design, and this
+	// value set makes _lyx converge on that same behaviour rather than leaving an
+	// unexplained asymmetry. The weft-side .lyx is never touched by unwire either;
+	// it disappears with the weft worktree when Remove tears the pair down, and on
+	// Windows an open handle inside it makes that `git worktree remove --force`
+	// fail with an OS error that surfaces as-is — remedy: stop the daemons and
+	// re-run.
 	WeftContent string
 	GitExclude  string // "reverted" or "unchanged"
-	Gitignore   string // "reverted" or "unchanged"
 	// BoardJunctionRemoved reports whether the operator-convenience _board
 	// link was present and removed. It is surfaced separately from
 	// JunctionsRemoved because _board is a named special case, not a member
@@ -40,11 +45,11 @@ type UnwireVerbResult struct {
 	BoardJunctionRemoved bool
 }
 
-// Unwire reverses every host junction wired for the worktree at cwd, clears the weft-side _lyx
-// content, and reverts the managed .gitignore block's ".lyx/" entry — a full per-host-worktree
-// deactivation.
+// Unwire reverses every host junction wired for the worktree at cwd and their warp
+// `.git/info/exclude` entries — a full per-host-worktree deactivation.
 // The junction name-set is enumerated from a full on-disk scan, removing every fabric junction
 // present on disk, including stale ones absent from the repo-wide pathspec.
+// It never deletes weft-side content: every weft-side directory, including `.lyx`, is left intact.
 // Unwire never touches the repo-wide weft:main records;
 // a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring.
 func Unwire(cwd string) (UnwireVerbResult, error) {
@@ -78,6 +83,12 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 	var result UnwireVerbResult
 	result.BoardJunctionRemoved = boardRemoved
 
+	// A pure observation, never a mutation: the weft-side _lyx (and, since it is never
+	// touched by unwire either, .lyx) is left exactly as it was found. It disappears
+	// with the weft worktree only when Remove tears the pair down — on Windows, an
+	// open handle inside it makes that `git worktree remove --force` fail with an OS
+	// error that surfaces as-is; the remedy is the same as adoption's: stop the
+	// daemons and re-run.
 	weftWorktree := WeftWorktree(l)
 	if _, statErr := os.Stat(weftWorktree); statErr != nil && !os.IsNotExist(statErr) {
 		return UnwireVerbResult{}, statErr
@@ -90,34 +101,8 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 		} else if os.IsNotExist(statErr) {
 			result.WeftContent = "not_present"
 		} else {
-			if err := os.RemoveAll(weftLyxDir); err != nil {
-				return UnwireVerbResult{}, err
-			}
-			result.WeftContent = "cleared"
+			result.WeftContent = "preserved"
 		}
-
-		opts := EnvSyncOptions()
-		f, err := newPaired(l.WorktreePath(), weftWorktree)
-		if err != nil {
-			return UnwireVerbResult{}, err
-		}
-		pathspec := ScopedPathspec(l.AnchorRel, []string{configengine.LyxDirName})
-		if _, _, err := f.commitWeft(pathspec, "lyx fabric unwire: clear _lyx", opts); err != nil {
-			return UnwireVerbResult{}, err
-		}
-		if err := pushWeftAt(weftWorktree, opts); err != nil {
-			return UnwireVerbResult{}, err
-		}
-	}
-
-	changed, err := gitignore.Remove(cwd, ".lyx/")
-	if err != nil {
-		return UnwireVerbResult{}, err
-	}
-	if changed {
-		result.Gitignore = "reverted"
-	} else {
-		result.Gitignore = "unchanged"
 	}
 
 	result.JunctionsRemoved = junctionResult.JunctionsRemoved

@@ -98,7 +98,12 @@ func TestHostLyxLinkMethods(t *testing.T) {
 // names, in names's own input order, with Link/Target correctly composed from l's
 // WorktreePath/weft-sibling path and AnchorRel, at AnchorRel == "."
 // and at a nested AnchorRel, for an empty names slice, a 3-name slice, and a reversed 2-name slice
-// — and that no entry's Name equals _raddle for the default two-name pathspec.
+// — and that no entry's Name equals _raddle for the default two-name set.
+// HostJunctions itself takes names as a plain slice and does no sourcing of its own, so the two-name
+// set here is passed literally, exactly as callers pass it today;
+// the batch's actual change is upstream, in how junctionNames/WiredNames build that slice — `_lyx`
+// now arrives structurally (structuralCommittedDirs) rather than from a config `pathspec` entry, but
+// HostJunctions itself is unaware of that distinction.
 // The _pattern row asserts against the generic join, not a pattern-specific accessor.
 func TestHostJunctions(t *testing.T) {
 	tests := []struct {

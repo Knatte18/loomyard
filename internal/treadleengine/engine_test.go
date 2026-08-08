@@ -1238,7 +1238,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 				{Round: 2, Attempts: 1, Verdict: "BLOCKING", JudgeVerdict: "PROGRESSING", HandoffPath: handoffPath},
 			},
 		}
-		if err := saveState(runDir, seed); err != nil {
+		if err := saveState(runDir, runDir, seed); err != nil {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
@@ -1353,4 +1353,197 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEngine_ScratchDirSeam covers the scratch-directory seam (Options.ScratchDir) and its
+// back-compat default: (a) unset ScratchDir keeps every transient (run.lock, state.json.lock, the
+// pause flag) in runDir exactly as before this seam existed; (b) a set ScratchDir routes all three
+// away from runDir while state.json and round artifacts stay put, and runDir is asserted to hold
+// NO .lock file and NO pause entry at all — the load-bearing check, since "the lock is in scratch"
+// alone would also pass an implementation that writes it to both; (c) ErrBlockBusy still fires for
+// a second concurrent Run against the same run/scratch pair; (d) PauseFlagPath(scratchDir) and a
+// subsequent Run agree on where the flag lives, and a resuming Run clears the leftover flag at
+// entry. Every subtest uses its own fakeRunner.onCall hook to write the pause flag mid-round (an
+// external caller's pause verb would race the same way against a real block), since the entry-time
+// clearPauseFlag would otherwise erase a flag pre-seeded before Run is ever called.
+func TestEngine_ScratchDirSeam(t *testing.T) {
+	t.Run("(a) unset ScratchDir keeps run.lock, state.json.lock, and the pause flag in runDir", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		flagPath := PauseFlagPath(runDir)
+		pauseFn := func() bool {
+			_, err := os.Stat(flagPath)
+			return err == nil
+		}
+		fr := &fakeRunner{}
+		fr.queue = []queuedAttemptResult{{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}}}
+		fr.onCall = func(in AttemptInput) {
+			if in.Round == 1 {
+				writeFile(t, flagPath, "")
+			}
+		}
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+		e := New("perch", fr, &queuedShuttle{}, Options{PauseRequested: pauseFn})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomePaused {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomePaused)
+		}
+		if !fileExists(filepath.Join(runDir, runLockName)) {
+			t.Errorf("run.lock not found in runDir %q; want the back-compat default to place it there", runDir)
+		}
+		if !fileExists(filepath.Join(runDir, stateFileName+".lock")) {
+			t.Errorf("state.json.lock not found in runDir %q; want the back-compat default to place it there", runDir)
+		}
+		if !fileExists(flagPath) {
+			t.Errorf("pause flag %q not found in runDir; want the back-compat default to place it there too", flagPath)
+		}
+	})
+
+	t.Run("(b) set ScratchDir routes run.lock, state.json.lock, and the pause flag out of runDir", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		scratchDir := filepath.Join(t.TempDir(), "scratch")
+		flagPath := PauseFlagPath(scratchDir)
+		pauseFn := func() bool {
+			_, err := os.Stat(flagPath)
+			return err == nil
+		}
+		fr := &fakeRunner{}
+		fr.queue = []queuedAttemptResult{{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}}}
+		fr.onCall = func(in AttemptInput) {
+			if in.Round == 1 {
+				writeFile(t, flagPath, "")
+			}
+		}
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+		e := New("perch", fr, &queuedShuttle{}, Options{ScratchDir: scratchDir, PauseRequested: pauseFn})
+
+		got, err := e.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomePaused {
+			t.Fatalf("Run() Outcome = %q; want %q", got.Outcome, OutcomePaused)
+		}
+		if !fileExists(filepath.Join(scratchDir, runLockName)) {
+			t.Errorf("run.lock not found in scratchDir %q", scratchDir)
+		}
+		if !fileExists(filepath.Join(scratchDir, stateFileName+".lock")) {
+			t.Errorf("state.json.lock not found in scratchDir %q", scratchDir)
+		}
+		if !fileExists(flagPath) {
+			t.Errorf("pause flag %q not found in scratchDir", flagPath)
+		}
+		if !fileExists(filepath.Join(runDir, stateFileName)) {
+			t.Errorf("state.json not found in runDir %q; it must stay in the durable dir", runDir)
+		}
+		if len(fr.calls) != 1 || filepath.Dir(fr.calls[0].ReviewPath) != runDir {
+			t.Fatalf("fakeRunner calls = %+v; want round 1's review artifact path rooted at runDir %q", fr.calls, runDir)
+		}
+
+		// The load-bearing assertion: runDir must hold NO .lock file and NO
+		// pause entry at all — "the lock is in scratch" alone would also pass
+		// an implementation that writes it to both.
+		entries, err := os.ReadDir(runDir)
+		if err != nil {
+			t.Fatalf("ReadDir(%q) = %v; want nil", runDir, err)
+		}
+		for _, entry := range entries {
+			if strings.HasSuffix(entry.Name(), ".lock") || entry.Name() == PauseFlagName {
+				t.Errorf("runDir contains %q; want no lock or pause file when ScratchDir is set", entry.Name())
+			}
+		}
+	})
+
+	t.Run("(c) ErrBlockBusy still fires for a second concurrent Run against the same run/scratch pair", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		scratchDir := filepath.Join(t.TempDir(), "scratch")
+
+		release := make(chan struct{})
+		fr1 := &blockingRunner{entered: make(chan struct{}), release: release}
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+		e1 := New("perch", fr1, &queuedShuttle{}, Options{ScratchDir: scratchDir})
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_, _ = e1.Run(p, runDir)
+		}()
+
+		select {
+		case <-fr1.entered:
+		case <-time.After(10 * time.Second):
+			t.Fatal("first Run() never entered its blocking attempt")
+		}
+
+		fr2 := &fakeRunner{}
+		e2 := New("perch", fr2, &queuedShuttle{}, Options{ScratchDir: scratchDir})
+		_, err := e2.Run(p, runDir)
+		if err == nil {
+			t.Fatal("second Run() error = nil; want an already-running error while the first Run holds the run/scratch lock")
+		}
+		if !errors.Is(err, ErrBlockBusy) {
+			t.Errorf("second Run() error = %v; want errors.Is(err, ErrBlockBusy)", err)
+		}
+		if len(fr2.calls) != 0 {
+			t.Errorf("fr2 called %d times; want 0 (the second Run must never touch the runner)", len(fr2.calls))
+		}
+
+		close(release)
+		<-done
+	})
+
+	t.Run("(d) PauseFlagPath(scratchDir) and a subsequent Run agree when scratch and run dirs differ", func(t *testing.T) {
+		runDir := filepath.Join(t.TempDir(), "run")
+		scratchDir := filepath.Join(t.TempDir(), "scratch")
+		flagPath := PauseFlagPath(scratchDir)
+		pauseFn := func() bool {
+			_, err := os.Stat(flagPath)
+			return err == nil
+		}
+
+		fr1 := &fakeRunner{}
+		fr1.queue = []queuedAttemptResult{{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictBlocking, BlockingCount: 1, SessionID: "s1"}}}
+		fr1.onCall = func(in AttemptInput) {
+			if in.Round == 1 {
+				writeFile(t, flagPath, "")
+			}
+		}
+		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
+		e1 := New("perch", fr1, &queuedShuttle{}, Options{ScratchDir: scratchDir, PauseRequested: pauseFn})
+
+		got, err := e1.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("first Run() error = %v; want nil", err)
+		}
+		if got.Outcome != OutcomePaused {
+			t.Fatalf("first Run() Outcome = %q; want %q", got.Outcome, OutcomePaused)
+		}
+		if len(fr1.calls) != 1 {
+			t.Fatalf("fakeRunner called %d times; want 1 (only round 1 ran before pause fired at round 2's boundary)", len(fr1.calls))
+		}
+		if !fileExists(flagPath) {
+			t.Fatalf("pause flag %q does not exist right after a paused Run; want it left in place for the caller to observe", flagPath)
+		}
+
+		// A subsequent Run resuming the same block clears the leftover flag
+		// at entry (the resumed-block-must-never-instantly-re-pause rule),
+		// then proceeds to completion untouched by it.
+		fr2 := &fakeRunner{}
+		fr2.queue = []queuedAttemptResult{{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s2"}}}
+		e2 := New("perch", fr2, &queuedShuttle{}, Options{ScratchDir: scratchDir})
+
+		got2, err := e2.Run(p, runDir)
+		if err != nil {
+			t.Fatalf("second Run() error = %v; want nil", err)
+		}
+		if got2.Outcome != OutcomeApproved {
+			t.Fatalf("second Run() Outcome = %q; want %q", got2.Outcome, OutcomeApproved)
+		}
+		if fileExists(flagPath) {
+			t.Errorf("pause flag %q still exists after the resuming Run; want it cleared at entry", flagPath)
+		}
+	})
 }

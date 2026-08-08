@@ -66,7 +66,7 @@ Example:
 			// BeginBatch (guards + mutate) -> SaveState sequence: every
 			// holder's section is bounded, so the blocking acquire is
 			// always short.
-			mutateLock, err := websterengine.AcquireStateMutation(c.websterDir)
+			mutateLock, err := websterengine.AcquireStateMutation(c.websterScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -78,7 +78,7 @@ Example:
 				}
 			}()
 
-			st, err := websterengine.LoadState(c.websterDir)
+			st, err := websterengine.LoadState(c.websterDir, c.websterScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -102,6 +102,7 @@ Example:
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,
 				PromptsDir:   c.promptsDir,
+				ScratchDir:   c.websterScratchDir,
 			}
 
 			result, err := websterengine.BeginBatch(deps, batchNumber)
@@ -120,7 +121,7 @@ Example:
 				return nil
 			}
 
-			if err := websterengine.SaveState(c.websterDir, st); err != nil {
+			if err := websterengine.SaveState(c.websterDir, c.websterScratchDir, st); err != nil {
 				_ = mutateLock.Release()
 				mutateHeld = false
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -142,7 +143,7 @@ Example:
 				"prompt_path": result.PromptPath,
 				"start_sha":   result.StartSHA,
 				"model":       result.AssertedModel,
-				"warnings":    ownerlessRunWarnings(c.websterDir, nil),
+				"warnings":    ownerlessRunWarnings(c.websterScratchDir, nil),
 			}))
 			return nil
 		},

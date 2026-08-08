@@ -63,10 +63,13 @@ type builderCLI struct {
 	// _lyx/plan, _lyx/builder, and _lyx/builder/reports directories, all
 	// anchored at layout.AnchorPath() -- never WorktreeRoot -- per the Cwd Resolution
 	// Invariant and this package's own Cwd-anchoring rationale (see the
-	// package doc above).
-	planDir    string
-	builderDir string
-	reportsDir string
+	// package doc above). builderScratchDir is the .lyx-resolved sibling of
+	// builderDir holding builder's never-tracked transients (pause flag,
+	// run/mutate/state locks), anchored the same way.
+	planDir           string
+	builderDir        string
+	reportsDir        string
+	builderScratchDir string
 }
 
 // runnerOrchestratorStarter adapts Runner to OrchestratorStarter via a thin bridge.
@@ -198,6 +201,7 @@ Verbs:
 			c.planDir = loomengine.PlanDir(layout)
 			c.builderDir = builderengine.Dir(layout)
 			c.reportsDir = builderengine.ReportsDir(layout)
+			c.builderScratchDir = builderengine.ScratchDir(layout)
 			return nil
 		},
 	}

@@ -56,6 +56,7 @@ Example:
 				Reed:         c.reed,
 				PlanDir:      c.planDir,
 				BuilderDir:   c.builderDir,
+				ScratchDir:   c.builderScratchDir,
 				ReportsDir:   c.reportsDir,
 				WorktreeRoot: c.layout.AnchorPath(),
 				Config:       c.cfg,

@@ -556,10 +556,10 @@ gate:
 		t.Fatalf("decodeProfile() unexpected error: %v", err)
 	}
 
-	c := &perchCLI{runDirBase: t.TempDir()}
+	c := &perchCLI{runDirBase: t.TempDir(), scratchDirBase: t.TempDir()}
 
 	// First invocation: no tuning flags.
-	idPlain, dirPlain, profPlain, err := c.resolveRunTarget("profiles/p.yaml", "", fileProfile, "", "", 0)
+	idPlain, dirPlain, scratchPlain, profPlain, err := c.resolveRunTarget("profiles/p.yaml", "", fileProfile, "", "", 0)
 	if err != nil {
 		t.Fatalf("resolveRunTarget(plain) unexpected error: %v", err)
 	}
@@ -568,7 +568,7 @@ gate:
 	// the id derives from the pre-overlay file content, both id and run dir must
 	// be identical — a reorder deriving from the overlaid profile would make
 	// idTuned depend on --model and diverge from idPlain.
-	idTuned, dirTuned, profTuned, err := c.resolveRunTarget("profiles/p.yaml", "", fileProfile, "sonnet", "high", 5*time.Minute)
+	idTuned, dirTuned, scratchTuned, profTuned, err := c.resolveRunTarget("profiles/p.yaml", "", fileProfile, "sonnet", "high", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("resolveRunTarget(tuned) unexpected error: %v", err)
 	}
@@ -578,8 +578,19 @@ gate:
 	if dirTuned != dirPlain {
 		t.Errorf("resolveRunTarget runDir = %q with tuning, %q without; want identical", dirTuned, dirPlain)
 	}
+	if scratchTuned != scratchPlain {
+		t.Errorf("resolveRunTarget scratchDir = %q with tuning, %q without; want identical", scratchTuned, scratchPlain)
+	}
 	if !strings.HasPrefix(dirTuned, c.runDirBase) {
 		t.Errorf("resolveRunTarget runDir = %q; want it under runDirBase %q", dirTuned, c.runDirBase)
+	}
+	if !strings.HasPrefix(scratchTuned, c.scratchDirBase) {
+		t.Errorf("resolveRunTarget scratchDir = %q; want it under scratchDirBase %q", scratchTuned, c.scratchDirBase)
+	}
+	// The two directories are derived from the SAME id, joined onto
+	// different bases — their last path segment (the block id) must agree.
+	if filepath.Base(scratchTuned) != filepath.Base(dirTuned) {
+		t.Errorf("resolveRunTarget scratchDir last segment = %q; want it to match runDir's last segment %q (same block id, different base)", filepath.Base(scratchTuned), filepath.Base(dirTuned))
 	}
 
 	// The overlay DID land on the returned profile (so the block runs with the
@@ -605,7 +616,7 @@ gate:
 	}
 
 	// An explicit --run-id still wins, untouched by the overlay.
-	idExplicit, _, _, err := c.resolveRunTarget("profiles/p.yaml", "my-explicit-id", fileProfile, "sonnet", "", 0)
+	idExplicit, _, _, _, err := c.resolveRunTarget("profiles/p.yaml", "my-explicit-id", fileProfile, "sonnet", "", 0)
 	if err != nil {
 		t.Fatalf("resolveRunTarget(explicit) unexpected error: %v", err)
 	}

@@ -26,13 +26,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // seedReedConfig writes the minimal on-disk config structure for LoadConfig.
 func seedReedConfig(t *testing.T, tmpDir string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0o755); err != nil {
 		t.Fatalf("mkdir _lyx: %v", err)
 	}
@@ -424,7 +425,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	// The header pane is booted as part of Up, before any strand exists;
 	// capture its id so the post-remove assertions below can confirm it
 	// specifically (not merely "some pane") survived.
-	upSt, err := LoadState(filepath.Join(layout.WorktreePath(), dotLyxDirName))
+	upSt, err := LoadState(e.stateDir())
 	if err != nil || upSt == nil || upSt.HeaderPaneID == "" {
 		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", upSt, err)
 	}
@@ -452,7 +453,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 	// prunes st.Strands in memory, so this must reload from disk rather than
 	// trust the in-memory Removed result above.
 	waitUntil(t, 5*time.Second, "persisted reed.json never reflected the emptied strand table", func() bool {
-		st, err := LoadState(filepath.Join(layout.WorktreePath(), dotLyxDirName))
+		st, err := LoadState(e.stateDir())
 		return err == nil && st != nil && len(st.Strands) == 0
 	})
 
@@ -513,7 +514,7 @@ func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
-	st, err := LoadState(filepath.Join(layout.WorktreePath(), dotLyxDirName))
+	st, err := LoadState(e.stateDir())
 	if err != nil || st == nil || st.HeaderPaneID == "" {
 		t.Fatalf("LoadState after Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
 	}
@@ -587,7 +588,7 @@ func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up (heal) = %v, want success — pre-fix this wedged on \"no space for new pane\"", err)
 	}
-	st, err = LoadState(filepath.Join(layout.WorktreePath(), dotLyxDirName))
+	st, err = LoadState(e.stateDir())
 	if err != nil || st == nil || st.HeaderPaneID == "" {
 		t.Fatalf("LoadState after healing Up = (%+v, %v), want a persisted HeaderPaneID", st, err)
 	}

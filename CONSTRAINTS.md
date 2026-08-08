@@ -21,6 +21,7 @@ Fuller design/how-to lives in godoc and `docs/`.
   `Resolve` returns `ErrCwdOutsideAnchor` otherwise. `ResolveWithAnchor` and `ResolveWorktree` are ungated — `ResolveWithAnchor` is a documented bypass, used only by callers that legitimately stand somewhere the gate would reject (fabric's clone, lyxtest's synthetic hubs).
 - A module's own durable-storage subdirectory (e.g. `_lyx/plan`, `_lyx/webster`) is that module's own private relative-path constant, joined onto `AnchorPath()` directly — never a `lyxcwd` function call.
   Adding a module's own subdirectory is never a `lyxcwd` change.
+  Its ephemeral twin is the Durable-vs-Ephemeral State Invariant below.
 - `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — this is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic.
 - Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths,
   and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `lyxcwd` never mentions weft.
@@ -32,9 +33,29 @@ Fuller design/how-to lives in godoc and `docs/`.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
   and `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap.
 
+## Lyxdirs Single-Declarer Invariant
+
+`internal/lyxdirs` is the sole declarer of the two lyx directory-name tokens, `_lyx` (`LyxDirName`) and `.lyx` (`DotLyxDirName`).
+
+- `internal/lyxdirs` stays stdlib-only, a zero-import leaf, so every module that needs either token can import it without cycle risk.
+- No other production file may name either literal in path-construction context (a `filepath.Join` argument, a `+` operand, or a string const declaration value) — every caller uses `lyxdirs.LyxDirName` / `lyxdirs.DotLyxDirName` instead.
+- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`).
+
+## Durable-vs-Ephemeral State Invariant
+
+Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to. `_lyx` holds tracked content only.
+
+- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception `reedengine.HubLogsDir` (hub-anchored).
+- No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
+- `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key (optional dirs only, e.g. `_pattern`).
+- `.lyx` is in the wired name-set (`WiredNames`/`RepoWiredNames`) but never in the pathspec/commit-routing set (`PathspecNames`).
+- `<hub>/.lyx` is hub-level geometry alongside `<hub>/_board`, created by `fabricengine.CloneHub` — a real directory, never a junction, reserved so no worktree slug can claim the name.
+- **Enforced by** `cmd/lyx/notransients_test.go`, `cmd/lyx/constructoranchoring_test.go`, `internal/fabricengine/structuraldirs_test.go`, `template_test.go`, `dotlyxjunction_integration_test.go`.
+  A newly added transient's mirrored-subpath placement is a review obligation.
+
 ## lyxtest Leaf Invariant
 
-`internal/lyxtest` production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, and `internal/configengine`.
+`internal/lyxtest` production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, `internal/configengine`, and `internal/lyxdirs`.
 `internal/configreg` and every feature package (`boardengine`/`boardcli`, `ideengine`/`idecli`, `selfreportengine`/`selfreportcli`, `fabricengine`/`fabriccli`) are excluded by construction — feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle.
 
 - Tests needing real config call `lyxtest.SeedConfig(tb, dir, map[string]string{...})`.
@@ -168,9 +189,18 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   only the *timing*-control half is scoped away.
 - **Cross-module exclusions.**
   The `_lyx` tree is shared by every round-loop module, so every weft-commit caller passes a **positive-only** file list — no `:(exclude)` pathspec magic — built via `fabricengine.ScopedPathspec`.
-  Machine-local artifacts (pause flags, rendered fork prompts, every module's `*.lock` files) are excluded **solely at the git-exclude layer** (`fabricengine.seedWeftArtifactExcludes`), never per-call.
-  **Known limitation:** this stops new pollution but does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
+  Machine-local artifacts (pause flags, fork prompts, module `*.lock` files) live under `.lyx` (see Durable-vs-Ephemeral State Invariant), never reaching a weft-commit pathspec.
+  `fabricengine.seedWeftArtifactExcludes` covers only fabric's own `.weft/` lock directory and gitrepo's push-lock file.
+  **Known limitation:** does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
+- **Never-committed routing.** `structuralNeverCommittedDirs` membership makes a path uncommittable, filtered only where the pathspec is constructed (`ScopedPathspec` callers, via `pathspecNames`) — never in `Config.Dirs()`, `WiredNames`, or the slug-reservation union.
+  `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
+  `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
+- **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
+- **Unwire** removes host junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx`/`_pattern` content is always preserved.
+  Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
+  Never-committed routing: `internal/fabricengine/classify_test.go`, `structuraldirs_test.go`, `internal/fabriccli/cli_test.go`.
+  Junction exclusion / unwire: `internal/fabricengine/dotlyxjunction_integration_test.go`, `unwire_test.go`.
   Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine`/`internal/builderengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterBuilderProductionSource`);
   every other `fabricengine` caller remains a review obligation.
   The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).

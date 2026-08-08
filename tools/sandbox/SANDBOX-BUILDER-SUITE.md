@@ -272,13 +272,17 @@ or a fresh `done` whose file content matches the superseded plan is a `FAIL` (th
 
 **Covers:** builder
 
-**Goal:** "Prove a builder weft commit holds back every machine-local runtime artifact in the shared `_lyx` tree -- its own AND webster's -- while still carrying both modules' durable state.
-Machine-local means: any `*.lock` file, either module's `pause` flag, and webster's rendered fork prompts (`_lyx/webster/prompts/*`).
-None of them may ever appear in a weft commit or as a tracked file."
+**Goal:** "Prove a builder weft commit holds back every machine-local runtime artifact -- its own AND webster's -- while still carrying both modules' durable `_lyx` state.
+Machine-local means: any `*.lock` file, either module's `pause` flag, and webster's rendered fork prompts.
+They live at `.lyx/builder/pause`, `.lyx/webster/pause`, `.lyx/webster/prompts/*.md`, and `.lyx/**/*.lock` -- outside the weft tree entirely -- so none of them may ever appear in a weft commit or as a tracked file."
 
-**Watch:** In a worktree where both modules have run at least once, put every artifact class on disk at the same time: request a builder pause (`lyx builder pause`, which writes `_lyx/builder/pause`), and make sure `_lyx/webster/pause` and at least one `_lyx/webster/prompts/*.md` exist alongside a real `_lyx/webster/state.json` and some other real `_lyx` content. Now drive a builder verb to a weft-commit boundary (`lyx builder run` is enough -- its exit-time backstop commit fires regardless of outcome). In the weft worktree, `git show --stat HEAD` must list the real content and BOTH modules' `state.json`, and must list NO `pause` flag, NO `*.lock`, and NO `prompts/*` entry. Then `git status --porcelain -uall` must still show every one of those artifacts as untracked, and `git ls-files | grep -E 'lock|pause|prompts'` must return nothing. Repeat the whole check driving a WEBSTER verb instead (`lyx webster run`) -- the exclusion is symmetric, and webster's commit must likewise hold back `_lyx/builder/pause`. Any machine-local artifact appearing in the commit or in `ls-files` is a `FAIL`: once tracked, the module that owns the flag can never stage its own deletion (its own exclusion hides the path from `git add`), so the flag is pinned in weft `HEAD`, pushed, and materialized by every other machine's weft pull as a pause request nobody made.
+**Watch:** In a worktree where both modules have run at least once, put every artifact class on disk at the same time: request a builder pause (`lyx builder pause`, which writes `.lyx/builder/pause`), and make sure `.lyx/webster/pause` and at least one `.lyx/webster/prompts/*.md` exist alongside a real `_lyx/webster/state.json` and some other real `_lyx` content. Now drive a builder verb to a weft-commit boundary (`lyx builder run` is enough -- its exit-time backstop commit fires regardless of outcome). In the weft worktree, `git show --stat HEAD` must list the real content and BOTH modules' `state.json`, and must list NO `pause` flag, NO `*.lock`, and NO `prompts/*` entry. Then `git status --porcelain -uall` must show none of those artifacts at all (they are outside the weft worktree's own `.lyx`, not merely untracked inside it), and `git ls-files | grep -E 'lock|pause|prompts'` must return nothing. Repeat the whole check driving a WEBSTER verb instead (`lyx webster run`) -- the exclusion is symmetric, and webster's commit must likewise hold back `.lyx/builder/pause`. Any machine-local artifact appearing in the commit or in `ls-files` is a `FAIL`: because these artifacts are outside the weft tree, a mechanism that ever staged one would mean the geometry itself had regressed, not merely a missed exclude pattern -- a `FAIL` here is a structural break, not a config-layer gap.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
+
+**Note:** this sandbox Hub is the one known repo carrying a committed `.gitignore` `.lyx/` block from a pre-fix binary.
+No code path removes a line already committed to a tracked `.gitignore`;
+the manual remedy is to delete the `.lyx/` line from the lyx-managed block by hand.
 
 ## Session log format
 

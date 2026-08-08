@@ -24,10 +24,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // ReconcileAction describes the corrective action applied to one host↔weft pair.
@@ -238,7 +238,7 @@ func adoptWeftWorktree(hostLayout *lyxcwd.Location, weftPath, branch string) err
 // isRawHostWorktree reports whether the worktree at hostPath lacks any lyx management
 // markers. A worktree is raw when it has no _lyx junction or directory.
 func isRawHostWorktree(hostPath string) bool {
-	lyxPath := filepath.Join(hostPath, configengine.LyxDirName)
+	lyxPath := filepath.Join(hostPath, lyxdirs.LyxDirName)
 	_, err := os.Lstat(lyxPath)
 	return os.IsNotExist(err)
 }

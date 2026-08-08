@@ -4,10 +4,9 @@
 // fabricengine.Unwire, the new per-worktree teardown verb: full on-disk
 // junction removal (including a stale junction absent from the current
 // pathspec, proving on-disk-scan enumeration rather than a config
-// name-set), the deliberate _lyx-only / never-_pattern weft-clear
-// asymmetry, the .gitignore revert, idempotency on a never-wired host, and
-// preservation of the repo-wide weft:main records for a later reconcile
-// re-wire.
+// name-set), weft-side preservation for both _lyx and _pattern, idempotency
+// on a never-wired host, and preservation of the repo-wide weft:main records
+// for a later reconcile re-wire.
 //
 // Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig
 // from reconcile_stale_registration_test.go; shares the single TestMain in
@@ -18,14 +17,17 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitignore"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
@@ -50,10 +52,11 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
-	// Wire the desired pair (_lyx, _pattern) plus a stale name (_extra) that
-	// is present on disk but absent from any pathspec — Unwire's on-disk
-	// scan must remove it too, unlike a config-name-set-driven teardown.
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern", "_extra"}); err != nil {
+	// Wire the desired trio (_lyx, .lyx, _pattern — topology.Add above already wired the
+	// repo-wide set, .lyx included) plus a stale name (_extra) that is present on disk but
+	// absent from any pathspec — Unwire's on-disk scan must remove it too, unlike a
+	// config-name-set-driven teardown.
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", ".lyx", "_pattern", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
@@ -64,13 +67,13 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 
 	got := slices.Clone(res.JunctionsRemoved)
 	sort.Strings(got)
-	want := []string{"_extra", configengine.LyxDirName, pattern.DirName}
+	want := []string{"_extra", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, pattern.DirName}
 	sort.Strings(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("res.JunctionsRemoved (sorted) = %v; want %v", got, want)
 	}
 
-	for _, name := range []string{"_extra", configengine.LyxDirName, pattern.DirName} {
+	for _, name := range []string{"_extra", lyxdirs.DotLyxDirName, lyxdirs.LyxDirName, pattern.DirName} {
 		link := filepath.Join(hostLayout.WorktreePath(), name)
 		if _, statErr := os.Lstat(link); !os.IsNotExist(statErr) {
 			t.Errorf("junction %s still exists after Unwire (stat err: %v)", link, statErr)
@@ -78,13 +81,15 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	}
 }
 
-// TestUnwire_ClearsWeftLyxOnlyNeverPattern verifies the deliberate asymmetry Unwire ports from the
-// deleted initengine.Undo: weft _lyx content is cleared (WeftContent == "cleared"), while weft
-// _pattern content survives on disk untouched.
-func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
+// TestUnwire_PreservesWeftLyxAndPattern rewrites the old _lyx-clearing coverage into a preservation
+// test: after Unwire, both weft-side `_lyx` and `.lyx` still exist with their content, WeftContent
+// reports "preserved", and the weft branch carries no "lyx fabric unwire: clear _lyx" commit — the
+// last is asserted by inspecting the weft log, not by counting commits, since an unrelated commit
+// landing on the weft branch during setup would otherwise make a bare commit-count assertion fragile.
+func TestUnwire_PreservesWeftLyxAndPattern(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	const slug = "unwire-clears-lyx-only"
+	const slug = "unwire-preserves-lyx-and-pattern"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
 	topology := fabricengine.NewTopology(fabricengine.Config{})
@@ -96,15 +101,20 @@ func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", ".lyx", "_pattern"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
-	// Seed real content on the weft side of both junctions: WireJunctions
-	// only materializes the target directories, it writes no files.
+	// Seed real content on the weft side of every junction: WireJunctions only
+	// materializes the target directories, it writes no files.
 	weftLyxDir := fabricengine.WeftLyxDirFor(hostLayout, slug)
 	if err := os.WriteFile(filepath.Join(weftLyxDir, "marker.txt"), []byte("lyx state"), 0o644); err != nil {
 		t.Fatalf("seed weft _lyx content: %v", err)
+	}
+	weftDotLyxDir := filepath.Join(fabricengine.WeftWorktreePath(hostLayout, slug), hostLayout.AnchorRel, lyxdirs.DotLyxDirName)
+	dotLyxFile := filepath.Join(weftDotLyxDir, "scratch.txt")
+	if err := os.WriteFile(dotLyxFile, []byte("scratch state"), 0o644); err != nil {
+		t.Fatalf("seed weft .lyx content: %v", err)
 	}
 	weftPatternDir := filepath.Join(fabricengine.WeftWorktreePath(hostLayout, slug), hostLayout.AnchorRel, pattern.DirName)
 	patternFile := filepath.Join(weftPatternDir, "PATTERN.md")
@@ -112,58 +122,67 @@ func TestUnwire_ClearsWeftLyxOnlyNeverPattern(t *testing.T) {
 		t.Fatalf("seed weft _pattern content: %v", err)
 	}
 
+	weftWorktree := fabricengine.WeftWorktreePath(hostLayout, slug)
+	logBefore, _, exitCode, err := gitexec.RunGit([]string{"log", "--format=%s"}, weftWorktree)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git log (before Unwire) failed: %v (exit %d)", err, exitCode)
+	}
+
 	res, err := fabricengine.Unwire(hostLayout.WorktreePath())
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
 
-	if res.WeftContent != "cleared" {
-		t.Errorf("res.WeftContent = %q; want %q", res.WeftContent, "cleared")
+	if res.WeftContent != "preserved" {
+		t.Errorf("res.WeftContent = %q; want %q", res.WeftContent, "preserved")
 	}
-	if _, statErr := os.Stat(weftLyxDir); !os.IsNotExist(statErr) {
-		t.Errorf("weft _lyx dir %s still exists after Unwire (stat err: %v)", weftLyxDir, statErr)
+
+	// _lyx content is deliberately never touched by Unwire.
+	content, err := os.ReadFile(filepath.Join(weftLyxDir, "marker.txt"))
+	if err != nil {
+		t.Fatalf("read weft _lyx marker after Unwire: %v", err)
+	}
+	if string(content) != "lyx state" {
+		t.Errorf("weft _lyx marker content changed after Unwire: %q", string(content))
+	}
+
+	// .lyx content is deliberately never touched by Unwire either.
+	content, err = os.ReadFile(dotLyxFile)
+	if err != nil {
+		t.Fatalf("read weft .lyx scratch file after Unwire: %v", err)
+	}
+	if string(content) != "scratch state" {
+		t.Errorf("weft .lyx scratch content changed after Unwire: %q", string(content))
 	}
 
 	// _pattern content is deliberately never touched by Unwire.
-	content, err := os.ReadFile(patternFile)
+	content, err = os.ReadFile(patternFile)
 	if err != nil {
 		t.Fatalf("read PATTERN.md after Unwire: %v", err)
 	}
 	if string(content) != "# constraints\n" {
 		t.Errorf("PATTERN.md content changed after Unwire: %q", string(content))
 	}
+
+	logAfter, _, exitCode, err := gitexec.RunGit([]string{"log", "--format=%s"}, weftWorktree)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git log (after Unwire) failed: %v (exit %d)", err, exitCode)
+	}
+	if logBefore != logAfter {
+		t.Errorf("weft log changed by Unwire: before=%q after=%q", logBefore, logAfter)
+	}
+	if strings.Contains(logAfter, "lyx fabric unwire: clear _lyx") {
+		t.Error("weft log carries a \"lyx fabric unwire: clear _lyx\" commit; want none — Unwire must never commit to weft")
+	}
 }
 
-// TestUnwire_RevertsGitignore verifies Unwire reverts the managed .gitignore block's ".lyx/" entry.
-func TestUnwire_RevertsGitignore(t *testing.T) {
-	t.Setenv("WEFT_SKIP_PUSH", "1")
-
-	const slug = "unwire-reverts-gitignore"
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
-	topology := fabricengine.NewTopology(fabricengine.Config{})
-	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("setup Add: %v", err)
-	}
-
-	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(host): %v", err)
-	}
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx"}); err != nil {
-		t.Fatalf("setup WireJunctions: %v", err)
-	}
-	if _, err := gitignore.Ensure(hostLayout.WorktreePath(), ".lyx/"); err != nil {
-		t.Fatalf("seed .gitignore block: %v", err)
-	}
-
-	res, err := fabricengine.Unwire(hostLayout.WorktreePath())
-	if err != nil {
-		t.Fatalf("Unwire() = %v; want nil", err)
-	}
-
-	if res.Gitignore != "reverted" {
-		t.Errorf("res.Gitignore = %q; want %q", res.Gitignore, "reverted")
+// TestUnwireVerbResult_HasNoGitignoreField asserts, via reflection, that UnwireVerbResult carries no
+// Gitignore field — the CLI envelope (internal/fabriccli/unwire.go's output.Ok map, built directly
+// from this struct's fields) can then never carry a "gitignore" key.
+func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
+	typ := reflect.TypeOf(fabricengine.UnwireVerbResult{})
+	if _, ok := typ.FieldByName("Gitignore"); ok {
+		t.Errorf("UnwireVerbResult has a Gitignore field; want it removed so the CLI envelope carries no gitignore key")
 	}
 }
 
@@ -238,7 +257,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	if _, statErr := os.Stat(fabricConfigPath); statErr != nil {
 		t.Errorf("repo-wide fabric.yaml missing after Unwire: %v", statErr)
 	}
-	hostLyxLink := filepath.Join(hostLayout.WorktreePath(), configengine.LyxDirName)
+	hostLyxLink := filepath.Join(hostLayout.WorktreePath(), lyxdirs.LyxDirName)
 	if _, statErr := os.Lstat(hostLyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("host _lyx junction %s still exists after Unwire (stat err: %v)", hostLyxLink, statErr)
 	}

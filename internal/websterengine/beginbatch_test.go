@@ -272,6 +272,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		WorktreeRoot: worktree,
 		Layout:       &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "."},
 		WebsterDir:   t.TempDir(),
+		ScratchDir:   t.TempDir(),
 		ReportsDir:   t.TempDir(),
 		PromptsDir:   promptsDir,
 	}
@@ -285,7 +286,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 func TestBeginBatch_PauseSentinel(t *testing.T) {
 	fx := newBeginFixture(t)
 
-	if err := websterengine.RequestPause(fx.Deps.WebsterDir); err != nil {
+	if err := websterengine.RequestPause(fx.Deps.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v; want nil", err)
 	}
 

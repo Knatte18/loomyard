@@ -68,8 +68,12 @@ type SpawnDeps struct {
 	WorktreeRoot string
 	BuilderDir   string
 	ReportsDir   string
-	ShuttleCfg   shuttleengine.Config
-	Layout       *lyxcwd.Location
+	// ScratchDir is the .lyx/builder tree — the never-tracked base
+	// directory holding the pause flag and state.json.lock, at the
+	// mirrored subpath of BuilderDir's _lyx/builder content.
+	ScratchDir string
+	ShuttleCfg shuttleengine.Config
+	Layout     *lyxcwd.Location
 	// Reed is the live reed query surface for in-flight guard and dead-respawn cleanup.
 	Reed shuttleengine.ReedOps
 	// Resetter is the chain-restart reset seam; nil uses the production default.
@@ -242,7 +246,7 @@ func selectRole(oversized bool, override Role) (Role, error) {
 // That is the first of the loop's three fabric-commit points (see this file's package doc above for
 // the other two: poll at terminal classification, run as an exit-time backstop).
 func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
-	if PauseRequested(deps.BuilderDir) {
+	if PauseRequested(deps.ScratchDir) {
 		return nil, ErrPaused
 	}
 
@@ -378,7 +382,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 		// spawn's own SaveState below — if any later step fails (role spawn,
 		// FindRun), a state.json still recording the rolled-back members'
 		// BatchStates would disagree with the repo it describes.
-		if err := SaveState(deps.BuilderDir, deps.State); err != nil {
+		if err := SaveState(deps.BuilderDir, deps.ScratchDir, deps.State); err != nil {
 			return nil, err
 		}
 	}
@@ -502,7 +506,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 	}
 	deps.State.CurrentBatch = batch.Number
 
-	if err := SaveState(deps.BuilderDir, deps.State); err != nil {
+	if err := SaveState(deps.BuilderDir, deps.ScratchDir, deps.State); err != nil {
 		return nil, err
 	}
 

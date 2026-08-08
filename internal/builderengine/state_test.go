@@ -1,6 +1,9 @@
 // state_test.go covers LoadState/SaveState's three documented cases: round-tripping a populated
 // State through disk, an absent state.json returning (nil, nil), and a corrupt state.json returning
-// a wrapped error rather than a guessed value.
+// a wrapped error rather than a guessed value. It also covers the builder scratch-dir split:
+// SaveState writes state.json into the durable dir and state.json.lock into a DISTINCT scratch dir,
+// the durable dir ends up with no .lock file at all, LoadState round-trips across the two dirs, and
+// AcquireStateMutation's lease file lands in the scratch dir.
 
 package builderengine_test
 
@@ -13,10 +16,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
+// scratchSibling builds a durable dir and a DISTINCT scratch dir under one
+// shared temp base, mirroring the .lyx/_lyx mirrored-subpath split in
+// production, rather than reusing one temp dir for both — the split this
+// test file exists to pin would otherwise go untested.
+func scratchSibling(t *testing.T) (builderDir, scratchDir string) {
+	t.Helper()
+	base := t.TempDir()
+	return filepath.Join(base, "_lyx", "builder"), filepath.Join(base, ".lyx", "builder")
+}
+
 func TestState_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	builderDir := t.TempDir()
+	builderDir, scratchDir := scratchSibling(t)
 	want := &builderengine.State{
 		RunGUID:         "run-1",
 		PlanFingerprint: "abc123",
@@ -37,11 +50,27 @@ func TestState_RoundTrip(t *testing.T) {
 		ChainStartSHAs: map[int]string{4: "cafef00d"},
 	}
 
-	if err := builderengine.SaveState(builderDir, want); err != nil {
+	if err := builderengine.SaveState(builderDir, scratchDir, want); err != nil {
 		t.Fatalf("SaveState error = %v; want nil", err)
 	}
 
-	got, err := builderengine.LoadState(builderDir)
+	if _, err := os.Stat(filepath.Join(builderDir, "state.json")); err != nil {
+		t.Errorf("state.json missing from durable dir %s: %v", builderDir, err)
+	}
+	if _, err := os.Stat(filepath.Join(scratchDir, "state.json.lock")); err != nil {
+		t.Errorf("state.json.lock missing from scratch dir %s: %v", scratchDir, err)
+	}
+	entries, err := os.ReadDir(builderDir)
+	if err != nil {
+		t.Fatalf("ReadDir(builderDir) error = %v", err)
+	}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".lock" {
+			t.Errorf("durable dir %s contains a .lock file %q; want every lock relocated to the scratch dir", builderDir, e.Name())
+		}
+	}
+
+	got, err := builderengine.LoadState(builderDir, scratchDir)
 	if err != nil {
 		t.Fatalf("LoadState error = %v; want nil", err)
 	}
@@ -83,9 +112,9 @@ func TestState_RoundTrip(t *testing.T) {
 func TestState_AbsentFileReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	builderDir := t.TempDir()
+	builderDir, scratchDir := scratchSibling(t)
 
-	got, err := builderengine.LoadState(builderDir)
+	got, err := builderengine.LoadState(builderDir, scratchDir)
 	if err != nil {
 		t.Fatalf("LoadState(absent) error = %v; want nil", err)
 	}
@@ -97,7 +126,7 @@ func TestState_AbsentFileReturnsNil(t *testing.T) {
 func TestState_CorruptFileErrors(t *testing.T) {
 	t.Parallel()
 
-	builderDir := t.TempDir()
+	builderDir, scratchDir := scratchSibling(t)
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		t.Fatalf("mkdir builderDir: %v", err)
 	}
@@ -105,7 +134,7 @@ func TestState_CorruptFileErrors(t *testing.T) {
 		t.Fatalf("write corrupt state.json: %v", err)
 	}
 
-	got, err := builderengine.LoadState(builderDir)
+	got, err := builderengine.LoadState(builderDir, scratchDir)
 	if err == nil {
 		t.Fatal("LoadState(corrupt) error = nil; want error")
 	}
@@ -119,14 +148,14 @@ func TestState_CorruptFileErrors(t *testing.T) {
 // fails, and after Release it succeeds — the property every verb's load-mutate-save section relies
 // on.
 func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
-	builderDir := t.TempDir()
+	scratchDir := t.TempDir()
 
-	held, err := builderengine.AcquireStateMutation(builderDir)
+	held, err := builderengine.AcquireStateMutation(scratchDir)
 	if err != nil {
 		t.Fatalf("AcquireStateMutation() error = %v; want nil", err)
 	}
 
-	_, locked, err := lock.TryAcquireWriteLock(filepath.Join(builderDir, "mutate.lock"))
+	_, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, "mutate.lock"))
 	if err != nil {
 		t.Fatalf("TryAcquireWriteLock() error = %v; want nil", err)
 	}
@@ -137,7 +166,7 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	if err := held.Release(); err != nil {
 		t.Fatalf("Release() error = %v; want nil", err)
 	}
-	second, locked, err := lock.TryAcquireWriteLock(filepath.Join(builderDir, "mutate.lock"))
+	second, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, "mutate.lock"))
 	if err != nil || !locked {
 		t.Fatalf("TryAcquireWriteLock() after Release = locked=%v err=%v; want locked=true, err=nil", locked, err)
 	}

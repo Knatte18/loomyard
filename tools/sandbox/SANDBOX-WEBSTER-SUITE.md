@@ -125,7 +125,7 @@ Confirm **per-batch weft commits landing**: `state.json` committed at each batch
 and the batch report plus `state.json` committed at each batch's `record-batch` (the main per-batch sync) -- inspect the weft's own commit log for both.
 Confirm **digest envelopes from `record-batch`**: each batch's fork-return is followed by a `record-batch` call whose JSON response carries webster's pinned digest fields (`batch`, `status`, `head_sha`, `deviations`, `dead_reason`, `elapsed_s` -- webster's own minimal fork-return digest, never raw report prose;
 absent optional fields may be omitted).
-Confirm **digest carry-forward**: batch 2's rendered fork prompt (`_lyx/webster/prompts/02-*.md`) embeds batch 1's one-line persisted digest in its "Prior-batch context" section.
+Confirm **digest carry-forward**: batch 2's rendered fork prompt (`.lyx/webster/prompts/02-*.md`) embeds batch 1's one-line persisted digest in its "Prior-batch context" section.
 Confirm **a valid `summary.md`** at exit: `_lyx/webster/summary.md` exists, its first line is `# <title>`,
 and the rest is a non-empty narrative -- alongside `_lyx/webster/outcome.yaml`.
 Afterward, Master's pane/run dir is cleaned up (no leftover strand;

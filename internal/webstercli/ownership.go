@@ -11,11 +11,11 @@ package webstercli
 import "github.com/Knatte18/loomyard/internal/websterengine"
 
 // ownerlessRunWarnings returns warnings with a zombie-run notice appended
-// when no live run holds websterDir's run.lock. A probe error is folded into
+// when no live run holds scratchDir's run.lock. A probe error is folded into
 // the warnings too rather than failing the verb: the probe is advisory, and
 // a filesystem hiccup reading a lock file must never block a bracket verb.
-func ownerlessRunWarnings(websterDir string, warnings []string) []string {
-	active, err := websterengine.RunActive(websterDir)
+func ownerlessRunWarnings(scratchDir string, warnings []string) []string {
+	active, err := websterengine.RunActive(scratchDir)
 	if err != nil {
 		return append(warnings, "could not determine whether a live `lyx webster run` owns this state: "+err.Error())
 	}

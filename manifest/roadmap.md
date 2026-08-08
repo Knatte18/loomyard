@@ -16,8 +16,8 @@ Committed to, in this order, next.
    the `Weft*`/junction plumbing moved to `internal/fabricengine`;
    the weft-visibility leak closed at all seven call sites;
    and the `cwd`-reachable `_board` junction wired (operator-convenience only, mirroring millhouse's own `.wiki` junction).
-   **Slices 8, 9 and 10 remain**: slice 8's mechanical leak-closing landed with slice 7 above, leaving only its open CLI-wording policy question (should `buildercli`/`perchcli`/`webstercli` output ever say "weft" to the end user);
-   slice 9 finishes `.lyx`'s own junction hygiene (the former `dotlyx-scratch-hygiene` item);
+   **Slice 9, the former `dotlyx-scratch-hygiene` item, has shipped**: `.lyx` is now a structural, code-injected junction (never a `fabric.yaml` `pathspec` entry), the committed `.gitignore` `.lyx/` block is gone in favor of the warp's own `.git/info/exclude`, a pre-existing real `.lyx` is adopted rather than refused, and `Unwire` no longer deletes weft-side content.
+   **Slices 8 and 10 remain**: slice 8's mechanical leak-closing landed with slice 7 above, leaving only its open CLI-wording policy question (should `buildercli`/`perchcli`/`webstercli` output ever say "weft" to the end user);
    slice 10 stores the warp-URL binding on `weft:main` (fold bootstrap into `fabric clone`, weft-first argument order).
    See [designs/fabric-unified-view.md](designs/fabric-unified-view.md).
 

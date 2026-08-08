@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // CommitResult reports what Fabric.Commit did on each side: landed SHA and whether a commit was
@@ -66,10 +67,20 @@ func (e *PartialCommitError) Unwrap() error {
 // spawnDetachedPushFn is a package-level test seam; tests swap it for a recorder.
 var spawnDetachedPushFn = SpawnDetachedPush
 
-// Commit classifies files into warp and weft paths against the repo-wide pathspec, commits each
-// side under one combined write lock (acquired whenever anything lands, even warp-only), and fires
-// async both-sides push after releasing the lock.
+// Commit classifies files into warp and weft paths against the repo-wide routing set (never a raw,
+// unfiltered pathspec), commits each side under one combined write lock (acquired whenever anything
+// lands, even warp-only), and fires async both-sides push after releasing the lock.
 // A fully degenerate no-op takes no lock and spawns no push.
+//
+// Before taking any lock or committing anything, Commit hard-errors if classification's
+// never-committed bucket is non-empty, naming the first offending path: a caller passing a path
+// under structuralNeverCommittedDirs (e.g. `.lyx/...`) is a bug and must be told, not silently
+// filtered or committed.
+// This is an error rather than a filter for the same reason classifyPaths' own header comment
+// gives: dropping the path would hide the caller's bug, and committing it would violate the
+// never-committed contract outright.
+// The check precedes the lock, so a rejected call mutates nothing on either side and spawns no
+// push.
 //
 // weftSide — and therefore whether committing takes the combined lock and runs ensureWeftLockDir —
 // is true whenever there are weft files OR snapshotTags is non-empty (and opts.SkipGit is false),
@@ -98,12 +109,16 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	if err != nil {
 		return CommitResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
 	}
-	wiredNames, err := RepoWiredNames(l)
+	cfg, err := LoadConfig(repoWideFabricBase(l))
 	if err != nil {
 		return CommitResult{}, err
 	}
+	routingNames := pathspecNames(cfg)
 
-	warpFiles, weftFiles := classifyPaths(l.AnchorRel, wiredNames, files)
+	warpFiles, weftFiles, neverCommittedFiles := classifyPaths(l.AnchorRel, routingNames, structuralNeverCommittedDirs, files)
+	if len(neverCommittedFiles) > 0 {
+		return CommitResult{}, fmt.Errorf("fabricengine: refusing to commit %q: paths under %s are never committed", neverCommittedFiles[0], lyxdirs.DotLyxDirName)
+	}
 	weftSide := (len(weftFiles) > 0 || len(snapshotTags) > 0) && !opts.SkipGit
 
 	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)

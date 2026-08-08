@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,7 +23,7 @@ func TestLoad_HappyPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -64,7 +65,7 @@ func TestLoad_MissingKey(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -104,7 +105,7 @@ func TestLoad_AbsentFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories but NOT board.yaml
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -134,7 +135,7 @@ func TestLoad_EnvResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -176,7 +177,7 @@ func TestLoad_OptionalEnv(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -217,7 +218,7 @@ func TestLoad_ExtraKeyTolerated(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestLoad_NestedKeyTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/config/ directories
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -316,7 +317,7 @@ func TestFindBaseDir_Present(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create _lyx/ directory
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -357,7 +358,7 @@ func TestConfigDir(t *testing.T) {
 
 	baseDir := "/home/user/project"
 	got := configengine.ConfigDir(baseDir)
-	want := filepath.Join(baseDir, configengine.LyxDirName, "config")
+	want := filepath.Join(baseDir, lyxdirs.LyxDirName, "config")
 
 	if got != want {
 		t.Errorf("ConfigDir(%q) = %q; want %q", baseDir, got, want)
@@ -372,7 +373,7 @@ func TestConfigFile(t *testing.T) {
 	baseDir := "/home/user/project"
 	module := "myapp"
 	got := configengine.ConfigFile(baseDir, module)
-	want := filepath.Join(baseDir, configengine.LyxDirName, "config", "myapp.yaml")
+	want := filepath.Join(baseDir, lyxdirs.LyxDirName, "config", "myapp.yaml")
 
 	if got != want {
 		t.Errorf("ConfigFile(%q, %q) = %q; want %q", baseDir, module, got, want)
@@ -385,7 +386,7 @@ func TestConfigFile(t *testing.T) {
 func TestLyxDirNameConstant(t *testing.T) {
 	t.Parallel()
 
-	if configengine.LyxDirName != "_lyx" {
-		t.Errorf("LyxDirName = %q; want %q", configengine.LyxDirName, "_lyx")
+	if lyxdirs.LyxDirName != "_lyx" {
+		t.Errorf("LyxDirName = %q; want %q", lyxdirs.LyxDirName, "_lyx")
 	}
 }

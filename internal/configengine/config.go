@@ -13,17 +13,11 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/envsource"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
-// LyxDirName is the directory name for the lyx system directory within a worktree.
-// internal/configengine is the single declarer of this token;
-// every other module joins its own private relative-path constant onto a baseDir directly, never
-// onto a fused "_lyx/..."
-// literal (per the Cwd Resolution Invariant's per-segment join rule).
-const LyxDirName = "_lyx"
-
-// configDirName is the subdirectory name within LyxDirName that holds
+// configDirName is the subdirectory name within lyxdirs.LyxDirName that holds
 // configuration files.
 const configDirName = "config"
 
@@ -31,19 +25,19 @@ const configDirName = "config"
 // directories.
 // Returns cwd on success or an error on failure.
 func FindBaseDir(cwd string) (string, error) {
-	lyxDir := filepath.Join(cwd, LyxDirName)
+	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	_, err := os.Stat(lyxDir)
 	if os.IsNotExist(err) {
-		return "", fmt.Errorf("not initialized: _lyx/ directory not found")
+		return "", fmt.Errorf("not initialized: %s/ directory not found", lyxdirs.LyxDirName)
 	} else if err != nil {
-		return "", fmt.Errorf("stat _lyx: %w", err)
+		return "", fmt.Errorf("stat %s: %w", lyxdirs.LyxDirName, err)
 	}
 	return cwd, nil
 }
 
 // ConfigDir returns the path to the config directory within a baseDir.
 func ConfigDir(baseDir string) string {
-	return filepath.Join(baseDir, LyxDirName, configDirName)
+	return filepath.Join(baseDir, lyxdirs.LyxDirName, configDirName)
 }
 
 // ConfigFile returns the path to a module-specific configuration YAML file within a baseDir.

@@ -138,13 +138,14 @@ func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 	// which would double the worktree-name segment if reused here.
 	anchorLocation := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
-		engine:     &pollFakeEngine{},
-		reed:       eng,
-		layout:     layout,
-		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    loomengine.PlanDir(anchorLocation),
-		builderDir: builderengine.Dir(anchorLocation),
-		reportsDir: builderengine.ReportsDir(anchorLocation),
+		engine:            &pollFakeEngine{},
+		reed:              eng,
+		layout:            layout,
+		cfg:               builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
+		planDir:           loomengine.PlanDir(anchorLocation),
+		builderDir:        builderengine.Dir(anchorLocation),
+		builderScratchDir: builderengine.ScratchDir(anchorLocation),
+		reportsDir:        builderengine.ReportsDir(anchorLocation),
 	}
 
 	startSHA := strings.TrimSpace(mustGit(t, hub, "rev-parse", "HEAD"))
@@ -162,7 +163,7 @@ func TestSmoke_PollDoneReleasesStrand(t *testing.T) {
 			},
 		},
 	}
-	if err := builderengine.SaveState(c.builderDir, st); err != nil {
+	if err := builderengine.SaveState(c.builderDir, c.builderScratchDir, st); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 
@@ -248,6 +249,7 @@ func TestSmoke_SpawnRefusedWhileStrandLive(t *testing.T) {
 		Config:       builderengine.Config{SelfFixCap: 2, BatchTimeoutMin: 45},
 		WorktreeRoot: hub,
 		BuilderDir:   builderengine.Dir(anchorLocation),
+		ScratchDir:   builderengine.ScratchDir(anchorLocation),
 		ReportsDir:   builderengine.ReportsDir(anchorLocation),
 		Layout:       layout,
 		Reed:         eng,
@@ -274,6 +276,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 		t.Fatalf("Fingerprint: %v", err)
 	}
 	builderDir := builderengine.Dir(anchorLocation)
+	scratchDir := builderengine.ScratchDir(anchorLocation)
 	seeded := &builderengine.State{
 		RunGUID:            "smoke-orphan-run",
 		PlanFingerprint:    fingerprint,
@@ -281,7 +284,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 		Batches:            map[int]*builderengine.BatchState{},
 		ChainStartSHAs:     map[int]string{},
 	}
-	if err := builderengine.SaveState(builderDir, seeded); err != nil {
+	if err := builderengine.SaveState(builderDir, scratchDir, seeded); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 
@@ -301,6 +304,7 @@ func TestSmoke_RunEntryReclaimsOrphanedOrchestrator(t *testing.T) {
 		},
 		PlanDir:      planDir,
 		BuilderDir:   builderDir,
+		ScratchDir:   scratchDir,
 		ReportsDir:   builderengine.ReportsDir(anchorLocation),
 		WorktreeRoot: hub,
 	}

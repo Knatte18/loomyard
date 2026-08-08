@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 func TestRunDispatchesToBoard(t *testing.T) {
@@ -33,7 +34,7 @@ func TestRunDispatchesToBoard(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
+	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -75,7 +76,7 @@ func TestRunBoardErrorPropagatesExitCode(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
+	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -193,7 +194,7 @@ func TestRunDispatchesToConfigReconcile(t *testing.T) {
 		t.Fatalf("git init failed: %v (exit code %d)", err, exitCode)
 	}
 
-	lyxDir := filepath.Join(cwd, configengine.LyxDirName)
+	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
