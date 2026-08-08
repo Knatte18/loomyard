@@ -21,17 +21,19 @@
 //
 // # The engine/CLI split
 //
-// scoutengine is a leaf package: it returns typed Go results and typed
-// errors and imports nothing beyond stdlib,
-// internal/configengine, internal/lock, internal/proc, and gopkg.in/yaml.v3 — no io.Writer, no exit
-// codes, no internal/output. internal/scoutcli is the sole consumer
-// that maps engine results/errors onto the internal/output JSON envelope
-// (output.Ok/output.Err), exactly the CLI/Cobra Invariant's "engine returns
-// (T, error), cli emits the envelope" split every other lyx module follows
-// (see internal/modelspec for the shape this package mirrors most
-// directly). This keeps scoutengine cycle-free and importable by any
-// future consumer (e.g. builder or webster) the same way internal/modelspec
-// already is.
+// scoutengine is the engine half of an engine/CLI seam: it returns typed
+// Go results and typed errors and never imports internal/output, cobra, or
+// any internal/*cli package — no io.Writer, no exit codes, no output
+// envelope. internal/scoutcli is the sole consumer that maps engine
+// results/errors onto the internal/output JSON envelope (output.Ok/output.Err),
+// exactly the CLI/Cobra Invariant's "engine returns (T, error), cli emits
+// the envelope" split every other lyx module follows. Beyond that negative
+// rule there is no import allowlist: scoutengine draws on the shared
+// infrastructure layer as freely as any other engine module, which keeps it
+// cycle-free and importable by any future consumer (e.g. builder or webster)
+// without charging rent on each new dependency. CONSTRAINTS.md's "Scout
+// Engine-Seam Invariant" records the rule; the package's seam enforcement
+// test enforces it.
 //
 // # The generalized LSP client
 //
