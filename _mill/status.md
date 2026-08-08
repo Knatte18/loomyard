@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: scout-lyxcwd-accessors
 branch: scout-lyxcwd-accessors
 plan: _mill/plan
@@ -21,4 +21,5 @@ plan-review-r1  '2026-08-08T08:37:25Z'
 plan-fix-r1  '2026-08-08T08:38:18Z'
 plan-review-r2  '2026-08-08T09:07:32Z'
 plan-fix-r2  '2026-08-08T09:07:32Z'
+plan-fix-r3  '2026-08-08T09:15:38Z'
 ```

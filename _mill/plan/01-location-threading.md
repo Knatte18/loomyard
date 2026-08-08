@@ -192,7 +192,9 @@ The overview's `anchor-stays-worktreepath`, `field-named-layout`, `no-nil-layout
 - **Moves:** none
 - **Requirements:** Adapt every affected call site to the new signatures, changing no expected value anywhere.
   The fixture shape is a hand-built `Location` whose `WorktreePath()` equals the directory the test already uses: given an existing `dir`, add `l := &lyxcwd.Location{HubPath: filepath.Dir(dir), WorktreeName: filepath.Base(dir), AnchorRel: "."}`.
-  `internal/websterengine/audit_test.go` shows the same idiom if a shape reference is wanted.
+  `internal/websterengine/audit_test.go`'s `fakeLayout` shows the same hand-built-`Location` idiom if a shape reference is wanted, with one divergence: it omits `AnchorRel` and leaves it at its zero value, whereas the shape prescribed here sets `AnchorRel: "."` explicitly.
+  Set it explicitly here.
+  It does not affect `WorktreePath()` either way, so no expected value depends on it — but the explicit `"."` matches what `resolveLocation` synthesizes in card 5, which keeps the test fixtures and the production out-of-hub path describing the same value.
   Do not delete the existing string variable when introducing `l`: `ensureSupervised` keeps `targetDir` as a `string`, and several fixtures pass the same directory as both arguments, so those calls become `ensureSupervised(..., lang, dir, l, ...)` and still need the string.
   In `internal/scoutengine/scoutdaemon_test.go`, all four tests build a fixed fake `worktreePath` and call the accessors directly;
   synthesize an `l` from it and pass that, keeping every `want` value byte-identical.

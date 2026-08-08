@@ -3,7 +3,7 @@
 ```yaml
 task: "Scout owns its own lyxcwd-based geometry accessors (drop Options.AnchorRoot threading)"
 slug: "scout-lyxcwd-accessors"
-approved: false
+approved: true
 started: "20260808-082459"
 parent: "main"
 root: ""
