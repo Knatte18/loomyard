@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-pattern-path-api
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r5  '2026-08-08T17:12:18Z'
 plan-fix-r6  '2026-08-08T17:22:39Z'
 planned  '2026-08-08T17:22:49Z'
 implementing  '2026-08-08T17:23:30Z'
+approved-pattern-path-api  '2026-08-08T17:32:05Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ implementing  '2026-08-08T17:23:30Z'
 ```yaml
 batches:
   - name: pattern-path-api
-    state: running
+    state: approved
     implementer_session: 59690091-99c2-4ec7-b93f-f86da3546a0a
     start_sha: c96d6de9d504c5bd14affd85a8cc609cc5551fa1
+    commit_sha: 4683955de6bd615a73a9ab120118823fca50e09e
     verify_baseline_failures: []
   - name: residue-rescope
     state: pending
