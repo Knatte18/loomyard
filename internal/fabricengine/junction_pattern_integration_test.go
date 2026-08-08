@@ -331,10 +331,9 @@ func TestDetectHostPollution_LyxTrackedAsRestorable(t *testing.T) {
 
 // TestDetectHostPollution_ScanErrorIsNonFatal pins Status' non-fatal-and-continue handling of a
 // detectHostPollution failure: the pair still comes back with a synthetic "<scan error: ...>"
-// pollution entry carrying an empty Remedy, rather than Status failing the pair outright. Before
-// batch 5 this synthetic entry also carried ReportOnly: true; now the empty Remedy alone is what
-// signals "no automated remedy applies here," so this test guards that the signal survives the
-// field's removal.
+// pollution entry carrying an empty Remedy, rather than Status failing the pair outright. The
+// empty Remedy alone is what signals "no automated remedy applies here," so this test guards
+// that the signal survives on its own.
 func TestDetectHostPollution_ScanErrorIsNonFatal(t *testing.T) {
 	t.Parallel()
 
