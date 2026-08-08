@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: scout-lyxcwd-accessors
 branch: scout-lyxcwd-accessors
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-08T07:40:11Z'
+discussed  '2026-08-08T08:22:25Z'
 ```
