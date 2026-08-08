@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -43,6 +43,7 @@ holistic-fixing  '2026-08-08T18:41:55Z'
 nits-fixed-holistic  '2026-08-08T18:43:42Z'
 holistic-approved  '2026-08-08T18:43:50Z'
 done  '2026-08-08T18:44:30Z'
+pr-pending  '2026-08-08T18:46:45Z'
 ```
 
 ## Batches
