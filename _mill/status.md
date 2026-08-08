@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-pattern-path-api
+phase: approved-residue-rescope
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r6  '2026-08-08T17:22:39Z'
 planned  '2026-08-08T17:22:49Z'
 implementing  '2026-08-08T17:23:30Z'
 approved-pattern-path-api  '2026-08-08T17:32:05Z'
+approved-residue-rescope  '2026-08-08T17:36:18Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     commit_sha: 4683955de6bd615a73a9ab120118823fca50e09e
     verify_baseline_failures: []
   - name: residue-rescope
-    state: running
+    state: approved
     implementer_session: 208ba83f-b1c5-4790-a5d9-7cfa05ee41a5
     start_sha: ba5150062447eecf893d99b450fb18920a5bead5
+    commit_sha: a5ce4b01e8448b2188b246a56011dc968afe7b36
     verify_baseline_failures: []
   - name: junction-test-retarget
     state: pending
