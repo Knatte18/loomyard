@@ -33,7 +33,7 @@ type PullResult struct {
 	// succeeded. Every field below is only ever populated once this is true —
 	// see Fabric.Pull's weft-first ordering.
 	WeftPulled bool
-	// WarpFetched reports whether the warp fetch (f.Warp.Fetch) ran and
+	// WarpFetched reports whether the warp fetch (f.warp.Fetch) ran and
 	// succeeded.
 	WarpFetched bool
 	// WarpAdvanced reports whether the warp branch pointer actually moved,
@@ -117,7 +117,7 @@ var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and 
 
 // warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
 // ref (`@{u}`) to a plain hex SHA, via `git rev-parse @{u}` in f.warpPath.
-// Fabric.Pull calls this AFTER f.Warp.Fetch has refreshed the remote-tracking
+// Fabric.Pull calls this AFTER f.warp.Fetch has refreshed the remote-tracking
 // ref, so the SHA it returns is the freshly fetched upstream tip — usable
 // directly by ResetHard and IsAncestor, which both require a plain commit
 // SHA rather than symbolic revision syntax.
@@ -147,12 +147,12 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
 	}
 	result.WeftPulled = true
-	hadUnpushed, err := f.Warp.HasUnpushed()
+	hadUnpushed, err := f.warp.HasUnpushed()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "unpushed-check", Err: err}
 	}
 
-	if err := f.Warp.Fetch(); err != nil {
+	if err := f.warp.Fetch(); err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "fetch", Err: err}
 	}
 	result.WarpFetched = true
@@ -161,7 +161,7 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "resolve", Err: err}
 	}
-	localHEAD, err := f.Warp.CurrentSHA()
+	localHEAD, err := f.warp.CurrentSHA()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "resolve", Err: err}
 	}
@@ -170,13 +170,13 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, nil
 	}
 
-	isFF, err := f.Warp.IsAncestor(localHEAD, upstreamSHA)
+	isFF, err := f.warp.IsAncestor(localHEAD, upstreamSHA)
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "classify", Err: err}
 	}
 
 	if isFF {
-		if err := f.Warp.ResetHard(upstreamSHA); err != nil {
+		if err := f.warp.ResetHard(upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
 		result.WarpAdvanced = true
@@ -201,7 +201,7 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	entries := ix.entries()
 
 	if len(entries) == 0 {
-		if err := f.Warp.ResetHard(upstreamSHA); err != nil {
+		if err := f.warp.ResetHard(upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
 		result.WarpAdvanced = true
@@ -210,7 +210,7 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	}
 
 	anchor, found, err := reachableAnchor(entries, func(sha string) (bool, error) {
-		return f.Warp.IsAncestor(sha, upstreamSHA)
+		return f.warp.IsAncestor(sha, upstreamSHA)
 	})
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "anchor-walk", Err: err}
@@ -219,7 +219,7 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, ErrNoSurvivingAnchor
 	}
 
-	if err := f.Warp.ResetHard(upstreamSHA); err != nil {
+	if err := f.warp.ResetHard(upstreamSHA); err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 	}
 	result.WarpAdvanced = true
@@ -227,7 +227,7 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 	result.AnchorWarpSHA = anchor.WarpSHA
 	result.AnchorWeftSHA = anchor.WeftSHA
 
-	weftHEADBeforeAnchor, _ := f.Weft.CurrentSHA()
+	weftHEADBeforeAnchor, _ := f.weft.CurrentSHA()
 
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {

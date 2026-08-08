@@ -23,14 +23,22 @@ then make only the surgical edits Card 02.2's What: describes — never write th
 
 **What:** Add table-driven tests asserting one `output.Ok` envelope per row for `list --json`,
 and that the table path is unchanged without the flag.
-**Context:** none **Edits:**
-- `02-list-tests.md` **Creates:** none **Deletes:** none **Moves:** none
+**Context:** none
+**Edits:**
+- `02-list-tests.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ### Card 02.2 — help-tree pin + fixture relocation
 
 **What:** Update the pinned help-tree set with the new --json flag help text, and relocate the refactor-a fixture ahead of its rename in batch 03 (git mv first, per the Rename mechanic above).
-**Context:** none **Edits:**
-- `02-list-tests.md` **Creates:** none **Deletes:** none **Moves:**
+**Context:** none
+**Edits:**
+- `02-list-tests.md`
+**Creates:** none
+**Deletes:** none
+**Moves:**
 - `03-refactor-a.md` -> `03-refactor-a-renamed.md`
 
 ## verify:

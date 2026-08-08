@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -61,9 +62,10 @@ func spawnAndHoldSubprocess(t *testing.T) int {
 // — proving the bounded-retry contract rather than indefinite blocking.
 func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
+	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
 	const lang = "go"
-	statePath := DaemonStateFile(worktreeRoot, lang)
-	lockPath := DaemonLock(worktreeRoot, lang)
+	statePath := DaemonStateFile(l, lang)
+	lockPath := DaemonLock(l, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	// Record a state that reads as healthy (a confirmed-alive PID, the
@@ -93,7 +95,7 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 	// command is never reached: this call can neither dial (unreachable
 	// address) nor win the lock (held above), so it must exhaust its retry
 	// budget before ever attempting to spawn anything.
-	_, err = ensureSupervised(context.Background(), []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, timeout)
+	_, err = ensureSupervised(context.Background(), []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, l, timeout)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -125,9 +127,10 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 // the lock itself, so it reaches the escalation branch on its very first iteration.
 func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
+	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
 	const lang = "go"
-	statePath := DaemonStateFile(worktreeRoot, lang)
-	lockPath := DaemonLock(worktreeRoot, lang)
+	statePath := DaemonStateFile(l, lang)
+	lockPath := DaemonLock(l, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	// Record a state that reads as healthy (a confirmed-alive PID, the
@@ -150,7 +153,7 @@ func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrSer
 	// command is never reached: this call always finds a healthy-reading
 	// but undialable state, so it must exhaust its retry budget without
 	// ever attempting to spawn anything.
-	_, err := ensureSupervised(context.Background(), []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, timeout)
+	_, err := ensureSupervised(context.Background(), []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, l, timeout)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -203,9 +206,10 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 	}
 
 	worktreeRoot := t.TempDir()
+	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
 	const lang = "go"
-	statePath := DaemonStateFile(worktreeRoot, lang)
-	lockPath := DaemonLock(worktreeRoot, lang)
+	statePath := DaemonStateFile(l, lang)
+	lockPath := DaemonLock(l, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	// A non-stale state (alive PID, current protocol version) naming the
@@ -315,7 +319,7 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 	defer cancel()
 	// command is never reached: the escalation reuses the second
 	// connection, so no respawn is ever attempted.
-	client, err := ensureSupervised(ctx, []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, 5*time.Second)
+	client, err := ensureSupervised(ctx, []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, l, 5*time.Second)
 	<-done
 	if err != nil {
 		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)

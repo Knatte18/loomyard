@@ -93,7 +93,7 @@ Example:
 			// Every config is anchored at layout.AnchorPath(), matching
 			// burlercli/shuttlecli's own resolution: the worktree the
 			// operator is actually standing in, never WorktreeRoot or any
-			// weft sibling.
+			// fabric sibling.
 			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
 			if err != nil {
 				output.Err(out, err.Error())
@@ -146,13 +146,13 @@ Example:
 			c.modelReg = modelReg
 			c.layout = layout
 			// Anchored at layout.AnchorPath(), like the config loads above and like
-			// Layout.LyxDir itself: the initialized _lyx (the weft junction,
-			// mirrored at <weft>/<RelPath>/_lyx) lives at the directory lyx
+			// Layout.LyxDir itself: the initialized _lyx (the fabric junction,
+			// mirrored at <fabric>/<RelPath>/_lyx) lives at the directory lyx
 			// init ran in, which is Cwd — not necessarily the git worktree
 			// root. Anchoring at WorktreeRoot would, in a nested-initialized
-			// repo, write run dirs into an un-junctioned _lyx the weft
+			// repo, write run dirs into an un-junctioned _lyx the fabric
 			// commit's RelPath-scoped pathspec never includes, silently
-			// stranding every artifact outside the weft.
+			// stranding every artifact outside fabric.
 			c.runDirBase = perchengine.RunsDir(layout)
 			return nil
 		},

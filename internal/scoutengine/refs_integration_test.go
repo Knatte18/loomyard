@@ -24,6 +24,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // funcDeclPattern matches top-level function declarations and captures the function name offset.
@@ -74,24 +76,25 @@ func TestReferences_Integration(t *testing.T) {
 		// Since the engine-supervised-flip batch, Go's registry entry
 		// dispatches through ensureServer -> ensureSupervised, which spawns a
 		// lyx-owned daemon that teardownConnection's connKindSupervised
-		// branch deliberately never kills. Without an explicit WorktreeRoot
+		// branch deliberately never kills. Without an explicit layout
 		// this anchors at a relative .lyx/scout/go/ under the test
 		// binary's cwd and leaks the daemon; an isolated t.TempDir() plus a
 		// state-file-driven reap avoids both.
 		worktreeRoot := t.TempDir()
-		statePath := DaemonStateFile(worktreeRoot, "go")
+		l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
+		statePath := DaemonStateFile(l, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		refs, err := References(ctx, Options{
-			Registry:     builtins(),
-			TargetDir:    root,
-			WorktreeRoot: worktreeRoot,
-			Lang:         "go",
-			Query:        Query{Pos: &pos},
-			Timeout:      30 * time.Second,
+			Registry:  builtins(),
+			TargetDir: root,
+			Layout:    l,
+			Lang:      "go",
+			Query:     Query{Pos: &pos},
+			Timeout:   30 * time.Second,
 		})
 		if err != nil {
 			t.Fatalf("References(lyxcwd.Resolve) returned unexpected error: %v", err)
@@ -175,7 +178,7 @@ func main() {}
 // TestReferences_Integration's Query.Pos coverage above.
 // Both subcases route through ensureServer's now- live supervised dispatch (builtins()'s Go entry
 // has HasNativeDaemon: true), which spawns a lyx-owned daemon that teardownConnection's
-// connKindSupervised branch deliberately never kills — each subcase anchors WorktreeRoot at its own
+// connKindSupervised branch deliberately never kills — each subcase anchors its layout at its own
 // isolated t.TempDir() and reaps the spawned daemon in t.Cleanup, exactly like
 // TestEnsureServer_Integration_ SupervisedDispatch (ensureserver_integration_test.go) and
 // supervised_integration_test.go already do.
@@ -190,23 +193,24 @@ func TestReferences_InFile_Integration(t *testing.T) {
 		pos := findFuncPosition(t, lyxcwdFile, "Resolve")
 
 		// TargetDir stays the real repo root (correct indexing), but
-		// WorktreeRoot is an isolated temp dir so the supervised daemon this
+		// layout is an isolated temp dir so the supervised daemon this
 		// call spawns anchors there, never the real repo's own
 		// .lyx/scout/go/.
 		worktreeRoot := t.TempDir()
-		statePath := DaemonStateFile(worktreeRoot, "go")
+		l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
+		statePath := DaemonStateFile(l, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		refs, err := References(ctx, Options{
-			Registry:     builtins(),
-			TargetDir:    root,
-			WorktreeRoot: worktreeRoot,
-			Lang:         "go",
-			Query:        Query{InFile: &InFileQuery{File: lyxcwdFile, Name: "Resolve"}},
-			Timeout:      30 * time.Second,
+			Registry:  builtins(),
+			TargetDir: root,
+			Layout:    l,
+			Lang:      "go",
+			Query:     Query{InFile: &InFileQuery{File: lyxcwdFile, Name: "Resolve"}},
+			Timeout:   30 * time.Second,
 		})
 		if err != nil {
 			t.Fatalf("References(InFile lyxcwd.Resolve) returned unexpected error: %v", err)
@@ -232,19 +236,20 @@ func TestReferences_InFile_Integration(t *testing.T) {
 		writeAmbiguousModule(t, modRoot)
 
 		worktreeRoot := t.TempDir()
-		statePath := DaemonStateFile(worktreeRoot, "go")
+		l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
+		statePath := DaemonStateFile(l, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		_, err := References(ctx, Options{
-			Registry:     builtins(),
-			TargetDir:    modRoot,
-			WorktreeRoot: worktreeRoot,
-			Lang:         "go",
-			Query:        Query{InFile: &InFileQuery{File: filepath.Join(modRoot, "main.go"), Name: "Open"}},
-			Timeout:      30 * time.Second,
+			Registry:  builtins(),
+			TargetDir: modRoot,
+			Layout:    l,
+			Lang:      "go",
+			Query:     Query{InFile: &InFileQuery{File: filepath.Join(modRoot, "main.go"), Name: "Open"}},
+			Timeout:   30 * time.Second,
 		})
 		if !errors.Is(err, ErrAmbiguousSymbolSentinel) {
 			t.Errorf("References(InFile Open, two types) err = %v; want errors.Is(err, ErrAmbiguousSymbolSentinel)", err)

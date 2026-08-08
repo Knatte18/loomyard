@@ -6,7 +6,7 @@
 // and in what grouping — is 100% webster's own execution-policy decision.
 // It is never the plan's decision (a plan-format-v3 card carries no batch-membership field of its
 // own) and never an LLM's decision (no batchifier consults a fork's judgment; grouping is pure
-// host-side logic over the parsed Card list).
+// orchestrator-side logic over the parsed Card list).
 //
 // The active batcher is chosen via webster.yaml's batcher: config key (see
 // docs/reference/plan-format-v3.md and websterengine's config loading), which Select resolves

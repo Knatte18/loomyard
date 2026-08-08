@@ -2,7 +2,7 @@
 
 // poll_test.go covers the poll verb's classification wiring end to end:
 // no-batch-in-flight refusal, a running snapshot at the wait deadline (no
-// weft commit, no git diff), a done classification from an on-disk report
+// fabric commit, no git diff), a done classification from an on-disk report
 // (with a real diff/dirty computation against a scratch git repo), and a
 // dead/asking classification derived purely from builderengine.TurnEnded/
 // builderengine.StrandLive when no report has landed. Fakes for
@@ -35,7 +35,7 @@ import (
 // respectively also use them.
 
 // pollFixture is a fully-wired *builderCLI plus a scratch git repo standing
-// in for the host worktree, with the plan-valid fixture seeded under its
+// in for the worktree, with the plan-valid fixture seeded under its
 // own _lyx/plan.
 type pollFixture struct {
 	CLI *builderCLI
@@ -113,7 +113,7 @@ func TestPollCmd_NoBatchInFlight(t *testing.T) {
 	}
 }
 
-func TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit(t *testing.T) {
+func TestPollCmd_DeadlineReturnsRunningWithoutFabricCommit(t *testing.T) {
 	fx := newPollFixture(t, &pollFakeEngine{}, &pollFakeReed{status: reedengine.StatusResult{
 		Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}},
 	}})
@@ -144,7 +144,7 @@ func TestPollCmd_DeadlineReturnsRunningWithoutWeftCommit(t *testing.T) {
 		t.Errorf("running snapshot missing elapsed_s; got %q", got)
 	}
 
-	// A running snapshot must never weft-commit: state.json's Terminal
+	// A running snapshot must never fabric-commit: state.json's Terminal
 	// field stays false and no batch-boundary commit happens.
 	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
 	if err != nil || loaded == nil {

@@ -1,12 +1,12 @@
 // run.go implements the `run` webster verb: it maps websterengine.Run's outcome onto the run-level
-// backstop weft commit (the fourth and last of webster's four weft-commit points, see the
-// discussion's weft-ownership decision) and the CLI envelope, mirroring buildercli's own run.go
+// backstop fabric commit (the fourth and last of webster's four fabric-commit points, see the
+// discussion's fabric-ownership decision) and the CLI envelope, mirroring buildercli's own run.go
 // byte-for-byte in shape.
-// ErrRunBusy skips the weft sync entirely -- buildercli's ErrRunBusy exemption applies verbatim:
+// ErrRunBusy skips the fabric sync entirely -- buildercli's ErrRunBusy exemption applies verbatim:
 // the losing call touched nothing, so syncing would commit the winner's in-flight partial state
 // under a misleading label;
 // every other exit -- success OR error, including ErrFingerprintMismatch and the distinct
-// MasterAsking/MasterDied/MasterTimeout errors -- runs the backstop weft commit before its
+// MasterAsking/MasterDied/MasterTimeout errors -- runs the backstop fabric commit before its
 // envelope, since completed batches' artifacts must not strand uncommitted.
 package webstercli
 
@@ -42,7 +42,7 @@ and blocks until Master writes its own outcome.yaml and summary.md
 (done/stuck) or the shuttle spawn itself ends asking/died/timed-out. Every
 exit except a "run is already in progress" refusal (another
 "lyx webster run" already owns the run -- this call touched nothing) runs
-a backstop weft commit before printing its envelope, so a run that ends in
+a backstop fabric commit before printing its envelope, so a run that ends in
 error still leaves its completed batches' artifacts committed.
 
 Example:
@@ -81,28 +81,28 @@ Example:
 			if runErr == nil {
 				outcomeLabel = result.Outcome
 			}
-			committed, weftErr := weftCommit(c.layout, fmt.Sprintf("run %s", outcomeLabel))
+			committed, syncErr := fabricSync(c.layout, fmt.Sprintf("run %s", outcomeLabel))
 
 			if runErr != nil {
 				msg := runErr.Error()
-				if weftErr != nil {
-					msg = fmt.Sprintf("%s (additionally, the weft sync failed: %v)", msg, weftErr)
+				if syncErr != nil {
+					msg = fmt.Sprintf("%s (additionally, the fabric sync failed: %v)", msg, syncErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
 
-			if weftErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: run finished (%s) but the weft sync failed: %v", result.Outcome, weftErr)))
+			if syncErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: run finished (%s) but the fabric sync failed: %v", result.Outcome, syncErr)))
 				return nil
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
-				"outcome":       result.Outcome,
-				"stuck_reason":  result.StuckReason,
-				"batches_done":  result.BatchesDone,
-				"summary_title": result.SummaryTitle,
-				"weftCommitted": committed,
+				"outcome":         result.Outcome,
+				"stuck_reason":    result.StuckReason,
+				"batches_done":    result.BatchesDone,
+				"summary_title":   result.SummaryTitle,
+				"fabricCommitted": committed,
 			}))
 			return nil
 		},

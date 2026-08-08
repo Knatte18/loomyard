@@ -1,7 +1,7 @@
-// run_test.go covers the run verb's envelope shapes and weft-boundary behavior through a fake
+// run_test.go covers the run verb's envelope shapes and fabric-sync-boundary behavior through a fake
 // builderengine.OrchestratorStarter injected directly on a *builderCLI literal (bypassing
 // Command()'s PersistentPreRunE, the same package-local injection pattern as spawnbatch_test.go):
-// ErrRunBusy skips the weft sync;
+// ErrRunBusy skips the fabric sync;
 // every other outcome runs the backstop commit before its envelope;
 // --fresh is threaded through to builderengine.Run.
 
@@ -147,7 +147,7 @@ func TestRunCmd_SuccessEnvelopeAndWeftCommit(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		`"outcome":"done"`, `"batches_done":3`, `"session_id":"sess-1"`,
-		`"run_dir":"/kept/run"`, `"weftCommitted"`,
+		`"run_dir":"/kept/run"`, `"fabricCommitted"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got %q", want, got)

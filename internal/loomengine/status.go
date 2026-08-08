@@ -3,8 +3,8 @@
 // rewrites on every phase-machine step.
 
 // Package loomengine implements loom's Preflight precondition validator: the four checks (worktree
-// geometry, host cleanliness, weft pairing/sync, and _lyx/status.json coherence) that must all pass
-// before a task is fit to run.
+// geometry, worktree cleanliness, fabric readiness/sync, and _lyx/status.json coherence) that must
+// all pass before a task is fit to run.
 //
 // Callers MUST NOT invoke Preflight except when the task is at the fresh/preflight stage.
 // Invoking it on an already-advanced task (non-empty history, set start_sha, …) is a caller error

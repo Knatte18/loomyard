@@ -14,8 +14,12 @@ this fixture exists only to trip the plan-unapproved check.
 ### Card 01.1 — placeholder
 
 **What:** Nothing — this fixture is never actually run.
-**Context:** none **Edits:**
-- `01-only.md` **Creates:** none **Deletes:** none **Moves:** none
+**Context:** none
+**Edits:**
+- `01-only.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 

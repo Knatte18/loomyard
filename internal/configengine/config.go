@@ -2,7 +2,7 @@
 //
 // The Load function reads a YAML config file, validates it against a template, resolves environment
 // variables, and returns the resolved bytes.
-// The typed wrappers (board.LoadConfig, worktree.LoadConfig, weft.LoadConfig) unmarshal the
+// The typed wrappers (board.LoadConfig, worktree.LoadConfig, fabric.LoadConfig) unmarshal the
 // resolved bytes into their own structs.
 
 package configengine

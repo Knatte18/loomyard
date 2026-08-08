@@ -15,8 +15,12 @@ This batch runs the chain's real verify:.
 
 **What:** Point every caller at the extracted mapper;
 delete the old inline implementation.
-**Context:** none **Edits:**
-- `04-refactor-b.md` **Creates:** none **Deletes:** none **Moves:** none
+**Context:** none
+**Edits:**
+- `04-refactor-b.md`
+**Creates:** none
+**Deletes:** none
+**Moves:** none
 
 ## verify:
 

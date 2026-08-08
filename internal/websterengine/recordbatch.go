@@ -5,8 +5,9 @@
 // transcript-attribution advance, the batch-report presence check and parse, the head-SHA
 // cross-check against the fork's own self-reported head_sha, and the distilled digest's
 // persistence.
-// RecordBatch never touches weft — the caller weft-commits state.json and the batch report once
-// RecordBatch returns successfully, mirroring builder's own weft-commit-boundary discipline.
+// RecordBatch never touches the fabric repo — the caller fabric-commits state.json and the batch
+// report once RecordBatch returns successfully, mirroring builder's own fabric-commit-boundary
+// discipline.
 
 package websterengine
 
@@ -18,6 +19,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -35,9 +37,9 @@ var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-ba
 // State is the already-loaded run state RecordBatch reads and mutates;
 // Config is the loaded webster.yaml;
 // Engine supplies the incremental fork audit (AuditForksIncremental);
-// Layout resolves the pane's actual process cwd the audit reads against and the weft-reference
-// pattern CheckFork/CheckParent consult;
-// WorktreeRoot is the host repo checkout the dirty-worktree warning and the head-SHA cross-check
+// Layout resolves the pane's actual process cwd the audit reads against and the fabric-reference
+// scanner CheckFork/CheckParent consult;
+// WorktreeRoot is the repo checkout the dirty-worktree warning and the head-SHA cross-check
 // read;
 // OutcomePath and SummaryPath are the run's two Master contract files CheckParent's write-policy
 // exempts;
@@ -122,14 +124,14 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, warning)
 	}
 
-	weftRef := weftReferencePattern(deps.Layout)
+	fabricRef := fabricengine.NewRefScanner(deps.Layout)
 
 	var violations []error
-	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), weftRef) {
+	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), fabricRef) {
 		violations = append(violations, v)
 	}
 	for _, f := range newReports {
-		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), weftRef) {
+		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), fabricRef) {
 			violations = append(violations, v)
 		}
 		warnings = append(warnings, ForkWarnings(f)...)

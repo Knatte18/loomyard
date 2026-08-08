@@ -1,7 +1,7 @@
 //go:build integration
 
-// weft_integration_test.go covers weftCommit's composed behavior against real
-// git repositories, mirroring buildercli's own weft_integration_test.go. Two
+// sync_integration_test.go covers fabricSync's composed behavior against real
+// git repositories, mirroring buildercli's own sync_integration_test.go. Two
 // scenarios: Fabric.Commit's error-branch contract (a commit that lands but
 // fails its correspondence record must still be reported as committed=true
 // alongside the error, never swallowed into a false "no commit was made"),
@@ -48,7 +48,7 @@ func seedRepoWideFabricConfig(t *testing.T, hub string) {
 // board directory, so Fabric.Commit's own lyxcwd.ResolveWorktree(warpPath)
 // call resolves l.AnchorRel to relPath instead of falling back to a
 // cwd-derived "." -- Commit re-resolves geometry from f.warpPath itself
-// rather than trusting the *lyxcwd.Location weftCommit already holds, so
+// rather than trusting the *lyxcwd.Location fabricSync already holds, so
 // a nested-AnchorRel fixture must record the anchor for real git to classify
 // correctly.
 func seedFabricAnchor(t *testing.T, hub, relPath string) {
@@ -135,12 +135,12 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 	}, weft
 }
 
-// TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails proves the Fabric.Commit error
+// TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails proves the Fabric.Commit error
 // branch passes committed through instead of forcing it to false: with a directory squatting on the
 // correspondence index path, the weft commit itself lands but RecordCorrespondence fails, and
-// weftCommit must report (true, err) -- the commit is real, and Fabric.Commit's contract says the
+// fabricSync must report (true, err) -- the commit is real, and Fabric.Commit's contract says the
 // caller gets to know that alongside the error.
-func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
+func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
 	layout, weft := newHostWeftPair(t)
@@ -151,13 +151,13 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 		t.Fatalf("squat corrindex path: %v", err)
 	}
 
-	committed, err := weftCommit(layout, "corr-fail probe")
+	committed, err := fabricSync(layout, "corr-fail probe")
 
 	if err == nil {
-		t.Fatal("weftCommit() error = nil; want the RecordCorrespondence failure propagated")
+		t.Fatal("fabricSync() error = nil; want the RecordCorrespondence failure propagated")
 	}
 	if !committed {
-		t.Error("weftCommit() committed = false; want true, the commit landed before the record step failed")
+		t.Error("fabricSync() committed = false; want true, the commit landed before the record step failed")
 	}
 
 	// The commit must genuinely exist with the webster message stem -- the
@@ -168,17 +168,17 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	}
 }
 
-// TestWeftCommit_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, both
+// TestFabricSync_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, both
 // round-loop modules' pause flags, webster's rendered fork prompts) stays uncommitted by REAL git
 // at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
 // Exclusion is now enforced solely by the weft repo's .git/info/exclude (seeded by
 // fabricengine.seedWeftArtifactExcludes, reached through Fabric.Commit's ensureWeftLockDir), not by
-// any ":(exclude)" pathspec websterCLI builds itself -- weftCommit passes only the positive scoped
+// any ":(exclude)" pathspec websterCLI builds itself -- fabricSync passes only the positive scoped
 // _lyx pathspec.
 // The nested case is the regression guard for the pre-fix, unanchored ":(exclude)*.lock" spelling
 // this migration retired: that spelling's one-star pathspec false-positive-matched the intermediate
 // directories leading to a multi-segment positive pathspec and pruned the entire subtree, so `git
-// add` staged nothing and weftCommit returned (false, nil) -- a completely silent no-op.
+// add` staged nothing and fabricSync returned (false, nil) -- a completely silent no-op.
 // It is also the cross-module regression guard: a webster commit must hold back BUILDER's pause
 // flag too, since both round-loop modules share one _lyx -- committing it pins it in weft HEAD,
 // where builder can never stage its deletion (its own exclusion hides it from `git add`), so every
@@ -188,7 +188,7 @@ func TestWeftCommit_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // from this one commit.
 // WEFT_SKIP_PUSH is set because the scratch weft repo has no remote;
 // the commit half is what is under test.
-func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
+func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 	tests := []struct {
 		name    string
 		relPath string
@@ -205,12 +205,12 @@ func TestWeftCommit_CommitsAtEveryRelPathDepth(t *testing.T) {
 			t.Setenv("WEFT_SKIP_PUSH", "1")
 			layout, weft := newHostWeftPairAt(t, tt.relPath)
 
-			committed, err := weftCommit(layout, "depth probe")
+			committed, err := fabricSync(layout, "depth probe")
 			if err != nil {
-				t.Fatalf("weftCommit() error = %v; want nil", err)
+				t.Fatalf("fabricSync() error = %v; want nil", err)
 			}
 			if !committed {
-				t.Fatalf("weftCommit() committed = false; want true -- the pathspec staged nothing at RelPath %q, so the weft commit was a silent no-op", tt.relPath)
+				t.Fatalf("fabricSync() committed = false; want true -- the pathspec staged nothing at RelPath %q, so the fabric sync was a silent no-op", tt.relPath)
 			}
 
 			// git always reports commit contents with forward slashes,

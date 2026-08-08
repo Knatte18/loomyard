@@ -1,7 +1,7 @@
 // anchor.go implements the recorded lyx-anchor subpath marker: the plain single-line ".lyx-anchor"
-// file at the weft:main root that records the repo-wide subpath a fabric clone anchors lyx at (e.g.
+// file at the board root that records the repo-wide subpath a fabric clone anchors lyx at (e.g.
 // "backend" or ".").
-// It is read here, never written — the write side lives in fabricengine's weft:main commit choke
+// It is read here, never written — the write side lives in fabricengine's board-root commit choke
 // point (see the plan's "record wins" shared decision).
 // This file stays stdlib-only so lyxcwd never gains a YAML dependency.
 
@@ -29,14 +29,14 @@ func boardDir(hub string) string {
 	return filepath.Join(hub, boardDirName)
 }
 
-// AnchorFileName is the filename of the recorded lyx-anchor subpath marker at the weft:main root
+// AnchorFileName is the filename of the recorded lyx-anchor subpath marker at the board root
 // (<boardDir(hub)>/.lyx-anchor).
 // It holds only the subpath string (e.g. "backend" or ".").
 // This is a structural geometry artifact — a fixed per-repo anchor recorded once at clone/create —
 // never a config/env override;
 // per the Cwd Resolution Invariant, only lyxcwd constructs and reads this path.
 // There is no compatibility fallback read for the pre-rename ".fabric-anchor" name: the marker
-// anchors the whole weft repo, not the fabric module, so the old name is simply wrong now, not
+// anchors the whole repo, not the fabric module, so the old name is simply wrong now, not
 // merely renamed — see clone.go's stale-marker guard.
 const AnchorFileName = ".lyx-anchor"
 

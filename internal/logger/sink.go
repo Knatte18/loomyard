@@ -32,7 +32,7 @@ const sinkMaxBytes = 8 * 1024 * 1024
 // trace sink writes one file per process.
 // It is WorktreePath-anchored so a caller invoked from anywhere in the worktree resolves the same
 // logs directory.
-// It lives under the ephemeral .lyx directory, never the durable, weft-synced _lyx.
+// It lives under the ephemeral .lyx directory, never the durable, fabric-synced _lyx.
 func WorktreeLogsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.WorktreePath(), dotLyxDirName, "logs")
 }

@@ -1,7 +1,7 @@
 // spawnbatch.go implements the `spawn-batch` builder verb: the same automatic plan-validation gate
 // "validate" lints for, the ErrPaused "paused" signal, builderengine.SpawnBatch's
-// role-override/restart-chain wiring, and the spawn-boundary weft commit of state.json -- the first
-// of the loop's three weft-commit points (see builderengine's package doc).
+// role-override/restart-chain wiring, and the spawn-boundary fabric commit of state.json -- the first
+// of the loop's three fabric-commit points (see builderengine's package doc).
 
 package buildercli
 
@@ -45,7 +45,7 @@ lints for, checks the builder pause flag (refusing with "paused": true if
 state.json, and spawns one implementer session via shuttle. Go selects the
 implementer role from the batch's own "oversized:" frontmatter; the
 orchestrator overrides only for the recovery escalation path with
---role recovery. --restart-chain resets the host repo to the batch's
+--role recovery. --restart-chain resets the repo to the batch's
 deferred-verify chain's recorded start SHA and clears every chain member's
 stale report before spawning.
 
@@ -141,7 +141,7 @@ Example:
 				RestartChain: restartChain,
 			})
 			// SpawnBatch's SaveState has landed (or the spawn failed);
-			// release the lease before the weft push below so a network-slow
+			// release the lease before the fabric push below so a network-slow
 			// push never serializes another verb's state mutation behind it.
 			_ = mutateLock.Release()
 			mutateHeld = false
@@ -157,13 +157,13 @@ Example:
 				return nil
 			}
 
-			// Label the weft commit with the batch actually spawned
+			// Label the fabric commit with the batch actually spawned
 			// (result.BatchName), not the raw argument: --restart-chain
 			// re-points the spawn to the chain's lowest member, so the argument
 			// and the spawned batch can differ, and the audit trail must record
 			// what really spawned.
-			if _, weftErr := weftCommit(c.layout, fmt.Sprintf("spawn-batch %s", result.BatchName)); weftErr != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("builder: batch %s spawned but the weft sync failed: %v", result.BatchName, weftErr)))
+			if _, syncErr := fabricSync(c.layout, fmt.Sprintf("spawn-batch %s", result.BatchName)); syncErr != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("builder: batch %s spawned but the fabric sync failed: %v", result.BatchName, syncErr)))
 				return nil
 			}
 
@@ -180,7 +180,7 @@ Example:
 	}
 
 	cmd.Flags().StringVar(&roleOverride, "role", "", `role override; only "recovery" is accepted`)
-	cmd.Flags().BoolVar(&restartChain, "restart-chain", false, "reset the host repo to this batch's deferred-verify chain start SHA before spawning")
+	cmd.Flags().BoolVar(&restartChain, "restart-chain", false, "reset the repo to this batch's deferred-verify chain start SHA before spawning")
 
 	return cmd
 }

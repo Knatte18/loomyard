@@ -1,8 +1,8 @@
 //go:build integration
 
-// run_integration_test.go holds the run verb's weft-sync tests: each seeds a
+// run_integration_test.go holds the run verb's fabric-sync tests: each seeds a
 // real paired git-repo fixture (lyxtest.CopyPairedLocal) and asserts on the
-// actual weft git log/tracked-files via exec.Command, so this file is
+// actual fabric git log/tracked-files via exec.Command, so this file is
 // integration-tagged per the Test Tier Purity Invariant.
 
 package perchcli
@@ -53,8 +53,8 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	}
 }
 
-// TestRunCLI_Run_WeftSyncRunsOnEngineError verifies that Engine.Run returning a hard error still
-// gets the SAME weft commit+push treatment a successful terminal outcome does, per the Weft Git
+// TestRunCLI_Run_FabricSyncRunsOnEngineError verifies that Engine.Run returning a hard error still
+// gets the SAME fabric commit+push treatment a successful terminal outcome does, per the Fabric Git
 // Invariant: perchcli is the loop owner regardless of how the block ended.
 // A profile whose round-caps ladder fails Profile.validate (non-increasing entries) makes
 // Engine.Run return an error deterministically, with no live reed/claude substrate needed —
@@ -62,7 +62,7 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // placeholder artifact (standing in for what a real partially-completed block, e.g.
 // a completed round before a later could-not-start gate error, would have left behind) to prove the
 // sync call actually runs and actually commits it on this path.
-func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
+func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
@@ -82,12 +82,12 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	// Stand in for a real partially-completed block's leftover artifact:
 	// Profile.validate fails before Engine.Run ever creates the run dir
 	// itself, so a placeholder file is planted directly inside the
-	// weft-prime worktree at the path the host's "_lyx" junction would
+	// fabric-prime worktree at the path the host's "_lyx" junction would
 	// otherwise transparently resolve to (this fixture predates "lyx init",
 	// so no junction exists yet — writing straight into WeftPrime is the
 	// established pattern other cli test suites use, e.g. fabriccli's
 	// TestRunCLI_EnvMapToOption).
-	placeholderDir := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "weft-on-error")
+	placeholderDir := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "fabric-on-error")
 	if err := os.MkdirAll(placeholderDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "weft-on-error"})
+	exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "fabric-on-error"})
 
 	if exitCode != 1 {
 		t.Fatalf(`RunCLI([run]) = %d; want 1 (a bad round-caps ladder must fail Profile.validate)`, exitCode)
@@ -105,20 +105,20 @@ func TestRunCLI_Run_WeftSyncRunsOnEngineError(t *testing.T) {
 		t.Fatalf(`RunCLI([run]) output missing the round-caps validation error; got: %q`, out.String())
 	}
 
-	weftLog := gitLogOneline(t, fixture.WeftPrime)
-	if !strings.Contains(weftLog, "weft-on-error ERROR") {
-		t.Errorf("weft log = %q; want a %q commit even though Engine.Run returned an error", weftLog, "perch: weft-on-error ERROR")
+	fabricLog := gitLogOneline(t, fixture.WeftPrime)
+	if !strings.Contains(fabricLog, "fabric-on-error ERROR") {
+		t.Errorf("fabric log = %q; want a %q commit even though Engine.Run returned an error", fabricLog, "perch: fabric-on-error ERROR")
 	}
 }
 
-// TestRunCLI_Run_WeftCommitExcludesLockFiles verifies the block-exit weft commit stages a run dir's
+// TestRunCLI_Run_FabricCommitExcludesLockFiles verifies the block-exit fabric commit stages a run dir's
 // real block state (state.json, round artifacts) but never its machine-local advisory-lock files
-// (run.lock, state.json.lock): committing those would leak runtime noise into durable weft history
-// and materialize stale lock files on every other machine's weft pull.
-// Uses the same deterministic engine-error skeleton as TestRunCLI_Run_WeftSyncRunsOnEngineError —
+// (run.lock, state.json.lock): committing those would leak runtime noise into durable fabric history
+// and materialize stale lock files on every other machine's fabric pull.
+// Uses the same deterministic engine-error skeleton as TestRunCLI_Run_FabricSyncRunsOnEngineError —
 // the sync path is identical for every outcome, so the cheapest deterministic exit exercises the
 // pathspec.
-func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
+func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
@@ -136,7 +136,7 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	}
 
 	// Stand in for a real block's run dir: state alongside the two lock
-	// files a real Engine.Run leaves behind (see the WeftSyncRunsOnEngineError
+	// files a real Engine.Run leaves behind (see the FabricSyncRunsOnEngineError
 	// test above for why this is planted straight into WeftPrime).
 	runDir := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
@@ -161,15 +161,15 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 	// The commit must carry the block state and nothing lock-shaped.
 	tracked := gitLsFiles(t, fixture.WeftPrime)
 	if !strings.Contains(tracked, "lock-exclusion/state.json\n") || !strings.Contains(tracked, "lock-exclusion/round-1-review.md") {
-		t.Errorf("weft tracked files = %q; want state.json and round-1-review.md committed", tracked)
+		t.Errorf("fabric tracked files = %q; want state.json and round-1-review.md committed", tracked)
 	}
 	if strings.Contains(tracked, ".lock") {
-		t.Errorf("weft tracked files = %q; want no *.lock file ever committed", tracked)
+		t.Errorf("fabric tracked files = %q; want no *.lock file ever committed", tracked)
 	}
 }
 
-// TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath is the regression guard perch lacked:
-// TestRunCLI_Run_WeftCommitExcludesLockFiles above only exercises RelPath ".", where the retired
+// TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath is the regression guard perch lacked:
+// TestRunCLI_Run_FabricCommitExcludesLockFiles above only exercises RelPath ".", where the retired
 // ":(exclude)*.lock" pathspec entry happened to still work (a single leading "*" catches the whole
 // subtree at the root).
 // At a nested RelPath the retired pathspec's leading-wildcard bug would silently drop the ENTIRE
@@ -177,7 +177,7 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles(t *testing.T) {
 // this test proves the deepened "**/_lyx/*/**/*.lock" git-exclude pattern (card 7) keeps perch's
 // two-deep run.lock/state.json.lock out while still landing the rest of the block state, with the
 // worktree geometry itself anchored two segments deep.
-func TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
+func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
@@ -206,7 +206,7 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	}
 
 	// Stand in for a real block's run dir, nested under the recorded
-	// anchor's subpath exactly as the real weft junction would mirror it.
+	// anchor's subpath exactly as the real fabric junction would mirror it.
 	runDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), configengine.LyxDirName, "perch", "nested-lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
@@ -233,21 +233,21 @@ func TestRunCLI_Run_WeftCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	wantPresent := relPath + "/_lyx/perch/nested-lock-exclusion/state.json"
 	wantPresent2 := relPath + "/_lyx/perch/nested-lock-exclusion/round-1-review.md"
 	if !strings.Contains(tracked, wantPresent) || !strings.Contains(tracked, wantPresent2) {
-		t.Errorf("weft tracked files = %q; want %q and %q committed", tracked, wantPresent, wantPresent2)
+		t.Errorf("fabric tracked files = %q; want %q and %q committed", tracked, wantPresent, wantPresent2)
 	}
 	if strings.Contains(tracked, ".lock") {
-		t.Errorf("weft tracked files = %q; want no *.lock file ever committed, even nested under %q", tracked, relPath)
+		t.Errorf("fabric tracked files = %q; want no *.lock file ever committed, even nested under %q", tracked, relPath)
 	}
 }
 
-// TestRunCLI_Run_BusyBlockSkipsWeftSync verifies that a run refused because another invocation
-// holds the block's run.lock does NOT run the block-exit weft sync: the loser changed nothing on
+// TestRunCLI_Run_BusyBlockSkipsFabricSync verifies that a run refused because another invocation
+// holds the block's run.lock does NOT run the block-exit fabric sync: the loser changed nothing on
 // disk,
 // and syncing would commit (and push) the WINNER's in-flight partial state under a misleading
 // "perch: <id> ERROR" message.
-// A dirty file is planted in the weft-side _lyx (standing in for the winner's mid-round state) to
+// A dirty file is planted in the fabric-side _lyx (standing in for the winner's mid-round state) to
 // prove the sync would have had something to commit and still did not run.
-func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
+func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
@@ -266,19 +266,19 @@ func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 
 	// The winner's in-flight state, planted straight into WeftPrime (this
 	// fixture predates "lyx init", so no junction exists — same pattern as
-	// the weft tests above). runDirBase resolves against the HOST cwd, so
-	// hold the run.lock there; the dirty weft file proves the skipped sync
+	// the fabric tests above). runDirBase resolves against the HOST cwd, so
+	// hold the run.lock there; the dirty fabric file proves the skipped sync
 	// had real material.
 	hostRunDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "busyblock")
 	if err := os.MkdirAll(hostRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir host run dir: %v", err)
 	}
-	weftDirty := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "busyblock")
-	if err := os.MkdirAll(weftDirty, 0o755); err != nil {
-		t.Fatalf("mkdir weft dirty dir: %v", err)
+	fabricDirty := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "perch", "busyblock")
+	if err := os.MkdirAll(fabricDirty, 0o755); err != nil {
+		t.Fatalf("mkdir fabric dirty dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(weftDirty, "round-1-review.md"), []byte("winner's in-flight partial"), 0o644); err != nil {
-		t.Fatalf("write weft dirty file: %v", err)
+	if err := os.WriteFile(filepath.Join(fabricDirty, "round-1-review.md"), []byte("winner's in-flight partial"), 0o644); err != nil {
+		t.Fatalf("write fabric dirty file: %v", err)
 	}
 
 	// Stand in for the winning invocation: hold the run.lock for the whole
@@ -298,9 +298,9 @@ func TestRunCLI_Run_BusyBlockSkipsWeftSync(t *testing.T) {
 		t.Errorf(`RunCLI([run --run-id busyblock]) output missing "already running"; got: %q`, out.String())
 	}
 
-	weftLog := gitLogOneline(t, fixture.WeftPrime)
-	if strings.Contains(weftLog, "busyblock") {
-		t.Errorf("weft log = %q; want NO commit from the losing invocation (the winner syncs at its own exit)", weftLog)
+	fabricLog := gitLogOneline(t, fixture.WeftPrime)
+	if strings.Contains(fabricLog, "busyblock") {
+		t.Errorf("fabric log = %q; want NO commit from the losing invocation (the winner syncs at its own exit)", fabricLog)
 	}
 }
 

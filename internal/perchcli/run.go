@@ -1,7 +1,7 @@
 // run.go implements the `run` perch verb: the profile-YAML-and-flags-to-Run mapper that turns a
 // "lyx perch run" invocation into a blocking perchengine.Engine.Run call, commits+pushes the
-// resulting block artifacts through weft once at block exit, and prints the Result as a single JSON
-// envelope.
+// resulting block artifacts through the fabric repo once at block exit, and prints the Result as a
+// single JSON envelope.
 // It also owns decodeProfile, the strict YAML decode that maps a profile file 1:1 onto
 // perchengine.Profile, resolving its judge-model/model keys' model-spec strings against the
 // invocation's shared registry.
@@ -297,7 +297,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 
 			// A busy fail-fast means ANOTHER invocation owns this block and
 			// is mid-round right now; this invocation changed nothing on
-			// disk. Running the weft sync below would commit and push the
+			// disk. Running the fabric sync below would commit and push the
 			// winner's in-flight partial state under a misleading
 			// "perch: <id> ERROR" message — skip it; the winner runs the
 			// sync at its own block exit.
@@ -306,9 +306,9 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				return nil
 			}
 
-			// The weft sync runs once at block exit regardless of outcome —
-			// including a hard engine error — per the Weft Git Invariant:
-			// perchcli is the loop owner, perchengine itself is weft-blind.
+			// The fabric sync runs once at block exit regardless of outcome —
+			// including a hard engine error — per the Fabric Git Invariant:
+			// perchcli is the loop owner, perchengine itself is fabric-blind.
 			// A hard error can still follow a completed round or two (e.g. a
 			// could-not-start gate error, or a second-consecutive non-done
 			// attempt) whose artifacts are already on disk; skipping the
@@ -319,63 +319,62 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			if runErr == nil {
 				outcomeLabel = string(result.Outcome)
 			}
-			weftWorktree := fabricengine.WeftWorktree(c.layout)
 			opts := fabricengine.EnvSyncOptions()
 			// Lock files (run.lock, state.json.lock) are machine-local
 			// advisory-lock artifacts, not block state: committing them
-			// would leak runtime noise into durable weft history and
-			// materialize stale lock files on every other machine's weft
+			// would leak runtime noise into durable fabric history and
+			// materialize stale lock files on every other machine's fabric
 			// pull. reed and shuttle keep this class of file in the
 			// non-synced .lyx for exactly that reason; perch's locks must
 			// live beside state.json inside the run dir (the engine is
-			// geometry-blind), so they are excluded solely by the weft
+			// geometry-blind), so they are excluded solely by the fabric
 			// repo's .git/info/exclude (deepened to reach perch's
 			// two-deep locks) rather than a per-call pathspec.
 			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{configengine.LyxDirName})
-			// SkipGit is checked here, before fabricengine.New's stat-based
+			// SkipGit is checked here, before fabricengine.Open's stat-based
 			// path validation, mirroring Commit's own top-level
 			// short-circuit: the CI/test bypass must never require a real
-			// weft worktree to exist on disk, but New (unlike Commit
+			// fabric repo to exist on disk, but Open (unlike Commit
 			// itself) validates both paths unconditionally.
 			var committed bool
-			var weftErr error
+			var syncErr error
 			if !opts.SkipGit {
 				var fab *fabricengine.Fabric
-				fab, weftErr = fabricengine.New(c.layout.WorktreePath(), weftWorktree)
-				if weftErr == nil {
+				fab, syncErr = fabricengine.Open(c.layout)
+				if syncErr == nil {
 					var res fabricengine.CommitResult
-					res, weftErr = fab.Commit(
+					res, syncErr = fab.Commit(
 						files,
 						fmt.Sprintf("perch: %s %s", id, outcomeLabel),
 						nil,
 						opts,
 					)
-					committed = res.WeftCommitted
+					committed = res.Committed()
 				}
 			}
 
 			if runErr != nil {
 				msg := runErr.Error()
-				if weftErr != nil {
-					msg = fmt.Sprintf("%s (additionally, the weft sync failed: %v)", msg, weftErr)
+				if syncErr != nil {
+					msg = fmt.Sprintf("%s (additionally, the fabric sync failed: %v)", msg, syncErr)
 				}
 				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
-			if weftErr != nil {
+			if syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(
-					"perch: block %s finished (%s) but the weft sync failed: %v", id, result.Outcome, weftErr,
+					"perch: block %s finished (%s) but the fabric sync failed: %v", id, result.Outcome, syncErr,
 				)))
 				return nil
 			}
 
 			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
-				"outcome":       string(result.Outcome),
-				"stuckReason":   string(result.StuckReason),
-				"roundsRun":     result.RoundsRun,
-				"runId":         id,
-				"runDir":        runDir,
-				"weftCommitted": committed,
+				"outcome":         string(result.Outcome),
+				"stuckReason":     string(result.StuckReason),
+				"roundsRun":       result.RoundsRun,
+				"runId":           id,
+				"runDir":          runDir,
+				"fabricCommitted": committed,
 			}))
 			return nil
 		},

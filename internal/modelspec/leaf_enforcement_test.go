@@ -1,9 +1,8 @@
 // leaf_enforcement_test.go enforces the Modelspec Leaf Invariant: production code in
 // internal/modelspec imports ONLY the standard library, internal/configengine, and gopkg.in/yaml.v3
 // — never configreg, envsource, yamlengine, lyxcwd, or any feature package.
-// Unlike lyxtest's leaf_enforcement_test.go (a banned-import denylist), this check is an ALLOWLIST:
-// any import outside the allowed set fails the test, so a future stray dependency is caught with no
-// list maintenance required.
+// This check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray
+// dependency is caught with no list maintenance required.
 
 package modelspec
 

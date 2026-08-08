@@ -164,7 +164,7 @@ func seedWeftArtifactExcludes(weftPath string) error {
 // warpHeadSHA returns the warp repo's HEAD SHA, or reports unborn=true for an
 // unborn HEAD (zero commits), preventing regression on first-run paths.
 func (f *Fabric) warpHeadSHA() (sha string, unborn bool, err error) {
-	sha, err = f.Warp.CurrentSHA()
+	sha, err = f.warp.CurrentSHA()
 	if err == nil {
 		return sha, false, nil
 	}
@@ -215,7 +215,7 @@ func entryMatchesWeft(weftPath, entry string) (bool, error) {
 // commitEmptySnapshot lands an empty weft commit with the given commitMessage
 // and records the correspondence via RecordCorrespondence.
 func (f *Fabric) commitEmptySnapshot(commitMessage, warpSHA string) (sha string, committed bool, err error) {
-	sha, err = f.Weft.CommitEmpty(commitMessage)
+	sha, err = f.weft.CommitEmpty(commitMessage)
 	if err != nil {
 		return "", false, err
 	}
@@ -259,7 +259,7 @@ func (f *Fabric) commitWeftLocked(pathspec []string, message string, opts SyncOp
 		return "", false, nil
 	}
 
-	sha, committed, err = f.Weft.StageAndCommit(commitMessage, filteredPathspec)
+	sha, committed, err = f.weft.StageAndCommit(commitMessage, filteredPathspec)
 	if err != nil {
 		if strings.Contains(err.Error(), "did not match any files") {
 			if forceEmptyCommit {
@@ -312,7 +312,7 @@ func (f *Fabric) PushWeft(opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
-	return f.Weft.PushCoalesced()
+	return f.weft.PushCoalesced()
 }
 
 // PullWeft fast-forwards the weft worktree from its upstream, honoring SkipGit gating.
@@ -320,7 +320,7 @@ func (f *Fabric) PullWeft(opts SyncOptions) error {
 	if opts.SkipGit {
 		return nil
 	}
-	return f.Weft.Pull()
+	return f.weft.Pull()
 }
 
 // pushWeftAt pushes unpushed commits at weftPath with no Fabric instance,
