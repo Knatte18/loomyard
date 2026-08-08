@@ -30,14 +30,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// runLockName is the exclusive-lease file name inside the webster dir, held
-// for the ENTIRE duration of one Run call — builderengine's own run.lock
-// discipline (runlevel.go) applied to webster's own dir: without it, two
-// concurrent `lyx webster run` invocations would each cold-start from the
-// same state.json and reports, then both drive the Master spawn at once.
+// runLockName is the exclusive-lease file name inside the webster scratch
+// dir, held for the ENTIRE duration of one Run call — builderengine's own
+// run.lock discipline (runlevel.go) applied to webster's own scratch dir:
+// without it, two concurrent `lyx webster run` invocations would each
+// cold-start from the same state.json and reports, then both drive the
+// Master spawn at once.
 const runLockName = "run.lock"
 
-// ErrRunBusy marks Run's fail-fast refusal when another invocation already holds websterDir's
+// ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
 // run.lock.
 // It is webster's own sentinel (independent of builderengine.ErrRunBusy, per the
 // webster-owns-its-own-domain-types decision) because the caller must treat this refusal
@@ -45,14 +46,14 @@ const runLockName = "run.lock"
 // mid-run and owns the state — so webstercli must not run its own exit-time fabric backstop for it.
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
-// RunActive reports whether a live `lyx webster run` currently holds websterDir's run.lock.
+// RunActive reports whether a live `lyx webster run` currently holds scratchDir's run.lock.
 // It probes non-blocking: if the lock can be acquired, no run owns it and the probe returns false;
 // otherwise it returns true.
 // Probe errors (filesystem failures) are returned so the caller can decide.
-func RunActive(websterDir string) (bool, error) {
-	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, runLockName))
+func RunActive(scratchDir string) (bool, error) {
+	fl, acquired, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, runLockName))
 	if err != nil {
-		return false, fmt.Errorf("webster: probe run.lock in %s: %w", websterDir, err)
+		return false, fmt.Errorf("webster: probe run.lock in %s: %w", scratchDir, err)
 	}
 	if acquired {
 		// Nobody held it — release the probe lock immediately so a real run
@@ -94,20 +95,24 @@ type MasterStarter interface {
 
 // RunDeps carries every seam Run needs for testing.
 // Starter spawns Master; Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
-// PlanDir, WebsterDir, ReportsDir, PromptsDir, WorktreeRoot are lyxcwd- resolved paths;
+// PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir, WorktreeRoot are lyxcwd- resolved paths;
 // Config and Roles carry the loaded configuration and pre-flight-resolved role->model-spec map.
 type RunDeps struct {
-	Starter      MasterStarter
-	Reed         shuttleengine.ReedOps
-	Engine       shuttleengine.Engine
-	ShuttleCfg   shuttleengine.Config
-	Layout       *lyxcwd.Location
-	Roles        map[Role]modelspec.Resolved
-	Config       Config
-	PlanDir      string
-	WebsterDir   string
-	ReportsDir   string
-	PromptsDir   string
+	Starter    MasterStarter
+	Reed       shuttleengine.ReedOps
+	Engine     shuttleengine.Engine
+	ShuttleCfg shuttleengine.Config
+	Layout     *lyxcwd.Location
+	Roles      map[Role]modelspec.Resolved
+	Config     Config
+	PlanDir    string
+	WebsterDir string
+	ReportsDir string
+	PromptsDir string
+	// ScratchDir is the .lyx/webster tree — the never-tracked base directory
+	// holding the pause flag, the state-mutation lease, and run.lock, at the
+	// mirrored subpath of WebsterDir's _lyx/webster content.
+	ScratchDir   string
 	WorktreeRoot string
 
 	// Clock is the integration stage's bounded-wait clock seam: nil selects
@@ -298,13 +303,16 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.WebsterDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.WebsterDir, err)
 	}
+	if err := os.MkdirAll(deps.ScratchDir, 0o755); err != nil {
+		return RunResult{}, fmt.Errorf("webster: create webster scratch dir %s: %w", deps.ScratchDir, err)
+	}
 
-	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(deps.WebsterDir, runLockName))
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(deps.ScratchDir, runLockName))
 	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: acquire run lock in %s: %w", deps.WebsterDir, err)
+		return RunResult{}, fmt.Errorf("webster: acquire run lock in %s: %w", deps.ScratchDir, err)
 	}
 	if !locked {
-		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.WebsterDir)
+		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.ScratchDir)
 	}
 	defer runLock.Release()
 
@@ -344,7 +352,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// other verb's own state read-modify-write, mirroring builderengine's
 	// own AcquireStateMutation discipline. Released explicitly right after
 	// the strand record lands, never held across Master's own wait.
-	mutateLock, err := AcquireStateMutation(deps.WebsterDir)
+	mutateLock, err := AcquireStateMutation(deps.ScratchDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -355,7 +363,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}()
 
-	st, err := LoadState(deps.WebsterDir)
+	st, err := LoadState(deps.WebsterDir, deps.ScratchDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -380,7 +388,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
 		}
-		if err := SaveState(deps.WebsterDir, st); err != nil {
+		if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
 
@@ -408,7 +416,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
 		}
-		if err := SaveState(deps.WebsterDir, st); err != nil {
+		if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -420,7 +428,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// now resuming from. Placing the clear HERE — not at the bare entry —
 	// means a run that refused above leaves the operator's pending pause
 	// intact rather than silently discarding a request it never acted on.
-	if err := ClearPause(deps.WebsterDir); err != nil {
+	if err := ClearPause(deps.ScratchDir); err != nil {
 		return RunResult{}, err
 	}
 
@@ -509,7 +517,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// reclaim. Two saves, not one, keep the reclaimable record ahead of the
 	// fallible resolve.
 	st.MasterStrand = handle.StrandGUID()
-	if err := SaveState(deps.WebsterDir, st); err != nil {
+	if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
 		return RunResult{}, err
 	}
 
@@ -525,7 +533,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	st.AssertedModel = resolved.Model
 
 	// Second save: the session ID and launch-model baseline the verbs read.
-	if err := SaveState(deps.WebsterDir, st); err != nil {
+	if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
 		return RunResult{}, err
 	}
 
@@ -598,7 +606,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		// batch was begun-but-never-recorded (a fork slipped past
 		// record-batch) is caught here, closing the begin-without-record leg
 		// of the two-layer bracket enforcement at run exit.
-		if err := verifyEveryBatchDone(deps.WebsterDir, batches); err != nil {
+		if err := verifyEveryBatchDone(deps.WebsterDir, deps.ScratchDir, batches); err != nil {
 			return RunResult{}, err
 		}
 
@@ -613,7 +621,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	}
 
 	if outcome.Outcome != outcomePaused {
-		if err := ClearPause(deps.WebsterDir); err != nil {
+		if err := ClearPause(deps.ScratchDir); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -649,8 +657,9 @@ func batchIdentity(b batcher.Batch) (number int, slug string) {
 // when the fork transcript exists but no record-batch consumed it. State is
 // reloaded fresh because the in-memory copy Run captured before Master
 // spawned is stale by run exit (begin/record-batch mutated it repeatedly).
-func verifyEveryBatchDone(websterDir string, batches []batcher.Batch) error {
-	st, err := LoadState(websterDir)
+// scratchDir locates state.json's lock, which now lives outside websterDir.
+func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch) error {
+	st, err := LoadState(websterDir, scratchDir)
 	if err != nil {
 		return err
 	}
@@ -698,7 +707,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	// Reload state fresh: begin-batch/record-batch mutated and persisted it
 	// repeatedly across Master's whole run, so the in-memory copy captured
 	// before Master ever spawned is stale by run-exit.
-	st, err := LoadState(deps.WebsterDir)
+	st, err := LoadState(deps.WebsterDir, deps.ScratchDir)
 	if err != nil {
 		return err
 	}
@@ -754,7 +763,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	// instruction only spawns the integration fork after every batch is
 	// done) — this is expected, not a failure, so the error here is
 	// swallowed rather than propagated.
-	if err := verifyEveryBatchDone(deps.WebsterDir, batches); err != nil {
+	if err := verifyEveryBatchDone(deps.WebsterDir, deps.ScratchDir, batches); err != nil {
 		return nil
 	}
 
@@ -788,7 +797,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return nil
 	}
 
-	mutateLock, err := AcquireStateMutation(deps.WebsterDir)
+	mutateLock, err := AcquireStateMutation(deps.ScratchDir)
 	if err != nil {
 		return err
 	}
@@ -797,7 +806,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	// Reload state fresh: begin-batch/record-batch mutated and persisted it
 	// repeatedly across Master's whole run, so the in-memory copy captured
 	// before Master ever spawned is stale by the time this stage runs.
-	st, err := LoadState(deps.WebsterDir)
+	st, err := LoadState(deps.WebsterDir, deps.ScratchDir)
 	if err != nil {
 		return err
 	}
@@ -824,7 +833,7 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		return err
 	}
 
-	if err := SaveState(deps.WebsterDir, st); err != nil {
+	if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
 		return err
 	}
 
