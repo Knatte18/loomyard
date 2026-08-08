@@ -3,7 +3,7 @@
 ```yaml
 task: "Collapse _pattern into _lyx, and un-reserve _raddle as a hub-level name"
 slug: "pattern-into-lyx-consolidation"
-approved: false
+approved: true
 started: "20260808-161017"
 parent: "main"
 root: ""
