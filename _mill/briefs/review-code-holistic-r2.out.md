@@ -1,0 +1,30 @@
+MILL_REVIEW_BEGIN
+# Review: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometry (slice 9) — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-08
+```
+
+Verified end-to-end across all 8 batches against `_mill/plan/00-overview.md` and every batch file.
+
+- **Batch 1** (`lyxdirs-single-declarer`): `internal/lyxdirs` is a stdlib-free two-const leaf; every production/test call site retargeted to `lyxdirs.LyxDirName`/`DotLyxDirName`; `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_GeometryLiterals` polices both tokens with `internal/lyxdirs` as sole owner. Notably the implementer used "fabric-synced" rather than the plan's literal "weft-synced" wording in `lyxdirs/dirs.go`'s godoc — correctly avoiding a Fabric Vocabulary Invariant violation (`internal/lyxdirs` is not in that invariant's owner set), a sound deviation from the plan's exact wording.
+- **Batch 2** (`treadle-perch-scratch-seam`): `treadleengine.Options.ScratchDir` resolved first in `Run`, before the deferred clear/MkdirAll/lock; `state.go`'s four functions correctly split `state.json` (runDir) from the lock/pause files (scratchDir); `perchengine.ScratchDir`/`perchcli` wiring and `resolveRunTarget`'s fourth return value all match the plan; `run_integration_test.go`'s busy-block test correctly moved the planted `run.lock` to the `.lyx` scratch dir.
+- **Batch 3** (`webster-builder-loom-scratch-seam`): `ScratchDir` accessors and re-keyed transient accessors present and consistent for both webster and builder; the `LoadState` fresh-worktree `MkdirAll(scratchDir)` gap (found during card 22's own test-writing) is fixed in both `websterengine/state.go` and `builderengine/state.go`; `loomengine.LoomStatusLock` re-pointed to `.lyx` with the required `preflight.go` `MkdirAll` guard; `constructoranchoring_test.go`'s three-group table (as of batch 3) and its later batch-4 collapse both verified.
+- **Batch 4** (`dotlyx-group-reanchor-and-logger-sink`): `logger.LogsDir` renamed/re-anchored on `AnchorPath()`; `sink.go`'s handle-free open-append-close implementation matches the plan exactly, including the rename-mid-process test; shuttle/burler/reed all re-anchored via `AnchorPath()` (reed behind one `stateDir()` helper); scout's two-line base swap done with TODO comments removed; `constructoranchoring_test.go` collapses the `.lyx` group onto one `AnchorPath`-based root with the prefix-exclusion regression guard.
+- **Batch 5** (`no-transients-under-lyx-guard`): `cmd/lyx/notransients_test.go` asserts all three directions (durable-not-transient, transient-not-durable, mirrored-subpath equality) against both fixtures, with a `scanned_non_empty` sanity guard; `CONSTRAINTS.md`'s Durable-vs-Ephemeral State Invariant added in the correct position.
+- **Batch 6** (`retire-cross-module-excludes`): `crossModuleMachineLocalExcludes` fully deleted (confirmed via repo-wide grep — zero `.go` hits); `seedWeftArtifactExcludes` reduced to the two fabric-only entries at this point in history; pollution-reproduction test rewritten rather than deleted; docs (`builder-contract.md`, both `SANDBOX-*-SUITE.md`) updated consistently.
+- **Batch 7** (`structural-dirs-and-never-committed-routing`): `structuralCommittedDirs`/`structuralNeverCommittedDirs`, `dedupUnion`, `pathspecNames`/`slugReservedNames`/`PathspecNames` all match; `HubReservedNames()` unchanged with `.lyx` deliberately absent; `classifyPaths`' three-bucket split and `Commit`'s pre-lock hard error both verified; `weft_verbs.go` correctly sources its pathspec from `fabricengine.PathspecNames` rather than raw `cfg.Dirs()`; `--exclude-standard` added to `entryMatchesWeft`; `template.yaml`'s default shrunk to `_pattern`; `structuraldirs_test.go`/`classify_test.go`/`configsync_test.go` cover the required trio of assertions.
+- **Batch 8** (`dotlyx-junction-wiring-and-unwire`): `junctionNames` folds in `structuralNeverCommittedDirs`; `adoptDotLyxContent` implements collision-refusal, partial-move naming, and idempotency exactly as specified; weft-side `.lyx/` exclude seeded at wiring time before `seedGitExclude`; the committed `.gitignore` `.lyx/` block fully removed from both `clone.go` and `unwire.go` (`Gitignore` field gone, no `gitignore` envelope key); `Unwire` now purely observational (`"preserved"`/`"not_present"`); `<hub>/.lyx` created in `CloneHub` and reserved via `hubSlugReservedNames`; `dotlyxjunction_integration_test.go` covers lifecycle/seeding-order/adoption/collision/over-reach-refusal together in one file as required; docs (`CONSTRAINTS.md`, `docs/overview.md`, `fabric-unified-view.md`, `manifest/roadmap.md`, `fabricengine/doc.go`) all updated to describe the shipped (not originally predicted) design.
+- **Card 53 verification gate**: independently re-ran all four greps — no `gitignore.Ensure/Remove` naming `.lyx` outside `internal/vscode`'s `.vscode/` call; no `ScopedPathspec` call site passes `DotLyxDirName`/`structuralNeverCommittedDirs`; no production file outside `internal/lyxdirs` constructs either literal in path-construction context; `crossModuleMachineLocalExcludes` appears nowhere in `.go` source (only in plan/design docs describing its removal, which is expected).
+- **Prior non-blocking item** (buildercli/webstercli `sync.go` header comments describing a retired mechanism): re-read both files — the headers now accurately describe the current `.lyx`-based mechanism with no exclude-pattern language. The item appears already resolved; not escalated, nothing further to report.
+
+No out-of-plan files, no cross-batch contract mismatches, no duplicated helpers, and every constraint touched by this task (Cwd Resolution, Lyxdirs Single-Declarer, Durable-vs-Ephemeral State, Fabric Git, Fabric Vocabulary) is both implemented and documented consistently with the shipped code.
+
+## Verdict
+
+APPROVE
+Full 8-batch implementation matches the plan, shared decisions, and constraints with no blocking issues found.
+MILL_REVIEW_END

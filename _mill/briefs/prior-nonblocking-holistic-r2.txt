@@ -1,0 +1,1 @@
+- buildercli/webstercli sync.go header comments describe a retired mechanism: Location: internal/buildercli/sync.go:5-8, internal/webstercli/sync.go:5-8
