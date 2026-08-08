@@ -272,7 +272,7 @@ type durableWriter struct{}
 // diagnostic sink that never opens must never surface as a write failure to the logging call site,
 // so Write reports success and discards p.
 func (durableWriter) Write(p []byte) (int, error) {
-	if _, ok := ensureDurableSink(); !ok {
+	if !ensureDurableSink() {
 		return len(p), nil
 	}
 	return writeDurable(p)
