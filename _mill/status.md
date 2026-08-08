@@ -6,6 +6,7 @@ slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Collapse _pattern into _lyx, and un-reserve _raddle as a hub-level name
 task_description: |
   Collapse _pattern into _lyx, and un-reserve _raddle as a hub-level name
@@ -37,17 +38,26 @@ implementing  '2026-08-08T17:23:30Z'
 ```yaml
 batches:
   - name: pattern-path-api
-    state: pending
+    state: running
+    implementer_session: 59690091-99c2-4ec7-b93f-f86da3546a0a
+    start_sha: c96d6de9d504c5bd14affd85a8cc609cc5551fa1
+    verify_baseline_failures: []
   - name: residue-rescope
     state: pending
+    verify_baseline_failures: []
   - name: junction-test-retarget
     state: pending
+    verify_baseline_failures: []
   - name: empty-pathspec-and-unreservation
     state: pending
+    verify_baseline_failures: []
   - name: pollution-scan-and-reportonly
     state: pending
+    verify_baseline_failures: []
   - name: geometry-token-retirement
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-design-sweep
     state: pending
+    verify_baseline_failures: []
 ```
