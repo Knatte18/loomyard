@@ -32,8 +32,8 @@ Keeping this task to one batch and merging it quickly is the point.
 - `CONSTRAINTS.md` — **two edits already landed during mill-start** (Treadle Runner-Seam bullet, lyxtest Leaf section — see "Work already landed"), plus **one edit still to make in mill-go**: the lyxtest section's "**Enforced by**" line gains the test-function name, per the "lyxtest's test is renamed" decision.
 - `internal/treadleengine/doc.go` (~line 147) — the "never imports internal/lyxcwd" clause.
 - `internal/treadleengine/engine.go` (~line 6) — the same clause on the `Engine` type doc.
-- `internal/lyxtest/doc.go` (~lines 7-13) — the whole Leaf Invariant block, not just its opening sentence;
-  the denylist framing continues through the "It must not import internal/configreg or any feature package … would close a test-build cycle" sentences.
+- `internal/lyxtest/doc.go` — **lines 7-13 only**, the denylist framing: the opening "policed by a banned-imports list … not an allowlist" sentence *and* the "It must not import internal/configreg or any feature package … would close a test-build cycle" sentences that continue it.
+  **Lines 14-16 stay as-is** — the `SeedConfig`/configreg-free-map sentence is accurate today, mirrors the `CONSTRAINTS.md` bullet, and is unaffected by the conversion.
 - `internal/lyxtest/leaf_enforcement_test.go` — convert the banned-imports denylist to an allowlist, rename `TestLeafInvariant` to `TestLeafInvariant_AllowlistOnly`, and rewrite the file header + test doc comments, which are stale today independent of the conversion.
 - `internal/modelspec/leaf_enforcement_test.go` (~line 4) — its "Unlike lyxtest's leaf_enforcement_test.go (a banned-import denylist)" cross-reference dies with the conversion.
 - `internal/shuttleengine/seam_enforcement_test.go` (~line 22) — names `TestLeafInvariant` by function name;
@@ -288,7 +288,12 @@ From `CONSTRAINTS.md`, binding on this task:
   the cycle it prevents (`lyxtest` → feature → `lyxtest`, closed because feature packages' internal tests import lyxtest) must survive the conversion intact, and does.
 - **Treadle Runner-Seam Invariant** — being edited;
   the `burlerengine`/`*cli` half of the rule is untouched and still correct.
-- **Test Tier Purity Invariant** — all seven enforcement tests are untagged and must stay so;
+- **Fabric Vocabulary Invariant** — binds the treadle comment rewrites, and is machine-checked.
+  `internal/treadleengine` is **not** in the owner set, and `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) scans identifiers, string literals, **and comments** in production `.go` files under `internal/`.
+  So the rewritten `doc.go`/`engine.go` comments must not introduce `weft` or `warp` as bare tokens, nor a fabric-sense `host` phrase (`host repo`, `host worktree`, `host branch`, …).
+  The bare word `fabric` is unpoliced, so the existing "fabric-blind and geometry-blind" phrasing is safe to keep — the risk is only in reaching for fabric vocabulary while rewriting.
+  `internal/lyxtest` *is* in the owner set, so its `doc.go` edit is unconstrained here.
+- **Test Tier Purity Invariant** — all enforcement tests are untagged and must stay so;
   they parse ASTs and spawn nothing, so no tier concern arises as long as the conversion introduces no `exec.Command`, `gitexec.RunGit`, or `lyxtest.Copy*` call.
   It introduces none.
 - **Documentation Lifecycle** — per `CLAUDE.md`, docs land in the same commit as the change.
@@ -324,9 +329,8 @@ This is the TDD candidate, in the narrow sense available for a guard test: the c
 - It must still reject every path the old denylist rejected — `internal/configreg`, `boardengine`/`boardcli`, `ideengine`/`idecli`, `selfreportengine`/`selfreportcli`, `fabricengine`/`fabriccli` — which the allowlist gives by construction, since none is in the allowed set.
 - It must additionally reject a path the denylist silently permitted (any other `internal/*` package, or a new third-party module).
   Confirming this is the *point* of the conversion.
-  How to confirm it — a temporary local edit reverted before commit, or a table-driven helper extracted so the matcher can be exercised directly — is mill-plan's call.
-  Note that the other six tests do not extract such a helper, so consistency argues against introducing one here;
-  a manual pre-commit verification, stated in the commit message, is the lighter option.
+  **How to confirm it is decided, not left to mill-plan:** add a throwaway import to a production file locally, watch the test fail, revert, and record in the commit message that this was done.
+  Do **not** extract a table-driven matcher helper to test the check directly — no sibling enforcement test does that, and introducing the pattern in the one file this task exists to bring *into* line with its siblings would be self-defeating.
 
 **Regression bar for the whole task** (agreed during discussion):
 
@@ -361,6 +365,10 @@ The reviewer's check is that no remaining comment in the tree asserts an isolati
   Deferring it had made the sweep's verified-untouched list conditional on an open question, which is why it could not stay deferred.
 - **Q:** (discussion review r1) Is `CONSTRAINTS.md` closed to further edits, given mill-start already landed two? **A:** No — closed only to redoing those two.
   The enforced-by line is a mill-go edit, deliberately not made during mill-start because it would forward-reference a function that does not exist yet.
+- **Q:** (discussion review r2) Which machine-enforced invariant binds the treadle *comment* rewrites? **A:** The Fabric Vocabulary Invariant — `treadleengine` is not in its owner set, and the enforcement test scans comments, not just identifiers.
+  Bare `fabric` is unpoliced so the existing "fabric-blind" wording is safe;
+  the constraint is on not reaching for `weft`/`warp`/fabric-sense `host` while rewriting.
+  Now listed under Constraints.
 - **Q:** Is the treadle finding as the brief described it? **A:** Worse.
   The brief expected one transitive path via `logger`;
   the allowlist also permits `shuttleengine`, which imports `lyxcwd` directly.
