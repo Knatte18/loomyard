@@ -1,0 +1,10 @@
+All 3 cards are complete: 2 committed (Card 1 and Card 2), and Card 3 (Commit: none) was verified this turn via the manual red/green proofs, ending with a clean `git status --porcelain`. Verify passed. 3 of 3 cards committed/completed.
+
+{"status":"success","commit_sha":"3d1afe71e55d70e089323ef09a70185b45a18306","session_id":"560ac430-3aae-4410-9738-8824256d9783","cards_done":[1,2,3]}
+
+Summary of work:
+
+- `/home/knatte/Code/loomyard/wts/scout-seam-conversion/internal/scoutengine/leaf_enforcement_test.go` renamed via `git mv` to `/home/knatte/Code/loomyard/wts/scout-seam-conversion/internal/scoutengine/seam_enforcement_test.go`, converted from an allowlist (`TestLeafInvariant_AllowlistOnly`) to a four-predicate banned list (`TestEngineSeamInvariant_BannedImports`), scoped via `os.ReadDir` on the package's own directory, non-vacuous (`t.Fatal` on zero files parsed). Commit `b76f7e27`.
+- New file `/home/knatte/Code/loomyard/wts/scout-seam-conversion/internal/scoutengine/lspclient_guard_test.go` created with `TestLSPClientGuard_StdlibAndLoggerOnly`, guarding `internal/scoutengine/lspclient.go` to stdlib plus `internal/logger` only, described as "no lyx dependency except logging". Commit `3d1afe71`.
+- Card 3 (Commit: none): manually proved all four banned-import predicates fail individually on `internal/scoutengine/probe.go` (`internal/output`, cobra via `spf13/cobra`, `internal/boardcli` as an `internal/*cli` case, `internal/clihelp`), proved the `internal/lyxcwd` non-regression stays green, proved the non-vacuity `t.Fatal` fires on an empty-directory scan, proved the guard diverges from the seam test on both a permitted-by-seam-but-guard-banned lyx import (`internal/lock`) and a third-party import (`gopkg.in/yaml.v3`), and proved the guard's missing-target `t.Fatal` by temporarily renaming `lspclient.go` to `lspclient_renamed.go`. Every temporary edit was reverted; final `git status --porcelain` is clean (only the untracked out-of-scope brief file remains).
+- `verify:` (`go test ./internal/scoutengine/ && go vet -tags scout ./internal/scoutengine/`) passes.

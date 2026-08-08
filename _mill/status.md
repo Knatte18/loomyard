@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-seam-tests
 slug: scout-seam-conversion
 branch: scout-seam-conversion
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-08T06:30:30Z'
 plan-fix-r3  '2026-08-08T06:35:53Z'
 planned  '2026-08-08T06:36:18Z'
 implementing  '2026-08-08T06:36:50Z'
+approved-seam-tests  '2026-08-08T06:42:31Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-08-08T06:36:50Z'
 ```yaml
 batches:
   - name: seam-tests
-    state: running
+    state: approved
     implementer_session: 560ac430-3aae-4410-9738-8824256d9783
     start_sha: 42f95746e8e3daf111eb154f040130c45ea8fcfa
+    commit_sha: 3d1afe71e55d70e089323ef09a70185b45a18306
     verify_baseline_failures: []
   - name: docs-alignment
     state: pending
