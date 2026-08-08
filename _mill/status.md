@@ -6,6 +6,7 @@ slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometry (slice 9)
 task_description: |
   .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometry (slice 9)
@@ -37,19 +38,29 @@ implementing  '2026-08-08T10:29:09Z'
 ```yaml
 batches:
   - name: lyxdirs-single-declarer
-    state: pending
+    state: running
+    implementer_session: 571d7fc6-095c-47e7-bc02-55351851eedc
+    start_sha: 51684bfa685a459aed0c9269e06b7b376c92c82f
+    verify_baseline_failures: []
   - name: treadle-perch-scratch-seam
     state: pending
+    verify_baseline_failures: []
   - name: webster-builder-loom-scratch-seam
     state: pending
+    verify_baseline_failures: []
   - name: dotlyx-group-reanchor-and-logger-sink
     state: pending
+    verify_baseline_failures: []
   - name: no-transients-under-lyx-guard
     state: pending
+    verify_baseline_failures: []
   - name: retire-cross-module-excludes
     state: pending
+    verify_baseline_failures: []
   - name: structural-dirs-and-never-committed-routing
     state: pending
+    verify_baseline_failures: []
   - name: dotlyx-junction-wiring-and-unwire
     state: pending
+    verify_baseline_failures: []
 ```
