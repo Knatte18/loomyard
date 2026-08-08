@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -40,6 +40,8 @@ approved-geometry-token-retirement  '2026-08-08T18:23:25Z'
 approved-docs-and-design-sweep  '2026-08-08T18:36:15Z'
 holistic-reviewing  '2026-08-08T18:36:37Z'
 holistic-fixing  '2026-08-08T18:41:55Z'
+nits-fixed-holistic  '2026-08-08T18:43:42Z'
+holistic-approved  '2026-08-08T18:43:50Z'
 ```
 
 ## Batches
