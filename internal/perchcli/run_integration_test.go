@@ -274,6 +274,13 @@ func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	if err := os.MkdirAll(hostRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir host run dir: %v", err)
 	}
+	// run.lock itself now lives in the block's .lyx scratch dir, not its
+	// _lyx run dir — see perchengine.ScratchDir and
+	// treadleengine.Options.ScratchDir.
+	hostScratchDir := filepath.Join(perchengine.ScratchDir(fixture.Layout), "busyblock")
+	if err := os.MkdirAll(hostScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir host scratch dir: %v", err)
+	}
 	fabricDirty := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "busyblock")
 	if err := os.MkdirAll(fabricDirty, 0o755); err != nil {
 		t.Fatalf("mkdir fabric dirty dir: %v", err)
@@ -284,7 +291,7 @@ func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 
 	// Stand in for the winning invocation: hold the run.lock for the whole
 	// losing call, exactly as a mid-round Engine.Run does.
-	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(hostRunDir, "run.lock"))
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(hostScratchDir, "run.lock"))
 	if err != nil || !locked {
 		t.Fatalf("TryAcquireWriteLock() = (%v, %v); want a held lock", locked, err)
 	}

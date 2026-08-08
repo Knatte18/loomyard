@@ -72,8 +72,16 @@ Example:
 			// scratchDir mirrors resolveRunTarget's own derivation (same
 			// id, joined onto c.scratchDirBase instead of c.runDirBase) so
 			// the pause verb writes the flag at the exact path the run
-			// verb's PauseRequested seam checks.
+			// verb's PauseRequested seam checks. Created up front — a block
+			// whose run dir exists may have no scratch dir yet if it was
+			// created by a pre-fix binary that wrote its locks and pause
+			// flag inside runDir, and TerminalOutcome below needs the
+			// directory to exist before it can even acquire its read lock.
 			scratchDir := filepath.Join(c.scratchDirBase, runID)
+			if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: create scratch dir %q: %v", scratchDir, err)))
+				return nil
+			}
 
 			// A finished block has no run loop left to observe a pause flag —
 			// accepting the pause would tell the operator a pause is pending
@@ -90,14 +98,6 @@ Example:
 			}
 			if terminal {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: this block already finished (%s); nothing to pause", outcome)))
-				return nil
-			}
-
-			// A block whose run dir exists may have no scratch dir yet if
-			// it was created by a pre-fix binary that wrote its locks and
-			// pause flag inside runDir.
-			if err := os.MkdirAll(scratchDir, 0o755); err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: create scratch dir %q: %v", scratchDir, err)))
 				return nil
 			}
 

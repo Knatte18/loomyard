@@ -81,7 +81,8 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	if !strings.Contains(out.String(), "already finished (STUCK)") {
 		t.Errorf(`RunCLI([pause --run-id finishedrun]) output missing "already finished (STUCK)"; got: %q`, out.String())
 	}
-	if _, err := os.Stat(perchengine.PauseFlagPath(runDir)); err == nil {
+	scratchDir := filepath.Join(perchengine.ScratchDir(fixture.Layout), "finishedrun")
+	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err == nil {
 		t.Error("pause flag was written for a finished block; want no flag")
 	}
 }
@@ -136,8 +137,9 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf(`RunCLI([pause --run-id nestedrun]) = %d; want 0 — the run dir under <cwd>/_lyx/perch must be found, output: %s`, exitCode, out.String())
 	}
-	if _, err := os.Stat(perchengine.PauseFlagPath(runDir)); err != nil {
-		t.Errorf("pause flag not written under the nested _lyx run dir %q: %v", runDir, err)
+	scratchDir := filepath.Join(perchengine.ScratchDir(nestedLayout), "nestedrun")
+	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err != nil {
+		t.Errorf("pause flag not written under the nested .lyx run dir %q: %v", scratchDir, err)
 	}
 }
 
@@ -159,8 +161,9 @@ func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
 }
 
 // TestRunCLI_Pause_WritesFlagAndIsIdempotent verifies that pausing an existing run dir writes the
-// pause flag file at perchengine.PauseFlagPath(runDir), succeeds, and that a second pause call
-// against the same run-id is a no-op success (idempotent re-pause).
+// pause flag file at perchengine.PauseFlagPath(scratchDir) — the block's .lyx scratch dir, never
+// its _lyx run dir — succeeds, and that a second pause call against the same run-id is a no-op
+// success (idempotent re-pause).
 func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 	fixture := seedPerchFixture(t)
 
@@ -178,9 +181,15 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 		t.Errorf(`RunCLI([pause --run-id myrun]) output missing ok:true envelope; got: %q`, out.String())
 	}
 
-	pauseFile := perchengine.PauseFlagPath(runDir)
+	scratchDir := filepath.Join(perchengine.ScratchDir(fixture.Layout), "myrun")
+	pauseFile := perchengine.PauseFlagPath(scratchDir)
 	if _, err := os.Stat(pauseFile); err != nil {
 		t.Fatalf("pause flag file %q not written: %v", pauseFile, err)
+	}
+	// The load-bearing assertion: the flag lives under the .lyx perch tree,
+	// never under the _lyx perch tree it used to share with state.json.
+	if _, err := os.Stat(filepath.Join(runDir, perchengine.PauseFlagName)); err == nil {
+		t.Errorf("pause flag also exists under the _lyx run dir %q; want it exclusively under the .lyx scratch dir", runDir)
 	}
 
 	// Idempotent re-pause: calling pause again while the flag already

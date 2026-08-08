@@ -8,7 +8,50 @@ package perchengine
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
+
+// TestScratchDir proves ScratchDir is RunsDir's mirrored sibling under
+// .lyx: the same anchor and the same perchDirName segment, differing only
+// in swapping _lyx for .lyx — for both an unanchored and a subpath-anchored
+// synthetic *lyxcwd.Location.
+func TestScratchDir(t *testing.T) {
+	tests := []struct {
+		name   string
+		layout *lyxcwd.Location
+	}{
+		{
+			name:   "unanchored (AnchorRel empty defaults to \".\")",
+			layout: &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())},
+		},
+		{
+			name:   "subpath-anchored",
+			layout: &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir()), AnchorRel: filepath.Join("nested", "sub")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := filepath.Join(tt.layout.AnchorPath(), ".lyx", "perch")
+			got := ScratchDir(tt.layout)
+			if got != want {
+				t.Errorf("ScratchDir(%+v) = %q; want %q", tt.layout, got, want)
+			}
+
+			runsDir := RunsDir(tt.layout)
+			if got == runsDir {
+				t.Errorf("ScratchDir(%+v) = %q; want it to differ from RunsDir(%+v) = %q", tt.layout, got, tt.layout, runsDir)
+			}
+			// The two must differ in exactly the _lyx/.lyx segment: swapping
+			// it in RunsDir's own result must reproduce ScratchDir's.
+			wantFromRunsDir := filepath.Join(filepath.Dir(filepath.Dir(runsDir)), ".lyx", "perch")
+			if got != wantFromRunsDir {
+				t.Errorf("ScratchDir(%+v) = %q; want it to differ from RunsDir(%+v) = %q only in the _lyx/.lyx segment", tt.layout, got, tt.layout, runsDir)
+			}
+		})
+	}
+}
 
 func TestProfileHash(t *testing.T) {
 	p1 := Profile{Rubric: "a", RoundCaps: []int{5, 8, 10}, JudgeModel: "haiku"}
