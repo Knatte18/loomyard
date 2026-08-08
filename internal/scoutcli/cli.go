@@ -144,26 +144,10 @@ scoped to one package comes back both complete and precise:
 				dir = cwd
 			}
 
-			// worktreeRoot is resolved before registry loading below so both
-			// derive independently from the same cwd/dir inputs — see
-			// resolveWorktreeRoot's doc comment for why it never leaves
-			// WorktreeRoot empty outside a hub.
-			worktreeRoot := resolveWorktreeRoot(cwd, dir)
-
-			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-			// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
-			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
-			// silently miss every overlay, exactly as internal/buildercli/cli.go
-			// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
-			// to the pinned built-in registry rather than failing the lookup.
-			registry := scoutengine.BuiltinRegistry()
-			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
-				if loadErr != nil {
-					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
-					return nil
-				}
-				registry = loaded
+			registry, layout, err := lookupContext(cwd, dir)
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
 			}
 
 			// buildQuery is the one seam both the single-arg and batch-mode
@@ -186,7 +170,7 @@ scoped to one package comes back both complete and precise:
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
+				opts := buildOptions(registry, dir, layout, lang, query, timeout)
 
 				results, err := scoutengine.References(ctx, opts)
 				if err == nil && within != "" {
@@ -201,7 +185,7 @@ scoped to one package comes back both complete and precise:
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := scoutengine.References(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
+				results, err := scoutengine.References(ctx, buildOptions(registry, dir, layout, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -290,26 +274,10 @@ structurally-identical interfaces in different packages).`,
 				dir = cwd
 			}
 
-			// worktreeRoot is resolved before registry loading below so both
-			// derive independently from the same cwd/dir inputs — see
-			// resolveWorktreeRoot's doc comment for why it never leaves
-			// WorktreeRoot empty outside a hub.
-			worktreeRoot := resolveWorktreeRoot(cwd, dir)
-
-			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-			// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
-			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
-			// silently miss every overlay, exactly as internal/buildercli/cli.go
-			// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
-			// to the pinned built-in registry rather than failing the lookup.
-			registry := scoutengine.BuiltinRegistry()
-			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
-				if loadErr != nil {
-					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
-					return nil
-				}
-				registry = loaded
+			registry, layout, err := lookupContext(cwd, dir)
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
 			}
 
 			// buildQuery is the one seam both the single-arg and batch-mode
@@ -332,7 +300,7 @@ structurally-identical interfaces in different packages).`,
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, worktreeRoot, lang, query, timeout)
+				opts := buildOptions(registry, dir, layout, lang, query, timeout)
 
 				results, err := scoutengine.Definition(ctx, opts)
 				if err == nil && within != "" {
@@ -347,7 +315,7 @@ structurally-identical interfaces in different packages).`,
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := scoutengine.Definition(ctx, buildOptions(registry, dir, worktreeRoot, lang, query, timeout))
+				results, err := scoutengine.Definition(ctx, buildOptions(registry, dir, layout, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -411,30 +379,14 @@ matches into an ambiguity failure. Example:
 				dir = cwd
 			}
 
-			// worktreeRoot is resolved before registry loading below so both
-			// derive independently from the same cwd/dir inputs — see
-			// resolveWorktreeRoot's doc comment for why it never leaves
-			// WorktreeRoot empty outside a hub.
-			worktreeRoot := resolveWorktreeRoot(cwd, dir)
-
-			// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-			// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
-			// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
-			// silently miss every overlay, exactly as internal/buildercli/cli.go
-			// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
-			// to the pinned built-in registry rather than failing the lookup.
-			registry := scoutengine.BuiltinRegistry()
-			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
-				if loadErr != nil {
-					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
-					return nil
-				}
-				registry = loaded
+			registry, layout, err := lookupContext(cwd, dir)
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
 			}
 
 			if len(args) == 1 {
-				opts := buildOptions(registry, dir, worktreeRoot, lang, symbolQuery(args[0]), timeout)
+				opts := buildOptions(registry, dir, layout, lang, symbolQuery(args[0]), timeout)
 
 				results, err := scoutengine.Symbol(ctx, opts)
 				if err != nil {
@@ -457,7 +409,7 @@ matches into an ambiguity failure. Example:
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				results, err := scoutengine.Symbol(ctx, buildOptions(registry, dir, worktreeRoot, lang, scoutengine.Query{Symbol: symbol}, timeout))
+				results, err := scoutengine.Symbol(ctx, buildOptions(registry, dir, layout, lang, scoutengine.Query{Symbol: symbol}, timeout))
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -471,31 +423,75 @@ matches into an ambiguity failure. Example:
 	return symbol
 }
 
-// resolveWorktreeRoot resolves the scoutengine.Options.WorktreeRoot value a lookup
-// should use, returning the git repository root inside a lyx hub or the absolute
-// target directory otherwise.
-func resolveWorktreeRoot(cwd, targetDir string) string {
+// resolveLocation resolves the scoutengine.Options.Layout value a lookup should
+// use, returning the *lyxcwd.Location lyxcwd.Resolve(cwd) produced inside a lyx
+// hub, or a synthesized Location rooted at the absolute target directory
+// otherwise.
+//
+// The synthesized value is a fiction outside WorktreePath(): HubPath names no
+// real hub (it is merely the parent of the target directory), RepoName is left
+// zero, and AnchorPath() is meaningless because AnchorRel was assumed rather
+// than read from a .fabric-anchor marker.
+// It is therefore contractually consumed by DaemonStateFile/DaemonLock alone
+// and must never be widened to feed a caller reading AnchorPath(), HubPath, or
+// RepoName.
+func resolveLocation(cwd, targetDir string) *lyxcwd.Location {
 	if layout, err := lyxcwd.Resolve(cwd); err == nil {
-		return layout.WorktreePath()
+		return layout
 	}
 
 	abs, err := filepath.Abs(targetDir)
 	if err != nil {
-		return targetDir
+		// Preserve the pre-refactor fallback exactly: when filepath.Abs itself
+		// fails, synthesize from targetDir rather than abs (which is empty on
+		// this path) so the failure mode does not silently change.
+		return &lyxcwd.Location{HubPath: filepath.Dir(targetDir), WorktreeName: filepath.Base(targetDir), AnchorRel: "."}
 	}
-	return abs
+	return &lyxcwd.Location{HubPath: filepath.Dir(abs), WorktreeName: filepath.Base(abs), AnchorRel: "."}
+}
+
+// lookupContext performs the two pre-flight derivations every lookup command
+// needs — the servers.yaml overlay load and the Location resolution — each
+// independently from (cwd, dir).
+//
+// dir is the already-defaulted directory, never the raw --target-dir flag
+// value: passing the raw flag would make the out-of-hub branch resolve
+// filepath.Abs("") (the process working directory) rather than
+// filepath.Abs(cwd) whenever --target-dir is omitted.
+//
+// The returned error carries scoutengine.LoadRegistry failures only; a
+// lyxcwd.Resolve failure is never an error — it is the out-of-hub path and
+// degrades to scoutengine.BuiltinRegistry() plus the synthesized Location,
+// exactly as today.
+func lookupContext(cwd, dir string) (scoutengine.Registry, *lyxcwd.Location, error) {
+	// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
+	// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
+	// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
+	// silently miss every overlay, exactly as internal/buildercli/cli.go
+	// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
+	// to the pinned built-in registry rather than failing the lookup.
+	registry := scoutengine.BuiltinRegistry()
+	if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
+		loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
+		if loadErr != nil {
+			return nil, nil, loadErr
+		}
+		registry = loaded
+	}
+
+	return registry, resolveLocation(cwd, dir), nil
 }
 
 // buildOptions constructs a scoutengine.Options value, ensuring all construction
-// sites thread WorktreeRoot consistently.
-func buildOptions(registry scoutengine.Registry, targetDir, worktreeRoot, lang string, query scoutengine.Query, timeout time.Duration) scoutengine.Options {
+// sites thread Layout consistently.
+func buildOptions(registry scoutengine.Registry, targetDir string, layout *lyxcwd.Location, lang string, query scoutengine.Query, timeout time.Duration) scoutengine.Options {
 	return scoutengine.Options{
-		Registry:     registry,
-		TargetDir:    targetDir,
-		WorktreeRoot: worktreeRoot,
-		Lang:         lang,
-		Query:        query,
-		Timeout:      timeout,
+		Registry:  registry,
+		TargetDir: targetDir,
+		Layout:    layout,
+		Lang:      lang,
+		Query:     query,
+		Timeout:   timeout,
 	}
 }
 
@@ -572,16 +568,10 @@ involved — only interface methods are at risk of this conflation.`,
 				dir = cwd
 			}
 
-			registry := scoutengine.BuiltinRegistry()
-			var worktreeRoot string
-			if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
-				loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
-				if loadErr != nil {
-					clihelp.SetExit(ctx, output.Err(out, loadErr.Error()))
-					return nil
-				}
-				registry = loaded
-				worktreeRoot = layout.WorktreePath()
+			registry, layout, err := lookupContext(cwd, dir)
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
 			}
 
 			query, err := parseQuery(args[0])
@@ -590,13 +580,7 @@ involved — only interface methods are at risk of this conflation.`,
 				return nil
 			}
 
-			baseOpts := scoutengine.Options{
-				Registry:     registry,
-				TargetDir:    dir,
-				WorktreeRoot: worktreeRoot,
-				Lang:         lang,
-				Timeout:      timeout,
-			}
+			opts := buildOptions(registry, dir, layout, lang, query, timeout)
 
 			// Resolve the declaration site(s) to exclude via Definition,
 			// regardless of whether query is a bare symbol name or an explicit
@@ -609,17 +593,13 @@ involved — only interface methods are at risk of this conflation.`,
 			// Reference's 1-based UTF-16 column on a pure-ASCII line; on any
 			// other line the declaration would silently fail to match and be
 			// misreported as an unexpected caller.
-			defOpts := baseOpts
-			defOpts.Query = query
-			declRefs, defErr := scoutengine.Definition(ctx, defOpts)
+			declRefs, defErr := scoutengine.Definition(ctx, opts)
 			if defErr != nil {
 				emitAmbiguousOrError(ctx, out, defErr)
 				return nil
 			}
 
-			refOpts := baseOpts
-			refOpts.Query = query
-			refs, refErr := scoutengine.References(ctx, refOpts)
+			refs, refErr := scoutengine.References(ctx, opts)
 			if refErr != nil {
 				emitAmbiguousOrError(ctx, out, refErr)
 				return nil
