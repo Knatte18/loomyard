@@ -21,10 +21,14 @@ Committed to, in this order, next.
    slice 10 stores the warp-URL binding on `weft:main` (fold bootstrap into `fabric clone`, weft-first argument order).
    See [designs/fabric-unified-view.md](designs/fabric-unified-view.md).
 
-1. **Shed: shared outer phase-FSM, combined with the Finalize step** — generalizes the phase-sequencing engine `loom.md` already specifies (sequencing, resume, crash-recovery, pause, status-file contract) into a shared skeleton with two swappable slots (Preflight, producer), reused by the Someday `Hardener` module, **built together with Finalize** (see [designs/finalize.md](designs/finalize.md) — merge-back, incl. the warp/weft split and the Raddle-only-forward pathspec) since Finalize is Shed's own shared code, not a per-instance slot — one task, not two, same reasoning as the combined `Treadle`+`perch` item.
-   **Testable cheaply:** plug a throwaway producer into the producer-slot to exercise the skeleton + Finalize end-to-end before any real producer (Discussion/Plan/Webster,
-   or the Someday `Tenter`) needs to exist — the same "fake phases before real producers" approach `loom.md` already specifies.
-   Does not rewrite `loom.md`'s existing design — records the shared-engine name and scope only.
+1. **Shed: shared outer phase-FSM, with NO predefined slots** — revised model (2026-08-08, superseding the earlier "two swappable slots" description): `Shed` has no built-in concept of Preflight, a producer-slot, or Finalize at all — it is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry.
+   Everything that used to be "special" is just a producer like any other: `loom`'s own Preflight is the first producer in `loom`'s list;
+   Finalize is an ordinary producer both `loom` and `Hardener` happen to reference at the end of their own list (shared by reference, not by Shed special-casing it) — Raddle-regeneration is now scoped as part of Finalize's own contract, not a separate producer, since merge-conflict risk makes updating Raddle before the Finalize merge impractical (`Tenter`/`Hardener` will need the equivalent, deferred).
+   A producer's contract is two parts only — **Input** (artifact(s) consumed, pointer to the format-contract file defining their shape, never a copy) and **Output** (artifact produced, same pointer discipline) — a producer is always atomic (one mechanical action or one LLM session, never an internal multi-step process of its own).
+   **Review is not a property of a producer — it is always its own, separate producer** in the list, immediately following the one it reviews (e.g. `Plan-Write` → `Plan-Review-Gate` (mechanical, hard-fail) → `Plan-Review` (LLM/perch round)), consistent with `loom.md`'s existing phase diagram already drawing review as a separate box, and with `perch` already being "its own module... reused for every phase... and standalone."
+   What used to look like one multi-step "Plan" phase becomes several flat, sequential producers (e.g. `Plan-Sweep` (mechanical scout inventory) → `Plan-Write` (LLM) → `Plan-Review-Gate` → `Plan-Review` → `Batchifier` (mechanical, `internal/batcher` — already ships exactly this shape, zero LLM involvement)) — many more producers than the old model implied, with grouping (e.g. "the Plan producers") staying a documentation/presentation convention only, never a structural concept `Shed` itself knows about.
+   **Scope has grown past a single task**: `discussion-format.md`/`plan-format.md`/`plan-format-v3.md` need rewriting to name their producers and contracts explicitly, `raddle.md`/`finalize.md` need the Raddle-into-Finalize fold reflected, and `shed.md`'s core model text needs a real rewrite (not an addendum).
+   **A dedicated scoping task should run first**, surveying `shed.md`/`loom.md`/`discussion-format.md`/`plan-format*.md`/`raddle.md`/`finalize.md` plus this item's own history, and producing the actual set of scoped follow-up tasks — this item is not yet broken down into buildable units.
    Independent of the landed `Treadle` engine (see the `internal/treadleengine` package documentation) — a different engine, never blocked on it.
    See [designs/shed.md](designs/shed.md).
 
@@ -121,6 +125,16 @@ No build order is implied between these items.
    `fabric.yaml` is the sole exception, anchored at `_board`/weft:main — see the Planned `fabric` item's slices 7-10).
    Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses.
    Generalizes `fabric.yaml`'s existing `_board` anchor to every module's config, not just fabric's. Not yet designed.
+
+1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on discussion- and plan-review findings, not just a severity marker,
+   and scope each review stage to what its downstream stage cannot catch better (e.g. complete call-site enumeration belongs to `go build`, not a discussion reviewer).
+   Motivated by an observed 6-round discussion-review loop on `pattern-into-lyx-consolidation` that never converged: design findings resolved by round 2, but hand-enumerated "missed call site" findings recurred through round 6 because the underlying method (grep-by-hand) was never the actual fix.
+   Not yet designed in implementation detail.
+   See [designs/review-finding-classification.md](designs/review-finding-classification.md).
+
+1. **scout: narrow the `"resolution":"complete"` trust-marker promise, or add a way to scope out cross-package interface-method noise** — `docs/benchmarks/scout-vs-grep.md` (Task 3) found a live case where `lyx scout refs` on an interface method returned `"resolution":"complete"` while the majority of returned hits were real but irrelevant call sites on structurally-similar, unrelated interfaces in other packages (`gopls` resolves interface methods structurally, workspace-wide) — the caller still had to manually re-verify results by hand, which is exactly what the marker promises is unnecessary.
+   The `--within <dir>` flag added after that benchmark narrows the practical exposure for a query that already knows its intended package, but does not itself change what the marker means.
+   Either narrow the marker's documented contract ("every result shown is genuine," not "no further filtering is ever needed") or make the tool live up to the stronger promise by default. Not yet designed.
 
 ## Done
 
