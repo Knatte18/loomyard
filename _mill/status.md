@@ -45,7 +45,9 @@ batches:
     commit_sha: 4683955de6bd615a73a9ab120118823fca50e09e
     verify_baseline_failures: []
   - name: residue-rescope
-    state: pending
+    state: running
+    implementer_session: 208ba83f-b1c5-4790-a5d9-7cfa05ee41a5
+    start_sha: ba5150062447eecf893d99b450fb18920a5bead5
     verify_baseline_failures: []
   - name: junction-test-retarget
     state: pending
