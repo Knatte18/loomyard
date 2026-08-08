@@ -3,7 +3,7 @@
 ```yaml
 task: 'Scoutengine: rewrite CONSTRAINTS.md as a seam rule, convert leaf test to banned-list, add LSP guard'
 slug: scout-seam-conversion
-approved: false
+approved: true
 started: '20260808-061134'
 parent: main
 root: ""

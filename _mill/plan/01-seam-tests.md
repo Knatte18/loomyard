@@ -173,6 +173,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   That divergence between the two tests is the guard's entire reason to exist.
 
   Prove the guard's missing-target path by temporarily renaming `internal/scoutengine/lspclient.go`, confirming `internal/scoutengine/lspclient_guard_test.go` calls `t.Fatal` rather than passing, then restoring the name.
+  The temporary name must still end in `.go` (for example `lspclient_renamed.go`), so the package keeps compiling and the only thing that changes is that the guard's hardcoded target path no longer resolves.
+  A non-`.go` name drops the file from the build entirely and breaks every other file referencing its symbols, which is a compile failure rather than the isolated `t.Fatal` this check is trying to observe.
 
   Record the outcome of each check in the batch's implementation notes.
   Do not leave any temporary import, renamed file, or scratch file behind, and do not add a permanent negative-case test — the guards stay assertion-only.
