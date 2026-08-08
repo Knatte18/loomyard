@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: leaf-invariant-audit
 branch: leaf-invariant-audit
-plan: null
+plan: _mill/plan
 parent: main
 task: Audit the remaining leaf and seam import invariants
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-08T05:30:46Z'
 discussed  '2026-08-08T06:22:44Z'
+planning  '2026-08-08T06:28:16Z'
 ```
