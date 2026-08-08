@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: scout-seam-conversion
 branch: scout-seam-conversion
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-docs-alignment  '2026-08-08T06:45:26Z'
 holistic-reviewing  '2026-08-08T06:45:52Z'
 holistic-approved  '2026-08-08T06:48:58Z'
 done  '2026-08-08T06:50:00Z'
+pr-pending  '2026-08-08T06:50:52Z'
 ```
 
 ## Batches
