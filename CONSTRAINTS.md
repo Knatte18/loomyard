@@ -33,8 +33,8 @@ Fuller design/how-to lives in godoc and `docs/`.
 
 ## lyxtest Leaf Invariant
 
-`internal/lyxtest` is policed by a banned-imports list (`internal/configreg`, the feature packages, `internal/fabricengine`/`fabriccli`), not an allowlist;
-its import set is stdlib plus `internal/lyxcwd`, `internal/weftname`, and `internal/configengine`.
+`internal/lyxtest` production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, and `internal/configengine`.
+`internal/configreg` and every feature package (`boardengine`/`boardcli`, `ideengine`/`idecli`, `selfreportengine`/`selfreportcli`, `fabricengine`/`fabriccli`) are excluded by construction — feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle.
 
 - Tests needing real config call `lyxtest.SeedConfig(tb, dir, map[string]string{...})`.
 - **Enforced by** `internal/lyxtest/leaf_enforcement_test.go`.
@@ -53,7 +53,8 @@ its import set is stdlib plus `internal/lyxcwd`, `internal/weftname`, and `inter
 round runners adapt onto treadle's `RoundRunner` vocabulary in their own packages.
 
 - Import allowlist: stdlib, `internal/lock`, `internal/logger`, `internal/state`, `internal/stencil`, `internal/shuttleengine`, `gopkg.in/yaml.v3` — not `internal/lyxcwd` directly.
-  Policed on direct imports only, not the transitive closure.
+  Policed on direct imports only, not the transitive closure: `lyxcwd` is reachable through both `logger` and `shuttleengine`, so excluding it buys no isolation.
+  What the exclusion enforces is that treadle is *told* its geometry and never derives it — `Engine.Run` takes a caller-supplied absolute `runDir`, a block's `Profile` carries a caller-supplied `GateDir`, and every path this package builds is joined onto one of those.
 - **Enforced by** `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
 ## Tokenvocab Leaf Invariant
