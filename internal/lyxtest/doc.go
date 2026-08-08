@@ -4,13 +4,13 @@
 // per-test filesystem copy pattern to minimize setup overhead and maximize parallelism.
 // See MustRun, CopyHostHub, CopyPaired, and CopyWeft.
 //
-// Leaf Invariant: internal/lyxtest is policed by a banned-imports list (internal/configreg, the
-// feature packages, internal/fabricengine/fabriccli), not an allowlist;
-// its import set is stdlib plus internal/lyxcwd, internal/weftname, and internal/configengine.
-// It must not import internal/configreg or any feature package (boardengine/boardcli,
-// fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli).
-// Feature packages' internal tests import lyxtest;
-// a configreg or feature import would close a test-build cycle.
+// Leaf Invariant: internal/lyxtest production code imports only stdlib, internal/lyxcwd,
+// internal/weftname, and internal/configengine, with internal/configreg and every feature package
+// (boardengine/boardcli, fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli)
+// excluded by construction — feature packages' own tests import lyxtest, so a reverse import would
+// close a test-build cycle.
+// This is enforced by internal/lyxtest/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly)
+// and recorded as the "lyxtest Leaf Invariant" in CONSTRAINTS.md.
 // Tests that need real configuration seed it via SeedConfig, which takes a configreg-free
 // map[string]string (module name to YAML content), converting configreg.Modules() or a feature's
 // ConfigTemplate() at the test site instead of inside lyxtest.
