@@ -119,6 +119,7 @@ The overview's `anchor-stays-worktreepath`, `field-named-layout`, `no-nil-layout
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/scoutengine/refs.go`
   - `internal/scoutengine/registry.go`
+  - `internal/scoutengine/load.go`
 - **Edits:**
   - `internal/scoutcli/cli.go`
 - **Creates:** none
