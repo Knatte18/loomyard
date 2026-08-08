@@ -40,6 +40,15 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
+	// LoomStatusLock now lives under the host worktree's own .lyx tree, which
+	// no production gitignore/exclude machinery covers yet -- that lands in
+	// a later batch (dotlyx-junction-wiring-and-unwire), per the plan's
+	// every-commit-leaves-the-tree-green Shared Decision. Exclude it locally
+	// here so this fixture models the eventual steady state and this file's
+	// tests exercise Preflight's own checks, not the not-yet-shipped
+	// exclusion machinery.
+	excludeDotLyx(t, f.Hub)
+
 	seedValidStatus(t, f.Layout)
 
 	// The seeded status.json (and its .lock sidecar) materialize through the
@@ -51,6 +60,27 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
 
 	return f, slug
+}
+
+// excludeDotLyx appends ".lyx/" to hostDir's local .git/info/exclude, so `git status`
+// never sees the never-tracked .lyx tree loomengine's LoomStatusLock (and any other .lyx
+// consumer) writes into. This test-local exclude stands in for the real gitignore/exclude
+// machinery a later batch adds.
+func excludeDotLyx(t *testing.T, hostDir string) {
+	t.Helper()
+
+	excludePath := filepath.Join(hostDir, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(excludePath), err)
+	}
+	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open %s: %v", excludePath, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString("\n.lyx/\n"); err != nil {
+		t.Fatalf("write %s: %v", excludePath, err)
+	}
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
@@ -78,6 +108,14 @@ func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 		Phase:     "preflight",
 		Stage:     "produce",
 		Narration: "now: awaiting preflight / last: — / wait: —",
+	}
+	// LoomStatusLock now lives under .lyx, a sibling tree WireJunctions never
+	// creates (it only wires _lyx/_pattern) -- state.WriteJSON MkdirAlls the
+	// status.json's own parent but not the lock's, so this fixture must
+	// create the lock's parent itself, mirroring Preflight's own MkdirAll
+	// fix in preflight.go.
+	if err := os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755); err != nil {
+		t.Fatalf("mkdir status lock parent: %v", err)
 	}
 	if err := state.WriteJSON(LoomStatusFile(l), LoomStatusLock(l), s); err != nil {
 		t.Fatalf("seed status.json: %v", err)

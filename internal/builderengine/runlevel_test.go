@@ -164,7 +164,9 @@ func newRunFixture(t *testing.T) *runFixture {
 	t.Helper()
 
 	planDir := copyPlanFixture(t, filepath.Join("testdata", "plan-valid"))
-	builderDir := filepath.Join(t.TempDir(), "builder")
+	tmpBase := t.TempDir()
+	builderDir := filepath.Join(tmpBase, "_lyx", "builder")
+	scratchDir := filepath.Join(tmpBase, ".lyx", "builder")
 	reportsDir := filepath.Join(builderDir, "reports")
 
 	roles := map[builderengine.Role]modelspec.Resolved{
@@ -194,6 +196,7 @@ func newRunFixture(t *testing.T) *runFixture {
 			Reed:       &runFakeReed{},
 			PlanDir:    planDir,
 			BuilderDir: builderDir,
+			ScratchDir: scratchDir,
 			ReportsDir: reportsDir,
 			// WorktreeRoot must be the same copied planDir the fixture's
 			// self-referencing card paths resolve against (per the
@@ -213,15 +216,15 @@ func newRunFixture(t *testing.T) *runFixture {
 const doneOutcomeYAML = "outcome: done\nstuck_reason: null\nbatches_done: 5\n"
 
 // TestRun_LockBusy proves Run refuses fast with ErrRunBusy when another caller already holds the
-// builder dir's run.lock,
+// builder scratch dir's run.lock,
 // and that the fake runner is never reached — the losing call must touch nothing.
 func TestRun_LockBusy(t *testing.T) {
 	fx := newRunFixture(t)
 
-	if err := os.MkdirAll(fx.Deps.BuilderDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q): %v", fx.Deps.BuilderDir, err)
+	if err := os.MkdirAll(fx.Deps.ScratchDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", fx.Deps.ScratchDir, err)
 	}
-	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(fx.Deps.BuilderDir, "run.lock"))
+	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(fx.Deps.ScratchDir, "run.lock"))
 	if err != nil || !locked {
 		t.Fatalf("pre-acquire run.lock: locked=%v err=%v; want locked=true, err=nil", locked, err)
 	}
@@ -270,7 +273,7 @@ func TestRun_FreshInitPersistsState(t *testing.T) {
 		t.Errorf("Run() result = %+v; want outcome done, batches_done 5", result)
 	}
 
-	st, err := builderengine.LoadState(fx.Deps.BuilderDir)
+	st, err := builderengine.LoadState(fx.Deps.BuilderDir, fx.Deps.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v; want nil", err)
 	}
@@ -312,7 +315,7 @@ func TestRun_FingerprintMismatchThenFreshArchivesAndReinits(t *testing.T) {
 	if err := os.WriteFile(staleReportPath, []byte("batch: 01-json-flag\nstatus: done\ntests: green\nstuck_reason: null\n"), 0o644); err != nil {
 		t.Fatalf("seed stale report: %v", err)
 	}
-	firstState, err := builderengine.LoadState(fx.Deps.BuilderDir)
+	firstState, err := builderengine.LoadState(fx.Deps.BuilderDir, fx.Deps.ScratchDir)
 	if err != nil || firstState == nil {
 		t.Fatalf("LoadState() after first run = %v, %v; want a state, nil", firstState, err)
 	}
@@ -373,7 +376,7 @@ func TestRun_FingerprintMismatchThenFreshArchivesAndReinits(t *testing.T) {
 		t.Errorf("builder dir %v does not contain an archived reports-* directory", entries)
 	}
 
-	newState, err := builderengine.LoadState(fx.Deps.BuilderDir)
+	newState, err := builderengine.LoadState(fx.Deps.BuilderDir, fx.Deps.ScratchDir)
 	if err != nil || newState == nil {
 		t.Fatalf("LoadState() after --fresh = %v, %v; want a state, nil", newState, err)
 	}
@@ -494,13 +497,13 @@ func TestRun_ClearsPauseOnDoneAndStuckButNotOnPaused(t *testing.T) {
 			// orchestrator's blocking spawn is in flight — strictly AFTER
 			// Run's own entry-time ClearPause already ran, per the
 			// discussion's race description.
-			fx.Runner.RequestPauseIn = fx.Deps.BuilderDir
+			fx.Runner.RequestPauseIn = fx.Deps.ScratchDir
 
 			if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
 				t.Fatalf("Run() error = %v; want nil", err)
 			}
 
-			gotPaused := builderengine.PauseRequested(fx.Deps.BuilderDir)
+			gotPaused := builderengine.PauseRequested(fx.Deps.ScratchDir)
 			if gotPaused != tt.wantPauseLeft {
 				t.Errorf("PauseRequested() after Run = %v; want %v", gotPaused, tt.wantPauseLeft)
 			}
@@ -518,7 +521,7 @@ func TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt(t *testing.T) {
 	t.Run("validation refusal leaves a pending pause intact", func(t *testing.T) {
 		fx := newRunFixture(t)
 		fx.Deps.PlanDir = copyPlanFixture(t, filepath.Join("testdata", "plan-unapproved"))
-		if err := builderengine.RequestPause(fx.Deps.BuilderDir); err != nil {
+		if err := builderengine.RequestPause(fx.Deps.ScratchDir); err != nil {
 			t.Fatalf("RequestPause: %v", err)
 		}
 
@@ -526,7 +529,7 @@ func TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "plan-unapproved") {
 			t.Fatalf("Run() error = %v; want a plan-unapproved validation refusal", err)
 		}
-		if !builderengine.PauseRequested(fx.Deps.BuilderDir) {
+		if !builderengine.PauseRequested(fx.Deps.ScratchDir) {
 			t.Error("PauseRequested() = false after a refused run; want the pending pause left intact")
 		}
 	})
@@ -551,14 +554,14 @@ func TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt(t *testing.T) {
 		if err := os.WriteFile(batchPath, append(original, []byte("\n<!-- mutated -->\n")...), 0o644); err != nil {
 			t.Fatalf("mutate batch 01: %v", err)
 		}
-		if err := builderengine.RequestPause(fx.Deps.BuilderDir); err != nil {
+		if err := builderengine.RequestPause(fx.Deps.ScratchDir); err != nil {
 			t.Fatalf("RequestPause: %v", err)
 		}
 
 		if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); !errors.Is(err, builderengine.ErrFingerprintMismatch) {
 			t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 		}
-		if !builderengine.PauseRequested(fx.Deps.BuilderDir) {
+		if !builderengine.PauseRequested(fx.Deps.ScratchDir) {
 			t.Error("PauseRequested() = false after a fingerprint-mismatch refusal; want the pending pause left intact")
 		}
 	})
@@ -567,14 +570,14 @@ func TestRun_RefusedRunLeavesPauseIntactButProceedingRunClearsIt(t *testing.T) {
 		fx := newRunFixture(t)
 		fx.Runner.Result = shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 		fx.Runner.WriteOutcome = doneOutcomeYAML
-		if err := builderengine.RequestPause(fx.Deps.BuilderDir); err != nil {
+		if err := builderengine.RequestPause(fx.Deps.ScratchDir); err != nil {
 			t.Fatalf("RequestPause: %v", err)
 		}
 
 		if _, err := builderengine.Run(fx.Deps, builderengine.RunOptions{}); err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
-		if builderengine.PauseRequested(fx.Deps.BuilderDir) {
+		if builderengine.PauseRequested(fx.Deps.ScratchDir) {
 			t.Error("PauseRequested() = true after a proceeding run; want the pre-existing pause cleared")
 		}
 	})
@@ -740,7 +743,7 @@ func TestRun_ReclaimsLiveOrphanedOrchestratorAtEntry(t *testing.T) {
 				Batches:            map[int]*builderengine.BatchState{},
 				ChainStartSHAs:     map[int]string{},
 			}
-			if err := builderengine.SaveState(fx.Deps.BuilderDir, seeded); err != nil {
+			if err := builderengine.SaveState(fx.Deps.BuilderDir, fx.Deps.ScratchDir, seeded); err != nil {
 				t.Fatalf("SaveState(seed) error = %v", err)
 			}
 
@@ -778,7 +781,7 @@ func TestRun_PersistsOrchestratorStrandBeforeWait(t *testing.T) {
 
 	var strandAtWait string
 	fx.Runner.OnWait = func() {
-		st, err := builderengine.LoadState(fx.Deps.BuilderDir)
+		st, err := builderengine.LoadState(fx.Deps.BuilderDir, fx.Deps.ScratchDir)
 		if err != nil || st == nil {
 			t.Errorf("LoadState() during Wait = %v, %v; want a persisted state", st, err)
 			return
@@ -829,7 +832,7 @@ func TestRun_FreshStopsSupersededRunsLiveStrands(t *testing.T) {
 		},
 		ChainStartSHAs: map[int]string{},
 	}
-	if err := builderengine.SaveState(fx.Deps.BuilderDir, seeded); err != nil {
+	if err := builderengine.SaveState(fx.Deps.BuilderDir, fx.Deps.ScratchDir, seeded); err != nil {
 		t.Fatalf("SaveState(seed) error = %v", err)
 	}
 

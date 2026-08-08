@@ -52,13 +52,14 @@ func newPollFixture(t *testing.T, engine shuttleengine.Engine, reed shuttleengin
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 
 	c := &builderCLI{
-		engine:     engine,
-		reed:       reed,
-		layout:     layout,
-		cfg:        builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
-		planDir:    loomengine.PlanDir(layout),
-		builderDir: builderengine.Dir(layout),
-		reportsDir: builderengine.ReportsDir(layout),
+		engine:            engine,
+		reed:              reed,
+		layout:            layout,
+		cfg:               builderengine.Config{BatchTimeoutMin: 60, PollWaitS: 5},
+		planDir:           loomengine.PlanDir(layout),
+		builderDir:        builderengine.Dir(layout),
+		builderScratchDir: builderengine.ScratchDir(layout),
+		reportsDir:        builderengine.ReportsDir(layout),
 	}
 
 	return &pollFixture{CLI: c, Hub: hub}
@@ -93,7 +94,7 @@ func (fx *pollFixture) seedInFlightBatch1WithRunDir(t *testing.T, startSHA strin
 			},
 		},
 	}
-	if err := builderengine.SaveState(fx.CLI.builderDir, st); err != nil {
+	if err := builderengine.SaveState(fx.CLI.builderDir, fx.CLI.builderScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 }
@@ -146,7 +147,7 @@ func TestPollCmd_DeadlineReturnsRunningWithoutFabricCommit(t *testing.T) {
 
 	// A running snapshot must never fabric-commit: state.json's Terminal
 	// field stays false and no batch-boundary commit happens.
-	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir, fx.CLI.builderScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() error = %v, %v", loaded, err)
 	}
@@ -190,7 +191,7 @@ func TestPollCmd_ReportPresentClassifiesDoneAndCommits(t *testing.T) {
 		t.Errorf("output missing tests:green; got %q", got)
 	}
 
-	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir, fx.CLI.builderScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() error = %v, %v", loaded, err)
 	}
@@ -434,7 +435,7 @@ func TestPollCmd_NoReportTurnEndedClassifiesDeadAsking(t *testing.T) {
 		t.Errorf("dead digest carries report-backed fields; got %q", got)
 	}
 
-	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir, fx.CLI.builderScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() error = %v, %v", loaded, err)
 	}
@@ -480,7 +481,7 @@ func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 	statReportPath = func(name string) (os.FileInfo, error) {
 		if !injected {
 			injected = true
-			st, err := builderengine.LoadState(fx.CLI.builderDir)
+			st, err := builderengine.LoadState(fx.CLI.builderDir, fx.CLI.builderScratchDir)
 			if err != nil || st == nil {
 				t.Errorf("LoadState() inside gather = %v, %v; want the seeded state", st, err)
 			} else {
@@ -490,7 +491,7 @@ func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 					SpawnedAt:  time.Now().UTC().Format(time.RFC3339),
 				}
 				st.CurrentBatch = 2
-				if err := builderengine.SaveState(fx.CLI.builderDir, st); err != nil {
+				if err := builderengine.SaveState(fx.CLI.builderDir, fx.CLI.builderScratchDir, st); err != nil {
 					t.Errorf("SaveState() inside gather = %v", err)
 				}
 			}
@@ -506,7 +507,7 @@ func TestPollCmd_TerminalPersistMergesConcurrentSpawn(t *testing.T) {
 		t.Fatalf("poll (report present) = %d; want 0, output: %s", exitCode, out.String())
 	}
 
-	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir, fx.CLI.builderScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() error = %v, %v", loaded, err)
 	}
@@ -556,7 +557,7 @@ func TestPollCmd_ReportBatchFieldMismatchFailsLoud(t *testing.T) {
 	}
 
 	// The classification never stood: state must not record a terminal.
-	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir, fx.CLI.builderScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() error = %v, %v", loaded, err)
 	}

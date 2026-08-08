@@ -168,12 +168,13 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &websterCLI{
-		layout:     layout,
-		cfg:        websterengine.Config{},
-		planDir:    loomengine.PlanDir(layout),
-		websterDir: websterengine.Dir(layout),
-		reportsDir: websterengine.ReportsDir(layout),
-		promptsDir: websterengine.PromptsDir(layout),
+		layout:            layout,
+		cfg:               websterengine.Config{},
+		planDir:           loomengine.PlanDir(layout),
+		websterDir:        websterengine.Dir(layout),
+		websterScratchDir: websterengine.ScratchDir(layout),
+		reportsDir:        websterengine.ReportsDir(layout),
+		promptsDir:        websterengine.PromptsDir(layout),
 	}
 	return c, hub
 }
@@ -297,7 +298,7 @@ func TestStatusCmd_WithBatches(t *testing.T) {
 			2: {Slug: "second", Kind: "recovery", Status: "", Terminal: false},
 		},
 	}
-	if err := websterengine.SaveState(c.websterDir, st); err != nil {
+	if err := websterengine.SaveState(c.websterDir, c.websterScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 

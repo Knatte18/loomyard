@@ -170,6 +170,7 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
 	builderDir := t.TempDir()
+	scratchDir := t.TempDir()
 	reportsDir := t.TempDir()
 	runRoot := t.TempDir()
 
@@ -210,6 +211,7 @@ func newSpawnFixture(t *testing.T) *spawnFixture {
 		Config:       cfg,
 		WorktreeRoot: worktree,
 		BuilderDir:   builderDir,
+		ScratchDir:   scratchDir,
 		ReportsDir:   reportsDir,
 		ShuttleCfg:   shuttleCfg,
 		Layout:       layout,
@@ -281,7 +283,7 @@ func TestSpawnBatch_RoleSelectionMatrix(t *testing.T) {
 func TestSpawnBatch_PauseSentinel(t *testing.T) {
 	fx := newSpawnFixture(t)
 
-	if err := builderengine.RequestPause(fx.Deps.BuilderDir); err != nil {
+	if err := builderengine.RequestPause(fx.Deps.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v; want nil", err)
 	}
 
@@ -475,7 +477,7 @@ func TestSpawnBatch_RestartChainPersistsStateBeforeSpawn(t *testing.T) {
 	fx.Deps.State.Batches[3].Terminal = true
 	fx.Deps.State.Batches[3].Status = "dead"
 	fx.Deps.State.CurrentBatch = 0
-	if err := builderengine.SaveState(fx.Deps.BuilderDir, fx.Deps.State); err != nil {
+	if err := builderengine.SaveState(fx.Deps.BuilderDir, fx.Deps.ScratchDir, fx.Deps.State); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 
@@ -487,7 +489,7 @@ func TestSpawnBatch_RestartChainPersistsStateBeforeSpawn(t *testing.T) {
 		t.Fatal("SpawnBatch(--restart-chain) error = nil; want the injected spawn failure")
 	}
 
-	loaded, err := builderengine.LoadState(fx.Deps.BuilderDir)
+	loaded, err := builderengine.LoadState(fx.Deps.BuilderDir, fx.Deps.ScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() = %v, %v; want the persisted post-reset state", loaded, err)
 	}
@@ -668,7 +670,7 @@ func TestSpawnBatch_StatePersisted(t *testing.T) {
 		t.Fatalf("SpawnBatch() error = %v; want nil", err)
 	}
 
-	loaded, err := builderengine.LoadState(fx.Deps.BuilderDir)
+	loaded, err := builderengine.LoadState(fx.Deps.BuilderDir, fx.Deps.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v; want nil", err)
 	}

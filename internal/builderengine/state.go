@@ -140,6 +140,16 @@ type BatchState struct {
 // A missing file returns (nil, nil).
 // An unreadable or malformed file is a wrapped error.
 func LoadState(builderDir, scratchDir string) (*State, error) {
+	// Unlike builderDir (created by SaveState's own MkdirAll the first time a
+	// run ever saves anything), scratchDir can legitimately not exist yet on
+	// a fresh worktree that has never run: without this MkdirAll,
+	// state.ReadJSON's AcquireReadLock would hard-error resolving the lock's
+	// missing parent instead of reaching its own not-found path and
+	// returning the documented (nil, nil).
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return nil, fmt.Errorf("builder: create builder scratch dir %s: %w", scratchDir, err)
+	}
+
 	path := filepath.Join(builderDir, stateFileName)
 	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 
