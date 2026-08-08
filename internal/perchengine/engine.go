@@ -66,16 +66,18 @@ func New(burler Burler, shuttle Shuttle, cfg Config, layout *lyxcwd.Location, op
 	}
 }
 
-// Run drives one perch block's round loop for Profile p, reading and persisting state at runDir.
+// Run drives one perch block's round loop for Profile p, reading and persisting state at runDir,
+// with never-tracked artifacts (run.lock, state.json.lock, the pause flag) written to scratchDir.
 // It computes the block's identity hash (ProfileHash, identity.go) over p exactly as supplied,
 // validates p against e.cfg (p.validate, profile.go — unchanged), builds the burler adapter
 // (adapter.go) closing over p's content fields, builds a treadleengine.Profile from p's resolved
 // gate/caps/tuning fields (GateDir: e.layout.WorktreePath(); Gate converted field-for-field), and
 // delegates to treadleengine.New("perch", adapter, e.shuttle, ...).Run — then maps the
 // treadleengine.Result back onto perch's own Result/RoundSummary.
-// treadleengine.Engine.Run owns creating runDir itself (MkdirAll);
-// Run must not duplicate that here.
-func (e *Engine) Run(p Profile, runDir string) (Result, error) {
+// Run stays weft-blind and geometry-blind and constructs neither path itself — runDir and
+// scratchDir are both caller-supplied absolutes; treadleengine.Engine.Run owns creating both
+// directories, so Run must not duplicate that here.
+func (e *Engine) Run(p Profile, runDir, scratchDir string) (Result, error) {
 	hash, err := ProfileHash(p)
 	if err != nil {
 		return Result{}, err
@@ -111,11 +113,12 @@ func (e *Engine) Run(p Profile, runDir string) (Result, error) {
 	te := treadleengine.New("perch", adapter, e.shuttle, treadleengine.Options{
 		PauseRequested: e.pauseRequested,
 		RunCommand:     runCommand,
+		ScratchDir:     scratchDir,
 	})
 
 	result, err := te.Run(tp, runDir)
 	if err != nil {
-		logger.Warn("perch: round loop failed", "profileHash", hash, "runDir", runDir, "err", err)
+		logger.Warn("perch: round loop failed", "profileHash", hash, "runDir", runDir, "scratchDir", scratchDir, "err", err)
 		return Result{}, err
 	}
 	return mapResult(result), nil

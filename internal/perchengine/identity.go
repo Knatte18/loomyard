@@ -21,9 +21,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
-// perchDirName is the relative-path segment perchengine joins onto
-// lyxdirs.LyxDirName to form the base directory for perch run
-// artifacts. perchengine is this segment's sole declarer.
+// perchDirName is the relative-path segment perchengine joins onto both
+// lyxdirs.LyxDirName (RunsDir) and lyxdirs.DotLyxDirName (ScratchDir) to
+// form perch's durable and scratch base directories, respectively.
+// perchengine is this segment's sole declarer.
 const perchDirName = "perch"
 
 // RunsDir returns the path to the base directory for perch run artifacts.
@@ -31,6 +32,16 @@ const perchDirName = "perch"
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func RunsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, perchDirName)
+}
+
+// ScratchDir returns the path to the base directory for a perch block's
+// never-tracked artifacts (run.lock, state.json.lock, the pause flag) — the
+// mirrored sibling of RunsDir under .lyx instead of _lyx. A caller joins a
+// block's run-id onto this base exactly as it joins one onto RunsDir.
+// Per the Cwd Resolution Invariant, no other package may construct this
+// path.
+func ScratchDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, perchDirName)
 }
 
 // ProfileHash returns the sha256 hex digest of p's canonical JSON encoding.
@@ -85,17 +96,17 @@ func sanitizeSlug(s string) string {
 }
 
 // TerminalOutcome reports the terminal Outcome recorded in runDir's state.json.
-func TerminalOutcome(runDir string) (Outcome, bool, error) {
-	outcome, ok, err := treadleengine.TerminalOutcome(runDir)
+func TerminalOutcome(runDir, scratchDir string) (Outcome, bool, error) {
+	outcome, ok, err := treadleengine.TerminalOutcome(runDir, scratchDir)
 	if err != nil {
-		logger.Warn("perch: read terminal outcome failed", "runDir", runDir, "err", err)
+		logger.Warn("perch: read terminal outcome failed", "runDir", runDir, "scratchDir", scratchDir, "err", err)
 	}
 	return Outcome(outcome), ok, err
 }
 
-// PauseFlagPath returns the path to the pause flag file inside runDir.
-func PauseFlagPath(runDir string) string {
-	return treadleengine.PauseFlagPath(runDir)
+// PauseFlagPath returns the path to the pause flag file inside scratchDir.
+func PauseFlagPath(scratchDir string) string {
+	return treadleengine.PauseFlagPath(scratchDir)
 }
 
 // PauseFlagName is the pause flag file's name inside a block's run dir.
