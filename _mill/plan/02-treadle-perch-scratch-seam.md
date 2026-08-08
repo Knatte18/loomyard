@@ -146,6 +146,7 @@ The fallback does not widen `Run`'s own signature, whose second parameter stays 
   - `internal/perchengine/run_test.go`
   - `internal/perchcli/run_test.go`
   - `internal/perchcli/cli_integration_test.go`
+  - `internal/perchcli/run_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -153,6 +154,7 @@ The fallback does not widen `Run`'s own signature, whose second parameter stays 
   In `internal/perchengine/run_test.go` and `internal/perchcli/run_test.go`, update every `Engine.Run` / `resolveRunTarget` call to the widened signatures and assert `resolveRunTarget` returns a `scratchDir` whose last segment equals `runDir`'s last segment (same block id, different base).
   In `internal/perchcli/cli_integration_test.go`, update the `perchengine.PauseFlagPath` call sites to the scratch dir and add an assertion that after `lyx perch pause`, the flag exists under the `.lyx` perch tree and **no** `pause` file exists under the `_lyx` perch tree.
   Keep `//go:build integration` first in that file.
+  In `internal/perchcli/run_integration_test.go`'s `TestRunCLI_Run_BusyBlockSkipsFabricSync`, the simulated winner's `run.lock` must move from `hostRunDir` (the `_lyx` run dir) to the block's `.lyx` scratch dir (`perchengine.ScratchDir(fixture.Layout)`-joined) — discovered only once the scratch seam actually moved `run.lock`'s real location, since the test's hand-planted lock stands in for what `Engine.Run` itself would hold, and a lock planted at the pre-fix path no longer blocks the second invocation at all.
 - **Commit:** `test(perch): assert the scratch dir is .lyx-anchored end to end`
 
 ## Batch Tests
