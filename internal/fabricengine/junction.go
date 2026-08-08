@@ -13,10 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // WorktreePath returns the path to a sibling worktree with the given slug.
@@ -30,14 +30,14 @@ func WorktreePath(l *lyxcwd.Location, slug string) string {
 // It is the host-side junction endpoint that points into the paired weft worktree via
 // WeftLyxDirFor(l, slug).
 func HostLyxLink(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(l.HubPath, slug, l.AnchorRel, configengine.LyxDirName)
+	return filepath.Join(l.HubPath, slug, l.AnchorRel, lyxdirs.LyxDirName)
 }
 
 // HostLyxLinkHere returns the path to the _lyx junction link in the current host worktree.
 // Derived from l.WorktreePath()+AnchorRel.
 // It serves as the host-side junction endpoint paired with WeftLyxDir(l).
 func HostLyxLinkHere(l *lyxcwd.Location) string {
-	return filepath.Join(l.WorktreePath(), l.AnchorRel, configengine.LyxDirName)
+	return filepath.Join(l.WorktreePath(), l.AnchorRel, lyxdirs.LyxDirName)
 }
 
 // HostJunction represents a directory junction in the host worktree that links to a weft directory.

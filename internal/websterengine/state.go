@@ -23,14 +23,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // websterDirName is the relative-path segment websterengine joins onto
-// configengine.LyxDirName to form the webster's durable run-state
+// lyxdirs.LyxDirName to form the webster's durable run-state
 // directory. websterengine is this segment's sole declarer.
 const websterDirName = "webster"
 
@@ -39,7 +39,7 @@ const websterDirName = "webster"
 // It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, websterDirName)
 }
 
 // ReportsDir returns the path to the directory holding webster's per-batch report files.

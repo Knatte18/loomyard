@@ -18,8 +18,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -330,7 +330,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// geometry-blind), so they are excluded solely by the fabric
 			// repo's .git/info/exclude (deepened to reach perch's
 			// two-deep locks) rather than a per-call pathspec.
-			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{configengine.LyxDirName})
+			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{lyxdirs.LyxDirName})
 			// SkipGit is checked here, before fabricengine.Open's stat-based
 			// path validation, mirroring Commit's own top-level
 			// short-circuit: the CI/test bypass must never require a real

@@ -24,10 +24,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -39,7 +39,7 @@ func WeftWorktreePath(l *lyxcwd.Location, slug string) string {
 // WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
 // It is the junction target paired by spawn seeds and pairs with HostLyxLink(slug).
 func WeftLyxDirFor(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, configengine.LyxDirName)
+	return filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.LyxDirName)
 }
 
 // WeftHostSlug parses a weft sibling directory name and returns the host slug it corresponds to.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -228,7 +229,7 @@ func buildWeftOnly() (weftPath, bare string) {
 		// TestPushIntegration can commit the "_lyx" pathspec. This fixture only
 		// needs some tracked file under _lyx, not a real config layout; tests that
 		// need real config call SeedConfig after CopyWeft.
-		lyxDir := filepath.Join(weftPath, configengine.LyxDirName)
+		lyxDir := filepath.Join(weftPath, lyxdirs.LyxDirName)
 		if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 			panic(err)
 		}

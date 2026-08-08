@@ -11,15 +11,15 @@ package webstercli
 import (
 	"fmt"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // fabricSync stages and commits changes under layout's _lyx pathspec through the fabric repo.
 func fabricSync(layout *lyxcwd.Location, label string) (bool, error) {
 	opts := fabricengine.EnvSyncOptions()
-	files := fabricengine.ScopedPathspec(layout.AnchorRel, []string{configengine.LyxDirName})
+	files := fabricengine.ScopedPathspec(layout.AnchorRel, []string{lyxdirs.LyxDirName})
 
 	var committed bool
 	if !opts.SkipGit {

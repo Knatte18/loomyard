@@ -14,14 +14,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // builderDirName is the relative-path segment builderengine joins onto
-// configengine.LyxDirName to form the builder's durable run-state
+// lyxdirs.LyxDirName to form the builder's durable run-state
 // directory. builderengine is this segment's sole declarer.
 const builderDirName = "builder"
 
@@ -30,7 +30,7 @@ const builderDirName = "builder"
 // It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, builderDirName)
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, builderDirName)
 }
 
 // ReportsDir returns the path to the directory holding builder's per-batch report files.

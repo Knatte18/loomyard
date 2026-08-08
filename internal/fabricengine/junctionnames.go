@@ -41,7 +41,7 @@ func HubPath(parent, name string) string {
 
 // HubReservedNames returns the hub-structural reserved name-set that fabricengine owns: _raddle,
 // _board, _portals, _launchers.
-// It deliberately excludes configengine.LyxDirName and pattern.DirName, which are config-migrated
+// It deliberately excludes lyxdirs.LyxDirName and pattern.DirName, which are config-migrated
 // junction names folded into the reserved set by IsReservedHubName's junctionNames parameter
 // instead.
 func HubReservedNames() []string {

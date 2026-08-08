@@ -15,10 +15,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // UnwireVerbResult summarizes what Unwire changed.
@@ -101,7 +101,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 		if err != nil {
 			return UnwireVerbResult{}, err
 		}
-		pathspec := ScopedPathspec(l.AnchorRel, []string{configengine.LyxDirName})
+		pathspec := ScopedPathspec(l.AnchorRel, []string{lyxdirs.LyxDirName})
 		if _, _, err := f.commitWeft(pathspec, "lyx fabric unwire: clear _lyx", opts); err != nil {
 			return UnwireVerbResult{}, err
 		}
