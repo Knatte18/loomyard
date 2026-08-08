@@ -13,10 +13,10 @@
 // diverge here.
 //
 // From card 15 onward, seedLyxJunction's per-junction repair loop runs over
-// two junctions (_lyx and _pattern), so this file also carries the _pattern
-// counterparts of both repoint cases: the per-junction refusal/repair
-// behaviour must hold identically for the second, non-_lyx junction, which
-// has no _lyx-shaped shortcut to fall back on.
+// two junctions (_lyx and a second, non-_lyx junction), so this file also
+// carries the non-_lyx counterparts of both repoint cases: the per-junction
+// refusal/repair behaviour must hold identically for the second, non-_lyx
+// junction, which has no _lyx-shaped shortcut to fall back on.
 //
 // Package fabricengine_test to reuse the external-test-package fixture idiom
 // of lifecycle_differential_test.go; shares the single TestMain in
@@ -32,7 +32,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // TestWireJunctions_RepointsWrongTargetJunction points the host _lyx junction at an unrelated (but
@@ -64,7 +63,7 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 		t.Fatalf("seed wrong-target junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -85,11 +84,11 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_RepointsWrongTargetJunction_Pattern is the _pattern counterpart of
-// TestWireJunctions_RepointsWrongTargetJunction: the host _pattern junction, not _lyx, is pointed
-// at an unrelated real directory, and WireJunctions must re-point it at the correct weft _pattern
+// TestWireJunctions_RepointsWrongTargetJunction_Extra is the non-_lyx counterpart of
+// TestWireJunctions_RepointsWrongTargetJunction: the host non-_lyx junction, not _lyx, is pointed
+// at an unrelated real directory, and WireJunctions must re-point it at the correct weft non-_lyx
 // target — the same per-junction repair behaviour, exercised against the second junction.
-func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
+func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
 	t.Parallel()
 
 	fixture := lyxtest.CopyPairedLocal(t)
@@ -100,11 +99,11 @@ func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
-	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, pattern.DirName)
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
+	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
 
 	// Point the junction at an unrelated real directory instead.
-	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-pattern-dir")
+	wrongTarget := filepath.Join(t.TempDir(), "not-the-weft-extra-dir")
 	if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 		t.Fatalf("mkdir wrong target: %v", err)
 	}
@@ -115,7 +114,7 @@ func TestWireJunctions_RepointsWrongTargetJunction_Pattern(t *testing.T) {
 		t.Fatalf("seed wrong-target junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -161,7 +160,7 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 		t.Fatalf("seed dangling junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -182,12 +181,12 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_RepointsDanglingJunction_Pattern is the _pattern counterpart of
-// TestWireJunctions_RepointsDanglingJunction: the host _pattern junction, not _lyx, dangles (points
-// at a nonexistent target), and WireJunctions must re-point it at the correct weft _pattern target
+// TestWireJunctions_RepointsDanglingJunction_Extra is the non-_lyx counterpart of
+// TestWireJunctions_RepointsDanglingJunction: the host non-_lyx junction, not _lyx, dangles (points
+// at a nonexistent target), and WireJunctions must re-point it at the correct weft non-_lyx target
 // rather than refusing it — the same per-junction repair behaviour, exercised against the second
 // junction.
-func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
+func TestWireJunctions_RepointsDanglingJunction_Extra(t *testing.T) {
 	t.Parallel()
 
 	fixture := lyxtest.CopyPairedLocal(t)
@@ -198,10 +197,10 @@ func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)
-	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, pattern.DirName)
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
+	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
 
-	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist-pattern")
+	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist-extra")
 	if err := os.RemoveAll(link); err != nil {
 		t.Fatalf("remove existing junction: %v", err)
 	}
@@ -209,7 +208,7 @@ func TestWireJunctions_RepointsDanglingJunction_Pattern(t *testing.T) {
 		t.Fatalf("seed dangling junction: %v", err)
 	}
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 

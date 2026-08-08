@@ -27,7 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // shaOf returns the commit SHA rev names in the repo at dir, failing the test
@@ -136,7 +135,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 // wired immediately: card 20 folds WireJunctions into Add's step 10b (after writeLaunchers, before
 // the host push), so no dormant state and no separate `lyx init` step is needed for the pair to be
 // usable.
-// Asserts both the repo-wide default junctions (_lyx and _pattern) resolve to their paired weft
+// Asserts both the repo-wide default junctions (_lyx and _extra) resolve to their paired weft
 // directories.
 func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 	t.Parallel()
@@ -156,7 +155,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 		target string
 	}{
 		{"_lyx", fabricengine.HostLyxLink(l, slug), fabricengine.WeftLyxDirFor(l, slug)},
-		{"_pattern", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName), filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, pattern.DirName)},
+		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra"), filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		isLink, err := fslink.IsLink(tc.link)
 		if err != nil || !isLink {
@@ -225,7 +224,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		link string
 	}{
 		{"_lyx", fabricengine.HostLyxLink(l, slug)},
-		{"_pattern", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, pattern.DirName)},
+		{"_extra", filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")},
 	} {
 		if _, err := os.Lstat(tc.link); !os.IsNotExist(err) {
 			t.Errorf("%s: junction link %s still present after rollback", tc.name, tc.link)
