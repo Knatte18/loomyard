@@ -23,7 +23,9 @@ For each `Moves:` pair the implementer MUST:_
 ## Batch Scope
 
 This batch delivers the whole test surface of the task: the package-wide import test is renamed and converted from an allowlist to a four-predicate banned list, a new narrow file-scoped guard is added for the ported stdio LSP client, and both are proven to actually fail.
-It is one batch because the three cards are a single mechanical unit — the `isStdlib` heuristic physically moves from the converted file into the new guard file, so splitting them would leave an intermediate commit where the heuristic exists in neither place or in both.
+It is one batch because the three cards are a single mechanical unit: the `isStdlib` heuristic physically moves from the converted file into the new guard file, and card 3 cannot prove either guard red until both exist.
+Cards 1 and 2 do each carry their own commit, so the tree between them briefly has the heuristic in neither file — that transient state is harmless, since nothing in the repo references the heuristic and card 1's own commit already compiles and passes without it.
+Splitting the cards across *batches* is what the plan avoids, because a batch boundary would put a verify gate and a review round in the middle of one indivisible move.
 The external interface batch 2 consumes is the pair of final names: `TestEngineSeamInvariant_BannedImports` in `seam_enforcement_test.go` and `TestLSPClientGuard_StdlibAndLoggerOnly` in `lspclient_guard_test.go`, which the already-committed `CONSTRAINTS.md` "Enforced by" line names and card 6 verifies.
 
 Batch-local decisions beyond `## Shared Decisions`:
@@ -41,6 +43,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 ### Card 1: Rename the package import test and convert it to a banned list
 
 - **Context:**
+  - `internal/scoutengine/leaf_enforcement_test.go`
   - `internal/shuttleengine/seam_enforcement_test.go`
   - `CONSTRAINTS.md`
 - **Edits:** none
@@ -142,6 +145,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Context:**
   - `internal/scoutengine/probe.go`
   - `internal/scoutengine/lspclient.go`
+  - `internal/scoutengine/seam_enforcement_test.go`
   - `internal/scoutengine/lspclient_guard_test.go`
 - **Edits:** none
 - **Creates:** none
