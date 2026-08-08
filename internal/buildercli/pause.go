@@ -31,7 +31,7 @@ Example:
 				return nil
 			}
 
-			if err := builderengine.RequestPause(c.builderDir); err != nil {
+			if err := builderengine.RequestPause(c.builderScratchDir); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
