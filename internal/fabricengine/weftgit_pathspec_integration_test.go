@@ -223,11 +223,12 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	}
 }
 
-// resolvedDefaultPathspecDirs resolves the fabric config template's REAL
-// default pathspec and splits it via Config.Dirs -- not a hand-written
-// literal — so the regression test below exercises whatever the template
-// actually declares today, catching a future default change too.
-func resolvedDefaultPathspecDirs(t *testing.T) []string {
+// resolvedDefaultRoutingNames resolves the fabric config template's REAL default pathspec and runs
+// it through pathspecNames -- not a hand-written literal, and not the raw, unfiltered Config.Dirs()
+// -- so the regression test below exercises whatever fabric's own commit routing actually builds
+// today: structuralCommittedDirs ("_lyx") unioned with the template's resolved "_pattern", catching
+// both a future template default change and a future structural-set change.
+func resolvedDefaultRoutingNames(t *testing.T) []string {
 	t.Helper()
 
 	resolved, err := yamlengine.Resolve([]byte(ConfigTemplate()), nil)
@@ -238,14 +239,17 @@ func resolvedDefaultPathspecDirs(t *testing.T) []string {
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		t.Fatalf("yaml.Unmarshal resolved config template: %v", err)
 	}
-	return cfg.Dirs()
+	return pathspecNames(cfg)
 }
 
 // TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern is this batch's single
 // most important regression assertion, proving card 13 (the pathspec-tolerance filter) and card 14
 // (the widened default pathspec) belong together in one batch: with the real, resolved default
-// pathspec — "_lyx _pattern" — and NO files under "_pattern" at all, a genuine "_lyx" change still
-// commits.
+// routing set — structuralCommittedDirs ("_lyx") unioned with the template's resolved "_pattern" —
+// and NO files under "_pattern" at all, a genuine "_lyx" change still commits.
+// The routing set, not the raw template pathspec, is what this test exercises since the
+// structural-directories batch (card 42) shrinks template.yaml's own pathspec default to "_pattern"
+// alone; "_lyx" now arrives from structuralCommittedDirs via pathspecNames, never from this key.
 // Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git
 // add -- _lyx _pattern` fails in its entirety the moment `_pattern` matches nothing, and
 // CommitWeft's own pre-existing "did not match any files" tolerance swallows that into ("", false,
@@ -255,9 +259,9 @@ func resolvedDefaultPathspecDirs(t *testing.T) []string {
 // tracks files, not directories, and a materialised-but-empty "_pattern/" is the normal, expected
 // state for this whole task while content migration stays out of scope.
 func TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern(t *testing.T) {
-	dirs := resolvedDefaultPathspecDirs(t)
+	dirs := resolvedDefaultRoutingNames(t)
 	if len(dirs) != 2 || dirs[0] != "_lyx" || dirs[1] != "_pattern" {
-		t.Fatalf("resolved default pathspec dirs = %v; want [_lyx _pattern]", dirs)
+		t.Fatalf("resolvedDefaultRoutingNames() = %v; want [_lyx _pattern]", dirs)
 	}
 
 	t.Run("PatternDirWhollyAbsent", func(t *testing.T) {

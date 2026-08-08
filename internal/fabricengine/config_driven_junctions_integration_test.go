@@ -81,12 +81,15 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	}
 }
 
-// TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy proof: Healthy loads its
-// junction name-set from the repo-wide fabricengine.BoardDir(l.HubPath) fabric.yaml (card 7), so a
-// worktree whose pathspec names only "_lyx" — narrower than the "_lyx _pattern" default — is
-// reported in sync once "_lyx" alone is wired.
-// A narrow pathspec is a legitimate, unenforced reality (doc.go's narrow-pathspec asymmetry note),
-// not a drift shape Healthy should flag.
+// TestHealthy_NarrowPathspecIsHealthy is the narrow-pathspec-is-healthy proof, re-based for the
+// structural-directories batch: `pathspec: _lyx` is now redundant rather than narrow (`_lyx` arrives
+// structurally regardless of pathspec), so this uses a repo-wide config whose pathspec names neither
+// structural directory at all.
+// Healthy loads its junction name-set from the repo-wide fabricengine.BoardDir(l.HubPath) fabric.yaml
+// (card 7), unions it with structuralCommittedDirs, so a worktree with only "_lyx" wired is still
+// reported in sync even though the config on disk names nothing recognisable.
+// A pathspec naming neither structural directory is a legitimate, unenforced reality (doc.go's
+// narrow-pathspec asymmetry note), not a drift shape Healthy should flag.
 //
 // Healthy checks weft-branch correspondence (weftBranch == WeftBranchName(hostBranch),
 // drift.go:69-72) before the junction loop, and raw CopyPairedLocal leaves the weft prime on "main"
@@ -99,13 +102,13 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	// The repo-wide pathspec (not fixture.WeftPrime's own weft base) is what
 	// Healthy reads after card 7; lyxtest.CopyPairedLocal does not create
 	// a _board dir, so create it and its _lyx/config/ first, mirroring
-	// seedRepoWideFabricConfig but with this test's narrow "_lyx"-only
-	// pathspec instead of the default template.
+	// seedRepoWideFabricConfig but with a pathspec naming neither
+	// structural directory, proving _lyx is still wired structurally.
 	boardDir := fabricengine.BoardDir(fixture.Layout.HubPath)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _other\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
@@ -113,7 +116,10 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
+	// The wired name-set must match what WiredNames/Healthy compute: _lyx
+	// (structural) unioned with the hub-reserved-filtered pathspec ("_other"
+	// here) — neither structural directory is named by the config itself.
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_other"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -122,7 +128,7 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 		t.Fatalf("Healthy: %v", err)
 	}
 	if !ok {
-		t.Errorf("Healthy ok = false (reason %+v); want true with only _lyx wired (narrow-pathspec reality)", reason)
+		t.Errorf("Healthy ok = false (reason %+v); want true with _lyx wired structurally even though the config names neither structural directory", reason)
 	}
 	if reason.Cause == fabricengine.CauseConfigLoadFailed {
 		t.Errorf("Healthy reason = %+v; want a real verdict, not CauseConfigLoadFailed", reason)

@@ -63,12 +63,13 @@ func TestConfigTemplate_ResolvesToEmptyBranchPrefix(t *testing.T) {
 	}
 }
 
-// TestConfigTemplate_PathspecResolvesToLyxAndPattern asserts that the template's pathspec default
-// resolves to "_lyx" and "_pattern", in that order, regardless of environment.
+// TestConfigTemplate_PathspecResolvesToPattern asserts that the template's pathspec default resolves
+// to exactly "_pattern", regardless of environment: _lyx and .lyx are structural and injected in
+// code by internal/fabricengine, so pathspec now names genuinely optional per-repo directories only.
 // The resolved value is whitespace-split (mirroring Config.Dirs, the consumer that actually splits
 // it) rather than compared as one whole string, since the value is whitespace-split at the consumer
-// -- a splitting bug there would otherwise be silent and would simply drop "_pattern".
-func TestConfigTemplate_PathspecResolvesToLyxAndPattern(t *testing.T) {
+// -- a splitting bug there would otherwise be silent.
+func TestConfigTemplate_PathspecResolvesToPattern(t *testing.T) {
 	got := ConfigTemplate()
 	resolved, err := yamlengine.Resolve([]byte(got), nil)
 	if err != nil {
@@ -89,7 +90,7 @@ func TestConfigTemplate_PathspecResolvesToLyxAndPattern(t *testing.T) {
 		t.Fatalf("resolved[pathspec] = %#v; want a string", pathspec)
 	}
 	got2 := strings.Fields(pathspecStr)
-	want := []string{"_lyx", "_pattern"}
+	want := []string{"_pattern"}
 	if len(got2) != len(want) {
 		t.Fatalf("resolved[pathspec] whitespace-split = %v; want %v", got2, want)
 	}

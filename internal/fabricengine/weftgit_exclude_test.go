@@ -311,3 +311,35 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 		}
 	}
 }
+
+// TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp is the --exclude-standard
+// regression: without it, entryMatchesWeft's `git ls-files --cached --others` probe matches a file
+// that exists only because it is untracked, INCLUDING one hidden by .gitignore/info-exclude, so
+// weftPathspecFilter forwards a doomed entry to `git add`, which then refuses an ignored path and
+// fails the whole StageAndCommit call with exit 1 — toppling a commit that had no other content in
+// this call. With --exclude-standard, the ignored-only entry is filtered out, positive stays false,
+// and the call degrades to a clean no-op (WeftCommitted=false, no error).
+// This test has a verified pre-fix failure: on the pre-card-41 code it fails with a
+// "gitrepo: git add:" error instead of landing a clean no-op.
+func TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp(t *testing.T) {
+	f, weftFixture := newFabricPair(t)
+
+	ignoredRel := filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "ignored.tmp"))
+	excludePath := filepath.Join(weftFixture.WeftPath, ".git", "info", "exclude")
+	existing, err := os.ReadFile(excludePath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read info/exclude: %v", err)
+	}
+	if err := os.WriteFile(excludePath, append(existing, []byte("ignored.tmp\n")...), 0o644); err != nil {
+		t.Fatalf("write info/exclude: %v", err)
+	}
+	mustWriteFile(t, filepath.Join(weftFixture.WeftPath, lyxdirs.LyxDirName, "ignored.tmp"), "ignored, never committed")
+
+	result, err := f.Commit([]string{ignoredRel}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
+	if err != nil {
+		t.Fatalf("Commit(%q) error = %v; want a clean no-op, not a git add failure on an ignored-only entry", ignoredRel, err)
+	}
+	if result.WeftCommitted {
+		t.Errorf("Commit(%q) = %+v; want WeftCommitted=false (nothing but an ignored file matched)", ignoredRel, result)
+	}
+}

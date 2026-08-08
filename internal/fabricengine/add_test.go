@@ -177,3 +177,24 @@ func TestAdd_RejectsPathspecJunctionNameSlug(t *testing.T) {
 		t.Errorf("Add(%q) error = %v; want error containing %q", "_extra", err, "reserved for lyx hub geometry")
 	}
 }
+
+// TestAdd_RejectsDotLyxSlug asserts that Add refuses a slug of ".lyx" even for a Config naming
+// neither structural directory: the refusal must come from IsReservedHubName's
+// structuralNeverCommittedDirs union, not from any pathspec the caller happens to configure. A
+// worktree slug of ".lyx" would collide with the hub-level "<hub>/.lyx" batch 8 recognises.
+// Validation runs before any git op, so this stays untagged Tier-1.
+func TestAdd_RejectsDotLyxSlug(t *testing.T) {
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
+
+	_, err := topology.Add(layout, ".lyx", fabricengine.AddOptions{})
+	if err == nil {
+		t.Fatalf("Add(%q) error = nil; want invalid-slug error", ".lyx")
+	}
+	if !strings.Contains(err.Error(), "invalid slug") {
+		t.Errorf("Add(%q) error = %v; want error containing %q", ".lyx", err, "invalid slug")
+	}
+	if !strings.Contains(err.Error(), "reserved for lyx hub geometry") {
+		t.Errorf("Add(%q) error = %v; want error containing %q", ".lyx", err, "reserved for lyx hub geometry")
+	}
+}
