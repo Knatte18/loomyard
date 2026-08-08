@@ -105,6 +105,8 @@ Every `.md` file edited here uses semantic line breaks: one sentence per line, e
 - **Requirements:** Line 37 describes "a weft-backed `_pattern/` folder whose invariants are injected as a pointer into every code-touching agent prompt" — correct the path to `_lyx/PATTERN.md` plus `_lyx/pattern/`, keeping the rest of the sentence intact.
   Line 39 says the content migration out of `CONSTRAINTS.md` into `_pattern/PATTERN.md` + detail docs remains outstanding and still happens only at loomyard-init-via-lyx — correct the paths and keep the outstanding-status claim exactly as it is.
   That migration is explicitly **out of scope** for this task: this task moves the location, never the content, and `CONSTRAINTS.md` stays the single live invariants doc.
+  Line 41 reads `See [designs/pattern.md](designs/pattern.md).` — a real relative link to the file card 37 deletes.
+  Retarget it to `internal/pattern`'s package godoc (`../internal/pattern/doc.go`) so the link does not dangle after that deletion.
   Do **not** mark any roadmap item complete, do not add an item, and do not reorder anything.
   Per the repo's task-completion rule the roadmap moves only on completing or adding a planned item, and this task is consolidation.
 - **Commit:** `docs(roadmap): correct the PATTERN paths without moving any item`
@@ -149,6 +151,8 @@ Every `.md` file edited here uses semantic line breaks: one sentence per line, e
   In `shed.md` line 17, the reference to "the weft-side document-driven (non-git) conflict path for `_raddle`/`_pattern` content" retargets the same way.
   In `loom.md`, line 66's diff-exclusion set `_lyx`/`_raddle` collapses to `_lyx` alone, and line 67's "`_raddle` merge-back at Finalize" becomes the `_lyx/raddle/` merge-back.
   In `fabric-unified-view.md`, line 21 states that hub-structural entries `_board`, `_portals`, `_launchers`, `_raddle` stay hardcoded via `HubReservedNames()` — that claim is now false and must be corrected to the three surviving tokens.
+  Line 194 reads `- [pattern.md](pattern.md) — hand-authored weft content;` — a second real relative link to the file card 37 deletes.
+  Retarget it the same way, to `internal/pattern`'s package godoc, rather than removing the bullet.
   Lines 19, 131, 133, 134, and 195 are **historical change-narrative** describing what past slices did, and rewriting them would falsify the record; leave their wording intact and add one short superseded-note near the top of each affected section stating that `_pattern` no longer exists as a junction and that raddle is anchor-level, with a pointer to `manifest/designs/raddle.md`.
   Do not delete any historical entry.
 - **Commit:** `docs(designs): retarget the raddle and PATTERN geometry claims onto _lyx`
@@ -158,6 +162,8 @@ Every `.md` file edited here uses semantic line breaks: one sentence per line, e
 - **Context:**
   - `docs/overview.md`
   - `manifest/designs/raddle.md`
+  - `manifest/roadmap.md`
+  - `manifest/designs/fabric-unified-view.md`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:**
@@ -167,7 +173,10 @@ Every `.md` file edited here uses semantic line breaks: one sentence per line, e
   The Documentation Lifecycle in `docs/overview.md` says module-design docs are mechanical drafts for planned, not-yet-built modules, deleted when the module lands, with the implementation and its tests becoming the source of truth.
   `internal/pattern` has landed, so this deletion is already overdue; this task is what makes the file's content actively wrong, since it describes `_pattern` as "`_lyx`'s first sibling junction" and "the *second* junction the pathspec wires".
   Do not rewrite its `_pattern`-geometry passages instead — that would preserve a file the lifecycle says should not exist.
-  Before deleting, grep the repo for links to `manifest/designs/pattern.md` and fix any that exist; if a doc edited in cards 32-36 links to it, point that link at `internal/pattern`'s package godoc instead.
+  This card declares no `Edits:` and therefore fixes no link itself.
+  Both known inbound links are owned by earlier cards in this batch and must already be retargeted before this card runs: `manifest/roadmap.md` line 41 (card 34) and `manifest/designs/fabric-unified-view.md` line 194 (card 36).
+  Before deleting, run `grep -rn 'designs/pattern\.md\|](pattern\.md)' --include='*.md' .` to confirm both are gone and that no third inbound link has appeared.
+  If the grep reports a link in a file no card in this batch edits, stop and report it rather than deleting the target — a dangling link is a worse end state than a late deletion.
   Record in the commit message that this is an overdue Documentation Lifecycle deletion, not a change this task's scope required.
 - **Commit:** `docs(designs): delete the landed pattern module design doc`
 

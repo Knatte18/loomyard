@@ -66,7 +66,12 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   **Take that assertion string from the actual round-tripped output, never from this plan.** The test matches the file as *written*, after a `yamlengine.Resolve` plus marshal round-trip, and `yaml.v3` may re-emit a double-quoted empty string as `''` or reflow the trailing comment.
   Apply card 17 first, run this test, read the real bytes out of the failure message, and copy those into the assertion — do not assume `pathspec: ""` survives verbatim.
   Update the failure message on line 481 so it names the empty default rather than `_pattern`.
-  In `internal/configcli/configcli_integration_test.go` line 67 and `internal/fabricengine/template_test.go`, the `{"_lyx", "_pattern"}` expectations become whatever the empty default now yields — for the wired-name set that is `{_lyx, .lyx}`, and for the routing set `{_lyx}`.
+  The two remaining files hold different things and must not be given the same instruction.
+  `internal/configcli/configcli_integration_test.go` line 67 is a `WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"})` call — an explicit caller-supplied junction-name slice, not an expectation of the default.
+  Retarget it to `[]string{"_lyx", lyxdirs.DotLyxDirName}`, adding the `internal/lyxdirs` import if absent.
+  `internal/fabricengine/template_test.go`'s `TestConfigTemplate_PathspecResolvesToPattern` holds a **single-element** `want := []string{"_pattern"}` at line 93, and it asserts the **raw resolved `ConfigTemplate()` pathspec value**, never `pathspecNames()`'s routing set.
+  Its `want` becomes an empty slice, and the test is renamed off "...ResolvesToPattern" (e.g. `TestConfigTemplate_PathspecResolvesToEmpty`), with its doc comment at lines 67-71 rewritten.
+  Do **not** assert `{_lyx}` for this raw value: `_lyx` is never read from the `pathspec:` key at all — template.yaml's own trailing comment says so — so a `{_lyx}` expectation here would contradict the template's documented semantics and the `len(cfg.Dirs()) == 0` assertion below.
   Add a case to `internal/fabricengine/template_test.go` proving an empty `pathspec` yields an empty `Config.Dirs()` and that `pathspecNames`/`junctionNames` degrade to the structural sets alone over it.
   Assert `len(cfg.Dirs()) == 0`, **never** `cfg.Dirs() == nil`: `Config.Dirs()` is `strings.Fields(c.Pathspec)`, and Go's `strings.Fields("")` returns a non-nil zero-length slice, so a `== nil` assertion fails on every run regardless of anything this batch changes.
   `reflect.DeepEqual(cfg.Dirs(), []string{})` is an acceptable alternative spelling; a `== nil` comparison is not.
