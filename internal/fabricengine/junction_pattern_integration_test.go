@@ -276,29 +276,30 @@ func containsLine(lines []string, name string) bool {
 	return false
 }
 
-// TestDetectHostPollution_PatternTrackedAsRestorable is card 18's regression guard: a tracked path
-// under _pattern in the host index must be reported as pollution with the same automated restore
-// remedy _lyx pollution gets (git rm --cached plus a reminder to restore the junction/exclude
-// entry) — never report-only like _raddle, since _pattern has a junction from card 15 onward.
-func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
+// TestDetectHostPollution_LyxTrackedAsRestorable is card 18's regression guard, re-pointed at the
+// _lyx-only layout batch 5 delivers: a tracked path under _lyx in the host index must be reported as
+// pollution with an automated restore remedy (git rm --cached plus a reminder to restore the
+// junction/exclude entry) — every pollution class this scan reports now carries that remedy, since
+// there is no report-only class left.
+func TestDetectHostPollution_LyxTrackedAsRestorable(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
 
-	// Track a file under _pattern directly in the host worktree's index —
-	// the "hand-authored _pattern content accidentally committed to host"
-	// mistake this scan exists to catch.
-	hostPatternDir := filepath.Join(l.WorktreePath(), pattern.DirName)
-	if err := os.MkdirAll(hostPatternDir, 0o755); err != nil {
-		t.Fatalf("mkdir host _pattern dir: %v", err)
+	// Track a file under _lyx directly in the host worktree's index — the
+	// "hand-authored _lyx content accidentally committed to host" mistake
+	// this scan exists to catch.
+	hostLyxDir := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName)
+	if err := os.MkdirAll(hostLyxDir, 0o755); err != nil {
+		t.Fatalf("mkdir host _lyx dir: %v", err)
 	}
-	trackedFile := filepath.Join(hostPatternDir, "PATTERN.md")
+	trackedFile := filepath.Join(hostLyxDir, "PATTERN.md")
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", pattern.DirName)
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _pattern")
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", lyxdirs.LyxDirName)
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _lyx")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	result, err := topology.Status(l)
@@ -309,7 +310,7 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 		t.Fatal("Status returned no pairs")
 	}
 
-	const wantPath = "_pattern/PATTERN.md"
+	wantPath := pattern.PathspecFile
 	var found *fabricengine.PollutionEntry
 	for i, entry := range result.Pairs[0].Pollution {
 		if entry.Path == wantPath {
@@ -320,14 +321,97 @@ func TestDetectHostPollution_PatternTrackedAsRestorable(t *testing.T) {
 	if found == nil {
 		t.Fatalf("no pollution entry for %q found in %+v", wantPath, result.Pairs[0].Pollution)
 	}
-	if found.ReportOnly {
-		t.Errorf("PollutionEntry for %q is ReportOnly; want a restorable (automated-remedy) entry, matching _lyx", wantPath)
-	}
 	if found.Remedy == "" {
-		t.Errorf("PollutionEntry for %q has empty Remedy; want the same git rm --cached remedy _lyx gets", wantPath)
+		t.Errorf("PollutionEntry for %q has empty Remedy; want an automated git rm --cached remedy", wantPath)
 	}
 	if !strings.Contains(found.Remedy, "rm --cached") {
 		t.Errorf("PollutionEntry for %q remedy = %q; want it to contain \"rm --cached\"", wantPath, found.Remedy)
+	}
+}
+
+// TestDetectHostPollution_ScanErrorIsNonFatal pins Status' non-fatal-and-continue handling of a
+// detectHostPollution failure: the pair still comes back with a synthetic "<scan error: ...>"
+// pollution entry carrying an empty Remedy, rather than Status failing the pair outright. Before
+// batch 5 this synthetic entry also carried ReportOnly: true; now the empty Remedy alone is what
+// signals "no automated remedy applies here," so this test guards that the signal survives the
+// field's removal.
+func TestDetectHostPollution_ScanErrorIsNonFatal(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	// Corrupt only the host worktree's index file so `git ls-files` fails
+	// inside detectHostPollution, forcing Status down its scan-error branch,
+	// while leaving `git worktree list` (which List uses ahead of the
+	// per-pair pollution scan) unaffected — it does not read the index.
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "index"}, l.WorktreePath())
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git rev-parse --git-path index failed: %v (exit %d)", err, exitCode)
+	}
+	indexPath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(indexPath) {
+		indexPath = filepath.Join(l.WorktreePath(), indexPath)
+	}
+	if err := os.WriteFile(indexPath, []byte("not a git index"), 0o644); err != nil {
+		t.Fatalf("corrupt host index file: %v", err)
+	}
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	result, err := topology.Status(l)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if len(result.Pairs) == 0 {
+		t.Fatal("Status returned no pairs")
+	}
+
+	pollution := result.Pairs[0].Pollution
+	if len(pollution) != 1 {
+		t.Fatalf("Pollution = %+v; want exactly one synthetic scan-error entry", pollution)
+	}
+	if !strings.Contains(pollution[0].Path, "<scan error:") {
+		t.Errorf("Pollution[0].Path = %q; want it to contain the scan-error marker", pollution[0].Path)
+	}
+	if pollution[0].Remedy != "" {
+		t.Errorf("Pollution[0].Remedy = %q; want empty for a scan-error entry", pollution[0].Remedy)
+	}
+}
+
+// TestDetectHostPollution_RaddleNoLongerReported pins the observable behaviour change this batch
+// delivers: a tracked path under _raddle in the host index is no longer reported as pollution at
+// all, now that the _raddle classification branch is deleted and the scan's git-ls-files pathspec no
+// longer names "_raddle".
+func TestDetectHostPollution_RaddleNoLongerReported(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	hostRaddleDir := filepath.Join(l.WorktreePath(), "_raddle")
+	if err := os.MkdirAll(hostRaddleDir, 0o755); err != nil {
+		t.Fatalf("mkdir host _raddle dir: %v", err)
+	}
+	trackedFile := filepath.Join(hostRaddleDir, "notes.md")
+	if err := os.WriteFile(trackedFile, []byte("# notes\n"), 0o644); err != nil {
+		t.Fatalf("write tracked file: %v", err)
+	}
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", "_raddle")
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _raddle")
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	result, err := topology.Status(l)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if len(result.Pairs) == 0 {
+		t.Fatal("Status returned no pairs")
+	}
+
+	for _, entry := range result.Pairs[0].Pollution {
+		if strings.HasPrefix(entry.Path, "_raddle") {
+			t.Errorf("Pollution contains %+v; _raddle is no longer a scanned pollution class", entry)
+		}
 	}
 }
 
