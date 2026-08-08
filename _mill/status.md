@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-lyxdirs-single-declarer
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-review-r5  '2026-08-08T10:17:50Z'
 plan-fix-r5  '2026-08-08T10:17:50Z'
 planned  '2026-08-08T10:18:29Z'
 implementing  '2026-08-08T10:29:09Z'
+approved-lyxdirs-single-declarer  '2026-08-08T10:49:19Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ implementing  '2026-08-08T10:29:09Z'
 ```yaml
 batches:
   - name: lyxdirs-single-declarer
-    state: running
+    state: approved
     implementer_session: 571d7fc6-095c-47e7-bc02-55351851eedc
     start_sha: 51684bfa685a459aed0c9269e06b7b376c92c82f
+    commit_sha: 63e9bbd09e5f1cfa5e7ff361010885751518c80b
     verify_baseline_failures: []
   - name: treadle-perch-scratch-seam
     state: pending
