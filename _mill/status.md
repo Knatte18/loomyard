@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -29,4 +29,25 @@ plan-review-r5  '2026-08-08T17:12:18Z'
 plan-fix-r5  '2026-08-08T17:12:18Z'
 plan-fix-r6  '2026-08-08T17:22:39Z'
 planned  '2026-08-08T17:22:49Z'
+implementing  '2026-08-08T17:23:30Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: pattern-path-api
+    state: pending
+  - name: residue-rescope
+    state: pending
+  - name: junction-test-retarget
+    state: pending
+  - name: empty-pathspec-and-unreservation
+    state: pending
+  - name: pollution-scan-and-reportonly
+    state: pending
+  - name: geometry-token-retirement
+    state: pending
+  - name: docs-and-design-sweep
+    state: pending
 ```
