@@ -16,14 +16,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
-
-// patternDirName is fabricengine's own declaration of the "_pattern" git
-// pathspec literal, needed by patternResidueCommits below as a bare
-// pathspec argument. internal/pattern.DirName is the package-level owner of
-// this token everywhere else; this private copy exists solely because a git
-// pathspec argument must be a bare string, not a joined path.
-const patternDirName = "_pattern"
 
 // PullResult reports what Fabric.Pull actually did, on both sides independently, and — when a warp
 // history rewrite forced a reconcile — the re-anchor baseline and the weft content a caller should
@@ -64,14 +58,15 @@ type PullResult struct {
 	ReanchorWeftSHA string
 	// PatternResidue lists the post-anchor weft commits (between
 	// AnchorWeftSHA and the weft HEAD at reconcile time) that touched
-	// _pattern/... paths — content a caller should treat as potentially
-	// stale against the new warp baseline. Populated only when Reconciled is
-	// true.
+	// _lyx/PATTERN.md or _lyx/pattern/... paths — content a caller should
+	// treat as potentially stale against the new warp baseline. Populated
+	// only when Reconciled is true.
 	PatternResidue []PatternResidueEntry
 }
 
-// PatternResidueEntry names one post-anchor weft commit and the _pattern/...
-// paths it touched, as enumerated by Fabric.Pull's reconcile branch (see patternResidueCommits).
+// PatternResidueEntry names one post-anchor weft commit and the
+// _lyx/PATTERN.md or _lyx/pattern/... paths it touched, as enumerated by
+// Fabric.Pull's reconcile branch (see patternResidueCommits).
 type PatternResidueEntry struct {
 	WeftSHA string
 	Paths   []string
@@ -257,16 +252,21 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 }
 
 // patternResidueCommits enumerates the weft commits in the exclusive range
-// fromWeftSHA..toWeftSHA that touch _pattern/... paths, via one
-// `git log --name-only` invocation in f.weftPath. This is Fabric.Pull's
-// reconcile-branch helper: after a re-anchor, every weft commit between the
-// old anchor and weft HEAD at reconcile time was written against a warp
-// baseline that no longer exists on the rewritten upstream, and any of them
-// touching _pattern/... is exactly the content a caller must treat as
-// potentially stale.
+// fromWeftSHA..toWeftSHA that touch _lyx/PATTERN.md or _lyx/pattern/...
+// paths, via one `git log --name-only` invocation in f.weftPath. This is
+// Fabric.Pull's reconcile-branch helper: after a re-anchor, every weft
+// commit between the old anchor and weft HEAD at reconcile time was written
+// against a warp baseline that no longer exists on the rewritten upstream,
+// and any of them touching those PATTERN paths is exactly the content a
+// caller must treat as potentially stale.
 //
-// The pathspec is patternDirName, NEVER an inline "_pattern" string
-// literal — the Cwd Resolution Invariant reserves that token to its declarer.
+// The pathspec strings (pattern.PathspecFile, pattern.PathspecDir) come from
+// internal/pattern's exported constants, themselves built from
+// lyxdirs.LyxDirName — internal/pattern is the single declarer of the
+// PATTERN path segments. Building these strings from lyxdirs.LyxDirName
+// rather than an inline literal is a review obligation, not a
+// machine-enforced one: TestEnforcement_GeometryLiterals matches whole
+// tokens by exact equality and cannot see "_lyx/PATTERN.md".
 //
 // Separator placement: unlike scanWarpSHATrailers (which uses no
 // --name-only), --name-only appends each commit's changed-file list as
@@ -278,15 +278,15 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 // warpSHATrailerFormatRecordSep (index.go) are reused unchanged, so the split
 // can never be confused by ordinary commit content.
 //
-// RelPath-blind scope (documented limitation): the pathspec is the bare
-// patternDirName at the weft worktree root, matching the slice's
-// relpath-is-dot-for-slice-2 precedent (the same simplification Fabric.Commit
-// already accepts). A subpath-anchored hub whose _pattern lives at
-// RelPath/_pattern in a shared weft checkout is out of scope for this slice.
+// RelPath-blind scope (documented limitation): the pathspec is
+// pattern.PathspecFile/PathspecDir at the weft worktree root, matching the
+// slice's relpath-is-dot-for-slice-2 precedent (the same simplification
+// Fabric.Commit already accepts). A subpath-anchored hub whose _lyx lives at
+// RelPath/_lyx in a shared weft checkout is out of scope for this slice.
 //
 // If fromWeftSHA == toWeftSHA there are no post-anchor commits at all, so
 // this returns (nil, nil) without spawning git. A non-zero git exit returns a
-// wrapped error; a real range with zero _pattern-touching commits (empty
+// wrapped error; a real range with zero PATTERN-path-touching commits (empty
 // git-log output) also returns (nil, nil).
 func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]PatternResidueEntry, error) {
 	if fromWeftSHA == toWeftSHA {
@@ -295,7 +295,7 @@ func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]Pattern
 
 	format := warpSHATrailerFormatRecordSep + "%H" + warpSHATrailerFormatUnitSep
 	rangeArg := fromWeftSHA + ".." + toWeftSHA
-	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--", patternDirName}
+	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--", pattern.PathspecFile, pattern.PathspecDir}
 
 	stdout, stderr, code, err := gitexec.RunGit(args, f.weftPath)
 	if err != nil {
@@ -311,7 +311,8 @@ func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]Pattern
 // parsePatternResidueRecords parses patternResidueCommits' git-log output —
 // one warpSHATrailerFormatRecordSep-delimited block per commit, each block
 // starting with "<SHA><unitSep>" followed by that commit's changed
-// _pattern/... paths (one per line, from --name-only) — into one
+// _lyx/PATTERN.md or _lyx/pattern/... paths (one per line, from
+// --name-only) — into one
 // PatternResidueEntry per commit. Factored out as a pure helper so the
 // record-boundary parsing itself is easy to reason about independently of
 // the git spawn around it.
