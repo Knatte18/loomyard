@@ -1,0 +1,30 @@
+MILL_REVIEW_BEGIN
+# Review: Scoutengine: rewrite CONSTRAINTS.md as a seam rule, convert leaf test to banned-list, add LSP guard — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-08
+```
+
+## Findings
+
+None. Verified against the plan card-by-card:
+
+- `internal/scoutengine/seam_enforcement_test.go` (renamed from `leaf_enforcement_test.go`, old file confirmed absent, no repo source references the old name) correctly drops the `allowedImports` map and the stdlib heuristic, switches `filepath.WalkDir` to `os.ReadDir`, implements all four required predicates verbatim (`internal/output`, cobra, `internal/*cli`, `internal/clihelp`), reports `entry.Name()`, `t.Fatal`s on zero parsed files, and carries the required rewritten header/error text. Import block matches exactly (`go/parser, go/token, os, path/filepath, runtime, strings, testing`), no `io/fs`.
+- `internal/scoutengine/lspclient_guard_test.go` is a new file scoped to `lspclient.go` only, uses `runtime.Caller`+`filepath.Join`, `t.Fatal`s on a missing target, re-establishes the stdlib heuristic, allows exactly `internal/logger`, and consistently avoids "stdlib-only"/"hermetic" language per the Shared Decision.
+- Confirmed no production `.go` file in `internal/scoutengine` imports any banned token (`internal/output`, `spf13/cobra`, `internal/clihelp`, or an `internal/*cli` path) — only the test file's own string literals contain those substrings, and the banned-list scan correctly excludes `_test.go` files.
+- `internal/scoutengine/doc.go`'s "# The engine/CLI split" paragraph is rewritten per Card 4: drops "leaf", drops the stale/incomplete import enumeration, drops both `internal/modelspec` cross-references, states the seam positively/negatively, states there is no import allowlist, keeps the CLI/Cobra Invariant formulation — matches the reference text's substance closely.
+- `docs/overview.md`'s scout module-table bullet reads "cycle-free engine" (line 252); repo-wide grep confirms no remaining scout-referring "leaf" occurrence and every other "leaf" mention belongs to `reedengine/render`, `modelspec`, `tokenvocab`, `pattern`, `shell` as the card specifies untouched.
+- `CONSTRAINTS.md`'s pre-staged "Scout Engine-Seam Invariant" section's "Enforced by" line names `TestEngineSeamInvariant_BannedImports` and `TestLSPClientGuard_StdlibAndLoggerOnly` exactly as landed; its guard-allowed-set bullet, non-hermetic disclaimer, `internal/clihelp` naming, direct-imports-only scope, and silence on `internal/lyxcwd` all match what Card 6 requires — no divergence found.
+- No `//go:build` tag on either new/renamed test file; neither contains `exec.Command`, `exec.CommandContext`, `gitexec.RunGit`, or `lyxtest.Copy`, satisfying Test Tier Purity.
+- Both tests are assertion-only (no table-driven negative case), consistent with the `internal/shuttleengine` precedent provided and the plan's stated rationale; the boilerplate duplication between the two new test files (Caller-based dir resolution, `go/parser` scan) mirrors the repo's existing per-guard convention (`shuttleengine`, `lyxcwd`'s raddle guard) rather than introducing a new shared-helper gap.
+- `_mill/plan/00-overview.md`'s "All Files Touched" list matches the actual touched set exactly (`docs/overview.md`, `internal/scoutengine/doc.go`, `internal/scoutengine/lspclient_guard_test.go`, `internal/scoutengine/seam_enforcement_test.go`); no out-of-plan files present.
+- Cross-batch contract holds: batch 2's Card 6 checks the exact test/function names batch 1 landed, and they match byte-for-byte.
+
+## Verdict
+
+APPROVE
+Implementation matches the plan and CONSTRAINTS.md precisely; no blocking or nit findings.
+MILL_REVIEW_END

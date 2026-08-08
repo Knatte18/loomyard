@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: scout-seam-conversion
 branch: scout-seam-conversion
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-08-08T06:36:50Z'
 approved-seam-tests  '2026-08-08T06:42:31Z'
 approved-docs-alignment  '2026-08-08T06:45:26Z'
 holistic-reviewing  '2026-08-08T06:45:52Z'
+holistic-approved  '2026-08-08T06:48:58Z'
 ```
 
 ## Batches
