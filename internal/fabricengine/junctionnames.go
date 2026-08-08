@@ -189,13 +189,17 @@ func filterHubReserved(names []string) []string {
 	return kept
 }
 
-// junctionNames loads the fabric config at baseDir and returns its wired name-set: the pathspec
-// directory names with the wiring guard applied (see filterHubReserved), unioned with
-// structuralCommittedDirs so `_lyx` is wired structurally rather than by config.
-// It deliberately does NOT include structuralNeverCommittedDirs — folding `.lyx` into the wired
-// name-set is left to batch 8, where the content-adoption branch lands in the same commit range;
-// doing it here would make the very next `lyx fabric reconcile` hard-error in every worktree that
-// already holds a real `.lyx`.
+// junctionNames loads the fabric config at baseDir and returns its wired name-set:
+// structuralCommittedDirs unioned with structuralNeverCommittedDirs unioned with the pathspec
+// directory names with the wiring guard applied (see filterHubReserved) — in that order,
+// deduplicated by dedupUnion.
+// `filterHubReserved` is applied only to the config names: a structural name is never filtered, and
+// `.lyx` is deliberately absent from HubReservedNames() for exactly that reason (see that function's
+// doc comment).
+// This set is what gets junctions and warp `.git/info/exclude` entries, and it is deliberately
+// **wider** than the pathspec/commit-routing set pathspecNames returns — the difference is exactly
+// structuralNeverCommittedDirs, and that difference is what makes `.lyx` junctioned-and-excluded but
+// never named in a git invocation.
 // It is the in-package name-sourcing helper for sites that already hold a *lyxcwd.Location and can
 // compute their own weft base: the read-only health checks (Healthy, checkJunctionHealth,
 // junctionRepointedDetail) and checkout.go/reconcile.go's re-wire call sites.
@@ -209,18 +213,24 @@ func junctionNames(baseDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dedupUnion(structuralCommittedDirs, filterHubReserved(cfg.Dirs())), nil
+	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, filterHubReserved(cfg.Dirs())), nil
 }
 
 // WiredNames loads the fabric config at baseDir and returns its wired name-set — structuralCommittedDirs
-// unioned with the pathspec directory names, hub-reserved names filtered out — for callers outside
-// this package.
+// unioned with structuralNeverCommittedDirs unioned with the pathspec directory names, hub-reserved
+// names filtered out — for callers outside this package.
 // It is a thin wrapper over junctionNames so out-of-package callers (internal/fabriccli's clone and
 // add handlers) obtain the same filtered name-set the in-package sites use, without duplicating the
 // filterHubReserved guard themselves.
-// `_lyx` is now always present here even for a Config naming neither structural directory;
-// structuralNeverCommittedDirs (`.lyx`) is deliberately still absent — see junctionNames' doc comment
-// for why that omission is this batch's boundary rather than an oversight.
+// `_lyx`, `.lyx`, and the config's optional names are all present here now — see junctionNames' doc
+// comment for the full composition and its deliberate width relative to pathspecNames.
+//
+// One more consumer of note: Healthy (internal/fabricengine/drift.go) iterates RepoWiredNames and
+// requires every wired junction to exist and point at its weft target, so widening this set makes
+// fabric health require the `.lyx` junction from this commit range on — an already-wired worktree
+// reports CauseJunctionMissing ("`.lyx` junction missing") until `lyx fabric reconcile` runs and the
+// content-adoption branch converts its real `.lyx` into the junction.
+// That is the intended upgrade signal, not a bug.
 //
 // The raw, unfiltered Config.Dirs() is used only by Topology.Add's reserved-name union (which must
 // include every pathspec name, filtered or not, in the set a new slug cannot claim) — never by
