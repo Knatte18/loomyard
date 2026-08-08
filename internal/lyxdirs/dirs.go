@@ -4,7 +4,7 @@
 
 package lyxdirs
 
-// LyxDirName is the durable, weft-synced, git-tracked lyx directory within a worktree.
+// LyxDirName is the durable, fabric-synced, git-tracked lyx directory within a worktree.
 // internal/lyxdirs is the sole declarer of this literal, enforced by
 // TestEnforcement_GeometryLiterals in internal/lyxcwd/enforcement_test.go.
 const LyxDirName = "_lyx"
