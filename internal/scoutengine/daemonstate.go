@@ -2,9 +2,9 @@
 // spawning EnsureServer call writes so a later, independent lyx invocation can discover an
 // already-running daemon rather than spawning its own, plus the two-part staleness check that
 // decides whether a recorded daemon is still safe to reuse.
-// It also declares DaemonStateFile/DaemonLock, the module's own .lyx-anchored path constructors —
-// ensureSupervised, the sole production caller, resolves its state-file and lock paths through
-// these rather than any other package's helper.
+// It also declares DaemonStateFile/DaemonLock, the module's own .lyx-anchored accessors built on
+// *lyxcwd.Location — ensureSupervised, the sole production caller, resolves its state-file and lock
+// paths through these rather than any other package's helper.
 
 package scoutengine
 
@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -36,18 +37,20 @@ const dotLyxDirName = ".lyx"
 const scoutDirName = "scout"
 
 // DaemonStateFile returns the path to the scout daemon's runtime state file for the given language,
-// rooted at worktreePath.
+// rooted at l.WorktreePath().
 // It is worktree-anchored so the daemon is a worktree-wide singleton per language.
 // It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
-func DaemonStateFile(worktreePath, lang string) string {
-	return filepath.Join(worktreePath, dotLyxDirName, scoutDirName, lang, "daemon.json")
+// TODO(dotlyx): candidate for the WorktreePath → AnchorPath migration when .lyx gets a single owner.
+func DaemonStateFile(l *lyxcwd.Location, lang string) string {
+	return filepath.Join(l.WorktreePath(), dotLyxDirName, scoutDirName, lang, "daemon.json")
 }
 
 // DaemonLock returns the path to the advisory lock file guarding concurrent access to
-// DaemonStateFile(worktreePath, lang).
+// DaemonStateFile(l, lang).
 // It shares that function's anchoring and per-lang scoping.
-func DaemonLock(worktreePath, lang string) string {
-	return filepath.Join(worktreePath, dotLyxDirName, scoutDirName, lang, "daemon.lock")
+// TODO(dotlyx): candidate for the WorktreePath → AnchorPath migration when .lyx gets a single owner.
+func DaemonLock(l *lyxcwd.Location, lang string) string {
+	return filepath.Join(l.WorktreePath(), dotLyxDirName, scoutDirName, lang, "daemon.lock")
 }
 
 // daemonState is the JSON shape written to the supervised daemon's state file.
