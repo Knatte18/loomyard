@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-geometry-token-retirement
+phase: approved-docs-and-design-sweep
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-junction-test-retarget  '2026-08-08T17:54:54Z'
 approved-empty-pathspec-and-unreservation  '2026-08-08T18:09:37Z'
 approved-pollution-scan-and-reportonly  '2026-08-08T18:16:06Z'
 approved-geometry-token-retirement  '2026-08-08T18:23:25Z'
+approved-docs-and-design-sweep  '2026-08-08T18:36:15Z'
 ```
 
 ## Batches
@@ -80,8 +81,9 @@ batches:
     commit_sha: b1af052bba8989414e3d8de9bcda001e4b6cf692
     verify_baseline_failures: []
   - name: docs-and-design-sweep
-    state: running
+    state: approved
     implementer_session: 229c4a71-5e03-4719-bfd1-9cccc915ddef
     start_sha: db5182f203f363170ed131bffee33b7c75057ba4
+    commit_sha: eb3e988507e7f6418a2d47e646afa28982c507ed
     verify_baseline_failures: []
 ```
