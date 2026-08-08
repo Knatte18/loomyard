@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-pollution-scan-and-reportonly
+phase: approved-geometry-token-retirement
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-residue-rescope  '2026-08-08T17:36:18Z'
 approved-junction-test-retarget  '2026-08-08T17:54:54Z'
 approved-empty-pathspec-and-unreservation  '2026-08-08T18:09:37Z'
 approved-pollution-scan-and-reportonly  '2026-08-08T18:16:06Z'
+approved-geometry-token-retirement  '2026-08-08T18:23:25Z'
 ```
 
 ## Batches
@@ -73,9 +74,10 @@ batches:
     commit_sha: a977f297851a1398a36a9d6f38cf23ed31009b87
     verify_baseline_failures: []
   - name: geometry-token-retirement
-    state: running
+    state: approved
     implementer_session: d0852cf1-6d42-4b74-a99c-4238194c509a
     start_sha: 83204159d719074545ee43098ee11f664d611639
+    commit_sha: b1af052bba8989414e3d8de9bcda001e4b6cf692
     verify_baseline_failures: []
   - name: docs-and-design-sweep
     state: pending
