@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // Reference reports a symbol reference's file and 1-based line/character position.
@@ -44,12 +46,14 @@ type Query struct {
 
 // Options configures a References call.
 type Options struct {
-	Registry     Registry
-	TargetDir    string
-	WorktreeRoot string
-	Lang         string
-	Query        Query
-	Timeout      time.Duration
+	Registry  Registry
+	TargetDir string
+	// Layout is the resolved *lyxcwd.Location for the worktree this call operates in.
+	// It is required and must be non-nil.
+	Layout  *lyxcwd.Location
+	Lang    string
+	Query   Query
+	Timeout time.Duration
 }
 
 // References resolves a query and returns every reference to it, sorted by file:line:character.
@@ -62,7 +66,7 @@ func References(ctx context.Context, opts Options) ([]Reference, error) {
 // acquireConnection obtains a ready-to-use LSP client and its teardown kind.
 func acquireConnection(ctx context.Context, lang string, entry Entry, opts Options) (*lspClient, connKind, error) {
 	if entry.HasNativeDaemon {
-		return ensureServer(ctx, lang, entry, opts.TargetDir, opts.WorktreeRoot, opts.Timeout)
+		return ensureServer(ctx, lang, entry, opts.TargetDir, opts.Layout, opts.Timeout)
 	}
 
 	client, err := newLSPClient(entry.Command)
