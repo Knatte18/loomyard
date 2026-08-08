@@ -21,6 +21,7 @@ Fuller design/how-to lives in godoc and `docs/`.
   `Resolve` returns `ErrCwdOutsideAnchor` otherwise. `ResolveWithAnchor` and `ResolveWorktree` are ungated — `ResolveWithAnchor` is a documented bypass, used only by callers that legitimately stand somewhere the gate would reject (fabric's clone, lyxtest's synthetic hubs).
 - A module's own durable-storage subdirectory (e.g. `_lyx/plan`, `_lyx/webster`) is that module's own private relative-path constant, joined onto `AnchorPath()` directly — never a `lyxcwd` function call.
   Adding a module's own subdirectory is never a `lyxcwd` change.
+  Its ephemeral twin is the Durable-vs-Ephemeral State Invariant below.
 - `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — this is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic.
 - Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths,
   and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `lyxcwd` never mentions weft.
@@ -39,6 +40,16 @@ Fuller design/how-to lives in godoc and `docs/`.
 - `internal/lyxdirs` stays stdlib-only, a zero-import leaf, so every module that needs either token can import it without cycle risk.
 - No other production file may name either literal in path-construction context (a `filepath.Join` argument, a `+` operand, or a string const declaration value) — every caller uses `lyxdirs.LyxDirName` / `lyxdirs.DotLyxDirName` instead.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`).
+
+## Durable-vs-Ephemeral State Invariant
+
+Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to, and `_lyx` holds tracked content only.
+
+- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — the sole exception is `reedengine.HubLogsDir`, which is hub-anchored.
+- No engine derives its own `.lyx` path.
+  Each module exposes a scratch accessor beside its durable one, and every consumer is handed the value, so a caller passing the wrong tree is a compile error rather than a silently-broken pause flag.
+- **Enforced by** `cmd/lyx/notransients_test.go` (`TestNoTransientsUnderLyx`) and `cmd/lyx/constructoranchoring_test.go`.
+  The mirrored-subpath rule for a *newly added* transient is a review obligation on top of the machine check.
 
 ## lyxtest Leaf Invariant
 
