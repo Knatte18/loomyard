@@ -59,7 +59,9 @@ batches:
     commit_sha: f04f7019e7e4ddba6ae00ff2db7b482989434835
     verify_baseline_failures: []
   - name: empty-pathspec-and-unreservation
-    state: pending
+    state: running
+    implementer_session: ca339cd0-1dad-464d-99b2-c18114db8537
+    start_sha: 471639a98a7d8bc1715e9aed605a2dda49edf5a6
     verify_baseline_failures: []
   - name: pollution-scan-and-reportonly
     state: pending
