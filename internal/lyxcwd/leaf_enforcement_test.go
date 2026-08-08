@@ -1,10 +1,10 @@
-// leaf_enforcement_test.go enforces the Modelspec Leaf Invariant: production code in
-// internal/modelspec imports ONLY the standard library, internal/configengine, and gopkg.in/yaml.v3
-// — never configreg, envsource, yamlengine, lyxcwd, or any feature package.
+// leaf_enforcement_test.go enforces internal/lyxcwd's own import cap from CONSTRAINTS.md's Cwd
+// Resolution Invariant: production code in internal/lyxcwd imports ONLY the standard library and
+// internal/gitexec — this is what keeps fabricengine -> logger -> lyxcwd acyclic.
 // This check is an ALLOWLIST: any import outside the allowed set fails the test, so a future stray
 // dependency is caught with no list maintenance required.
 
-package modelspec
+package lyxcwd
 
 import (
 	"go/parser"
@@ -19,8 +19,7 @@ import (
 // allowedImports are the only non-stdlib import paths production code in
 // this package may use.
 var allowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/configengine": true,
-	"gopkg.in/yaml.v3": true,
+	"github.com/Knatte18/loomyard/internal/gitexec": true,
 }
 
 // TestLeafInvariant_AllowlistOnly verifies that every non-test .go file in this package directory
@@ -31,7 +30,7 @@ var allowedImports = map[string]bool{
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("could not determine modelspec source directory location")
+		t.Fatal("could not determine lyxcwd source directory location")
 	}
 	pkgDir := filepath.Dir(file)
 
@@ -78,10 +77,10 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("failed to walk modelspec directory: %v", err)
+		t.Fatalf("failed to walk lyxcwd directory: %v", err)
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("Modelspec Leaf Invariant violated; imports outside the allowlist (stdlib + configengine + yaml.v3) found: %v", failures)
+		t.Errorf("lyxcwd Leaf Invariant violated; imports outside the allowlist (stdlib + gitexec) found: %v", failures)
 	}
 }
