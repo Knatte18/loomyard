@@ -41,6 +41,11 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 	const slug = "unwire-removes-stale"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
+	// newFabricFixture seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
+	// default pathspec; override it to "_extra" so Add's RepoWiredNames-driven wiring below
+	// wires the same junction name this test's explicit WireJunctions call retargets to,
+	// rather than wiring an extra, unrelated junction on top.
+	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)

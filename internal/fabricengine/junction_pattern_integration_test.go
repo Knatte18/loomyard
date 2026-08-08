@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -32,6 +33,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
+
+// seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at
+// fabricengine.BoardDir(hub) with a pathspec naming "_extra" instead of
+// fabricengine.ConfigTemplate()'s own default. RepoWiredNames-consuming
+// production code (Healthy, Reconcile, Status, Add) reads this file to decide
+// which optional junction it expects wired, so any test that wires "_extra"
+// explicitly via WireJunctions must also point RepoWiredNames at "_extra" for
+// that production code to agree with what is actually on disk.
+func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
+	t.Helper()
+
+	boardDir := fabricengine.BoardDir(hub)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := configengine.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
+}
 
 // readExcludeLines resolves and reads the host worktree's .git/info/exclude
 // file, mirroring the resolution logic seedGitExclude/unseedGitExclude use
@@ -405,7 +426,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 				lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 					"fabric": fabricengine.ConfigTemplate(),
 				})
-				seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+				seedRepoWideExtraFabricConfig(t, fixture.Layout.HubPath)
 				lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 				l := fixture.Layout
@@ -449,6 +470,10 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 	const slug = "reconcile-extra-only-drift"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
+	// newFabricFixture seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
+	// default pathspec; override it to "_extra" so Add's own RepoWiredNames-driven wiring (and
+	// Reconcile's below) agrees with the junction name this test drifts.
+	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)
@@ -507,6 +532,10 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 	const slug = "status-extra-unhealthy"
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
+	// newFabricFixture seeds the repo-wide config with fabricengine.ConfigTemplate()'s own
+	// default pathspec; override it to "_extra" so Add's own RepoWiredNames-driven wiring (and
+	// Status's below) agrees with the junction name this test drifts.
+	seedRepoWideExtraFabricConfig(t, l.HubPath)
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
 		t.Fatalf("setup Add: %v", err)

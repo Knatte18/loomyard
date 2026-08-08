@@ -60,6 +60,10 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
 // <hub>/_board/_lyx/config/fabric.yaml (directly written, not committed).
+// The pathspec names "_extra" rather than reading fabricengine.ConfigTemplate()'s own default,
+// because setupPreflightFixture's explicit WireJunctions call wires "_extra" as this fixture's
+// second, non-_lyx junction (card 3's retarget) — RepoWiredNames must agree with what is actually
+// wired on disk for checkJunctionHealth/Healthy to classify each fixture as healthy where expected.
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
@@ -68,7 +72,7 @@ func seedRepoWideFabricConfig(t testing.TB, hub string) {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
