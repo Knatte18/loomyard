@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -23,16 +24,8 @@ import (
 // It detects when a still-running daemon was spawned by an incompatible lyx binary.
 const supervisedProtocolVersion = "1"
 
-// dotLyxDirName is the directory name for ephemeral, machine-bound lyx
-// state, distinct from the durable, fabric-synced _lyx configengine.LyxDirName
-// declares. scoutengine is one of several private declarers of this
-// unpoliced token (per the module-owned-constructors per-segment join
-// rule); it stays unpoliced this slice — slice 9 is where .lyx gets a
-// single owner.
-const dotLyxDirName = ".lyx"
-
 // scoutDirName is the relative-path segment scoutengine joins onto
-// dotLyxDirName to form the supervised daemon's runtime-state directory.
+// lyxdirs.DotLyxDirName to form the supervised daemon's runtime-state directory.
 // scoutengine is this segment's sole declarer.
 const scoutDirName = "scout"
 
@@ -42,7 +35,7 @@ const scoutDirName = "scout"
 // It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
 // TODO(dotlyx): candidate for the WorktreePath → AnchorPath migration when .lyx gets a single owner.
 func DaemonStateFile(l *lyxcwd.Location, lang string) string {
-	return filepath.Join(l.WorktreePath(), dotLyxDirName, scoutDirName, lang, "daemon.json")
+	return filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.json")
 }
 
 // DaemonLock returns the path to the advisory lock file guarding concurrent access to
@@ -50,7 +43,7 @@ func DaemonStateFile(l *lyxcwd.Location, lang string) string {
 // It shares that function's anchoring and per-lang scoping.
 // TODO(dotlyx): candidate for the WorktreePath → AnchorPath migration when .lyx gets a single owner.
 func DaemonLock(l *lyxcwd.Location, lang string) string {
-	return filepath.Join(l.WorktreePath(), dotLyxDirName, scoutDirName, lang, "daemon.lock")
+	return filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.lock")
 }
 
 // daemonState is the JSON shape written to the supervised daemon's state file.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // newTestEngine builds an Engine rooted at a fresh t.TempDir(), suitable
@@ -40,7 +41,7 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 
 	var sawPath string
 	err := e.withOpLock(func() error {
-		sawPath = filepath.Join(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), reedLockFileName)
+		sawPath = filepath.Join(filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName), reedLockFileName)
 		if _, statErr := os.Stat(sawPath); statErr != nil {
 			t.Errorf("lock file not present while held: %v", statErr)
 		}

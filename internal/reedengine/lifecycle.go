@@ -20,14 +20,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
-
-// dotLyxDirName is the directory name for ephemeral, machine-bound lyx
-// state, this package's own declaration of the token for HubLogsDir's join.
-const dotLyxDirName = ".lyx"
 
 // HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
 // writes its runtime log.
@@ -35,7 +32,7 @@ const dotLyxDirName = ".lyx"
 // It lives under the ephemeral .lyx directory;
 // server logs are runtime artifacts, never fabric-synced.
 func HubLogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.HubPath, dotLyxDirName, "logs")
+	return filepath.Join(l.HubPath, lyxdirs.DotLyxDirName, "logs")
 }
 
 // UpResult reports the outcome of Up.
@@ -542,7 +539,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	}
 
 	st.HeaderPaneID = paneID
-	if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), st); err != nil {
+	if err := SaveState(filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName), st); err != nil {
 		return fmt.Errorf("persist header pane id: %w", err)
 	}
 	return nil
@@ -673,7 +670,7 @@ func (e *Engine) Resume() (ResumeResult, error) {
 			// same orphan-avoidance as AddStrand: if a later launch or apply
 			// fails, this pane is already tracked, so it is never reaped as
 			// untracked or double-launched by the next resume.
-			if err := SaveState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), st); err != nil {
+			if err := SaveState(filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName), st); err != nil {
 				return fmt.Errorf("persist strand: %w", err)
 			}
 			// Re-apply the layout after each launch, not once at the end:
@@ -775,7 +772,7 @@ func (e *Engine) Down() (DownResult, error) {
 			return serverErr
 		}
 
-		path := filepath.Join(filepath.Join(e.layout.WorktreePath(), dotLyxDirName), reedStateFileName)
+		path := filepath.Join(filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName), reedStateFileName)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("delete state: %w", err)
 		}
@@ -958,7 +955,7 @@ func (e *Engine) requireSessionLocked() error {
 	// never part of Strands, so this count is already correct by
 	// construction.
 	strandCount := 0
-	if st, err := LoadState(filepath.Join(e.layout.WorktreePath(), dotLyxDirName)); err == nil && st != nil {
+	if st, err := LoadState(filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName)); err == nil && st != nil {
 		strandCount = len(st.Strands)
 	}
 	return errors.New(noSessionMessage(strandCount))

@@ -20,11 +20,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
-
-// dotLyxDirName is the directory name for ephemeral, machine-bound lyx state,
-// this package's own declaration of the token for WorktreeLogsDir's join.
-const dotLyxDirName = ".lyx"
 
 const sinkMaxBytes = 8 * 1024 * 1024
 
@@ -34,7 +31,7 @@ const sinkMaxBytes = 8 * 1024 * 1024
 // logs directory.
 // It lives under the ephemeral .lyx directory, never the durable, fabric-synced _lyx.
 func WorktreeLogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.WorktreePath(), dotLyxDirName, "logs")
+	return filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "logs")
 }
 
 type sinkHeader struct {

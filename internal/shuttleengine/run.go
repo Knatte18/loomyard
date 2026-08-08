@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -182,7 +183,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // tracked in reed state. A LoadState error skips the sweep entirely, to avoid
 // sweeping kept diagnosis dirs over an unrelated I/O problem. Failures never block Start.
 func (r *Runner) sweepOrphansOpportunistic() {
-	st, err := reedengine.LoadState(filepath.Join(r.layout.WorktreePath(), dotLyxDirName))
+	st, err := reedengine.LoadState(filepath.Join(r.layout.WorktreePath(), lyxdirs.DotLyxDirName))
 	if err != nil {
 		log.Printf("shuttle: orphan sweep: load reed state failed, skipping this sweep (non-fatal, new run proceeds): %v", err)
 		return

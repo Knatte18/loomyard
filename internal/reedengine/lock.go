@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // reedLockFileName is the reed operation lock's file name inside a Layout's
@@ -63,7 +64,7 @@ func (e *Engine) TmuxPath() string {
 // and releases it before returning. This is the only acquisition point
 // for reed.lock in the package; it is non-reentrant.
 func (e *Engine) withOpLock(fn func() error) error {
-	dotLyx := filepath.Join(e.layout.WorktreePath(), dotLyxDirName)
+	dotLyx := filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName)
 	// gofrs/flock opens the lock file with O_CREATE but never creates
 	// missing parent directories, so a brand-new worktree's first reed
 	// operation (before .lyx exists at all) must create it here first,

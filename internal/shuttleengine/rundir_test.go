@@ -12,12 +12,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 func TestRunDirRoot_DefaultUsesDotLyxShuttle(t *testing.T) {
 	layout := &lyxcwd.Location{}
 	got := runDirRoot(Config{}, layout)
-	want := filepath.Join(layout.WorktreePath(), dotLyxDirName, "shuttle")
+	want := filepath.Join(layout.WorktreePath(), lyxdirs.DotLyxDirName, "shuttle")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}

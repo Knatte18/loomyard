@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
@@ -69,7 +70,7 @@ func TestAddStrandLocked_SessionIDRoundTripsThroughSaveLoad(t *testing.T) {
 		t.Fatalf("strand.SessionID = %q, want %q", strand.SessionID, spec.SessionID)
 	}
 
-	dotLyxDir := filepath.Join(e.layout.WorktreePath(), dotLyxDirName)
+	dotLyxDir := filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName)
 	if err := SaveState(dotLyxDir, st); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
