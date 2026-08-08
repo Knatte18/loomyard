@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-retire-cross-module-excludes  '2026-08-08T13:20:07Z'
 approved-structural-dirs-and-never-committed-routing  '2026-08-08T13:42:02Z'
 approved-dotlyx-junction-wiring-and-unwire  '2026-08-08T14:06:16Z'
 holistic-reviewing  '2026-08-08T14:06:51Z'
+holistic-fixing  '2026-08-08T14:14:41Z'
 ```
 
 ## Batches
