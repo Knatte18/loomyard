@@ -110,8 +110,13 @@ The real count is nine (enumerated under Technical context), one of which — `c
   &lyxcwd.Location{HubPath: filepath.Dir(abs), WorktreeName: filepath.Base(abs), AnchorRel: "."}
   ```
 
-- **Rationale:** `WorktreePath()` is `filepath.Join(HubPath, WorktreeName)`, so this yields exactly `abs` — byte-identical to today's `resolveWorktreeRoot` fallback.
+- **Rationale:** `WorktreePath()` is `filepath.Join(HubPath, WorktreeName)`, so this yields exactly `abs` — byte-identical to today's `resolveWorktreeRoot` fallback for every ordinary directory.
   No new failure modes, no new git spawns, and the two branches of `resolveWorktreeRoot` map one-to-one onto the two branches of the new `resolveLocation`.
+  **Scope of the byte-identity claim:** it is asserted for non-root directories.
+  A filesystem or volume root (`/`, `C:\`) is a degenerate case — `filepath.Base("/")` is `"/"`, `filepath.Base("C:\\")` is `"\\"` — where the `Dir`/`Base`-then-`Join` round trip is not obviously an identity and was not verified.
+  Not worth handling: `--target-dir /` names no buildable project, and the pre-existing `resolveWorktreeRoot` fallback has the same shape.
+  Do not add a special case for it;
+  do not claim byte-identity there either.
 - **Constraint on the synthesized value — it is a fiction outside `WorktreePath()`.**
   Hand-building a `Location` outside `internal/lyxcwd` has only two production precedents, both in the geometry owner itself (`fabricengine/clone.go:125`, `fabricengine/hostlayout.go:30`).
   The value synthesized here is deliberately narrower: `HubPath` is merely the parent of the target directory and names no real hub, `RepoName` is left zero, and `AnchorPath()` is meaningless because `AnchorRel` was assumed rather than read from a `.fabric-anchor` marker.
@@ -152,10 +157,19 @@ The real count is nine (enumerated under Technical context), one of which — `c
   1. **`lookupContext`, the resolution seam.**
 
      ```go
-     func lookupContext(cwd, targetDir string) (scoutengine.Registry, *lyxcwd.Location, error)
+     func lookupContext(cwd, dir string) (scoutengine.Registry, *lyxcwd.Location, error)
      ```
 
-     It performs both pre-flight derivations every lookup command needs — the `servers.yaml` overlay load and the `*lyxcwd.Location` resolution — deriving each independently from `(cwd, targetDir)`, and returns the built-in registry plus a synthesized `Location` out-of-hub.
+     It performs both pre-flight derivations every lookup command needs — the `servers.yaml` overlay load and the `*lyxcwd.Location` resolution — deriving each independently from `(cwd, dir)`, and returns the built-in registry plus a synthesized `Location` out-of-hub.
+
+     **`dir` is the already-defaulted directory, never the raw `--target-dir` flag.**
+     The parameter is named `dir`, not `targetDir`, for exactly this reason.
+     Each `RunE` keeps its existing two lines of defaulting (`dir := targetDir; if dir == "" { dir = cwd }`, `cli.go:142-145` and `:570-573`) and passes the result in — the defaulting does **not** move into `lookupContext`, because `Options.TargetDir` and `filterWithin` in the same closure need `dir` anyway, so returning it as a third value would just hand back a value the caller already has.
+     Passing the raw flag instead would make the out-of-hub branch resolve `filepath.Abs("")` — the process working directory — rather than `filepath.Abs(cwd)`, silently pointing the daemon at the wrong place whenever `--target-dir` is omitted.
+
+     **Error contract:** the returned `error` carries `LoadRegistry` failures only.
+     A `lyxcwd.Resolve` failure is *never* an error — it is the out-of-hub path, and degrades to the built-in registry plus a synthesized `Location`, exactly as today.
+     Callers keep the existing envelope mapping unchanged: on a non-nil error, `clihelp.SetExit(ctx, output.Err(out, err.Error()))` then `return nil` (`cli.go:162-165`, `:579-582`).
      All four commands call it, replacing the duplicated blocks at `cli.go:147-167`, `cli.go:293-313`, `cli.go:414-434`, and `cli.go:575-585`.
      `resolveLocation` becomes its private helper rather than a separately-called function.
   2. **`baseOptions`, the construction seam.**
@@ -456,4 +470,7 @@ They spawn a real gopls, are slow and environment-dependent, and this refactor c
 - **Q:** Does `docs-in-same-commit`'s "exactly six sites and nothing beyond them" hold? **A:** [auto-pick, review r2] No — it contradicted three other decisions that mandate doc comments in `scoutcli` and on `Options.Layout`. Rescoped the six-site list to bind `scoutengine` prose docs only, with the mandated code doc comments listed separately. **Why:** an absolute closure on one list while other decisions demand comments elsewhere forces a plan writer to guess which mandate wins.
 - **Q:** Is the affected-test enumeration complete? **A:** [auto-pick, review r2] No — it listed accessor calls only and missed twelve `ensureServer`/`ensureSupervised` call sites, seven of them in the `//go:build scout` files. Every site is now enumerated per file, and the drifted line numbers for `supervised_test.go`'s fixtures (63/127/205, not 65/129/207) are corrected. **Why:** the under-count fell precisely on the files the discussion itself calls the largest correctness risk, since no pipeline gate compiles them.
 - **Q:** Does the new `Location` fixture replace the plain directory string in tests? **A:** [auto-pick, review r2] No — it must keep both. `targetDir` stays a `string` parameter, and five fixtures pass the same directory as both arguments (`ensureSupervised(…, worktreeRoot, worktreeRoot, …)`). **Why:** deleting the string when introducing `l` breaks those call sites.
+- **Q:** Does `lookupContext` take the raw `--target-dir` flag or the defaulted directory? **A:** [auto-pick, review r3] The already-defaulted directory; the parameter is named `dir` to say so, and the `dir == "" → cwd` defaulting stays in each `RunE`. **Why:** passing the raw flag would resolve `filepath.Abs("")` — the process cwd — instead of `filepath.Abs(cwd)` whenever `--target-dir` is omitted. The defaulting cannot move into the helper for free: `Options.TargetDir` and `filterWithin` need `dir` in the same closure anyway.
+- **Q:** What populates `lookupContext`'s error return? **A:** [auto-pick, review r3] `LoadRegistry` failures only. A `lyxcwd.Resolve` failure is never an error — it is the out-of-hub path. Callers keep the existing `output.Err` + `return nil` mapping. **Why:** leaving the contract unstated invites a plan writer to turn the out-of-hub degradation into a hard failure, which would break every out-of-hub lookup.
+- **Q:** Is the out-of-hub byte-identity claim unconditional? **A:** [auto-pick, review r3] No — scoped to non-root directories. The `Dir`/`Base`-then-`Join` round trip at a filesystem or volume root (`/`, `C:\`) was not verified and is deliberately not special-cased. **Why:** `--target-dir /` names no buildable project, and today's `resolveWorktreeRoot` fallback has the same shape — but an unqualified claim would read as verified when it is not.
 - **Q:** Is the synthesized out-of-hub `Location` safe to treat as a real `Location`? **A:** [auto-pick, review r1] No — only `WorktreePath()` is a true answer; `HubPath`, `RepoName`, and `AnchorPath()` are fictions. Contractually consumed by `DaemonStateFile`/`DaemonLock` alone, stated in `resolveLocation`'s doc comment. **Why:** hand-building a `Location` outside `internal/lyxcwd` has only two production precedents, both inside the geometry owner (`fabricengine/clone.go:125`, `hostlayout.go:30`); an unmarked fiction invites a later caller to read a field that means nothing.
