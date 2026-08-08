@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lyxdirs-single-declarer
+phase: approved-treadle-perch-scratch-seam
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r5  '2026-08-08T10:17:50Z'
 planned  '2026-08-08T10:18:29Z'
 implementing  '2026-08-08T10:29:09Z'
 approved-lyxdirs-single-declarer  '2026-08-08T10:49:19Z'
+approved-treadle-perch-scratch-seam  '2026-08-08T11:09:24Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     commit_sha: 63e9bbd09e5f1cfa5e7ff361010885751518c80b
     verify_baseline_failures: []
   - name: treadle-perch-scratch-seam
-    state: running
+    state: approved
     implementer_session: 842032db-b6ba-4992-8a61-8abae95b5b59
     start_sha: a2bee0b167c168a5d3a5ca397f55d402bad6b062
+    commit_sha: 463514772ae8a689f8a877a4e8b738f07d558f6f
     verify_baseline_failures: []
   - name: webster-builder-loom-scratch-seam
     state: pending
